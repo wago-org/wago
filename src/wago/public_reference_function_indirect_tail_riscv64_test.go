@@ -120,16 +120,9 @@ func TestRV64PublicReferenceFunctionProperIndirectTailRetained(t *testing.T) {
 		if !metadata.needsFuncRefDescs() || metadata.validate() != nil {
 			t.Fatal("derived table descriptor contract")
 		}
-		blob, err := metadata.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { loaded.Close() })
-		valid := rv64NativeTokenInstantiate(t, rt, loaded, NewImports())
+
+		t.Cleanup(func() { metadata.Close() })
+		valid := rv64NativeTokenInstantiate(t, rt, metadata, NewImports())
 		if len(valid.funcRefDescs) == 0 {
 			t.Fatal("derived directory not allocated")
 		}

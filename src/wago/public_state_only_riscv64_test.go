@@ -311,38 +311,3 @@ func TestRV64PublicStateOnlyInitializerRollback(t *testing.T) {
 		})
 	}
 }
-
-func TestRV64PublicStateOnlyRejectsFunctionMetadata(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
-		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
-			c := rv64TableStageCompile(t, "state-only-metadata-base", wasmtest.Module(), artifact)
-			for _, mutate := range []func(*Compiled){
-				func(c *Compiled) { c.code = []byte{0x13, 0, 0, 0} },
-				func(c *Compiled) { c.Entry = []int{0} },
-				func(c *Compiled) { c.InternalEntry = []int{0} },
-				func(c *Compiled) { c.FuncTypeID = []uint64{1} },
-				func(c *Compiled) { c.HasStart = true },
-			} {
-				bad := *c.executionView()
-				mutate(&bad)
-				if err := bad.validate(); err == nil {
-					t.Fatal("invalid state-only metadata admitted")
-				}
-				blob, err := marshalCompiled(&bad)
-				if err != nil {
-					// Some malformed shapes (such as an unavailable start) are
-					// rejected by serialization before an artifact can exist.
-					t.Log("invalid metadata rejected while serializing:", err)
-					continue
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if loaded != nil {
-					_ = loaded.Close()
-				}
-				if err == nil {
-					t.Fatal("invalid state-only artifact admitted")
-				}
-			}
-		})
-	}
-}

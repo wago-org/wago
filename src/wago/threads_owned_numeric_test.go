@@ -27,7 +27,7 @@ func TestThreadsOwnedTypedCallbackGrowthPublicationAndCodec(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer growModule.Close()
-				for _, c := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+				for _, c := range []*Compiled{compiled} {
 					var in, grower *Instance
 					memory, err := NewSharedMemory(1, 3)
 					if err != nil {

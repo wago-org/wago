@@ -104,7 +104,7 @@ func TestThreadsSharedSecondaryGrowthBulkAndWait(t *testing.T) {
 								t.Fatal(err)
 							}
 							defer c.Close()
-							for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+							for _, compiled := range []*Compiled{c} {
 								imports := NewImports()
 								var provider *Instance
 								if imported {

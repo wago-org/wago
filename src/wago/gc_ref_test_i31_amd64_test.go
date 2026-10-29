@@ -70,53 +70,6 @@ func TestStagedGCI31RefTestExecution(t *testing.T) {
 	}
 }
 
-func TestStagedGCI31RefTestLifecycleClosure(t *testing.T) {
-	data := stagedGCI31RefTestBytes(t)
-	c, err := compileStagedGCI31(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("i31 ref.test codec=%d", len(blob))
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.stagedGCI31Product() != stagedGCI31ProductCore || !loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
-		t.Fatalf("codec inherited ref.test admission: product=%v features=%v", loaded.stagedGCI31Product(), loaded.stagedFeatures())
-	}
-	in, err := instantiateCore(loaded, InstantiateOptions{})
-	if err != nil {
-		t.Fatalf("codec-loaded ref.test instantiate = %v", err)
-	}
-	defer in.Close()
-	if got, err := in.Invoke("i31", I32(-1)); err != nil || len(got) != 1 || got[0] != 2 {
-		t.Fatalf("codec-loaded ref.test = %v, %v; want [2], nil", got, err)
-	}
-
-	unknown := append([]byte(nil), data...)
-	for i := 0; i+9 <= len(unknown); i++ {
-		if string(unknown[i:i+9]) == "null-data" {
-			unknown[i+8] = 'x'
-			break
-		}
-	}
-	cfg := NewRuntimeConfig()
-	features := cfg.frontendFeatures()
-	features.TypedFunctionReferences = true
-	features.GCI31Products = true
-	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
-	if err != nil {
-		t.Fatalf("generic i31 ref.test compile = %v", err)
-	}
-	_ = widened.Close()
-}
-
 func BenchmarkStagedGCI31RefTest(b *testing.B) {
 	c, err := compileStagedGCI31(stagedGCI31RefTestBytes(b))
 	if err != nil {

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -43,9 +43,8 @@ func TestRV64CompactExternAggregateSourcePrivate(t *testing.T) {
 				t.Fatal(vector, array, err)
 			}
 			defer c.Close()
-			loaded := publicArtifactRoundTrip(t, c)
-			defer loaded.Close()
-			for artifact, candidate := range []*Compiled{c, loaded} {
+
+			for artifact, candidate := range []*Compiled{c} {
 				for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 					t.Run(fmt.Sprintf("vector%t/array%t/artifact%t/profile%d", vector, array, artifact != 0, profile), func(t *testing.T) {
 						in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true}})
@@ -99,9 +98,8 @@ func TestRV64CompactExternExceptionSourcePrivate(t *testing.T) {
 			t.Fatal(vector, err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{c, loaded} {
+
+		for artifact, candidate := range []*Compiled{c} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true}})
@@ -162,9 +160,8 @@ func TestRV64CompactExternLoosePersistentPrivate(t *testing.T) {
 				t.Fatal(vector, mode, err)
 			}
 			defer c.Close()
-			loaded := publicArtifactRoundTrip(t, c)
-			defer loaded.Close()
-			for artifact, candidate := range []*Compiled{c, loaded} {
+
+			for artifact, candidate := range []*Compiled{c} {
 				for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 					t.Run(fmt.Sprintf("vector%t/%s/artifact%t/profile%d", vector, mode, artifact != 0, profile), func(t *testing.T) {
 						rt := NewRuntime()
@@ -245,9 +242,8 @@ func TestRV64CompactExternAggregateConstantPrivate(t *testing.T) {
 				t.Fatal(vector, array, err)
 			}
 			defer c.Close()
-			loaded := publicArtifactRoundTrip(t, c)
-			defer loaded.Close()
-			for artifact, candidate := range []*Compiled{c, loaded} {
+
+			for artifact, candidate := range []*Compiled{c} {
 				for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 					t.Run(fmt.Sprintf("vector%t/array%t/artifact%t/profile%d", vector, array, artifact != 0, profile), func(t *testing.T) {
 						in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true}})

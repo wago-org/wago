@@ -1,4 +1,4 @@
-//go:build amd64 && !wago_precompiled
+//go:build amd64 && !wago_standalone
 
 package wago
 

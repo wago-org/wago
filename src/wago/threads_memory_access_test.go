@@ -126,8 +126,8 @@ func TestThreadsSharedMemoryAccessMatchesUnshared(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						loaded := publicArtifactRoundTrip(t, c)
-						for _, compiled := range []*Compiled{c, loaded} {
+
+						for _, compiled := range []*Compiled{c} {
 							var opts any = InstantiateOptions{}
 							if imported {
 								memory, err := NewSharedMemory(1, 1)

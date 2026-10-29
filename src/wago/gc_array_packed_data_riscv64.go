@@ -98,5 +98,3 @@ func rv64GCArrayPackedData(c *Compiled) bool {
 	return c.stagedGCStructProduct() == 0 && (product == stagedGCArrayProductPackedData || product == stagedGCArrayProductGeneric) && c.stagedFeatures() == CoreFeatureTypedFunctionReferences|CoreFeatureGC &&
 		!c.usesGCStructHelpers() && c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil && c.requiredFeatures == CoreFeatureBulkMemoryOperations|CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.requiredAMD64Features == 0
 }
-
-func railshotRestoreGCArrayPackedDataArtifact(*Compiled) {}

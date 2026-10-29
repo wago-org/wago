@@ -44,7 +44,7 @@ func TestThreadsOwnedHostControlReuseAndConcurrentGrowth(t *testing.T) {
 						t.Fatal(e)
 					}
 					defer compiled.Close()
-					for _, c := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+					for _, c := range []*Compiled{compiled} {
 						var in, grower *Instance
 						var memory *Memory
 						versions := make([]uint64, 0, 2)

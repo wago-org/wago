@@ -1,7 +1,6 @@
 package wago
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -30,44 +29,6 @@ type GCProfile = gc.Profile
 type GCAllocatorKind = gc.AllocatorKind
 type GCRuntimeKind = gc.RuntimeKind
 type GCNativeCodeTelemetry = gc.NativeCodeTelemetry
-
-// ArtifactLimits bounds allocation while streaming a compiled artifact.
-// Values must be non-negative. Zero rejects a non-empty encoded section;
-// MaxDecodedBytes == 0 selects the default decoded-memory budget.
-type ArtifactLimits struct {
-	MaxCodeBytes     int64
-	MaxMetadataBytes int64
-	// MaxDecodedBytes bounds metadata storage, decoded containers and the frozen
-	// execution snapshot using conservative allocation reservations. Native code
-	// is bounded separately by MaxCodeBytes.
-	MaxDecodedBytes int64
-}
-
-// ArtifactSectionSizes attributes bytes in a sectioned compiled artifact.
-type ArtifactSectionSizes struct {
-	Framing         int64
-	Code            int64
-	Entries         int64
-	Imports         int64
-	Types           int64
-	Functions       int64
-	ExportsAndNames int64
-	Globals         int64
-	Tables          int64
-	Elements        int64
-	Data            int64
-	Memories        int64
-	Tags            int64
-	Features        int64
-	GC              int64
-	Metadata        int64
-	Total           int64
-}
-
-// DefaultArtifactLimits returns the limits used by Compiled.ReadFrom.
-func DefaultArtifactLimits() ArtifactLimits {
-	return ArtifactLimits{MaxCodeBytes: 1 << 30, MaxMetadataBytes: 256 << 20, MaxDecodedBytes: 256 << 20}
-}
 
 const (
 	GCAllocatorPagedSizeClass     = gc.AllocatorPagedSizeClass
@@ -1103,7 +1064,7 @@ func narrowFrontendFeatures(features *frontend.Features, requiredByModule CoreFe
 
 func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[instructionKey]*registeredInstruction) (*Compiled, error) {
 	if !sourceCompilationEnabled {
-		return nil, wrapContextError("compile", errors.New("source compilation is unavailable in a precompiled runtime"))
+		return nil, errors.New("source compilation is unavailable in a standalone executable")
 	}
 	railshotConfigureFrontendTable64(&features)
 	if cfg.maxModuleBytes != 0 && uint64(len(wasmBytes)) > cfg.maxModuleBytes {
@@ -2785,7 +2746,7 @@ func (c *Compiled) validateMetadata() error {
 	}
 	// Non-collecting internal collector carriers retain an exact native ABI and
 	// frame contract even when no allocation helper product is selected.
-	if c.hasCollectorDeclarationRoots() && rv64ArtifactContractValid(c) && validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()) == nil {
+	if c.hasCollectorDeclarationRoots() && rv64SourceContractValid(c) && validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()) == nil {
 		staged |= required & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
 	}
 	// Type declarations alone have no executable GC obligations. Preserve their
@@ -2922,7 +2883,7 @@ func (c *Compiled) validateMetadata() error {
 			return fmt.Errorf("compiled metadata invalid: Entry[%d] offset %d out of code range %d", i, off, len(c.code))
 		}
 	}
-	if err := c.validateInternalEntries(false); err != nil {
+	if err := c.validateInternalEntries(); err != nil {
 		return err
 	}
 	totalFuncs := c.NumImports + len(c.Funcs)
@@ -3276,144 +3237,6 @@ func (c *Compiled) validateExactValueMetadata() error {
 	}
 	for i, elem := range c.passiveElems {
 		if err := check(fmt.Sprintf("element-state %d type", i), normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Compiled) validateStartMetadata() error {
-	if c.StartLocalFunc < 0 || c.StartImportIdx < 0 {
-		return fmt.Errorf("compiled metadata invalid: negative start function index")
-	}
-	if !c.HasStart {
-		if c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 {
-			return fmt.Errorf("compiled metadata invalid: start fields without a start function")
-		}
-		return nil
-	}
-	var sig FuncSig
-	if c.StartIsImport {
-		if c.StartLocalFunc != 0 || c.StartImportIdx >= len(c.importFuncSigs) || c.StartImportIdx >= len(c.Imports) {
-			return fmt.Errorf("compiled metadata invalid: start import index out of range")
-		}
-		sig = c.importFuncSigs[c.StartImportIdx]
-	} else {
-		if c.StartImportIdx != 0 || c.StartLocalFunc >= len(c.Funcs) || c.StartLocalFunc >= len(c.Entry) {
-			return fmt.Errorf("compiled metadata invalid: start local function index out of range")
-		}
-		sig = c.Funcs[c.StartLocalFunc]
-	}
-	if len(sig.Params) != 0 || len(sig.Results) != 0 {
-		return fmt.Errorf("compiled metadata invalid: start function must have signature () -> ()")
-	}
-	return nil
-}
-
-func (c *Compiled) validateCodecMetadata() error {
-	if err := c.validateStartMetadata(); err != nil {
-		return err
-	}
-	if err := c.validateImportModuleEnds(); err != nil {
-		return err
-	}
-	if err := validateDefinedTypeDescriptors(c.Types); err != nil {
-		return err
-	}
-	if err := validateValueTypeDescriptors(c.Types, c.ValueTypes); err != nil {
-		return err
-	}
-	if err := c.validateExactValueMetadata(); err != nil {
-		return err
-	}
-	for _, set := range []struct {
-		kind string
-		sigs []FuncSig
-	}{{"imported", c.importFuncSigs}, {"local", c.Funcs}} {
-		for i, sig := range set.sigs {
-			if err := validateFuncSignature(sig, c.Types); err != nil {
-				return fmt.Errorf("compiled metadata invalid: %s function %d signature: %w", set.kind, i, err)
-			}
-		}
-	}
-	structural := compiledStructuralRequiredFeatures(c)
-	if unsupported := structural &^ coreFeaturesWago; unsupported != 0 {
-		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
-	}
-	if err := c.validateMemoryMetadata(structural); err != nil {
-		return err
-	}
-	if err := c.validateRuntimeReferenceGlobalMetadata(); err != nil {
-		return err
-	}
-	for i, g := range c.Globals {
-		initKinds := 0
-		if g.HasInitGlobal {
-			initKinds++
-		}
-		if g.HasInitFunc {
-			initKinds++
-		}
-		if len(g.InitExpr) != 0 {
-			initKinds++
-		}
-		if initKinds > 1 {
-			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer forms", i)
-		}
-		if err := c.validateGlobalInitExpr(i, g); err != nil {
-			return err
-		}
-		if g.HasInitFunc && g.Type != ValFuncRef {
-			return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer has type %s", i, g.Type)
-		}
-	}
-	for name, tableIndex := range c.tableExports {
-		if tableIndex < 0 || tableIndex >= c.tableCount() {
-			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
-		}
-	}
-	checkOffset := func(kind string, i int, offset OffsetInit, want ValType, context constExprContext) error {
-		if offset.HasGlobal && len(offset.Expr) != 0 {
-			return fmt.Errorf("compiled metadata invalid: %s %d has multiple offset initializer forms", kind, i)
-		}
-		if offset.HasGlobal && want != ValI32 {
-			return fmt.Errorf("compiled metadata invalid: %s %d uses compact i32 global offset for %s address", kind, i, want)
-		}
-		if len(offset.Expr) != 0 {
-			if err := validateCompiledScalarConstExpr(offset.Expr, want, c.Globals, constExprGlobalScope{context: context, limit: len(c.Globals)}); err != nil {
-				return fmt.Errorf("compiled metadata invalid: %s %d extended %s offset: %w", kind, i, want, err)
-			}
-		}
-		return nil
-	}
-	checkElems := func(kind string, elems []ElemInit, active bool) error {
-		for i, elem := range elems {
-			offsetType := ValI32
-			if active && int(elem.TableIndex) < c.tableCount() && c.tableDef(int(elem.TableIndex)).Addr64 {
-				offsetType = ValI64
-			}
-			if err := checkOffset(kind, i, elem.Offset, offsetType, constExprElementOffset); err != nil {
-				return err
-			}
-			if err := c.validateElementValues(kind, i, elem); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	if err := checkElems("active", c.Elems, true); err != nil {
-		return err
-	}
-	if err := checkElems("element-state", c.passiveElems, false); err != nil {
-		return err
-	}
-	for i := 0; i < c.activeDataCount(); i++ {
-		data := c.activeDataAt(i)
-		want := ValI32
-		if c.memoryCount() != 0 && c.memoryDef(int(data.MemoryIndex)).Addr64 {
-			want = ValI64
-		}
-		if err := checkOffset("data", i, data.Offset, want, constExprDataOffset); err != nil {
 			return err
 		}
 	}
@@ -3907,62 +3730,6 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 	return nil
 }
 
-const wagoMagic = "WAGO"
-
-// Version 1 is the initial public compiled-artifact format. Version 6 records
-// the native architecture in the header so foreign-ISA instructions are rejected
-// before allocating an executable image. Version 5 rejected v4 native images
-// after the EH tag-directory basedata offset moved.
-// The codec never serializes live owners, collector handles, mappings, tokens,
-// active handlers, thunk addresses, or store identity.
-const wagoVersion = 7
-
-// MarshalBinary serializes the precompiled module to a ".wago" blob.
-// Published modules serialize their frozen execution metadata; edits to the
-// public metadata do not change the artifact. Unpublished values use their
-// current metadata.
-//
-// Signals-based (guard-page) modules cannot be serialized: their code has the
-// inline bounds checks elided and is only safe against a guard-page memory,
-// which a loaded blob has no way to record. Recompile from wasm with the desired
-// config at load time instead.
-func (c *Compiled) MarshalBinary() ([]byte, error) {
-	if c == nil {
-		return nil, errors.New("wago: compiled module is nil")
-	}
-	c.ensureCodeCache()
-	c.codeCache.mu.Lock()
-	defer c.codeCache.mu.Unlock()
-	defer goruntime.KeepAlive(c)
-	c = c.executionView()
-	if err := c.validateSerializableLocked(); err != nil {
-		return nil, err
-	}
-	return marshalCompiled(c)
-}
-
-// WriteTo streams a sectioned ".wago" artifact to w. Native code is written
-// directly from its readable image; only the smaller metadata section is
-// buffered. The returned count includes bytes accepted before an error.
-// Metadata follows the same snapshot contract as MarshalBinary.
-func (c *Compiled) WriteTo(w io.Writer) (int64, error) {
-	if c == nil {
-		return 0, errors.New("wago: compiled module is nil")
-	}
-	if w == nil {
-		return 0, errors.New("wago: compiled artifact writer is nil")
-	}
-	c.ensureCodeCache()
-	c.codeCache.mu.Lock()
-	defer c.codeCache.mu.Unlock()
-	defer goruntime.KeepAlive(c)
-	c = c.executionView()
-	if err := c.validateSerializableLocked(); err != nil {
-		return 0, err
-	}
-	return writeCompiled(w, c)
-}
-
 // CodeSize reports the exact native-code byte length. It returns zero after
 // the compiled module is closed.
 func (c *Compiled) CodeSize() int {
@@ -3980,7 +3747,7 @@ func (c *Compiled) CodeSize() int {
 
 // GCNativeCodeTelemetry returns opt-in per-family WasmGC code attribution for a
 // freshly compiled module. The bool is false unless RuntimeConfig enabled
-// WithGCCodeTelemetry; codec-loaded modules intentionally do not synthesize it.
+// WithGCCodeTelemetry.
 func (c *Compiled) GCNativeCodeTelemetry() (GCNativeCodeTelemetry, bool) {
 	if c == nil || !c.hasGCCodeTelemetry {
 		return GCNativeCodeTelemetry{}, false
@@ -3994,8 +3761,8 @@ func (c *Compiled) GCNativeCodeTelemetry() (GCNativeCodeTelemetry, bool) {
 	return c.gcCodeTelemetry, true
 }
 
-// WriteCodeTo streams the native-code bytes for diagnostics and artifact
-// tooling without exposing mutable storage. It does not change the image's W^X
+// WriteCodeTo streams native-code bytes for diagnostics without exposing
+// mutable storage. It does not change the image's W^X
 // state.
 func (c *Compiled) WriteCodeTo(w io.Writer) (int64, error) {
 	if c == nil {
@@ -4020,224 +3787,8 @@ func (c *Compiled) WriteCodeTo(w io.Writer) (int64, error) {
 	return int64(n), nil
 }
 
-// ArtifactSectionSizes reports exact encoded byte attribution without
-// materializing the complete artifact. It measures the same metadata snapshot
-// as MarshalBinary and WriteTo.
-func (c *Compiled) ArtifactSectionSizes() (ArtifactSectionSizes, error) {
-	if c == nil {
-		return ArtifactSectionSizes{}, errors.New("wago: compiled module is nil")
-	}
-	c.ensureCodeCache()
-	c.codeCache.mu.Lock()
-	defer c.codeCache.mu.Unlock()
-	defer goruntime.KeepAlive(c)
-	c = c.executionView()
-	if err := c.validateSerializableLocked(); err != nil {
-		return ArtifactSectionSizes{}, err
-	}
-	result, err := measureCompiledMetadata(c)
-	if err != nil {
-		return ArtifactSectionSizes{}, err
-	}
-	framing := int64(6 + 2 + compiledUvarintLen(uint64(len(c.code))) + compiledUvarintLen(uint64(result.Metadata)))
-	result.Framing = framing
-	result.Code = int64(len(c.code))
-	result.Total = result.Framing + result.Code + result.Metadata
-	return result, nil
-}
-
-func (c *Compiled) validateSerializableLocked() error {
-	if c.codeCache.closed {
-		return errors.New("wago: compiled module is closed")
-	}
-	if c.boundsMode == BoundsChecksSignalsBased {
-		return errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
-	}
-	if len(c.Entry) == 0 && len(c.Funcs) > 0 {
-		return errors.New("wago: compiled module has functions but no native entries")
-	}
-	if c.NumImports > 0 && !c.dynamicImports {
-		return errors.New("wago: imported-function code lacks dynamic dispatch metadata")
-	}
-	if err := c.validateInternalEntries(false); err != nil {
-		return err
-	}
-	return c.validateCodecMetadata()
-}
-
-// ReadFrom streams one trusted sectioned ".wago" artifact using bounded default
-// allocations. Artifacts contain unsandboxed host-native code. Native code is
-// read directly into its RW image and sealed in place on first instantiation.
-func (c *Compiled) ReadFrom(r io.Reader) (int64, error) {
-	return c.ReadFromWithLimits(r, DefaultArtifactLimits())
-}
-
-// ReadFromWithLimits is ReadFrom with explicit code and metadata byte limits.
-// It may replace receiver state before instantiation; replacement is rejected
-// while instances of the receiver are live.
-func (c *Compiled) ReadFromWithLimits(r io.Reader, limits ArtifactLimits) (int64, error) {
-	return c.readFromWithLimits(r, limits, -1)
-}
-
-func (c *Compiled) readFromWithLimits(r io.Reader, limits ArtifactLimits, exactBytes int64) (int64, error) {
-	if c == nil {
-		return 0, errors.New("wago: compiled module is nil")
-	}
-	decoded, image, n, err := readCompiledFrom(r, limits)
-	if err != nil {
-		return n, err
-	}
-	defer image.Close()
-	if exactBytes >= 0 && n != exactBytes {
-		return n, fmt.Errorf("trailing %d byte(s) after compiled sections", exactBytes-n)
-	}
-	if err := finishDecodedCompiled(decoded); err != nil {
-		return n, err
-	}
-	decoded.ensureCodeCache()
-	if image != nil {
-		mapping, base, err := image.Take()
-		if err != nil {
-			return n, wrapContextError("load compiled code image", err)
-		}
-		decoded.codeCache.mem = mapping
-		decoded.codeCache.base = base
-		railshotRecordMappedCodeBytes(decoded, len(decoded.code))
-		decoded.codeCache.flags |= compiledCacheWritableCode
-	}
-	decodedLimit := limits.MaxDecodedBytes
-	if decodedLimit == 0 {
-		decodedLimit = DefaultArtifactLimits().MaxDecodedBytes
-	}
-	if err := c.replaceDecoded(*decoded, uint64(decodedLimit)); err != nil {
-		_ = decoded.Close()
-		return n, err
-	}
-	return n, nil
-}
-
-// UnmarshalBinary loads a trusted ".wago" blob produced by MarshalBinary. The
-// artifact contains executable native code and is not a sandboxed Wasm input.
-// It may replace receiver state before instantiation; replacement is rejected
-// while instances of the receiver are live.
-func (c *Compiled) UnmarshalBinary(data []byte) error {
-	if !IsCompiled(data) {
-		return errors.New("not a wago module")
-	}
-	if data[4] != wagoVersion {
-		return fmt.Errorf("wago module version %d unsupported (want %d)", data[4], wagoVersion)
-	}
-	_, err := c.readFromWithLimits(bytes.NewReader(data), DefaultArtifactLimits(), int64(len(data)))
-	return err
-}
-
-func finishDecodedCompiled(decoded *Compiled) error {
-	if len(decoded.tableExports) == 0 {
-		decoded.tableExports = nil
-	}
-	decoded.hasTableExportMetadata = true
-	if decoded.memoryDir == nil {
-		decoded.memoryDir = &compiledMemoryDirectory{}
-	}
-	if len(decoded.memoryDir.exports) == 0 {
-		decoded.memoryDir.exports = nil
-	}
-	decoded.memoryDir.exactExports = true
-	railshotRestoreGCRefTestTableArtifact(decoded)
-	railshotRestoreGCRefTestConcreteArtifact(decoded)
-	railshotRestoreGCRefTestAbstractArtifact(decoded)
-	railshotRestoreGCExternArtifact(decoded)
-	railshotRestoreGCRefCastAbstractArtifact(decoded)
-	railshotRestoreGCRefCastConcreteArtifact(decoded)
-	railshotRestoreGCBrOnCastAbstractArtifact(decoded)
-	railshotRestoreGCBrOnCastFailAbstractArtifact(decoded)
-	railshotRestoreGCBrOnCastConcreteArtifact(decoded)
-	railshotRestoreGCBrOnCastFailConcreteArtifact(decoded)
-	railshotRestoreGCBrOnCastNullabilityArtifact(decoded)
-	railshotRestoreGCBrOnCastFailNullabilityArtifact(decoded)
-	railshotRestoreGCTypeSubtypingDeclarationsArtifact(decoded)
-	railshotRestoreGCTypeSubtypingRecursiveFunctionsArtifact(decoded)
-	railshotRestoreGCTypeSubtypingRefFuncGlobalsArtifact(decoded)
-	railshotRestoreGCTypeSubtypingLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingFinalityLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingStructLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingStructProjectionLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingStructMismatchLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingIndependentStructLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingExtendedProjectionLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingDuplicateRecursiveLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingExtendedRecursiveLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingCrossGroupMismatchLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingTransitiveMismatchLinkArtifact(decoded)
-	railshotRestoreGCTypeSubtypingNonFlatExportArtifact(decoded)
-	railshotRestoreGCTypeSubtypingRuntimeCallCastArtifact(decoded)
-	railshotRestoreGCTypeSubtypingRuntimeFinalityCallCastArtifact(decoded)
-	railshotRestoreGCTypeSubtypingRuntimeTypedTableCallArtifact(decoded)
-	railshotRestoreGCTypeSubtypingRefTestSingleArtifact(decoded)
-	railshotRestoreGCArrayFixedOfficialArtifact(decoded)
-	railshotRestoreGCStructPackedArtifact(decoded)
-	railshotRestoreGCStructBasicArtifact(decoded)
-	railshotRestoreGCStructNumericGlobalsArtifact(decoded)
-	railshotRestoreGCArrayDefaultOfficialArtifact(decoded)
-	railshotRestoreGCArrayPackedDataArtifact(decoded)
-	railshotRestoreGCArrayReferenceArtifact(decoded)
-	railshotRestoreGCArrayInitElemArtifact(decoded)
-	railshotRestoreGCArrayInitDataArtifact(decoded)
-	railshotRestoreGCArrayFillArtifact(decoded)
-	railshotRestoreGCArrayCopyArtifact(decoded)
-	if inferred := compiledStructuralRequiredFeatures(decoded); inferred&^decoded.requiredFeatures != 0 {
-		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^decoded.requiredFeatures)
-	}
-	var validationErr error
-	if rv64StructuralCodecMetadata(decoded) {
-		validationErr = decoded.validateMetadata()
-	} else {
-		validationErr = decoded.validate()
-	}
-	if err := validationErr; err != nil {
-		return err
-	}
-	if (goruntime.GOARCH == "amd64" || decoded.requiredFeatures.IsEnabled(CoreFeatureSIMD)) && !hostSupportsSIMD() {
-		return errNativeCPUFeatures
-	}
-	if decoded.requiredAMD64Features.BitCountCapabilities()&^bitCountHostFeaturesSupported() != 0 {
-		return errors.New("wago: compiled module requires bit-count CPU features unavailable on this host")
-	}
-	if decoded.RequiresBMI2() && !hostSupportsBMI2() {
-		return errors.New("wago: compiled module requires BMI2 CPU features unavailable on this host")
-	}
-	if decoded.requiresARM64LSE && !hostSupportsARM64LSE() {
-		return errors.New("wago: compiled module requires LSE CPU instructions unavailable on this host")
-	}
-	features, ok := cachedAMD64CPUFeatures()
-	if err := checkAMD64Requirements(decoded.requiredAMD64Features, features, ok); err != nil {
-		return err
-	}
-	return nil
-}
-
-// IsCompiled reports whether b is a precompiled wago module (vs raw wasm).
-func IsCompiled(b []byte) bool { return len(b) >= 5 && string(b[:4]) == wagoMagic }
-
-// Load compiles raw Wasm. It rejects native-code .wago artifacts so format
-// autodetection cannot silently cross the Wasm trust boundary.
-func Load(b []byte) (*Compiled, error) {
-	if IsCompiled(b) {
-		return nil, errors.New("wago: Load refuses native-code artifacts; use LoadTrustedArtifact only for authenticated or locally produced bytes")
-	}
-	return Compile(nil, b)
-}
-
-// LoadTrustedArtifact decodes a precompiled .wago artifact. Artifacts contain
-// raw host-native executable code and MUST be authenticated or produced in the
-// same trusted environment; validation cannot make hostile native code safe.
-func LoadTrustedArtifact(b []byte) (*Compiled, error) {
-	if !IsCompiled(b) {
-		return nil, errors.New("wago: trusted artifact input is not a .wago module")
-	}
-	c := &Compiled{}
-	return c, c.UnmarshalBinary(b)
-}
+// Load compiles raw Wasm.
+func Load(b []byte) (*Compiled, error) { return Compile(nil, b) }
 
 // Invoke marshals slot-based arguments/results around one native WasmWrapper
 // call. The returned slice is backed by an instance-owned buffer and stays valid

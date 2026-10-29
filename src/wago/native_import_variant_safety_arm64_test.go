@@ -32,7 +32,7 @@ func TestNativeImportVariantForeignFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	for _, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+	for _, code := range []*Compiled{c} {
 		in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.step", ref)})
 		if err != nil {
 			t.Fatal(err)

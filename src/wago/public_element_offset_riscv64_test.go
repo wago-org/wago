@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"os"
 	"slices"
 	"testing"
 
@@ -160,36 +159,6 @@ func TestRV64PublicImportedElementOffsetBounds(t *testing.T) {
 					})
 				}
 			})
-		}
-	}
-}
-
-func TestRV64PublicImportedElementOffsetArtifact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source metadata mutation fixture")
-	}
-	c := rv64TableStageCompile(t, "global-offset-artifact", rv64GlobalOffsetElementModule(t, []wasm.ValType{wasm.I32}, false, true, false), false)
-	for _, mutate := range []func(*Compiled){
-		func(v *Compiled) { v.Elems[0].Offset.Global = -1 }, func(v *Compiled) { v.Elems[0].Offset.Global = 0 }, func(v *Compiled) { v.Elems[0].Offset.Global = 2 }, func(v *Compiled) { v.Elems[0].Offset.Base = 1 }, func(v *Compiled) { v.Elems[0].Offset.Expr = []byte{0x23, 1, 0x0b} }, func(v *Compiled) { v.GlobalImports[1].Mutable = true; v.Globals[1].Mutable = true },
-	} {
-		v := *c.executionView()
-		v.Elems = slices.Clone(v.Elems)
-		v.Globals = slices.Clone(v.Globals)
-		v.GlobalImports = slices.Clone(v.GlobalImports)
-		mutate(&v)
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("unqualified offset metadata admitted")
-		}
-		blob, err := marshalCompiled(&v)
-		if err != nil {
-			continue
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if loaded != nil {
-			loaded.Close()
-		}
-		if err == nil {
-			t.Fatal("unqualified offset artifact admitted")
 		}
 	}
 }

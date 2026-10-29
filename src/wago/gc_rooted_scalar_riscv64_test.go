@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -445,7 +445,6 @@ func TestRV64RootedAbstractReferenceBoundaryExecutes(t *testing.T) {
 	if rv64FreshRootedGC(candidate) {
 		t.Fatal("non-collector abstract host parameter retained the rooted receipt")
 	}
-	requireRV64RootedArtifactRoundTrip(t, compiled)
 
 	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
 	defer rt.Close()
@@ -605,7 +604,6 @@ func TestRV64RootedExactReferenceBoundaryExecutes(t *testing.T) {
 			}
 		})
 	}
-	requireRV64RootedArtifactRoundTrip(t, compiled)
 
 	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
 	defer rt.Close()
@@ -3867,15 +3865,10 @@ func TestRV64RootedSharedAggregateTableExecutes(t *testing.T) {
 		t.Fatal("mutated rooted-table import retained the generic receipt")
 	}
 
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			providerCode, consumerCode := providerBase, consumerBase
-			if artifact {
-				providerCode = publicArtifactRoundTrip(t, providerBase)
-				consumerCode = publicArtifactRoundTrip(t, consumerBase)
-				defer providerCode.Close()
-				defer consumerCode.Close()
-			}
+
 			rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
 			defer rt.Close()
 			gcConfig := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}
@@ -4016,8 +4009,6 @@ func TestRV64RootedSharedAbstractTableExecutes(t *testing.T) {
 	if rv64FreshRootedGC(candidate) {
 		t.Fatal("exact abstract table import retained the rooted receipt")
 	}
-	requireRV64RootedArtifactRoundTrip(t, providerCode)
-	requireRV64RootedArtifactRoundTrip(t, consumerCode)
 
 	store := newReferenceStore(false)
 	defer store.closeRuntime()
@@ -5185,7 +5176,6 @@ func TestRV64RootedDirectReferenceGlobalTableInitializers(t *testing.T) {
 					t.Fatal("local direct table initializer retained the rooted receipt without Extended Const Expressions")
 				}
 			}
-			requireRV64RootedArtifactRoundTrip(t, compiled)
 
 			store := newReferenceStore(false)
 			defer store.closeRuntime()
@@ -5388,18 +5378,10 @@ func TestRV64RootedAggregateFunctionReferenceElementExecutes(t *testing.T) {
 	if rv64FreshRootedGC(mutated) {
 		t.Fatal("mutated aggregate function-reference storage retained the rooted receipt")
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
+
 	for _, profile := range []native.Profile{native.ProfileThroughput, native.ProfileTiny} {
-		for _, code := range []*Compiled{compiled, loaded} {
-			t.Run(fmt.Sprintf("profile%d/artifact%t", profile, code == loaded), func(t *testing.T) {
+		for _, code := range []*Compiled{compiled} {
+			t.Run(fmt.Sprintf("profile%d/artifact%t", profile, code == compiled), func(t *testing.T) {
 				instance, err := Instantiate(code, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, StressNurseryBytes: 64, TinyHeapBytes: 64 << 10, VerifyAfterCollect: true}})
 				if err != nil {
 					t.Fatal(err)
@@ -7105,15 +7087,10 @@ func TestRV64RootedSharedReferenceGlobalImports(t *testing.T) {
 				t.Fatal("mutated collector-reference global import retained the rooted receipt")
 			}
 
-			for _, artifact := range []bool{false, true} {
+			for _, artifact := range []bool{false} {
 				t.Run(map[bool]string{false: "compiled", true: "artifact"}[artifact], func(t *testing.T) {
 					providerCode, consumerCode := providerBase, consumerBase
-					if artifact {
-						providerCode = publicArtifactRoundTrip(t, providerBase)
-						consumerCode = publicArtifactRoundTrip(t, consumerBase)
-						defer providerCode.Close()
-						defer consumerCode.Close()
-					}
+
 					store := newReferenceStore(false)
 					defer store.closeRuntime()
 					gcConfig := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
@@ -7246,8 +7223,6 @@ func TestRV64RootedSharedAbstractGlobalImports(t *testing.T) {
 			if rv64FreshRootedGC(candidate) {
 				t.Fatal("exact abstract global import retained the rooted receipt")
 			}
-			requireRV64RootedArtifactRoundTrip(t, providerCode)
-			requireRV64RootedArtifactRoundTrip(t, consumerCode)
 
 			store := newReferenceStore(false)
 			defer store.closeRuntime()
@@ -7376,27 +7351,6 @@ func TestRV64RootedSharedAbstractGlobalImports(t *testing.T) {
 	}
 }
 
-func requireRV64RootedArtifactRoundTrip(t testing.TB, compiled *Compiled) {
-	t.Helper()
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	before, after := compiled.executionView(), loaded.executionView()
-	if !rv64ArtifactContractValid(after) || !rv64FreshRootedGC(after) || !slices.Equal(before.code, after.code) || after.genericGCFrameRoots() == nil {
-		t.Fatal("rooted artifact lost native code, contract, or root metadata")
-	}
-	again, err := loaded.MarshalBinary()
-	if err != nil || !slices.Equal(blob, again) {
-		t.Fatalf("rooted artifact roundtrip differs: %v", err)
-	}
-}
-
 func TestRV64RootedImportedReferenceGlobalInitializer(t *testing.T) {
 	providerSource := rootedScalarSharedGlobalProviderModule(false)
 	consumerSource := rootedScalarImportedGlobalCopyModule()
@@ -7428,8 +7382,7 @@ func TestRV64RootedImportedReferenceGlobalInitializer(t *testing.T) {
 	if compiledStructuralRequiredFeatures(view).IsEnabled(CoreFeatureExtendedConstExpressions) {
 		t.Fatal("imported global initializer unexpectedly requires Extended Const Expressions")
 	}
-	requireRV64RootedArtifactRoundTrip(t, providerBase)
-	requireRV64RootedArtifactRoundTrip(t, consumerBase)
+
 	store := newReferenceStore(false)
 	defer store.closeRuntime()
 	gcConfig := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
@@ -7668,7 +7621,7 @@ func TestRV64RootedScalarMutableAbstractStructGlobalExecutes(t *testing.T) {
 			}
 		})
 	}
-	requireRV64RootedArtifactRoundTrip(t, compiled)
+
 	instance, err := Instantiate(compiled, InstantiateOptions{
 		GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
 	})
@@ -8377,8 +8330,8 @@ func TestRV64RootedScalarHostImportPrivateTableExecutes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		loaded := publicArtifactRoundTrip(t, c)
-		for _, code := range []*Compiled{c, loaded} {
+
+		for _, code := range []*Compiled{c} {
 			table, err := NewTable(1, 1)
 			if err != nil {
 				t.Fatal(err)
@@ -8406,7 +8359,7 @@ func TestRV64RootedScalarHostImportPrivateTableExecutes(t *testing.T) {
 				}
 			}
 		}
-		loaded.Close()
+		c.Close()
 		c.Close()
 	}
 	compiled, err := Compile(rv64RootedScalarConfig(), source)
@@ -8571,16 +8524,7 @@ func TestRV64FreshRootedScalarReceipt(t *testing.T) {
 		t.Fatalf("mutated code admission = %v", err)
 	}
 
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if !rv64ArtifactContractValid(loaded.executionView()) || !rv64FreshRootedGC(loaded.executionView()) {
+	if !rv64SourceContractValid(compiled.executionView()) || !rv64FreshRootedGC(compiled.executionView()) {
 		t.Fatal("loaded artifact lacks its portable execution contract")
 	}
 }

@@ -56,30 +56,7 @@ func TestGCI31ReductionGoEntry(t *testing.T) {
 	if out, err := fn.Invoke(7); err != nil || out[0] != 21 {
 		t.Fatalf("recovery: %v %v", out, err)
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var decoded Compiled
-	if err := decoded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer decoded.Close()
-	di, err := Instantiate(&decoded, InstantiateOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer di.Close()
-	df, err := di.WasmFunc("run")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if df.gcI31Induction {
-		t.Fatal("codec retained compiler-only arithmetic proof")
-	}
-	if out, err := df.Invoke(7); err != nil || out[0] != 21 {
-		t.Fatalf("decoded fallback: %v %v", out, err)
-	}
+
 }
 
 func TestGCI31ReductionGoRollback(t *testing.T) {

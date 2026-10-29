@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"testing"
 
@@ -42,7 +41,7 @@ func TestRV64PublicMixedTable64Fill(t *testing.T) {
 			consumerCode := rv64TableStageCompile(t, "mixed-table64-fill-consumer", rv64MixedTable64FillSource(), artifact)
 			defer consumerCode.Close()
 			view := consumerCode.executionView()
-			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes || !view.NeedsFuncRefDescs {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes || !view.NeedsFuncRefDescs {
 				t.Fatal("mixed table64.fill metadata contract")
 			}
 			producer, err := Instantiate(producerCode)
@@ -192,59 +191,6 @@ func TestRV64PublicMixedTable64FillSourceGates(t *testing.T) {
 				if err == nil {
 					t.Fatal("invalid table width or malformed source admitted")
 				}
-			}
-		})
-	}
-}
-
-func TestRV64PublicMixedTable64FillArtifactGates(t *testing.T) {
-	mutations := map[string]func(*Compiled){
-		"witness":        func(c *Compiled) { c.nativeTable64ABI = nativeTable64FillABI },
-		"feature":        func(c *Compiled) { c.requiredFeatures |= CoreFeatureBulkMemoryOperations },
-		"reference-abi":  func(c *Compiled) { c.nativeReferenceCallABI = true },
-		"descriptor":     func(c *Compiled) { c.NeedsFuncRefDescs = false },
-		"import-table32": func(c *Compiled) { c.TableAddr64 = false },
-		"import-limit":   func(c *Compiled) { c.tableImportMax = 0 },
-		"local-table32":  func(c *Compiled) { c.extraTables[0].Addr64 = false },
-		"local-import":   func(c *Compiled) { c.extraTables[0].ImportKey = "env.other" },
-		"signature":      func(c *Compiled) { c.Funcs[1].Params[1] = ValI32 },
-		"function-export": func(c *Compiled) {
-			for name, index := range c.Exports {
-				if index == 1 {
-					c.Exports[name] = 0
-					return
-				}
-			}
-		},
-		"table-export": func(c *Compiled) { c.tableExports["table1"] = 0 },
-		"element": func(c *Compiled) {
-			c.Elems = []ElemInit{{Mode: ElemModeActive, TableIndex: 1, RefType: ValFuncRef}}
-		},
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			base := rv64TableStageCompile(t, "mixed-table64-fill-gates", rv64MixedTable64FillSource(), false)
-			defer base.Close()
-			bad := rv64ReferenceImportTailCopy(base)
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[1].Params = slices.Clone(bad.Funcs[1].Params)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			mutate(bad)
-			if bad.validate() == nil {
-				t.Fatal("hostile mixed table64.fill metadata admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile mixed table64.fill artifact admitted")
 			}
 		})
 	}

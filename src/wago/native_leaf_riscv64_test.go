@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -17,24 +17,13 @@ func rv64PublicPurePair(a, b int32) int32 { return a*b + a - b }
 func TestRV64PublicNativeLeafPolicyValuesAndArtifacts(t *testing.T) {
 	source := rv64PublicHostModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	for _, enabled := range []bool{false, true} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			c, err := Compile(NewRuntimeConfig().WithOptimization("native-leaf-host", enabled), source)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			if artifact {
-				blob, err := c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
-				c = loaded
-				defer c.Close()
-			}
+
 			in, err := Instantiate(c, testImports("env.host", rv64PublicPureIncrement))
 			if err != nil {
 				t.Fatal(err)

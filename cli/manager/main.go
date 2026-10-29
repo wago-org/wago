@@ -491,7 +491,6 @@ func managerUsage(w *os.File) {
 		{"module", "<command>", "inspect module imports and capabilities"},
 		{"self", "<command>", "update or uninstall Wago"},
 		{"compile", "<file>", "build a standalone executable"},
-		{"build", "<file>", "precompile a module to .wago"},
 		{"validate", "<file>", "validate a WebAssembly module"},
 		{"version", "<command>", "manage Wago runtimes"},
 		{"cache", "<command>", "inspect and clean cached data"},

@@ -215,12 +215,7 @@ func TestGCSharedMultipleHeterogeneousTables(t *testing.T) {
 	for _, codec := range []bool{false, true} {
 		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
 			providerCode, consumerCode := providerBase, consumerBase
-			if codec {
-				providerCode = publicArtifactRoundTrip(t, providerBase)
-				consumerCode = publicArtifactRoundTrip(t, consumerBase)
-				defer providerCode.Close()
-				defer consumerCode.Close()
-			}
+
 			if providerCode.tableCount() != 2 || consumerCode.tableCount() != 2 || providerCode.genericGCFrameRoots() == nil || consumerCode.genericGCFrameRoots() == nil || !providerCode.sharedGCPersistentDomainSafe() || !consumerCode.sharedGCPersistentDomainSafe() {
 				t.Fatalf("multi-table GC domain/root admission failed: provider tables=%d roots=%v domain=%v consumer tables=%d roots=%v domain=%v", providerCode.tableCount(), providerCode.genericGCFrameRoots() != nil, providerCode.sharedGCPersistentDomainSafe(), consumerCode.tableCount(), consumerCode.genericGCFrameRoots() != nil, consumerCode.sharedGCPersistentDomainSafe())
 			}
@@ -449,74 +444,4 @@ func TestGCSharedTableImportRejectsIllTypedCompactRows(t *testing.T) {
 		copy(i31Table.desc[8:16], aggregateTable.desc[8:16])
 		expectRejected(i31ConsumerCode, store, testImports("provider.values", i31Table))
 	})
-}
-
-func TestGCSharedTableAliasesGrowthCollectionCodecAndCloseOrder(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
-	providerBase, err := Compile(cfg, gcSharedTableModule(false))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer providerBase.Close()
-	consumerBase, err := Compile(cfg, gcSharedTableModule(true))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer consumerBase.Close()
-	for _, codec := range []bool{false, true} {
-		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
-			providerCode, consumerCode := providerBase, consumerBase
-			if codec {
-				providerCode = publicArtifactRoundTrip(t, providerBase)
-				consumerCode = publicArtifactRoundTrip(t, consumerBase)
-				defer providerCode.Close()
-				defer consumerCode.Close()
-			}
-			if providerCode.genericGCFrameRoots() == nil || consumerCode.genericGCFrameRoots() == nil || !providerCode.sharedGCPersistentDomainSafe() || !consumerCode.sharedGCPersistentDomainSafe() {
-				t.Fatalf("shared GC-table modules lost exact domain/root admission: provider roots=%v domain=%v consumer roots=%v domain=%v", providerCode.genericGCFrameRoots() != nil, providerCode.sharedGCPersistentDomainSafe(), consumerCode.genericGCFrameRoots() != nil, consumerCode.sharedGCPersistentDomainSafe())
-			}
-			store := newReferenceStore(false)
-			defer store.closeRuntime()
-			gcConfig := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 192, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, TinyStepBudget: 1, VerifyAfterCollect: true, StressBarriers: true}
-			provider, err := instantiateCore(providerCode, InstantiateOptions{GC: gcConfig, store: store})
-			if err != nil {
-				t.Fatal(err)
-			}
-			table, err := provider.ExportedTable("t")
-			if err != nil {
-				t.Fatal(err)
-			}
-			consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.t", table)})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if provider.gc == nil || provider.gc != consumer.gc {
-				t.Fatal("shared GC-table instances do not share one collector")
-			}
-			if got, callErr := consumer.Invoke("set", 0, 55); callErr != nil || !reflect.DeepEqual(got, []uint64{55}) {
-				t.Fatalf("consumer set slot 0 = %v, %v", got, callErr)
-			}
-			if got, callErr := provider.Invoke("read", 0); callErr != nil || !reflect.DeepEqual(got, []uint64{55}) {
-				t.Fatalf("provider read slot 0 = %v, %v", got, callErr)
-			}
-			if got, callErr := consumer.Invoke("grow", 1); callErr != nil || !reflect.DeepEqual(got, []uint64{1}) {
-				t.Fatalf("consumer grow = %v, %v", got, callErr)
-			}
-			if got, callErr := consumer.Invoke("set", 1, 77); callErr != nil || !reflect.DeepEqual(got, []uint64{77}) {
-				t.Fatalf("consumer set slot 1 = %v, %v", got, callErr)
-			}
-			if got, callErr := provider.Invoke("read", 1); callErr != nil || !reflect.DeepEqual(got, []uint64{77}) {
-				t.Fatalf("provider read slot 1 = %v, %v", got, callErr)
-			}
-			if err := provider.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if got, callErr := consumer.Invoke("read", 1); callErr != nil || !reflect.DeepEqual(got, []uint64{77}) {
-				t.Fatalf("consumer after provider close = %v, %v", got, callErr)
-			}
-			if err := consumer.Close(); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
 }

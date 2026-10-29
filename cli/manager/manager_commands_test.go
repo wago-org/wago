@@ -49,7 +49,7 @@ func TestManagerCommandSurfaceCoversEveryLeaf(t *testing.T) {
 		"plugin list", "plugin inspect", "plugin add", "plugin remove", "plugin grant", "plugin config", "plugin update", "plugin outdated", "plugin tree", "plugin rebuild", "plugin catalog", "plugin publish", "plugin unpublish", "plugin deprecate",
 		"self update", "self uninstall", "cache dir", "cache size", "cache prune", "cache clean",
 		"config list", "config diff", "config get", "config set", "config reset", "config completions",
-		"run", "module imports", "module exports", "module capabilities", "build", "validate",
+		"run", "module imports", "module exports", "module capabilities", "validate",
 	}, "\n")
 	if jitprofile.Enabled {
 		want = strings.Replace(want, "config completions\nrun", "config completions\nprofile record\nprofile top\nprofile annotate\nprofile diff\nprofile timeline\nrun", 1)
@@ -108,7 +108,7 @@ func TestManagerCapturesForwardedAutomation(t *testing.T) {
 
 func TestManagerRoutesRuntimeCommandsAndImplicitTargets(t *testing.T) {
 	t.Setenv("WAGO_HOME", t.TempDir())
-	for _, name := range []string{"run", "module", "build", "validate", "module.wasm", "--invoke"} {
+	for _, name := range []string{"run", "module", "validate", "module.wasm", "--invoke"} {
 		if !shouldForwardToRuntime(name) {
 			t.Errorf("shouldForwardToRuntime(%q) = false", name)
 		}

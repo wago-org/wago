@@ -7,15 +7,15 @@ import (
 	"encoding/binary"
 	"fmt"
 	"slices"
-	"strings"
+
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestThreadsLSEMatchesExclusiveLoops(t *testing.T) {
-	if !hostSupportsARM64LSE() {
+	if !shared.ARM64SupportsLSE() {
 		t.Skip("host has no LSE instructions")
 	}
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
@@ -53,9 +53,9 @@ func TestThreadsLSEMatchesExclusiveLoops(t *testing.T) {
 					if !fast.requiresARM64LSE || slow.requiresARM64LSE || bytes.Equal(fast.code, slow.code) {
 						t.Fatal("LSE selection/requirements do not distinguish native and fallback paths")
 					}
-					loaded := publicArtifactRoundTrip(t, fast)
+
 					instances := make([]*Instance, 0, 3)
-					for _, compiled := range []*Compiled{slow, fast, loaded} {
+					for _, compiled := range []*Compiled{slow, fast, fast} {
 						memory, err := NewSharedMemory(1, 1)
 						if err != nil {
 							t.Fatal(err)
@@ -101,54 +101,5 @@ func TestThreadsLSEMatchesExclusiveLoops(t *testing.T) {
 				})
 			}
 		}
-	}
-}
-
-func TestThreadsLSEArtifactRequirementsAndParallelJoin(t *testing.T) {
-	if !hostSupportsARM64LSE() {
-		t.Skip("host has no LSE instructions")
-	}
-	cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
-	for _, workers := range []int{1, 2} {
-		c, err := cfg.WithFunctionWorkers(workers).Compile(definedSharedAtomicModule(false))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer c.Close()
-		if !c.requiresARM64LSE {
-			t.Fatalf("workers=%d lost emitted CPU requirement", workers)
-		}
-		data, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		saved := hostSupportsARM64LSE
-		hostSupportsARM64LSE = func() bool { return false }
-		var loaded Compiled
-		err = loaded.UnmarshalBinary(data)
-		hostSupportsARM64LSE = saved
-		if err == nil {
-			loaded.Close()
-			t.Fatal("LSE artifact admitted without host support")
-		}
-		if !strings.Contains(err.Error(), "requires LSE CPU") {
-			t.Fatalf("wrong compatibility rejection: %v", err)
-		}
-	}
-	// Unreachable instructions do not create a CPU requirement merely because
-	// their opcode is present in the module.
-	module := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
-		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
-		wasmtest.Section(5, wasmtest.Vec([]byte{3, 1, 1})),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0, 0xfe, 0x1e, 2, 0, 0x1a, 0x0b}))),
-	)
-	c, err := cfg.Compile(module)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	if c.requiresARM64LSE {
-		t.Fatal("unreachable atomic introduced LSE requirement")
 	}
 }

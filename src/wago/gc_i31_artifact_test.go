@@ -92,9 +92,8 @@ func TestI31ExecutionProductPublicArtifactLifecycle(t *testing.T) {
 				t.Fatalf("Compile: %v", err)
 			}
 			defer compiled.Close()
-			loaded := publicArtifactRoundTrip(t, compiled)
-			defer loaded.Close()
-			instance, err := Instantiate(loaded, InstantiateOptions{Imports: tc.imports})
+
+			instance, err := Instantiate(compiled, InstantiateOptions{Imports: tc.imports})
 			if err != nil {
 				t.Fatalf("instantiate loaded artifact: %v", err)
 			}

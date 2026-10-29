@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strings"
 	"testing"
 	"unsafe"
 
@@ -107,8 +106,8 @@ func TestRV64Core3BrOnNullPinnedDeclarations(t *testing.T) {
 			}
 			c := rv64NativeTailCompile(t, "core3-br-on-null-declarations", source, artifact)
 			view := c.executionView()
-			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Funcs) != 3 || len(c.Exports) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
-				t.Fatalf("pinned declaration-only source/artifact witnesses: contract=%t validation=%v function=%t control=%t call=%t funcs=%d exports=%d tables=%d memories=%d elems=%d passive=%d", rv64ArtifactContractValid(view), railshotValidateCompiled(view), c.nativeReferenceFunctionABI, c.nativeReferenceControlABI, c.nativeReferenceCallABI, len(c.Funcs), len(c.Exports), c.tableCount(), c.memoryCount(), len(c.Elems), len(c.passiveElems))
+			if !rv64SourceContractValid(view) || railshotValidateCompiled(view) != nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Funcs) != 3 || len(c.Exports) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+				t.Fatalf("pinned declaration-only source/artifact witnesses: contract=%t validation=%v function=%t control=%t call=%t funcs=%d exports=%d tables=%d memories=%d elems=%d passive=%d", rv64SourceContractValid(view), railshotValidateCompiled(view), c.nativeReferenceFunctionABI, c.nativeReferenceControlABI, c.nativeReferenceCallABI, len(c.Funcs), len(c.Exports), c.tableCount(), c.memoryCount(), len(c.Elems), len(c.passiveElems))
 			}
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 			defer rt.Close()
@@ -140,59 +139,6 @@ func rv64Core3DeclarationCompiledCopy(c *Compiled) *Compiled {
 		v.Exports[name] = index
 	}
 	return v
-}
-
-func TestRV64Core3BrOnNullPinnedDeclarationGates(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
-		t.Skip("source and hostile artifact admission")
-	}
-	base := rv64NativeTailCompile(t, "core3-br-on-null-declarations-gates", rv64Core3BrOnNullDeclarationsSource(), false)
-	mutations := map[string]func(*Compiled){
-		"export": func(c *Compiled) { c.Exports["escape"] = 2 },
-		"start": func(c *Compiled) {
-			c.HasStart = true
-			c.StartLocalFunc = 2
-		},
-		"extern-nonnullable": func(c *Compiled) { c.Types[3].Params[0].Ref.Nullable = false },
-		"extern-result": func(c *Compiled) {
-			c.Types[3].Results = []ValueTypeDescriptor{c.Types[3].Params[0]}
-			c.Types[3].Params = nil
-			c.Funcs[2].Results = []ValType{ValExternRef}
-			c.Funcs[2].Params = nil
-		},
-		"wrong-binding":       func(c *Compiled) { c.Funcs[2].TypeIndex = 2 },
-		"missing-type-key":    func(c *Compiled) { c.FuncTypeID = c.FuncTypeID[:2] },
-		"entry-alias":         func(c *Compiled) { c.Entry[2] = c.Entry[1] },
-		"missing-control-abi": func(c *Compiled) { c.nativeReferenceControlABI = false },
-		"callable-abi":        func(c *Compiled) { c.nativeReferenceCallABI = true },
-		"descriptor-arena":    func(c *Compiled) { c.NeedsFuncRefDescs = true },
-		"descriptor-id":       func(c *Compiled) { c.GCTypeDescs[3].ID-- },
-		"descriptor-layout":   func(c *Compiled) { c.GCTypeDescs[3].Size = 8 },
-		"extra-feature":       func(c *Compiled) { c.requiredFeatures |= CoreFeatureTailCall },
-		"passive-state": func(c *Compiled) {
-			c.passiveElems = []ElemInit{{Mode: ElemModePassive, RefType: ValExternRef}}
-		},
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			bad := rv64Core3DeclarationCompiledCopy(base)
-			mutate(bad)
-			if rv64Core3ReferenceDeclarations(bad) || railshotValidateCompiled(bad) == nil {
-				t.Fatal("hostile declaration-only metadata admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				defer loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile serialized declaration-only metadata admitted")
-			}
-		})
-	}
 }
 
 func rv64AssertCore3PassiveTarget(t *testing.T, in *Instance, target int) {
@@ -276,67 +222,5 @@ func TestRV64Core3BrOnNullPinnedDelta(t *testing.T) {
 				tc.run(t, in)
 			})
 		}
-	}
-}
-
-func TestRV64Core3BrOnNullPinnedDeltaGates(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
-		t.Skip("source and hostile artifact admission")
-	}
-	// Changing the declaration target to reference-valued function zero is a
-	// valid Core module, but it escapes the selected numeric descriptor profile.
-	rv64RequireCore3SourceValidation(t, rv64Core3BrOnNullBasicSource(0))
-	typedPassive := rv64ReplaceTableStageSection(t, rv64Core3BrOnNullBasicSource(2), 9, wasmtest.Section(9, []byte{1, 5, 0x70, 1, 0xd2, 2, 0x0b}))
-	rv64RequireCore3SourceValidation(t, typedPassive)
-	base := rv64NativeTailCompile(t, "core3-br-on-null-basic", rv64Core3BrOnNullBasicSource(2), true)
-	mutations := map[string]struct {
-		mutate func(*Compiled)
-		repair bool
-	}{
-		"missing-bulk-feature": {mutate: func(c *Compiled) { c.requiredFeatures &^= CoreFeatureBulkMemoryOperations }, repair: true},
-		"active-without-table": {mutate: func(c *Compiled) { c.passiveElems[0].Mode = ElemModeActive }},
-		"empty-passive":        {mutate: func(c *Compiled) { c.passiveElems[0].Values = nil }},
-		"private-target":       {mutate: func(c *Compiled) { c.passiveElems[0].Values[0].FuncIndex = 0 }},
-		"foreign-table":        {mutate: func(c *Compiled) { c.passiveElems[0].TableIndex = 1 }},
-	}
-	for name, mutation := range mutations {
-		t.Run(name, func(t *testing.T) {
-			bad := rv64ReferenceStartCopy(base.executionView())
-			bad.passiveElems = slices.Clone(bad.passiveElems)
-			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
-			mutation.mutate(bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("hostile retained Core 3 delta admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, loadErr := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				defer loaded.Close()
-			}
-			if mutation.repair {
-				if loadErr != nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
-					t.Fatal("serialized Core 3 delta did not reconstruct structural features", loadErr)
-				}
-				return
-			}
-			if loadErr == nil {
-				t.Fatal("hostile serialized Core 3 delta admitted")
-			}
-		})
-	}
-}
-
-func TestRV64Core3BrOnNullCompilerFreeGate(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	if c, err := Compile(nil, rv64Core3BrOnNullBasicSource(2)); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		if c != nil {
-			c.Close()
-		}
-		t.Fatal("compiler-free pinned Core 3 delta used source compilation", err)
 	}
 }

@@ -21,7 +21,6 @@ Most examples build their tiny WebAssembly modules in process through [`internal
 - [07 runtime limits](07-runtime-limits) caps live instances and reuses the budget after close.
 - [14 handles](14-handles) gives guests generation-checked handles to host resources.
 - [15 runtime config](15-config) selects features, bounds checks, and compiler workers.
-- [16 serialize](16-serialize) saves and loads a trusted compiled artifact.
 - [23 complete public API](23-public-api) loads a reproducible guest fixture and demonstrates flat imports, all callback forms, by-name and resolved invocation, wide calls, and borrowed results.
 
 ## Write a host function

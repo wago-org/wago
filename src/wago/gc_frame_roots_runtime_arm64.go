@@ -8,7 +8,7 @@ import (
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoots {

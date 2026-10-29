@@ -64,19 +64,9 @@ func activeDataStateModule() []byte {
 func segmentStateCompiledVariants(t *testing.T, mod []byte) []*Compiled {
 	t.Helper()
 	c := MustCompile(mod)
-	out := []*Compiled{c}
-	if c.boundsMode != BoundsChecksSignalsBased {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatalf("MarshalBinary: %v", err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		out = append(out, loaded)
-	}
-	return out
+
+	return []*Compiled{c}
+
 }
 
 func TestActiveDataSegmentStartsDroppedForBulkInstructions(t *testing.T) {

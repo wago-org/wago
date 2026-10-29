@@ -87,7 +87,6 @@ func ensureCollectorBundle(o Options, runErr error) error {
 	m.RawStackBytes = o.RawStackBytes
 	m.UnwindMapsRequested = o.UnwindMaps
 	m.SourceMapsRequested = o.SourceMaps
-	m.ReloadArtifact = o.ReloadArtifact || o.Phase == "reload"
 	m.PhaseIsolation = "unknown"
 	m.CPUModel, m.OSVersion = hostIdentity()
 	return errors.Join(runErr, writeJSON(path, m))

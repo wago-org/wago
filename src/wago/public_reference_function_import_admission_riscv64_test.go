@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -26,101 +25,6 @@ func rv64ReferenceImportCopy(c *Compiled) *Compiled {
 	v.FuncTypeID = slices.Clone(v.FuncTypeID)
 	v.Exports = maps.Clone(v.Exports)
 	return v
-}
-
-func TestRV64PublicReferenceFunctionImportsRetainedAdmission(t *testing.T) {
-	for _, vector := range []bool{false, true} {
-		c := rv64NativeTailCompile(t, "reference-imports-admission", wasmtest.ClosedReferenceImports(vector, true, true), false)
-		if err := rv64ReferenceImportCopy(c).validate(); err != nil {
-			t.Fatal("valid numeric imports", err)
-		}
-		mutations := map[string]func(*Compiled){
-			"negative-imports":     func(v *Compiled) { v.NumImports = -1 },
-			"count-over":           func(v *Compiled) { v.NumImports = railshot.MaxHostFunctionImports + 1 },
-			"missing-name":         func(v *Compiled) { v.Imports = v.Imports[:2] },
-			"missing-signature":    func(v *Compiled) { v.importFuncSigs = v.importFuncSigs[:2] },
-			"missing-dispatch":     func(v *Compiled) { v.dynamicImports = false },
-			"dynamic-escape":       func(v *Compiled) { v.dynamicFuncrefEscape = true },
-			"missing-exact-type":   func(v *Compiled) { v.importFuncSigs[2].HasTypeIndex = false },
-			"late-invalid-type":    func(v *Compiled) { v.importFuncSigs[2].TypeIndex = 999 },
-			"late-wrong-type":      func(v *Compiled) { v.importFuncSigs[2].TypeIndex = 1 },
-			"late-reference-type":  func(v *Compiled) { v.importFuncSigs[2] = v.Funcs[2] },
-			"late-wrong-carrier":   func(v *Compiled) { v.importFuncSigs[2].Params[0] = ValI64 },
-			"missing-imported-key": func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[1:] },
-			"late-imported-key":    func(v *Compiled) { v.FuncTypeID[2] = 999 },
-			"shifted-defined-key":  func(v *Compiled) { v.FuncTypeID[7] = v.FuncTypeID[3] },
-			"last-export-over":     func(v *Compiled) { v.Exports["hidden"] = v.NumImports + len(v.Funcs) },
-			"bad-name-separator":   func(v *Compiled) { v.Imports[2] = "env/owned" },
-			"bad-name-end":         func(v *Compiled) { v.validateMemo = &validateMemo{importModuleEnds: []uint64{4, 4, 99}} },
-			"missing-name-end":     func(v *Compiled) { v.validateMemo = &validateMemo{importModuleEnds: []uint64{4, 4}} },
-		}
-		for name, edit := range mutations {
-			t.Run(fmt.Sprintf("vector%t-%s", vector, name), func(t *testing.T) {
-				v := rv64ReferenceImportCopy(c)
-				edit(v)
-				if err := v.validate(); err == nil {
-					t.Fatal("malformed imported reference metadata accepted")
-				}
-			})
-		}
-		for _, name := range []string{"missing-dispatch", "dynamic-escape", "late-invalid-type", "late-wrong-type", "late-reference-type", "late-wrong-carrier", "missing-imported-key", "late-imported-key", "shifted-defined-key", "last-export-over"} {
-			t.Run(fmt.Sprintf("vector%t-codec-%s", vector, name), func(t *testing.T) {
-				v := rv64ReferenceImportCopy(c)
-				mutations[name](v)
-				blob, err := marshalCompiled(v)
-				if err != nil {
-					return
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if loaded != nil {
-					loaded.Close()
-				}
-				if err == nil {
-					t.Fatal("malformed imported reference artifact loaded")
-				}
-			})
-		}
-		publicSource := rv64ReferenceAddSourceExport(t, wasmtest.ClosedReferenceImports(vector, true, true), wasmtest.ExportEntry("reference", 0, 5))
-		public := rv64NativeTailCompile(t, "reference-import-public-export", publicSource, false)
-		if err := public.validate(); err != nil {
-			t.Fatal("ephemeral imported-profile reference export", err)
-		}
-		blob, err := marshalCompiled(public)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal("ephemeral imported-profile reference artifact", err)
-		}
-		loaded.Close()
-		// Charge all imported names, declared carriers and owned state together.
-		v := rv64ReferenceImportCopy(c)
-		name := "env." + strings.Repeat("n", railshot.MaxModuleBytes)
-		lo, hi := 4, len(name)
-		for lo < hi {
-			mid := (lo + hi + 1) / 2
-			v.Imports[2] = name[:mid]
-			if rv64ValidateReferenceFunctions(v) == nil {
-				lo = mid
-			} else {
-				hi = mid - 1
-			}
-		}
-		v.Imports[2] = name[:lo]
-		if lo == 4 || rv64ValidateReferenceFunctions(v) != nil {
-			t.Fatal("exact retained import name bound")
-		}
-		v.Imports[2] = name[:lo+1]
-		if err := rv64ValidateReferenceFunctions(v); err == nil {
-			t.Fatal("retained name plus one")
-		}
-		v.Imports[2] = name[:lo]
-		v.Imports[0] += "x"
-		if err := rv64ValidateReferenceFunctions(v); err == nil {
-			t.Fatal("retained names not aggregated")
-		}
-	}
 }
 
 func rv64ReferenceUnusedNumericImport(wide bool) []byte {

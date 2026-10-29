@@ -134,21 +134,3 @@ func rv64GCBrOnCastAbstractMetadata(c *Compiled, wantProduct stagedGCStructProdu
 	return productWitness && c.stagedFeatures() == CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.usesGCStructHelpers() && c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil &&
 		c.requiredFeatures == CoreFeatureBulkMemoryOperations|CoreFeatureMultiValue|CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.requiredAMD64Features == 0
 }
-
-func railshotRestoreGCBrOnCastAbstractArtifact(c *Compiled) {
-	if !rv64GCBrOnCastAbstract(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructBrOnCastAbstract
-	c.codeCache.gcArrayProduct = 0
-}
-
-func railshotRestoreGCBrOnCastFailAbstractArtifact(c *Compiled) {
-	if !rv64GCBrOnCastFailAbstract(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructBrOnCastFailAbstract
-	c.codeCache.gcArrayProduct = 0
-}

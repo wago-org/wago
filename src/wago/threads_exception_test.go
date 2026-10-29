@@ -60,7 +60,7 @@ func TestThreadsSharedExceptionsGrowthCrossInstanceAndCodec(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer compiled.Close()
-					for _, c := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+					for _, c := range []*Compiled{compiled} {
 						imports := NewImports()
 						if imported {
 							mod, err := rt.Compile(threadsExceptionModule(false))

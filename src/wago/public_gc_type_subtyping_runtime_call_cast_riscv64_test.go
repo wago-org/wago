@@ -8,8 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -27,53 +25,14 @@ func rv64PublicGCTypeSubtypingRuntimeCallCastBytes(t testing.TB) []byte {
 
 func rv64PublicGCTypeSubtypingRuntimeCallCastCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_CALL_CAST_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_CALL_CAST_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-type-subtyping-runtime-call-cast.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingRuntimeCallCastBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		original.Close()
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	original.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return loaded
+
+	return original
+
 }
 
 func rv64AssertGCTypeSubtypingRuntimeTrap(t *testing.T, in *Instance, name string, code TrapCode) {
@@ -86,11 +45,11 @@ func rv64AssertGCTypeSubtypingRuntimeTrap(t *testing.T, in *Instance, name strin
 }
 
 func TestRV64PublicGCTypeSubtypingRuntimeCallCastExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRuntimeCallCastCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64ArtifactContractValid(view) || view.validate() != nil {
+			if !rv64SourceContractValid(view) || view.validate() != nil {
 				compiled.Close()
 				t.Fatal("missing public subtype execution contract")
 			}
@@ -158,43 +117,6 @@ func TestRV64PublicGCTypeSubtypingRuntimeCallCastExecutionAndArtifact(t *testing
 	}
 }
 
-func TestRV64PublicGCTypeSubtypingRuntimeCallCastAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_CALL_CAST_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	compiled := rv64PublicGCTypeSubtypingRuntimeCallCastCompile(t, false)
-	defer compiled.Close()
-	base := compiled.executionView()
-	for name, mutate := range map[string]func(*Compiled){
-		"code":       func(v *Compiled) { v.code[len(v.code)-1] ^= 1 },
-		"entry":      func(v *Compiled) { v.Entry[3] += 16; v.InternalEntry[3] += 16 },
-		"function":   func(v *Compiled) { v.Funcs[1].TypeIndex = 0 },
-		"type":       func(v *Compiled) { v.Types[0].Final = true },
-		"type-key":   func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
-		"descriptor": func(v *Compiled) { v.GCTypeDescs[1].HasSuper = false },
-		"element":    func(v *Compiled) { v.Elems[0].Values[2].FuncIndex = 1 },
-		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-		"escape":     func(v *Compiled) { v.dynamicFuncrefEscape = !v.dynamicFuncrefEscape },
-		"function-abi": func(v *Compiled) {
-			v.nativeReferenceFunctionABI = !v.nativeReferenceFunctionABI
-		},
-		"missing-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(nil) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(base)
-			mutate(candidate)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("hostile retained runtime call/cast mutation admitted", err)
-			}
-			if name == "feature" {
-				rv64RequireRestoredGCFeature(t, candidate)
-			} else {
-				rv64RequireRejectedArtifact(t, candidate)
-			}
-		})
-	}
-}
-
 func TestRV64PublicGCTypeSubtypingRuntimeCallCastPublicRuntime(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_CALL_CAST_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
@@ -214,18 +136,5 @@ func TestRV64PublicGCTypeSubtypingRuntimeCallCastPublicRuntime(t *testing.T) {
 	}
 	if err != nil {
 		t.Fatal("runtime call/cast instantiated without private Runtime permission", err)
-	}
-}
-
-func TestRV64PublicGCTypeSubtypingRuntimeCallCastCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_CALL_CAST_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingRuntimeCallCastBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free runtime call/cast path used source compilation", err)
 	}
 }

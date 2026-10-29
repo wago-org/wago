@@ -101,9 +101,8 @@ func TestSharedGrowImpossibleUnsignedAndLiveValues(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						loaded := publicArtifactRoundTrip(t, c)
-						defer loaded.Close()
-						for _, compiled := range []*Compiled{c, loaded} {
+
+						for _, compiled := range []*Compiled{c} {
 							for _, name := range []string{"constant", "dynamic"} {
 								in, err := Instantiate(compiled)
 								if err != nil {
@@ -212,13 +211,12 @@ func TestSharedGrowImpossibleCacheAndRegisterABI(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						loaded := publicArtifactRoundTrip(t, c)
-						defer loaded.Close()
+
 						failure := ^uint64(0)
 						if !wide {
 							failure = uint64(^uint32(0))
 						}
-						for _, compiled := range []*Compiled{c, loaded} {
+						for _, compiled := range []*Compiled{c} {
 							in, err := Instantiate(compiled)
 							if err != nil {
 								t.Fatal(err)

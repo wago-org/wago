@@ -43,30 +43,11 @@ additionally support signal-backed guard-page bounds checks; all seven targets
 support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 7 -->
+Compiled modules stay in memory. Wago accepts Wasm source and compiles it in the
+current process; it does not persist or load native-code module artifacts.
+Import bindings retain exact module/name boundaries, preventing dotted flat-key
+collisions from crossing module authority boundaries.
 
-Compiled artifacts use a strict ordered section stream. It has a fixed
-header with a native-architecture ID and section count, followed by length-delimited native-code and metadata
-sections. Wago rejects unknown, duplicate, reordered, truncated, over-limit, and
-non-canonical section encodings. `Compiled.WriteTo` streams code without making a
-second full image. `Compiled.ReadFromWithLimits` reads code directly into an RW
-mapping, applies separate code and metadata bounds, validates all metadata, and
-seals that mapping RX on first use. Non-global imports keep their legacy flat
-lookup key and a validated module-name boundary. Source compilation and artifact
-loading therefore expose the same module/name pair without decoding source again.
-Plugin bindings must match that pair before they satisfy an import. This prevents
-dotted flat-key collisions from crossing module authority boundaries. Artifact
-decoding also caps the expanded function-import directory at 64 MiB, so compact
-empty names cannot produce an unbounded slice allocation. Version 2 replaced the
-initial version 1 format when generated `memory.grow` code and the native instance
-context gained a runtime memory-page quota. The current format is version 7.
-It records and validates local and imported start functions. Version 6 artifacts
-omitted their initialization and must be rebuilt. Version 6 added foreign-architecture
-rejection before executable mapping allocation. Version 5 rejected version-4 native
-code compiled with the former EH
-tag-directory basedata offset. Version 4 records optional CPU requirements and exact
-native GC metadata. Wago rejects all earlier versions; there is no compatibility
-decoder or dual-format ambiguity.
 
 ### CPU and SIMD baseline
 
@@ -367,7 +348,6 @@ GC transfers remain fail-closed when exact ownership is unproved.
  │         │   │          │   │ Block native codegen)│   │ metadata │
  └─────────┘   └──────────┘   └─────────────────────┘   └────┬─────┘
  src/core/compiler/wasm        src/core/compiler/backend/railshot│
-                                                              │  (optional: MarshalBinary → .wago blob)
                                                               ▼
                                                        ┌─────────────┐
                                                        │ instantiate │  map code, build JobMemory,
@@ -687,18 +667,10 @@ read-only diagnostic stream; callers never receive a mutable alias:
 - `TableSize`, `FuncTypeID`, `Elems` (active element segments)
 - `Data` (active data segments)
 
-`Compiled` serializes to a compact versioned **`.wago` blob** through either the
-slice APIs (`MarshalBinary`/`UnmarshalBinary`) or bounded streaming APIs
-(`WriteTo`/`ReadFromWithLimits`). `Load` accepts untrusted raw Wasm and compiles
-it; `LoadTrustedArtifact` performs the fast native-code reload only for
-authenticated or locally produced `.wago` bytes. `IsCompiled` distinguishes the
-formats, but callers must choose the trust boundary explicitly. `validate()`
-hardens artifact metadata before mapping, but cannot sandbox hostile native code.
-The codec persists the
-binding-independent imported-call shape, so modules with function imports can be
-serialized before host or instance targets are known; live addresses and store
-identity are installed only during instantiation. See the codec-version comment
-at the top of this file for the current wire version.
+`Load` accepts raw Wasm and compiles it. Compiled modules have no serialization
+or native-code reload API. Standalone executables link ahead-of-time machine code and runtime metadata
+as generated Go initializers. They contain the runtime and selected plugins,
+without Wasm source, an artifact decoder, or a compiler.
 
 ---
 
@@ -779,6 +751,12 @@ or unknown edge invalidates it before lowering. Native allocation reserves ident
 only; collection cancels unused reservations before tracing. Live-struct batches
 start at the configured maximum, shrink after low-use cancellation, and double
 after 32 consecutive full batches. Feedback belongs to each collector and excludes array chunks and
+one-handle dead-struct proofs. See the
+[batch cancellation measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/native-batch-cancellation.md).
+
+AMD64 defined GC casts and tests accept equal canonical type IDs after checked
+object resolution. Unequal ordinary types use subtype intervals; unequal exact
+casts fail. See [identity measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/canonical-identity-shortcut.md).
 one-handle dead-struct proofs.
 
 AMD64 defined GC casts and tests accept equal canonical type IDs after checked
@@ -791,6 +769,17 @@ last. These batches account for both constructor kinds from their consumed
 cursor. Uniform arrays with run-time lengths use this path only when their
 checked object size is at most 256 bytes; larger uniform arrays use the helper.
 Private array chunks and exact-size large reservations retain their own
+cursor and immediate accounting. See the
+[native array path measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/native-array-paths.md).
+On AMD64, an adjacent final cast and struct field read share one checked native
+object resolution for collector references, integers, packed integers, floats,
+and vectors. The raw address is consumed by the field load before any safepoint.
+See [cast/field-read measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/cast-field-read-fusion.md).
+
+AMD64 final `v128` arrays use the scalar checked resolver and bounds path with
+16-byte SSE2 or AVX loads and stores. This access layout is separate from scalar
+fill and copy admission. See the
+[vector array measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/native-vector-array-access.md).
 cursor and immediate accounting.
 On AMD64, an adjacent final cast and struct field read share one checked native
 object resolution for collector references, integers, packed integers, floats,
@@ -1060,8 +1049,8 @@ pinned specification suites. See [tests/README.md](tests/README.md) for prerequi
 ## 16. Current scope & limitations
 
 - Wago has no interpreter tier: supported modules execute as native code. Wasm
-  can be compiled in-process, serialized as a native `.wago` artifact, or
-  embedded in a compiler-free standalone executable.
+  is compiled in-process. Standalone executables instead link machine code and
+  runtime metadata at build time and omit the compiler.
 - Linux on amd64, arm64, and riscv64, plus macOS and Windows on amd64 and arm64,
   execute the native JIT and are required release targets. Signal-backed guard pages remain specific to
   Linux/amd64, Linux/arm64, Linux/riscv64, and Darwin/arm64; other targets use
@@ -1093,11 +1082,7 @@ new profiler.
 The removal contract is checked by `scripts/check-diagnostic-dce.sh`, which
 inspects unstripped manager, standard-runtime, minimal-runtime, and embedding binaries for
 AMD64 and ARM64 on Linux, macOS, and Windows, plus RV64 on Linux. It also
-rejects foreign backend and encoder implementations. An artifact-loading embedding
-build with `wago_precompiled` must discard source decoding, frontend lowering,
-and function compilation even when it references `Compile`. Source requests fail
-before decoding. Artifact metadata validation
-and runtime thunk generation remain required.
+rejects foreign backend and encoder implementations.
 `scripts/check-riscv64-diagnostics.sh` compares ordinary and checked guest bytes
 and audits a force-linked RV64 compiler harness. Both scripts run in CI.
 Profiling must add no generated guest instrumentation or steady-state recording

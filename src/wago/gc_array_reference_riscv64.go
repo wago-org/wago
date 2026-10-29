@@ -130,13 +130,3 @@ func rv64GCArrayReferenceMetadata(c *Compiled, requireInitializer bool) bool {
 }
 
 func rv64GCArrayReference(c *Compiled) bool { return rv64GCArrayReferenceMetadata(c, true) }
-
-func railshotRestoreGCArrayReferenceArtifact(c *Compiled) {
-	if !rv64GCArrayReferenceMetadata(c, false) {
-		return
-	}
-	c.memoryDir.gcArrayElement = &gcArrayElementInit{SegmentIndex: 0, TypeID: 0, Count: 2, Values: []gcArrayElementValueInit{
-		{Mode: gcArrayGlobalInitUniform, Length: 3, Bits: []uint64{7}},
-		{Mode: gcArrayGlobalInitFixed, Length: 2, Bits: []uint64{1, 2}},
-	}}
-}

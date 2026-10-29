@@ -31,7 +31,7 @@ func TestPrivateSecondaryGrowPreservesSharedPrimaryBase(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		for index, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for index, code := range []*Compiled{c} {
 			if code != c {
 				defer code.Close()
 			}

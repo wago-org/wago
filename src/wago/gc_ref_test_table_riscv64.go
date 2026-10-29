@@ -109,11 +109,3 @@ func rv64GCRefTestTable(c *Compiled) bool {
 		c.usesGCStructHelpers() && !c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil && c.requiredFeatures == CoreFeatureReferenceTypes|CoreFeatureGC && c.requiredAMD64Features == 0 &&
 		slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry)
 }
-
-func railshotRestoreGCRefTestTableArtifact(c *Compiled) {
-	if !rv64GCRefTestTable(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructRefTestTable
-}

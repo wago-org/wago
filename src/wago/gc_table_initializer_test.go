@@ -33,9 +33,8 @@ func TestGCTableAllocatingInitializerSharesOneObject(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	reloaded := publicArtifactRoundTrip(t, c)
-	defer reloaded.Close()
-	for _, compiled := range []*Compiled{c, reloaded} {
+
+	for _, compiled := range []*Compiled{c} {
 		in, err := Instantiate(compiled, InstantiateOptions{})
 		if err != nil {
 			t.Fatal(err)

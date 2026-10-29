@@ -1,4 +1,4 @@
-//go:build !wago_regalloccheck && (!arm64 || wago_precompiled)
+//go:build !wago_regalloccheck && (!arm64 || wago_standalone)
 
 package wago
 

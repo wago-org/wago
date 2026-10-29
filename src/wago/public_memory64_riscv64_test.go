@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"os"
 	"slices"
 	"testing"
 
@@ -576,81 +575,6 @@ func TestRV64PublicMemory64Initializers(t *testing.T) {
 			rv64MMCall(t, ii, "init", nil, 7, 0xdeadbeef00000000, 0xfeedface00000002)
 			if !bytes.Equal(rv64MMBytes(t, ii, 99)[7:9], []byte{0xde, 0xad}) {
 				t.Fatal("original data255/memory99 lost")
-			}
-		})
-	}
-}
-
-func TestRV64PublicMemory64AdmissionAndMetadata(t *testing.T) {
-	source := rv64MMModule(rv64M64GrowFuncs(0), [][]byte{rv64M64Limit(true, 1, 3), rv64M64Limit(false, 0, 0)}, nil, 2, nil)
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
-		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(defaultCoreFeatures()&^CoreFeatureMemory64), source)
-		if c != nil {
-			_ = c.Close()
-		}
-		if err == nil {
-			t.Fatal("disabled memory64 compiled")
-		}
-		for _, tc := range []struct {
-			name   string
-			source []byte
-		}{
-			{"minimum", rv64MMModule(nil, [][]byte{rv64M64Limit(true, 65536, 65536)}, nil, 1, nil)},
-			{"max-limit", rv64MMModule(nil, [][]byte{rv64M64Limit(true, 0, (1<<48)+1)}, nil, 1, nil)},
-			{"wrong-load-address", rv64MMModule([]rv64MMFunc{{"bad", []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0x20, 0, 0x28, 0, 0, 0x0b}}}, [][]byte{rv64M64Limit(true, 1, 1)}, nil, 1, nil)},
-			{"wrong-init-count", rv64MMModule([]rv64MMFunc{{"bad", []wasm.ValType{wasm.I64, wasm.I32, wasm.I64}, nil, []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 8, 0, 0, 0x0b}}}, [][]byte{rv64M64Limit(true, 1, 1)}, nil, 1, [][]byte{{1, 0}})},
-			{"wrong-copy-count", rv64MMModule([]rv64MMFunc{{"bad", []wasm.ValType{wasm.I64, wasm.I32, wasm.I64}, nil, []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 10, 0, 1, 0x0b}}}, [][]byte{rv64M64Limit(true, 1, 1), rv64M64Limit(false, 1, 1)}, nil, 2, nil)},
-			{"wrong-initializer", rv64MMModule(nil, [][]byte{rv64M64Limit(true, 1, 1)}, nil, 1, [][]byte{rv64M64Data(0, []byte{0x41, 0, 0x0b}, []byte{1})})},
-			{"memory32-u64-offset", rv64MMModule([]rv64MMFunc{{"bad", []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, append(append([]byte{0x20, 0}, rv64M64Arg([]byte{0x28}, 0, 1<<32)...), 0x0b)}}, [][]byte{rv64M64Limit(false, 1, 1), rv64M64Limit(true, 0, 0)}, nil, 2, nil)},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				c, err := Compile(nil, tc.source)
-				if c != nil {
-					_ = c.Close()
-				}
-				if err == nil {
-					t.Fatal("invalid memory64 module compiled")
-				}
-			})
-		}
-	}
-	for _, artifact := range []bool{false, true} {
-		t.Run(fmt.Sprintf("metadata-artifact%t", artifact), func(t *testing.T) {
-			c := rv64TableStageCompile(t, "memory64-metadata", source, artifact)
-			for _, tc := range []struct {
-				name   string
-				mutate func(*Compiled)
-			}{
-				{"cached-min", func(c *Compiled) { c.MemMinPages = 0 }},
-				{"cached-max-cap", func(c *Compiled) { c.memoryDir.defs[0].Max = 1 << 32; c.MemMaxPages = 65536 }},
-				{"cached-max-below-min", func(c *Compiled) { c.MemMaxPages = 0 }},
-				{"declared-max", func(c *Compiled) { c.memoryDir.defs[0].Max = (1 << 48) + 1 }},
-				{"shared", func(c *Compiled) { c.memoryDir.defs[0].Shared = true }},
-			} {
-				t.Run(tc.name, func(t *testing.T) {
-					bad := *c.executionView()
-					directory := *bad.memoryDir
-					directory.defs = slices.Clone(directory.defs)
-					bad.memoryDir = &directory
-					tc.mutate(&bad)
-					if err := railshotValidateCompiled(&bad); err == nil {
-						t.Fatal("invalid memory64 cache/declaration admitted")
-					}
-					blob, err := marshalCompiled(&bad)
-					if err != nil {
-						return
-					}
-					loaded, err := LoadTrustedArtifact(blob)
-					if loaded != nil {
-						_ = loaded.Close()
-					}
-					if err == nil {
-						t.Fatal("invalid memory64 artifact admitted")
-					}
-				})
-			}
-			if c.codeCache.refs != 0 {
-				t.Fatal("metadata rejection acquired executable owner")
 			}
 		})
 	}

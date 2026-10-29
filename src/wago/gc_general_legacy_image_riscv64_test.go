@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -28,22 +28,22 @@ func TestRV64GeneralGCImageMayMatchLegacyCode(t *testing.T) {
 				t.Fatal(e)
 			}
 			defer c.Close()
-			if !rv64FreshRootedGC(c) || c.genericGCFrameRoots() == nil || !rv64ArtifactContractValid(c) {
+			if !rv64FreshRootedGC(c) || c.genericGCFrameRoots() == nil || !rv64SourceContractValid(c) {
 				t.Fatal("general image lacks exact rooted execution proof")
 			}
 			if tc.legacy != nil && !tc.legacy(c) {
 				t.Fatal("fixture no longer exercises native byte collision")
 			}
-			blob, e := c.MarshalBinary()
+
 			if e != nil {
 				t.Fatal(e)
 			}
-			loaded, e := LoadTrustedArtifact(blob)
+
 			if e != nil {
 				t.Fatal(e)
 			}
-			defer loaded.Close()
-			for _, candidate := range []*Compiled{c, loaded} {
+
+			for _, candidate := range []*Compiled{c} {
 				in, e := Instantiate(candidate, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true}})
 				if e != nil {
 					t.Fatal(e)

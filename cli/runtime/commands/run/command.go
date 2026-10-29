@@ -14,7 +14,6 @@ import (
 	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/cli/internal/wasmcall"
-	"github.com/wago-org/wago/cli/runtime/internal/artifactcache"
 )
 
 // Environment supplies only profile-specific flags, optimization knobs, and
@@ -22,13 +21,11 @@ import (
 type Environment interface {
 	ProfileFlags() []command.Flag
 	LoadRuntime(*wago.RuntimeConfig, []string) *wago.Runtime
-	ArtifactCache() artifactcache.Cache
 }
 
 func Command(environment Environment) *command.Cmd {
 	flags := []command.Flag{
 		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call; repeat to call multiple exports in order"},
-		{Name: "allow-native-artifact", Bool: true, Help: "execute a trusted .wago native-code artifact"},
 	}
 	flags = append(flags, watchFlags()...)
 	flags = append(flags,
@@ -47,8 +44,7 @@ func Command(environment Environment) *command.Cmd {
 		Normalize: func(args []string) ([]string, error) {
 			return NormalizeParallelArgs(args, parserFlags, false)
 		},
-		Long: "<file> is raw .wasm. Trusted precompiled .wago native code requires --allow-native-artifact.\n" +
-			"Never enable that flag for an untrusted artifact. Args after the file are typed by the\n" +
+		Long: "<file> is raw .wasm. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
 			"Repeated --invoke flags share one instance and consume positional values by function arity;\n" +
 			"remaining values are not passed as function parameters.\n" +
@@ -108,7 +104,7 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		}
 	}
 	runtime := cmd.environment.LoadRuntime(config, positionals)
-	module, err := loadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache(), ctx.Bool("allow-native-artifact"))
+	module, err := loadModule(positionals[0], runtime)
 	if err != nil {
 		_ = runtime.CloseContext(context.Background())
 		ui.Fatal("%v", err)

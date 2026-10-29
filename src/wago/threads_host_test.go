@@ -58,7 +58,7 @@ func TestThreadsSharedHostCallbackGrowthAndCodec(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer growth.Close()
-					for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+					for _, compiled := range []*Compiled{c} {
 						var memory *Memory
 						var grower *Instance
 						called := false
@@ -255,7 +255,7 @@ func TestThreadsSharedImportedFunctionRestoresBacking(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer growth.Close()
-				for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+				for _, compiled := range []*Compiled{c} {
 					var grower *Instance
 					host := slotHostFunc(func(h HostModule, args, results []uint64) {
 						if len(h.Memory()) != 65536 {

@@ -136,14 +136,12 @@ func TestGCMutableImportedFuncrefTableReturnCallRef(t *testing.T) {
 		t.Run(map[bool]string{false: "compiled", true: "private-payload-codec"}[codec], func(t *testing.T) {
 			providerCandidate, consumerCandidate := providerCode, consumerCode
 			if codec {
-				providerCandidate = privatePayloadRoundTrip(t, providerCode)
-				consumerCandidate = privatePayloadRoundTrip(t, consumerCode)
-				providerCandidate.ensureCodeCache()
-				consumerCandidate.ensureCodeCache()
-				providerCandidate.codeCache.stagedFeatures |= CoreFeatureTailCall
-				consumerCandidate.codeCache.stagedFeatures |= CoreFeatureTailCall
-				defer providerCandidate.Close()
-				defer consumerCandidate.Close()
+
+				providerCode.ensureCodeCache()
+				consumerCode.ensureCodeCache()
+				providerCode.codeCache.stagedFeatures |= CoreFeatureTailCall
+				consumerCode.codeCache.stagedFeatures |= CoreFeatureTailCall
+
 			}
 			for _, profile := range []GCProfile{GCProfileThroughput, GCProfileTiny} {
 				profileName := map[GCProfile]string{GCProfileThroughput: "throughput", GCProfileTiny: "tiny"}[profile]

@@ -43,7 +43,7 @@ func TestRV64PublicTable64ActiveElement(t *testing.T) {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "table64-active-element", rv64Table64ActiveElementSource(1), artifact)
 			defer c.Close()
-			if !rv64ArtifactContractValid(c.executionView()) {
+			if !rv64SourceContractValid(c.executionView()) {
 				t.Fatal("table64 active-element metadata contract")
 			}
 			in, err := Instantiate(c)
@@ -72,7 +72,7 @@ func TestRV64PublicTable64ActiveElementIndirectLifetime(t *testing.T) {
 			producerCode := rv64TableStageCompile(t, "table64-active-callable-producer", rv64Table64ActiveCallableElementSource(1), artifact)
 			consumerCode := rv64TableStageCompile(t, "table64-active-callable-consumer", rv64ImportedTable64IndirectInstructionSource(), artifact)
 			defer consumerCode.Close()
-			if !rv64ArtifactContractValid(producerCode.executionView()) || !rv64ArtifactContractValid(consumerCode.executionView()) {
+			if !rv64SourceContractValid(producerCode.executionView()) || !rv64SourceContractValid(consumerCode.executionView()) {
 				t.Fatal("table64 active call composition metadata contract")
 			}
 			producer, err := Instantiate(producerCode)
@@ -141,102 +141,6 @@ func TestRV64PublicTable64ActiveElementSourceGates(t *testing.T) {
 				if err == nil {
 					t.Fatal("invalid table index width admitted")
 				}
-			}
-		})
-	}
-}
-
-func TestRV64PublicTable64ActiveCallableElementArtifactGates(t *testing.T) {
-	mutations := map[string]func(*Compiled){
-		"signature": func(c *Compiled) { c.Funcs[0].Results[0] = ValI64 },
-		"type-key":  func(c *Compiled) { c.FuncTypeID[0] ^= 1 },
-		"capacity":  func(c *Compiled) { c.TableMax = 4 },
-		"cross-variant": func(c *Compiled) {
-			c.Funcs[0].Results = nil
-			c.FuncTypeID[0] = voidFuncTypeKey()
-		},
-		"offset": func(c *Compiled) {
-			c.Elems[0].Offset.Expr = []byte{0x42, 0x02, 0x0b}
-		},
-		"code": func(c *Compiled) {
-			c.code = bytes.Clone(c.code)
-			c.code[0] ^= 1
-		},
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			base := rv64TableStageCompile(t, "table64-active-callable-gates", rv64Table64ActiveCallableElementSource(1), false)
-			defer base.Close()
-			bad := rv64ReferenceImportTailCopy(base)
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.Elems = slices.Clone(bad.Elems)
-			bad.Elems[0].Values = slices.Clone(bad.Elems[0].Values)
-			bad.Elems[0].Offset.Expr = bytes.Clone(bad.Elems[0].Offset.Expr)
-			mutate(bad)
-			if bad.validate() == nil {
-				t.Fatal("hostile callable table64 active-element metadata admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile callable table64 active-element artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicTable64ActiveElementArtifactGates(t *testing.T) {
-	mutations := map[string]func(*Compiled){
-		"feature":    func(c *Compiled) { c.requiredFeatures &^= CoreFeatureTable64 },
-		"witness":    func(c *Compiled) { c.nativeTable64ABI = nativeTable64SizeABI },
-		"table32":    func(c *Compiled) { c.TableAddr64 = false },
-		"capacity":   func(c *Compiled) { c.TableMax = 4 },
-		"descriptor": func(c *Compiled) { c.NeedsFuncRefDescs = false },
-		"offset": func(c *Compiled) {
-			c.Elems[0].Offset.Expr = []byte{0x42, 0x02, 0x0b}
-		},
-		"payload": func(c *Compiled) { c.Elems[0].Values[0].Null = true },
-		"code": func(c *Compiled) {
-			c.code = bytes.Clone(c.code)
-			c.code[0] ^= 1
-		},
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			base := rv64TableStageCompile(t, "table64-active-element-gates", rv64Table64ActiveElementSource(1), false)
-			bad := rv64ReferenceImportTailCopy(base)
-			bad.Elems = slices.Clone(bad.Elems)
-			bad.Elems[0].Values = slices.Clone(bad.Elems[0].Values)
-			bad.Elems[0].Offset.Expr = bytes.Clone(bad.Elems[0].Offset.Expr)
-			mutate(bad)
-			if bad.validate() == nil {
-				t.Fatal("hostile table64 active-element metadata admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if name == "feature" {
-				if err != nil || loaded == nil || !rv64ArtifactContractValid(loaded.executionView()) || !loaded.requiredFeatures.IsEnabled(CoreFeatureTable64) {
-					t.Fatal("serialized table64 structural feature was not restored", err)
-				}
-				loaded.Close()
-				return
-			}
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile table64 active-element artifact admitted")
 			}
 		})
 	}

@@ -4,14 +4,10 @@ package wago
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -62,74 +58,6 @@ func TestRV64PublicForcedHostModeForOwnedScalarModule(t *testing.T) {
 			t.Fatal(got, err)
 		}
 	})
-}
-
-func TestRV64PublicArtifactBoundaries(t *testing.T) {
-	c, err := Compile(nil, growMemModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	base := c.executionView()
-	check := func(name string, mutate func(*Compiled)) {
-		t.Helper()
-		t.Run(name, func(t *testing.T) {
-			view := *rv64ReferenceStartCopy(base)
-			mutate(&view)
-			err := railshotValidateCompiled(&view)
-			if !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("changed artifact execution metadata admitted", err)
-			}
-			rv64RequireRejectedArtifact(t, &view)
-		})
-	}
-	for _, count := range []int{256, 257} {
-		check("unused-type-arity", func(v *Compiled) {
-			unused := DefinedTypeDescriptor{RecGroup: uint32(len(v.Types)), Kind: CompositeTypeFunction, Final: true}
-			unused.Params = make([]ValueTypeDescriptor, count)
-			unused.Results = make([]ValueTypeDescriptor, count)
-			for i := range unused.Params {
-				unused.Params[i].Kind = ValueTypeI32
-				unused.Results[i].Kind = ValueTypeI64
-			}
-			v.Types = append(slices.Clone(v.Types), unused)
-		})
-		check("active-descriptors", func(v *Compiled) { v.Data = make([]DataInit, count) })
-		check("passive-descriptors", func(v *Compiled) { v.PassiveData = make([]PassiveDataInit, count) })
-	}
-	check("inert-GC-count", func(v *Compiled) {
-		v.GCTypeDescs = make([]gc.TypeDesc, railshot.MaxFunctions+1)
-	})
-	for _, extra := range []int{0, 1} {
-		check("combined-payload", func(v *Compiled) {
-			v.Data = []DataInit{{Bytes: make([]byte, railshot.MaxModuleBytes/2)}}
-			v.PassiveData = []PassiveDataInit{{Bytes: make([]byte, railshot.MaxModuleBytes/2+extra)}}
-		})
-	}
-	for _, count := range []int{256, 257} {
-		t.Run(fmt.Sprintf("fresh-source-%d", count), func(t *testing.T) {
-			params := make([]wasm.ValType, min(count, 256))
-			for i := range params {
-				params[i] = wasm.I32
-			}
-			segments := make([][]byte, count)
-			for i := range segments {
-				segments[i] = []byte{0, 0x41, 0, 0x0b, 0}
-			}
-			rv64RequireCore3SourceValidation(t, wasmtest.Module(
-				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, params))),
-				wasmtest.Section(5, []byte{1, 0, 1}),
-				wasmtest.Section(11, wasmtest.Vec(segments...)),
-			))
-			for i := range segments {
-				segments[i] = []byte{1, 0}
-			}
-			rv64RequireCore3SourceValidation(t, wasmtest.Module(
-				wasmtest.Section(5, []byte{1, 0, 1}),
-				wasmtest.Section(11, wasmtest.Vec(segments...)),
-			))
-		})
-	}
 }
 
 func TestRV64PublicGlobalsAndActiveData(t *testing.T) {

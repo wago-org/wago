@@ -35,7 +35,7 @@ func rv64DomainHostRootModule() []byte {
 }
 
 func TestRV64GCDomainHostRootsAcrossReentry(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(fmt.Sprintf("artifact=%t", artifact), func(t *testing.T) {
 			runtime := NewRuntime()
 			defer runtime.Close()
@@ -43,20 +43,7 @@ func TestRV64GCDomainHostRootsAcrossReentry(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if artifact {
-				blob, err := compiled.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := compiled.Close(); err != nil {
-					t.Fatal(err)
-				}
-				compiled = loaded
-			}
+
 			defer compiled.Close()
 			module, err := runtime.Module(compiled)
 			if err != nil {

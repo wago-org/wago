@@ -134,16 +134,6 @@ func TestMultiValueDefaultConfigControlCallsAndCodec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile default multi-value module: %v", err)
 	}
-	if cfg.BoundsChecks() != BoundsChecksSignalsBased {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatalf("MarshalBinary: %v", err)
-		}
-		c, err = LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-	}
 
 	in, err := Instantiate(c, nil)
 	if err != nil {
@@ -209,16 +199,7 @@ func TestMultiValueBranchPayloadsAndTypedCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile default multi-value module: %v", err)
 	}
-	if cfg.BoundsChecks() != BoundsChecksSignalsBased {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatalf("MarshalBinary: %v", err)
-		}
-		c, err = LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-	}
+
 	in, err := Instantiate(c, nil)
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)

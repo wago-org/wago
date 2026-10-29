@@ -144,17 +144,6 @@ func TestImmutableLocalTablePreparedEntryIsIsolated(t *testing.T) {
 		t.Fatal("immutable, unexported local-table instance should use the isolated entry")
 	}
 
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	var decoded Compiled
-	if err := decoded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if decoded.preparedIsolatedTables {
-		t.Fatal("serialized module unexpectedly retained compile-only table isolation proof")
-	}
 }
 
 func TestImmutableLocalTableRuntimeStoreKeepsGuardedEntry(t *testing.T) {

@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -116,67 +114,5 @@ func TestRV64Core3RefAsNonNullPinnedModule(t *testing.T) {
 				t.Fatal("pinned ref.as_non_null cleanup")
 			}
 		})
-	}
-}
-
-func TestRV64Core3RefAsNonNullPinnedGates(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
-		t.Skip("source and hostile artifact admission")
-	}
-	base := rv64NativeTailCompile(t, "core3-ref-as-non-null-gates", rv64Core3RefAsNonNullSource(), false)
-	mutations := map[string]func(*Compiled){
-		"missing-function-witness": func(c *Compiled) { c.nativeReferenceFunctionABI = false },
-		"missing-control-witness":  func(c *Compiled) { c.nativeReferenceControlABI = false },
-		"missing-context-trap":     func(c *Compiled) { c.nativeContextTrapABI = false },
-		"missing-table-context":    func(c *Compiled) { c.nativeTableContextABI = false },
-		"missing-table-reference":  func(c *Compiled) { c.nativeTableReferenceABI = false },
-		"register-abi":             func(c *Compiled) { c.registerABIDisabled = false },
-		"private-passive-target":   func(c *Compiled) { c.passiveElems[0].Values[0].FuncIndex = 0 },
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			bad := rv64ReferenceStartCopy(base.executionView())
-			mutate(bad)
-			if err := railshotValidateCompiled(bad); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("hostile retained ref.as_non_null metadata admitted", err)
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile serialized ref.as_non_null metadata admitted")
-			}
-		})
-	}
-
-	// The contract binds the recorded native ABI even where a narrower call
-	// convention could execute this particular body.
-	t.Run("internal-call-witness-binding", func(t *testing.T) {
-		candidate := rv64ReferenceStartCopy(base.executionView())
-		candidate.nativeReferenceCallABI = !candidate.nativeReferenceCallABI
-		if err := candidate.validate(); err == nil {
-			t.Fatal("edited internal call witness admitted")
-		}
-		rv64RequireRejectedArtifact(t, candidate)
-		if !rv64ArtifactContractValid(base.executionView()) || base.executionView().validate() != nil {
-			t.Fatal("edited call witness changed baseline")
-		}
-	})
-}
-
-func TestRV64Core3RefAsNonNullCompilerFreeGate(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	if c, err := Compile(nil, rv64Core3RefAsNonNullSource()); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		if c != nil {
-			c.Close()
-		}
-		t.Fatal("compiler-free pinned ref.as_non_null used source compilation", err)
 	}
 }

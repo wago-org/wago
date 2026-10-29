@@ -104,7 +104,7 @@ type ModuleCompiledEvent struct {
 	Compilation CompilationIdentity
 	Module      ModuleView
 	// SourceDigest identifies the final bytes passed to the compiler after every
-	// source transformer. It is zero for Runtime.Module's precompiled path.
+	// source transformer. It is zero for Runtime.Module's already-compiled path.
 	SourceDigest ModuleSourceDigest
 }
 type ModuleCompileErrorEvent struct {

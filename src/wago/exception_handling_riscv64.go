@@ -10,7 +10,7 @@ import (
 // The canonical image contract binds code, frame entries, types and tags.
 // Collector payloads also require native GC ABI and exact retained frame maps.
 func rv64ExceptionHandling(c *Compiled) bool {
-	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || !c.nativeContextTrapABI || !c.needsFuncRefContextHeader || !rv64ArtifactContractValid(c) {
+	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || !c.nativeContextTrapABI || !c.needsFuncRefContextHeader || !rv64SourceContractValid(c) {
 		return false
 	}
 	if c.memoryDir == nil {

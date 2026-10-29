@@ -58,30 +58,14 @@ func rv64PublicSWARMemoryModule(imported bool) []byte {
 	)
 }
 func TestRV64PublicSWAROwnedMemoryExportsArtifactGrowthAndRetention(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			c, err := Compile(nil, rv64PublicSWARMemoryExportsModule())
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			if artifact {
-				blob, err := c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if loaded != nil {
-					defer loaded.Close()
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := c.Close(); err != nil {
-					t.Fatal(err)
-				}
-				c = loaded
-			}
+
 			producer, err := Instantiate(c)
 			if err != nil {
 				t.Fatal(err)

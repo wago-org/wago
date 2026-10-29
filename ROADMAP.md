@@ -849,26 +849,12 @@ Current tracks:
   one site for that trap class. Shared multi-site stubs still report the
   function without guessing a PC. Full caller-chain unwind metadata remains a
   follow-up.
-- [x] WebAssembly 2.0 product closeout: `.wago` codec version 3 persists structural
-  reference globals, indexed typed tables/exports/elements, exact local/imported
-  table/memory-limit forms, indexed memory imports/exports, and required-feature
-  bits without serializing live runtime identity.
-  Deterministic module inspection reports all
-  reference signatures/globals and every table/import/export/index/type/limit,
-  including duplicate aliases and loaded modules. Consolidated trap and cross-link
-  teardown tests cover globals, multiple table aliases, passive elements, store
-  bindings, and producer/consumer close order. The official Release 2 execution
-  harness remains zero-skip at 1,600 modules / 48,248 assertions.
+- [x] WebAssembly 2.0 product closeout: deterministic module inspection and
+  cross-link teardown coverage for source-compiled modules.
 - [ ] `call_indirect` inline caches behind a table epoch
-- [x] `.wago` productization: `wago build` creates explicit artifacts and
-  `wago run` reuses an automatic cache keyed by the module, exact runtime
-  executable, GOOS/GOARCH, effective feature/bounds/memory configuration, and
-  optimization knobs. `wago cache` owns inspection, pruning, and cleanup.
-- [x] Runtime-only standalone commands: `wago compile` precompiles the reviewed
-  module/plugin graph into a native `.wago` artifact and embeds it in a
-  `wago_precompiled` loader, retaining no Railshot source compiler. `--tinygo`
-  selects TinyGo for the final link and strips the resulting native binary.
-  Platform-sensitive codegen keeps both link paths native-target-only.
+- [x] Standalone commands: `wago compile` compiles the reviewed Wasm/plugin graph
+  ahead of time and links its machine code with the runtime, without a compiler. `--tinygo` selects
+  TinyGo for the final link and strips the resulting native binary.
 
 ## Verification and quality
 

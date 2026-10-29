@@ -22,7 +22,7 @@ import (
 
 func TestRV64PublicSWARStateHostInterleavedImportsNestedContextAndRetirement(t *testing.T) {
 	for _, position := range []int{0, 4, 8} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(fmt.Sprintf("position%d-artifact%t", position, artifact), func(t *testing.T) {
 				memoryProducer, memory := importedMemoryProvider(t)
 				globalCode, err := Compile(nil, rv64PublicSWARGlobalExportsModule())
@@ -45,23 +45,7 @@ func TestRV64PublicSWARStateHostInterleavedImportsNestedContextAndRetirement(t *
 				if c.NumImports != 1 || len(c.Funcs) != 7 || len(c.GlobalImports) != 7 {
 					t.Fatal("state imports changed function/global ordinal metadata")
 				}
-				if artifact {
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					loaded, err := LoadTrustedArtifact(blob)
-					if loaded != nil {
-						defer loaded.Close()
-					}
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err := c.Close(); err != nil {
-						t.Fatal(err)
-					}
-					c = loaded
-				}
+
 				var nested *Instance
 				panicHost := false
 				cause := errors.New("mixed state parked host panic")
@@ -174,7 +158,7 @@ func TestRV64PublicSWARStateHostInterleavedImportsNestedContextAndRetirement(t *
 func TestRV64PublicSWARStateHostInterruptionAfterNestedSharedHome(t *testing.T) {
 	previous := runtime.GOMAXPROCS(1)
 	defer runtime.GOMAXPROCS(previous)
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, closeInstance := range []bool{false, true} {
 			t.Run(fmt.Sprintf("artifact%t-close%t", artifact, closeInstance), func(t *testing.T) {
 				_, memory := importedMemoryProvider(t)
@@ -194,20 +178,7 @@ func TestRV64PublicSWARStateHostInterruptionAfterNestedSharedHome(t *testing.T) 
 					t.Fatal(err)
 				}
 				defer c.Close()
-				if artifact {
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					loaded, err := LoadTrustedArtifact(blob)
-					if loaded != nil {
-						defer loaded.Close()
-					}
-					if err != nil {
-						t.Fatal(err)
-					}
-					c = loaded
-				}
+
 				entered, release := make(chan struct{}, 1), make(chan struct{})
 				var once sync.Once
 				unblock := func() { once.Do(func() { close(release) }) }
@@ -336,13 +307,9 @@ func TestRV64PublicSWARStateHostCombinedImportBoundary(t *testing.T) {
 	if c.NumImports != 256 || len(c.GlobalImports) != 256 || len(c.Funcs) != 1 {
 		t.Fatal("maximum interleaved state/function metadata")
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if loaded != nil {
-		defer loaded.Close()
+
+	if c != nil {
+		defer c.Close()
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -350,7 +317,7 @@ func TestRV64PublicSWARStateHostCombinedImportBoundary(t *testing.T) {
 	_, memory := importedMemoryProvider(t)
 	binary.LittleEndian.PutUint64(memory.UnsafeBytes()[3:], 0x7ff0000000000001)
 	binary.LittleEndian.PutUint64(memory.UnsafeBytes()[11:], 0xff8000017f800001)
-	for _, code := range []*Compiled{c, loaded} {
+	for _, code := range []*Compiled{c} {
 		imports := NewImports().Global("env", "v", GlobalImport{Type: ValV128, V128: rv64PublicVector(0x80000000deadbeef, 0x7ff0000000000042)}).Memory("env", "memory", memory)
 		calls := 0
 		imports.Function("env", "host", HostCallFunc(func(call HostCall) {

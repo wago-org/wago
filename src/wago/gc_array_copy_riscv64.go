@@ -110,13 +110,3 @@ func rv64GCArrayCopyMetadata(c *Compiled, requireInitializers bool) bool {
 }
 
 func rv64GCArrayCopy(c *Compiled) bool { return rv64GCArrayCopyMetadata(c, true) }
-
-func railshotRestoreGCArrayCopyArtifact(c *Compiled) {
-	if !rv64GCArrayCopyMetadata(c, false) {
-		return
-	}
-	c.memoryDir.gcArrayGlobals = []gcArrayGlobalInit{
-		{GlobalIndex: 0, TypeID: 0, Length: 12, Mode: gcArrayGlobalInitUniform, Bits: []uint64{10}},
-		{GlobalIndex: 1, TypeID: 1, Length: 12, Mode: gcArrayGlobalInitDefault},
-	}
-}

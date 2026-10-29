@@ -32,9 +32,6 @@ func TestDirsWagoHome(t *testing.T) {
 	if got, want := d.VersionBinary("0.9.0"), filepath.Join(root, "data", "versions", "0.9.0", "wago"); got != want {
 		t.Fatalf("VersionBinary = %q", got)
 	}
-	if got, want := d.CachePath("abc"), filepath.Join(root, "cache", "1.2.3", "abc.wago"); got != want {
-		t.Fatalf("CachePath = %q", got)
-	}
 	if got, want := d.ConfigFile("wago.json"), filepath.Join(root, "config", "wago.json"); got != want {
 		t.Fatalf("ConfigFile = %q", got)
 	}

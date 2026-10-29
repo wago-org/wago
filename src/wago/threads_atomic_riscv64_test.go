@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -335,11 +335,11 @@ func TestRV64AtomicMixedSWARPreservesLiveVectorAndArtifact(t *testing.T) {
 			}
 			defer memory.Close()
 			c := rv64CompileAtomic(t, rv64MixedAtomicModule(tc.params, tc.sub, tc.align, tc.store))
-			loaded := publicArtifactRoundTrip(t, c)
-			if loaded != c {
-				defer loaded.Close()
+
+			if c != c {
+				defer c.Close()
 			}
-			for _, code := range []*Compiled{c, loaded} {
+			for _, code := range []*Compiled{c} {
 				in, err := Instantiate(code, testImports("env.memory", memory))
 				if err != nil {
 					t.Fatal(err)
@@ -356,16 +356,16 @@ func TestRV64AtomicMixedSWARPreservesLiveVectorAndArtifact(t *testing.T) {
 
 func TestRV64SharedGrowthSWARAndArtifact(t *testing.T) {
 	c := rv64CompileAtomic(t, rv64SharedGrowthModule(true))
-	loaded := publicArtifactRoundTrip(t, c)
-	if loaded != c {
-		defer loaded.Close()
+
+	if c != c {
+		defer c.Close()
 	}
 	memory, err := NewSharedMemory(1, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	for i, code := range []*Compiled{c, loaded} {
+	for i, code := range []*Compiled{c} {
 		in, err := Instantiate(code, testImports("env.memory", memory))
 		if err != nil {
 			t.Fatal(err)
@@ -390,16 +390,16 @@ func TestRV64AtomicVectorParametersAndResults(t *testing.T) {
 		wasmtest.Section(2, wasmtest.Vec(imp)), wasmtest.Section(3, wasmtest.Vec([]byte{0})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 1, 0x20, 0, 0x20, 2, 0xfe, 0x1e, 2, 0, 0x1a, 0x0b}))))
 	c := rv64CompileAtomic(t, source)
-	loaded := publicArtifactRoundTrip(t, c)
-	if loaded != c {
-		defer loaded.Close()
+
+	if c != c {
+		defer c.Close()
 	}
 	memory, err := NewSharedMemory(1, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer memory.Close()
-	for _, code := range []*Compiled{c, loaded} {
+	for _, code := range []*Compiled{c} {
 		in, err := Instantiate(code, testImports("env.memory", memory))
 		if err != nil {
 			t.Fatal(err)

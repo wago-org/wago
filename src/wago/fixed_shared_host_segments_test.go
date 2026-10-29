@@ -69,11 +69,8 @@ func TestFixedSharedHostSegmentsAdmission(t *testing.T) {
 		if c.fixedSharedHostSegments != enabled || c.boundedHostSegments() {
 			t.Fatal("certificate conflated with resource-free proof")
 		}
-		decoded := publicArtifactRoundTrip(t, c)
-		if decoded.fixedSharedHostSegments {
-			t.Fatal("artifact retained compile-only certificate")
-		}
-		decoded.Close()
+
+		c.Close()
 		c.Close()
 	}
 }

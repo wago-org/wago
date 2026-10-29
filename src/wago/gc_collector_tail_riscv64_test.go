@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled && !wago_guardpage
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_guardpage
 
 package wago
 
@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -94,7 +94,7 @@ func rv64CollectorTailSource(kind string, vector bool, graph ...string) []byte {
 func TestRV64CollectorBearingTailCalls(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, kind := range []string{"local", "reference", "indirect", "import", "indirect-mismatch"} {
-			for _, artifact := range []bool{false, true} {
+			for _, artifact := range []bool{false} {
 				for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 					t.Run(fmt.Sprintf("%s/vector%t/artifact%t/profile%d", kind, vector, artifact, profile), func(t *testing.T) {
 						cfg := rv64I31Config().WithCoreFeatures(platformCoreFeatures() | CoreFeatureGC | CoreFeatureTailCall | CoreFeatureTypedFunctionReferences)
@@ -112,17 +112,7 @@ func TestRV64CollectorBearingTailCalls(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						if artifact {
-							blob, err := c.MarshalBinary()
-							if err != nil {
-								t.Fatal(err)
-							}
-							c, err = LoadTrustedArtifact(blob)
-							if err != nil {
-								t.Fatal(err)
-							}
-							defer c.Close()
-						}
+
 						rt := NewRuntime(WithRuntimeConfig(cfg))
 						defer rt.Close()
 						options := InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, StressNurseryBytes: 4096, ForceMajorEveryMinor: true, VerifyAfterCollect: true}, store: rt.refStore, railshotTailPolicy: railshotInstantiateTailPolicy{referenceFunctions: true}}
@@ -133,17 +123,7 @@ func TestRV64CollectorBearingTailCalls(t *testing.T) {
 								t.Fatal(err)
 							}
 							defer pc.Close()
-							if artifact {
-								blob, e := pc.MarshalBinary()
-								if e != nil {
-									t.Fatal(e)
-								}
-								pc, e = LoadTrustedArtifact(blob)
-								if e != nil {
-									t.Fatal(e)
-								}
-								defer pc.Close()
-							}
+
 							provider, err = instantiateCore(pc, options)
 							if err != nil {
 								t.Fatal(err)
@@ -290,16 +270,16 @@ func TestRV64CollectorTailDeclaredSubtype(t *testing.T) {
 					t.Fatal(e)
 				}
 				defer c.Close()
-				blob, e := c.MarshalBinary()
+
 				if e != nil {
 					t.Fatal(e)
 				}
-				loaded, e := LoadTrustedArtifact(blob)
+
 				if e != nil {
 					t.Fatal(e)
 				}
-				defer loaded.Close()
-				for _, code := range []*Compiled{c, loaded} {
+
+				for _, code := range []*Compiled{c} {
 					in, e := instantiateCore(code, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true}, railshotTailPolicy: railshotInstantiateTailPolicy{referenceFunctions: true}})
 					if e != nil {
 						t.Fatal(e)

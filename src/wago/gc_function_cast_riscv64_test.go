@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled && !wago_guardpage
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_guardpage
 
 package wago
 
@@ -54,16 +54,8 @@ func TestRV64CollectorFunctionTestsAndCasts(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				blob, err := c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer loaded.Close()
-				for _, code := range []*Compiled{c, loaded} {
+
+				for _, code := range []*Compiled{c} {
 					in, err := instantiateCore(code, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true}})
 					if err != nil {
 						t.Fatal(err)

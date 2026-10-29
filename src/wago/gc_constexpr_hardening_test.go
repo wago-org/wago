@@ -88,9 +88,8 @@ func TestGCConstExprRootsStackAndEarlierGlobals(t *testing.T) {
 		t.Fatalf("compile GC constant-expression rooting module: %v", err)
 	}
 	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
-	defer loaded.Close()
-	for index, candidate := range []*Compiled{compiled, loaded} {
+
+	for index, candidate := range []*Compiled{compiled} {
 		for _, profile := range []corergc.Profile{corergc.ProfileThroughput, corergc.ProfileTiny} {
 			t.Run(fmt.Sprintf("artifact%t/profile%d", index != 0, profile), func(t *testing.T) {
 				in, err := instantiateCore(candidate, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, VerifyAfterCollect: true, StressBarriers: true}})
@@ -149,9 +148,8 @@ func TestGCConstExprStoresFunctionReferences(t *testing.T) {
 		t.Fatalf("compile function-reference GC constants: %v", err)
 	}
 	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
-	defer loaded.Close()
-	for _, candidate := range []*Compiled{compiled, loaded} {
+
+	for _, candidate := range []*Compiled{compiled} {
 		in, err := instantiateCore(candidate, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true}})
 		if err != nil {
 			t.Fatalf("instantiate function-reference GC constants: %v", err)
@@ -193,45 +191,5 @@ func TestGCConstExprRootsEarlierElementEntries(t *testing.T) {
 	got, err := in.Invoke("sum")
 	if err != nil || len(got) != 1 || got[0] != 33 {
 		t.Fatalf("element values after later allocation = %v, %v; want [33]", got, err)
-	}
-}
-
-func TestCompiledCodecRejectsIllTypedGCConstExpr(t *testing.T) {
-	requireCompleteCore3Backend(t)
-	compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(gcConstExprRootingModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	compiled = mutableCompiledFixture(compiled)
-	compiled.Globals[1].InitExpr = []byte{0xd0, byte(wasm.HeapNone), 0x0b}
-	if _, err := compiled.MarshalBinary(); err == nil {
-		t.Fatal("MarshalBinary accepted ref.null none for a non-null concrete global")
-	}
-
-	compiled, err = NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(gcConstExprRootingModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	compiled = mutableCompiledFixture(compiled)
-	compiled.Globals[1].InitExpr = []byte{0xfb, 0x01, 0x7f, 0x0b}
-	if _, err := compiled.MarshalBinary(); err == nil {
-		t.Fatal("MarshalBinary accepted an out-of-range GC constructor type")
-	}
-
-	data, err := os.ReadFile("testdata/gc_constexpr_element_roots.wasm")
-	if err != nil {
-		t.Fatal(err)
-	}
-	compiled, err = NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	compiled = mutableCompiledFixture(compiled)
-	compiled.Elems[0].Values[0].Expr = []byte{0xd0, byte(wasm.HeapNone), 0x0b}
-	if _, err := compiled.MarshalBinary(); err == nil {
-		t.Fatal("MarshalBinary accepted a null GC element for a non-null concrete element type")
 	}
 }

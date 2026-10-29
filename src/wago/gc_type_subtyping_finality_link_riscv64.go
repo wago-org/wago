@@ -90,7 +90,7 @@ func rv64GCTypeSubtypingFinalityLinkProfileWithCode(c *Compiled, allowUnrestored
 	default:
 		return 0
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil {
 		return 0
 	}
@@ -106,18 +106,4 @@ func rv64GCTypeSubtypingFinalityLink(c *Compiled) bool {
 
 func rv64GCTypeSubtypingFinalityLinkExecutionCode(c *Compiled) bool {
 	return c != nil && (len(c.code) == rv64GCTypeSubtypingFinalityLinkProviderCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingFinalityLinkProviderCodeDigest || len(c.code) == 0)
-}
-
-func railshotRestoreGCTypeSubtypingFinalityLinkArtifact(c *Compiled) {
-	variant := rv64GCTypeSubtypingFinalityLinkProfileWithCode(c, true, true)
-	if variant == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	if variant == 1 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingFinalityLinkProvider
-	} else {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingFinalityLinkConsumer
-	}
 }

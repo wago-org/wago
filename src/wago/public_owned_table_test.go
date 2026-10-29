@@ -74,21 +74,13 @@ func ownedTableTrap(t *testing.T, err error, code coreruntime.TrapCode) *corerun
 
 func TestPublicOwnedTableExactSignatureNullBoundsAndArtifact(t *testing.T) {
 	c := ownedTableCompile(t, publicOwnedTableModule(7, false, 3, 0, 1, 2))
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := Instantiate(loaded)
+
+	in, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if err := loaded.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.Close(); err != nil {

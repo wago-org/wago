@@ -37,7 +37,7 @@ func TestRuntimeCommandsCarryRoutingAndCompilationSurface(t *testing.T) {
 	commands := RuntimeCommands()
 	root := commandRoot(commands)
 	run := root["run"]
-	if run == nil || root["build"] == nil || root["validate"] == nil || root["module"] == nil {
+	if run == nil || root["validate"] == nil || root["module"] == nil {
 		t.Fatalf("runtime commands = %#v", root)
 	}
 	flags := map[string]bool{}
@@ -95,7 +95,7 @@ func TestLooksLikeRuntimeTarget(t *testing.T) {
 	if err := os.WriteFile(file, []byte("wasm"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"module.wasm", "MODULE.WAGO", file} {
+	for _, value := range []string{"module.wasm", file} {
 		if !LooksLikeRuntimeTarget(value) {
 			t.Fatalf("LooksLikeRuntimeTarget(%q) = false", value)
 		}

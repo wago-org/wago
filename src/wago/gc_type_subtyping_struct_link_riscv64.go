@@ -77,7 +77,7 @@ func rv64GCTypeSubtypingStructLinkProfileWithCode(c *Compiled, allowUnrestored, 
 	default:
 		return 0
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil || len(metadata) != rv64GCTypeSubtypingStructLinkMetadataLens[variant-1] || sha256.Sum256(metadata) != rv64GCTypeSubtypingStructLinkMetadataDigests[variant-1] {
 		return 0
 	}
@@ -90,18 +90,4 @@ func rv64GCTypeSubtypingStructLink(c *Compiled) bool {
 
 func rv64GCTypeSubtypingStructLinkExecutionCode(c *Compiled) bool {
 	return c != nil && (len(c.code) == rv64GCTypeSubtypingStructLinkProviderCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingStructLinkProviderCodeDigest || len(c.code) == 0)
-}
-
-func railshotRestoreGCTypeSubtypingStructLinkArtifact(c *Compiled) {
-	variant := rv64GCTypeSubtypingStructLinkProfileWithCode(c, true, true)
-	if variant == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	if variant == 1 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingStructLinkProvider
-	} else {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingStructLinkConsumer
-	}
 }

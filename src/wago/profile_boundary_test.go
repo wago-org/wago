@@ -1,4 +1,4 @@
-//go:build wago_profile && !wago_precompiled
+//go:build wago_profile
 
 package wago
 

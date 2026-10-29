@@ -407,45 +407,6 @@ func TestNativeScalarLeafShortEntrySharingRevokesIsolation(t *testing.T) {
 	}
 }
 
-func TestNativeScalarLeafShortEntryArtifactDropsProof(t *testing.T) {
-	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchReturningImportModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	if !c.boundedNativeScalarLeaf() {
-		t.Fatal("fixture lacks native whole-body proof")
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var decoded Compiled
-	if err = decoded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer decoded.Close()
-	if decoded.boundedNativeScalarLeaf() || decoded.nativeScalarLeafAllowed() || decoded.directPreparedAt(0) || decoded.directPreparedBoundedAt(0) {
-		t.Fatal("artifact retained native admission bits")
-	}
-	in, err := Instantiate(&decoded, InstantiateOptions{Imports: testImports("env.f", nativeLeafIncrement)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	fn, err := in.WasmFunc("g")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fn.isolatedFast || fn.directIntFast {
-		t.Fatal("artifact selected native isolated entry")
-	}
-	got, err := fn.Invoke(41)
-	if err != nil || len(got) != 1 || got[0] != 42 {
-		t.Fatalf("artifact call=%v,%v", got, err)
-	}
-}
-
 func TestNativeScalarLeafBoundedEntryRollback(t *testing.T) {
 	if codeProfileEnabled {
 		t.Skip("profiling retains Go callbacks")

@@ -70,7 +70,7 @@ func rv64ClosedReferenceSource(vector, tails, indexed, nullable bool) []byte {
 }
 
 func TestRV64PublicReferenceFunctionsSourceArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, vector := range []bool{false, true} {
 			for _, tails := range []bool{false, true} {
 				for _, indexed := range []bool{false, true} {
@@ -174,19 +174,11 @@ func TestRV64PublicReferenceFunctionsBaselineAndDestination(t *testing.T) {
 	if c.requiredFeatures != CoreFeatureReferenceTypes || !c.nativeReferenceFunctionABI || c.nativeReferenceControlABI || c.nativeReferenceCallABI {
 		t.Fatal("baseline feature metadata", c.requiredFeatures)
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
+
+	if c.codeCache.sealed || c.codeCache.flags&compiledCacheWritableCode != 0 || c.codeCache.base != 0 {
+		t.Fatal("source compilation did not defer code mapping")
 	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.codeCache.sealed || loaded.codeCache.flags&compiledCacheWritableCode == 0 || loaded.codeCache.base == 0 {
-		t.Fatal("decode did not retain unpublished RW staging")
-	}
-	standalone, err := Instantiate(loaded)
+	standalone, err := Instantiate(c)
 	if err != nil {
 		t.Fatal("public standalone instantiation", err)
 	}
@@ -196,13 +188,13 @@ func TestRV64PublicReferenceFunctionsBaselineAndDestination(t *testing.T) {
 	standalone.Close()
 	ordinary := NewRuntime(WithRuntimeConfig(cfg.WithCoreFeatures(0)))
 	defer ordinary.Close()
-	publicInstance := rv64NativeTokenInstantiate(t, ordinary, loaded, NewImports())
+	publicInstance := rv64NativeTokenInstantiate(t, ordinary, c, NewImports())
 	if got, err := publicInstance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{1}) {
 		t.Fatal("default Runtime reference call", got, err)
 	}
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
-	in := rv64NativeTokenInstantiate(t, rt, loaded, NewImports())
+	in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
 	if in.c.needsFuncRefDescs() || len(in.funcRefDescs) != 0 || rv64TailTargetsArenaBytes(in.c) != 0 {
 		t.Fatal("null-only module acquired indexed arenas", len(in.funcRefDescs))
 	}

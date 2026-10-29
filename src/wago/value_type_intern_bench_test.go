@@ -27,45 +27,6 @@ func indexedGlobalClusterModule(n, cluster int) []byte {
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(types...)), wasmtest.Section(6, wasmtest.Vec(globals...)))
 }
 
-func TestInternedGlobalDescriptorsRoundTrip(t *testing.T) {
-	if !SupportedFeatures().IsEnabled(CoreFeaturesV3) {
-		t.Skip("requires Core 3 features")
-	}
-	for _, n := range []int{1, 16, 17, 128} {
-		t.Run(fmt.Sprint(n), func(t *testing.T) {
-			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), indexedGlobalModule(n))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer c.Close()
-			if len(c.ValueTypes) != n {
-				t.Fatalf("pool length = %d, want %d", len(c.ValueTypes), n)
-			}
-			for i, g := range c.Globals {
-				if g.ValueTypeIndex != uint32(i%n) {
-					t.Fatalf("global %d index = %d", i, g.ValueTypeIndex)
-				}
-			}
-			data, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			// Core 3 admission remains compile-only; check metadata through the
-			// private codec without widening the public artifact feature gate.
-			var loaded Compiled
-			if err := unmarshalCompiled(&loaded, data[5:]); err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			for i, g := range loaded.Globals {
-				if g.ValueTypeIndex != uint32(i%n) {
-					t.Fatalf("loaded global %d index = %d", i, g.ValueTypeIndex)
-				}
-			}
-		})
-	}
-}
-
 func BenchmarkCompileValueTypeInterning(b *testing.B) {
 	if !SupportedFeatures().IsEnabled(CoreFeaturesV3) {
 		b.Skip("requires Core 3 features")

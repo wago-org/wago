@@ -62,7 +62,7 @@ type CodeProfileStatus = jitprofile.Status
 func NewCodeProfile(options CodeProfileOptions) *CodeProfile { return newCodeProfile(options) }
 
 // WithCodeProfile requires a build with -tags=wago_profile and enables code-neutral finalized regions and compiler statistics.
-// The session must outlive capture. Profiling metadata is not serialized in .wago
+// The session must outlive capture. Profiling metadata stays with the compiled module;
 // artifacts; reloaded artifacts report unknown regions until recompiled.
 func (c *RuntimeConfig) WithCodeProfile(session *CodeProfile) *RuntimeConfig {
 	n := *c

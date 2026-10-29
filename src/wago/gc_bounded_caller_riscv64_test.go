@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !wago_precompiled && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -45,7 +45,7 @@ func rv64BoundedCollectorCallerModule() []byte {
 }
 
 func TestRV64BoundedCollectorKeepsOlderCallerRoots(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, host := range []bool{false, true} {
 			name := map[bool]string{false: "source", true: "artifact"}[artifact] + "/" + map[bool]string{false: "native", true: "host-reentry"}[host]
 			t.Run(name, func(t *testing.T) {
@@ -55,18 +55,7 @@ func TestRV64BoundedCollectorKeepsOlderCallerRoots(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer providerCode.Close()
-				if artifact {
-					data, err := providerCode.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					loaded, err := LoadTrustedArtifact(data)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer loaded.Close()
-					providerCode = loaded
-				}
+
 				callerCode, err := cfg.Compile(rv64BoundedCollectorCallerModule())
 				if err != nil {
 					t.Fatal(err)
@@ -229,7 +218,7 @@ func (sink *boundedRootCounter) VisitRootRef(gc.Ref) bool {
 }
 
 func TestRV64BoundedCollectorKeepsConcurrentHostOwners(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			cfg := rv64RootedScalarConfig()
 			providerCode, err := cfg.Compile(rv64PublicGCStructBasicBytes(t))
@@ -237,17 +226,7 @@ func TestRV64BoundedCollectorKeepsConcurrentHostOwners(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer providerCode.Close()
-			if artifact {
-				data, err := providerCode.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				providerCode, err = LoadTrustedArtifact(data)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer providerCode.Close()
-			}
+
 			callerCode, err := cfg.Compile(rv64BoundedCollectorCallerModule())
 			if err != nil {
 				t.Fatal(err)

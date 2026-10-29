@@ -72,7 +72,6 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 		"wago is a pure-Go", // banner
 		"Usage: wago",       // usage line
 		"compile and execute a WebAssembly module", // run
-		"precompile a WebAssembly module",          // build
 		"decode and validate a module",             // validate
 		"github.com/wago-org/wago",                 // footer
 	} {
@@ -82,7 +81,7 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	}
 	// Only runtime-owned commands are listed. Manager commands are deliberately
 	// absent from the runtime CLI.
-	for _, cmd := range []string{"run", "plugin", "module", "build", "validate"} {
+	for _, cmd := range []string{"run", "plugin", "module", "validate"} {
 		if !strings.Contains(text, cmd) {
 			t.Fatalf("usage text missing command %q:\n%s", cmd, text)
 		}
@@ -94,16 +93,6 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	}
 	if strings.Contains(text, "test") {
 		t.Fatalf("usage should no longer mention test:\n%s", text)
-	}
-}
-
-func TestCommandEnvironmentCarriesArtifactCacheIdentity(t *testing.T) {
-	previous := artifactCacheIdentity
-	artifactCacheIdentity = "plugin-build-fingerprint"
-	t.Cleanup(func() { artifactCacheIdentity = previous })
-	cache := (commandEnvironment{}).ArtifactCache()
-	if got := string(cache.Identity); got != artifactCacheIdentity {
-		t.Fatalf("artifact cache identity = %q, want %q", got, artifactCacheIdentity)
 	}
 }
 
@@ -134,7 +123,7 @@ func TestRuntimeCommandSurfaceCoversEveryLeaf(t *testing.T) {
 		}
 	}
 	walk(root, nil)
-	want := "run,plugin list,plugin inspect,module imports,module exports,module capabilities,build,validate"
+	want := "run,plugin list,plugin inspect,module imports,module exports,module capabilities,validate"
 	if jitprofile.Enabled {
 		want += ",profile record,profile top,profile annotate,profile diff,profile timeline"
 	}
@@ -145,7 +134,7 @@ func TestRuntimeCommandSurfaceCoversEveryLeaf(t *testing.T) {
 
 func TestRuntimeHandoffDescriptionMatchesRuntimeSurface(t *testing.T) {
 	described := &command.Cmd{Name: "wago", Children: handoff.RuntimeCommands()}
-	for _, name := range []string{"run", "module", "build", "validate"} {
+	for _, name := range []string{"run", "module", "validate"} {
 		assertRuntimeDescription(t, described.Child(name), root.Child(name), name)
 	}
 }

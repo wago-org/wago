@@ -285,29 +285,6 @@ func BenchmarkGCGeneralArrayLen(b *testing.B) {
 	}
 }
 
-func TestGCGeneralArrayLenCodec(t *testing.T) {
-	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcGeneralArrayLenModule(0x7f))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	loaded := publicArtifactRoundTrip(t, c)
-	defer loaded.Close()
-	in, err := Instantiate(loaded, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("init", 17); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"global", "local", "field", "nested", "cast"} {
-		if got, err := in.Invoke(name); err != nil || len(got) != 1 || got[0] != 17 {
-			t.Fatalf("reloaded %s: %v, %v", name, got, err)
-		}
-	}
-}
-
 func TestGCGeneralArrayLenLiveVectorJoin(t *testing.T) {
 	vector := []byte{0xfd, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	body := append(vector, 0x20, 0, 0x04, 0x40,

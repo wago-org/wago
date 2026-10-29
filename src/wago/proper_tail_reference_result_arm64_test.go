@@ -128,16 +128,8 @@ func TestARM64OrdinaryDynamicCallsUseFuncrefResultRegisterABI(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer compiled.Close()
-		blob, err := compiled.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer loaded.Close()
-		for _, artifact := range []*Compiled{compiled, loaded} {
+
+		for _, artifact := range []*Compiled{compiled} {
 			in, err := instantiateCore(artifact, InstantiateOptions{})
 			if err != nil {
 				t.Fatal(err)

@@ -53,7 +53,7 @@ func TestLinearIntegerTreePublicExecution(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+						for _, compiled := range []*Compiled{c} {
 							in, err := Instantiate(compiled)
 							if err != nil {
 								t.Fatal(err)

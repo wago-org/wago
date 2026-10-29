@@ -7,8 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -26,61 +24,22 @@ func rv64PublicGCTypeSubtypingRuntimeTypedTableCallBytes(t testing.TB) []byte {
 
 func rv64PublicGCTypeSubtypingRuntimeTypedTableCallCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_TYPED_TABLE_CALL_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_TYPED_TABLE_CALL_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-type-subtyping-runtime-typed-table-call.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingRuntimeTypedTableCallBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		original.Close()
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	original.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return loaded
+
+	return original
+
 }
 
 func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRuntimeTypedTableCallCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64ArtifactContractValid(view) || view.validate() != nil {
+			if !rv64SourceContractValid(view) || view.validate() != nil {
 				compiled.Close()
 				t.Fatal("missing public subtype execution contract")
 			}
@@ -145,44 +104,6 @@ func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallExecutionAndArtifact(t *t
 	}
 }
 
-func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_TYPED_TABLE_CALL_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	compiled := rv64PublicGCTypeSubtypingRuntimeTypedTableCallCompile(t, false)
-	defer compiled.Close()
-	base := compiled.executionView()
-	for name, mutate := range map[string]func(*Compiled){
-		"code":       func(v *Compiled) { v.code[len(v.code)-1] ^= 1 },
-		"entry":      func(v *Compiled) { v.Entry[2] += 16; v.InternalEntry[2] += 16 },
-		"function":   func(v *Compiled) { v.Funcs[1].TypeIndex = 1 },
-		"type":       func(v *Compiled) { v.Types[1].Final = true },
-		"type-key":   func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
-		"descriptor": func(v *Compiled) { v.GCTypeDescs[2].HasSuper = false },
-		"table-type": func(v *Compiled) { v.ValueTypes[v.TableValueTypeIndex].Ref.Nullable = false },
-		"element":    func(v *Compiled) { v.Elems[0].Values[1].FuncIndex = 0 },
-		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-		"escape":     func(v *Compiled) { v.dynamicFuncrefEscape = true },
-		"function-abi": func(v *Compiled) {
-			v.nativeReferenceFunctionABI = !v.nativeReferenceFunctionABI
-		},
-		"missing-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(nil) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(base)
-			mutate(candidate)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("hostile retained runtime typed-table mutation admitted", err)
-			}
-			if name == "feature" {
-				rv64RequireRestoredGCFeature(t, candidate)
-			} else {
-				rv64RequireRejectedArtifact(t, candidate)
-			}
-		})
-	}
-}
-
 func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallPublicRuntime(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_TYPED_TABLE_CALL_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
@@ -202,18 +123,5 @@ func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallPublicRuntime(t *testing.
 	}
 	if err != nil {
 		t.Fatal("runtime typed-table call instantiated without private Runtime permission", err)
-	}
-}
-
-func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_TYPED_TABLE_CALL_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingRuntimeTypedTableCallBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free runtime typed-table path used source compilation", err)
 	}
 }

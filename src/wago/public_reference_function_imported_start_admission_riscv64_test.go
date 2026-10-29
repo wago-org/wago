@@ -11,55 +11,6 @@ import (
 	"testing"
 )
 
-func TestRV64PublicReferenceFunctionImportedStartAdmission(t *testing.T) {
-	for _, vector := range []bool{false, true} {
-		c := rv64NativeTailCompile(t, "reference-imported-start-admission", wasmtest.ClosedReferenceImportedStart(vector, true), false)
-		for name, change := range map[string]func(*Compiled){"negative": func(v *Compiled) { v.StartImportIdx = -1 }, "missing": func(v *Compiled) { v.StartImportIdx = 3 }, "nonvoid": func(v *Compiled) { v.StartImportIdx = 0 }, "late-nonvoid": func(v *Compiled) { v.StartImportIdx = 2 }, "local-inactive": func(v *Compiled) { v.StartLocalFunc = 1 }, "no-start-kind": func(v *Compiled) { v.HasStart = false }, "defined-inactive": func(v *Compiled) { v.StartIsImport = false }, "private-import": func(v *Compiled) { v.importFuncSigs[1] = v.Funcs[1] }, "wrong-binding": func(v *Compiled) { v.importFuncSigs[1].TypeIndex = 2 }, "missing-binding": func(v *Compiled) { v.importFuncSigs[1].HasTypeIndex = false }} {
-			t.Run(fmt.Sprintf("vector%t-%s", vector, name), func(t *testing.T) {
-				v := rv64ReferenceStartCopy(c)
-				change(v)
-				if err := v.validate(); err == nil {
-					t.Fatal("malformed imported start admitted")
-				}
-				if name == "local-inactive" || name == "no-start-kind" || name == "defined-inactive" {
-					return
-				}
-				blob, err := marshalCompiled(v)
-				if err != nil {
-					return
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if loaded != nil {
-					loaded.Close()
-				}
-				if err == nil {
-					t.Fatal("malformed imported start artifact loaded")
-				}
-			})
-		}
-		owners := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
-		defer rv64HostCertificateCloseRuntime(t, owners)
-		provider, _, _, im, _ := rv64ReferenceStartProvider(t, owners, false, vector, true, false)
-		calls := 0
-		im.Function("env.calls", "unused.fn", func(v int32) int32 { return v }).Function("env.calls", "finish.fn", func(v int32) int32 { return v }).Function("env.calls", "start.fn", func() { calls++ })
-		roots := provider.referenceLifetime().snapshot().ResourceRoots
-		rt := NewRuntime()
-		mod, err := rt.Module(c)
-		if err != nil {
-			t.Fatal(err)
-		}
-		in, err := rt.Instantiate(context.Background(), mod, WithImports(im))
-		mod.Close()
-		rt.Close()
-		if waitErr := rt.WaitClosed(context.Background()); waitErr != nil {
-			t.Fatal(waitErr)
-		}
-		if in == nil || err != nil || calls != 1 || c.loadCodeCache().refs != 0 || provider.referenceLifetime().snapshot().ResourceRoots != roots {
-			t.Fatal("public imported start or root release", err, calls)
-		}
-	}
-}
-
 func TestRV64PublicReferenceFunctionImportedStartLinkingAndInitializer(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {

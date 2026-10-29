@@ -120,12 +120,3 @@ func rv64GCRefTestAbstract(c *Compiled) bool {
 		c.usesGCStructHelpers() && c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil && c.requiredFeatures == CoreFeatureBulkMemoryOperations|CoreFeatureReferenceTypes|CoreFeatureGC && c.requiredAMD64Features == 0 &&
 		slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry)
 }
-
-func railshotRestoreGCRefTestAbstractArtifact(c *Compiled) {
-	if !rv64GCRefTestAbstract(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructRefTestAbstract
-	c.codeCache.gcArrayProduct = 0
-}

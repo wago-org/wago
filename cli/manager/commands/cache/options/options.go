@@ -9,7 +9,7 @@ type Selection struct {
 
 func Flags() []command.Flag {
 	return []command.Flag{
-		{Name: "downloads", Short: "d", Bool: true, Help: "include downloaded and compiled module cache"},
+		{Name: "downloads", Short: "d", Bool: true, Help: "include downloaded resources and cached files"},
 		{Name: "builds", Short: "b", Bool: true, Help: "include local and global plugin builds"},
 		{Name: "all", Short: "a", Bool: true, Help: "include every regenerable cache"},
 	}

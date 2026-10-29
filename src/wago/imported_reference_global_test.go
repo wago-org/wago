@@ -345,11 +345,7 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 	if got := unsafe.Sizeof(referenceStore{}); got != 120 {
 		t.Fatalf("referenceStore size = %d, want 120 with shared GC domain", got)
 	}
-	c := &Compiled{
-		GlobalImports: []GlobalImportDef{{Module: "env", Name: "ref", Type: ValExternRef}},
-		Globals:       []GlobalDef{{Type: ValExternRef}},
-	}
-	_ = publicArtifactRoundTrip(t, c)
+
 }
 
 func TestRelease2ImportedReferenceGlobalSourceGuard(t *testing.T) {

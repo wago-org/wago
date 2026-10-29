@@ -1,4 +1,4 @@
-//go:build !wago_precompiled
+//go:build !wago_standalone
 
 package standalone
 
@@ -24,20 +24,4 @@ func execute(source []byte, plugins wago.PluginSet, options Options, args []stri
 		return err
 	}
 	return executeModule(runtime, module, options, args)
-}
-
-// CompileArtifact applies the selected plugins and compilation options once and
-// returns the target-specific artifact embedded by standalone builds.
-func CompileArtifact(source []byte, plugins wago.PluginSet, options Options) (artifact []byte, err error) {
-	runtime, err := loadRuntime(plugins, options, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer finishRuntime(runtime, &err)
-	module, err := runtime.Compile(source)
-	if err != nil {
-		return nil, err
-	}
-	defer finishModule(module, &err)
-	return module.Compiled().MarshalBinary()
 }

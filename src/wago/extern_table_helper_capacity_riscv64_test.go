@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled && !wago_guardpage
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_guardpage
 
 package wago
 
@@ -13,7 +13,7 @@ import (
 
 func TestRV64ExternTableInternalHelperCapacity(t *testing.T) {
 	for _, vector := range []bool{false, true} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(fmt.Sprintf("vector%t/artifact%t", vector, artifact), func(t *testing.T) {
 				body := func(code []byte) []byte {
 					if vector {
@@ -38,10 +38,7 @@ func TestRV64ExternTableInternalHelperCapacity(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				if artifact {
-					c = publicArtifactRoundTrip(t, c)
-					defer c.Close()
-				}
+
 				rt := NewRuntime()
 				defer rt.Close()
 				mod, err := rt.Module(c)

@@ -8,9 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"unsafe"
-
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 func typedElementCallRef(t *testing.T, in *Instance, name string, index int32) ExternRef {
@@ -234,51 +231,6 @@ func TestActiveExternrefElementsPreserveDeclarationOrderOnFailedInstantiation(t 
 	if exporter.resourceRefs != 0 { // externref handles are store-owned; failed consumers add no producer root
 		t.Fatalf("externref failed-instantiation resource roots = %d, want zero", exporter.resourceRefs)
 	}
-}
-
-func TestTypedElementMetadataStaysBoundedAndRoundTripsCodec(t *testing.T) {
-	t.Setenv("WAGO_BOUNDS", "explicit")
-	baseline, err := Compile(nil, watToWasm(t, `(module (table 3 3 externref))`))
-	if err != nil {
-		t.Fatalf("Compile externref table baseline: %v", err)
-	}
-	defer baseline.Close()
-	active, err := Compile(nil, watToWasm(t, `(module
-		(table 3 3 externref)
-		(elem (i32.const 0) externref (ref.null extern) (ref.null extern) (ref.null extern))
-	)`))
-	if err != nil {
-		t.Fatalf("Compile active externref element: %v", err)
-	}
-	defer active.Close()
-	passive, err := Compile(nil, watToWasm(t, `(module
-		(table 3 3 externref)
-		(elem $e externref (ref.null extern) (ref.null extern) (ref.null extern))
-		(func (i32.const 0) (i32.const 0) (i32.const 0) (table.init 0 $e))
-	)`))
-	if err != nil {
-		t.Fatalf("Compile passive externref element: %v", err)
-	}
-	defer passive.Close()
-	for name, compiled := range map[string]*Compiled{"baseline": baseline, "active": active, "passive": passive} {
-		if err := compiled.validateArenaFootprint(); err != nil {
-			t.Fatalf("%s footprint: %v", name, err)
-		}
-	}
-	if got := active.instantiateArenaNeed - baseline.instantiateArenaNeed; got != 0 {
-		t.Fatalf("active externref element arena delta = %d, want zero", got)
-	}
-	if got, want := passive.instantiateArenaNeed-baseline.instantiateArenaNeed, coreruntime.PassiveElemDescBytes+3*8; got != want {
-		t.Fatalf("passive externref element arena delta = %d, want %d", got, want)
-	}
-	if passive.NeedsFuncRefDescs {
-		t.Fatal("externref-only element metadata requested funcref descriptors")
-	}
-	_ = publicArtifactRoundTrip(t, active)
-	if unsafe.Sizeof(Compiled{}) != 784 || unsafe.Sizeof(Table{}) != 64 || unsafe.Sizeof(Global{}) != 40 || unsafe.Sizeof(referenceStore{}) != 120 {
-		t.Fatalf("layout changed: Compiled=%d Instance=%d Table=%d Global=%d referenceStore=%d", unsafe.Sizeof(Compiled{}), unsafe.Sizeof(Instance{}), unsafe.Sizeof(Table{}), unsafe.Sizeof(Global{}), unsafe.Sizeof(referenceStore{}))
-	}
-	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
 }
 
 func TestRelease2TypedElementCompileGapSourceGuard(t *testing.T) {

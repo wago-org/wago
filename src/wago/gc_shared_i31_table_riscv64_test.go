@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -23,12 +23,7 @@ func TestRV64SharedI31TableCollectorFreeArtifact(t *testing.T) {
 	for _, codec := range []bool{false, true} {
 		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
 			providerCode, consumerCode := providerBase, consumerBase
-			if codec {
-				providerCode = publicArtifactRoundTrip(t, providerBase)
-				consumerCode = publicArtifactRoundTrip(t, consumerBase)
-				defer providerCode.Close()
-				defer consumerCode.Close()
-			}
+
 			for name, code := range map[string]*Compiled{"provider": providerCode, "consumer": consumerCode} {
 				if code.nativeGCABIRequirement() != 0 || code.genericGCFrameRoots() != nil || code.stagedGCI31Product() != stagedGCI31ProductCore || !rv64GeneralI31Contract(code.executionView()) {
 					t.Fatalf("%s lost collector-free general-i31 contract", name)

@@ -428,7 +428,7 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 // can reach signatures with no local definition, so their frozen type directory
 // contributes too, including currently unused indirect signatures.
 func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, error) {
-	if rv64StructuralCodecMetadata(c) {
+	if rv64StructuralMetadata(c) {
 		// This legacy image declares no executable RV64 ABI. Common codec
 		// validation has checked its stored signatures; native transport sizing
 		// is only needed after execution admission succeeds.

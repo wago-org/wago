@@ -91,17 +91,9 @@ func TestValidatedTypeIndexedControlRequirementsAndArtifact(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer compiled.Close()
-				blob, err := compiled.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer loaded.Close()
-				if compiled.requiredFeatures != CoreFeatureMultiValue || loaded.requiredFeatures != CoreFeatureMultiValue {
-					t.Fatalf("compiled %s, loaded %s: want multi-value", compiled.requiredFeatures, loaded.requiredFeatures)
+
+				if compiled.requiredFeatures != CoreFeatureMultiValue {
+					t.Fatalf("compiled %s, loaded %s: want multi-value", compiled.requiredFeatures, compiled.requiredFeatures)
 				}
 			})
 		}

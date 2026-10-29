@@ -31,7 +31,7 @@ func rv64HostTypedExternResultModule(typ wasm.ValType) []byte {
 	)
 }
 func TestRV64HostTypedExternResultBeforeResume(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, tc := range []struct {
 			name                     string
 			heap                     wasm.AbsHeapType
@@ -51,18 +51,7 @@ func TestRV64HostTypedExternResultBeforeResume(t *testing.T) {
 					t.Fatal(compileErr)
 				}
 				defer c.Close()
-				if artifact {
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					loaded, err := LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer loaded.Close()
-					c = loaded
-				}
+
 				rt := NewRuntime(WithRuntimeConfig(cfg))
 				defer rt.Close()
 				ref := ExternRef{}

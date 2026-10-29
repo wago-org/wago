@@ -120,12 +120,3 @@ func rv64GCExtern(c *Compiled) bool {
 	return productWitness && c.stagedFeatures() == CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.usesGCStructHelpers() && c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil &&
 		c.requiredFeatures == CoreFeatureBulkMemoryOperations|CoreFeatureReferenceTypes|CoreFeatureGC && c.requiredAMD64Features == 0
 }
-
-func railshotRestoreGCExternArtifact(c *Compiled) {
-	if !rv64GCExtern(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructExtern
-	c.codeCache.gcArrayProduct = 0
-}

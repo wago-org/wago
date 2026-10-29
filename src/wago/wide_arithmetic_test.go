@@ -86,16 +86,8 @@ func TestWideArithmeticExecutionAndCodec(t *testing.T) {
 				if !compiled.requiredFeatures.IsEnabled(CoreFeatureWideArithmetic) {
 					t.Fatalf("unrecorded wide arithmetic: %s", compiled.requiredFeatures)
 				}
-				blob, err := compiled.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				var loaded Compiled
-				if err := loaded.UnmarshalBinary(blob); err != nil {
-					t.Fatal(err)
-				}
-				defer loaded.Close()
-				for _, product := range []*Compiled{compiled, &loaded} {
+
+				for _, product := range []*Compiled{compiled} {
 					in, err := Instantiate(product, InstantiateOptions{})
 					if err != nil {
 						t.Fatal(err)

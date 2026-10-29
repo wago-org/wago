@@ -47,8 +47,8 @@ func TestThreadsDefinedSharedMemoryExecutionAndCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	loaded := publicArtifactRoundTrip(t, c)
-	for _, compiled := range []*Compiled{c, loaded} {
+
+	for _, compiled := range []*Compiled{c} {
 		instance, err := Instantiate(compiled, InstantiateOptions{})
 		if err != nil {
 			t.Fatal(err)

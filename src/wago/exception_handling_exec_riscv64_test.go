@@ -77,15 +77,7 @@ func TestRV64ExceptionMixedNullDeclarations(t *testing.T) {
 				if !rv64FreshRootedGC(c) {
 					t.Fatalf("mixed null source lacks exact retained root/type proof: slots=%d owned=%v roots=%+v", c.syncHostSlots, c.needsOwnedExceptionReferences(), c.genericGCFrameRoots())
 				}
-				blob, err := c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				var loaded Compiled
-				if err := loaded.UnmarshalBinary(blob); err != nil {
-					t.Fatal(err)
-				}
-				defer loaded.Close()
+
 				if !globals && !vector {
 					for _, change := range []struct {
 						name   string
@@ -97,10 +89,10 @@ func TestRV64ExceptionMixedNullDeclarations(t *testing.T) {
 						{"context header", func(c *Compiled) { c.needsFuncRefContextHeader = false }},
 					} {
 						t.Run("missing "+change.name, func(t *testing.T) {
-							candidate := cloneCompiledMetadata(&loaded)
-							indexes := compiledCacheIndexes{railshotTail: loaded.loadCompileIndexes().railshotTail}
-							candidate.validateMemo = &validateMemo{gcFrameRoots: loaded.genericGCFrameRoots(), compileIndexes: &indexes}
-							candidate.codeCache = &compiledCodeCache{gcMetadataFlags: loaded.codeCache.gcMetadataFlags}
+							candidate := cloneCompiledMetadata(c)
+							indexes := compiledCacheIndexes{railshotTail: c.loadCompileIndexes().railshotTail}
+							candidate.validateMemo = &validateMemo{gcFrameRoots: c.genericGCFrameRoots(), compileIndexes: &indexes}
+							candidate.codeCache = &compiledCodeCache{gcMetadataFlags: c.codeCache.gcMetadataFlags}
 							change.mutate(candidate)
 							if err := candidate.validate(); err == nil {
 								t.Fatal("incomplete owned EH proof admitted native execution")
@@ -108,7 +100,7 @@ func TestRV64ExceptionMixedNullDeclarations(t *testing.T) {
 						})
 					}
 				}
-				for _, compiled := range []*Compiled{c, &loaded} {
+				for _, compiled := range []*Compiled{c} {
 					in, err := instantiateCore(compiled, InstantiateOptions{})
 					if err != nil {
 						t.Fatal(err)
@@ -150,16 +142,8 @@ func TestRV64ExceptionReturnedValueSurvivesCaptureAndCollection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	for _, compiled := range []*Compiled{c, &loaded} {
+
+	for _, compiled := range []*Compiled{c} {
 		in, err := instantiateCore(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true, StressNurseryBytes: 64}})
 		if err != nil {
 			t.Fatal(err)
@@ -211,16 +195,8 @@ func TestRV64ExceptionStateSurvivesCallsAndCollection(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				blob, err := c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				var loaded Compiled
-				if err := loaded.UnmarshalBinary(blob); err != nil {
-					t.Fatal(err)
-				}
-				defer loaded.Close()
-				for _, compiled := range []*Compiled{c, &loaded} {
+
+				for _, compiled := range []*Compiled{c} {
 					in, err := instantiateCore(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
 					if err != nil {
 						t.Fatal(err)
@@ -260,16 +236,8 @@ func TestRV64ExceptionStateOnlyArtifact(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		var loaded Compiled
-		if err := loaded.UnmarshalBinary(blob); err != nil {
-			t.Fatal(err)
-		}
-		defer loaded.Close()
-		for _, compiled := range []*Compiled{c, &loaded} {
+
+		for _, compiled := range []*Compiled{c} {
 			in, err := instantiateCore(compiled, InstantiateOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -300,16 +268,8 @@ func TestRV64ExceptionCollectorFieldSurvivesCollection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	for _, compiled := range []*Compiled{c, &loaded} {
+
+	for _, compiled := range []*Compiled{c} {
 		in, err := instantiateCore(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
 		if err != nil {
 			t.Fatal(err)
@@ -546,18 +506,11 @@ func TestStagedExceptionHandlingLocalScalarExecution(t *testing.T) {
 	if len(meta.Tags) != 1 || meta.Tags[0].Index != 0 || meta.Tags[0].TypeIndex != 0 || len(meta.Tags[0].Params) != 2 || meta.Tags[0].Params[0] != ValI32 || meta.Tags[0].Params[1] != ValI32 {
 		t.Fatalf("tag metadata = %#v", meta.Tags)
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary staged EH: %v", err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("UnmarshalBinary staged EH: %v", err)
-	}
-	if got := (&Module{c: &loaded}).Metadata().Tags; !reflect.DeepEqual(got, meta.Tags) {
+
+	if got := (&Module{c: c}).Metadata().Tags; !reflect.DeepEqual(got, meta.Tags) {
 		t.Fatalf("reloaded EH tag metadata = %#v, want %#v", got, meta.Tags)
 	}
-	loadedInstance, err := instantiateCore(&loaded, InstantiateOptions{})
+	loadedInstance, err := instantiateCore(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate reloaded EH: %v", err)
 	}
@@ -568,7 +521,6 @@ func TestStagedExceptionHandlingLocalScalarExecution(t *testing.T) {
 		}
 	}
 	_ = loadedInstance.Close()
-	_ = loaded.Close()
 
 	in, err := instantiateCore(c, InstantiateOptions{})
 	if err != nil {
@@ -693,16 +645,8 @@ func TestStagedExceptionReferenceInternalProductCategory(t *testing.T) {
 	if len(meta.Functions) != 1 || !reflect.DeepEqual(meta.Functions[0].Results, []ValType{ValExnRef}) {
 		t.Fatalf("internal exception signature metadata = %#v", meta.Functions)
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal internal exception signature: %v", err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("unmarshal internal exception signature: %v", err)
-	}
-	defer loaded.Close()
-	if got := (&Module{c: &loaded}).Metadata().Functions[0].Results; !reflect.DeepEqual(got, []ValType{ValExnRef}) {
+
+	if got := (&Module{c: c}).Metadata().Functions[0].Results; !reflect.DeepEqual(got, []ValType{ValExnRef}) {
 		t.Fatalf("reloaded exception signature = %v", got)
 	}
 	exported, err := compileStagedExceptionHandlingFeaturesForTest(stagedInternalExceptionSignatureModule(true), true)
@@ -843,16 +787,8 @@ func TestRV64ExceptionCollectorPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := instantiateCore(&loaded, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+
+	in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -872,16 +808,8 @@ func TestRV64ExceptionVectorTagPayload(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x02, 2, 0x1f, 0x40, 1, byte(wasm.CatchTag), 0, 0, 0x20, 0, 0x20, 1, 0x08, 0, 0x0b, 0x00, 0x0b, 0x1a, 0x0b}))))
 	c := compileStagedExceptionHandling(t, data)
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := instantiateCore(&loaded, InstantiateOptions{})
+
+	in, err := instantiateCore(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -898,16 +826,8 @@ func TestRV64ExceptionTaglessNullReference(t *testing.T) {
 	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, byte(wasm.HeapExn), 0x0a, 0x0b}))))
 	c := compileStagedExceptionHandlingFeatures(t, data, true)
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := instantiateCore(&loaded, InstantiateOptions{})
+
+	in, err := instantiateCore(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -989,16 +909,8 @@ func TestRV64ExceptionPlainExternTag(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer source.Close()
-		blob, err := source.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		artifact, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer artifact.Close()
-		for _, c := range []*Compiled{source, artifact} {
+
+		for _, c := range []*Compiled{source} {
 			if c.needsOwnedExceptionReferences() {
 				t.Fatal("plain extern catch selected owned exception storage")
 			}
@@ -1062,19 +974,9 @@ func TestRV64ExceptionImplicitExternStoreBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumerCode.Close()
-	for _, artifact := range []bool{false, true} {
+	for range []bool{false} {
 		c := consumerCode
-		if artifact {
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			c, err = LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer c.Close()
-		}
+
 		rt := NewRuntime(WithRuntimeConfig(cfg))
 		defer rt.Close()
 		ref, err := rt.NewExternRef("implicit extern payload")
@@ -1167,16 +1069,8 @@ func TestRV64ExceptionReferenceControlCarriers(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer source.Close()
-					blob, err := source.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					artifact, err := LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer artifact.Close()
-					for _, c := range []*Compiled{source, artifact} {
+
+					for _, c := range []*Compiled{source} {
 						in, err := instantiateCore(c, InstantiateOptions{})
 						if err != nil {
 							t.Fatal(err)

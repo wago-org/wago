@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_guardpage && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_guardpage
 
 package wago
 

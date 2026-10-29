@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || arm64 || riscv64) && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && (amd64 || arm64 || riscv64) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -101,7 +101,7 @@ func TestGCMemoryFeatureCombinations(t *testing.T) {
 	}{
 		{"memory32", false, false, 2}, {"memory64", true, false, 2}, {"unbounded-memory32", false, false, 0}, {"unbounded-memory64", true, false, 0}, {"large-declared-maximum", false, false, 257}, {"shared-memory32", false, true, 2}, {"memory32-call", false, false, 2}, {"shared-memory32-call", false, true, 2},
 	} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(fmt.Sprintf("%s/artifact%t", tc.name, artifact), func(t *testing.T) {
 				cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 				calls := tc.name == "memory32-call" || tc.name == "shared-memory32-call"
@@ -110,17 +110,7 @@ func TestGCMemoryFeatureCombinations(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				if artifact {
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					c, err = LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer c.Close()
-				}
+
 				rt := NewRuntime(WithRuntimeConfig(cfg))
 				defer rt.Close()
 				mod, err := rt.Module(c)

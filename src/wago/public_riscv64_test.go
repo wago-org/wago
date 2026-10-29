@@ -19,77 +19,6 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func TestRV64PublicArtifactAndLiveOwner(t *testing.T) {
-	c, err := Compile(nil, multiValueControlCallModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	if c.codeCache.base != 0 || len(c.codeCache.mem) != 0 {
-		t.Fatal("deferred compiler published an executable image")
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if blob[5]>>4 != 4 {
-		t.Fatal("missing polling RV64 ABI identity")
-	}
-	if _, err := Load(blob); err == nil {
-		t.Fatal("ordinary Load accepted executable bytes")
-	}
-	for _, arch := range []byte{1, 2, 3} {
-		foreign := slices.Clone(blob)
-		foreign[5] = arch<<4 | foreign[5]&15
-		if _, err := LoadTrustedArtifact(foreign); err == nil || !strings.Contains(err.Error(), "architecture") {
-			t.Fatal("foreign native image admitted", arch, err)
-		}
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := Instantiate(loaded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	if loaded.codeCache.base == 0 {
-		t.Fatal("instantiation did not publish executable code")
-	}
-	if err := loaded.Close(); err != nil {
-		t.Fatal(err)
-	}
-	for _, x := range []uint64{0, 0xfeedface00000000, 1, 0xffffffff00000001} {
-		want := []uint64{7, 9}
-		if uint32(x) != 0 {
-			want = []uint64{18, 19}
-		}
-		got, err := in.Invoke("choose", x)
-		if err != nil || !slices.Equal(got, want) {
-			t.Fatal("live owner after compiled close", x, got, err)
-		}
-	}
-	fn, err := in.WasmFunc("choose")
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := fn.Invoke(1)
-	if err != nil || !slices.Equal(got, []uint64{18, 19}) || fn.directIntFast {
-		t.Fatal("ordinary framed prepared function", got, err, fn.directIntFast)
-	}
-	session, err := fn.OpenSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err = session.Invoke1(0)
-	session.Close()
-	if err != nil || !slices.Equal(got, []uint64{7, 9}) {
-		t.Fatal("ordinary framed prepared session", got, err)
-	}
-}
-
 func TestRV64PublicPassiveDataLifetimeAndBounds(t *testing.T) {
 	c, err := Compile(nil, passiveDataModule())
 	if err != nil {
@@ -142,27 +71,14 @@ func rv64PublicSpinModule() []byte {
 func TestRV64PublicActiveCancellationAndClose(t *testing.T) {
 	previous := runtime.GOMAXPROCS(1)
 	defer runtime.GOMAXPROCS(previous)
-	for _, action := range []string{"cancel", "cancel-loaded", "close"} {
+	for _, action := range []string{"cancel", "close"} {
 		t.Run(action, func(t *testing.T) {
 			c, err := Compile(nil, rv64PublicSpinModule())
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			if action == "cancel-loaded" {
-				blob, err := c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := c.Close(); err != nil {
-					t.Fatal(err)
-				}
-				c, err = LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer c.Close()
-			}
+
 			in, err := Instantiate(c)
 			if err != nil {
 				t.Fatal(err)
@@ -268,16 +184,8 @@ func TestRV64PublicActiveFloatCancellationAndColdReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := Instantiate(loaded)
+
+	in, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}

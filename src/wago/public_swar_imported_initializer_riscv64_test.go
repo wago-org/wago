@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"os"
 	"runtime"
 	"slices"
 	"testing"
@@ -168,47 +167,6 @@ func TestRV64PublicSWARImportedInitializerBounds(t *testing.T) {
 					})
 				}
 			})
-		}
-	}
-}
-
-func TestRV64PublicSWARImportedInitializerArtifacts(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source metadata mutations")
-	}
-	c := rv64TableStageCompile(t, "swar-init-artifact", rv64SWARImportedInitializerModule(false), false)
-	for index, mutate := range []func(*Compiled){
-		func(v *Compiled) { v.Globals[9].InitGlobal = 0 }, func(v *Compiled) { v.Globals[9].InitGlobal = 9 }, func(v *Compiled) { v.Globals[9].InitGlobal = -1 }, func(v *Compiled) { v.GlobalImports[4].Mutable = true; v.Globals[4].Mutable = true }, func(v *Compiled) { v.Globals[9].InitExpr = []byte{0x23, 4, 0x0b} }, func(v *Compiled) { v.Data[0].Offset.Global = 4 }, func(v *Compiled) { v.Data[0].Offset.Global = 5 }, func(v *Compiled) { v.Data[0].Offset.Expr = []byte{0x23, 0, 0x0b} },
-	} {
-		v := *c.executionView()
-		v.Globals = slices.Clone(v.Globals)
-		v.GlobalImports = slices.Clone(v.GlobalImports)
-		v.Data = slices.Clone(v.Data)
-		mutate(&v)
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("invalid SWAR initializer artifact admitted")
-		}
-		blob, err := marshalCompiled(&v)
-		if err != nil {
-			continue
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err == nil && index == 4 {
-			// The codec encodes HasInitGlobal as a single tag and omits the
-			// conflicting expression; verify the normalized supported shape.
-			repaired := loaded.executionView()
-			if err := railshotValidateCompiled(repaired); err != nil || !repaired.Globals[9].HasInitGlobal || repaired.Globals[9].InitGlobal != 4 || len(repaired.Globals[9].InitExpr) != 0 {
-				loaded.Close()
-				t.Fatal("codec did not normalize copied-global metadata", err)
-			}
-			loaded.Close()
-			continue
-		}
-		if loaded != nil {
-			loaded.Close()
-		}
-		if err == nil {
-			t.Fatal("invalid SWAR initializer loaded", index)
 		}
 	}
 }

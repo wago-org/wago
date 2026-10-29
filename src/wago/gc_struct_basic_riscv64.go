@@ -97,10 +97,3 @@ func rv64GCStructBasicMetadata(c *Compiled, requireInitializers bool) bool {
 }
 
 func rv64GCStructBasic(c *Compiled) bool { return rv64GCStructBasicMetadata(c, true) }
-
-func railshotRestoreGCStructBasicArtifact(c *Compiled) {
-	if !rv64GCStructBasicMetadata(c, false) {
-		return
-	}
-	c.memoryDir.gcStructGlobals = []gcStructGlobalInit{{GlobalIndex: 0, TypeID: 0, FieldCount: 3, Bits: []uint64{1065353216, 1073741824, 1077936128}}, {GlobalIndex: 1, TypeID: 0, FieldCount: 3, Default: true}}
-}

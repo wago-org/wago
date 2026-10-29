@@ -2,6 +2,5 @@
 
 package wago
 
-func rv64GCArrayPackedData(*Compiled) bool               { return false }
-func rv64GCArrayPackedDataExecutionCode(*Compiled) bool  { return false }
-func railshotRestoreGCArrayPackedDataArtifact(*Compiled) {}
+func rv64GCArrayPackedData(*Compiled) bool              { return false }
+func rv64GCArrayPackedDataExecutionCode(*Compiled) bool { return false }

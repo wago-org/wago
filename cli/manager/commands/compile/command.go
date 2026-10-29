@@ -37,7 +37,7 @@ func Command(environment Environment) *command.Cmd {
 		{Name: "global", Short: "g", Bool: true, Help: "include shared user-wide plugins"},
 		{Name: "local", Bool: true, Help: "include this project's plugins"},
 		{Name: "bare", Bool: true, Help: "build without plugins"},
-		{Name: "tinygo", Bool: true, Help: "build a small TinyGo executable with precompiled Wasm code"},
+		{Name: "tinygo", Bool: true, Help: "build a standalone executable using TinyGo"},
 		{Name: "verbose", Short: "v", Bool: true, Help: "show Go build output"},
 	}
 	parserFlags := append(append([]command.Flag(nil), flags...), knobs...)
@@ -51,11 +51,10 @@ func Command(environment Environment) *command.Cmd {
 		Normalize: func(args []string) ([]string, error) {
 			return internalparallel.NormalizeArgs(args, parserFlags, false)
 		},
-		Long: "The executable embeds precompiled machine code, the runtime, and selected plugin configuration. By default it\n" +
+		Long: "The executable contains ahead-of-time machine code, the runtime, and selected plugins. It omits the compiler and by default\n" +
 			"calls _start, then main, then the sole exported function; use --invoke to select\n" +
 			"another export. --tinygo uses TinyGo for the final runtime link. Core features,\n" +
-			"parallelism, and optimization knobs are fixed at build time. Because the machine code\n" +
-			"is generated before linking, --target must match the current platform.",
+			"parallelism, and optimization knobs are fixed at build time. --target must match the current platform.",
 		Run: func(context *command.Ctx) {
 			if len(context.Args) != 1 {
 				ui.Usage("compile: need exactly one <file>")

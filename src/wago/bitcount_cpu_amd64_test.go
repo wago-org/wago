@@ -3,9 +3,7 @@
 package wago
 
 import (
-	"bytes"
 	"math/bits"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -107,116 +105,6 @@ func TestAMD64BitCountPaths(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestAMD64BitCountArtifactRequirements(t *testing.T) {
-	mockAMD64ArtifactCPU(t, shared.AMD64BitCountRequirements(shared.BitCountLZCNT|shared.BitCountTZCNT|shared.BitCountPOPCNT))
-	actual := bitCountHostFeaturesSupported
-	defer func() { bitCountHostFeaturesSupported = actual }()
-	for _, tc := range []struct {
-		name    string
-		op      byte
-		feature uint8
-		width   wasm.ValType
-	}{
-		{"clz", 0x67, shared.BitCountLZCNT, wasm.I32},
-		{"ctz", 0x7a, shared.BitCountTZCNT, wasm.I64},
-		{"popcnt", 0x69, shared.BitCountPOPCNT, wasm.I32},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, mask := range []uint8{0, tc.feature} {
-				mask = selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(mask)).BitCountCapabilities()
-				bitCountHostFeaturesSupported = func() uint8 { return mask }
-				compiled, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).Compile(bitCountModule(tc.op, tc.width))
-				if err != nil {
-					t.Fatal(err)
-				}
-				if compiled.requiredAMD64Features.BitCountCapabilities() != mask {
-					t.Fatalf("compiled requirements = %#x, want %#x", compiled.requiredAMD64Features.BitCountCapabilities(), mask)
-				}
-				blob, err := compiled.MarshalBinary()
-				compiled.Close()
-				if err != nil {
-					t.Fatal(err)
-				}
-				bitCountHostFeaturesSupported = func() uint8 { return 0 }
-				var loaded Compiled
-				err = loaded.UnmarshalBinary(blob)
-				if mask != 0 {
-					if err == nil || !strings.Contains(err.Error(), "bit-count") {
-						t.Fatalf("native artifact on old host: %v", err)
-					}
-				} else {
-					if err != nil {
-						t.Fatal(err)
-					}
-					if loaded.requiredAMD64Features.BitCountCapabilities() != 0 {
-						t.Fatal("fallback artifact acquired a CPU requirement")
-					}
-					loaded.Close()
-				}
-				bitCountHostFeaturesSupported = func() uint8 { return mask }
-				var roundtrip Compiled
-				if err := roundtrip.UnmarshalBinary(blob); err != nil {
-					t.Fatal(err)
-				}
-				if roundtrip.requiredAMD64Features.BitCountCapabilities() != mask {
-					t.Fatalf("roundtrip requirements = %#x", roundtrip.requiredAMD64Features.BitCountCapabilities())
-				}
-				roundtrip.Close()
-			}
-		})
-	}
-	bitCountHostFeaturesSupported = func() uint8 { return 0 }
-	plain, err := Compile(nil, bitCountModule(0x67, wasm.I32))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer plain.Close()
-	if bytes.Contains(plain.code, []byte{0xf3, 0x0f, 0xbd}) {
-		t.Fatal("fallback contains LZCNT")
-	}
-}
-
-func TestAMD64BitCountParallelArtifactUnion(t *testing.T) {
-	mockAMD64ArtifactCPU(t, shared.AMD64BitCountRequirements(shared.BitCountLZCNT|shared.BitCountTZCNT|shared.BitCountPOPCNT))
-	actual := bitCountHostFeaturesSupported
-	defer func() { bitCountHostFeaturesSupported = actual }()
-	all := selectedAMD64CompileFeatures(shared.AMD64BitCountRequirements(shared.BitCountLZCNT | shared.BitCountTZCNT | shared.BitCountPOPCNT)).BitCountCapabilities()
-	bitCountHostFeaturesSupported = func() uint8 { return all }
-	module := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("clz", 0, 0), wasmtest.ExportEntry("ctz", 0, 1), wasmtest.ExportEntry("popcnt", 0, 2))),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x20, 0x00, 0x67, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0x00, 0x68, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0x00, 0x69, 0x0b}),
-		)),
-	)
-	compiled, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(3).Compile(module)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	if compiled.requiredAMD64Features.BitCountCapabilities() != all {
-		t.Fatalf("parallel requirements = %#x, want %#x", compiled.requiredAMD64Features.BitCountCapabilities(), all)
-	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	bitCountHostFeaturesSupported = func() uint8 { return all &^ shared.BitCountTZCNT }
-	var loaded Compiled
-	err = loaded.UnmarshalBinary(blob)
-	if all == 0 {
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded.Close()
-	} else if err == nil || !strings.Contains(err.Error(), "bit-count") {
-		t.Fatalf("partially capable host loaded artifact: %v", err)
 	}
 }
 

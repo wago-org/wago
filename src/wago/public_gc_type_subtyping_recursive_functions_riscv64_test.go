@@ -6,10 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 )
 
@@ -41,63 +38,24 @@ func rv64PublicGCTypeSubtypingRecursiveFunctionsBytes(t testing.TB, variant uint
 
 func rv64PublicGCTypeSubtypingRecursiveFunctionsCompile(t *testing.T, variant uint8, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RECURSIVE_FUNCTIONS_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RECURSIVE_FUNCTIONS_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-type-subtyping-recursive-functions-"+strconv.Itoa(int(variant))+".wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingRecursiveFunctionsBytes(t, variant))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		original.Close()
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	original.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return loaded
+
+	return original
+
 }
 
 func TestRV64PublicGCTypeSubtypingRecursiveFunctionsExecutionAndArtifact(t *testing.T) {
 	for variant := uint8(1); int(variant) <= len(rv64PublicGCTypeSubtypingRecursiveFunctionsHex); variant++ {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(strconv.Itoa(int(variant))+map[bool]string{false: "/source", true: "/artifact"}[artifact], func(t *testing.T) {
 				compiled := rv64PublicGCTypeSubtypingRecursiveFunctionsCompile(t, variant, artifact)
 				t.Cleanup(func() { _ = compiled.Close() })
 				view := compiled.executionView()
-				if !rv64ArtifactContractValid(view) || view.validate() != nil {
+				if !rv64SourceContractValid(view) || view.validate() != nil {
 					t.Fatal("invalid public recursive-function execution contract")
 				}
 				cache := compiled.loadCodeCache()
@@ -146,58 +104,6 @@ func TestRV64PublicGCTypeSubtypingRecursiveFunctionsExecutionAndArtifact(t *test
 					t.Fatalf("recursive-function executable mapping survived final close: base=%#x mem=%d refs=%d closed=%t", cache.base, len(cache.mem), cache.refs, cache.closed)
 				}
 			})
-		}
-	}
-}
-
-func TestRV64PublicGCTypeSubtypingRecursiveFunctionsAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RECURSIVE_FUNCTIONS_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	for variant := uint8(1); int(variant) <= len(rv64PublicGCTypeSubtypingRecursiveFunctionsHex); variant++ {
-		compiled := rv64PublicGCTypeSubtypingRecursiveFunctionsCompile(t, variant, false)
-		base := compiled.executionView()
-		for name, mutate := range map[string]func(*Compiled){
-			"code":       func(v *Compiled) { v.code[len(v.code)-1] ^= 1 },
-			"entry":      func(v *Compiled) { v.Entry[2] += 16; v.InternalEntry[2] += 16 },
-			"function":   func(v *Compiled) { v.Funcs[1].TypeIndex = 0 },
-			"type":       func(v *Compiled) { v.Types[0].Final = true },
-			"type-key":   func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
-			"descriptor": func(v *Compiled) { v.GCTypeDescs[0].Final = true },
-			"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-			"function-abi": func(v *Compiled) {
-				v.nativeReferenceFunctionABI = !v.nativeReferenceFunctionABI
-			},
-			"invalid-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
-		} {
-			t.Run(strconv.Itoa(int(variant))+"/"+name, func(t *testing.T) {
-				candidate := rv64ReferenceStartCopy(base)
-				mutate(candidate)
-				if err := candidate.validate(); err == nil {
-					t.Fatal("hostile retained recursive-function mutation admitted")
-				}
-				if name == "feature" {
-					rv64RequireRestoredGCFeature(t, candidate)
-					return
-				}
-				rv64RequireRejectedArtifact(t, candidate)
-			})
-		}
-		compiled.Close()
-	}
-}
-
-func TestRV64PublicGCTypeSubtypingRecursiveFunctionsCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RECURSIVE_FUNCTIONS_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	for variant := uint8(1); int(variant) <= len(rv64PublicGCTypeSubtypingRecursiveFunctionsHex); variant++ {
-		c, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingRecursiveFunctionsBytes(t, variant))
-		if c != nil {
-			_ = c.Close()
-		}
-		if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-			t.Fatal("compiler-free recursive-function path used source compilation", variant, err)
 		}
 	}
 }

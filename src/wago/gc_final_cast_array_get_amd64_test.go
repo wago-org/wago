@@ -26,19 +26,8 @@ func finalCastArrayCompiled(tb testing.TB, codec bool) *Compiled {
 	if err != nil {
 		tb.Fatal(err)
 	}
-	if codec {
-		blob, err := c.MarshalBinary()
-		c.Close()
-		if err != nil {
-			tb.Fatal(err)
-		}
-		c = &Compiled{}
-		if err = c.UnmarshalBinary(blob); err != nil {
-			tb.Fatal(err)
-		}
-	}
-	tb.Cleanup(func() { c.Close() })
 	return c
+
 }
 
 func TestGCFinalCastArrayGet(t *testing.T) {

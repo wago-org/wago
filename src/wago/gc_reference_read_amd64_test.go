@@ -69,8 +69,7 @@ func TestGCReferenceReadRootsAcrossCollectionAndCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
-	defer loaded.Close()
+
 	profiles := []struct {
 		name string
 		cfg  GCConfig
@@ -81,7 +80,7 @@ func TestGCReferenceReadRootsAcrossCollectionAndCodec(t *testing.T) {
 	for _, artifact := range []struct {
 		name string
 		code *Compiled
-	}{{"fresh", compiled}, {"codec", loaded}} {
+	}{{"fresh", compiled}, {"codec", compiled}} {
 		for _, profile := range profiles {
 			t.Run(artifact.name+"/"+profile.name, func(t *testing.T) {
 				in, err := Instantiate(artifact.code, InstantiateOptions{GC: profile.cfg})
@@ -122,9 +121,8 @@ func TestGCReferenceReadRejectsInvalidParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
-	defer loaded.Close()
-	for _, artifact := range []*Compiled{compiled, loaded} {
+
+	for _, artifact := range []*Compiled{compiled} {
 		in, err := Instantiate(artifact, InstantiateOptions{GC: GCConfig{VerifyAfterCollect: true}})
 		if err != nil {
 			t.Fatal(err)

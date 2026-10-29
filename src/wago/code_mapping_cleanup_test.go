@@ -103,21 +103,6 @@ func TestCompiledFailedPrivateReleaseTransfersOwnership(t *testing.T) {
 	}
 }
 
-func TestCompiledReplaceFailurePreservesOldOwner(t *testing.T) {
-	c, _, _ := cleanupMappingFixture(t)
-	c.codeCache.mem = cleanupMapping(t)
-	c.validateMemo.hostThunks[0].mem = cleanupMapping(t)
-	if err := c.replaceDecoded(Compiled{}, 0); err == nil {
-		t.Fatal("replacement ignored failed release")
-	}
-	if !c.codeCache.closed || c.codeCache.mem == nil || c.validateMemo.hostThunks[0].mem == nil {
-		t.Fatal("replacement lost failed cleanup owner")
-	}
-	if err := c.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestThunkPublicationFailuresKeepOwners(t *testing.T) {
 	for _, private := range []bool{false, true} {
 		name := "shared"

@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -20,51 +19,14 @@ const rv64OfficialObjectRefEqHex = "0061736d0100000001af808080000950005f0050005f
 
 func rv64I31RefEqPilotCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_I31_REF_EQ_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_I31_REF_EQ_ARTIFACT_MODE")
-	path := filepath.Join(dir, "i31-ref-eq-pilot.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = loaded.Close() })
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(stagedGCI31RefEqPilotBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = original.Close() })
 	c := original
-	if artifact || mode == "prepare" {
-		blob, err := original.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err = os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err = os.WriteFile(path, blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = loaded.Close() })
-			c = loaded
-		}
-	}
+
 	return c
 }
 
@@ -74,7 +36,7 @@ func TestRV64PublicI31RefEqPilotExecutionAndArtifact(t *testing.T) {
 	if len(data) != 128 || sha256.Sum256(data) != wantSource {
 		t.Fatal("i31 ref.eq pilot source identity changed")
 	}
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			c := rv64I31RefEqPilotCompile(t, artifact)
 			view := c.executionView()
@@ -113,38 +75,9 @@ func TestRV64PublicI31RefEqPilotExecutionAndArtifact(t *testing.T) {
 	}
 }
 
-func TestRV64PublicI31RefEqPilotCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_I31_REF_EQ_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(stagedGCI31RefEqPilotBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free i31 ref.eq path used source compilation", err)
-	}
-}
-
 func rv64OfficialGCRefEqCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_REF_EQ_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_REF_EQ_ARTIFACT_MODE")
-	path := filepath.Join(dir, "official-gc-ref-eq.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = loaded.Close() })
-		return loaded
-	}
+
 	data, err := hex.DecodeString(rv64OfficialObjectRefEqHex)
 	if err != nil {
 		t.Fatal(err)
@@ -155,33 +88,12 @@ func rv64OfficialGCRefEqCompile(t *testing.T, artifact bool) *Compiled {
 	}
 	t.Cleanup(func() { _ = original.Close() })
 	c := original
-	if artifact || mode == "prepare" {
-		blob, err := original.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err = os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err = os.WriteFile(path, blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = loaded.Close() })
-			c = loaded
-		}
-	}
+
 	return c
 }
 
 func TestRV64PublicOfficialGCRefEqExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64OfficialGCRefEqCompile(t, artifact)
 			view := compiled.executionView()
@@ -235,23 +147,6 @@ func TestRV64PublicOfficialGCRefEqExecutionAndArtifact(t *testing.T) {
 				})
 			}
 		})
-	}
-}
-
-func TestRV64PublicOfficialGCRefEqCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_REF_EQ_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	data, err := hex.DecodeString(rv64OfficialObjectRefEqHex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, err := rv64I31Config().Compile(data)
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free allocating gc/ref.eq path used source compilation", err)
 	}
 }
 

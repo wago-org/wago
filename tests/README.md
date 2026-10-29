@@ -71,32 +71,15 @@ requires zero module or assertion gaps. Core 1 discovers every top-level pinned
 Core 2 and Core 3 use the full discovered suites. Do not set `WAGO_SPEC_FILES`
 when collecting a full-suite result.
 
-The public CI command runs ordinary and register-checking builds, then prepares
-and loads the RV64 artifacts in a compiler-free executable. The `artifacts`
-command runs the prepare/load checks without the wider public API set. QEMU uses
-a 15-minute default per-command timeout; native CI timeouts stay unchanged.
+The public CI command runs source compilation, execution, and ownership checks
+in ordinary and register-checking builds. Native RISE qualification separates
+these public lanes, guard-page lanes, and a core backend/runtime/CLI lane. Each
+job has a 90-minute timeout and the native matrix runs at most two jobs at once.
+The final `JIT / native Linux RISC-V64` check requires every lane to pass.
 
-Native RISE qualification gives each large Wago test build its own 90-minute
-job: ordinary and checked public preparation, ordinary and checked compiler-free
-loading, and ordinary and checked guard-page checks. A separate core job runs
-backend/runtime and CLI qualification. The final `JIT / native Linux RISC-V64`
-check requires all lanes to pass; cancellation or a skipped prerequisite fails
-that check visibly. Each native matrix runs at most two jobs in parallel.
-
-The script's default still runs all checks in one local invocation. CI selects
-one build with `WAGO_RV64_CI_CHECK=ordinary` or `checked` (default `all`). For
-`public` or `artifacts`, `WAGO_RV64_CI_PHASE=prepare` writes the guest artifacts
-and `load` uses a separate `wago_precompiled` executable. Split phases require
-`WAGO_RV64_CI_ARTIFACT_DIR`; that directory stays available after the command.
-Transfer its full contents, including the `ordinary` or `checked` subdirectory,
-before running the loader with the same check selection. The workflow uses
-same-run, per-check artifacts for that handoff. The default `all` phase uses and
-cleans a private temporary directory as before.
-
-Run `python3 tests/scripts/ci-riscv64.py` to check command coverage, artifact
-transfer, and error propagation without a native runner. `just test ci-smoke`
-includes this check. It also executes the workflow's final status gate for
-success, failure, cancellation, and skipped results.
+Select one build with `WAGO_RV64_CI_CHECK=ordinary` or `checked` (default `all`).
+Run `python3 tests/scripts/ci-riscv64.py` to check lane coverage and failure
+propagation without a native runner; `just test ci-smoke` includes this check.
 
 Record the commit, local diff, tool versions, corpus pins, test tags, raw test
 output, failures, and skips for each result. Keep captures in `.validation/`.
@@ -106,7 +89,7 @@ runtime performance and cache behavior. `scripts/ci-riscv64.sh` still requires
 a native RV64 host unless the QEMU runner is selected explicitly.
 
 Full support requires the ordinary Linux/RV64 build, public Wago APIs, all pinned
-Core 1/2/3 tests, and runtime and artifact tests to pass. Valid feature
+Core 1/2/3 tests, and runtime tests to pass. Valid feature
 combinations must execute; rejection tests alone do not establish support. The
 `smoke`, `supported`, `guards`, `public`, and `artifacts` CI modes define the
 runtime acceptance set. Each full spec run requires zero module and assertion
@@ -654,17 +637,6 @@ and 18 invalid binaries. Exhaustion requires the exact typed stack-fence trap
 and no results; interruption and timeout cannot pass. Each activation uses a
 512 KiB native stack. The call corpus has a 307-page live-memory quota, reapplied
 on artifact instantiation; factorial admits no memory.
-
-For actual compiler-free execution, run
-`TestRV64PublicPinnedCallSpecPreparedArtifacts` with
-`WAGO_RV64_CALL_STAGE_ARTIFACT_MODE=prepare` in the compiler-enabled binary and
-`WAGO_RV64_CALL_STAGE_ARTIFACT_DIR` naming a fresh directory. Run the same test
-with mode `load` in a binary additionally built with `wago_precompiled`.
-Keep both fixture variables set. Artifacts are digest-bound to their source and
-fixture manifests; load mode rejects a compiler-enabled binary. These execution
-runs report the 18 source-invalid commands as requiring separate source
-validation, never as compiler-free validation passes. QEMU qualification proves
-correctness only, not native cache behavior or performance.
 
 ## Indexed vector loads in the AMD64 allocation checker
 

@@ -137,62 +137,6 @@ func TestRV64PublicBodyReferencesWithoutState(t *testing.T) {
 	}
 }
 
-func TestRV64PublicBodyReferenceAdmission(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source and metadata admission")
-	}
-	for _, vector := range []bool{false, true} {
-		source := rv64BodyReferenceModule(vector, false)
-		c := rv64TableStageCompile(t, fmt.Sprintf("ref-body-vector%t-local", vector), source, false)
-		for name, mutate := range map[string]func(*Compiled){
-			"key-count": func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:len(v.FuncTypeID)-1] },
-			"key":       func(v *Compiled) { v.FuncTypeID = slices.Clone(v.FuncTypeID); v.FuncTypeID[0] ^= 1 },
-			"context":   func(v *Compiled) { v.nativeTableContextABI = false },
-			"reference": func(v *Compiled) { v.nativeTableReferenceABI = false },
-			"frame":     func(v *Compiled) { v.registerABIDisabled = false },
-			"feature":   func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-			"table":     func(v *Compiled) { v.TableSize = 1 },
-		} {
-			copy := *c.executionView()
-			mutate(&copy)
-			if err := railshotValidateCompiled(&copy); err == nil {
-				t.Fatal("invalid descriptor metadata admitted", vector, name)
-			}
-			if name != "table" { // Absent-table fields are not serialized.
-				blob, err := marshalCompiled(&copy)
-				if err == nil {
-					loaded, err := LoadTrustedArtifact(blob)
-					if loaded != nil {
-						loaded.Close()
-					}
-					if err == nil {
-						t.Fatal("invalid descriptor artifact admitted", vector, name)
-					}
-				}
-			}
-		}
-		for name, candidate := range map[string][]byte{
-			"undeclared":        rv64ReplaceTableStageSection(t, source, 7, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("carrier", 0, 1)))),
-			"dead-out-of-range": rv64ReplaceTableStageSection(t, source, 10, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0xd2, 3, 0x1a, 0x0b}), wasmtest.Code([]byte{0x41, 0, 0x0b}), wasmtest.Code([]byte{0x41, 0, 0x0b})))),
-		} {
-			v, err := Compile(NewRuntimeConfig(), candidate)
-			if v != nil {
-				v.Close()
-			}
-			if v != nil || err == nil {
-				t.Fatal("invalid source admitted", name, err)
-			}
-		}
-		v, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false), source)
-		if v != nil {
-			v.Close()
-		}
-		if v != nil || err == nil {
-			t.Fatal("disabled feature admitted", err)
-		}
-	}
-}
-
 func TestRV64PublicBodyReferenceMissingDirectoryTraps(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 		t.Skip("trusted metadata mutation")

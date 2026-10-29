@@ -73,22 +73,12 @@ func TestCompiledOffsetExpressionScopeValidation(t *testing.T) {
 }
 
 func TestActiveOffsetsUseLocalImmutableGlobals(t *testing.T) {
-	t.Run("data add sub mul and codec", func(t *testing.T) {
+	t.Run("data add sub mul", func(t *testing.T) {
 		compiled, err := Compile(nil, localGlobalDataOffsetModule())
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !guardPageBuilt {
-			blob, err := compiled.MarshalBinary()
-			compiled.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
-			compiled, err = LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
+
 		defer compiled.Close()
 		in, err := Instantiate(compiled, nil)
 		if err != nil {

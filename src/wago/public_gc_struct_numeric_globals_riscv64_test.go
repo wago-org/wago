@@ -6,9 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"os"
-	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -28,52 +25,15 @@ func rv64PublicGCStructNumericGlobalsBytes(t testing.TB) []byte {
 
 func rv64PublicGCStructNumericGlobalsCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_STRUCT_NUMERIC_GLOBALS_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_STRUCT_NUMERIC_GLOBALS_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-struct-numeric-globals.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = loaded.Close() })
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCStructNumericGlobalsBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = original.Close() })
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = loaded.Close() })
-	return loaded
+
+	return original
+
 }
 
 func TestRV64PublicGCStructNumericGlobalsExecutionAndArtifact(t *testing.T) {
@@ -86,7 +46,7 @@ func TestRV64PublicGCStructNumericGlobalsExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCStructNumericGlobalsCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64ArtifactContractValid(view) || err != nil {
+			if err := railshotValidateCompiled(view); !rv64SourceContractValid(view) || err != nil {
 				t.Fatalf("missing exact numeric struct globals witness: validation=%v product=%v staged=%v required=%v code=%d entries=%v/%v globals=%+v types=%+v descs=%+v flags=%t/%t/%t/%t/%t", err, view.stagedGCStructProduct(), view.stagedFeatures(), view.requiredFeatures, len(view.code), view.Entry, view.InternalEntry, view.Globals, view.Types, view.GCTypeDescs, view.nativeContextTrapABI, view.nativeTableContextABI, view.nativeTableReferenceABI, view.registerABIDisabled, view.needsFuncRefContextHeader)
 			}
 			for _, profile := range []struct {
@@ -176,63 +136,5 @@ func TestRV64PublicGCStructNumericGlobalsExecutionAndArtifact(t *testing.T) {
 				})
 			}
 		})
-	}
-}
-
-func TestRV64PublicGCStructNumericGlobalsAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_STRUCT_NUMERIC_GLOBALS_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	base := rv64PublicGCStructNumericGlobalsCompile(t, false).executionView()
-	for name, mutate := range map[string]func(*Compiled){
-		"entry":          func(v *Compiled) { v.Entry = []int{0}; v.InternalEntry = []int{0} },
-		"type-field":     func(v *Compiled) { v.Types[0].Fields[1].Mutable = false },
-		"descriptor":     func(v *Compiled) { v.GCTypeDescs[0].Fields[1].Offset++ },
-		"global":         func(v *Compiled) { v.Globals[1].ValueTypeIndex++ },
-		"initializer":    func(v *Compiled) { v.Globals[1].InitExpr = []byte{0xff, 0x0b} },
-		"global-export":  func(v *Compiled) { delete(v.GlobalExports, "g0"); v.GlobalExports["global"] = 0 },
-		"feature":        func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-		"inactive-start": func(v *Compiled) { v.StartLocalFunc = 1 },
-		"extra-table": func(v *Compiled) {
-			v.HasTable = true
-			v.extraTables = []tableDef{{}}
-			v.tableExports = map[string]int{"bad": 9}
-		},
-		"table-export": func(v *Compiled) { v.tableExports = map[string]int{"table": 0} },
-		"table-init":   func(v *Compiled) { v.HasTableInitFunc = true; v.HasTable = true },
-		"compact-data": func(v *Compiled) { v.compactData = &compactActiveData{}; v.HasStart = true },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(base)
-			if base.memoryDir != nil {
-				d := *base.memoryDir
-				d.gcStructGlobals = slices.Clone(base.memoryDir.gcStructGlobals)
-				for i := range d.gcStructGlobals {
-					d.gcStructGlobals[i].Bits = slices.Clone(d.gcStructGlobals[i].Bits)
-				}
-				candidate.memoryDir = &d
-			}
-			mutate(candidate)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("hostile numeric struct globals mutation admitted")
-			}
-			if name == "inactive-start" || name == "compact-data" {
-				return // Writers canonicalize these inactive fields.
-			}
-			rv64RequireRejectedArtifact(t, candidate)
-		})
-	}
-}
-
-func TestRV64PublicGCStructNumericGlobalsCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_STRUCT_NUMERIC_GLOBALS_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(rv64PublicGCStructNumericGlobalsBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free numeric struct globals path used source compilation", err)
 	}
 }

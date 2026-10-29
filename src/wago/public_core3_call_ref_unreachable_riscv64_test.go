@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -57,58 +55,21 @@ func rv64Core3CallRefSource(t *testing.T, fixture rv64Core3CallRefFixture) []byt
 
 func rv64Core3CallRefCompile(t *testing.T, fixture rv64Core3CallRefFixture, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_MODE")
-	path := filepath.Join(dir, fixture.name+".wago")
-	if mode == "load" {
-		if !artifact {
-			t.Fatal("compiler-free runner selected source case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = c.Close() })
-		return c
-	}
+
 	c, err := rv64NativeTailConfig().Compile(rv64Core3CallRefSource(t, fixture))
 	if err != nil {
 		t.Fatal(err)
 	}
 	sourceCompiled := c
 	t.Cleanup(func() { _ = sourceCompiled.Close() })
-	if artifact || mode == "prepare" {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err := os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(path, blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = loaded.Close() })
-			c = loaded
-		}
-	}
+
 	return c
 }
 
 func TestRV64Core3CallRefUnreachableExecutionAndArtifact(t *testing.T) {
 	for _, fixture := range rv64Core3CallRefUnreachableFixtures {
 		fixture := fixture
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(fmt.Sprintf("%s-artifact%t", fixture.name, artifact), func(t *testing.T) {
 				if os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_MODE") == "load" && !artifact {
 					t.Skip("compiler-free artifact case only")
@@ -223,19 +184,5 @@ func assertRV64Core3CallRefTypeMismatch(t *testing.T, err error, function int, d
 	var validation *wasm.ValidationError
 	if !errors.As(err, &validation) || validation.Code != wasm.ErrTypeMismatch || validation.Func != function || validation.Detail != detail {
 		t.Fatalf("validation rejection = %#v (%v), want function %d type mismatch %q", validation, err, function, detail)
-	}
-}
-
-func TestRV64Core3CallRefUnreachableCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	for _, fixture := range rv64Core3CallRefUnreachableFixtures {
-		if c, err := Compile(nil, rv64Core3CallRefSource(t, fixture)); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-			if c != nil {
-				_ = c.Close()
-			}
-			t.Fatal("compiler-free call_ref test used source compilation", fixture.name, err)
-		}
 	}
 }

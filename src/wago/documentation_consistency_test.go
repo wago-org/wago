@@ -1,7 +1,6 @@
 package wago
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +16,6 @@ func TestRepositoryStatusDocuments(t *testing.T) {
 	architecture := readRepositoryDocument(t, root, "ARCHITECTURE.md")
 	for _, marker := range []string{
 		"<!-- architecture:targets linux/amd64 linux/arm64 linux/riscv64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 -->",
-		fmt.Sprintf("<!-- artifact:codec-version %d -->", wagoVersion),
 	} {
 		if !strings.Contains(architecture, marker) {
 			t.Errorf("ARCHITECTURE.md missing implementation marker %q", marker)
@@ -25,7 +23,7 @@ func TestRepositoryStatusDocuments(t *testing.T) {
 	}
 
 	versioning := readRepositoryDocument(t, root, "VERSIONING.md")
-	for _, marker := range []string{"compiled `.wago` executable codec uses **version 6**", "older artifact cannot bypass a stricter runtime configuration"} {
+	for _, marker := range []string{"Native-code `.wago` module artifacts are no longer supported"} {
 		if !strings.Contains(versioning, marker) {
 			t.Errorf("VERSIONING.md missing pre-release format policy marker %q", marker)
 		}

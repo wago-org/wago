@@ -41,7 +41,7 @@ func TestRV64PublicImportedTable64IndirectTail(t *testing.T) {
 				source := bytes.Replace(rv64ImportedTable64IndirectTailSource(), []byte{0x70, 0x05, 1, 4}, []byte{0x70, 0x05, minimum, 4}, 1)
 				consumerCode := rv64TableStageCompile(t, fmt.Sprintf("imported-table64-tail-consumer-min%d", minimum), source, artifact)
 				plan := rv64NativeTailModule(consumerCode)
-				if !rv64ArtifactContractValid(consumerCode.executionView()) || plan == nil || len(plan.Plans) != 1 || plan.Plans[0].Kind != encoder.NativeTailIndirect {
+				if !rv64SourceContractValid(consumerCode.executionView()) || plan == nil || len(plan.Plans) != 1 || plan.Plans[0].Kind != encoder.NativeTailIndirect {
 					t.Fatal("imported table64 tail execution contract")
 				}
 				rt := NewRuntime(WithRuntimeConfig(compatibilityDefaultConfig().WithNativeStackBytes(MinNativeStackBytes)))
@@ -159,18 +159,7 @@ func TestRV64PublicImportedTable64IndirectTailGates(t *testing.T) {
 			if bad.validate() == nil {
 				t.Fatal("hostile imported table64 tail metadata admitted")
 			}
-			blob, err := bad.MarshalBinary()
-			if err != nil {
-				rv64RequireTableMutationSerializationError(t, name, err)
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile imported table64 tail artifact admitted")
-			}
+
 		})
 	}
 }

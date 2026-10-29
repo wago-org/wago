@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 type globalDependencyAttachments struct{ rows *rv64GlobalDependencyRows }

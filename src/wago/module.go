@@ -695,13 +695,6 @@ func (c *Compiled) importModuleEndSections() (functions, tables, memories, tags 
 	return ends[:tableStart], ends[tableStart:memoryStart], ends[memoryStart:tagStart], ends[tagStart:], true
 }
 
-func (c *Compiled) appendImportModuleEnd(moduleEnd uint64) {
-	if c.validateMemo == nil {
-		c.validateMemo = &validateMemo{}
-	}
-	c.validateMemo.importModuleEnds = append(c.validateMemo.importModuleEnds, moduleEnd)
-}
-
 func (c *Compiled) validateImportModuleEnds() error {
 	memo := c.loadValidateMemo()
 	if memo == nil || len(memo.importModuleEnds) == 0 {

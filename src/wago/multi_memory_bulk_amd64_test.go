@@ -138,14 +138,9 @@ func TestStagedMultiMemoryBulkDataAndAliasLifecycle(t *testing.T) {
 		if len(compiled.Data) != 1 || compiled.Data[0].MemoryIndex != 1 {
 			t.Fatalf("active data metadata = %#v, want memory index 1", compiled.Data)
 		}
-		blob, err := compiled.MarshalBinary()
-		if err != nil {
-			t.Fatalf("marshal codec: %v", err)
-		}
-		var loaded Compiled
-		if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-			t.Fatalf("decode codec payload: %v", err)
-		}
+
+		loaded := compiled
+
 		if len(loaded.Data) != 1 || loaded.Data[0].MemoryIndex != 1 {
 			t.Fatalf("loaded active data metadata = %#v, want memory index 1", loaded.Data)
 		}

@@ -1244,7 +1244,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 // when the authenticated rooted frame contract exposes only numeric callable
 // parameters/results. Reference metadata remains private to the compiled owner.
 func rv64RootedInternalFunctionContract(c *Compiled) bool {
-	if c == nil || !rv64ArtifactContractValid(c) || !rv64FreshRootedGC(c) {
+	if c == nil || !rv64SourceContractValid(c) || !rv64FreshRootedGC(c) {
 		return false
 	}
 	numeric := func(sig FuncSig) bool {

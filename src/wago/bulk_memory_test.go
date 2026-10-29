@@ -12,16 +12,7 @@ func TestPassiveDataMemoryInitAndDrop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	if c.boundsMode != BoundsChecksSignalsBased {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatalf("MarshalBinary: %v", err)
-		}
-		c, err = LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatalf("Load compiled blob: %v", err)
-		}
-	}
+
 	in, err := Instantiate(c, nil)
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)

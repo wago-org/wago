@@ -49,7 +49,7 @@ func rv64PublicDynamicTailModule(types []wasm.ValType, imported bool) []byte {
 }
 
 func TestRV64PublicDynamicTailSourceArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, shape := range []string{"zero", "mixed", "pair"} {
 			for _, foreign := range []bool{false, true} {
 				t.Run(fmt.Sprintf("artifact%t-%s-foreign%t", artifact, shape, foreign), func(t *testing.T) {

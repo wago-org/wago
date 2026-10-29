@@ -232,18 +232,10 @@ func TestStagedExceptionHandlingLocalScalarExecution(t *testing.T) {
 	if len(meta.Tags) != 1 || meta.Tags[0].Index != 0 || meta.Tags[0].TypeIndex != 0 || len(meta.Tags[0].Params) != 2 || meta.Tags[0].Params[0] != ValI32 || meta.Tags[0].Params[1] != ValI32 {
 		t.Fatalf("tag metadata = %#v", meta.Tags)
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary staged EH: %v", err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("UnmarshalBinary staged EH: %v", err)
-	}
-	if got := (&Module{c: &loaded}).Metadata().Tags; !reflect.DeepEqual(got, meta.Tags) {
+
+	if got := (&Module{c: c}).Metadata().Tags; !reflect.DeepEqual(got, meta.Tags) {
 		t.Fatalf("reloaded EH tag metadata = %#v, want %#v", got, meta.Tags)
 	}
-	_ = loaded.Close()
 
 	in, err := instantiateCore(c, InstantiateOptions{})
 	if err != nil {
@@ -368,16 +360,8 @@ func TestStagedExceptionReferenceInternalProductCategory(t *testing.T) {
 	if len(meta.Functions) != 1 || !reflect.DeepEqual(meta.Functions[0].Results, []ValType{ValExnRef}) {
 		t.Fatalf("internal exception signature metadata = %#v", meta.Functions)
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal internal exception signature: %v", err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("unmarshal internal exception signature: %v", err)
-	}
-	defer loaded.Close()
-	if got := (&Module{c: &loaded}).Metadata().Functions[0].Results; !reflect.DeepEqual(got, []ValType{ValExnRef}) {
+
+	if got := (&Module{c: c}).Metadata().Functions[0].Results; !reflect.DeepEqual(got, []ValType{ValExnRef}) {
 		t.Fatalf("reloaded exception signature = %v", got)
 	}
 	exported, err := compileStagedExceptionHandlingFeaturesForTest(stagedInternalExceptionSignatureModule(true), true)

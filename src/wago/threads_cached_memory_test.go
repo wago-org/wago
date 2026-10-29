@@ -87,7 +87,7 @@ func TestThreadsSharedBackingCacheCallsGrowthPressureAndCodec(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+					for _, compiled := range []*Compiled{c} {
 						var opts any = InstantiateOptions{}
 						if imported {
 							memory, err := NewSharedMemory(1, 3)

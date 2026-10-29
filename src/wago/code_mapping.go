@@ -122,29 +122,6 @@ func installCompilerCompiledFinalizer(c *Compiled) *Compiled {
 	return c
 }
 
-func installCompiledFinalizer(c *Compiled) *Compiled {
-	c.ensureCodeCache()
-	// Give this compiler/deserialize-produced module its own validation memo so
-	// Instantiate validates immutable compiler-produced metadata once. Preserve
-	// codec-decoded immutable root and import-name sidecars while resetting the
-	// validation result.
-	var gcFrameRoots *compiledGCFrameRoots
-	var importModuleEnds []uint64
-	var snapshotLimit uint64
-	var indexes *compiledCacheIndexes
-	if c.validateMemo != nil {
-		indexes = c.loadCompileIndexes()
-		gcFrameRoots = c.validateMemo.gcFrameRoots
-		importModuleEnds = c.validateMemo.importModuleEnds
-		snapshotLimit = c.validateMemo.snapshotLimit
-	}
-	c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots, importModuleEnds: importModuleEnds, snapshotLimit: snapshotLimit, compileIndexes: indexes}
-	goruntime.SetFinalizer(c, func(c *Compiled) {
-		_ = c.Close()
-	})
-	return c
-}
-
 func (c *Compiled) setGCRootAdmissionFailure(diagnostic string) {
 	cc := c.loadCodeCache()
 	if cc == nil || diagnostic == "" {
@@ -977,43 +954,6 @@ func (c *Compiled) clearCodeViewsLocked() {
 			snapshot.code = nil
 		}
 	}
-}
-
-// replaceDecoded installs decoded state without orphaning an executable image.
-// Reuse is allowed before instantiation, but a receiver with live instances
-// remains their code owner and cannot be replaced.
-func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error {
-	if cc := c.loadCodeCache(); cc != nil {
-		cc.mu.Lock()
-		if cc.refs != 0 {
-			cc.mu.Unlock()
-			return fmt.Errorf("wago: cannot replace compiled module with %d live instance(s)", cc.refs)
-		}
-		cc.base = 0
-		cc.closed = true
-		c.clearCodeViewsLocked()
-		var releaseErr error
-		if cc.mem != nil {
-			if cleanup := c.unmapProfileCode(cc.mem); cleanup != nil {
-				releaseErr = errors.Join(releaseErr, cleanup)
-			} else {
-				cc.mem = nil
-			}
-		}
-		releaseErr = errors.Join(releaseErr, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c))
-		cc.mu.Unlock()
-		goruntime.SetFinalizer(c, nil)
-		if releaseErr != nil {
-			return fmt.Errorf("release replaced compiled mappings: %w", releaseErr)
-		}
-	}
-	*c = decoded
-	installCompiledFinalizer(c)
-	// Store the admission policy in the final memo, without creating a temporary
-	// decode memo.
-	c.validateMemo.snapshotLimit = snapshotLimit
-	_, err := c.freezeExecution(0)
-	return err
 }
 
 // Close releases the executable code mapping cached for this compiled module.

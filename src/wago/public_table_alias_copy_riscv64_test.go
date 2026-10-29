@@ -51,7 +51,7 @@ func rv64AliasedTableConsumerModule() []byte {
 }
 
 func TestRV64PublicAliasedImportedTableCopy(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(fmt.Sprintf("artifact=%t", artifact), func(t *testing.T) {
 			compile := func(source []byte) *Compiled {
 				t.Helper()
@@ -59,20 +59,7 @@ func TestRV64PublicAliasedImportedTableCopy(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if artifact {
-					blob, err := compiled.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					loaded, err := LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err := compiled.Close(); err != nil {
-						t.Fatal(err)
-					}
-					compiled = loaded
-				}
+
 				t.Cleanup(func() { _ = compiled.Close() })
 				return compiled
 			}

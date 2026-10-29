@@ -25,7 +25,6 @@ func RuntimeOwnsPluginCommand(args []string) bool {
 func LooksLikeRuntimeTarget(value string) bool {
 	lower := strings.ToLower(value)
 	return strings.HasSuffix(lower, ".wasm") ||
-		strings.HasSuffix(lower, ".wago") ||
 		existingFile(value)
 }
 

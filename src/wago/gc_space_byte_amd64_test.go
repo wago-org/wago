@@ -3,7 +3,6 @@
 package wago
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -67,76 +66,6 @@ func gcSpaceByteModule(name string) ([]byte, uint32) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("init", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...), wasmtest.Code(init))),
 	), want
-}
-
-func TestGCResolverSpaceByteAcrossSpaces(t *testing.T) {
-	for _, name := range gcSpaceByteCases {
-		t.Run(name, func(t *testing.T) {
-			module, want := gcSpaceByteModule(name)
-			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer c.Close()
-			if !c.GCNativeRootAdmission().Exact {
-				t.Fatal("fixture requires exact native roots")
-			}
-			var artifact bytes.Buffer
-			if _, err := c.WriteTo(&artifact); err != nil {
-				t.Fatal(err)
-			}
-			var loaded Compiled
-			if _, err := loaded.ReadFrom(&artifact); err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			for _, saved := range []bool{false, true} {
-				compiled := c
-				if saved {
-					compiled = &loaded
-				}
-				for _, space := range []byte{gc.NativeSpaceNursery, gc.NativeSpaceOld, gc.NativeSpaceLarge, gc.NativeSpaceTiny} {
-					t.Run(fmt.Sprintf("saved=%v/space=%d", saved, space), func(t *testing.T) {
-						cfg := GCConfig{VerifyAfterCollect: true}
-						if space == gc.NativeSpaceLarge {
-							cfg.LargeObjectBytes = 16
-						}
-						if space == gc.NativeSpaceTiny {
-							cfg = GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
-						}
-						in, err := Instantiate(compiled, InstantiateOptions{GC: cfg})
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer in.Close()
-						if in.c.genericGCFrameRoots() == nil || !in.gc.CollectsOnAllocation() {
-							t.Fatal("fixture must use the requested collector, without boundary collection")
-						}
-						ref := gc.Ref(uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)))
-						if space == gc.NativeSpaceOld {
-							if err := in.gc.ForcePromote(ref); err != nil {
-								t.Fatal(err)
-							}
-						}
-						view := in.gc.NativeView()
-						handle := unsafe.Slice((*byte)(offHeapPtr(view.Handles+uintptr(uint32(ref)>>1)*gc.NativeHandleStride)), gc.NativeHandleStride)
-						if got := handle[gc.NativeHandleSpaceOffset]; got != space {
-							t.Fatalf("fixture space = %d, want %d", got, space)
-						}
-						for round := 0; round < 2; round++ {
-							got, err := in.Invoke("run", 17)
-							if err != nil || len(got) != 1 || got[0] != uint64(17*want) {
-								t.Fatalf("read = %v, %v; want %d", got, err, 17*want)
-							}
-							if err := in.CollectGC(); err != nil {
-								t.Fatal(err)
-							}
-						}
-					})
-				}
-			}
-		})
-	}
 }
 
 func TestGCResolverSpaceByteRejectsInvalidEntries(t *testing.T) {

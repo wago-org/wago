@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	goruntime "runtime"
 	"strings"
 	"testing"
@@ -14,7 +13,7 @@ import (
 )
 
 var benchResultSink []uint64
-var benchBytesSink []byte
+
 var benchCompiledSink *Compiled
 var benchTableSink *Table
 var benchIntSink int32
@@ -508,64 +507,6 @@ func BenchmarkInvokeNullExternref(b *testing.B) {
 	}
 }
 
-func BenchmarkInvokeNonNullExternrefRoundTrip(b *testing.B) {
-	rt := NewRuntime()
-	defer rt.Close()
-	mod, err := rt.Compile(externrefControlModule())
-	if err != nil {
-		b.Fatalf("Compile: %v", err)
-	}
-	in, err := rt.Instantiate(context.Background(), mod)
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	ref, err := rt.NewExternRef(struct{}{})
-	if err != nil {
-		b.Fatalf("NewExternRef: %v", err)
-	}
-	token := ValueExternRef(ref).Bits()
-	if _, err := in.Invoke("id", token); err != nil {
-		b.Fatalf("warm Invoke: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := in.Invoke("id", token)
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchResultSink = res
-	}
-}
-
-func BenchmarkInvokeNumericGlobalRoundTrip(b *testing.B) {
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, true, []byte{0x42, 0x00, 0x0b}))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("set_and_get", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
-	)
-	c := benchMustCompile(b, mod)
-	in, err := Instantiate(c)
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("set_and_get", 1); err != nil {
-		b.Fatalf("warm Invoke: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		benchResultSink, err = in.Invoke("set_and_get", uint64(i))
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
 func BenchmarkInvokeRefFuncGlobalEgress(b *testing.B) {
 	c := benchMustCompile(b, noTableRefFuncGlobalModule())
 	in, err := Instantiate(c, InstantiateOptions{})
@@ -587,27 +528,6 @@ func BenchmarkInvokeRefFuncGlobalEgress(b *testing.B) {
 	}
 }
 
-func BenchmarkInvokeNullFuncrefGlobalRoundTrip(b *testing.B) {
-	c := benchMustCompile(b, nullableLocalFuncrefGlobalsModule())
-	in, err := Instantiate(c, InstantiateOptions{})
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("set_and_get", 0); err != nil {
-		b.Fatalf("warm Invoke: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := in.Invoke("set_and_get", 0)
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchResultSink = res
-	}
-}
-
 func benchExternrefTableModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}))),
@@ -619,108 +539,6 @@ func benchExternrefTableModule() []byte {
 			tableTestI32Const(0), []byte{0x25, 0x00},
 		)))),
 	)
-}
-
-func BenchmarkInvokeNullExternrefTableRoundTrip(b *testing.B) {
-	c := benchMustCompile(b, benchExternrefTableModule())
-	in, err := Instantiate(c)
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("set_and_get", 0); err != nil {
-		b.Fatalf("warm Invoke: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		benchResultSink, err = in.Invoke("set_and_get", 0)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkInvokeNonNullExternrefTableRoundTrip(b *testing.B) {
-	rt := NewRuntime()
-	defer rt.Close()
-	mod, err := rt.Compile(benchExternrefTableModule())
-	if err != nil {
-		b.Fatalf("Compile: %v", err)
-	}
-	in, err := rt.Instantiate(context.Background(), mod)
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	ref, err := rt.NewExternRef(struct{}{})
-	if err != nil {
-		b.Fatalf("NewExternRef: %v", err)
-	}
-	token := ValueExternRef(ref).Bits()
-	if _, err := in.Invoke("set_and_get", token); err != nil {
-		b.Fatalf("warm Invoke: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		benchResultSink, err = in.Invoke("set_and_get", token)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkInvokeNullExternrefGlobalRoundTrip(b *testing.B) {
-	c := benchMustCompile(b, nullableLocalExternrefGlobalsModule())
-	in, err := Instantiate(c, InstantiateOptions{})
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("set_and_get", 0); err != nil {
-		b.Fatalf("warm Invoke: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := in.Invoke("set_and_get", 0)
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchResultSink = res
-	}
-}
-
-func BenchmarkInvokeNonNullExternrefGlobalRoundTrip(b *testing.B) {
-	rt := NewRuntime()
-	defer rt.Close()
-	mod, err := rt.Compile(nullableLocalExternrefGlobalsModule())
-	if err != nil {
-		b.Fatalf("Compile: %v", err)
-	}
-	in, err := rt.Instantiate(context.Background(), mod)
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	ref, err := rt.NewExternRef(struct{}{})
-	if err != nil {
-		b.Fatalf("NewExternRef: %v", err)
-	}
-	token := ValueExternRef(ref).Bits()
-	if _, err := in.Invoke("set_and_get", token); err != nil {
-		b.Fatalf("warm Invoke: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := in.Invoke("set_and_get", token)
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchResultSink = res
-	}
 }
 
 func BenchmarkInvokeLocalFuncrefEgress(b *testing.B) {
@@ -1198,47 +1016,6 @@ func BenchmarkInvokeTableGrowNull(b *testing.B) {
 	}
 }
 
-func BenchmarkInvokeNonNullFuncrefRoundTrip(b *testing.B) {
-	rt := NewRuntime()
-	producerMod, err := rt.Compile(funcrefCallableProducerModule())
-	if err != nil {
-		b.Fatalf("Compile producer: %v", err)
-	}
-	relayMod, err := rt.Compile(nullableFuncrefModule())
-	if err != nil {
-		b.Fatalf("Compile relay: %v", err)
-	}
-	producer, err := rt.Instantiate(context.Background(), producerMod)
-	if err != nil {
-		b.Fatalf("Instantiate producer: %v", err)
-	}
-	relay, err := rt.Instantiate(context.Background(), relayMod)
-	if err != nil {
-		b.Fatalf("Instantiate relay: %v", err)
-	}
-	defer func() {
-		_ = producer.Close()
-		_ = relay.Close()
-		_ = rt.Close()
-	}()
-	ref, err := producer.Invoke("get")
-	if err != nil || len(ref) != 1 || ref[0] == 0 {
-		b.Fatalf("producer get = %v, %v", ref, err)
-	}
-	if _, err := relay.Invoke("id", ref[0]); err != nil {
-		b.Fatalf("warm Invoke: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := relay.Invoke("id", ref[0])
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchResultSink = res
-	}
-}
-
 func BenchmarkInvokeLegacyHostFuncVoid(b *testing.B) {
 	c := benchMustCompile(b, voidI32ImportCallerModule())
 	var calls int32
@@ -1372,37 +1149,6 @@ func BenchmarkInvokeSharedMemoryPublicEntry(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		res, err := in.Invoke("bump")
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchResultSink = res
-	}
-}
-
-func BenchmarkInvokeHostFuncExternrefRoundTrip(b *testing.B) {
-	rt := NewRuntime()
-	defer rt.Close()
-	mod, err := rt.Compile(externrefHostRoundTripModule())
-	if err != nil {
-		b.Fatalf("Compile: %v", err)
-	}
-	ref, err := rt.NewExternRef(struct{}{})
-	if err != nil {
-		b.Fatalf("NewExternRef: %v", err)
-	}
-	token := ValueExternRef(ref).Bits()
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.echo", slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] }))))
-	if err != nil {
-		b.Fatalf("Instantiate: %v", err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("roundtrip", token); err != nil {
-		b.Fatalf("warm Invoke: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := in.Invoke("roundtrip", token)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -2228,110 +1974,17 @@ func BenchmarkInstantiateTableHostFuncThunk(b *testing.B) {
 	}
 }
 
-func BenchmarkMarshalCompiledSmallScalar(b *testing.B) {
-	c := benchMustCompile(b, benchAddOneModule())
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchBytesSink = blob
-	}
-}
-
-func BenchmarkWriteCompiledImportedModule(b *testing.B) {
-	c := benchMustCompile(b, benchImportedModule(1600, 128))
-	b.ReportMetric(float64(len(c.code)), "code-B")
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if _, err := c.WriteTo(io.Discard); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkMarshalCompiledImportedModule(b *testing.B) {
-	c := benchMustCompile(b, benchImportedModule(1600, 128))
-	b.ReportMetric(float64(len(c.code)), "code-B")
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchBytesSink = blob
-	}
-}
-
-func BenchmarkReadCompiledImportedModule(b *testing.B) {
-	c := benchMustCompile(b, benchImportedModule(1600, 128))
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		b.Fatal(err)
-	}
-	c.Close()
-	reader := bytes.NewReader(blob)
-	b.ReportMetric(float64(len(blob)), "artifact-B")
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		reader.Reset(blob)
-		var loaded Compiled
-		if _, err := loaded.ReadFrom(reader); err != nil {
-			b.Fatal(err)
-		}
-		if err := loaded.Close(); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkUnmarshalCompiledImportedModule(b *testing.B) {
-	c := benchMustCompile(b, benchImportedModule(1600, 128))
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		b.Fatal(err)
-	}
-	c.Close()
-	b.ReportMetric(float64(len(blob)), "artifact-B")
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		var loaded Compiled
-		if err := loaded.UnmarshalBinary(blob); err != nil {
-			b.Fatal(err)
-		}
-		if err := loaded.Close(); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
 func BenchmarkFirstUseCompiledImportedModule(b *testing.B) {
 	c := benchMustCompile(b, benchImportedModule(1600, 128))
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		b.Fatal(err)
-	}
+
 	c.Close()
 	for _, mode := range []string{"read", "unmarshal"} {
 		b.Run(mode, func(b *testing.B) {
-			reader := bytes.NewReader(blob)
+
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				var loaded Compiled
-				if mode == "read" {
-					reader.Reset(blob)
-					if _, err := loaded.ReadFrom(reader); err != nil {
-						b.Fatal(err)
-					}
-				} else if err := loaded.UnmarshalBinary(blob); err != nil {
-					b.Fatal(err)
-				}
+
 				if _, err := loaded.acquireCode(); err != nil {
 					b.Fatal(err)
 				}
@@ -2341,53 +1994,6 @@ func BenchmarkFirstUseCompiledImportedModule(b *testing.B) {
 				}
 			}
 		})
-	}
-}
-
-func BenchmarkMarshalCompiledStructuralReferences(b *testing.B) {
-	c := structuralReferenceCodecFixture()
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			b.Fatal(err)
-		}
-		benchBytesSink = blob
-	}
-}
-
-func BenchmarkUnmarshalCompiledSmallScalar(b *testing.B) {
-	c := benchMustCompile(b, benchAddOneModule())
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		b.Fatalf("MarshalBinary: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		var out Compiled
-		if err := out.UnmarshalBinary(blob); err != nil {
-			b.Fatal(err)
-		}
-		benchCompiledSink = &out
-	}
-}
-
-func BenchmarkUnmarshalCompiledStructuralReferences(b *testing.B) {
-	c := structuralReferenceCodecFixture()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		b.Fatalf("MarshalBinary: %v", err)
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		var out Compiled
-		if err := out.UnmarshalBinary(blob); err != nil {
-			b.Fatal(err)
-		}
-		benchCompiledSink = &out
 	}
 }
 

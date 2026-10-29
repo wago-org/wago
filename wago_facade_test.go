@@ -31,16 +31,6 @@ func TestFacadeForwards(t *testing.T) {
 	if _, err := Instantiate(c); err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
-	encoded, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	if !IsCompiled(encoded) {
-		t.Fatal("IsCompiled false for encoded module")
-	}
-	if _, err := LoadTrustedArtifact(encoded); err != nil {
-		t.Fatalf("Load: %v", err)
-	}
 	for _, g := range []*Global{
 		NewGlobalF32(1, true), NewGlobalF64(1, true), NewGlobalI32(1, true), NewGlobalI64(1, true), NewGlobalV128(V128{}, true),
 	} {

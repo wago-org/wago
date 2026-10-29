@@ -13,11 +13,3 @@ func rv64GCRefCastConcreteExecutionCode(c *Compiled) bool {
 func rv64GCRefCastConcrete(c *Compiled) bool {
 	return rv64GCConcreteSubtypeProduct(c, rv64GCRefCastConcreteExecutionCode, stagedGCStructRefCastConcrete, []int{0, 1648, 7488})
 }
-
-func railshotRestoreGCRefCastConcreteArtifact(c *Compiled) {
-	if !rv64GCRefCastConcrete(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructRefCastConcrete
-}

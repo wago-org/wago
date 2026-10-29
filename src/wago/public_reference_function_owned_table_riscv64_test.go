@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -81,98 +80,6 @@ func TestRV64PublicReferenceFunctionOwnedTablePoolTrapsReuse(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-func TestRV64PublicReferenceFunctionOwnedTableRetainedAdmission(t *testing.T) {
-	c := rv64NativeTailCompile(t, "reference-owned-table-admission", rv64ReferenceOwnedTableTrapModule(false), false)
-	mutations := map[string]func(*Compiled){
-		"export-ingress":         func(v *Compiled) { v.tableExports = map[string]int{"escape": 0} },
-		"legacy-export-fallback": func(v *Compiled) { v.hasTableExportMetadata = false },
-		"import-ingress":         func(v *Compiled) { v.tableImport = "env.table" },
-		"second-table":           func(v *Compiled) { v.extraTables = []tableDef{{Size: 1, Type: ValFuncRef}} },
-		"private-init-zero":      func(v *Compiled) { v.TableSize = 0; v.HasTableInitFunc = true; v.TableInitFunc = 2; v.Elems = nil },
-		"missing-init-zero":      func(v *Compiled) { v.TableSize = 0; v.HasTableInitFunc = true; v.TableInitFunc = 127; v.Elems = nil },
-		"inactive-init":          func(v *Compiled) { v.TableInitFunc = 1 },
-		"private-element":        func(v *Compiled) { v.Elems[0].Values[0].FuncIndex = 2 },
-		"missing-element":        func(v *Compiled) { v.Elems[0].Values[0].FuncIndex = 127 },
-		"expression-unbound-type": func(v *Compiled) {
-			v.Elems[0].HasValueType = true
-			v.Elems[0].ValueTypeIndex = uint32(len(v.ValueTypes))
-		},
-		"null-element":         func(v *Compiled) { v.Elems[0].Values[0] = RefInit{Null: true} },
-		"global-element":       func(v *Compiled) { v.Elems[0].Values[0] = RefInit{HasGlobal: true} },
-		"unused-element-type":  func(v *Compiled) { v.Elems[0].ValueTypeIndex = 1 },
-		"unused-offset-global": func(v *Compiled) { v.Elems[0].Offset.Global = 1 },
-		"offset-expression":    func(v *Compiled) { v.Elems[0].Offset.Expr = []byte{0x41, 0, 0x0b} },
-		"table64":              func(v *Compiled) { v.TableAddr64 = true },
-		"capacity":             func(v *Compiled) { v.TableMax = 1025 },
-		"pool-missing":         func(v *Compiled) { v.TableHasValueType = false },
-		"pool-unbound":         func(v *Compiled) { v.TableValueTypeIndex = 127 },
-		"pool-unused":          func(v *Compiled) { v.ValueTypes = append(v.ValueTypes, ValueTypeDescriptor{Kind: ValueTypeI32}) },
-		"pool-duplicate":       func(v *Compiled) { v.ValueTypes = append(v.ValueTypes, v.ValueTypes[0]) },
-		"passive-ingress":      func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive, Offset: OffsetInit{Base: 1}}} },
-		"dropped-payload": func(v *Compiled) {
-			v.passiveElems = []ElemInit{{Mode: ElemModeDeclarative, Values: []RefInit{{FuncIndex: 0}}}}
-		},
-		"oversized-actual-params":  func(v *Compiled) { v.Funcs[0].Params = make([]ValType, 1<<20) },
-		"oversized-actual-results": func(v *Compiled) { v.Funcs[0].Results = make([]ValType, 1<<20) },
-		"missing-private":          func(v *Compiled) { v.nativeReferenceFunctionABI = false },
-		"missing-reference":        func(v *Compiled) { v.nativeTableReferenceABI = false },
-		"missing-context":          func(v *Compiled) { v.nativeTableContextABI = false },
-		"numeric-key":              func(v *Compiled) { v.FuncTypeID[0] = 1 },
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			v := cloneCompiledMetadata(c)
-			v.codeCache = nil
-			v.validateMemo = &validateMemo{}
-			v.ensureCodeCache()
-			mutate(v)
-			if err := railshotValidateCompiled(v); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("bad private own table accepted", err)
-			}
-			blob, err := marshalCompiled(v)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				defer loaded.Close()
-			}
-			if err == nil {
-				// Existing canonical writing repairs inactive fields and always
-				// writes exact table-export metadata. Direct invalid metadata was
-				// rejected above; these repairs close the ingress rather than open it.
-				repaired := name == "inactive-init" || name == "unused-element-type" || name == "legacy-export-fallback"
-				if !repaired || !loaded.hasTableExportMetadata || loaded.TableInitFunc != 0 || loaded.Elems[0].ValueTypeIndex != 0 || rv64ValidateReferenceFunctions(loaded) != nil {
-					t.Fatal("bad own table artifact accepted", name)
-				}
-			}
-		})
-	}
-	cold := testing.AllocsPerRun(5, func() {
-		remaining := railshot.MaxModuleBytes
-		if err := rv64ValidateReferenceFunctionTable(c, &remaining); err != nil {
-			panic(err)
-		}
-	})
-	t.Logf("cold table structural validation allocations: %g", cold)
-	rv64RequireCachedValidationNoAllocations(t, c)
-
-	rt := NewRuntime()
-	defer rt.Close()
-	mod, err := rt.Module(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mod.Close()
-	in, err := rt.Instantiate(context.Background(), mod)
-	if in == nil || err != nil {
-		t.Fatal("public table rejected", err)
-	}
-	defer in.Close()
-	if got, err := in.Invoke("run", 0, 42); err != nil || !slices.Equal(got, []uint64{42}) {
-		t.Fatal("public table execution", got, err)
 	}
 }
 

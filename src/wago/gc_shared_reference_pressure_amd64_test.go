@@ -92,9 +92,8 @@ func TestGCSharedReferenceReadPreservesPressureValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
-	defer loaded.Close()
-	for _, code := range []*Compiled{compiled, loaded} {
+
+	for _, code := range []*Compiled{compiled} {
 		for _, cfg := range []GCConfig{
 			{StressNurseryBytes: 256, CollectEveryAlloc: true, VerifyAfterCollect: true},
 			{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
@@ -179,8 +178,8 @@ func TestGCDecoderTupleReferenceSurvivesAdjacentScalarRead(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		loaded := publicArtifactRoundTrip(t, compiled)
-		for _, code := range []*Compiled{compiled, loaded} {
+
+		for _, code := range []*Compiled{compiled} {
 			for _, cfg := range []GCConfig{
 				{StressNurseryBytes: 256, CollectEveryAlloc: true, VerifyAfterCollect: true},
 				{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
@@ -203,7 +202,7 @@ func TestGCDecoderTupleReferenceSurvivesAdjacentScalarRead(t *testing.T) {
 				in.Close()
 			}
 		}
-		loaded.Close()
+		compiled.Close()
 		compiled.Close()
 	}
 }

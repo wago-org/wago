@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"slices"
 	"testing"
 	"unsafe"
 
@@ -218,120 +217,6 @@ func TestRV64PublicPassiveElementFeatureGates(t *testing.T) {
 			if c != nil || err == nil {
 				t.Fatal("reference operation accepted without reference feature")
 			}
-		}
-	}
-}
-
-func TestRV64PublicPassiveElementMetadata(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source and metadata admission")
-	}
-	for _, vector := range []bool{false, true} {
-		c := rv64TableStageCompile(t, fmt.Sprintf("passive-v%t-legacy-drop255", vector), rv64PassiveElementsModule(t, vector, "legacy", 255), false)
-		for name, mutate := range map[string]func(*Compiled){
-			"count": func(v *Compiled) { v.passiveElems = append(v.passiveElems, ElemInit{Mode: ElemModePassive}) },
-			"aggregate": func(v *Compiled) {
-				v.passiveElems[0].Values = append(slices.Clone(v.passiveElems[0].Values), RefInit{})
-			},
-			"active":           func(v *Compiled) { v.passiveElems[0].Mode = ElemModeActive },
-			"declarative-live": func(v *Compiled) { v.passiveElems[0].Mode = ElemModeDeclarative },
-			"offset":           func(v *Compiled) { v.passiveElems[0].Offset.Base = 1 },
-			"global-offset":    func(v *Compiled) { v.passiveElems[0].Offset.HasGlobal = true },
-			"table":            func(v *Compiled) { v.passiveElems[0].TableIndex = 1 },
-			"type":             func(v *Compiled) { v.passiveElems[0].RefType = ValExternRef },
-			"function":         func(v *Compiled) { v.passiveElems[0].Values[0].FuncIndex = 3 },
-			"global":           func(v *Compiled) { v.passiveElems[0].Values[0] = RefInit{HasGlobal: true} },
-			"expression":       func(v *Compiled) { v.passiveElems[0].Values[0].Expr = []byte{0xd2, 0, 0x0b} },
-			"descriptors":      func(v *Compiled) { v.NeedsFuncRefDescs = false },
-			"frame":            func(v *Compiled) { v.registerABIDisabled = false },
-			"abi":              func(v *Compiled) { v.nativeTableReferenceABI = false },
-		} {
-			v := *c.executionView()
-			v.passiveElems = slices.Clone(v.passiveElems)
-			v.passiveElems[0].Values = slices.Clone(v.passiveElems[0].Values)
-			mutate(&v)
-			if err := railshotValidateCompiled(&v); err == nil {
-				t.Fatal("invalid passive metadata admitted", vector, name)
-			}
-			blob, err := marshalCompiled(&v)
-			if err != nil {
-				continue
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid passive artifact admitted", vector, name)
-			}
-		}
-	}
-}
-
-func TestRV64PublicEmptyPassiveDescriptorFeatureWitness(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source and trusted metadata admission")
-	}
-	for _, vector := range []bool{false, true} {
-		// Keep the target export-declared: an empty segment declares no function.
-		bodyReference := rv64BodyReferenceModule(vector, false)
-		exports := wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("target", 0, 0), wasmtest.ExportEntry("carrier", 0, 1), wasmtest.ExportEntry("leaf", 0, 2)))
-		emptySegment := wasmtest.Section(9, []byte{1, 1, 0, 0})
-		bodyReference = rv64ReplaceTableStageSection(t, bodyReference, 7, append(exports, emptySegment...))
-		c := rv64TableStageCompile(t, fmt.Sprintf("passive-empty-body-vector%t", vector), bodyReference, false)
-		if !c.needsFuncRefDescs() || len(c.passiveElems) != 1 || len(c.passiveElems[0].Values) != 0 {
-			t.Fatal("empty segment body-reference fixture")
-		}
-		v := *c.executionView()
-		v.requiredFeatures &^= CoreFeatureReferenceTypes
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("empty legacy segment excused body-only reference feature")
-		}
-		blob, err := marshalCompiled(&v)
-		if err == nil {
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("empty legacy artifact excused body-only reference feature")
-			}
-		}
-		// With no descriptor demand, an unused empty legacy passive segment is
-		// valid bulk-only state, including a real artifact roundtrip.
-		inert := rv64PassiveElementsModule(t, vector, "legacy", -1)
-		inert = rv64ReplaceTableStageSection(t, inert, 9, emptySegment)
-		plain, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false), inert)
-		if err != nil {
-			t.Fatal("empty bulk-only passive source", err)
-		}
-		defer plain.Close()
-		blob, err = plain.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer loaded.Close()
-		for _, compiled := range []*Compiled{plain, loaded} {
-			if compiled.needsFuncRefDescs() || len(compiled.passiveElems) != 1 || len(compiled.passiveElems[0].Values) != 0 {
-				t.Fatal("empty passive retained descriptors/payload")
-			}
-			in, err := Instantiate(compiled)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if in.tableDescPtr != 0 || !rv64HeaderOnlyContext(in) || in.jm.PassiveElemPtr() == 0 {
-				t.Fatal("empty passive instance layout")
-			}
-			directory := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr())), coreruntime.PassiveElemDescBytes)
-			var zero [coreruntime.PassiveElemDescBytes]byte
-			if !bytes.Equal(directory, zero[:]) {
-				t.Fatal("empty passive directory is not dropped")
-			}
-			in.Close()
 		}
 	}
 }

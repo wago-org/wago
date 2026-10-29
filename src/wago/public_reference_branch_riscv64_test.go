@@ -250,30 +250,3 @@ func TestRV64PublicReferenceBranchRetiredGlobalOwner(t *testing.T) {
 		}
 	}
 }
-
-func TestRV64PublicReferenceBranchMarkerAdmission(t *testing.T) {
-	for _, nonNull := range []bool{false, true} {
-		source := rv64ReferenceBranchDeadSource(false, nonNull)
-		if c, err := compatibilityDefaultConfig().Compile(source); c != nil || err == nil {
-			t.Fatal("public typed-reference gate widened")
-		}
-		base := rv64NativeTailCompile(t, "branch-marker", source, false)
-		c := rv64ReferenceImportTailCopy(base)
-		if err := c.validate(); err != nil {
-			t.Fatal("unchanged branch metadata", err)
-		}
-		c.nativeReferenceControlABI = false
-		if err := c.validate(); err == nil {
-			t.Fatal("branch descriptor without control witness admitted")
-		}
-		blob, err := marshalCompiled(c)
-		if err == nil {
-			if got, err := LoadTrustedArtifact(blob); err == nil {
-				if got != nil {
-					got.Close()
-				}
-				t.Fatal("branch artifact without control witness admitted")
-			}
-		}
-	}
-}

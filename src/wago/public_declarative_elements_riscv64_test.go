@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"slices"
 	"testing"
 	"unsafe"
 
@@ -191,59 +190,6 @@ func TestRV64PublicDeclarativeElementsWithoutTable(t *testing.T) {
 								}
 							}
 						})
-					}
-				}
-			}
-		}
-	}
-}
-
-func TestRV64PublicDeclarativeElementMetadata(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source and metadata admission")
-	}
-	for _, vector := range []bool{false, true} {
-		for _, expressions := range []bool{false, true} {
-			c := rv64TableStageCompile(t, fmt.Sprintf("decl-v%t-expr%t-reffalse-drop255", vector, expressions), rv64DeclarativeModule(t, vector, expressions, false, 255), false)
-			for name, mutate := range map[string]func(*Compiled){
-				"count":         func(v *Compiled) { v.passiveElems = append(v.passiveElems, ElemInit{Mode: ElemModeDeclarative}) },
-				"bulk":          func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-				"refs":          func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-				"frame":         func(v *Compiled) { v.registerABIDisabled = false },
-				"context":       func(v *Compiled) { v.nativeTableContextABI = false },
-				"reference-abi": func(v *Compiled) { v.nativeTableReferenceABI = false },
-				"active":        func(v *Compiled) { v.passiveElems[0].Mode = ElemModeActive },
-				"unknown-mode":  func(v *Compiled) { v.passiveElems[0].Mode = ElemMode(255) },
-				"payload":       func(v *Compiled) { v.passiveElems[0].Values = []RefInit{{FuncIndex: 0}} },
-				"offset":        func(v *Compiled) { v.passiveElems[0].Offset.Base = 1 },
-				"global":        func(v *Compiled) { v.passiveElems[0].Offset.HasGlobal = true },
-				"table":         func(v *Compiled) { v.passiveElems[0].TableIndex = 1 },
-				"type":          func(v *Compiled) { v.passiveElems[0].RefType = ValExternRef },
-				"exact": func(v *Compiled) {
-					v.passiveElems[0].HasValueType = true
-					v.passiveElems[0].ValueTypeIndex = ^uint32(0)
-				},
-			} {
-				v := *c.executionView()
-				v.passiveElems = slices.Clone(v.passiveElems)
-				mutate(&v)
-				if err := railshotValidateCompiled(&v); err == nil {
-					t.Fatal("declaration metadata admitted", name)
-				}
-				blob, err := marshalCompiled(&v)
-				if err == nil {
-					loaded, err := LoadTrustedArtifact(blob)
-					if loaded != nil {
-						// The codec reconstructs required features from structural
-						// element metadata; verify normalization instead of rejection.
-						normalized := (name == "bulk" && loaded.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) || name == "refs" && loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes)) && len(loaded.passiveElems) == len(c.passiveElems)
-						loaded.Close()
-						if err == nil && normalized {
-							continue
-						}
-					}
-					if err == nil {
-						t.Fatal("declaration artifact admitted", name)
 					}
 				}
 			}

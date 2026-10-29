@@ -27,21 +27,9 @@ func rv64PublicStartCompile(t *testing.T, source []byte, artifact bool) *Compile
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	if !artifact {
-		return c
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if loaded != nil {
-		t.Cleanup(func() { _ = loaded.Close() })
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return loaded
+
+	return c
+
 }
 
 func TestRV64PublicScalarDefinedStartRunsOncePerInstance(t *testing.T) {

@@ -84,8 +84,7 @@ func TestGCLeafTrapPreservesGlobalPins(t *testing.T) {
 				if n := bytes.Count(c.code, []byte{0x41, 0x51, 0x41, 0x52, 0x41, 0x53}); n != 1 {
 					t.Fatalf("R9-R11 saves=%d want1", n)
 				}
-				loaded := publicArtifactRoundTrip(t, c)
-				defer loaded.Close()
+
 				kinds := []string{"valid", "header"}
 				if leaf != "struct-set" {
 					kinds = append(kinds, "handle")
@@ -93,7 +92,7 @@ func TestGCLeafTrapPreservesGlobalPins(t *testing.T) {
 				if leaf == "len" || leaf == "len-nullable" {
 					kinds = append(kinds, "wrong", "null", "space")
 				}
-				for ai, artifact := range []*Compiled{c, loaded} {
+				for ai, artifact := range []*Compiled{c} {
 					for _, kind := range kinds {
 						t.Run(fmt.Sprintf("artifact%d/%s", ai, kind), func(t *testing.T) {
 							in, err := Instantiate(artifact)

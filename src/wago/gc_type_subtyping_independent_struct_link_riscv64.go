@@ -76,7 +76,7 @@ func rv64GCTypeSubtypingIndependentStructLinkProfileWithCode(c *Compiled, allowU
 	default:
 		return 0
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil || len(metadata) != rv64GCTypeSubtypingIndependentStructLinkMetadataLens[variant-1] || sha256.Sum256(metadata) != rv64GCTypeSubtypingIndependentStructLinkMetadataDigests[variant-1] {
 		return 0
 	}
@@ -89,18 +89,4 @@ func rv64GCTypeSubtypingIndependentStructLink(c *Compiled) bool {
 
 func rv64GCTypeSubtypingIndependentStructLinkExecutionCode(c *Compiled) bool {
 	return c != nil && (len(c.code) == rv64GCTypeSubtypingIndependentStructLinkProviderCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingIndependentStructLinkProviderCodeDigest || len(c.code) == 0)
-}
-
-func railshotRestoreGCTypeSubtypingIndependentStructLinkArtifact(c *Compiled) {
-	variant := rv64GCTypeSubtypingIndependentStructLinkProfileWithCode(c, true, true)
-	if variant == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	if variant == 1 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingIndependentStructLinkProvider
-	} else {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingIndependentStructLinkConsumer
-	}
 }

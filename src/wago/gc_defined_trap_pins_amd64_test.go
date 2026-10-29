@@ -61,9 +61,8 @@ func TestGCDefinedTrapPreservesGlobalPins(t *testing.T) {
 	if n := bytes.Count(c.code, saves); n != 2 {
 		t.Fatalf("resolver R9/R10/R11 save sequences = %d, want 2; fixture must exercise all three global pins", n)
 	}
-	loaded := publicArtifactRoundTrip(t, c)
-	defer loaded.Close()
-	for ai, artifact := range []*Compiled{c, loaded} {
+
+	for ai, artifact := range []*Compiled{c} {
 		for _, export := range []string{"test", "cast"} {
 			for _, kind := range []string{"wrong", "null", "valid", "space", "size"} {
 				t.Run(fmt.Sprintf("artifact%d/%s/%s", ai, export, kind), func(t *testing.T) {

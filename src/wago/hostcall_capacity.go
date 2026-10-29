@@ -5,7 +5,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const rv64GenericArrayFixedSlots = 256

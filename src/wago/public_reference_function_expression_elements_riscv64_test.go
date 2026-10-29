@@ -4,9 +4,7 @@ package wago
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"runtime"
 	"slices"
@@ -231,125 +229,6 @@ func rv64ExpressionMetadataCopy(c *Compiled) *Compiled {
 	return v
 }
 
-func TestRV64PublicReferenceFunctionExpressionElementsRetained(t *testing.T) {
-	for _, vector := range []bool{false, true} {
-		base := rv64NativeTailCompile(t, "expression-retained", rv64PrivateExpressionElementsModule(t, vector), false)
-		baseline, err := base.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		valid, err := LoadTrustedArtifact(baseline)
-		if err != nil || valid == nil {
-			t.Fatal("valid expression artifact", err)
-		}
-		valid.Close()
-		for name, mutate := range map[string]func(*Compiled){
-			"active-pool":     func(c *Compiled) { c.Elems[0].ValueTypeIndex = uint32(len(c.ValueTypes)) },
-			"passive-pool":    func(c *Compiled) { c.passiveElems[2].ValueTypeIndex = uint32(len(c.ValueTypes)) },
-			"dropped-pool":    func(c *Compiled) { c.passiveElems[1].ValueTypeIndex = uint32(len(c.ValueTypes)) },
-			"wrong-type":      func(c *Compiled) { c.Elems[0].RefType = ValExternRef },
-			"legacy-null":     func(c *Compiled) { c.passiveElems[2].HasValueType = false; c.passiveElems[2].ValueTypeIndex = 0 },
-			"null-func":       func(c *Compiled) { c.passiveElems[2].Values[1].FuncIndex = 1 },
-			"null-global":     func(c *Compiled) { c.passiveElems[2].Values[1].GlobalIndex = 1 },
-			"global":          func(c *Compiled) { c.passiveElems[2].Values[0].HasGlobal = true },
-			"i31":             func(c *Compiled) { c.passiveElems[2].Values[0].I31Wrap = true },
-			"repeat":          func(c *Compiled) { c.passiveElems[2].Values[0].RepeatPrevious = true },
-			"expr":            func(c *Compiled) { c.passiveElems[2].Values[0].Expr = []byte{0xd2, 0, 0x0b} },
-			"private":         func(c *Compiled) { c.passiveElems[2].Values[0].FuncIndex = 13 },
-			"missing":         func(c *Compiled) { c.Elems[0].Values[0].FuncIndex = uint32(c.NumImports + len(c.Funcs)) },
-			"dropped-payload": func(c *Compiled) { c.passiveElems[1].Values = []RefInit{{Null: true}} },
-			"bulk-witness":    func(c *Compiled) { c.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-			"inactive-offset": func(c *Compiled) { c.passiveElems[2].Offset.Base = 1 },
-			"inactive-table":  func(c *Compiled) { c.passiveElems[2].TableIndex = 1 },
-		} {
-			t.Run(fmt.Sprintf("v%t-%s", vector, name), func(t *testing.T) {
-				c := rv64ExpressionMetadataCopy(base)
-				mutate(c)
-				if err := railshotValidateCompiled(c); !errors.Is(err, railshot.ErrUnsupported) {
-					t.Fatal("malformed expression accepted", err)
-				}
-				// These fields survive canonical encoding; exercise actual decode
-				// rejection. Inactive null fields are tested as safe repair below.
-				switch name {
-				case "private", "missing", "legacy-null", "dropped-payload", "inactive-table", "inactive-offset", "active-pool", "passive-pool", "dropped-pool", "wrong-type":
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Log("writer rejected invalid expression metadata", name, err)
-					} else {
-						loaded, err := LoadTrustedArtifact(blob)
-						if loaded != nil {
-							loaded.Close()
-						}
-						if err == nil {
-							t.Fatal("persistent invalid expression artifact decoded", name)
-						}
-					}
-				case "bulk-witness":
-					// The writer derives bulk permission from segment state. This is
-					// canonical repair, while direct missing-witness metadata fails.
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					loaded, err := LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if !loaded.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) || railshotValidateCompiled(loaded) != nil {
-						t.Fatal("bulk witness repair")
-					}
-					loaded.Close()
-				}
-
-				if err := c.prepareCodeMapping(); err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { c.Close() })
-				cache := c.loadCodeCache()
-				address, sealed, refs := cache.base, cache.sealed, cache.refs
-				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
-				defer rv64HostCertificateCloseRuntime(t, rt)
-				mod, err := rt.Module(c)
-				var in *Instance
-				if err == nil {
-					in, err = rt.Instantiate(context.Background(), mod)
-					mod.Close()
-				}
-				if err == nil || in != nil || !errors.Is(err, railshot.ErrUnsupported) || cache.base != address || cache.sealed != sealed || cache.refs != refs {
-					t.Fatal("rejected expression published/retained staging", err)
-				}
-			})
-		}
-		// Null's codec tag discards inactive fields. Reject direct malformed
-		// metadata, but accept independently validated safe canonical wire repair.
-		v := rv64ExpressionMetadataCopy(base)
-		v.passiveElems[2].Values[1].FuncIndex = 1
-		v.passiveElems[2].Values[1].GlobalIndex = 2
-		if err := railshotValidateCompiled(v); err == nil {
-			t.Fatal("direct null inactive fields")
-		}
-		blob, err := v.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer loaded.Close()
-		null := loaded.passiveElems[2].Values[1]
-		if !null.Null || null.FuncIndex != 0 || null.HasGlobal || null.GlobalIndex != 0 || null.I31Wrap || null.RepeatPrevious || len(null.Expr) != 0 {
-			t.Fatal("null codec did not canonicalize")
-		}
-		in := rv64ReferenceTableBulkInstantiate(t, loaded)
-		importedGlobalInvoke(t, in, "init-last", nil, 1, 0, 1)
-		importedGlobalInvoke(t, in, "init-passive", nil, 0, 0, 3)
-		if !bytes.Equal(privateTableBytes(in)[40:72], make([]byte, 32)) {
-			t.Fatal("repaired null not executed")
-		}
-	}
-}
-
 func TestRV64PublicReferenceFunctionExpressionElementsBounds(t *testing.T) {
 	base := rv64NativeTailCompile(t, "expression-bounds", rv64PrivateExpressionElementsModule(t, false), false)
 	for _, count := range []int{railshot.MaxOwnedTableEntries, railshot.MaxOwnedTableEntries + 1} {
@@ -407,47 +286,6 @@ func rv64ExpressionTrapOrigin(t *testing.T, trap *coreruntime.TrapError, functio
 	t.Helper()
 	if len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != function || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != pc {
 		t.Fatal("expression trap source", trap.Frames, function, pc)
-	}
-}
-
-func TestRV64PublicReferenceFunctionExpressionElementsFeatureGates(t *testing.T) {
-	for _, vector := range []bool{false, true} {
-		t.Run(fmt.Sprintf("v%t", vector), func(t *testing.T) {
-			cfg := rv64NativeTailConfig().WithFeature(CoreFeatureTypedFunctionReferences, false)
-			source := rv64PrivateExpressionElementsModule(t, vector)
-			c, err := cfg.Compile(source)
-			if err != nil {
-				t.Fatal("explicit nullable literal without typed permission", err)
-			}
-			c.Close()
-			for _, source := range [][]byte{source, wasmtest.ClosedReferenceDeclarativeExpressions(vector, true, 1)} {
-				c, err := cfg.WithFeature(CoreFeatureBulkMemoryOperations, false).Compile(source)
-				if c != nil {
-					c.Close()
-				}
-				if c != nil || err == nil {
-					t.Fatal("expression source bulk feature gate", err)
-				}
-			}
-			decl := rv64NativeTailCompile(t, "expression-empty-tableless", wasmtest.ClosedReferenceDeclarativeExpressions(vector, true, 0), false)
-			for _, passive := range []bool{false, true} {
-				v := rv64ExpressionMetadataCopy(decl)
-				if passive {
-					v.passiveElems[255].Mode = ElemModePassive
-				} else {
-					v.passiveElems = nil // exact pool no longer has a justified binding
-				}
-				if err := railshotValidateCompiled(v); !errors.Is(err, railshot.ErrUnsupported) {
-					t.Fatal("tableless passive/unused exact type admitted", passive, err)
-				}
-				blob, err := v.MarshalBinary()
-				// The execution digest binds the element directory. Reject the
-				// changed view before it can become an artifact.
-				if err == nil || blob != nil {
-					t.Fatal("tableless passive/unused type artifact written", passive, err)
-				}
-			}
-		})
 	}
 }
 
