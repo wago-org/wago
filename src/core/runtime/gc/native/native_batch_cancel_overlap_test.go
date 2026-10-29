@@ -67,3 +67,28 @@ func TestNativeBatchCancellationPreservesActiveArrayReservation(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeBatchCancellationReclaimsPromotedNurseryWithoutReservation(t *testing.T) {
+	c := batchTestCollector(t)
+	if !c.PrepareNativeStructHandles() {
+		t.Fatal("batch reservation unavailable")
+	}
+	publishBatchTestStructs(c, 1)
+	ref := makeObjRef(c.nativeStructAlloc.Handles[0])
+	if err := c.ForcePromote(ref); err != nil {
+		t.Fatal(err)
+	}
+	// Promotion removes the consumed identity from the nursery ledger, so the
+	// remaining reservation is no longer an exact tail batch. No array or dead
+	// allocation charge owns the now-empty nursery extent.
+	if c.hasPendingDeadNurseryObjects() {
+		t.Fatal("unexpected pending dead allocation charge")
+	}
+	c.CancelNativeAllocationBatch()
+	if c.nurseryBump != 0 || len(c.nurseryHandles) != 0 {
+		t.Fatalf("cancellation retained empty nursery: bump=%d handles=%v", c.nurseryBump, c.nurseryHandles)
+	}
+	if !c.validObjectRef(ref) {
+		t.Fatal("cancellation invalidated promoted object")
+	}
+}

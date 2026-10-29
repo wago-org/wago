@@ -456,20 +456,26 @@ func (c *Collector) discardNativeStructHandles() {
 			}
 		}
 		if !trimmed {
-			// Unpublished large-array handles are also spaceFree, but remain
-			// owned by their independent reservation. Keep that ledger entry.
-			// Cancellation must not recompute nurseryBump from published handle
-			// extents: they omit reserved array bytes and dead-struct charges.
-			// The guarded chunk rewind above is the only safe reclamation here.
 			reserved := &c.nativeLargeArrayAlloc
-			out := c.nurseryHandles[:0]
-			for _, h := range c.nurseryHandles {
-				if c.isYoungHandle(h) || (reserved.Count != 0 && h == reserved.Handle) {
-					out = append(out, h)
+			if reserved.Cursor < reserved.Count {
+				// An unpublished array owns bytes and a free handle that ordinary
+				// nursery compaction cannot see. Preserve both until it commits.
+				out := c.nurseryHandles[:0]
+				for _, h := range c.nurseryHandles {
+					if c.isYoungHandle(h) || h == reserved.Handle {
+						out = append(out, h)
+					}
+				}
+				clear(c.nurseryHandles[len(out):])
+				c.nurseryHandles = out
+			} else {
+				chargedBump := c.nurseryBump
+				c.compactNurseryHandles()
+				if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
+					// Dead native structs have no handle extent to reconstruct.
+					c.nurseryBump = chargedBump
 				}
 			}
-			clear(c.nurseryHandles[len(out):])
-			c.nurseryHandles = out
 		}
 	}
 	clear(s.Handles[:end])
