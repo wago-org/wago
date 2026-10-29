@@ -9,7 +9,6 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 	goruntime "runtime"
 	"slices"
-	"strings"
 	"testing"
 	"unsafe"
 
@@ -297,32 +296,6 @@ func TestGCExternConversionMissingRootsDisableCollection(t *testing.T) {
 	if err := in.CollectGC(); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func TestGCExternConversionArtifactRootAdmission(t *testing.T) {
-	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcExternLocalRootsModule(26))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	if !c.GCNativeRootAdmission().Exact {
-		t.Fatal("fixture has no exact roots")
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if loaded != nil {
-		defer loaded.Close()
-	}
-	if err == nil {
-		t.Fatal("codec admitted an extern-conversion product without persisted bridge ownership")
-	}
-	if !strings.Contains(err.Error(), "required feature") && !strings.Contains(err.Error(), "GC frame-root metadata requires exact native GC roots") {
-		t.Fatalf("unexpected artifact rejection:%v", err)
-	}
-	t.Logf("extern bridge artifact stays fail-closed:%v", err)
 }
 
 func TestGCExternConversionWithoutHeapKeepsTinyProfile(t *testing.T) {

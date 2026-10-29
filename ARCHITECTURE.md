@@ -272,7 +272,7 @@ globals use direct domain-wide alias-cell roots plus checked barrier slots. Mult
 heterogeneous imported/exported collector-reference tables use the same domain-wide
 descriptor-root scan across growth, attachment rollback, and producer-first close.
 Exact cross-instance GC-reference calls coexist with those shared persistent roots and
-retain the same foreign-frame ownership across compiled-code codec reload.
+retain the same foreign-frame ownership across independent source compilations.
 On AMD64 and ARM64, a scalar native relay does not end a root walk. The walker
 uses exact return maps and saved instance contexts to cross foreign frames, skips
 their collector-local slots, and resumes older frames of the collecting domain.

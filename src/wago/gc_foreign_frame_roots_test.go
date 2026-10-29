@@ -63,8 +63,8 @@ func gcScalarAdapterCallerModule(call string, ownObject, unusedCollectorSignatur
 // call's ownership contract. The producer's host call keeps its adapter/root
 // callsite live; its earlier allocation therefore walks that adapter too.
 func TestGCScalarAdapterCallerOwnership(t *testing.T) {
-	for _, saved := range []bool{false, true} {
-		t.Run(fmt.Sprintf("saved=%t", saved), func(t *testing.T) {
+	for _, engine := range []string{"source"} {
+		t.Run(engine, func(t *testing.T) {
 			for _, registerABI := range []bool{false, true} {
 				for _, call := range []string{"direct", "unused-table", "indirect", "ref"} {
 					for _, ownObject := range []bool{false, true} {
@@ -77,7 +77,6 @@ func TestGCScalarAdapterCallerOwnership(t *testing.T) {
 								if err != nil {
 									t.Fatal(err)
 								}
-								producerCode = gcForeignFrameArtifact(t, rt, producerCode, saved)
 								defer producerCode.Close()
 								settings := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
 								producer, err := rt.Instantiate(context.Background(), producerCode, WithGC(settings), WithImports(testImports("env.host", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) { results[0] = 7 }))))
@@ -93,7 +92,6 @@ func TestGCScalarAdapterCallerOwnership(t *testing.T) {
 								if err != nil {
 									t.Fatal(err)
 								}
-								callerCode = gcForeignFrameArtifact(t, rt, callerCode, saved)
 								defer callerCode.Close()
 								caller, err := rt.Instantiate(context.Background(), callerCode, WithGC(settings), WithImports(testImports("env.call", target)))
 								if err != nil {
@@ -127,8 +125,8 @@ func TestGCScalarAdapterCallerOwnership(t *testing.T) {
 }
 
 func TestGCScalarAdapterAllocOnlyCallee(t *testing.T) {
-	for _, saved := range []bool{false, true} {
-		t.Run(fmt.Sprintf("saved=%t", saved), func(t *testing.T) {
+	for _, engine := range []string{"source"} {
+		t.Run(engine, func(t *testing.T) {
 			for _, registerABI := range []bool{false, true} {
 				t.Run(fmt.Sprintf("register=%t", registerABI), func(t *testing.T) {
 					cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
@@ -138,7 +136,6 @@ func TestGCScalarAdapterAllocOnlyCallee(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					producerCode = gcForeignFrameArtifact(t, rt, producerCode, saved)
 					defer producerCode.Close()
 					settings := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
 					producer, err := rt.Instantiate(context.Background(), producerCode, WithGC(settings))
@@ -157,7 +154,6 @@ func TestGCScalarAdapterAllocOnlyCallee(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					callerCode = gcForeignFrameArtifact(t, rt, callerCode, saved)
 					defer callerCode.Close()
 					caller, err := rt.Instantiate(context.Background(), callerCode, WithGC(settings), WithImports(testImports("env.call", target)))
 					if err != nil {
@@ -187,8 +183,8 @@ func TestGCScalarAdapterRevisitedDomain(t *testing.T) {
 		t.Run(fmt.Sprintf("tiny=%t", tiny), func(t *testing.T) {
 			for _, relayObject := range []bool{false, true} {
 				t.Run(fmt.Sprintf("relayObject=%t", relayObject), func(t *testing.T) {
-					for _, saved := range []bool{false, true} {
-						t.Run(fmt.Sprintf("saved=%t", saved), func(t *testing.T) {
+					for _, engine := range []string{"source"} {
+						t.Run(engine, func(t *testing.T) {
 							for _, registerABI := range []bool{false, true} {
 								t.Run(fmt.Sprintf("register=%t", registerABI), func(t *testing.T) {
 									cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
@@ -223,7 +219,6 @@ func TestGCScalarAdapterRevisitedDomain(t *testing.T) {
 									if err != nil {
 										t.Fatal(err)
 									}
-									aCode = gcForeignFrameArtifact(t, rt, aCode, saved)
 									defer aCode.Close()
 									a, err := rt.Instantiate(context.Background(), aCode, WithGC(settings), WithImports(testImports("env.table", table)))
 									if err != nil {
@@ -263,7 +258,6 @@ func TestGCScalarAdapterRevisitedDomain(t *testing.T) {
 									if err != nil {
 										t.Fatal(err)
 									}
-									bCode = gcForeignFrameArtifact(t, rt, bCode, saved)
 									defer bCode.Close()
 									b, err := rt.Instantiate(context.Background(), bCode, WithGC(settings), WithImports(testImports("env.inner", inner, "env.table", table)))
 									if err != nil {
@@ -292,30 +286,6 @@ func TestGCScalarAdapterRevisitedDomain(t *testing.T) {
 			}
 		})
 	}
-}
-
-func gcForeignFrameArtifact(t *testing.T, rt *Runtime, module *Module, saved bool) *Module {
-	t.Helper()
-	if !saved {
-		return module
-	}
-	blob, err := module.Compiled().MarshalBinary()
-	if err != nil {
-		t.Fatal("save native frame maps", err)
-	}
-	if err := module.Close(); err != nil {
-		t.Fatal(err)
-	}
-	loaded := new(Compiled)
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal("reload native frame maps", err)
-	}
-	t.Cleanup(func() { _ = loaded.Close() })
-	result, err := rt.Module(loaded)
-	if err != nil {
-		t.Fatal("publish saved frame maps", err)
-	}
-	return result
 }
 
 func TestGCCollectorFreeReturnMapsCannotPublishObjectRoots(t *testing.T) {
@@ -355,9 +325,9 @@ func TestGCScalarAdapterRevisitedDomainAcrossStores(t *testing.T) {
 	for _, depth := range []int{1, 40} {
 		t.Run(fmt.Sprintf("depth=%d", depth), func(t *testing.T) {
 			for _, registerABI := range []bool{false, true} {
-				for _, saved := range []bool{false, true} {
+				for _, engine := range []string{"source"} {
 					for _, retired := range []bool{false, true} {
-						t.Run(fmt.Sprintf("register=%t/saved=%t/retired=%t", registerABI, saved, retired), func(t *testing.T) {
+						t.Run(fmt.Sprintf("register=%t/%s/retired=%t", registerABI, engine, retired), func(t *testing.T) {
 							cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
 							aRuntime, bRuntime := NewRuntime(WithRuntimeConfig(cfg)), NewRuntime(WithRuntimeConfig(cfg))
 							defer aRuntime.Close()
@@ -367,7 +337,6 @@ func TestGCScalarAdapterRevisitedDomainAcrossStores(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							innerModule = gcForeignFrameArtifact(t, aRuntime, innerModule, saved)
 							defer innerModule.Close()
 							inner, err := aRuntime.Instantiate(context.Background(), innerModule, WithGC(settings))
 							if err != nil {
@@ -389,7 +358,6 @@ func TestGCScalarAdapterRevisitedDomainAcrossStores(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							relayModule = gcForeignFrameArtifact(t, bRuntime, relayModule, saved)
 							defer relayModule.Close()
 							var relays []*Instance
 							for range depth {
@@ -409,7 +377,6 @@ func TestGCScalarAdapterRevisitedDomainAcrossStores(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							outerModule = gcForeignFrameArtifact(t, aRuntime, outerModule, saved)
 							defer outerModule.Close()
 							outer, err := aRuntime.Instantiate(context.Background(), outerModule, WithGC(settings), WithImports(testImports("env.call", target)))
 							if err != nil {

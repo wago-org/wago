@@ -502,7 +502,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 			return nil
 		}
 		// The source-only extern bridge can prove an empty RootNone graph.
-		// This bridge admission is not persisted in saved artifacts.
+		// This bridge admission is established only during source compilation.
 		if compiledArchitecture != 4 && c.stagedGCStructProduct() == stagedGCStructExtern {
 			return nil
 		}

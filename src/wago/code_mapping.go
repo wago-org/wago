@@ -394,7 +394,7 @@ func (c *Compiled) hasCollectorDeclarationRoots() bool {
 		c.nativeGCABIRequirement() != 0 && c.genericGCFrameRoots() != nil && (c.hasFunctionEnvironmentFrames() || c.hasOpaqueExternFrames() || c.hasInternalCollectorReferenceFunctions() || c.hasCollectorReferenceCallBoundary())
 }
 
-// needsExactNativeGCRoots is the compile/artifact predicate. Allocating generic
+// needsExactNativeGCRoots is the compiled-module predicate. Allocating generic
 // GC and extern-conversion products can collect with native Wasm frames live,
 // as can collector-reference host/cross-instance boundaries.
 func (c *Compiled) needsExactNativeGCRoots() bool {
