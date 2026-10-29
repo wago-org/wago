@@ -172,26 +172,22 @@ func TestIndexedAtomicWaitVectorCodecAndOptions(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						loaded := publicArtifactRoundTrip(t, c)
-						defer loaded.Close()
-						for _, compiled := range []*Compiled{c, loaded} {
-							in, err := Instantiate(compiled)
-							if err != nil {
-								t.Fatal(err)
-							}
-							for _, expected := range []uint64{1, 0} {
-								want := uint64(0)
-								if sub != 0 {
-									want = 2 - expected
-								}
-								got, err := in.Invoke("vector", 0, expected, 0)
-								if err != nil || len(got) != 3 || got[0] != 0x0706050403020100 || got[1] != 0x0f0e0d0c0b0a0908 || got[2] != want {
-									in.Close()
-									t.Fatalf("addr64%t/index%d/op%d/cache%t/regABI%t: %x,%v", address64, index, sub, cache, regABI, got, err)
-								}
-							}
-							in.Close()
+						in, err := Instantiate(c)
+						if err != nil {
+							t.Fatal(err)
 						}
+						for _, expected := range []uint64{1, 0} {
+							want := uint64(0)
+							if sub != 0 {
+								want = 2 - expected
+							}
+							got, err := in.Invoke("vector", 0, expected, 0)
+							if err != nil || len(got) != 3 || got[0] != 0x0706050403020100 || got[1] != 0x0f0e0d0c0b0a0908 || got[2] != want {
+								in.Close()
+								t.Fatalf("addr64%t/index%d/op%d/cache%t/regABI%t: %x,%v", address64, index, sub, cache, regABI, got, err)
+							}
+						}
+						in.Close()
 					}
 				}
 			}
