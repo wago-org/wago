@@ -614,9 +614,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 	}()
 	attachMemory := func(memory *Memory) error { return memoryAttachments.attach(memory, &cleanup.resourceCleanup) }
-	// The primary control mapping is a separate unit from imported memory 0,
-	// even when the module has multiple memories. Zero-memory modules still own
-	// their primary control mapping. Consume every owned bit before release.
+	// Threaded instances own a control mapping separate from memory 0, even
+	// when that memory is locally defined. Zero-memory modules still own their
+	// primary control mapping. Consume every owned bit before release.
 	defer func() {
 		if b.success {
 			return
@@ -628,9 +628,13 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				cleanup.run(func() { runtime.ReleaseJobMemory(memory.jobMemory()) })
 			}
 		}
-		if ownsMem || ownsControl {
-			ownsMem, ownsControl = false, false
+		if ownsControl {
+			ownsControl = false
 			cleanup.run(func() { runtime.ReleaseJobMemory(jm) })
+		}
+		if ownsMem {
+			ownsMem = false
+			cleanup.run(func() { runtime.ReleaseJobMemory(memObj.jobMemory()) })
 		}
 	}()
 	if c.memoryImport != "" {
@@ -673,22 +677,17 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		initialBytes, maxBytes := c.memorySizeBytes()
 		backing, allocErr := runtime.AcquireJobMemoryGrowable(initialBytes, maxBytes)
 		if allocErr != nil {
-			runtime.ReleaseEngine(eng)
 			return nil, allocErr
 		}
 		memObj, ownsMem = &Memory{jm: backing}, true
 		if err = memObj.share(nil, c.memoryDef(0)); err != nil {
-			runtime.ReleaseJobMemory(backing)
-			runtime.ReleaseEngine(eng)
 			return nil, err
 		}
 		jm, err = runtime.AcquireJobMemoryGrowable(0, 0)
 		if err != nil {
-			runtime.ReleaseJobMemory(backing)
-			runtime.ReleaseEngine(eng)
 			return nil, wrapContextError("allocate threaded instance control", err)
 		}
-		threadedControl = true
+		threadedControl, ownsControl = true, true
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
 		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
@@ -707,30 +706,6 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		memoryObjs = make([]*Memory, memoryCount)
 		memoryOwns = make([]bool, memoryCount)
 		memoryObjs[0], memoryOwns[0] = memObj, ownsMem
-	}
-	// Release every owned mapping once and detach every distinct imported memory
-	// once. Multiple import declarations may deliberately alias one host Memory.
-	closeMem := func() {
-		if memoryCount <= 1 {
-			if threadedControl {
-				runtime.ReleaseJobMemory(jm)
-			}
-			if ownsMem {
-				runtime.ReleaseJobMemory(memObj.jobMemory())
-			}
-			memoryAttachments.detachAll()
-			return
-		}
-		if threadedControl {
-			runtime.ReleaseJobMemory(jm)
-		}
-		for i := memoryCount - 1; i >= 0; i-- {
-			memory := memoryObjs[i]
-			if memory != nil && memoryOwns[i] {
-				runtime.ReleaseJobMemory(memory.jobMemory())
-			}
-		}
-		memoryAttachments.detachAll()
 	}
 	for i := 1; i < memoryCount; i++ {
 		def := c.memoryDef(i)
@@ -771,8 +746,6 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		memoryOwns[i] = true
 		if def.Shared {
 			if err := memoryObjs[i].share(nil, def); err != nil {
-				closeMem()
-				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("shared memory %d: %w", i, err)
 			}
 		}

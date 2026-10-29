@@ -40,6 +40,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   directly into a hinted register, fixing incorrect results in inlined C++
   wrappers with stack-based arguments.
 
+- Release owned shared-memory backing and invocation control separately when
+  instantiation fails, preventing leaked native mappings and duplicate cleanup.
+
 ### Changed
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
