@@ -51,10 +51,21 @@ func pluginManifest(values answers, existing map[string]any) (map[string]any, in
 	if stability != "experimental" && stability != "stable" && stability != "deprecated" {
 		return nil, 0, fmt.Errorf("stability must be experimental, stable, or deprecated")
 	}
-	pkg := map[string]any{
+	// Retain metadata that setup does not replace, including compatibility
+	// constraints and subpackages that the wizard does not expose.
+	existingPackage, _ := existing["package"].(map[string]any)
+	pkg := make(map[string]any, len(existingPackage))
+	for key, value := range existingPackage {
+		pkg[key] = value
+	}
+	for key, value := range map[string]any{
 		"module": values.module, "version": values.version, "name": values.name, "description": values.description,
 		"license": values.license, "repository": values.repository, "stability": stability,
-		"engines": map[string]any{"wago": "*"},
+	} {
+		pkg[key] = value
+	}
+	if _, exists := pkg["engines"]; !exists {
+		pkg["engines"] = map[string]any{"wago": "*"}
 	}
 	setOptional(pkg, "homepage", values.homepage)
 	if category := strings.ToLower(strings.TrimSpace(values.category)); category != "" {
@@ -72,7 +83,11 @@ func pluginManifest(values answers, existing map[string]any) (map[string]any, in
 		pkg["tags"] = tags
 	}
 	if author := strings.TrimSpace(values.author); author != "" {
-		pkg["authors"] = []any{map[string]any{"name": author}}
+		// Accepting the inferred first author must not discard contact details
+		// or additional authors. A different name explicitly replaces the list.
+		if author != firstAuthor(pkg["authors"]) {
+			pkg["authors"] = []any{map[string]any{"name": author}}
+		}
 	} else {
 		return nil, 0, fmt.Errorf("plugin packages need at least one author")
 	}

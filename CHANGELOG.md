@@ -8,6 +8,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Preserve plugin package compatibility constraints, subpackages, optional
+  metadata, and unchanged author details when rerunning `wago init --plugin`.
 - Preserve deferred load addresses derived from pinned mutable globals on
   ARM64, including loads kept live across guest stack-pointer updates.
 - Compile ARM64 memory operations at large valid directory indexes by forming
