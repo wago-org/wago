@@ -34,7 +34,8 @@ func (f *fn) emitAtomicWaitFastPath(helper uint32, slot int, memoryIndex uint32,
 	f.a.TstImm64(X9, uint64(size-1))
 	badAlignment := f.a.Bcond(condNE)
 	f.ld64(X10, linMemReg, -int32(offMemoryDirPtr))
-	f.ld64(X10, X10, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+	entry := f.memoryDirectoryEntry(X10, memoryIndex)
+	f.ld64(X10, X10, entry+abi.MemoryDirBaseOffset)
 	f.loadSharedMemoryBytes(X16, X10)
 	f.a.AddImm64(X11, X9, uint32(size))
 	if checkOverflow {
