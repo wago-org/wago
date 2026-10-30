@@ -1,0 +1,1 @@
+timeout --kill-after=15s 1200s go test -count=1 -timeout=15m -tags=wago_regalloccheck -skip \^TestStaged ./src/wago

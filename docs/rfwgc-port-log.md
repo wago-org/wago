@@ -437,3 +437,44 @@ regalloccheck, diagnostics, combined debug fallback/native reservation tests and
 expanded accounting tests pass. The full standalone execution suite was not run;
 parent owns final full-suite and serial benchmark qualification. No build artifacts
 remain; temporary exported baseline trees were removed and evidence logs retained.
+
+## Stage 2 full-suite qualification — 2026-10-30
+
+Qualified the exact `1ad799605c7018457b4b0cef4190c90132e337ac` archive in a disposable
+snapshot, without a shell worktree or source edits. Evidence/reproduction recipe:
+`docs/rfwgc-evidence/stage2-suite/`. All 7,706 tracked blobs verified before and
+after testing. Isolated pinned spec-v1/v2/v3 fixtures, verified WABT 1.0.41,
+Go/GOROOT 1.27.1, automatic GOWORK, trusted temporary mise config,
+GOMAXPROCS=8, GOFLAGS=-p=8, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1;
+15-minute per-package timeouts and no CPU affinity restriction.
+
+**Actual state: GAP-CONFORMANCE-TOOLCHAIN; full roots are not green.** Both
+`go test -count=1 -timeout=15m ./...` and the same command with
+`-tags=wago_regalloccheck` completed: each 136 passing packages, 1 failing package
+(`src/wago`), 50 packages with no test files. Each has the same 18 top-level staged
+failures: pinned WABT cannot convert some Release 3 syntax; the required official
+interpreter fallback is unavailable. Bootstrap fails explicitly at missing dune;
+ocaml/ocamlc and menhir are absent too. No system installs or expectation changes.
+Raw logs, exact failing tests/subtests, converter errors and accounting diffs are
+retained. This matches the earlier pinned-WABT baseline failure set, demonstrates
+no engine regression, and leaves the blocked staged paths unqualified.
+
+Only the failing runtime package needed a remainder check: ordinary and checked
+`-skip '^TestStaged' ./src/wago` each passed (1 package apiece). Root standalone
+TinyGo, plugin and all other tested packages passed; no package timeout. The
+additional `-tags=wago_runtime ./cli/...` suite passed: 55 packages, 0 failures,
+36 with no test files. Full roots were run without staged exclusions first;
+these remainder results do not substitute for full conformance qualification.
+
+Slipstream read-only fetch remains db6014de2316f13dd08ea8618d614c28132f2688,
+with no newly relevant changes. Region-first default b3e802899; 97.55%/98.10%
+are source Slipstream figures, not Wago measurements. B1/B7 remain; source host
+fix db6014de2 is landed there with ABI-specific transplant deferred; old-space
+ceiling and helper wake/join remain pending. Stage2 retains the same opt-in flag:
+qualifying128 calls reduce published materializations128->1 with charges128
+unchanged. No benchmarks run; parent can now benchmark without suite CPU load.
+No implementation/sensitive-engine fixes (DaybreakBlue only), delegation, PR,
+push, rebase or upstream backlog action. Snapshot, builds, fixtures, downloads,
+private cache and test temp outputs removed; evidence retained. Existing
+spec-v1/spec-v2 dirt and parent-owned stage2-orchestrator files are preserved
+and excluded from staging.
