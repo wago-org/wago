@@ -1613,8 +1613,11 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
-	SourceMaps bool
-	UnwindMaps bool
+	// GCLifetimeReport receives Analyze diagnostics when gc-lifetime-analyze is
+	// enabled. Off clears the sink and performs no lifetime scan.
+	GCLifetimeReport **GCLifetimeReport
+	SourceMaps       bool
+	UnwindMaps       bool
 	// Profile records finalized code regions without changing emitted bytes. Requires Stats.
 	Profile bool
 	// AMD64Features selects optional instructions at compile time. An explicit
@@ -1783,6 +1786,9 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	if opts.GCLifetimeReport != nil {
+		*opts.GCLifetimeReport = nil
+	}
 	if !diagnosticsEnabled && (opts.Stats != nil || opts.CollectInlineReport) {
 		return nil, fmt.Errorf("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
 	}
@@ -1956,6 +1962,15 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if rep, ierr := analyzeInlineCandidates(m, policy); ierr == nil {
 				ms.Inline = rep
 			}
+		}
+	}
+	if policy.EnabledOption(optGCLifetimeAnalyze) {
+		report := analyzeGCLifetimes(m)
+		if opts.GCLifetimeReport != nil {
+			*opts.GCLifetimeReport = report
+		}
+		if ms != nil {
+			ms.GCLifetime = report
 		}
 	}
 	// Compile scratch reused across every function in the module. The operand

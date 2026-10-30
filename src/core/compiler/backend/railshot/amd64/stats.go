@@ -478,6 +478,7 @@ type ModuleGlobalPinInfo = shared.ModuleGlobalPinInfo
 // ModuleStats aggregates one module's per-function stats plus the module-wide
 // decisions. The zero value is ready to collect into.
 type ModuleStats struct {
+	GCLifetime            *GCLifetimeReport // analysis-only; never a lowering permission
 	CodeSites             []shared.NativeCodeSite
 	SharedAdapterUnwind   []jitprofile.UnwindRange
 	UnwindRanges          []jitprofile.UnwindRange
@@ -614,6 +615,9 @@ func (ms *ModuleStats) String() string {
 			fmt.Fprintf(&b, " g%d→%s", p.Global, p.Reg)
 		}
 		b.WriteByte('\n')
+	}
+	if ms.GCLifetime != nil {
+		b.WriteString(ms.GCLifetime.String())
 	}
 	if ms.Inline != nil {
 		b.WriteString(ms.Inline.String())

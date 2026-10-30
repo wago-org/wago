@@ -90,3 +90,29 @@ The assessment cursor is `db6014de2316f13dd08ea8618d614c28132f2688`, not source 
 7. Before that consumer lands, exercise throughput/Tiny, collect-every-alloc, small nursery, disabled collection, forced allocation failure, host reentry and exact roots. Extend the named Wago test families; validate results/trap ordering/allocation charges and GC verification. Any unsupported profile/path stays baseline. Use matched Off/Analyze/On builds/options for compile time, RSS, native bytes and execution only after correctness; no target gain is assumed. Every build must remove its generated artifacts afterward, without deleting pre-existing user artifacts.
 
 There is no blocker to implementing the analysis-only checkpoint. Runtime replacement, exact source metric reproduction, long-run old-space diagnosis and performance qualification remain separate work. Stop and report any sensitive engine defect to the owner for Daybreak Blue; do not fix it in this lane.
+
+## Implemented first slice (2026-10-30)
+
+The Analyze checkpoint is implemented in `amd64/gc_lifetime.go`; **there is no lowering consumer and no runtime allocation elimination**. Existing checked allocation/reservation, traps, roots, nursery/Tiny behavior and backlog cap remain unchanged. The next experiment is a replay-checked consumer, following steps 6–7 above; do not use a diagnostic Candidate as permission to delete a constructor.
+
+Enable through existing selection plumbing:
+
+- Public Go: `wago.NewRuntimeConfig().WithOptimization("gc-lifetime-analyze", true)` (then the existing compile/instantiate API).
+- AMD64 backend: `CompileOptions{Optimizations: selection, GCLifetimeReport: &report}` with `selection["gc-lifetime-analyze"] = true` layered on the existing complete selection. `report` is a `*GCLifetimeReport`; Off clears the sink even on an early compile error.
+- Existing CLI paired flags: `wago run --gc-lifetime-analyze module.wasm`; `--no-gc-lifetime-analyze` restores Off. The generated configuration schema includes the option. It is experimental and defaults false.
+- Human diagnostics: a CLI built with `-tags=wago_codegenstats` (or `wago_profile`), `WAGO_EXPLAIN=1`, and the same opt-in flag. Ordinary builds still perform enabled analysis but do not print compiler stats. Direct backend report sinks work without diagnostic build tags.
+
+Coverage is deliberately narrow: exactly one final, nonsubtyped, descriptor-free struct with at most 32 unpacked direct i32/i64/f32/f64 fields; explicit constant or unwritten scalar-parameter initializers (including copies), or `struct.new_default`. The complete body may use nop, scalar constants, local get/set/tee, drop, scalar struct.get and final end; zero or one scalar result is allowed. Aliases may be overwritten and remaining locals die at exit. Parameter writes are rejected. Numeric arithmetic, reference parameters/results/fields, packed fields, subtype layouts, arrays, branches/loops, calls/tail calls/EH, globals/tables/memory effects, mutation, casts/identity operations and all other opcodes fall back. This is a validated-input compiler analysis, not a replacement Wasm validator; malformed/truncated inputs encountered by the interpreter fail closed. A body with no 0xfb byte takes the negative gate without semantic interpretation, so its no-GC classification does not assert general bytecode validity.
+
+Resource bounds: 4096 expression bytes, 256 interpreted instructions, 64 combined parameters/locals, 64 local declaration runs (including zero-count adversarial runs), 64 operand slots and 32 fields. At most 4096 functions are analyzed/reported per module; the remainder is explicitly Omitted with unknown denominator. The diagnostic pass is serial before worker launch rather than allocating plans in workers: at most 1,048,576 interpreted instructions and 16 MiB of byte-gate input per module, one set of fixed scratch arrays at a time, and bounded report storage. This is an intentional first-slice adaptation of step 4, avoids aggregate worker amplification, and includes functions later omitted by inlining. There is no persistent instruction IR, module summary, replay plan, retry state or shared mutable proof state. Off bypasses this pass and its storage entirely.
+
+Results contain function/type identity, constructor and last-alias-use offsets, counts of instructions/field reads/alias reads/local overwrites, Candidate/Fallback reason and a source-level SHA-256 fingerprint over the complete admitted body, signature, locals, type/field layout and Analyze-v1 contract. This fingerprint is diagnostic only; it is not native-layout identity or a future replay certificate. Fallback Sites is a lower bound until DenominatorKnown is true. Only complete supported bodies and the complete no-0xfb negative gate have known denominators; early rejection and budget exhaustion never claim complete site coverage. No elimination percentage is calculated.
+
+Reproducible compile-overhead benchmark entrypoint (timing deferred to parent):
+
+```sh
+go test ./src/core/compiler/backend/railshot/amd64 -run '^$' \
+  -bench '^BenchmarkGCLifetimeCompile$' -benchmem -count=10
+```
+
+It decodes and validates outside timing, then compiles 32-function modules in serial with identical options/native mapping policy, reports allocations, and pairs Off/On for qualifying aliases, nonqualifying control flow and no-GC bodies. Copy **only** `src/core/compiler/backend/railshot/amd64/gc_lifetime_bench_test.go` into an isolated export of unmodified `9713878ab`; it has no dependency on the new implementation or tests. Its Off case is the baseline oracle and its On case explicitly skips if the catalog option is absent. The copied fixture was compilation-checked on that base. Keep toolchain, environment/default selection and benchmark tags matched. No benchmark timings, RSS claims or runtime gains have been measured in this checkpoint.

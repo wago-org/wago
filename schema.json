@@ -114,6 +114,7 @@
               "fp-literal-pool",
               "frame-elide",
               "frame-elide-reghomed",
+              "gc-lifetime-analyze",
               "gc-native-alloc",
               "gc-ref-facts",
               "guarded-boolean-xor",
