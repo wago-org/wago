@@ -17,6 +17,17 @@ instruction census. It does not itself claim successful compilation or execution
 Guest programs implementing their own collector in linear memory are distinct
 from the WasmGC constructors targeted by this experiment.
 
+`check_census.py` independently reconciles every completed compiler report with
+the catalog and verifies duplicate binaries have identical counts. Its output
+is retained in `census-check.json`: 128 successful compiler attempts, zero proven
+sites and zero finalized scalar replacements. Catalog-weighted totals are
+294,080 functions, 84,787 analyzed, 209,293 omitted, and 7,944 analyzed functions
+with unknown denominators. Deduplicating by the 121 binary hashes gives 220,624
+functions, 65,520 analyzed, 155,104 omitted, and 5,984 analyzed functions with
+unknown denominators. These bounded diagnostic counts are not an exhaustive
+allocation-site denominator; the independent complete type and instruction
+inventories establish the zero-constructor result.
+
 The orchestrator reviewed the archived harness and corrected the measurement
 plan before timing: both primary revisions enable the option; the baseline is
 analysis-only, while Stage 2 includes the checked consumer. Workload pairs replace

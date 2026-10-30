@@ -1,0 +1,20 @@
+{
+  "compiled_catalog_entries": 128,
+  "unique_binaries": 121,
+  "catalog_weighted": {
+    "functions": 294080,
+    "analyzed": 84787,
+    "omitted": 209293,
+    "analyzed_denominator_unknown": 7944,
+    "proven_sites": 0,
+    "finalized_scalar_replacements": 0
+  },
+  "unique_binary": {
+    "functions": 220624,
+    "analyzed": 65520,
+    "omitted": 155104,
+    "analyzed_denominator_unknown": 5984,
+    "proven_sites": 0,
+    "finalized_scalar_replacements": 0
+  }
+}
