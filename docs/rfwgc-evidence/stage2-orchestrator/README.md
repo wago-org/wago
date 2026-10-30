@@ -14,3 +14,16 @@ go test -tags=wago_regalloccheck ./src/wago -run '^TestGCLifetimeStage2(MixedFie
 Outputs: `pressure.txt`, `pressure-regalloc.txt`. These supplement the full-suite worker's immutable `1ad7996` snapshot. Host reentry and all regional-register combinations are not exhaustively qualified by these two tests. Go test removed temporary build products.
 
 `preflight.txt` records the quiet baseline SHA and missing conformance build tools (`dune`, `ocaml`, `menhir`). The full suite log separately records the actual bootstrap failures and pinned WABT/interpreter state. No system toolchain was installed.
+
+## Final profiling-fallback assertion check
+
+The consumer intentionally falls back in `wago_profile` builds. The parent found that runtime tests still demanded successful handleless lowering there and adjusted only their `jitprofile.Enabled` guards. The long-alias fixture now explicitly checks that the profiling fallback does not take the new handleless route. No production or benchmark function changed. This check was run after all benchmark timing stopped.
+
+With `GOMAXPROCS=8 GOFLAGS=-p=8`, both commands passed:
+
+```sh
+go test -tags=wago_profile ./src/wago ./src/core/compiler/backend/railshot/amd64 ./src/core/compiler/backend/railshot -run 'TestGCLifetime|TestLifetimeDiagnostic|TestProductionPolicy' -count=1 -timeout=10m
+go test ./src/wago -run '^TestGCLifetimeStage2' -count=1 -timeout=10m
+```
+
+Outputs: `profile-final.txt`, `default-final.txt`. The pinned benchmark binaries remain exact `d28005d48` versus `6ceb86221`; the later test-only guards do not change the measured production implementation or benchmark bodies. The parent regenerated `stage2-benchmark/tables.md` from the raw outputs, with no diff, and its verifier confirmed six samples per cell and all 72 accepted pairs satisfying the unchanged quiet threshold.

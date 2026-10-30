@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/wago-org/wago/internal/jitprofile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -60,7 +61,7 @@ func TestGCLifetimeStage2MixedFieldPressure(t *testing.T) {
 						t.Fatalf("iteration=%d got=%x err=%v want=%x", n, got, err, values[field])
 					}
 				}
-				if on && gc.NativeDeadBatchSupported && nativeStructAllocEnabled && handleless == 0 {
+				if on && gc.NativeDeadBatchSupported && nativeStructAllocEnabled && !jitprofile.Enabled && handleless == 0 {
 					t.Fatal("test did not exercise the handleless path")
 				}
 			})
@@ -108,7 +109,7 @@ func TestGCLifetimeStage2CallerFrameRoot(t *testing.T) {
 			if i.gc.Stats().MinorCollections == 0 {
 				t.Fatal("caller-root test did not collect")
 			}
-			if on && gc.NativeDeadBatchSupported && nativeStructAllocEnabled && handleless == 0 {
+			if on && gc.NativeDeadBatchSupported && nativeStructAllocEnabled && !jitprofile.Enabled && handleless == 0 {
 				t.Fatal("callee did not exercise handleless path")
 			}
 		})

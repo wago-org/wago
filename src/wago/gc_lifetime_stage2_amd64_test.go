@@ -11,6 +11,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/jitprofile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -146,10 +147,10 @@ func TestGCLifetimeStage2Runtime(t *testing.T) {
 						t.Fatalf("charges %d want %d", charges, want)
 					}
 					t.Logf("on=%v charges=%d layout-bytes=%d handleless=%d materialized=%d published-handles=%d observed-nursery-advance=%d retained-nursery=%d->%d", on, charges, charges*24, handleless, charges-handleless, charges-handleless, nurseryAdvance, initial.bump, lifetimeSnapshot(i).bump)
-					if on && kind == "qualifying" && mode.name == "throughput" && gc.NativeDeadBatchSupported && nativeStructAllocEnabled && handleless == 0 {
+					if on && kind == "qualifying" && mode.name == "throughput" && gc.NativeDeadBatchSupported && nativeStructAllocEnabled && !jitprofile.Enabled && handleless == 0 {
 						t.Fatal("no allocation publication eliminated")
 					}
-					if (!on || kind == "nonqualifying" || mode.name == "tiny" || mode.name == "tiny-stress" || mode.name == "stress" || mode.name == "disabled") && handleless != 0 {
+					if (!on || (jitprofile.Enabled && kind == "qualifying") || kind == "nonqualifying" || mode.name == "tiny" || mode.name == "tiny-stress" || mode.name == "stress" || mode.name == "disabled") && handleless != 0 {
 						t.Fatal("unexpected handleless path")
 					}
 				}
