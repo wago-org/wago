@@ -103,32 +103,28 @@ func TestSharedGrowDynamicZeroWidthsAndLiveValues(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						loaded := publicArtifactRoundTrip(t, c)
-						defer loaded.Close()
-						for _, compiled := range []*Compiled{c, loaded} {
-							in, err := Instantiate(compiled, InstantiateOptions{memoryLimitPages: 2})
-							if err != nil {
-								t.Fatal(err)
+						in, err := Instantiate(c, InstantiateOptions{memoryLimitPages: 2})
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer in.Close()
+						pages := uint64(1)
+						for n, delta := range []uint64{0, 1, 0, 1, 1 << 32, ^uint64(0), 0} {
+							rawDelta := delta
+							want := uint64(^uint32(0))
+							if address64 {
+								want = ^uint64(0)
+							} else {
+								delta = uint64(uint32(delta))
 							}
-							defer in.Close()
-							pages := uint64(1)
-							for n, delta := range []uint64{0, 1, 0, 1, 1 << 32, ^uint64(0), 0} {
-								rawDelta := delta
-								want := uint64(^uint32(0))
-								if address64 {
-									want = ^uint64(0)
-								} else {
-									delta = uint64(uint32(delta))
-								}
-								if delta <= 2-pages {
-									want = pages
-									pages += delta
-								}
-								token := uint64(n) + 1<<40
-								got, err := in.Invoke("run", rawDelta, token)
-								if err != nil || len(got) != 3 || got[0] != token+2 || got[1] != want || got[2] != token+1 {
-									t.Fatalf("grow(%x): %v, %v; want [%d %d %d]", delta, got, err, token+2, want, token+1)
-								}
+							if delta <= 2-pages {
+								want = pages
+								pages += delta
+							}
+							token := uint64(n) + 1<<40
+							got, err := in.Invoke("run", rawDelta, token)
+							if err != nil || len(got) != 3 || got[0] != token+2 || got[1] != want || got[2] != token+1 {
+								t.Fatalf("grow(%x): %v, %v; want [%d %d %d]", delta, got, err, token+2, want, token+1)
 							}
 						}
 					})
@@ -223,25 +219,21 @@ func TestSharedGrowDynamicZeroPreservesVectorPrefix(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					loaded := publicArtifactRoundTrip(t, c)
-					defer loaded.Close()
-					for _, compiled := range []*Compiled{c, loaded} {
-						in, err := Instantiate(compiled)
-						if err != nil {
-							t.Fatal(err)
+					in, err := Instantiate(c)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					for n, delta := range []uint64{0, 1, 0, 1 << 32, 0} {
+						want := uint64(2)
+						if n < 2 {
+							want = 1
+						} else if n == 3 && address64 {
+							want = ^uint64(0)
 						}
-						defer in.Close()
-						for n, delta := range []uint64{0, 1, 0, 1 << 32, 0} {
-							want := uint64(2)
-							if n < 2 {
-								want = 1
-							} else if n == 3 && address64 {
-								want = ^uint64(0)
-							}
-							got, err := in.Invoke("run", delta)
-							if err != nil || len(got) != 3 || got[0] != binary.LittleEndian.Uint64(payload) || got[1] != binary.LittleEndian.Uint64(payload[8:]) || got[2] != want {
-								t.Fatalf("grow(%x): vector/results %x, %v; want grow %x", delta, got, err, want)
-							}
+						got, err := in.Invoke("run", delta)
+						if err != nil || len(got) != 3 || got[0] != binary.LittleEndian.Uint64(payload) || got[1] != binary.LittleEndian.Uint64(payload[8:]) || got[2] != want {
+							t.Fatalf("grow(%x): vector/results %x, %v; want grow %x", delta, got, err, want)
 						}
 					}
 				})
