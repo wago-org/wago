@@ -523,6 +523,7 @@ var catalog = []Definition{
 	arm64("mul-add-fuse", "Multiply-add fusion", "fuse multiply-add and multiply-subtract expressions"),
 	arm64("entry-init-elision", "Entry initialization elision", "skip initialization of locals overwritten before their first read"),
 	arm64("v128-direct-results", "Direct vector results", "write vector results directly into eligible pinned locals"),
+	experimentalAMD64("gc-lifetime-analyze", "GC lifetime analysis", "bounded scalar struct lifetime diagnostics only; no allocation elimination"),
 	amd64("dead-gc-new", "Dead GC constructors", "remove dropped GC constructor trees while preserving traps"),
 	amd64("gc-native-alloc", "Native GC allocation", "allocate admitted GC objects through native nursery fast paths"),
 	both("v128-const-cache", "Vector constant cache", "reserve repeated vector constants and target-specific masks"),
