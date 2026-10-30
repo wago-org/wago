@@ -13,7 +13,7 @@ def run(cmd,cwd,env,path):
  return p.returncode
 
 def prepare(tmp):
- env=os.environ.copy();env.update(GOMAXPROCS='1',GOTOOLCHAIN='local',GOWORK='off',GOFLAGS='',GOEXPERIMENT='',GOCACHE=str(tmp/'cache'),GOTMPDIR=str(tmp));env.pop('WAGO_EXPLAIN',None)
+ env=os.environ.copy();env.update(GOROOT=str(pathlib.Path(GO).parents[1]),GOMAXPROCS='1',GOTOOLCHAIN='local',GOWORK='off',GOFLAGS='',GOEXPERIMENT='',GOCACHE=str(tmp/'cache'),GOTMPDIR=str(tmp));env.pop('WAGO_EXPLAIN',None)
  cat=json.loads((ROOT/'corpus/catalog.json').read_text())
  manifest=[]
  for m in cat['benchmarks']:
@@ -27,10 +27,12 @@ def prepare(tmp):
   import shutil
   shutil.rmtree(tree/'corpus');shutil.copytree(ROOT/'corpus',tree/'corpus')
   shutil.rmtree(tree/'bench');shutil.copytree(ROOT/'bench',tree/'bench',ignore=shutil.ignore_patterns('.git','*.test'))
+  p=tree/'bench/internal/semanticcorpus/run.go';p.write_text(p.read_text().replace('wago.Compile(nil, wasm)', 'wago.Compile(wago.NewRuntimeConfig().WithOptimization("gc-lifetime-analyze", os.Getenv("STAGE2_ON") == "1"), wasm)'))
   suite=tree/'bench/suite';(suite/'stage2_corpus_test.go').write_text((OUT/'adapter_test.go.txt').read_text())
   for f in ['suite_test.go','command_corpus_test.go']:
    p=suite/f;s=p.read_text();s=s.replace('cfg := wago.NewRuntimeConfig()','cfg := stage2Config()').replace('wago.Compile(nil, m.bytes)','wago.Compile(stage2Config(), m.bytes)');p.write_text(s)
   if name=='stage2':
+   (suite/'stage2_inventory_test.go').write_text((OUT/'inventory_test.go.txt').read_text())
    backend=tree/'src/core/compiler/backend/railshot/amd64';(backend/'corpus_stats.go').write_text((OUT/'stats.go.txt').read_text())
    p=backend/'compile.go';p.write_text(p.read_text().replace('ms.String()', 'corpusStats(ms)'))
   for tags in ['', 'wagodebug','wago_regalloccheck']:
@@ -49,7 +51,7 @@ if __name__=='__main__':
   stats=[]
   for n,m in enumerate(manifest):
    id=m['id']; e=env|{'STAGE2_ON':'1','WAGO_EXPLAIN':'1'}
-   rc=run([str(tmp/'stats.test'),'-test.run=^TestStage2CorpusCompile$','-test.v','-wago.corpus='+id],tmp/'stage2/bench/suite',e,OUT/('static-'+id+'.txt'))
+   rc=run([str(tmp/'stats.test'),'-test.run=^TestStage2(CorpusCompile|Inventory)$','-test.v','-wago.corpus='+id],tmp/'stage2/bench/suite',e,OUT/('static-'+id+'.txt'))
    stats.append({'id':id,'returncode':rc});print('static',n+1,len(manifest),id,rc,flush=True)
   (OUT/'static-outcomes.json').write_text(json.dumps(stats,indent=2)+'\n')
   # Validation invokes every eligible adapter once, including exact oracle checks.
