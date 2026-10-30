@@ -570,3 +570,30 @@ min/max are descriptive. Tiny timing omitted; existing fallback tests are the
 only Tiny evidence. No new sensitive-engine issue was fixed or investigated.
 
 Start/final Slipstream fetch unchanged `db6014de2316f13dd08ea8618d614c28132f2688`: no new relevant changes. Region-first default b3e802899; B1/B7; ABI-specific hostfix db6014de2 deferred for Wago; old-space ceiling/helper wake-join pending; Go-backed arenas/stable handles retained. No source coverage percentage is a Wago measurement. All owned archives/binaries/GOTMPDIR/privatecache removed. Parent profile-test guards modified during run were excluded and do not affect pinned binaries. Existing spec-v1/v2 dirt preserved. No sensitive fixes (DaybreakBlue only), subdelegation, PR/push/rebase/upstream backlog changes.
+
+
+## 2026-10-30 — Stage 2 final orchestrator handoff
+
+All five Stage 2 T3 sol tasks completed and their results were collected: implementation, allocation-contract study, independent correctness review, isolated full-suite qualification, and quiet benchmarks. Maximum concurrent workers was two, below the owner limit of eight. No worker was abandoned. The benchmark worker was steered from repeatedly rejected large CPU6 groups to smaller matched CPU10/sibling11 pairs; the rejected attempt is retained separately and excluded from the final tables. No other workload was killed or repinned.
+
+### Implemented result and evidence
+
+- Production checkpoint: `e98051264`; implementation/test handoff: `1ad799605`. The existing, default-off `gc-lifetime-analyze` flag now includes structurally replayed checked scalar replacement. It avoids qualifying native fast-path object/header/handle/payload materialization while retaining checked charges and fallbacks. It does not remove all reservations or replace the collector.
+- Additional mixed-field and caller-frame-root tests: `07d938f37`. Default and regalloccheck executions passed at the 32-field boundary, with exact scalar bits, helper/refill pressure and collections across a non-inlined callee. The read-only review reported no actionable correctness defect; exhaustive host-reentry/regional-register combinations remain outside this evidence.
+- Full-suite evidence: `d28005d48`. Exact production snapshot `1ad7996`: ordinary and regalloccheck roots each passed 136 packages, failed only `src/wago` staged tooling tests, and had 50 no-test packages. Both available-runtime rechecks passed; CLI runtime-tag suite passed 55 test packages with zero failures. Nested workspace modules are not implied by root `./...`.
+- Quiet measurement: `c1fe1a6f2`, against exact `6ceb86221`. Parent regenerated the tables without changes and verified the accepted telemetry. Every required cell has six accepted 500 ms samples. All 72 accepted pair invocations satisfy the unchanged 5% external-host/SMT-sibling threshold. Fixture expression bytes were independently compared with the quiet-baseline compiler fixtures and match in all three cases.
+- Final test-only correction: profiling builds intentionally bypass the consumer; runtime assertions now account for that and explicitly test the long-alias profiling fallback. Focused profile/backend/policy tests and the default Stage 2 runtime family passed after timing completed. Raw results and commands are in `stage2-orchestrator/`. No production change followed the measured checkpoint.
+
+The measured qualifying result is **1,024 to 1 materialized objects/published handles**, with 1,023 handleless charges. Allocation charges remain 1,024 and observed nursery advance remains 24,576 bytes. Nonqualifying materializations stay 1,024; no-GC stays zero. Host runtime allocation counters are zero in all cases. This is a narrow fixture result, not a Wago-wide elimination percentage or zero-reservation claim.
+
+Qualifying enabled runtime median is 279.2 to 276.7 ns (−0.90%), with overlapping ranges; a robust baseline speedup is not established. The rejected/no-GC enabled controls are 3.98%/5.05% slower, and Off controls also move upward. Enabled qualifying compilation is 160.469 to 352.2955 microseconds (+119.54%), with 692 to 2,463 host allocations per 32-function module. The useful result is publication elimination with preserved semantics; runtime benefit remains modest/uncertain and compilation cost is substantial. Keep it opt-in. The full before/after and Off/On tables, CVs, byte counts and raw evidence above are authoritative; previous Stage 1 cost percentages are historical context.
+
+### GAP-CONFORMANCE-TOOLCHAIN remains open
+
+Each full root run has the same 18 top-level staged failures as the pinned-WABT baseline. Verified WABT **1.0.41** still needs the official WebAssembly **Release 3 interpreter** for unsupported syntax. Its bootstrap fails because **`dune` is missing**; `ocaml`, `ocamlc` and `menhir` are also absent. This is an explicit qualification gap, not a green full-conformance result. No expectations were rewritten and no system toolchain was installed. Exact errors and closure/reproduction steps remain in `stage2-suite/` and the earlier `baseline-qualification/` evidence.
+
+### Mirror, cleanup and repository state
+
+Final orchestrator read-only fetch again returned Slipstream master **`db6014de2316f13dd08ea8618d614c28132f2688`**. Old/new cursor is unchanged; no new collector, lifetime-analysis or host-boundary change requires a mirror. B1/B7 adaptations and prior applicability decisions remain; ABI-specific host-boundary transplant stays deferred, and old-space ceiling/helper wake-join changes remain pending source work. No source percentage is adopted as a Wago measurement.
+
+All workers, owned benchmark runners and parent test processes have completed. Worker archives, fixtures, binaries and private caches were removed, and parent Go test temporary outputs were cleaned. Retained files are intentional code/tests/docs/evidence. No PR, push, rebase, upstream publication or maintainer-backlog change. The pre-existing spec-v1/spec-v2 submodule differences remain untouched. Final head is reported in the handoff rather than embedded self-referentially in this commit.

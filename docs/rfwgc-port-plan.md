@@ -180,3 +180,8 @@ bounded constructor tests remain part of the focused run.
 Timing and broad-suite qualification belong to the parent after this checkpoint.
 No Stage 2 benchmark has been run. See the appended log and Stage 2 evidence for
 commands, exact accounting observations and portable runner instructions.
+
+
+## Stage 2 measured disposition
+
+Stage 2 is implemented and qualified as a checked scalar-replacement experiment. See the final Stage 2 handoff in `rfwgc-port-log.md`, `rfwgc-evidence/stage2-suite/`, and `rfwgc-evidence/stage2-benchmark/`. The same opt-in flag now consumes complete structural proofs; it is no longer diagnostic-only on eligible native paths. Published objects fell from 1,024 to 1 in the qualifying fixture, but charges and nursery advance are unchanged. Baseline runtime gain is not robust, controls were slower, and qualifying enabled compilation more than doubled. This evidence supports retaining the experiment as opt-in, not enabling it by default or claiming the collector architecture is fully ported. The named Release 3 interpreter toolchain gap still prevents full staged-conformance qualification.
