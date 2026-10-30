@@ -116,3 +116,67 @@ go test ./src/core/compiler/backend/railshot/amd64 -run '^$' \
 ```
 
 It decodes and validates outside timing, then compiles 32-function modules in serial with identical options/native mapping policy, reports allocations, and pairs Off/On for qualifying aliases, nonqualifying control flow and no-GC bodies. Copy **only** `src/core/compiler/backend/railshot/amd64/gc_lifetime_bench_test.go` into an isolated export of unmodified `9713878ab`; it has no dependency on the new implementation or tests. Its Off case is the baseline oracle and its On case explicitly skips if the catalog option is absent. The copied fixture was compilation-checked on that base. Keep toolchain, environment/default selection and benchmark tags matched. No benchmark timings, RSS claims or runtime gains have been measured in this checkpoint.
+
+## Stage 2 implemented (2026-10-30; baseline 6ceb86221)
+
+The same off-by-default `gc-lifetime-analyze` option now enables a consumer,
+not only diagnostics. AMD64 seals bounded complete semantic records, owning
+copies of the expression bytes, signature, local runs, selected struct type,
+consumed native field/size/alignment layout and immutable codegen policy. It
+independently replays the complete analysis/records/context before emission.
+Mismatch returns to ordinary body compilation before any output/state mutation.
+The diagnostic SHA-256 Identity is absent from the certificate and consumer.
+The policy audit rejects diagnostic Identity reads outside reporting/analysis
+and hash calls outside the diagnostic analysis function; the existing byte gate
+exception remains restricted to the complete-body no-0xfb negative test.
+
+The emitter retains original instruction PCs and the constructor safepoint. It
+removes reference-local alias operations and field loads, replaying scalar
+constants, default zeroes and never-written parameter provenance. Scalar copies
+retain their original source across later local overwrites. Parameter forwarding
+uses `pushGCForwardedValue`, recovering current pins/spills after helper calls;
+no pre-helper register or deferred operand node survives as a certificate value.
+It calls the existing constructor helper with `nativeStructAllocDead`, selecting
+`emitNativeDeadStructChargeStub` when runtime admission succeeds. This eliminates
+live handle publication and payload materialization on that path. Every slow
+boundary retains the existing rooted allocation helper and can materialize an
+object. No collector rewrite or changed allocation failure contract is involved.
+
+Compilation admission requires native GC allocation, GC struct helpers, the
+complete Stage 1 whitelist, matching staged/source types, pointer-free layout,
+and a local function within the module budget. Calls, escaping/unknown values,
+control flow, reference fields, packed fields, multiple objects, parameter writes,
+EH, inlining, custom instructions, profiling builds and failure-injection builds
+remain fallback. Tiny, stress collection and collection-disabled configurations
+retain native runtime admission/fallback policy; they do not acquire a new fast
+allocator. Off and rejected bodies retain baseline code/root maps; qualifying On
+code intentionally changes and remains deterministic at 1/4/8 workers.
+
+Full allocation/charge erasure remains outside the runtime contract. This stage
+is checked scalar replacement: charges, nursery pressure and slow-path allocation
+remain. `Stats.Allocations` counts charges, and `Stats.LiveObjects` includes pending
+handleless dead charges, so neither is a materialized-object count. Stage 2's
+portable fixture harness samples the native dead-charge counter across every
+invocation, respecting collection-cycle resets, and reports charges, successful
+handleless charges and materialized allocations (`charges - handleless`) separately.
+For its sole i32 field, layout size is 24 bytes; throughput heap rounding is 32
+bytes. Neither number alone measures actual nursery/chunk reservations. Report
+observed nursery bump advances and the retained end bump separately, including
+chunk reservations; do not turn these into zero-allocation or universal physical
+bytes-per-object claims. Nursery allocation uses its own size/alignment machinery;
+throughput heap size-class rounding is not an inferred nursery bump measurement.
+
+The exact Stage 1 qualifying/nonqualifying/no-GC expressions are runnable in
+`src/wago/gc_lifetime_stage2_amd64_test.go`, with only an export added. This single
+file also builds at 6ceb86221; only it is copied for the portable benchmark.
+Additional tests cover scalar bit patterns (including signed zero/NaNs), scalar
+and reference alias overwrites, persistent roots, small nursery, stress, Tiny,
+collection-disabled execution, forced Tiny exhaustion, replay corruption/context
+changes and native storage checking. Throughput disabled-collection state is
+reset at invocation boundaries by the existing runtime; repeatedly invoking one
+allocation is not a valid forced-throughput-OOM test. Existing within-invocation
+bounded constructor tests remain part of the focused run.
+
+Timing and broad-suite qualification belong to the parent after this checkpoint.
+No Stage 2 benchmark has been run. See the appended log and Stage 2 evidence for
+commands, exact accounting observations and portable runner instructions.

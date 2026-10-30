@@ -11,8 +11,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// Analysis is deliberately not a lowering permission. No plan is consumed by
-// codegen; allocation charges, traps and exact roots use the existing path.
+// Diagnostics are not lowering permission. The separate sealed/replayed consumer
+// preserves allocation charges, traps and exact roots using existing machinery.
 var gcLifetimeAnalyzeEnabled bool
 
 const (
@@ -49,7 +49,7 @@ func (r *GCLifetimeReport) String() string {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "gc-lifetime: analysis-only (no allocation elimination), omitted=%d\n", r.Omitted)
+	fmt.Fprintf(&b, "gc-lifetime: checked scalar replacement (charges preserved; slow paths may materialize), omitted=%d\n", r.Omitted)
 	for _, f := range r.Functions {
 		fmt.Fprintf(&b, "  func=%d candidate=%t reason=%s sites=%d denominator-known=%t records=%d reads=%d alias-reads=%d overwrites=%d last-alias-use=%d constructor-offset=%d identity=%x\n", f.Function, f.Candidate, f.Reason, f.Sites, f.DenominatorKnown, f.Records, f.Reads, f.Aliases, f.Overwrites, f.LastAliasUse, f.ConstructorOffset, f.Identity)
 	}
