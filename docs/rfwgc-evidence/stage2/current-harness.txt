@@ -1,0 +1,3 @@
+cwd: /home/dev/.t3/worktrees/wago/experiment-rfwgc-port
+command: /home/dev/.local/share/mise/installs/go/1.27.1/bin/go test ./src/wago -run ^$ -timeout=10m
+ok  	github.com/wago-org/wago/src/wago	0.002s [no tests to run]

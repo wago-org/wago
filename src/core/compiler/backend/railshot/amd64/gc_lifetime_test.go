@@ -280,6 +280,9 @@ func TestGCLifetimeReplay(t *testing.T) {
 		if f.replayGCLifetime(p, m.Code[0].BodyBytes) {
 			t.Fatal("accepted mismatched certificate")
 		}
+		if consumed, err := f.consumeGCLifetime(p, m.Code[0].BodyBytes); consumed || err != nil || f.a != nil {
+			t.Fatal("mismatch did not cleanly fall back before emission")
+		}
 		*p = saved
 	}
 	// Diagnostic hashes do not occur in certificates and cannot authorize a replay.

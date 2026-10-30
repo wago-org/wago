@@ -117,7 +117,8 @@ func TestGCLifetimeStage2Runtime(t *testing.T) {
 			t.Run(mode.name+"/"+kind, func(t *testing.T) {
 				for _, on := range []bool{false, true} {
 					i := lifetimeInstance(t, lifetimeRuntimeModule(kind, wasm.I32, false), on, mode.cfg)
-					var charges, handleless uint64
+					var charges, handleless, nurseryAdvance uint64
+					initial := lifetimeSnapshot(i)
 					for n := 0; n < 128; n++ {
 						a := lifetimeSnapshot(i)
 						got, err := i.Invoke("run")
@@ -131,6 +132,11 @@ func TestGCLifetimeStage2Runtime(t *testing.T) {
 						}
 						charges += b.allocations - a.allocations
 						handleless += lifetimeHandleless(a, b)
+						if b.cycle != a.cycle {
+							nurseryAdvance += uint64(b.bump)
+						} else if b.bump > a.bump {
+							nurseryAdvance += uint64(b.bump - a.bump)
+						}
 					}
 					want := uint64(128)
 					if kind == "no-gc" {
@@ -139,7 +145,7 @@ func TestGCLifetimeStage2Runtime(t *testing.T) {
 					if charges != want {
 						t.Fatalf("charges %d want %d", charges, want)
 					}
-					t.Logf("on=%v charges=%d layout-bytes=%d handleless=%d materialized=%d", on, charges, charges*24, handleless, charges-handleless)
+					t.Logf("on=%v charges=%d layout-bytes=%d handleless=%d materialized=%d published-handles=%d observed-nursery-advance=%d retained-nursery=%d->%d", on, charges, charges*24, handleless, charges-handleless, charges-handleless, nurseryAdvance, initial.bump, lifetimeSnapshot(i).bump)
 					if on && kind == "qualifying" && mode.name == "throughput" && gc.NativeDeadBatchSupported && nativeStructAllocEnabled && handleless == 0 {
 						t.Fatal("no allocation publication eliminated")
 					}
@@ -242,6 +248,7 @@ func BenchmarkGCLifetimeRuntime(b *testing.B) {
 					b.ReportMetric(float64(charged*24)/1024, "layout-B/op")
 					b.ReportMetric(float64(dead)/1024, "handleless/op")
 					b.ReportMetric(float64(charged-dead)/1024, "materialized/op")
+					b.ReportMetric(float64(charged-dead)/1024, "published-handles/op")
 					b.ReportMetric(float64(lifetimeSnapshot(j).bump), "retained-nursery-B")
 				})
 			}
