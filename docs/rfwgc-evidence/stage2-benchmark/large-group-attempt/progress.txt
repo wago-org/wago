@@ -1,0 +1,43 @@
+Building baseline runtime
+Building baseline compile
+Building stage2 runtime
+Building stage2 compile
+01-runtime-baseline
+Waiting for <=5% contention: 01-runtime-baseline 1.59 {'6': 11.616161616161616, '7': 5.5}
+Waiting for <=5% contention: 01-runtime-baseline 2.94 {'6': 33.663366336633665, '7': 0.5}
+Waiting for <=5% contention: 01-runtime-baseline 1.66 {'6': 20.2020202020202, '7': 0.0}
+Rejected noisy invocation; waiting before retry: 01-runtime-baseline
+Waiting for <=5% contention: 01-runtime-baseline 3.68 {'6': 1.9900497512437811, '7': 13.06532663316583}
+Rejected noisy invocation; waiting before retry: 01-runtime-baseline
+Rejected noisy invocation; waiting before retry: 01-runtime-baseline
+Rejected noisy invocation; waiting before retry: 01-runtime-baseline
+Waiting for <=5% contention: 01-runtime-baseline 6.02 {'6': 22.22222222222222, '7': 15.577889447236181}
+Waiting for <=5% contention: 01-runtime-baseline 7.32 {'6': 57.711442786069654, '7': 1.9900497512437811}
+Rejected noisy invocation; waiting before retry: 01-runtime-baseline
+Waiting for <=5% contention: 01-runtime-baseline 4.09 {'6': 10.5, '7': 16.5}
+Rejected noisy invocation; waiting before retry: 01-runtime-baseline
+Waiting for <=5% contention: 01-runtime-baseline 7.72 {'6': 3.5, '7': 11.881188118811881}
+Waiting for <=5% contention: 01-runtime-baseline 7.69 {'6': 4.975124378109452, '7': 11.055276381909549}
+Waiting for <=5% contention: 01-runtime-baseline 7.52 {'6': 5.0, '7': 10.83743842364532}
+Waiting for <=5% contention: 01-runtime-baseline 5.61 {'6': 4.522613065326633, '7': 26.633165829145728}
+Waiting for <=5% contention: 01-runtime-baseline 6.66 {'6': 1.5, '7': 45.04950495049505}
+Waiting for <=5% contention: 01-runtime-baseline 8.81 {'6': 6.467661691542289, '7': 48.24120603015076}
+Waiting for <=5% contention: 01-runtime-baseline 10.15 {'6': 15.92039800995025, '7': 45.77114427860697}
+Waiting for <=5% contention: 01-runtime-baseline 7.32 {'6': 28.0, '7': 7.960199004975125}
+Rejected noisy invocation; waiting before retry: 01-runtime-baseline
+Rejected noisy invocation; waiting before retry: 01-runtime-baseline
+Traceback (most recent call last):
+  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/stage2-benchmark/measure.py", line 141, in <module>
+    finally:
+
+  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/stage2-benchmark/measure.py", line 83, in timed
+    while True:
+
+  File "/usr/lib/python3.13/subprocess.py", line 1222, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/subprocess.py", line 2128, in _communicate
+    ready = selector.select(timeout)
+  File "/usr/lib/python3.13/selectors.py", line 398, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt

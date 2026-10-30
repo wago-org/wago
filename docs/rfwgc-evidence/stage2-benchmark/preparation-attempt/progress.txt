@@ -1,0 +1,18 @@
+Building baseline runtime
+Building baseline compile
+Building stage2 runtime
+Building stage2 compile
+01-runtime-baseline
+Traceback (most recent call last):
+  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/stage2-benchmark/measure.py", line 141, in <module>
+    output=timed(cmd,trees[name],label)
+  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/stage2-benchmark/measure.py", line 93, in timed
+    if proc.returncode: raise RuntimeError(output.decode())
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: panic: open ../../tests/fixtures/wasm/fib.wasm: no such file or directory
+
+goroutine 1 [running]:
+github.com/wago-org/wago/src/wago.testdata({0x167a70d?, 0x6eb268dd320?})
+	/tmp/wago-stage2-benchmark-hh3zvudc/baseline/src/wago/wago_test.go:28 +0xb7
+github.com/wago-org/wago/src/wago.init()
+	/tmp/wago-stage2-benchmark-hh3zvudc/baseline/src/wago/wago_test.go:37 +0x1afe

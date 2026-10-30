@@ -478,3 +478,95 @@ push, rebase or upstream backlog action. Snapshot, builds, fixtures, downloads,
 private cache and test temp outputs removed; evidence retained. Existing
 spec-v1/spec-v2 dirt and parent-owned stage2-orchestrator files are preserved
 and excluded from staging.
+
+## Stage2 measured quiet comparison — 2026-10-30
+
+Pinned baseline `6ceb862219e64480c0503836b19ee1e02b209cc7` versus Stage2 `d28005d48f42524f9bb8a6556d92c5b701c42cd9`. Evidence: `docs/rfwgc-evidence/stage2-benchmark/` (scripts, raw accepted/rejected samples, telemetry, environment, cleanup, mirror checks). Disposable archives; identical portable runtime harness copied only into baseline; original three bodies plus export, unchanged 32-function compile fixtures. No engine edits or repeated full suites.
+
+Fresh matched run: CPU10 / SMT sibling11 (CPU6 long groups rejected and retained separately), Go1.27.1, GOMAXPROCS1 compiler/runtime, GOWORKoff, private cache/GOTMPDIR. Six accepted500ms samples per cell; serial Off+On fixture pairs, alternating revision/suite order and rotating fixtures. Three2s <=5% external-host/both-core admission windows, then <=5% external-host excluding benchmarkCPU and sibling for every monitored interval over the entire invocation.72 accepted/24 rejected pairs; no parent builds/tests. Initial cwd failure retained separately; reused existing binaries after parent method steering. Fresh window22:37:17–22:55:37UTC; bounded no-progress guard never exceeded in fresh run.
+
+### Results
+
+Each timing cell: median [min, max]; sample CV. Time unit ns/op; lower is faster. Percentages compare medians.
+
+| Suite / fixture / option | n baseline/stage2 | Baseline ns/op [min,max]; CV | Stage2 ns/op [min,max]; CV | Stage2 vs baseline | Host B/op baseline → stage2 | Host allocs/op baseline → stage2 |
+|---|---:|---|---|---:|---:|---:|
+| compile / no-gc/off | 6/6 | 41797.500 [41497.000, 41928.000]; 0.37% | 42441.000 [41898.000, 42767.000]; 0.82% | +1.54% | 33168 → 33168 | 55 → 55 |
+| compile / no-gc/on | 6/6 | 42650.500 [42561.000, 43026.000]; 0.39% | 44286.000 [43735.000, 44716.000]; 0.88% | +3.83% | 38064 → 38064 | 57 → 57 |
+| compile / nonqualifying/off | 6/6 | 126547.500 [126133.000, 129745.000]; 1.08% | 128257.000 [127646.000, 129597.000]; 0.51% | +1.35% | 119312 → 119312 | 275 → 275 |
+| compile / nonqualifying/on | 6/6 | 132045.000 [130931.000, 133253.000]; 0.62% | 142825.500 [141950.000, 143976.000]; 0.51% | +8.16% | 124982 → 125750 | 309 → 341 |
+| compile / qualifying/off | 6/6 | 128385.000 [127317.000, 129972.000]; 0.70% | 129865.500 [129401.000, 136185.000]; 2.01% | +1.15% | 131072 → 131072 | 274 → 274 |
+| compile / qualifying/on | 6/6 | 160469.000 [159543.000, 169893.000]; 2.47% | 352295.500 [351209.000, 354125.000]; 0.31% | +119.54% | 147496 → 299472 | 692 → 2463 |
+| runtime / throughput/no-gc/on=false | 6/6 | 397.950 [397.200, 409.800]; 1.22% | 410.850 [409.200, 415.300]; 0.65% | +3.24% | 0 → 0 | 0 → 0 |
+| runtime / throughput/no-gc/on=true | 6/6 | 398.900 [397.800, 407.100]; 0.88% | 419.050 [412.200, 427.000]; 1.28% | +5.05% | 0 → 0 | 0 → 0 |
+| runtime / throughput/nonqualifying/on=false | 6/6 | 278.400 [276.900, 279.500]; 0.30% | 289.050 [286.600, 304.700]; 2.31% | +3.83% | 0 → 0 | 0 → 0 |
+| runtime / throughput/nonqualifying/on=true | 6/6 | 278.550 [277.100, 281.800]; 0.57% | 289.650 [288.000, 296.500]; 1.12% | +3.98% | 0 → 0 | 0 → 0 |
+| runtime / throughput/qualifying/on=false | 6/6 | 279.000 [277.100, 280.200]; 0.46% | 287.800 [287.000, 289.300]; 0.33% | +3.15% | 0 → 0 | 0 → 0 |
+| runtime / throughput/qualifying/on=true | 6/6 | 279.200 [276.400, 286.800]; 1.62% | 276.700 [275.000, 285.900]; 1.48% | -0.90% | 0 → 0 | 0 → 0 |
+
+Within-revision On vs Off median runtime/compile costs:
+
+| Suite / fixture | Baseline On vs Off | Stage2 On vs Off |
+|---|---:|---:|
+| compile / no-gc | +2.04% | +4.35% |
+| compile / nonqualifying | +4.34% | +11.36% |
+| compile / qualifying | +24.99% | +171.28% |
+| runtime / throughput/no-gc | +0.24% | +2.00% |
+| runtime / throughput/nonqualifying | +0.05% | +0.21% |
+| runtime / throughput/qualifying | +0.07% | -3.86% |
+
+Guest accounting (separate fresh instance, exactly 1024 invocations; NOT timed). All repeated observations must agree. Totals below are exact counters reconstructed from per-op values when representable; raw Go output rounds the fractions.
+
+| Revision / runtime cell | Charges | Handleless | Materialized / published | Layout B | Observed nursery advance B | Retained nursery B | Rounded heap request B (calculated) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| baseline / throughput/no-gc/on=false | 0 | 0 | 0 / 0 | 0 | 0 | 0 | 0 |
+| stage2 / throughput/no-gc/on=false | 0 | 0 | 0 / 0 | 0 | 0 | 0 | 0 |
+| baseline / throughput/no-gc/on=true | 0 | 0 | 0 / 0 | 0 | 0 | 0 | 0 |
+| stage2 / throughput/no-gc/on=true | 0 | 0 | 0 / 0 | 0 | 0 | 0 | 0 |
+| baseline / throughput/nonqualifying/on=false | 1024 | 0 | 1024 / 1024 | 24576 | 24576 | 24576 | 32768 |
+| stage2 / throughput/nonqualifying/on=false | 1024 | 0 | 1024 / 1024 | 24576 | 24576 | 24576 | 32768 |
+| baseline / throughput/nonqualifying/on=true | 1024 | 0 | 1024 / 1024 | 24576 | 24576 | 24576 | 32768 |
+| stage2 / throughput/nonqualifying/on=true | 1024 | 0 | 1024 / 1024 | 24576 | 24576 | 24576 | 32768 |
+| baseline / throughput/qualifying/on=false | 1024 | 0 | 1024 / 1024 | 24576 | 24576 | 24576 | 32768 |
+| stage2 / throughput/qualifying/on=false | 1024 | 0 | 1024 / 1024 | 24576 | 24576 | 24576 | 32768 |
+| baseline / throughput/qualifying/on=true | 1024 | 0 | 1024 / 1024 | 24576 | 24576 | 24576 | 32768 |
+| stage2 / throughput/qualifying/on=true | 1024 | 1023 | 1 / 1 | 24576 | 24576 | 24576 | 32768 |
+
+### Interpretation
+
+Guest publication reduction is measured: qualifying Stage2 On makes 1 materialized
+object / published handle in 1024 fresh calls versus baseline Off/On and Stage2 Off
+1024, with 1023 handleless charges. All four still charge 1024 allocations, consume
+24576 layout bytes, and show 24576 bytes observed nursery advance / retained end.
+Calculated throughput rounded requests remain32768B; this is not measured physical
+reservation traffic. Nonqualifying remains1024 materializations/charges; no-GC
+remains0. Host runtime allocations remain0 B/op and0 allocs/op in all twelve cells.
+This extends, and does not replace, the existing128-call128->1 publication proof.
+
+Qualifying runtime On is276.7ns/op versus baselineOn279.2ns/op (-0.90% latency,
++0.90% reciprocal throughput); ranges overlap275–285.9 versus276.4–286.8ns and CVs
+1.48%/1.62%. Within Stage2, On versusOff287.8ns is-3.86% latency (+4.01% throughput).
+Controls also move: Off runtime costs rise3.15–3.83% across revisions, nonqualifying
+On rises3.98% and no-GCOn5.05%. This does not establish a robust net runtime speedup
+against the quiet baseline; the qualified result is a modest local On/Off effect
+plus clear guest-publication reduction. It is not a general application claim.
+
+Compiler cost is substantial: qualifyingOn160469->352295.5ns (+119.54% versus
+baselineOn); host147496->299472B/op and692->2463allocs/op. Stage2On versusOff is
++171.28%, versus newly measured baseline+24.99%. NonqualifyingOn rises8.16% across
+revisions (host124982->125750B/op,309->341allocs/op); no-GCOn rises3.83% (host38064B,
+57allocs unchanged). Off compiler changes are+1.15%,+1.35%,+1.54% qualifying,
+nonqualifying,no-GC respectively, with unchanged host allocation counts. Prior
+quiet Stage1 option costs+23.34/+4.22/+2.35% are context, not Stage2 measurements.
+Keep the optimization opt-in; guest handle publication savings do not justify a
+claim of free allocation removal or a clear end-to-end throughput win here.
+
+The fresh matched dataset took18m19s including quiet waits:72 accepted pairs,
+24 rejected pairs, six accepted500ms samples per cell. Accepted monitored maxima:
+4.7873% external host and2.9703% SMT sibling; full raw telemetry retained. Initial
+long-group and preparation attempts extend total wall time beyond that fresh
+window. No statistical significance test or exclusive-machine isolation; CV and
+min/max are descriptive. Tiny timing omitted; existing fallback tests are the
+only Tiny evidence. No new sensitive-engine issue was fixed or investigated.
+
+Start/final Slipstream fetch unchanged `db6014de2316f13dd08ea8618d614c28132f2688`: no new relevant changes. Region-first default b3e802899; B1/B7; ABI-specific hostfix db6014de2 deferred for Wago; old-space ceiling/helper wake-join pending; Go-backed arenas/stable handles retained. No source coverage percentage is a Wago measurement. All owned archives/binaries/GOTMPDIR/privatecache removed. Parent profile-test guards modified during run were excluded and do not affect pinned binaries. Existing spec-v1/v2 dirt preserved. No sensitive fixes (DaybreakBlue only), subdelegation, PR/push/rebase/upstream backlog changes.
