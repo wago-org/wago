@@ -1,0 +1,129 @@
+Read-only Wago baseline qualification
+Source: 9713878ab452848f7eb7549a90be94b938a898be
+Checkout: f83004ebcfd27ec75b0fe78d8b0921d23a5e7be9 (mapping docs only); tracked src/codegen diff against baseline empty before tests.
+Tested exact git archive baseline in /tmp/wago-qualified-baseline-1z46pa03/source. All 7374 tracked blobs verified before AND after tests. No source edits.
+Read prior /tmp/wago-rfwgc-baseline-tests.log; prior checked result was contaminated and is not used as baseline evidence.
+
+Environment: Linux x86_64, Go 1.27.1, TinyGo 0.43.0/LLVM 22.1.4, PowerShell 7.6.8; GOMAXPROCS=8 GOFLAGS=-p=8 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1. GOWORK unset (automatic discovery), MISE_TRUSTED_CONFIG_PATHS=<archive source>, separate temporary GOCACHE/GOTMPDIR. Core dumps disabled.
+Initialized isolated fixtures at pinned Git links: spec-v1 a8bcbafe6d2fb191ce0188de0e18fdc107fa2598; spec-v2 05ca4182176763112561ae20153975c12bd689e4; spec-v3 9d36019973201a19f9c9ebb0f10828b2fe2374aa. Shared submodules untouched.
+
+ordinary: {'pass': 136, 'no_tests': 50, 'fail': 1}; RESULT exit=1 elapsed_seconds=207.352
+Command: timeout --kill-after=15s 900s go test -count=1 -timeout=5m ./...
+Only failing package: github.com/wago-org/wago/src/wago. 24 top-level staged tests failed solely on installed wast2json 1.0.42 != pinned 1.0.41. Root PowerShell, plugin (including previous text-file-busy test), standalone (including TinyGo interruption), compiler/backend and runtime packages passed.
+Full log: /tmp/wago-rfwgc-isolated-ordinary.log
+Exact top-level failures:
+--- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting (0.02s)
+--- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+--- FAIL: TestStagedGCArrayBulkCopyMutableRootLifecycle (0.00s)
+--- FAIL: TestStagedOfficialGCArrayInitAccounting (0.00s)
+--- FAIL: TestStagedGCArrayInitDataTinyLifecycle (0.00s)
+--- FAIL: TestStagedGCArrayInitDataTransientTinyRootProof (0.00s)
+--- FAIL: TestStagedOfficialGCArrayAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCBrOnCastAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCExternAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCI31Accounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefCastAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefEqAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefTestAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCStructAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCTypeSubtypingAccounting (0.00s)
+--- FAIL: TestStagedOfficialMemory64FamilyAccounting (0.05s)
+--- FAIL: TestStagedOfficialMultiMemoryLinkingStoreSemantics (0.01s)
+--- FAIL: TestStagedOfficialMultiMemoryCompactImportsExecute (0.01s)
+--- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix (0.13s)
+--- FAIL: TestStagedOfficialTable64FamilyAccounting (0.03s)
+--- FAIL: TestStagedOfficialReturnCallIndirect (0.00s)
+--- FAIL: TestStagedOfficialReturnCall (0.00s)
+--- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting (0.05s)
+--- FAIL: TestStagedOfficialReturnCallRef (0.00s)
+
+ordinary targeted after verified WABT 1.0.41 bootstrap: RESULT exit=1 elapsed_seconds=1.330
+Command: timeout --kill-after=15s 300s go test -count=1 -timeout=4m -run ^TestStaged ./src/wago
+18 top-level failures: WABT cannot convert some Release 3 syntax; fallback unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter. Family accounting differences follow missing converted files; baseline JSON was not updated.
+Full log: /tmp/wago-rfwgc-isolated-ordinary-staged-pinned.log
+Exact top-level failures:
+--- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting (0.02s)
+--- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+--- FAIL: TestStagedGCArrayBulkCopyMutableRootLifecycle (0.00s)
+--- FAIL: TestStagedOfficialGCArrayInitAccounting (0.00s)
+--- FAIL: TestStagedGCArrayInitDataTinyLifecycle (0.00s)
+--- FAIL: TestStagedGCArrayInitDataTransientTinyRootProof (0.00s)
+--- FAIL: TestStagedOfficialGCArrayAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCBrOnCastAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCExternAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCI31Accounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefCastAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefEqAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefTestAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCStructAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCTypeSubtypingAccounting (0.00s)
+--- FAIL: TestStagedOfficialMemory64FamilyAccounting (0.15s)
+--- FAIL: TestStagedOfficialTable64FamilyAccounting (0.09s)
+--- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting (0.06s)
+regalloccheck: {'pass': 136, 'no_tests': 50, 'fail': 1}; RESULT exit=1 elapsed_seconds=151.684
+Command: timeout --kill-after=15s 900s go test -count=1 -timeout=5m -tags=wago_regalloccheck ./...
+Only failing package: github.com/wago-org/wago/src/wago. 24 top-level staged tests failed solely on installed wast2json 1.0.42 != pinned 1.0.41. Root PowerShell, plugin (including previous text-file-busy test), standalone (including TinyGo interruption), compiler/backend and runtime packages passed.
+Full log: /tmp/wago-rfwgc-isolated-regalloccheck.log
+Exact top-level failures:
+--- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting (0.01s)
+--- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+--- FAIL: TestStagedGCArrayBulkCopyMutableRootLifecycle (0.00s)
+--- FAIL: TestStagedOfficialGCArrayInitAccounting (0.00s)
+--- FAIL: TestStagedGCArrayInitDataTinyLifecycle (0.00s)
+--- FAIL: TestStagedGCArrayInitDataTransientTinyRootProof (0.00s)
+--- FAIL: TestStagedOfficialGCArrayAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCBrOnCastAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCExternAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCI31Accounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefCastAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefEqAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefTestAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCStructAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCTypeSubtypingAccounting (0.00s)
+--- FAIL: TestStagedOfficialMemory64FamilyAccounting (0.02s)
+--- FAIL: TestStagedOfficialMultiMemoryLinkingStoreSemantics (0.01s)
+--- FAIL: TestStagedOfficialMultiMemoryCompactImportsExecute (0.00s)
+--- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix (0.07s)
+--- FAIL: TestStagedOfficialTable64FamilyAccounting (0.02s)
+--- FAIL: TestStagedOfficialReturnCallIndirect (0.00s)
+--- FAIL: TestStagedOfficialReturnCall (0.00s)
+--- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting (0.03s)
+--- FAIL: TestStagedOfficialReturnCallRef (0.00s)
+
+regalloccheck targeted after verified WABT 1.0.41 bootstrap: RESULT exit=1 elapsed_seconds=1.289
+Command: timeout --kill-after=15s 300s go test -count=1 -timeout=4m -tags=wago_regalloccheck -run ^TestStaged ./src/wago
+18 top-level failures: WABT cannot convert some Release 3 syntax; fallback unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter. Family accounting differences follow missing converted files; baseline JSON was not updated.
+Full log: /tmp/wago-rfwgc-isolated-regalloccheck-staged-pinned.log
+Exact top-level failures:
+--- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting (0.02s)
+--- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+--- FAIL: TestStagedGCArrayBulkCopyMutableRootLifecycle (0.00s)
+--- FAIL: TestStagedOfficialGCArrayInitAccounting (0.00s)
+--- FAIL: TestStagedGCArrayInitDataTinyLifecycle (0.00s)
+--- FAIL: TestStagedGCArrayInitDataTransientTinyRootProof (0.00s)
+--- FAIL: TestStagedOfficialGCArrayAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCBrOnCastAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCExternAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCI31Accounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefCastAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefEqAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCRefTestAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCStructAccounting (0.00s)
+--- FAIL: TestStagedOfficialGCTypeSubtypingAccounting (0.00s)
+--- FAIL: TestStagedOfficialMemory64FamilyAccounting (0.15s)
+--- FAIL: TestStagedOfficialTable64FamilyAccounting (0.10s)
+--- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting (0.06s)
+
+Bootstrap evidence: /tmp/wago-rfwgc-isolated-wabt-bootstrap.log (verified 1.0.41); /tmp/wago-rfwgc-isolated-interpreter-bootstrap.log (exit 1: dune is required to build the official Release 3 interpreter). No system toolchain installation attempted.
+Conclusion: full baseline not green/fully qualified because conformance tooling is incomplete. No engine defect demonstrated by these results; staged conformance execution beyond missing fallback remains unqualified.
+Harness notes: initial attempts stopped at mise trust; later explicit GOWORK caused temporary-module test errors. Those attempts were discarded; final runs use automatic workspace discovery. Preflight/partial harness logs retained separately. No such errors appear in final full logs.
+
+Final original checkout status (same as initial):
+ M tests/conformance/spec-v1
+ M tests/conformance/spec-v2
+
+No source modifications, commits, pushes, rebases, PRs, bug fixes, subdelegation, parent-file writes, or shell worktrees.
+Removed temporary archive, fixtures, downloaded tools, build cache and test artifacts: /tmp/wago-qualified-baseline-1z46pa03
+Retained evidence logs, report and helper scripts only under /tmp.
+
+Reproducible bounded commands and isolated fixture setup: /tmp/wago-rfwgc-isolated-reproduce.sh (bash syntax validated; run from a Wago checkout). Script cleans its temporary tree automatically and keeps logs under /tmp. Full-suite reproduction uses the caller's WABT version; observed full runs used 1.0.42, targeted runs verified 1.0.41.

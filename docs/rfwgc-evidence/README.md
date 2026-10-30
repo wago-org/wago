@@ -68,3 +68,7 @@ interpreter; bootstrap failed for missing dune. Installed WABT 1.0.42 mismatched
 pinned 1.0.41; after verified 1.0.41, 18 staged failures needed the interpreter.
 This is owner-provided context, not a benchmark result or a claim of broad-suite
 qualification here.
+
+## Final orchestrator qualification
+
+See `baseline-qualification/README.md` for GAP-CONFORMANCE-TOOLCHAIN and the isolated baseline's exact missing interpreter/`dune` evidence. `final-available-tests.txt` retains the constrained parent root run with `^TestStaged` explicitly skipped (134 packages passed; audit failure and two timeouts). `final-policy-tests.txt`, `final-runtime-recheck.txt`, and `final-standalone-recheck.txt` retain passing targeted follow-ups after the test-only audit scoping and restoration of normal parallelism. Exact commands, limitations and disposition are in the port log. No all-green full-conformance claim is made.
