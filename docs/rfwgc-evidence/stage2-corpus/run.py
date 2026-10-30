@@ -43,7 +43,7 @@ def prepare(tmp):
    if run([GO,'test','-p=1','-c','-tags=wago_codegenstats','-o',str(tmp/'stats.test'),'./suite'],tree/'bench',env,OUT/'stats-build.txt'):raise RuntimeError('stats build failed')
  return env,manifest
 
-if __name__=='__main__':
+if __name__=='__main__' and '--resume' not in sys.argv:
  with tempfile.TemporaryDirectory(prefix='wago-stage2-corpus-') as td:
   tmp=pathlib.Path(td);(OUT/'temporary-directory.txt').write_text(td+'\n')
   env,manifest=prepare(tmp)
@@ -65,3 +65,10 @@ if __name__=='__main__':
   import measure
   measure.main(tmp,env,manifest)
  (OUT/'cleanup.txt').write_text('Temporary archives, binaries, GOTMPDIR and private GOCACHE removed: '+td+'\n')
+
+if __name__=='__main__' and '--resume' in sys.argv:
+ tmp=pathlib.Path(sys.argv[sys.argv.index('--resume')+1]).resolve()
+ env=os.environ.copy();env.update(GOROOT=str(pathlib.Path(GO).parents[1]),GOMAXPROCS='1',GOTOOLCHAIN='local',GOWORK='off',GOFLAGS='',GOEXPERIMENT='',GOCACHE=str(tmp/'cache'),GOTMPDIR=str(tmp));env.pop('WAGO_EXPLAIN',None)
+ manifest=json.loads((OUT/'manifest.json').read_text())['benchmarks']
+ import measure
+ measure.main(tmp,env,manifest,resume=True)
