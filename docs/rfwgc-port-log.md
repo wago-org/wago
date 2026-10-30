@@ -246,3 +246,143 @@ The runtime recheck passed: `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 GOMAXPROCS=
 The standalone recheck also passed: `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 GOMAXPROCS=8 GOFLAGS=-p=8 go test -count=1 -timeout=10m ./cli/manager/internal/standalone` (see `final-standalone-recheck.txt`). All three failing packages from the parent available-suite run now have passing targeted follow-ups; the other 134 packages passed that run. There was no additional all-packages rerun after the test-only audit adjustment. Full conformance, the previously reproduced broad codegenstats failures, low-parallelism timeout qualification, and uncontended timing remain explicitly open limitations.
 
 Final parent checks: benchmark table regenerated from all 90 raw samples, policy scope tests passed, reproduction shell syntax checked, and whitespace/staged paths reviewed. All T3 workers and parent test processes completed. Go test temporary build outputs were cleaned by the tool; only intended source/schema/docs/evidence remain, alongside the untouched pre-existing submodule differences.
+
+## 2026-10-30 — quiet-admitted sequential benchmark rerun
+
+**Compared identities:** candidate `60fdefe0b2781c1868e2351a482179f9e89c1ede`
+against unmodified main `9713878ab452848f7eb7549a90be94b938a898be`.
+The candidate backend and portable fixture are unchanged from first-pass
+`160ce3a89` (`git diff` of the AMD64 backend is empty). Both revisions were
+`git archive` exports; only the identical portable benchmark fixture was added
+to main. No production source changed. Work ran in the supplied T3 checkout,
+initially `t3/rerun-port-benchmarks` at `60fdefe0b`; the completed evidence commit
+is also fast-forwarded onto the requested `experiment/rfwgc-port` branch.
+Pre-existing spec-v1/spec-v2 submodule dirt is preserved in both checkouts.
+No agents were launched, no other test suite ran during sampling, and all
+benchmark invocations were sequential fresh processes.
+
+**Host and admission:** Linux x86-64, AMD Ryzen 7 8845HS (8 cores/16 threads),
+Go 1.27.1; CPU 6 pinned, SMT sibling 7; GOMAXPROCS=1, performance governor,
+boost enabled, no fixed frequency or thermal control. Initial inspection at
+20:47:49 UTC showed load averages **3.11 / 10.57 / 12.25** and no visible fleet
+build/test process. Load average is historical runnable demand, not a CPU
+contention percentage. The old table's 13–24% values are sample CVs, also not
+an instantaneous CPU contention measurement.
+
+The complete run was **20:48:54–21:32:13 UTC** including preparation and waits.
+A Starshine `cmd.exe` compilation launched by `/tmp/hso-current-o4.py` appeared
+after the initial inspection, using about one CPU. Admission waited through it;
+no external process was killed, repinned or otherwise altered. Additional CPU
+bursts continued after it exited. No competing compiler/test process was
+observed in the accepted timing observations or retained process snapshots
+before/after rounds. This is observation-based qualification, not exclusive
+host reservation; short-lived processes can escape process sampling.
+
+Admission requires **three consecutive two-second intervals <=5%** on both
+host busy CPU and each of CPUs 6/7. During an invocation, host external busy CPU
+is `/proc/stat` busy time over **the other 15 logical CPUs**, excluding the
+benchmark's pinned CPU 6; CPU 7 is also checked separately against 5%.
+Approximately one-second observations cover calibration and measurement;
+final intervals shorter than 0.25 seconds are not scored. Any scored interval
+above either limit rejects the entire invocation, then admission is repeated.
+This is an explicit CPU-activity proxy for contention, not a measurement of
+benchmark slowdown or proof of zero scheduling/cache/frequency interference.
+
+First sampling began at **20:53:06 UTC**, after approximately **190 seconds**
+of initial admission waiting. Across the complete run, 1,154 admission intervals
+consumed **2,309.5 seconds** (38m29.5s), including 576 over-limit intervals totaling
+**1,152.7 seconds**; maximum observed admission host busy CPU was **17.02%**.
+These waits are deliberately excluded from benchmark ns/op. **24 compile and
+10 analysis invocations were rejected**, retained separately, and retried;
+90 compile plus 30 analysis invocations were accepted.
+
+During accepted compile invocations, 177 scored observations had external host
+CPU mean/max **0.70% / 4.98%**, sibling-7 maximum **4.04%**, and one-minute load
+**0.50–1.21**. During accepted analysis invocations, 60 observations had host
+mean/max **0.68% / 4.56%**, sibling maximum **3.13%**, and load **0.51–1.06**.
+One accepted analysis observation saw the T3 service at 48.88% of one CPU;
+its aggregate external host activity was 4.52%, within admission policy.
+There was no threshold relaxation. No result was removed based on its timing.
+
+**Method:** same original `BenchmarkGCLifetimeCompile` nine cells, ten accepted
+independent repetitions per cell, one-second benchtime with Go calibration,
+rotating nine-cell order. Each operation compiles a validated 32-function module;
+decode/validation excluded, Workers=1, ordinary build, identical option defaults
+except `gc-lifetime-analyze`, GCStructHelpers enabled, deferred mapping and
+matching cleanup. Bytes/allocations are host compiler costs, not guest heap
+statistics. Off on main is the meaningful oracle; main lacks the Analyze option.
+Go GOGC/GOMEMLIMIT/GODEBUG unset; GOFLAGS/GOEXPERIMENT empty. No guest execution,
+runtime elimination, collector throughput or real-world coverage is measured.
+The first-pass fixture/denominator limitations remain unchanged.
+
+| Case | Variant | n | Median µs/module | Median B/op | Median allocs/op | Time vs baseline/off | Time vs port/off | Min–max µs | Sample CV |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| qualifying | baseline-off | 10 | 130.33 | 131072 | 274 | +0.00% | +0.00% | 128.94–134.95 | 1.31% |
+| qualifying | port-off | 10 | 127.95 | 131072 | 274 | -1.82% | +0.00% | 126.98–129.99 | 0.87% |
+| qualifying | port-on | 10 | 157.82 | 147495 | 692 | +21.09% | +23.34% | 156.94–160.01 | 0.53% |
+| nonqualifying | baseline-off | 10 | 127.48 | 119312 | 275 | +0.00% | +0.00% | 127.24–129.16 | 0.47% |
+| nonqualifying | port-off | 10 | 125.70 | 119312 | 275 | -1.40% | +0.00% | 124.67–127.61 | 0.79% |
+| nonqualifying | port-on | 10 | 131.00 | 124982 | 309 | +2.76% | +4.22% | 130.41–134.33 | 0.94% |
+| no-gc | baseline-off | 10 | 42.28 | 33168 | 55 | +0.00% | +0.00% | 42.10–43.89 | 1.44% |
+| no-gc | port-off | 10 | 41.62 | 33168 | 55 | -1.57% | +0.00% | 41.37–42.43 | 0.76% |
+| no-gc | port-on | 10 | 42.60 | 38064 | 57 | +0.75% | +2.35% | 42.06–42.88 | 0.63% |
+
+Off host allocation medians exactly match main in all three fixtures. Enabling
+analysis adds 418 / 34 / 2 host allocations per module and approximately
+16,423 / 5,670 / 4,896 B/module respectively. The qualifying B/op is one byte
+below the first-pass rounded median; the allocation-work conclusion reproduces.
+Off time is 1.40–1.82% below main here; this small synthetic control difference
+is not established as a general speedup. Compile sample CV is **0.47–1.44%**,
+versus **13.04–23.80%** in the exploratory table.
+
+**Analysis cost itself:** a separate temporary benchmark calls
+`analyzeGCLifetimes(m)`, the full serial module pass used by
+`--gc-lifetime-analyze`, retaining its report in a package-level sink. The same
+three validated 32-function fixtures are constructed outside timing. Ten
+fresh-process repetitions per fixture, rotating order, same one-second
+calibration/pinning/admission policy, run after the compile matrix. This times
+analysis/report construction, excluding CLI startup, formatting, validation and
+native compilation. The original compile binary was built before adding this
+extra benchmark; it cannot affect the compile cells.
+
+| Case | Candidate analysis µs/module | n | B/op | allocs/op | Min–max µs | Sample CV | Main analysis |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| qualifying | 28.7915 | 10 | 16417 | 418 | 28.600–29.600 | 1.04% | N/A: pass absent |
+| nonqualifying | 4.5990 | 10 | 5664 | 34 | 4.579–4.637 | 0.49% | N/A: pass absent |
+| no-gc | 0.8203 | 10 | 4896 | 2 | 0.8146–0.8345 | 0.88% | N/A: pass absent |
+
+Whole-compile On-minus-Off differences of medians are approximately
+29.87 / 5.30 / 0.98 µs/module. These independently measured differences need not
+equal standalone pass timings; neither is a guest runtime measurement.
+
+**Verdict:** the qualitative added analysis/allocation cost holds (+23.34%,
++4.22%, +2.35% On/Off), but first-pass absolute timings and the apparent +13.58%
+nonqualifying Off regression do not hold; use this quieter table instead.
+
+**Reproduction/evidence:** `docs/rfwgc-evidence/benchmark/quiet-rerun.py` pins both
+revisions and retains the original fixture hash, host metadata, exact invocation
+commands, accepted/rejected raw timings, admission intervals, per-invocation CPU
+observations, process snapshots, focused test output and 32-function proof logs
+under `benchmark/quiet-2026-10-30/`. Run from the repository root to a fresh output
+directory (runtime is dominated by admission waits):
+
+```sh
+python3 docs/rfwgc-evidence/benchmark/quiet-rerun.py --out /tmp/wago-quiet-results
+python3 docs/rfwgc-evidence/benchmark/summarize.py /tmp/wago-quiet-results
+```
+
+The standalone analysis benchmark source is embedded in the runner; its raw
+`??-*-analysis.txt` files report ns/op, B/op and allocs/op directly. The log's
+standalone table uses medians, range and sample standard deviation/mean.
+Focused `TestGCLifetime*` tests and actual-fixture candidate/site checks passed;
+no broad-suite/conformance rerun or new qualification claim was made.
+
+**Cleanup and repository scope:** temporary archive trees, fixture additions,
+all test binaries, GOTMPDIR outputs and the private GOCACHE were removed by
+TemporaryDirectory, verified absent after completion. The metadata's `go env`
+query precedes the temporary GOCACHE/GOTMPDIR override; actual builds use that
+private disposable cache. An earlier preparation was interrupted before any
+sampling to correct monitoring bookkeeping; its temporary directory was also
+removed. No generated build outputs remain; only the log, reproduction script
+and raw text/JSON evidence are committed. Existing unrelated submodule dirt and
+prior evidence are untouched. No PR, push, rebase or upstream publication.
