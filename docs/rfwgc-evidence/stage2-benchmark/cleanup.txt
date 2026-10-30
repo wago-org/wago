@@ -1,0 +1,1 @@
+Verified /tmp/wago-stage2-benchmark-x2ota2yr no longer exists; owned runner and all benchmark binaries exited. Both preparation-attempt and archive-holder TemporaryDirectory cleanup completed. Archives, binaries, private GOCACHE and GOTMPDIR removed. Shared module cache was read, not removed. Evidence retained.
