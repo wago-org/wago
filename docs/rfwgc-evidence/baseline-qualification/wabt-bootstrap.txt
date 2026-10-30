@@ -1,0 +1,2 @@
+wast2json 1.0.41 (/tmp/wago-qualified-baseline-1z46pa03/source/.tools/wabt-1.0.41-linux-x64/bin/wast2json)
+RESULT exit=0
