@@ -1,0 +1,33 @@
+package wagobench
+
+import (
+ "encoding/json"
+ "fmt"
+ "testing"
+ wasm "github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+// Exhaustive immediate-aware walk, independent of bounded lifetime diagnostics.
+// Counts guest native-GC constructor sites, not malloc in guest linear memory.
+func TestStage2Inventory(t *testing.T) {
+ for _, m := range loadCorpus(t) {
+  decoded,err:=wasm.DecodeModule(m.bytes);if err!=nil {t.Fatal(err)}
+  classifier:=wasm.NewModuleInstructionClassifier(decoded,true)
+  counts:=map[string]int{};instructions:=0
+  for _,body:=range decoded.Code {
+   r:=wasm.NewReader(body.BodyBytes)
+   for r.HasNext() {
+    op,err:=r.Byte();if err!=nil {t.Fatal(err)}
+    var imm wasm.InstructionImmediate
+    if err:=classifier.ClassifyInto(r,op,&imm);err!=nil {t.Fatalf("%s inventory: %v",m.ID,err)}
+    instructions++
+    switch imm.Kind {
+    case wasm.InstrStructNew,wasm.InstrStructNewDefault,wasm.InstrArrayNew,wasm.InstrArrayNewDefault,wasm.InstrArrayNewFixed,wasm.InstrArrayNewData,wasm.InstrArrayNewElem,wasm.InstrStructNewDesc,wasm.InstrStructNewDefaultDesc:
+     counts[fmt.Sprint(imm.Kind)]++
+    }
+   }
+  }
+  b,_:=json.Marshal(map[string]any{"id":m.ID,"functions":len(decoded.Code),"instructions":instructions,"constructors":counts,"complete":true})
+  fmt.Println("CORPUS_INVENTORY "+string(b))
+ }
+}
