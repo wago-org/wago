@@ -11,6 +11,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestGCLifetimeProof(t *testing.T) {
@@ -122,7 +123,7 @@ func TestGCLifetimeCompileIdentity(t *testing.T) {
 	for _, kind := range []string{"qualifying", "nonqualifying", "no-gc"} {
 		t.Run(kind, func(t *testing.T) {
 			m := lifetimeFixture(t, kind, 8)
-			var oracleCode []byte
+			var oracleCode, oracleOn []byte
 			var oracleRoots *shared.GCModuleFrameRootPlan
 			var oracleReport *GCLifetimeReport
 			for _, workers := range []int{1, 4, 8} {
@@ -148,8 +149,15 @@ func TestGCLifetimeCompileIdentity(t *testing.T) {
 					if oracleCode == nil {
 						oracleCode = append([]byte(nil), cm.Code...)
 						oracleRoots = roots
-					} else if !bytes.Equal(oracleCode, cm.Code) || !reflect.DeepEqual(oracleRoots, roots) {
+					} else if (bytes.Equal(oracleCode, cm.Code) == (on && kind == "qualifying" && gc.NativeDeadBatchSupported && !profileEnabled)) || !reflect.DeepEqual(oracleRoots, roots) {
 						t.Fatalf("code/root mismatch workers=%d on=%t", workers, on)
+					}
+					if on {
+						if oracleOn == nil {
+							oracleOn = append([]byte(nil), cm.Code...)
+						} else if !bytes.Equal(oracleOn, cm.Code) {
+							t.Fatal("nondeterministic On code")
+						}
 					}
 					if !on {
 						if report != nil || stats.GCLifetime != nil {
@@ -164,7 +172,7 @@ func TestGCLifetimeCompileIdentity(t *testing.T) {
 						} else if !reflect.DeepEqual(oracleReport, report) {
 							t.Fatal("nondeterministic report")
 						}
-						if diagnosticsEnabled && !strings.Contains(stats.String(), "analysis-only (no allocation elimination)") {
+						if diagnosticsEnabled && !strings.Contains(stats.String(), "checked scalar replacement") {
 							t.Fatal("missing report evidence")
 						}
 					}
@@ -243,5 +251,71 @@ func TestGCLifetimeIdentityAndInitializer(t *testing.T) {
 	m.Code[0].BodyBytes = []byte{0x41, 0xfb, 0, 0x0b}
 	if r := analyzeGCLifetime(m, 0, 256); r.Reason != "no-constructor" || !r.DenominatorKnown {
 		t.Fatal(r)
+	}
+}
+
+func TestGCLifetimeReplay(t *testing.T) {
+	if !gc.NativeDeadBatchSupported || profileEnabled {
+		t.Skip("consumer profile fallback")
+	}
+	m := lifetimeFixture(t, "qualifying", 1)
+	selection, err := optimizationBindings.ResolveSnapshot(lifetimeSelection(true), OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft, _ := m.LocalFuncType(0)
+	f := &fn{m: m, ft: ft, gcStructHelpers: true, policy: shared.DefaultCodegenPolicy(selection)}
+	p := f.sealGCLifetime(m.Code[0].BodyBytes)
+	if p == nil || !f.replayGCLifetime(p, m.Code[0].BodyBytes) {
+		t.Fatal("missing sealed replay")
+	}
+	for _, mutate := range []func(){
+		func() { p.body[1]++ }, func() { p.context.layout.objectSize++ }, func() { p.records[0].pc++ },
+		func() { p.records[len(p.records)-1].end++ }, func() { p.policy.MaxMachineWindow++ }, func() { p.typ++ },
+	} {
+		saved := *p
+		saved.body = append([]byte(nil), p.body...)
+		saved.records = append([]gcLifetimeRecord(nil), p.records...)
+		mutate()
+		if f.replayGCLifetime(p, m.Code[0].BodyBytes) {
+			t.Fatal("accepted mismatched certificate")
+		}
+		*p = saved
+	}
+	// Diagnostic hashes do not occur in certificates and cannot authorize a replay.
+	m.Code[0].BodyBytes = append([]byte{1}, m.Code[0].BodyBytes...)
+	if f.replayGCLifetime(p, m.Code[0].BodyBytes) {
+		t.Fatal("accepted changed complete body")
+	}
+}
+
+func TestGCLifetimeReplayContextFallback(t *testing.T) {
+	if !gc.NativeDeadBatchSupported || profileEnabled {
+		t.Skip("consumer profile fallback")
+	}
+	for _, what := range []string{"type", "locals", "signature", "options"} {
+		t.Run(what, func(t *testing.T) {
+			m := lifetimeFixture(t, "qualifying", 1)
+			ft, _ := m.LocalFuncType(0)
+			selection, _ := optimizationBindings.ResolveSnapshot(lifetimeSelection(true), OptimizationSnapshot{}, nil)
+			f := &fn{m: m, ft: ft, gcStructHelpers: true, policy: shared.DefaultCodegenPolicy(selection)}
+			p := f.sealGCLifetime(m.Code[0].BodyBytes)
+			if p == nil {
+				t.Fatal("seal")
+			}
+			switch what {
+			case "type":
+				m.Types[0].SubTypes[0].Comp.Fields[0] = wasm.NewFieldType(wasm.StorageVal(wasm.I64), wasm.Const)
+			case "locals":
+				m.Code[0].Locals.Runs[0].Count++
+			case "signature":
+				ft.Params = append(ft.Params, wasm.I32)
+			case "options":
+				f.policy.MaxMachineWindow++
+			}
+			if f.replayGCLifetime(p, m.Code[0].BodyBytes) {
+				t.Fatal("replay accepted changed context")
+			}
+		})
 	}
 }

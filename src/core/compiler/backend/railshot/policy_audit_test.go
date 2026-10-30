@@ -61,6 +61,7 @@ func productionPolicyProblems(path string, fset *token.FileSet, file *ast.File) 
 		"Contains":  true,
 	}
 	bytesNames := map[string]bool{}
+	hashNames := map[string]bool{}
 	for _, imp := range file.Imports {
 		name, err := strconv.Unquote(imp.Path.Value)
 		if err != nil {
@@ -68,6 +69,13 @@ func productionPolicyProblems(path string, fset *token.FileSet, file *ast.File) 
 		}
 		if (forbiddenImports[name] || strings.HasPrefix(name, "crypto/") || strings.HasPrefix(name, "hash/")) && !(path == filepath.Join("amd64", "gc_lifetime.go") && name == "crypto/sha256") {
 			report("%s imports %q; production Railshot policy must not fingerprint workloads", path, name)
+		}
+		if name == "crypto/sha256" {
+			local := "sha256"
+			if imp.Name != nil {
+				local = imp.Name.Name
+			}
+			hashNames[local] = true
 		}
 		if name == "bytes" {
 			local := "bytes"
@@ -98,12 +106,30 @@ func productionPolicyProblems(path string, fset *token.FileSet, file *ast.File) 
 				}
 			}
 		case *ast.SelectorExpr:
+			if node.Sel.Name == "Identity" && !lifetimeDiagnosticLocation(path, file, node) {
+				report("%s:%d reads diagnostic Identity outside reporting/analysis; hashes cannot authorize lowering", path, fset.Position(node.Pos()).Line)
+			}
 			if path != filepath.Join("amd64", "stats.go") && path != filepath.Join("arm64", "stats.go") && !productionMetadataBudgetRead(path, file, node) &&
 				(node.Sel.Name == "NameSec" || node.Sel.Name == "RawNameSecPayload" || node.Sel.Name == "ModuleName" || node.Sel.Name == "FunctionNames") {
 				report("%s:%d reads %s outside diagnostic naming or bounded metadata accounting", path, fset.Position(node.Pos()).Line, node.Sel.Name)
 			}
 		case *ast.CallExpr:
 			selector, ok := node.Fun.(*ast.SelectorExpr)
+			if ok {
+				pkg, named := selector.X.(*ast.Ident)
+				if named && hashNames[pkg.Name] {
+					permitted := false
+					for _, d := range file.Decls {
+						fn, yes := d.(*ast.FuncDecl)
+						if yes && fn.Name.Name == "analyzeGCLifetime" && fn.Recv == nil && fn.Body != nil && node.Pos() >= fn.Body.Pos() && node.End() <= fn.Body.End() {
+							permitted = true
+						}
+					}
+					if !permitted {
+						report("%s:%d calls diagnostic hash outside analysis", path, fset.Position(node.Pos()).Line)
+					}
+				}
+			}
 			if !ok || !forbiddenByteMatchers[selector.Sel.Name] {
 				break
 			}
@@ -175,10 +201,23 @@ func TestProductionPolicyMetadataBudgetScope(t *testing.T) {
 	}
 }
 
-// Analyze reports never select lowering: Off/Analyze code and root-map identity
-// is checked in TestGCLifetimeCompileIdentity. The hash in this exact diagnostic
+// Diagnostic hashes never select lowering: fallback identity and intended On
+// changes are checked in TestGCLifetimeCompileIdentity. The hash in this exact diagnostic
 // file labels a report only. Its negative gate permits one necessary condition,
 // absence of the GC opcode prefix, not matching a workload or body prefix.
+func lifetimeDiagnosticLocation(path string, file *ast.File, node ast.Node) bool {
+	if path != filepath.Join("amd64", "gc_lifetime.go") {
+		return false
+	}
+	for _, d := range file.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if ok && (fn.Name.Name == "analyzeGCLifetime" || fn.Name.Name == "String") && fn.Body != nil && node.Pos() >= fn.Body.Pos() && node.End() <= fn.Body.End() {
+			return true
+		}
+	}
+	return false
+}
+
 func lifetimeDiagnosticNegativeGate(path string, file *ast.File, call *ast.CallExpr) bool {
 	if path != filepath.Join("amd64", "gc_lifetime.go") || len(call.Args) != 2 {
 		return false
@@ -232,6 +271,9 @@ func TestLifetimeDiagnosticPolicyScope(t *testing.T) {
 	}{
 		{"diagnostic", exact, `import "crypto/sha256"; import "bytes"; func analyzeGCLifetime() { bytes.Contains(c.BodyBytes, []byte{0xfb}) }`, false},
 		{"other-file", filepath.Join("amd64", "gc_struct.go"), `import "crypto/sha256"`, true},
+		{"hash-permission", filepath.Join("amd64", "gc_lifetime_consumer.go"), `func lower() { if proof.Identity == expected { emit() } }`, true},
+		{"diagnostic-lowering", exact, `func lower() { if proof.Identity == expected { emit() } }`, true},
+		{"hash-lowering-call", exact, `import s "crypto/sha256"; func lower() { s.Sum256(body) }`, true},
 		{"other-hash", exact, `import "crypto/sha512"`, true},
 		{"other-function", exact, `import "bytes"; func lower() { bytes.Contains(c.BodyBytes, []byte{0xfb}) }`, true},
 		{"other-needle", exact, `import "bytes"; func analyzeGCLifetime() { bytes.Contains(c.BodyBytes, []byte{0x41}) }`, true},

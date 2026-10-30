@@ -386,3 +386,28 @@ sampling to correct monitoring bookkeeping; its temporary directory was also
 removed. No generated build outputs remain; only the log, reproduction script
 and raw text/JSON evidence are committed. Existing unrelated submodule dirt and
 prior evidence are untouched. No PR, push, rebase or upstream publication.
+
+## Stage 2 implementation cycle — 2026-10-30
+
+Started on experiment/rfwgc-port at quiet baseline 6ceb86221. Read the local
+plan/log and supplied instructions. Two read-only fetches of Slipstream
+origin/master during implementation both resolve to
+`db6014de2316f13dd08ea8618d614c28132f2688`: no new collector/lifetime/host-boundary
+changes to mirror. The prior ABI-specific host-boundary defer still applies.
+No source checkout mutations, delegation, Claude review, engine bug fixes, push,
+PR, rebase or upstream backlog work. Existing spec-v1/spec-v2 dirt is untouched.
+
+Implemented sealed/replayed checked scalar replacement in
+`amd64/gc_lifetime_consumer.go` and connected it before ordinary body emission.
+It owns and replays typed semantic records and full relevant structural context;
+it never consults diagnostic Identity to authorize lowering. Original byte PCs
+and constructor safepoints are retained. Native dead charging removes published
+object/handle/payload work on successful fast paths; ordinary helpers remain on
+all slow boundaries. The opt-in remains `gc-lifetime-analyze`, default Off.
+
+Focused execution, code identity at 1/4/8 workers, replay mismatch/context tests,
+parent Railshot policy audit, native reservation tests, diagnostics and enabled
+regalloccheck consumer tests pass. A separate wagodebug+regalloccheck run confirms
+failure-injection builds take baseline fallback. The final evidence checkpoint
+records commands/results and portability qualification. Benchmarks are deliberately
+not run; parent owns serial benchmark and broad-suite qualification.
