@@ -198,6 +198,14 @@ func (f *fn) replayGCLifetime(p *gcLifetimePlan, code []byte) bool {
 	return replay != nil && reflect.DeepEqual(p, replay)
 }
 
+// A rejected certificate emits nothing: the caller continues ordinary lowering.
+func (f *fn) consumeGCLifetime(p *gcLifetimePlan, code []byte) (bool, error) {
+	if !f.replayGCLifetime(p, code) {
+		return false, nil
+	}
+	return true, f.emitGCLifetime(p)
+}
+
 func (f *fn) emitGCLifetime(p *gcLifetimePlan) error {
 	st, _ := f.stagedStructType(p.typ)
 	for _, rec := range p.records {

@@ -1,0 +1,407 @@
+=== RUN   TestGCConstructorGetForwardExecution
+=== RUN   TestGCConstructorGetForwardExecution/throughput
+=== RUN   TestGCConstructorGetForwardExecution/tiny
+--- PASS: TestGCConstructorGetForwardExecution (0.00s)
+    --- PASS: TestGCConstructorGetForwardExecution/throughput (0.00s)
+    --- PASS: TestGCConstructorGetForwardExecution/tiny (0.00s)
+=== RUN   TestGCConstructorScalarReplacementPreservesInitializerTrap
+=== RUN   TestGCConstructorScalarReplacementPreservesInitializerTrap/disabled
+=== RUN   TestGCConstructorScalarReplacementPreservesInitializerTrap/enabled
+--- PASS: TestGCConstructorScalarReplacementPreservesInitializerTrap (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementPreservesInitializerTrap/disabled (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementPreservesInitializerTrap/enabled (0.00s)
+=== RUN   TestGCConstructorNativeScalarReplacementPreservesInitializerTrap
+--- PASS: TestGCConstructorNativeScalarReplacementPreservesInitializerTrap (0.00s)
+=== RUN   TestGCConstructorNativeChargeComparesFullCollectionCycle
+--- PASS: TestGCConstructorNativeChargeComparesFullCollectionCycle (0.00s)
+=== RUN   TestGCConstructorScalarReplacementPreservesBoundedAllocation
+--- PASS: TestGCConstructorScalarReplacementPreservesBoundedAllocation (0.00s)
+=== RUN   TestGCConstructorScalarReplacementValues
+=== RUN   TestGCConstructorScalarReplacementValues/i32_first_live_prefix
+=== RUN   TestGCConstructorScalarReplacementValues/i32_middle_nullable_cast
+=== RUN   TestGCConstructorScalarReplacementValues/i32_last_exact_cast
+=== RUN   TestGCConstructorScalarReplacementValues/i64_full_bits
+=== RUN   TestGCConstructorScalarReplacementValues/f32_negative_zero
+=== RUN   TestGCConstructorScalarReplacementValues/f64_nan_payload
+--- PASS: TestGCConstructorScalarReplacementValues (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementValues/i32_first_live_prefix (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementValues/i32_middle_nullable_cast (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementValues/i32_last_exact_cast (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementValues/i64_full_bits (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementValues/f32_negative_zero (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementValues/f64_nan_payload (0.00s)
+=== RUN   TestGCConstructorScalarReplacementUsesNativeReservation
+=== RUN   TestGCConstructorScalarReplacementUsesNativeReservation/i32_first
+=== RUN   TestGCConstructorScalarReplacementUsesNativeReservation/i64_middle_nullable
+=== RUN   TestGCConstructorScalarReplacementUsesNativeReservation/f32_last_exact
+=== RUN   TestGCConstructorScalarReplacementUsesNativeReservation/f64_first
+--- PASS: TestGCConstructorScalarReplacementUsesNativeReservation (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementUsesNativeReservation/i32_first (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementUsesNativeReservation/i64_middle_nullable (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementUsesNativeReservation/f32_last_exact (0.00s)
+    --- PASS: TestGCConstructorScalarReplacementUsesNativeReservation/f64_first (0.00s)
+=== RUN   TestGCConstructorNativeChargeKeepsActiveArrayChunk
+--- PASS: TestGCConstructorNativeChargeKeepsActiveArrayChunk (0.00s)
+=== RUN   TestGCConstructorMixedNativeStubPreservesLivePayload
+--- PASS: TestGCConstructorMixedNativeStubPreservesLivePayload (0.00s)
+=== RUN   TestGCConstructorIf
+=== RUN   TestGCConstructorIf/i32/terminal
+=== RUN   TestGCConstructorIf/i32/nested
+=== RUN   TestGCConstructorIf/i32/later
+=== RUN   TestGCConstructorIf/i32/limit17
+=== RUN   TestGCConstructorIf/i32/host
+=== RUN   TestGCConstructorIf/i64/terminal
+=== RUN   TestGCConstructorIf/i64/nested
+=== RUN   TestGCConstructorIf/i64/later
+=== RUN   TestGCConstructorIf/i64/limit17
+=== RUN   TestGCConstructorIf/i64/host
+=== RUN   TestGCConstructorIf/f32/terminal
+=== RUN   TestGCConstructorIf/f32/nested
+=== RUN   TestGCConstructorIf/f32/later
+=== RUN   TestGCConstructorIf/f32/limit17
+=== RUN   TestGCConstructorIf/f32/host
+=== RUN   TestGCConstructorIf/f64/terminal
+=== RUN   TestGCConstructorIf/f64/nested
+=== RUN   TestGCConstructorIf/f64/later
+=== RUN   TestGCConstructorIf/f64/limit17
+=== RUN   TestGCConstructorIf/f64/host
+--- PASS: TestGCConstructorIf (0.11s)
+    --- PASS: TestGCConstructorIf/i32/terminal (0.00s)
+    --- PASS: TestGCConstructorIf/i32/nested (0.01s)
+    --- PASS: TestGCConstructorIf/i32/later (0.01s)
+    --- PASS: TestGCConstructorIf/i32/limit17 (0.00s)
+    --- PASS: TestGCConstructorIf/i32/host (0.01s)
+    --- PASS: TestGCConstructorIf/i64/terminal (0.00s)
+    --- PASS: TestGCConstructorIf/i64/nested (0.00s)
+    --- PASS: TestGCConstructorIf/i64/later (0.00s)
+    --- PASS: TestGCConstructorIf/i64/limit17 (0.01s)
+    --- PASS: TestGCConstructorIf/i64/host (0.01s)
+    --- PASS: TestGCConstructorIf/f32/terminal (0.01s)
+    --- PASS: TestGCConstructorIf/f32/nested (0.01s)
+    --- PASS: TestGCConstructorIf/f32/later (0.01s)
+    --- PASS: TestGCConstructorIf/f32/limit17 (0.01s)
+    --- PASS: TestGCConstructorIf/f32/host (0.01s)
+    --- PASS: TestGCConstructorIf/f64/terminal (0.01s)
+    --- PASS: TestGCConstructorIf/f64/nested (0.01s)
+    --- PASS: TestGCConstructorIf/f64/later (0.01s)
+    --- PASS: TestGCConstructorIf/f64/limit17 (0.01s)
+    --- PASS: TestGCConstructorIf/f64/host (0.01s)
+=== RUN   TestGCConstructorIfUnusedTrap
+--- PASS: TestGCConstructorIfUnusedTrap (0.00s)
+=== RUN   TestGCConstructorIfPressure
+=== RUN   TestGCConstructorIfPressure/f32
+=== RUN   TestGCConstructorIfPressure/f64
+--- PASS: TestGCConstructorIfPressure (0.00s)
+    --- PASS: TestGCConstructorIfPressure/f32 (0.00s)
+    --- PASS: TestGCConstructorIfPressure/f64 (0.00s)
+=== RUN   TestGCLifetimeStage2Runtime
+=== RUN   TestGCLifetimeStage2Runtime/throughput/qualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=127 materialized=1
+=== RUN   TestGCLifetimeStage2Runtime/throughput/nonqualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/throughput/no-gc
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=0 layout-bytes=0 handleless=0 materialized=0
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=0 layout-bytes=0 handleless=0 materialized=0
+=== RUN   TestGCLifetimeStage2Runtime/throughput/default
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=127 materialized=1
+=== RUN   TestGCLifetimeStage2Runtime/throughput/overwrite
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=127 materialized=1
+=== RUN   TestGCLifetimeStage2Runtime/small/qualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=124 materialized=4
+=== RUN   TestGCLifetimeStage2Runtime/small/nonqualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/small/no-gc
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=0 layout-bytes=0 handleless=0 materialized=0
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=0 layout-bytes=0 handleless=0 materialized=0
+=== RUN   TestGCLifetimeStage2Runtime/small/default
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=124 materialized=4
+=== RUN   TestGCLifetimeStage2Runtime/small/overwrite
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=124 materialized=4
+=== RUN   TestGCLifetimeStage2Runtime/stress/qualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/stress/nonqualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/stress/no-gc
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=0 layout-bytes=0 handleless=0 materialized=0
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=0 layout-bytes=0 handleless=0 materialized=0
+=== RUN   TestGCLifetimeStage2Runtime/stress/default
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/stress/overwrite
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/disabled/qualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/disabled/nonqualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/disabled/no-gc
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=0 layout-bytes=0 handleless=0 materialized=0
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=0 layout-bytes=0 handleless=0 materialized=0
+=== RUN   TestGCLifetimeStage2Runtime/disabled/default
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/disabled/overwrite
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/tiny/qualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/tiny/nonqualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/tiny/no-gc
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=0 layout-bytes=0 handleless=0 materialized=0
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=0 layout-bytes=0 handleless=0 materialized=0
+=== RUN   TestGCLifetimeStage2Runtime/tiny/default
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/tiny/overwrite
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/tiny-stress/qualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/tiny-stress/nonqualifying
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/tiny-stress/no-gc
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=0 layout-bytes=0 handleless=0 materialized=0
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=0 layout-bytes=0 handleless=0 materialized=0
+=== RUN   TestGCLifetimeStage2Runtime/tiny-stress/default
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+=== RUN   TestGCLifetimeStage2Runtime/tiny-stress/overwrite
+    gc_lifetime_stage2_amd64_test.go:142: on=false charges=128 layout-bytes=3072 handleless=0 materialized=128
+    gc_lifetime_stage2_amd64_test.go:142: on=true charges=128 layout-bytes=3072 handleless=0 materialized=128
+--- PASS: TestGCLifetimeStage2Runtime (0.03s)
+    --- PASS: TestGCLifetimeStage2Runtime/throughput/qualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/throughput/nonqualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/throughput/no-gc (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/throughput/default (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/throughput/overwrite (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/small/qualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/small/nonqualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/small/no-gc (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/small/default (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/small/overwrite (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/stress/qualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/stress/nonqualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/stress/no-gc (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/stress/default (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/stress/overwrite (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/disabled/qualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/disabled/nonqualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/disabled/no-gc (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/disabled/default (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/disabled/overwrite (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/tiny/qualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/tiny/nonqualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/tiny/no-gc (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/tiny/default (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/tiny/overwrite (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/tiny-stress/qualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/tiny-stress/nonqualifying (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/tiny-stress/no-gc (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/tiny-stress/default (0.00s)
+    --- PASS: TestGCLifetimeStage2Runtime/tiny-stress/overwrite (0.00s)
+=== RUN   TestGCLifetimeStage2ScalarBits
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/0/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/0/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/1/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/1/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/80000000/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/80000000/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/ffc01234/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/ffc01234/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/8000000000000000/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/8000000000000000/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/fff8000012345678/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i32/fff8000012345678/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/0/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/0/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/1/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/1/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/80000000/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/80000000/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/ffc01234/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/ffc01234/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/8000000000000000/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/8000000000000000/true
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/fff8000012345678/false
+=== RUN   TestGCLifetimeStage2ScalarBits/i64/fff8000012345678/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/0/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/0/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/1/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/1/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/80000000/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/80000000/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/ffc01234/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/ffc01234/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/8000000000000000/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/8000000000000000/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/fff8000012345678/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f32/fff8000012345678/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/0/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/0/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/1/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/1/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/80000000/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/80000000/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/ffc01234/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/ffc01234/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/8000000000000000/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/8000000000000000/true
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/fff8000012345678/false
+=== RUN   TestGCLifetimeStage2ScalarBits/f64/fff8000012345678/true
+--- PASS: TestGCLifetimeStage2ScalarBits (0.03s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/0/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/0/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/1/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/1/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/80000000/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/80000000/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/ffc01234/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/ffc01234/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/8000000000000000/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/8000000000000000/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/fff8000012345678/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i32/fff8000012345678/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/0/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/0/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/1/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/1/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/80000000/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/80000000/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/ffc01234/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/ffc01234/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/8000000000000000/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/8000000000000000/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/fff8000012345678/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/i64/fff8000012345678/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/0/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/0/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/1/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/1/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/80000000/false (0.01s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/80000000/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/ffc01234/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/ffc01234/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/8000000000000000/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/8000000000000000/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/fff8000012345678/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f32/fff8000012345678/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/0/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/0/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/1/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/1/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/80000000/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/80000000/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/ffc01234/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/ffc01234/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/8000000000000000/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/8000000000000000/true (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/fff8000012345678/false (0.00s)
+    --- PASS: TestGCLifetimeStage2ScalarBits/f64/fff8000012345678/true (0.00s)
+=== RUN   TestGCLifetimeStage2Exhaustion
+    gc_lifetime_stage2_amd64_test.go:197: config={NurseryBytes:0 SurvivorBytes:0 MinorPauseTargetMicros:0 OldBlockBytes:0 LargeObjectBytes:0 StressNurseryBytes:0 TinyHeapBytes:16 TinyBlockBytes:16 TinyStepBudget:0 TinyPacingStepLimit:0 ThroughputHeapBytes:0 ThroughputPageBytes:0 ThroughputClassLimit:0 Profile:1 Allocator:0 Runtime:0 CollectEveryAlloc:false ForceMajorEveryMinor:false VerifyAfterCollect:false PoisonFreed:false StressBarriers:false DisableMovingNursery:false DisableCollection:false TinyCollectEveryAlloc:false TinyStepEveryAlloc:false} off/on trap after 0: wago: WasmGC struct helper: gc: tiny heap exhausted after bounded pacing assist
+--- PASS: TestGCLifetimeStage2Exhaustion (0.00s)
+=== RUN   TestGCLifetimeStage2PersistentRoots
+--- PASS: TestGCLifetimeStage2PersistentRoots (0.01s)
+=== RUN   TestGCLifetimeStage2CycleAccounting
+--- PASS: TestGCLifetimeStage2CycleAccounting (0.00s)
+=== RUN   TestGCLifetimeStage2ScalarOverwrite
+--- PASS: TestGCLifetimeStage2ScalarOverwrite (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.225s
+=== RUN   TestGCConstructorGetForwardSelection
+    gc_constructor_forward_test.go:44: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCConstructorGetForwardSelection (0.00s)
+=== RUN   TestGCConstructorScalarReplacementSelection
+    gc_constructor_forward_test.go:72: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCConstructorScalarReplacementSelection (0.00s)
+=== RUN   TestGCLifetimeProof
+=== RUN   TestGCLifetimeProof/adjacent
+=== RUN   TestGCLifetimeProof/default
+=== RUN   TestGCLifetimeProof/overwrite
+=== RUN   TestGCLifetimeProof/alias-overwrite
+=== RUN   TestGCLifetimeProof/call
+=== RUN   TestGCLifetimeProof/store
+=== RUN   TestGCLifetimeProof/return
+=== RUN   TestGCLifetimeProof/branch
+=== RUN   TestGCLifetimeProof/identity
+=== RUN   TestGCLifetimeProof/unknown
+=== RUN   TestGCLifetimeProof/array
+=== RUN   TestGCLifetimeProof/truncated
+=== RUN   TestGCLifetimeProof/missing-end
+=== RUN   TestGCLifetimeProof/trailing
+=== RUN   TestGCLifetimeProof/stack-underflow
+=== RUN   TestGCLifetimeProof/bad-local
+=== RUN   TestGCLifetimeProof/no-gc
+--- PASS: TestGCLifetimeProof (0.00s)
+    --- PASS: TestGCLifetimeProof/adjacent (0.00s)
+    --- PASS: TestGCLifetimeProof/default (0.00s)
+    --- PASS: TestGCLifetimeProof/overwrite (0.00s)
+    --- PASS: TestGCLifetimeProof/alias-overwrite (0.00s)
+    --- PASS: TestGCLifetimeProof/call (0.00s)
+    --- PASS: TestGCLifetimeProof/store (0.00s)
+    --- PASS: TestGCLifetimeProof/return (0.00s)
+    --- PASS: TestGCLifetimeProof/branch (0.00s)
+    --- PASS: TestGCLifetimeProof/identity (0.00s)
+    --- PASS: TestGCLifetimeProof/unknown (0.00s)
+    --- PASS: TestGCLifetimeProof/array (0.00s)
+    --- PASS: TestGCLifetimeProof/truncated (0.00s)
+    --- PASS: TestGCLifetimeProof/missing-end (0.00s)
+    --- PASS: TestGCLifetimeProof/trailing (0.00s)
+    --- PASS: TestGCLifetimeProof/stack-underflow (0.00s)
+    --- PASS: TestGCLifetimeProof/bad-local (0.00s)
+    --- PASS: TestGCLifetimeProof/no-gc (0.00s)
+=== RUN   TestGCLifetimeBoundsAndTypes
+--- PASS: TestGCLifetimeBoundsAndTypes (0.00s)
+=== RUN   TestGCLifetimeCompileIdentity
+=== RUN   TestGCLifetimeCompileIdentity/qualifying
+=== RUN   TestGCLifetimeCompileIdentity/nonqualifying
+=== RUN   TestGCLifetimeCompileIdentity/no-gc
+--- PASS: TestGCLifetimeCompileIdentity (0.01s)
+    --- PASS: TestGCLifetimeCompileIdentity/qualifying (0.00s)
+    --- PASS: TestGCLifetimeCompileIdentity/nonqualifying (0.00s)
+    --- PASS: TestGCLifetimeCompileIdentity/no-gc (0.00s)
+=== RUN   TestGCLifetimeExactBudgets
+--- PASS: TestGCLifetimeExactBudgets (0.00s)
+=== RUN   TestGCLifetimeNumericTypes
+=== RUN   TestGCLifetimeNumericTypes/i32
+=== RUN   TestGCLifetimeNumericTypes/i64
+=== RUN   TestGCLifetimeNumericTypes/f32
+=== RUN   TestGCLifetimeNumericTypes/f64
+--- PASS: TestGCLifetimeNumericTypes (0.00s)
+    --- PASS: TestGCLifetimeNumericTypes/i32 (0.00s)
+    --- PASS: TestGCLifetimeNumericTypes/i64 (0.00s)
+    --- PASS: TestGCLifetimeNumericTypes/f32 (0.00s)
+    --- PASS: TestGCLifetimeNumericTypes/f64 (0.00s)
+=== RUN   TestGCLifetimeIdentityAndInitializer
+--- PASS: TestGCLifetimeIdentityAndInitializer (0.00s)
+=== RUN   TestGCLifetimeReplay
+--- PASS: TestGCLifetimeReplay (0.00s)
+=== RUN   TestGCLifetimeReplayContextFallback
+=== RUN   TestGCLifetimeReplayContextFallback/type
+=== RUN   TestGCLifetimeReplayContextFallback/locals
+=== RUN   TestGCLifetimeReplayContextFallback/signature
+=== RUN   TestGCLifetimeReplayContextFallback/options
+--- PASS: TestGCLifetimeReplayContextFallback (0.00s)
+    --- PASS: TestGCLifetimeReplayContextFallback/type (0.00s)
+    --- PASS: TestGCLifetimeReplayContextFallback/locals (0.00s)
+    --- PASS: TestGCLifetimeReplayContextFallback/signature (0.00s)
+    --- PASS: TestGCLifetimeReplayContextFallback/options (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.015s

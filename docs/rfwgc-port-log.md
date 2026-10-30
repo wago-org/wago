@@ -411,3 +411,29 @@ regalloccheck consumer tests pass. A separate wagodebug+regalloccheck run confir
 failure-injection builds take baseline fallback. The final evidence checkpoint
 records commands/results and portability qualification. Benchmarks are deliberately
 not run; parent owns serial benchmark and broad-suite qualification.
+
+### Stage 2 evidence and handoff checkpoint
+
+Final read-only mirror fetch again returned unchanged db6014de2; no additional
+collector/lifetime/host changes to mirror. Added an explicit consumer entrypoint
+so mismatch tests execute rejection with no emission/error, then ordinary body
+lowering continues. Added portable `docs/rfwgc-evidence/stage2/runtime.py` and
+retained seven passing text logs plus a README with exact commands, limitations,
+metrics and the parent-only benchmark entrypoints. Both baseline archive and
+current-tree check-only harness invocations pass; no benchmark was executed.
+
+Exact 128-call qualifying fixture observations: Throughput Off/On both charge128,
+layout3072B, observed nursery advance3072B and retained3072B. Materialized objects
+and published handles fall128->1; successful handleless charges0->127. Small
+nursery materializations fall128->4, with identical charge/advance totals and
+retained48B. Stress/Tiny/disabled collection keep128 materializations. Nonqualifying
+keeps128 materializations; no-GC keeps0. Layout24B is not throughput heap Align16
+rounded32B: the existing nursery path's observed24B bump advance is reported as
+an observation, not inferred from layout or a changed allocator contract. Stats
+Allocations still counts all charges; LiveObjects is never a publication metric.
+
+Focused parent Railshot policy package and four-package tests, active-consumer
+regalloccheck, diagnostics, combined debug fallback/native reservation tests and
+expanded accounting tests pass. The full standalone execution suite was not run;
+parent owns final full-suite and serial benchmark qualification. No build artifacts
+remain; temporary exported baseline trees were removed and evidence logs retained.
