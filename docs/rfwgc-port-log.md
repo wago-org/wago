@@ -64,3 +64,144 @@ Each next cycle must inspect every newly landed collector/lifetime/host-boundary
 - The self-contained benchmark fixture compiles on an isolated unmodified base export. No benchmarks executed; parent owns the measurement run. An initial attempt hit mise's untrusted temporary config, then an explicit-toolchain attempt hit inherited GOROOT mismatch; setting the matching Go binary/GOROOT resolved fixture compilation. Temporary exports were cleaned with Python TemporaryDirectory. No generated executables/test binaries/native artifact files retained. Go test caches are external; schema is an intentional tracked generated source update, not disposable build output.
 
 **Handoff:** commit is the coherent Analyze checkpoint; exact SHA reported externally. Runtime consumer deferred because complete replay, storage/spill integration and charge/trap/profile validation require another experiment. The diagnostic identity is explicitly not a lowering certificate. The benchmark entrypoint is `BenchmarkGCLifetimeCompile/{qualifying,nonqualifying,no-gc}/{off,on}`; baseline adapter is the same single portable file with explicit unsupported-On skip. No performance claims were fabricated. Review `git diff --check`, exact staged paths and residual submodule dirt before commit.
+
+## 2026-10-30 — committed first-slice compile benchmark
+
+**Compared identities:** unmodified main `9713878ab452848f7eb7549a90be94b938a898be`
+versus committed Analyze slice `160ce3a893996d1cffae4e70a61678b5169dcdad`.
+Both are `git archive` exports, not shell worktrees; the baseline has only the
+self-contained committed `gc_lifetime_bench_test.go` added. The port benchmark
+binary is built from the exact committed slice, before adding a temporary proof
+logging test in the export. No implementation/harness fix was needed.
+
+**Mirror:** fetched Slipstream `origin/master`; old/new hash both
+`db6014de2316f13dd08ea8618d614c28132f2688`; `git log db6014de2..origin/master`
+is empty. No new changes to assess. B1/B7 remain adopted; ABI-specific host
+boundary work remains deferred; old-space ceiling and helper wake/join work
+remain pending. Wago retains Go-backed storage and stable handles. Source
+97.55%/98.10% figures belong to Slipstream and are not Wago measurements.
+Upstream backlog unchanged; no sensitive engine fixes in this lane.
+
+**Correctness evidence:** `docs/rfwgc-evidence/benchmark/raw/focused.txt` reruns
+all existing `TestGCLifetime*` tests from the committed port, without the whole
+suite. In particular `TestGCLifetimeCompileIdentity/{qualifying,nonqualifying,no-gc}`
+checks byte-for-byte native code and deep equality of the complete frame-root
+plans for matching Off/Analyze choices at 1/4/8 workers (eight-function modules),
+along with deterministic reports. This is within-port identity, not a claim of
+cross-revision identity for every module. Existing tagged/race/runtime evidence
+and known-red broad tagged-suite baseline comparison remain in force.
+`benchmark/raw/sites.txt` separately logs the actual 32-function fixtures:
+qualifying has 32/32 candidates, one proved site per function and known
+denominators; nonqualifying has zero candidates, one observed constructor per
+function before unsupported block opcode 0x02, with **unknown** complete
+denominators; no-gc has zero candidates/sites and known denominators. The early
+fallback is not proof of a complete allocation denominator. These are diagnostic
+proofs, not eliminated allocations.
+
+**Method and reproducibility:** `docs/rfwgc-evidence/benchmark/run.py` and
+`summarize.py`; exact invocation and interpretation in the evidence README;
+per-invocation commands, raw measurements, host metadata and process inspection
+retained under `benchmark/raw/`. Compile one validated 32-function module per op;
+decode/validation excluded; serial compilation (`Workers=1`), ordinary build
+(no stats/race tags), identical catalog defaults apart from the Analyze toggle,
+`GCStructHelpers=true`, deferred code mapping and matching cleanup. All three
+variants are serial, never concurrent. Ten independent repetitions per cell,
+one-second Go benchtime plus automatic calibration; round order rotates the nine
+cells. Time/B/op/allocs are **host compiler costs**, not guest heap statistics.
+
+**Runtime interpretation:** zero runtime allocation elimination/improvement by
+design: this option only diagnoses; there is no lowering consumer. No guest
+runtime speed measurement was performed. Any apparent compile-time speedup is
+not a runtime speed claim. No collector throughput, RSS, real-world coverage,
+Tiny/moving-GC speed, or Slipstream-equivalent elimination claim follows from
+these small synthetic modules.
+
+**Fixture limits:** these are short synthetic bodies with identical functions and
+hot validated module data, not independent real-world programs. The no-gc case
+has numeric-only expressions but retains the shared struct type and nullable
+reference locals from the portable fixture, so it exercises the body negative
+gate, not an entirely GC-feature-free module. No guest functions are invoked.
+Deferred code mapping excludes executable mmap cost; worker parallelism is not
+timed. A single host/core/toolchain and observation-based CPU admission cannot
+exclude frequency/thermal drift, short-lived jobs or sub-threshold background
+activity; process pinning is not exclusive CPU/SMT/cache reservation. Min/max and
+sample CV describe observed spread, not statistical significance or confidence
+bounds. Percentage effects below use ratios of medians, not paired confidence
+intervals. Baseline-Off versus port-Off is the control for port-wide overhead;
+port-On versus port-Off isolates enabling diagnostics.
+
+**Owner steering / load qualification:** the initial quiet-admission attempt
+stalled on unrelated long-running workloads. Owner explicitly directed a fresh
+complete matrix under contention, with no indefinite rejection/retry and no
+isolated speed-significance claim. That initial attempt (two accepted samples,
+one rejected sample) and its script are preserved separately as
+`benchmark/quiet-admission-attempt/` and `quiet-admission-run.py`; none of its
+samples enter the table. The final `benchmark/raw/` matrix never rejects/retries
+on load and observes contemporaneous processes/load during each invocation.
+No external workloads were killed, repinned or otherwise changed.
+
+The parent owns `docs/rfwgc-evidence/baseline-qualification/`; it is untouched by
+this checkpoint. Owner names the remaining gap as the missing pinned Release 3
+interpreter (bootstrap failed: missing dune); installed WABT 1.0.42 mismatched
+pinned 1.0.41, and after verified 1.0.41, 18 staged failures needed the interpreter.
+These are owner-reported qualification facts, not tests run or fixed here.
+
+**Declared concurrent qualification:** parent ran final available root tests,
+staged conformance explicitly skipped, with `taskset` CPU 7, `GOMAXPROCS=2`,
+`-p=2`, during this exploratory run. CPUs 6 and 7 are SMT siblings on this host:
+this is potential contention on the **same physical core**, in addition to other
+recorded host activity. No admission wait or retry is used. Timing deltas cannot
+isolate analysis overhead from that contention. Parent-owned qualification
+outputs are deliberately excluded from this commit's staged paths.
+
+**Host/run:** Linux x86-64, AMD Ryzen 7 8845HS (8 cores/16 threads),
+Go 1.27.1; CPU 6 pinned, sibling 7, GOMAXPROCS=1; performance governor, boost
+enabled, no fixed frequency or thermal control. Final run UTC 2026-10-30T20:28:12.366904+00:00
+through 2026-10-30T20:31:49.621942+00:00 (includes builds/validation). One-minute load average
+observed during timing: 16.89–31.44; 90/90 invocations
+observed another process above 0.25 CPU in at least one sampling interval.
+No sample was discarded from the final matrix. Raw per-sample process/load
+observations remain in `during-timing.jsonl`. GOGC/GOMEMLIMIT/GODEBUG unset
+(Go defaults); GOFLAGS/GOEXPERIMENT empty. Exact run:
+
+```sh
+python3 docs/rfwgc-evidence/benchmark/run.py --out docs/rfwgc-evidence/benchmark/raw
+python3 docs/rfwgc-evidence/benchmark/summarize.py docs/rfwgc-evidence/benchmark/raw
+```
+
+| Case | Variant | n | Median µs/module | Median B/op | Median allocs/op | Time vs baseline/off | Time vs port/off | Min–max µs | Sample CV |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| qualifying | baseline-off | 10 | 298.67 | 131072 | 274 | +0.00% | +0.00% | 251.60–374.94 | 15.93% |
+| qualifying | port-off | 10 | 301.34 | 131072 | 274 | +0.89% | +0.00% | 249.76–501.16 | 23.80% |
+| qualifying | port-on | 10 | 368.72 | 147496 | 692 | +23.45% | +22.36% | 320.69–460.75 | 14.80% |
+| nonqualifying | baseline-off | 10 | 268.56 | 119312 | 275 | +0.00% | +0.00% | 248.94–356.81 | 14.97% |
+| nonqualifying | port-off | 10 | 305.02 | 119312 | 275 | +13.58% | +0.00% | 255.24–375.79 | 15.53% |
+| nonqualifying | port-on | 10 | 320.76 | 124982 | 309 | +19.44% | +5.16% | 260.56–409.79 | 16.36% |
+| no-gc | baseline-off | 10 | 95.90 | 33168 | 55 | +0.00% | +0.00% | 83.57–118.78 | 13.04% |
+| no-gc | port-off | 10 | 94.15 | 33168 | 55 | -1.82% | +0.00% | 81.69–139.73 | 19.42% |
+| no-gc | port-on | 10 | 97.65 | 38064 | 57 | +1.83% | +3.72% | 81.04–125.03 | 14.60% |
+
+- qualifying: enabling Analyze adds median 16424 B/module (12.53%) and 418 allocations/module (152.55%).
+- nonqualifying: enabling Analyze adds median 5670 B/module (4.75%) and 34 allocations/module (12.36%).
+- no-gc: enabling Analyze adds median 4896 B/module (14.76%) and 2 allocations/module (3.64%).
+
+**Findings:** Off host allocation medians match baseline exactly in every case
+(0% B/op and allocs/op change). Enabled diagnostics add host allocation work,
+including even the cheap no-gc report path. Observed median time deltas On/Off
+are +22.36%, +5.16%, +3.72%; Off/baseline ranges from -1.82% to +13.58%.
+Sample time CV is 13.04–23.80%, with wide ranges and declared SMT contention.
+Those Off-control shifts and variance prevent attributing time differences to
+the port alone or asserting isolated regression/speed significance. Treat the
+times as exploratory host observations; allocation counts/bytes provide clearer
+evidence of the diagnostic cost. Runtime improvement remains zero by design,
+not a measured speed claim. No Wago elimination percentage is established.
+
+**Completion/cleanup:** 90 final measurements (10 per cell), all focused tests
+and supplemental proof diagnostics passed. No additional full-suite run by this
+worker. A final mirror fetch again reports db6014de2 unchanged. Temporary archive
+exports, proof fixture, test executables and test-created temporary files were
+removed after each attempt; only scripts/raw evidence/docs retained. No engine
+or existing portable fixture edits, no additional workers, no review delegation,
+PR/push/rebase or upstream backlog change. Exact checkpoint paths are this log,
+`docs/rfwgc-evidence/README.md`, and `docs/rfwgc-evidence/benchmark/` only;
+parent baseline-qualification and dirty spec-v1/spec-v2 remain untouched.
