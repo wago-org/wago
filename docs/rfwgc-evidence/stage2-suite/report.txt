@@ -1,0 +1,79 @@
+Stage 2 full root suite qualification — 2026-10-30
+Tested source: 1ad799605c7018457b4b0cef4190c90132e337ac
+Parent: /home/dev/.t3/worktrees/wago/experiment-rfwgc-port, experiment/rfwgc-port
+
+STATE: GAP-CONFORMANCE-TOOLCHAIN. Full roots are NOT green / fully qualified.
+Both root commands ran without exclusions against the exact git archive snapshot.
+Only src/wago fails, at 18 top-level staged tests (27 failure lines including
+subtests) in each run. Verified WABT 1.0.41 cannot translate some pinned Release 3
+syntax; fallback is unavailable because the official interpreter cannot be built.
+Bootstrap exit 1: "dune is required to build the official Release 3 interpreter".
+command -v also finds no ocaml, ocamlc or menhir. No system install attempted.
+Accounting mismatches follow absent converted files; expectations were not changed.
+These failures match the prior baseline's pinned-WABT failure set. No engine
+regression is demonstrated; the blocked staged paths remain unqualified.
+
+Root commands (sequential, -count=1, -timeout=15m, outer bound 30m):
+  go test -count=1 -timeout=15m ./...
+  go test -count=1 -timeout=15m -tags=wago_regalloccheck ./...
+Each: 136 package passes / 1 failure / 50 packages with no test files (187 total).
+Ordinary: exit 1, 156 seconds. Checked: exit 1, 140 seconds.
+Available runtime remainder, necessary to distinguish staged tooling failures:
+  go test -count=1 -timeout=15m -skip '^TestStaged' ./src/wago
+  go test -count=1 -timeout=15m -tags=wago_regalloccheck -skip '^TestStaged' ./src/wago
+Each: 1 package pass / 0 failures, exit 0 (26 / 29 seconds).
+Other root packages already passed and were not repeated to establish remainder.
+The root standalone (TinyGo), plugin, compiler/backend, native collector and
+runtime packages completed; no package timeouts. Package success does not assert
+that every test internally ran (ordinary testing.Skip behavior is preserved).
+Root ./... follows automatic go.work discovery and does not imply recursively
+running other nested workspace modules such as bench or cli/wago-installer.
+
+Reproduction/environment:
+  bash docs/rfwgc-evidence/stage2-suite/reproduce.sh
+  python3 docs/rfwgc-evidence/stage2-suite/summarize.py
+Run from a Wago Git checkout. Recipe never creates a shell worktree; git archive
+at the exact source SHA goes into a private disposable temporary directory.
+Go binary and GOROOT both 1.27.1, Linux amd64; automatic GOWORK resolves archived
+go.work. GOMAXPROCS=8 GOFLAGS=-p=8 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1.
+Temporary mise config explicitly trusted; separate GOCACHE, GOTMPDIR and TMPDIR.
+No affinity pinning: affinity 0-15. TinyGo 0.43.0/LLVM 22.1.4; PowerShell 7.6.8.
+See environment.txt, *.command.txt and results.txt for actual paths/commands/status.
+Pinned isolated fixtures:
+  spec-v1 a8bcbafe6d2fb191ce0188de0e18fdc107fa2598 (WebAssembly/testsuite)
+  spec-v2 05ca4182176763112561ae20153975c12bd689e4 (WebAssembly/spec)
+  spec-v3 9d36019973201a19f9c9ebb0f10828b2fe2374aa (WebAssembly/spec)
+WABT bootstrapped and verified BEFORE both roots: archive and binary hashes,
+version, platform and bootstrap provenance in wabt-provenance.txt.
+WAGO_SPEC_INTERPRETER explicitly unset; no substitute interpreter selected.
+
+Exact failure names and reasons: summary.json includes every top-level/subtest
+failure line; failure-details.txt pairs exact raw log line numbers with converter
+errors and accounting failures. ordinary.log and regalloccheck.log retain all
+output, including accounting diffs. No WAGO_UPDATE_STAGED_SPEC rewriting.
+
+Scope and interpretation:
+Read-only mirror fetch origin/master in /home/dev/Projects/slipstream returned
+unchanged db6014de2316f13dd08ea8618d614c28132f2688; range log empty (mirror.txt).
+Region-first default is b3e802899. 97.55%/98.10% are SOURCE Slipstream figures,
+not Wago measurements. B1/B7 dispositions remain; source host fix db6014de2 is
+landed there, ABI-specific transplant remains deferred; old-space ceiling and
+helper wake/join work remain pending. Stage2 uses the same opt-in flag and lowers
+materialization while retaining charges: qualifying 128 calls publish 128->1,
+with charges128 unchanged. This qualification performs no benchmarks and adds
+no performance claims. No source/engine fixes; sensitive fixes remain DaybreakBlue
+only. No delegation, PR, push, rebase or upstream/backlog action. Parent-owned
+stage2-orchestrator evidence is excluded from staging; existing submodule dirt
+is preserved. Only evidence and the requested port-log append are committed.
+
+CLI runtime-tag suite:
+  go test -count=1 -timeout=15m -tags=wago_runtime ./cli/...
+Exit 0, 119 seconds: 55 package passes / 0 failures / 36 no-test packages.
+
+Identity/cleanup:
+All 7,706 tracked blob contents matched the archived commit BEFORE and AFTER
+all runs (identity-before.txt / identity-after.txt). Disposable tree, isolated
+fixtures, downloaded WABT, private build cache and temporary test outputs removed;
+cleanup.txt records the path, subsequently verified absent. Retained artifacts are
+text logs, JSON summary and reproduction helpers only. Parent baseline source
+HEAD stayed 1ad799605c7018457b4b0cef4190c90132e337ac through suite completion.

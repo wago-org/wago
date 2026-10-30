@@ -1,0 +1,1 @@
+timeout --kill-after=5s 120s sh scripts/bootstrap-spec-interpreter.sh --verify

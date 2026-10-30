@@ -1,0 +1,7 @@
+wabt-bootstrap exit=0 elapsed_seconds=1
+interpreter-bootstrap exit=1 elapsed_seconds=0
+ordinary exit=1 elapsed_seconds=156
+regalloccheck exit=1 elapsed_seconds=140
+ordinary-available-runtime exit=0 elapsed_seconds=26
+regalloccheck-available-runtime exit=0 elapsed_seconds=29
+cli-runtime exit=0 elapsed_seconds=119

@@ -1,0 +1,91 @@
+ok  	github.com/wago-org/wago/cli/installer	1.055s
+ok  	github.com/wago-org/wago/cli/internal/automation	0.003s
+ok  	github.com/wago-org/wago/cli/internal/command	0.002s
+ok  	github.com/wago-org/wago/cli/internal/handoff	0.003s
+?   	github.com/wago-org/wago/cli/internal/parallel	[no test files]
+ok  	github.com/wago-org/wago/cli/internal/pluginmenu	0.002s
+ok  	github.com/wago-org/wago/cli/internal/profiling	0.002s
+ok  	github.com/wago-org/wago/cli/internal/project	4.207s
+ok  	github.com/wago-org/wago/cli/internal/settings	0.184s
+?   	github.com/wago-org/wago/cli/internal/settings/cmd/genschema	[no test files]
+ok  	github.com/wago-org/wago/cli/internal/tui	0.002s
+?   	github.com/wago-org/wago/cli/internal/ui	[no test files]
+ok  	github.com/wago-org/wago/cli/internal/wasmcall	0.002s
+ok  	github.com/wago-org/wago/cli/internal/watchsupervisor	1.227s
+ok  	github.com/wago-org/wago/cli/manager	3.463s
+ok  	github.com/wago-org/wago/cli/manager/commands/auth	0.002s
+ok  	github.com/wago-org/wago/cli/manager/commands/auth/login	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/auth/logout	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/auth/whoami	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/cache	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/cache/clean	0.001s
+?   	github.com/wago-org/wago/cli/manager/commands/cache/dir	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/cache/options	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/cache/prune	0.001s
+?   	github.com/wago-org/wago/cli/manager/commands/cache/size	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/compile	0.004s
+ok  	github.com/wago-org/wago/cli/manager/commands/config	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/config/completions	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/diff	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/get	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/list	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/options	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/reset	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/set	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/init	0.004s
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin	0.002s
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/add	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/catalog	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/config	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/deprecate	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/grant	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/outdated	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/publish	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/rebuild	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/remove	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/tree	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/unpublish	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/update	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/self	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/self/uninstall	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/self/update	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/status	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/update	0.002s
+ok  	github.com/wago-org/wago/cli/manager/commands/version	0.001s
+?   	github.com/wago-org/wago/cli/manager/commands/version/current	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/version/install	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/version/list	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/version/switch	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/version/uninstall	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/version/update	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/version/which	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/internal/cache	0.263s
+ok  	github.com/wago-org/wago/cli/manager/internal/config	0.187s
+ok  	github.com/wago-org/wago/cli/manager/internal/plugin	18.265s
+ok  	github.com/wago-org/wago/cli/manager/internal/plugin/build	4.261s
+ok  	github.com/wago-org/wago/cli/manager/internal/plugin/gocommand	1.440s
+ok  	github.com/wago-org/wago/cli/manager/internal/progress	0.303s
+ok  	github.com/wago-org/wago/cli/manager/internal/registry	3.216s
+ok  	github.com/wago-org/wago/cli/manager/internal/self	0.187s
+?   	github.com/wago-org/wago/cli/manager/internal/self/replace	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/internal/standalone	117.353s
+ok  	github.com/wago-org/wago/cli/manager/internal/status	0.011s
+ok  	github.com/wago-org/wago/cli/manager/internal/version	11.982s
+ok  	github.com/wago-org/wago/cli/runtime	0.005s
+ok  	github.com/wago-org/wago/cli/runtime/commands	0.002s
+?   	github.com/wago-org/wago/cli/runtime/commands/module	[no test files]
+?   	github.com/wago-org/wago/cli/runtime/commands/module/capabilities	[no test files]
+ok  	github.com/wago-org/wago/cli/runtime/commands/module/exports	0.002s
+?   	github.com/wago-org/wago/cli/runtime/commands/module/imports	[no test files]
+?   	github.com/wago-org/wago/cli/runtime/commands/plugin	[no test files]
+ok  	github.com/wago-org/wago/cli/runtime/commands/plugin/inspect	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/commands/plugin/list	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/commands/run	2.519s
+ok  	github.com/wago-org/wago/cli/runtime/commands/validate	0.003s
+ok  	github.com/wago-org/wago/cli/runtime/internal/module	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/internal/modulefile	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/internal/plugin	0.002s
+?   	github.com/wago-org/wago/cli/runtime/internal/profile	[no test files]
+ok  	github.com/wago-org/wago/cli/runtime/internal/version	0.002s
+ok  	github.com/wago-org/wago/cli/standalone	0.206s
+ok  	github.com/wago-org/wago/cli/wago	0.002s

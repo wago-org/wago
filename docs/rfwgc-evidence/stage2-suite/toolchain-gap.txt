@@ -1,0 +1,4 @@
+dune: absent from PATH (command -v exit 1)
+ocaml: absent from PATH (command -v exit 1)
+ocamlc: absent from PATH (command -v exit 1)
+menhir: absent from PATH (command -v exit 1)

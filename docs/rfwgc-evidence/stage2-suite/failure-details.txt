@@ -1,0 +1,111 @@
+ordinary (exact failure/error lines extracted from ordinary.log)
+167: --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting (0.02s)
+168:     --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/exceptions-tag (0.00s)
+169:         exception_handling_official_amd64_test.go:917: convert pinned exceptions/tag.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/exceptions/tag.wast:31:4: error: unexpected token "rec", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+170:     --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/exceptions-try_table (0.00s)
+171:         exception_handling_official_amd64_test.go:917: convert pinned exceptions/try_table.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/exceptions/try_table.wast:408:42: error: unexpected token "exn", expected a numeric index or a name (e.g. 12 or $foo).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+172:     --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/ref_null (0.00s)
+173:         exception_handling_official_amd64_test.go:917: convert pinned ref_null.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/ref_null.wast:3:35: error: unexpected token anyref, expected ).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+174:     exception_handling_official_amd64_test.go:958: staged exception-handling accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+228: --- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+229:     gc_array_bulk_official_amd64_test.go:387: convert pinned gc/array_fill.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_fill.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+230: --- FAIL: TestStagedGCArrayBulkCopyMutableRootLifecycle (0.00s)
+231:     gc_array_bulk_product_amd64_test.go:30: convert pinned gc/array_copy.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_copy.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+232: --- FAIL: TestStagedOfficialGCArrayInitAccounting (0.00s)
+233:     gc_array_init_official_amd64_test.go:396: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+234: --- FAIL: TestStagedGCArrayInitDataTinyLifecycle (0.00s)
+235:     gc_array_init_product_amd64_test.go:64: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+236: --- FAIL: TestStagedGCArrayInitDataTransientTinyRootProof (0.00s)
+237:     gc_array_init_product_amd64_test.go:116: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+238: --- FAIL: TestStagedOfficialGCArrayAccounting (0.00s)
+239:     gc_array_official_amd64_test.go:374: convert pinned gc/array.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array.wast:4:16: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+240: --- FAIL: TestStagedOfficialGCBrOnCastAccounting (0.00s)
+241:     gc_br_on_cast_official_amd64_test.go:459: convert pinned gc/br_on_cast.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/br_on_cast.wast:5:28: error: unexpected token "i16", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+242: --- FAIL: TestStagedOfficialGCExternAccounting (0.00s)
+243:     gc_extern_official_amd64_test.go:345: convert pinned gc/extern.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/extern.wast:4:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+244: --- FAIL: TestStagedOfficialGCI31Accounting (0.00s)
+245:     gc_i31_official_amd64_test.go:348: convert pinned gc/i31.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/i31.wast:2:52: error: unexpected token "i31", expected a numeric index or a name (e.g. 12 or $foo).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+246: --- FAIL: TestStagedOfficialGCRefCastAccounting (0.00s)
+247:     gc_ref_cast_official_amd64_test.go:338: convert pinned gc/ref_cast.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/ref_cast.wast:6:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+248: --- FAIL: TestStagedOfficialGCRefEqAccounting (0.00s)
+249:     gc_ref_eq_official_amd64_test.go:304: convert pinned gc/ref_eq.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/ref_eq.wast:2:14: error: unexpected token "sub", expected func, struct or array.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+250: --- FAIL: TestStagedOfficialGCRefTestAccounting (0.00s)
+251:     gc_ref_test_official_amd64_test.go:173: convert pinned gc/ref_test.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/ref_test.wast:6:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+252: --- FAIL: TestStagedOfficialGCStructAccounting (0.00s)
+253:     gc_struct_official_amd64_test.go:309: convert pinned gc/struct.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/struct.wast:5:23: error: unexpected token ")", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+254: --- FAIL: TestStagedOfficialGCTypeSubtypingAccounting (0.00s)
+255:     gc_type_subtyping_official_amd64_test.go:551: convert pinned gc/type-subtyping.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/type-subtyping.wast:4:14: error: unexpected token "sub", expected func, struct or array.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+256: --- FAIL: TestStagedOfficialMemory64FamilyAccounting (0.14s)
+257:     --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory64 (0.00s)
+258:         memory64_official_amd64_test.go:327: convert pinned memory64.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/memory64/memory64.wast:8:9: error: unexpected token "definition", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+259:     memory64_official_amd64_test.go:359: staged memory64 accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+538: --- FAIL: TestStagedOfficialTable64FamilyAccounting (0.08s)
+539:     --- FAIL: TestStagedOfficialTable64FamilyAccounting/table64 (0.00s)
+540:         table64_official_amd64_test.go:469: convert pinned table64.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/memory64/table64.wast:9:9: error: unexpected token "definition", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+541:     table64_official_amd64_test.go:497: staged table64 accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+697: --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting (0.05s)
+698:     --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/ref_null (0.00s)
+699:         typed_reference_official_amd64_test.go:461: convert pinned ref_null.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/ref_null.wast:3:35: error: unexpected token anyref, expected ).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+700:     --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-canon (0.00s)
+701:         typed_reference_official_amd64_test.go:461: convert pinned type-canon.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/type-canon.wast:2:4: error: unexpected token "rec", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+702:     --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-equivalence (0.00s)
+703:         typed_reference_official_amd64_test.go:461: convert pinned type-equivalence.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/type-equivalence.wast:31:4: error: unexpected token "rec", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+704:     --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-rec (0.00s)
+705:         typed_reference_official_amd64_test.go:461: convert pinned type-rec.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/type-rec.wast:5:3: error: unexpected token (, expected ).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+706:     typed_reference_official_amd64_test.go:493: staged typed-reference accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+
+regalloccheck (exact failure/error lines extracted from regalloccheck.log)
+167: --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting (0.02s)
+168:     --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/exceptions-tag (0.00s)
+169:         exception_handling_official_amd64_test.go:917: convert pinned exceptions/tag.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/exceptions/tag.wast:31:4: error: unexpected token "rec", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+170:     --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/exceptions-try_table (0.00s)
+171:         exception_handling_official_amd64_test.go:917: convert pinned exceptions/try_table.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/exceptions/try_table.wast:408:42: error: unexpected token "exn", expected a numeric index or a name (e.g. 12 or $foo).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+172:     --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/ref_null (0.00s)
+173:         exception_handling_official_amd64_test.go:917: convert pinned ref_null.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/ref_null.wast:3:35: error: unexpected token anyref, expected ).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+174:     exception_handling_official_amd64_test.go:958: staged exception-handling accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+228: --- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+229:     gc_array_bulk_official_amd64_test.go:387: convert pinned gc/array_fill.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_fill.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+230: --- FAIL: TestStagedGCArrayBulkCopyMutableRootLifecycle (0.00s)
+231:     gc_array_bulk_product_amd64_test.go:30: convert pinned gc/array_copy.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_copy.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+232: --- FAIL: TestStagedOfficialGCArrayInitAccounting (0.00s)
+233:     gc_array_init_official_amd64_test.go:396: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+234: --- FAIL: TestStagedGCArrayInitDataTinyLifecycle (0.00s)
+235:     gc_array_init_product_amd64_test.go:64: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+236: --- FAIL: TestStagedGCArrayInitDataTransientTinyRootProof (0.00s)
+237:     gc_array_init_product_amd64_test.go:116: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+238: --- FAIL: TestStagedOfficialGCArrayAccounting (0.00s)
+239:     gc_array_official_amd64_test.go:374: convert pinned gc/array.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array.wast:4:16: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+240: --- FAIL: TestStagedOfficialGCBrOnCastAccounting (0.00s)
+241:     gc_br_on_cast_official_amd64_test.go:459: convert pinned gc/br_on_cast.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/br_on_cast.wast:5:28: error: unexpected token "i16", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+242: --- FAIL: TestStagedOfficialGCExternAccounting (0.00s)
+243:     gc_extern_official_amd64_test.go:345: convert pinned gc/extern.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/extern.wast:4:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+244: --- FAIL: TestStagedOfficialGCI31Accounting (0.00s)
+245:     gc_i31_official_amd64_test.go:348: convert pinned gc/i31.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/i31.wast:2:52: error: unexpected token "i31", expected a numeric index or a name (e.g. 12 or $foo).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+246: --- FAIL: TestStagedOfficialGCRefCastAccounting (0.00s)
+247:     gc_ref_cast_official_amd64_test.go:338: convert pinned gc/ref_cast.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/ref_cast.wast:6:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+248: --- FAIL: TestStagedOfficialGCRefEqAccounting (0.00s)
+249:     gc_ref_eq_official_amd64_test.go:304: convert pinned gc/ref_eq.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/ref_eq.wast:2:14: error: unexpected token "sub", expected func, struct or array.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+250: --- FAIL: TestStagedOfficialGCRefTestAccounting (0.00s)
+251:     gc_ref_test_official_amd64_test.go:173: convert pinned gc/ref_test.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/ref_test.wast:6:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+252: --- FAIL: TestStagedOfficialGCStructAccounting (0.00s)
+253:     gc_struct_official_amd64_test.go:309: convert pinned gc/struct.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/struct.wast:5:23: error: unexpected token ")", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+254: --- FAIL: TestStagedOfficialGCTypeSubtypingAccounting (0.00s)
+255:     gc_type_subtyping_official_amd64_test.go:551: convert pinned gc/type-subtyping.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/type-subtyping.wast:4:14: error: unexpected token "sub", expected func, struct or array.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+256: --- FAIL: TestStagedOfficialMemory64FamilyAccounting (0.14s)
+257:     --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory64 (0.00s)
+258:         memory64_official_amd64_test.go:327: convert pinned memory64.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/memory64/memory64.wast:8:9: error: unexpected token "definition", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+259:     memory64_official_amd64_test.go:359: staged memory64 accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+538: --- FAIL: TestStagedOfficialTable64FamilyAccounting (0.09s)
+539:     --- FAIL: TestStagedOfficialTable64FamilyAccounting/table64 (0.00s)
+540:         table64_official_amd64_test.go:469: convert pinned table64.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/memory64/table64.wast:9:9: error: unexpected token "definition", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+541:     table64_official_amd64_test.go:497: staged table64 accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+697: --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting (0.05s)
+698:     --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/ref_null (0.00s)
+699:         typed_reference_official_amd64_test.go:461: convert pinned ref_null.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/ref_null.wast:3:35: error: unexpected token anyref, expected ).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+700:     --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-canon (0.00s)
+701:         typed_reference_official_amd64_test.go:461: convert pinned type-canon.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/type-canon.wast:2:4: error: unexpected token "rec", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+702:     --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-equivalence (0.00s)
+703:         typed_reference_official_amd64_test.go:461: convert pinned type-equivalence.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/type-equivalence.wast:31:4: error: unexpected token "rec", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+704:     --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-rec (0.00s)
+705:         typed_reference_official_amd64_test.go:461: convert pinned type-rec.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/type-rec.wast:5:3: error: unexpected token (, expected ).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+706:     typed_reference_official_amd64_test.go:493: staged typed-reference accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
