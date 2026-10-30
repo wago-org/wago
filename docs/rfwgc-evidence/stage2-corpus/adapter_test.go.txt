@@ -1,0 +1,22 @@
+package wagobench
+
+import (
+ "os"
+ "testing"
+ wago "github.com/wago-org/wago"
+)
+
+func stage2Config() *wago.RuntimeConfig {
+ return wago.NewRuntimeConfig().WithOptimization("gc-lifetime-analyze", os.Getenv("STAGE2_ON") == "1")
+}
+
+// Public-runtime compiler path, separate from runtime benchmark adapters.
+func TestStage2CorpusCompile(t *testing.T) {
+ for _, m := range loadCorpus(t) {
+  t.Run(m.ID, func(t *testing.T) {
+   c, err := wago.Compile(stage2Config(), m.bytes)
+   if err != nil { t.Fatal(err) }
+   if err := c.Close(); err != nil { t.Fatal(err) }
+  })
+ }
+}
