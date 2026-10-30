@@ -1,0 +1,10 @@
+    PID    PPID ELAPSED %CPU COMMAND
+     31       7   79653 18.5 MainThread
+3711002 3710995   22885  1.4 codex
+1925149 3711002     764  0.3 python3
+3711176 3711002   22876  0.1 codex-code-mode
+      1       0   79653  0.0 podman-init
+      7       1   79653  0.0 MainThread
+3710995      31   22885  0.0 MainThread
+   6988      31   79346  0.0 t3-resource-mon
+1946355 1925149       0  0.0 ps
