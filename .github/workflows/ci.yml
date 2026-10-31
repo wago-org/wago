@@ -423,7 +423,7 @@ jobs:
 
       - name: Install Release 3 interpreter toolchain
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
-        run: sudo apt-get update && sudo apt-get install -y ocaml-nox ocaml-dune menhir
+        run: sudo apt-get update && sudo apt-get install -y ocaml ocaml-dune menhir
 
       - name: Identify Release 3 interpreter toolchain
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
@@ -1070,7 +1070,7 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = Linux ]; then
             sudo apt-get update
-            sudo apt-get install -y ocaml-nox ocaml-dune menhir
+            sudo apt-get install -y ocaml ocaml-dune menhir
           else
             brew install ocaml dune menhir
           fi
