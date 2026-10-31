@@ -86,6 +86,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   struct batches canceled by array allocation helpers.
 - Keep AMD64 `v128` array loads and stores in native code with checked handles,
   type identity, bounds, and object extents. Add a visible V8 timing comparison.
+- Read scalar numeric struct fields in native ARM64 code through the shared
+  checked-object resolver, with the existing typed helper fallback.
 
 - Detect writes to live deferred-load address registers, cached global-cell
   pointers, and forwarded store values in the AMD64 and ARM64 compilers when
