@@ -3151,6 +3151,23 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.restoreBranchHandlers(fi)
 		f.branchJump(fr)
 	}
+	if mask, target, ok := shared.BitsetBranchTable(labels, def); ok {
+		f.a.CmpImm32(ireg, uint32(len(labels)))
+		outside := f.a.Bcond(condAE)
+		f.a.MovImm64(X16, mask)
+		f.a.Lsrv64(X16, X16, ireg)
+		// Use the established long membership edge even for a void default.
+		// Its range must not depend on the default edge staying one instruction.
+		f.a.AndImm64(X16, X16, 1)
+		member := f.a.Cbnz64(X16)
+		f.patchBranch19(outside, f.a.Len())
+		emitCase(def)
+		f.patchBranch19(member, f.a.Len())
+		emitCase(target)
+		f.stats.peep("br-table-bitset")
+		f.unreachable = true
+		return nil
+	}
 	if f.canBranchVector(labels, def) {
 		f.emitBranchVector(labels, def, ireg, indexBounded && indexBound < n, emitCase)
 		return nil
