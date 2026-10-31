@@ -21,6 +21,10 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("simd-load-extract", &simdLoadExtractEnabled),
 	optimization.Bind("simd-store-load-address", &simdStoreLoadAddressEnabled),
 	optimization.Bind("bulk-fill-vector", &bulkFillVectorEnabled),
+	optimization.Bind("bulk-copy-vector", &bulkCopyVectorEnabled),
+	optimization.Bind("bulk-memory-loops", &bulkMemoryLoopsEnabled),
+	optimization.Bind("bulk-fill-copy-forward", &bulkFillCopyForwardEnabled),
+	optimization.Bind("byte-reduce-loop", &byteReduceLoopEnabled),
 	optimization.Bind("straight-line-block", &straightLineBlockEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
 	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
@@ -123,6 +127,10 @@ var (
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
 	optStraightLineBlock    = optimizationBindings.Option("straight-line-block")
 	optBulkFillVector       = optimizationBindings.Option("bulk-fill-vector")
+	optBulkCopyVector       = optimizationBindings.Option("bulk-copy-vector")
+	optBulkMemoryLoops      = optimizationBindings.Option("bulk-memory-loops")
+	optBulkFillCopyForward  = optimizationBindings.Option("bulk-fill-copy-forward")
+	optByteReduceLoop       = optimizationBindings.Option("byte-reduce-loop")
 	optSIMDStoreLoadAddress = optimizationBindings.Option("simd-store-load-address")
 	optSIMDLoadExtract      = optimizationBindings.Option("simd-load-extract")
 	optSIMDSuperopt         = optimizationBindings.Option("simd-superopt")

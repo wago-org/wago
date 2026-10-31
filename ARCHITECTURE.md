@@ -624,6 +624,26 @@ before compaction. Code layout, relocation checks, and emitted bytes are unchang
 Dynamic `memory.copy` lowering uses stack-backed lists for its four fixed branch
 patch sites (two per branch encoding on ARM64), with ordinary append fallback.
 
+ARM64 bulk-memory lowering loads every source chunk before storing a constant
+16–64 byte copy, preserving overlap semantics (`bulk-copy-vector`). Dynamic
+backward copies align the destination end and use 256-byte groups; fills align
+the destination and use 1024-byte groups (`bulk-memory-loops`). All tails stay
+inside the checked range. An adjacent constant-byte fill followed by a copy of
+exactly that source span can replace the copy's reads with fill stores
+(`bulk-fill-copy-forward`). Only three pure constant/local operand reads may
+intervene, both memories must be unshared memory32, and both copy range checks
+still precede its writes. A trapping copy leaves the completed fill visible.
+
+The ARM64 `byte-reduce-loop` option recognizes complete read-only ascending
+unsigned byte-sum loops, optionally weighted by a wrapping i32 index plus a
+constant. A widened whole-range guard admits NEON 16-byte reductions with scalar
+tails; failed guards execute the original loop so traps retain their ordering.
+The recognizer requires distinct counter, limit and accumulator locals and an
+immediate void-block exit. Calls, shared/memory64 sources, interruption, source
+profiling, custom instructions and unsupported register/control states retain
+the ordinary lowering. Coefficient sums fit in unsigned 16-bit lanes; the final
+weighted accumulation preserves modulo-2^32 arithmetic.
+
 Parallel codegen reserves at most 64 local slots per worker; a larger function
 uses the normal growth path. Parallel hint scans allocate dense global scratch
 once, then give each worker exclusive, capacity-bounded slices. Each worker has
