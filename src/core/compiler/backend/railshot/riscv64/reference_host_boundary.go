@@ -18,7 +18,7 @@ func admitPublicHostReferenceBoundaryWire(data []byte) bool {
 	if !publicHostReferenceBoundaryWireShape(data) {
 		return false
 	}
-	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxTypeDeclarations, MaxMetadataBytes: 16 << 20})
 	return err == nil && admitPublicHostReferenceBoundary(decoded.Module)
 }
 

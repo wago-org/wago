@@ -20,6 +20,7 @@ const (
 	MaxProductionMemories = int(wasm.DefaultMaxMemoriesPerModule)
 	MaxModuleBytes        = 1 << 20
 	MaxFunctions          = 1024
+	MaxTypeDeclarations   = MaxPublicCodeBytes / 8
 	MaxCodeBytes          = 16 << 20
 	MaxFrameBytes         = 128 << 10
 )
@@ -96,7 +97,7 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 		return nil, fmt.Errorf("rv64: module exceeds %d bytes", MaxModuleBytes)
 	}
 	owned := append([]byte(nil), data...)
-	decoded, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxTypeDeclarations, MaxMetadataBytes: 16 << 20})
 	if err != nil {
 		return nil, err
 	}

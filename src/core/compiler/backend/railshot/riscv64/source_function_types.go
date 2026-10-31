@@ -114,7 +114,7 @@ func (d sourceFunctionTypeDirectory) subtypeKeys(index uint32) ([]uint64, bool) 
 		return nil, false
 	}
 	indexes, ok := d.module.FunctionSubtypeTypeIndexes(index)
-	if !ok || len(indexes) == 0 || len(indexes) > MaxFunctions {
+	if !ok || len(indexes) == 0 || len(indexes) > MaxTypeDeclarations {
 		return nil, false
 	}
 	keys := make([]uint64, len(indexes))

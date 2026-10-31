@@ -810,34 +810,35 @@ func TestReferenceFunctionModuleImmediateAndAggregateBounds(t *testing.T) {
 func TestReferenceFunctionModuleDirectoryAndLocalBounds(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, tc := range []struct {
-			name   string
-			limit  int
-			resize func(*wasm.Module, int)
+			name          string
+			limit         int
+			acceptPlusOne bool
+			resize        func(*wasm.Module, int)
 		}{
-			{"functions", MaxFunctions, func(m *wasm.Module, n int) {
+			{"functions", MaxFunctions, false, func(m *wasm.Module, n int) {
 				for len(m.Code) < n {
 					m.FuncTypes = append(m.FuncTypes, wasm.TypeIdx{})
 					m.Code = append(m.Code, wasm.Func{BodyBytes: []byte{0x0b}, LocalDeclBytes: 1})
 				}
 			}},
-			{"types", MaxFunctions, func(m *wasm.Module, n int) {
+			{"types", MaxFunctions, true, func(m *wasm.Module, n int) {
 				for len(m.Types) < n {
 					m.Types = append(m.Types, m.Types[0])
 				}
 			}},
-			{"exports", MaxFunctions, func(m *wasm.Module, n int) {
+			{"exports", MaxFunctions, false, func(m *wasm.Module, n int) {
 				m.Exports = nil
 				for i := 0; i < n; i++ {
 					m.Exports = append(m.Exports, wasm.Export{Name: fmt.Sprint(i), Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 0}})
 				}
 			}},
-			{"customs", MaxFunctions, func(m *wasm.Module, n int) { m.Customs = make([]wasm.CustomSec, n) }},
-			{"segments", MaxOwnedElementSegments, func(m *wasm.Module, n int) {
+			{"customs", MaxFunctions, false, func(m *wasm.Module, n int) { m.Customs = make([]wasm.CustomSec, n) }},
+			{"segments", MaxOwnedElementSegments, false, func(m *wasm.Module, n int) {
 				for len(m.Elements) < n {
 					m.Elements = append(m.Elements, wasm.Elem{Mode: wasm.ElemMode{Kind: wasm.ElemDeclarative}})
 				}
 			}},
-			{"elements", MaxOwnedTableEntries, func(m *wasm.Module, n int) {
+			{"elements", MaxOwnedTableEntries, false, func(m *wasm.Module, n int) {
 				m.Elements[0].Kind.Funcs = make([]wasm.FuncIdx, n)
 				for i := range m.Elements[0].Kind.Funcs {
 					m.Elements[0].Kind.Funcs[i] = 1
@@ -849,7 +850,7 @@ func TestReferenceFunctionModuleDirectoryAndLocalBounds(t *testing.T) {
 				t.Run(fmt.Sprintf("%s-n%d-vector%t", tc.name, n, vector), func(t *testing.T) {
 					m := closedReferenceDecode(t, vector, false, false, true)
 					tc.resize(m, n)
-					if err := admitClosedReferenceFunctionModule(m, vector); (err == nil) != (n == tc.limit) {
+					if err := admitClosedReferenceFunctionModule(m, vector); (err == nil) != (n == tc.limit || tc.acceptPlusOne) {
 						t.Fatal("closed directory bound", err)
 					}
 				})
