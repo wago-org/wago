@@ -1837,6 +1837,9 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 					f.stats.peep("callfree-loop-fconst")
 				}
 			}
+			if pN == 0 && rN == 0 {
+				f.emitByteReduceLoop(r)
+			}
 			if f.compactLoopAlign32 {
 				f.a.AlignLoop32()
 				f.stats.peep("compact-loop-align32")
@@ -2488,6 +2491,8 @@ func (f *fn) opEnd() error {
 		}
 		f.ehTryDepth--
 	}
+	f.finishByteReduceLoop(last + 1)
+
 	if fr.has(ctrlLoopPinExchange) {
 		f.restoreLoopPinExchange(f.ctrlMerge(&fr).loopPinPlan, endReachable)
 	}

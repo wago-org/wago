@@ -76,5 +76,60 @@ Exploratory screens, including rejected copy/fill strategies, are excluded.
   signed-boundary weights, static offsets, empty ranges and bounds fallback.
   Selection tests reject shared/memory64, interruption and source-recording paths.
 
-AMD64 qualification is pending native Hub access; this report makes no AMD64
-performance claim. Hosted CI has not been run for this branch.
+AMD64 results and remaining parity gaps are recorded below. Hosted CI has not
+been run for this branch.
+
+## AMD64, 2026-10-31
+
+Native Hub: Ryzen 7 7800X3D, Linux 7.0.0-38-generic x86_64, Go 1.27.1,
+Rust 1.98.1 and Wasmtime 50.0.0 with Cranelift. The same five exact artifacts
+and independent oracles are used. Each fresh adapter process is pinned to CPU 2
+with one worker; runtime order alternates on each launch. Hub's shared benchmark
+lock excludes concurrent builds and tests during measurement. Other host
+applications were not stopped. Hardware counters were unavailable under the
+host's existing perf policy.
+
+The candidate combines exact short-copy chunks, declared-minimum address
+proofs, adjacent filled-source forwarding, guarded byte reductions and retained
+registers on proved call-free loop exits. Large fills use 512-byte groups with
+AVX-512, 128-byte groups with AVX2, and the existing byte string-store path on
+baseline SSE2 CPUs. Rejected qword-only fill, narrower-copy and memory-allocation
+alignment experiments are excluded.
+
+All source files changed by the AMD64 implementation match between the local
+worktree and Hub by SHA-256. The raw results record those hashes and the measured
+adapter binary hashes. Wago baseline remains
+`90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e`; its Go 1.27.1 Linux/amd64 adapter
+was cross-built and run natively. The candidate adapter was built natively on
+Hub with the same Go version, CGO disabled, trimpath and no build tags. Source
+qualification and measurement remain separate from a hosted wasm.fyi result.
+
+The final ARM64 checked suite also passes after the shared option/test changes.
+All five ARM64 native-code hashes match the previously qualified candidate.
+The settled AMD64 source passes the full checked `./src/...` suite, including
+its pinned Release 3 fixtures and reference interpreter. Targeted SSE2,
+guard-page and source-profiling builds with register checks pass; selection
+checks additionally use `wago_codegenstats`. The native encoder suite and
+`go generate ./...` pass. These are local checks, not hosted CI results.
+
+The [raw AMD64 samples and identities](amd64.json) retain eight launches per
+engine/workload, seven samples per launch and a minimum 75 ms per sample. All
+840 measured samples pass their independent exact-return oracles. Values and
+paired deltas follow the same definitions as the ARM64 table.
+
+| Contract | Wago baseline us | Wago candidate us | Wasmtime us | Delta vs baseline | Delta vs Wasmtime |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| fill | 30.589 | 30.069 | 29.096 | -1.6% | +3.4% |
+| copy-overlap | 73.633 | 59.993 | 61.770 | -18.6% | -2.8% |
+| record-pack | 34.362 | 7.673 | 30.761 | -77.7% | -75.1% |
+| sliding-window-compaction | 20.215 | 19.867 | 18.601 | -1.5% | +6.7% |
+| doubling-pattern-expansion | 37.825 | 6.712 | 29.650 | -82.2% | -77.3% |
+
+The geometric mean of the five paired candidate/Wasmtime ratios corresponds to
+1.75x faster execution overall. This aggregate is not an individual-workload
+parity claim: fill remains 3.4% slower and compaction 6.7% slower than Wasmtime.
+Neither remaining gap is hidden by the much larger reduction-loop wins. Maximum
+sample CV is 0.020. The goal of meeting or beating Wasmtime on every individual
+AMD64 workload remains unmet. All five improve against the Wago baseline in this
+campaign. No runtime allocation-layout change or workload-identity dispatch is
+included.

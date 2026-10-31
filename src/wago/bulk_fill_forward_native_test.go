@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && arm64 && !tinygo
+//go:build ((linux && amd64) || ((linux || darwin || windows) && arm64)) && !tinygo
 
 package wago
 
@@ -169,6 +169,48 @@ func TestBulkFillCopyForwardAcrossMemories(t *testing.T) {
 		}
 		if !bytes.Equal(src.UnsafeBytes(), wantSource) || !bytes.Equal(dst.UnsafeBytes(), wantDestination) {
 			t.Fatalf("source memory %d: wrong cross-memory contents", source)
+		}
+	}
+}
+
+func TestBulkFillCopyForwardInline(t *testing.T) {
+	helper := []byte{0x20, 1, 0x41, 7, 0x20, 2, 0xfc, 11, 0, 0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 10, 0, 0, 0x0b}
+	caller := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x10, 0, 0x0b}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{1, 1, 1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("copy", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(helper), wasmtest.Code(caller))),
+	)
+	c, err := NewRuntimeConfig().Compile(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	mem := in.Memory().UnsafeBytes()
+	for _, tc := range [][3]int{{1, 0, 65535}, {17, 16, 1024}, {0, 0, 65536}, {61441, 128, 4096}} {
+		dst, src, n := tc[0], tc[1], tc[2]
+		for i := range mem {
+			mem[i] = 0x5a
+		}
+		want := bytes.Clone(mem)
+		for i := src; i < src+n; i++ {
+			want[i] = 7
+		}
+		valid := dst+n <= len(mem)
+		if valid {
+			copy(want[dst:dst+n], want[src:src+n])
+		}
+		_, err := in.Invoke("copy", uint64(dst), uint64(src), uint64(n))
+		var trap *TrapError
+		if valid && err != nil || !valid && (!errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds) || !bytes.Equal(mem, want) {
+			t.Fatalf("%v: err=%v memoryEqual=%t", tc, err, bytes.Equal(mem, want))
 		}
 	}
 }

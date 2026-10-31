@@ -644,6 +644,28 @@ profiling, custom instructions and unsupported register/control states retain
 the ordinary lowering. Coefficient sums fit in unsigned 16-bit lanes; the final
 weighted accumulation preserves modulo-2^32 arithmetic.
 
+AMD64 uses the same `bulk-copy-vector`, `bulk-fill-copy-forward`,
+`bulk-memory-loops` and `byte-reduce-loop` controls. Constant copies use complete
+16-byte groups and exact 8/4/2/1-byte tails when scratch registers are available;
+all loads still precede all stores. Both copy operands can use the existing
+declared-minimum bounds proof before materialization. Proven constant memory32
+addresses can then become native displacements. Pressure and unproved spans
+retain checked lowering. Adjacent filled-source forwarding also remaps inline
+local indexes before matching its three pure operands.
+
+AMD64 large fills use AVX2 stores, or AVX-512 stores when available. An in-range
+prefix aligns the middle; a fixed store group ending at the checked end covers
+the remainder. Short fills and CPUs without AVX2 retain byte string stores.
+The existing `callfree-loop-reg-state` control also permits the first exit from
+a proved call-free loop to retain integer pins across its enclosing void block;
+subsequent edges must satisfy the same merge contract.
+Byte reductions use SSSE3 weighted
+16-byte sums (SSE2 for plain sums), with four-byte scalar groups and byte tails
+when unsupported or under vector pressure. Saturating byte-pair products remain
+exact because their maximum is 7395; the complete relative weighted sum is at
+most 30600. The original range guard and scalar trap fallback are unchanged.
+
+
 Parallel codegen reserves at most 64 local slots per worker; a larger function
 uses the normal growth path. Parallel hint scans allocate dense global scratch
 once, then give each worker exclusive, capacity-bounded slices. Each worker has

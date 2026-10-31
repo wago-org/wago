@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && arm64 && !tinygo
+//go:build ((linux && amd64) || ((linux || darwin || windows) && arm64)) && !tinygo
 
 package wago
 
@@ -95,6 +95,54 @@ func TestBulkCopyVectorAndWideSpans(t *testing.T) {
 					}
 				}
 			})
+		}
+	}
+}
+
+func TestBulkCopyFixedSpanBounds(t *testing.T) {
+	for n := 0; n <= 65; n++ {
+		for _, pair := range [][2]uint32{{0, 1}, {1, 0}, {65536 - uint32(n), 0}, {0, 65536 - uint32(n)}, {65537 - uint32(n), 0}, {0, 65537 - uint32(n)}, {0xffffffff, 0}, {0, 0xffffffff}} {
+			dst, src := pair[0], pair[1]
+			body := []byte{0x41}
+			body = append(body, wasmtest.SLEB32(int32(dst))...)
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(int32(src))...)
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(int32(n))...)
+			body = append(body, 0xfc, 10, 0, 0, 0x0b)
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{1, 1, 1})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("copy", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			c, err := NewRuntimeConfig().Compile(module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				c.Close()
+				t.Fatal(err)
+			}
+			mem := in.Memory().UnsafeBytes()
+			for i := range mem {
+				mem[i] = byte(i*29 + i>>8)
+			}
+			want := bytes.Clone(mem)
+			valid := uint64(dst)+uint64(n) <= uint64(len(mem)) && uint64(src)+uint64(n) <= uint64(len(mem))
+			if valid {
+				copy(want[int(dst):int(dst)+n], want[int(src):int(src)+n])
+			}
+			_, err = in.Invoke("copy")
+			var trap *TrapError
+			equal := bytes.Equal(mem, want)
+			in.Close()
+			c.Close()
+			if valid && err != nil || !valid && (!errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds) || !equal {
+				t.Fatalf("n=%d src=%d dst=%d valid=%t err=%v memoryEqual=%t", n, src, dst, valid, err, equal)
+			}
 		}
 	}
 }
