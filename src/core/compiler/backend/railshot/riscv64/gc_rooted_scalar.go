@@ -1251,7 +1251,7 @@ func AdmitGCRootedScalarSource(data []byte) bool {
 func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 	r := wasm.ReaderFrom(payload)
 	count, err := r.U32()
-	if err != nil || count == 0 || count > MaxTypeDeclarations {
+	if err != nil || count == 0 || count > MaxTypeDeclarations || uint64(count) > uint64(r.BytesLeft()) {
 		return false
 	}
 	kinds := make([]byte, 0, int(count))
