@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/wago-org/wago"
@@ -14,13 +15,14 @@ import (
 
 func gcFlags() []command.Flag {
 	return []command.Flag{
+		{Name: "gc-workers", Arg: "<count>", Help: "throughput GC collection participants, 1 through 8 (default 1)"},
 		{Name: "gc-heap", Arg: "<size>", Help: "throughput GC heap capacity in bytes or KiB, MiB, GiB"},
 		{Name: "gc-nursery", Arg: "<size>", Help: "throughput GC nursery capacity in bytes or KiB, MiB, GiB"},
 	}
 }
 
 func gcLongHelp() string {
-	return "Large WasmGC workloads can set --gc-heap and --gc-nursery with binary sizes such as 2GiB and 64MiB. "
+	return "Large WasmGC workloads can set --gc-heap and --gc-nursery with binary sizes such as 2GiB and 64MiB. Use --gc-workers 1 through 8 to configure parallel throughput collection. "
 }
 
 func instantiate(runtime *wago.Runtime, module *wago.Module, gc wago.GCConfig, configured bool) (*wago.Instance, error) {
@@ -48,7 +50,15 @@ func gcConfiguration(ctx *command.Ctx) (wago.GCConfig, bool, error) {
 		}
 		cfg.NurseryBytes = value
 	}
-	return cfg, heap != "" || nursery != "", nil
+	workers := ctx.Str("gc-workers")
+	if workers != "" {
+		value, err := strconv.Atoi(workers)
+		if err != nil || value < 1 || value > 8 {
+			return cfg, false, fmt.Errorf("--gc-workers: count must be between one and eight")
+		}
+		cfg.Workers = value
+	}
+	return cfg, heap != "" || nursery != "" || workers != "", nil
 }
 
 func parseGCBytes(raw string) (uint32, error) {

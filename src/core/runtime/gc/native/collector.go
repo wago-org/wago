@@ -85,6 +85,11 @@ type Config struct {
 	DisableCollection     bool
 	TinyCollectEveryAlloc bool
 	TinyStepEveryAlloc    bool
+	// Workers requests one through eight Throughput collection participants,
+	// including the calling goroutine. Zero selects one. Small collections and
+	// a single available processor use the serial path. Tiny and TinyGo accept
+	// only zero or one. Helpers are created lazily and joined during Close.
+	Workers int
 }
 
 type Stats struct {
@@ -173,6 +178,7 @@ type Collector struct {
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
+	parallel                     *parallelCollector
 }
 
 const defaultNursery = 64 << 10
@@ -242,6 +248,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // errCollectorClosed. It is idempotent; Stats remains safe for post-close
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
+	c.closeParallel()
 	c.notifyCollectorClosed()
 	c.discardNativeStructHandles()
 	c.discardNativeLargeArrayAllocation()

@@ -37,6 +37,22 @@ just test fuzz 30s                # bounded fuzzing gates
 just test all                     # all of the above
 ```
 
+## Parallel GC fixture
+
+`fixtures/wasm/gc-parallel-graph.wat` is a purpose-built graph/root stress
+fixture. Its checked-in `.wasm` is generated with the pinned `wasm-tools`:
+
+```sh
+wasm-tools parse tests/fixtures/wasm/gc-parallel-graph.wat \
+  -o tests/fixtures/wasm/gc-parallel-graph.wasm
+go test ./src/wago -run '^TestGCParallelNativeRoots$'
+```
+
+It retains a shared linked graph in a GC array/global while native allocation
+triggers repeated collections, and checks the sum with one and four workers.
+Collector-local parallel tests additionally check cycles, duplicate roots,
+remembered slots, promotion rollback, epoch wrap, queue pressure, and teardown.
+
 ## Linux RISC-V64 sprint
 
 Linux/RISC-V64 is supported by the ordinary build. The acceptance set covers
