@@ -44,6 +44,41 @@ func catchAllRootMapModule(tagParams ...wasm.ValType) []byte {
 	)
 }
 
+// A module needs no tag directory to catch an exception from an imported
+// function. Its catch_all_ref slot must still root every dedicated GC lane.
+func TestBuildExceptionRootMapsCatchAllWithoutTags(t *testing.T) {
+	body := []byte{0x02, 0x69, 0x1f, 0x40, 0x01, byte(wasm.CatchAllRef), 0x00,
+		0x10, 0x00, 0x0b, 0x00, 0x0b, 0x1a, 0x0b}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("foreign"), wasmtest.Name("throw")...), 0x00, 0x00))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	if m.TagCount() != 0 {
+		t.Fatal("fixture must have no declared or imported tags")
+	}
+	maps, err := BuildExceptionRootMaps(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(maps) != 1 || maps[0].LocalFunction != 0 || maps[0].FrameBytes != uint32(frameHdrBytes+(ehRecordSlots+ehRootSlots)*8) || len(maps[0].Slots) != shared.MaxEHTagPayloadWords {
+		t.Fatalf("tag-free catch_all_ref root maps = %#v", maps)
+	}
+	for i, got := range maps[0].Slots {
+		want := uint32(firstRootPayloadOffset + (shared.EHGCLaneBase+i)*8)
+		if got.Offset != want || got.Kind != nativeabi.RootGCRef {
+			t.Fatalf("root slot %d = %#v, want offset %d/gc", i, got, want)
+		}
+	}
+}
+
 func TestBuildExceptionRootMapsSingleFuncrefPayload(t *testing.T) {
 	m, err := wasm.DecodeModule(exceptionRootMapModule(1))
 	if err != nil {
