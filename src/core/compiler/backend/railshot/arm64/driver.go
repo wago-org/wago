@@ -879,8 +879,7 @@ func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
 	if !f.opt(optSTFlags) || f.unreachable || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
 		return false, nil
 	}
-	pr, isFloat, ok := f.pinReg(x)
-	if !ok || isFloat {
+	if _, isFloat, ok := f.pinReg(x); !ok || isFloat {
 		return false, nil
 	}
 	top := f.s.back()
@@ -899,10 +898,9 @@ func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
 		return false, err
 	}
 	f.invalidateBoundsCertFor(1, uint32(x))
-	if err := f.brIfFusedSet(top, idx, pr); err != nil {
+	if err := f.brIfFusedSet(top, idx, x); err != nil {
 		return false, err
 	}
-	f.markLocalDirty(x)
 	f.stats.addLocalSetDeferred()
 	f.stats.peep("cmp-tee-branch-fuse")
 	return true, nil
