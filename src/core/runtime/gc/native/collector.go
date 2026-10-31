@@ -158,7 +158,8 @@ type Collector struct {
 	slotCards             []slotCard
 	globalCardBits        []uint64
 	tableCardBits         []uint64
-	cardFallback          bool // shared full remembered-object/persistent-root scan
+	cardFallback          bool   // shared full remembered-object/persistent-root scan
+	markHighWater         uint32 // exclusive reset bound; uses padding before globalSlots
 	globalSlots           []Ref
 	tableSlots            []Ref
 	stats                 Stats
@@ -255,6 +256,7 @@ func (c *Collector) Close() {
 	c.freeHandles = nil
 	c.nurseryHandles = nil
 	c.mark = nil
+	c.markHighWater = 0
 	c.majorBlocks = nil
 	c.majorYoungDirty = false
 	c.markStack = nil
