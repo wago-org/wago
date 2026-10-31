@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -44,12 +45,12 @@ func compileSIMDPair(t testing.TB, raw []byte, profile uint64) simdPairCode {
 		t.Fatal(err)
 	}
 	if cm.CodeImage != nil {
-		t.Fatal("unexpected mapped code image")
+		defer cm.CodeImage.Close()
 	}
 	if cm.RequiredAMD64Features&^uint32(profile) != 0 {
 		t.Fatal("emitted features exceed profile")
 	}
-	out := simdPairCode{bytes: cm.Code, entry: uint32(cm.Entry[0]), spills: -1, literals: -1}
+	out := simdPairCode{bytes: bytes.Clone(cm.Code), entry: uint32(cm.Entry[0]), spills: -1, literals: -1}
 	if compilerTelemetryEnabled {
 		if len(stats.Funcs) != 1 || stats.Funcs[0].SharedScalar {
 			t.Fatal("expected established SIMD compiler")

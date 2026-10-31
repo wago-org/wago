@@ -102,14 +102,13 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 		rootCount := 0
 		var slots []nativeabi.RootSlot
 		r := wasm.NewReader(m.Code[function].BodyBytes)
-		var imm wasm.InstructionImmediate
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil {
 				return nil, err
 			}
 			if op != 0x1f {
-				if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+				if err := classifier.SkipImmediate(r, op); err != nil {
 					return nil, fmt.Errorf("exception root map function %d: %w", function, err)
 				}
 				continue

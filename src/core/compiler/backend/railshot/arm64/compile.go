@@ -749,15 +749,46 @@ func (sc *scratch) moduleNeedsAdapterBacklink(calleeHints []funcHints) bool {
 
 const maxCachedAdapterBytes = 256
 
-// adapterTemplateCache retains one repeated host-adapter shape per worker.
-// Function types alias immutable module storage, so pointer identity is an exact
-// signature key within the scratch's single-module lifetime. The memory-size
-// register is also part of the shape: bounded leaves can use X17 instead of X27.
-// The first sighting only records a candidate; the second emits normally and
-// promotes the complete
-// patched adapter. This avoids copying unique shapes while turning longer runs
-// into one bounded byte copy per function.
+// Repeated adapters start with one inline entry. Modules alternating among
+// several signatures promote to a bounded worker-local table. Each slot still
+// requires a repeated immutable type/register key before copying its template.
+// Unique types allocate no per-signature backing or parameter/result copies.
 type adapterTemplateCache struct {
+	adapterTemplateEntry
+	ways   *[16]adapterTemplateEntry
+	misses uint8
+}
+
+func adapterTemplateSlot(ft *wasm.CompType) uintptr {
+	p := uintptr(unsafe.Pointer(ft))
+	return ((p >> 4) ^ (p >> 9)) & 15
+}
+
+func (c *adapterTemplateCache) lookup(ft *wasm.CompType, memSize Reg) ([]byte, int, int, bool) {
+	if c.ways != nil {
+		return c.ways[adapterTemplateSlot(ft)].lookup(ft, memSize)
+	}
+	return c.adapterTemplateEntry.lookup(ft, memSize)
+}
+
+func (c *adapterTemplateCache) observe(ft *wasm.CompType, memSize Reg, code []byte, returnOff, endOff int) {
+	if c.ways != nil {
+		c.ways[adapterTemplateSlot(ft)].observe(ft, memSize, code, returnOff, endOff)
+		return
+	}
+	if c.candidate == ft && c.candidateMemSize == memSize && (c.typ != ft || c.memSize != memSize) {
+		c.misses++
+	}
+	c.adapterTemplateEntry.observe(ft, memSize, code, returnOff, endOff)
+	if c.misses == 8 {
+		c.ways = new([16]adapterTemplateEntry)
+		if c.n != 0 {
+			c.ways[adapterTemplateSlot(c.typ)] = c.adapterTemplateEntry
+		}
+	}
+}
+
+type adapterTemplateEntry struct {
 	candidate        *wasm.CompType
 	typ              *wasm.CompType
 	n                uint16
@@ -768,14 +799,14 @@ type adapterTemplateCache struct {
 	code             [maxCachedAdapterBytes]byte
 }
 
-func (c *adapterTemplateCache) lookup(ft *wasm.CompType, memSize Reg) (code []byte, returnOff, endOff int, ok bool) {
+func (c *adapterTemplateEntry) lookup(ft *wasm.CompType, memSize Reg) (code []byte, returnOff, endOff int, ok bool) {
 	if c.typ != ft || c.memSize != memSize || c.n == 0 {
 		return nil, 0, 0, false
 	}
 	return c.code[:c.n], int(c.returnOff), int(c.endOff), true
 }
 
-func (c *adapterTemplateCache) observe(ft *wasm.CompType, memSize Reg, code []byte, returnOff, endOff int) {
+func (c *adapterTemplateEntry) observe(ft *wasm.CompType, memSize Reg, code []byte, returnOff, endOff int) {
 	if len(code) > len(c.code) || returnOff <= 4 || returnOff > len(code) || endOff > len(code) {
 		c.candidate = nil
 		return
@@ -2276,6 +2307,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 // functions to one retained internal entry; the proof guarantees it is never
 // observed by Wasm or the host.
 func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs *callRelocTable, hostAdapters []bool, targets inlineTargetTable) error {
+	// Ordinary layouts have no omitted body and need no relocation proof walk.
+	hasOmitted := false
+	if inlineDeadBodyEnabled && targets.data != nil {
+		for i := range targets.data.targets {
+			if targets.data.targets[i].omitStandalone {
+				hasOmitted = true
+				break
+			}
+		}
+	}
+	if !hasOmitted {
+		return nil
+	}
 	if len(entry) == 0 {
 		return nil
 	}

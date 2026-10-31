@@ -42,7 +42,10 @@ func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
 			if op != opNone {
 				right := f.s.back()
 				left := baseOfValentBlock(right).prev
-				node := f.s.alloc()
+				node := f.s.tryAlloc()
+				if node == nil {
+					node = f.s.allocNextChunk()
+				}
 				node.setElemKind(ekDeferred)
 				node.setDeferredOp(op)
 				node.setValueType(mtI32)

@@ -417,8 +417,11 @@ func stackArenaCapForBody(bodyLen, nLocals int) int {
 }
 
 func (s *stack) node(id nodeID) *elem {
-	if id == nilNodeID {
-		return nil
+	if id <= sentinelNodeID {
+		if id == nilNodeID {
+			return nil
+		}
+		return s.head
 	}
 	chunkIndex := int(uint32(id) >> 16)
 	slot := int(uint16(id)) - 1

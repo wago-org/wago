@@ -16,6 +16,9 @@ func funcHintStorageBytes(hints []funcHints, sidecar funcHintSidecar) (headers, 
 		uint64(cap(sidecar.sparseGlobals))*uint64(unsafe.Sizeof(shared.GlobalHint{})) +
 		uint64(cap(sidecar.residencyShadow))*uint64(unsafe.Sizeof(shared.ResidencyShadowEntry{})) +
 		uint64(cap(sidecar.loopIntConsts))*uint64(unsafe.Sizeof(loopIntConstHintEntry{}))
+	if sidecar.inlineCaller != nil {
+		sidecars += uint64(cap(sidecar.inlineCaller.calls))*4 + uint64(cap(sidecar.inlineCaller.ranges))*8 + uint64(unsafe.Sizeof(inlineCallerHints{}))
+	}
 	return
 }
 
@@ -153,6 +156,8 @@ func (h *funcHints) markUnsupportedDynamicCall() {
 // funcHintView reconstructs scan/compile slices on the stack. Only funcHints is
 // retained per function; all variable-length data lives in one module sidecar.
 type funcHintView struct {
+	inlineCaller      *inlineCallerHints
+	inlineCallerIndex int
 	funcHints
 	entryInitialized uint64 // scan-local view; compilation decodes bits during pin planning
 	nLocals          int
@@ -172,6 +177,7 @@ type loopIntConstHintEntry struct {
 }
 
 type funcHintSidecar struct {
+	inlineCaller    *inlineCallerHints
 	localScore      []uint32
 	localLastGet    []uint32
 	localEventMeta  []uint32 // ordered localStart, packed event summary pairs
@@ -213,6 +219,9 @@ func (s funcHintSidecar) viewAt(h funcHints, function int) funcHintView {
 		sparseGlobals:   s.sparseGlobals[globalStart:globalEnd],
 		localEventMeta:  eventMeta,
 		residencyShadow: shadow,
+	}
+	if function >= 0 && s.inlineCaller != nil {
+		view.inlineCaller, view.inlineCallerIndex = s.inlineCaller, function
 	}
 	if function < 0 || !h.flags.has(hintHasLoop) || len(s.loopIntConsts) == 0 {
 		return view
@@ -988,33 +997,37 @@ type byteBodyScanner struct {
 	selectedLoopIntConstN uint8
 }
 
+// Zero marks ordinary opcodes that produce no physical-planning event.
+var physicalEventByOpcode = [256]shared.LocalEventKind{
+	0x02: shared.LocalEventBlock, 0x1f: shared.LocalEventBlock,
+	0x03: shared.LocalEventLoop, 0x04: shared.LocalEventIf,
+	0x05: shared.LocalEventElse, 0x0b: shared.LocalEventEnd,
+	0x08: shared.LocalEventBranch, 0x09: shared.LocalEventBranch,
+	0x0a: shared.LocalEventBranch, 0x0c: shared.LocalEventBranch,
+	0x0d: shared.LocalEventBranch, 0x0e: shared.LocalEventBranch, 0x0f: shared.LocalEventBranch,
+	0x10: shared.LocalEventCall, 0x11: shared.LocalEventCall,
+	0x12: shared.LocalEventCall, 0x13: shared.LocalEventCall,
+	0x14: shared.LocalEventCall, 0x15: shared.LocalEventCall,
+	0x24: shared.LocalEventInvalidate, 0x26: shared.LocalEventInvalidate, 0x40: shared.LocalEventInvalidate,
+	0x6d: shared.LocalEventFixedReg, 0x6e: shared.LocalEventFixedReg,
+	0x6f: shared.LocalEventFixedReg, 0x70: shared.LocalEventFixedReg,
+	0x74: shared.LocalEventFixedReg, 0x75: shared.LocalEventFixedReg,
+	0x76: shared.LocalEventFixedReg, 0x77: shared.LocalEventFixedReg, 0x78: shared.LocalEventFixedReg,
+	0x7f: shared.LocalEventFixedReg, 0x80: shared.LocalEventFixedReg,
+	0x81: shared.LocalEventFixedReg, 0x82: shared.LocalEventFixedReg,
+	0x86: shared.LocalEventFixedReg, 0x87: shared.LocalEventFixedReg,
+	0x88: shared.LocalEventFixedReg, 0x89: shared.LocalEventFixedReg, 0x8a: shared.LocalEventFixedReg,
+	0xfd: shared.LocalEventPressure,
+}
+
+// Keep the common event-free opcode path small enough to inline into the walk.
 func (s *byteBodyScanner) notePhysicalEvent(op byte, depth int) {
-	var kind shared.LocalEventKind
-	switch op {
-	case 0x02, 0x1f:
-		kind = shared.LocalEventBlock
-	case 0x03:
-		kind = shared.LocalEventLoop
-	case 0x04:
-		kind = shared.LocalEventIf
-	case 0x05:
-		kind = shared.LocalEventElse
-	case 0x0b:
-		kind = shared.LocalEventEnd
-	case 0x08, 0x09, 0x0a, 0x0c, 0x0d, 0x0e, 0x0f:
-		kind = shared.LocalEventBranch
-	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
-		kind = shared.LocalEventCall
-	case 0x24, 0x26, 0x40:
-		kind = shared.LocalEventInvalidate
-	case 0x6d, 0x6e, 0x6f, 0x70, 0x74, 0x75, 0x76, 0x77, 0x78,
-		0x7f, 0x80, 0x81, 0x82, 0x86, 0x87, 0x88, 0x89, 0x8a:
-		kind = shared.LocalEventFixedReg
-	case 0xfd:
-		kind = shared.LocalEventPressure
-	default:
-		return
+	if kind := physicalEventByOpcode[op]; kind != 0 {
+		s.recordPhysicalEvent(op, kind, depth)
 	}
+}
+
+func (s *byteBodyScanner) recordPhysicalEvent(op byte, kind shared.LocalEventKind, depth int) {
 	if op >= 0x6d && op <= 0x70 || op >= 0x7f && op <= 0x82 {
 		s.h.noteFixedScratchLease()
 	}
@@ -1026,6 +1039,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
 	}
 	subHasCall := false
+	weight := loopWeight(loopDepth)
 	var prevOp byte
 	var prevI32 int32
 	var variableShiftDepth uint8
@@ -1128,8 +1142,18 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if op == 0x10 && idx == s.selfIdx {
 				s.h.flags.set(hintCallsSelf)
 			}
+			if tape := s.h.inlineCaller; tape != nil {
+				if op == 0x10 {
+					tape.record(idx)
+				} else {
+					tape.blocked = true
+				}
+			}
 			s.noteDirectCallRef(idx, op == 0x10)
 		case 0x11, 0x13: // indirect calls
+			if tape := s.h.inlineCaller; tape != nil {
+				tape.blocked = true
+			}
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -1145,6 +1169,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintHasTailCall)
 			}
 		case 0x14, 0x15: // call_ref, return_call_ref
+			if tape := s.h.inlineCaller; tape != nil {
+				tape.blocked = true
+			}
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
@@ -1174,12 +1201,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					}
 				}
 				if op == 0x20 {
-					addHotness(s.h.localScore, idx, loopWeight(loopDepth))
+					addHotness(s.h.localScore, idx, weight)
 					if int(idx) < len(s.h.localLastGet) {
 						s.h.localLastGet[idx] = uint32(s.r.off())
 					}
 				} else {
-					addHotness(s.h.localScore, idx, 2*loopWeight(loopDepth))
+					addHotness(s.h.localScore, idx, 2*weight)
 				}
 			}
 		case 0x23, 0x24: // global.get/set
@@ -1189,9 +1216,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
-					addGlobalHotness(s.globalHints, idx, 2*loopWeight(loopDepth))
+					addGlobalHotness(s.globalHints, idx, 2*weight)
 				} else {
-					addGlobalHotness(s.globalHints, idx, loopWeight(loopDepth))
+					addGlobalHotness(s.globalHints, idx, weight)
 				}
 				s.elig.add(curLoop, idx)
 			}
@@ -1251,51 +1278,26 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintHasControlFlow)
 				s.entryPrefix = false
 			}
-		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0xfc, 0xfd, 0xfe, 0xfb:
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
+		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
+			// Ordinary scalar accesses cannot call, collect, mutate tables or create
+			// GC resolver sites. Consume just their memarg instead of constructing
+			// the full proposal classifier payload and rechecking those properties.
+			var err error
+			if s.m != nil {
+				err = s.classifier.SkipScalarMemoryImmediate(&s.r.Reader)
+			} else {
+				err = s.classifyUnboundHintMemory(op)
+			}
 			if err != nil {
 				return true, 0, err
 			}
-			if op == 0xfd {
-				s.h.flags.set(hintHasSIMD)
+			s.h.flags.set(hintTouchesMemory)
+		case 0x3f, 0x40, 0xfc, 0xfd, 0xfe, 0xfb:
+			calls, err := s.scanExtendedHint(op, depth, prevOp, prevI32)
+			if err != nil {
+				return true, 0, err
 			}
-			if imm.Kind == wasm.InstrI64MulWideS || imm.Kind == wasm.InstrI64MulWideU {
-				s.h.noteFixedScratchLease()
-				s.h.noteBoundaryEvent(shared.LocalEventFixedReg, depth)
-			}
-			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.flags.set(hintHasControlFlow)
-			}
-			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.flags.set(hintModuleEH)
-			}
-			if gcOrAtomicInstructionMayCall(imm.Kind, s.gcStructHelpers) || shared.SharedMemoryGrowMayCall(s.m, imm.Kind, imm.Index) {
-				s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
-				s.h.flags.set(hintHasCall)
-				s.h.markUnsupportedDynamicCall()
-				subHasCall = true
-			}
-			if op == 0xfb {
-				switch imm.Kind {
-				case wasm.InstrArrayFill:
-					if prevOp == 0x41 && directGCArrayFillResolver(s.m, s.gcTypeLayouts, imm.Index, prevI32) {
-						s.h.addGCResolverSite()
-					}
-				case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet,
-					wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
-					if directGCResolverInstruction(s.m, s.gcTypeLayouts, imm.Kind, imm.Index, imm.Index2) {
-						s.h.addGCResolverSite()
-					}
-				}
-			}
-			if imm.TouchesMemory {
-				s.h.flags.set(hintTouchesMemory)
-			}
-			if imm.UsesBulkMemory || imm.Kind == wasm.InstrMemoryInit {
-				s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)
-				s.h.flags.set(hintUsesBulkMem)
-			}
+			subHasCall = subHasCall || calls
 		case 0x1f: // try_table: blocktype, catch vector, body
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
@@ -1326,22 +1328,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 				break
 			}
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
-			if err != nil {
+			if err := s.scanFallbackHint(op); err != nil {
 				return true, 0, err
-			}
-			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.flags.set(hintHasControlFlow)
-			}
-			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.flags.set(hintModuleEH)
-			}
-			if imm.TouchesMemory {
-				s.h.flags.set(hintTouchesMemory)
-			}
-			if imm.UsesBulkMemory || imm.Kind == wasm.InstrMemoryInit {
-				s.h.flags.set(hintUsesBulkMem)
 			}
 		}
 		if variableShiftOpcode(op) && prevOp != 0x41 && prevOp != 0x42 {
@@ -1356,6 +1344,89 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		}
 		prevOp = op
 	}
+}
+
+// Proposal payloads are cold for ordinary scalar functions. Keep them out of
+// every recursive scanExpr frame while preserving the same classifier and hints.
+//
+//go:noinline
+func (s *byteBodyScanner) scanExtendedHint(op byte, depth int, prevOp byte, prevI32 int32) (bool, error) {
+	calls := false
+	var imm wasm.InstructionImmediate
+	err := s.classifyInstructionInto(op, &imm)
+	if err != nil {
+		return false, err
+	}
+	if op == 0xfd {
+		s.h.flags.set(hintHasSIMD)
+	}
+	if imm.Kind == wasm.InstrI64MulWideS || imm.Kind == wasm.InstrI64MulWideU {
+		s.h.noteFixedScratchLease()
+		s.h.noteBoundaryEvent(shared.LocalEventFixedReg, depth)
+	}
+	if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
+		s.h.flags.set(hintHasControlFlow)
+	}
+	if shared.InstructionNeedsEHFrame(op, imm.Kind) {
+		s.h.flags.set(hintModuleEH)
+	}
+	if gcOrAtomicInstructionMayCall(imm.Kind, s.gcStructHelpers) || shared.SharedMemoryGrowMayCall(s.m, imm.Kind, imm.Index) {
+		s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
+		s.h.flags.set(hintHasCall)
+		s.h.markUnsupportedDynamicCall()
+		calls = true
+	}
+	if op == 0xfb {
+		switch imm.Kind {
+		case wasm.InstrArrayFill:
+			if prevOp == 0x41 && directGCArrayFillResolver(s.m, s.gcTypeLayouts, imm.Index, prevI32) {
+				s.h.addGCResolverSite()
+			}
+		case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet,
+			wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
+			if directGCResolverInstruction(s.m, s.gcTypeLayouts, imm.Kind, imm.Index, imm.Index2) {
+				s.h.addGCResolverSite()
+			}
+		}
+	}
+	if imm.TouchesMemory {
+		s.h.flags.set(hintTouchesMemory)
+	}
+	if imm.UsesBulkMemory || imm.Kind == wasm.InstrMemoryInit {
+		s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)
+		s.h.flags.set(hintUsesBulkMem)
+	}
+	return calls, nil
+}
+
+//go:noinline
+func (s *byteBodyScanner) scanFallbackHint(op byte) error {
+	var imm wasm.InstructionImmediate
+	err := s.classifyInstructionInto(op, &imm)
+	if err != nil {
+		return err
+	}
+	if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
+		s.h.flags.set(hintHasControlFlow)
+	}
+	if shared.InstructionNeedsEHFrame(op, imm.Kind) {
+		s.h.flags.set(hintModuleEH)
+	}
+	if imm.TouchesMemory {
+		s.h.flags.set(hintTouchesMemory)
+	}
+	if imm.UsesBulkMemory || imm.Kind == wasm.InstrMemoryInit {
+		s.h.flags.set(hintUsesBulkMem)
+	}
+	return nil
+}
+
+// Tests and programmatic callers may scan without a module width classifier.
+//
+//go:noinline
+func (s *byteBodyScanner) classifyUnboundHintMemory(op byte) error {
+	var imm wasm.InstructionImmediate
+	return s.classifyInstructionInto(op, &imm)
 }
 
 func variableShiftOpcode(op byte) bool {

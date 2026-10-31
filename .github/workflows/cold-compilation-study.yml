@@ -1,0 +1,35 @@
+name: Cold compilation review
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            bench/go.sum
+      - name: Initialize pinned public-test fixtures
+        run: git submodule update --init --depth=1 tests/conformance/spec-v3
+      - name: Validate comparison evidence handling
+        run: python3 -B -m unittest discover -s bench/suite -p test_compare_cold.py -v
+      - name: Validate the native compiler and regressions
+        run: go test -tags wago_regalloccheck ./src/core/compiler/wasm ./src/core/compiler/frontend ./src/core/compiler/backend/railshot/shared ./src/core/compiler/backend/railshot/amd64 ./src/core/encoder/amd64 ./src/wago -count=1 -timeout=15m
+      - name: Compare defaults and time through first result
+        run: python3 bench/suite/compare-cold.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: cold-review-${{ github.sha }}
+          path: .validation/cold-comparison/
+          include-hidden-files: true
+          if-no-files-found: warn

@@ -131,8 +131,8 @@ func TestAdapterTemplateCachePreservesNativeSizeAttributionArm64(t *testing.T) {
 // The same signature can use X17 in a bounded leaf and X27 in a function
 // with memory effects. Both the candidate and promoted keys need that register.
 func TestAdapterTemplateCacheMemoryRegisterArm64(t *testing.T) {
-	if got := unsafe.Sizeof(adapterTemplateCache{}); got != 280 {
-		t.Fatalf("cache bytes=%d want 280", got)
+	if got := unsafe.Sizeof(adapterTemplateCache{}); got != 296 {
+		t.Fatalf("cache bytes=%d want 296", got)
 	}
 	var ft wasm.CompType
 	code := []byte{1, 2, 3, 4, 5, 6, 7, 8}
@@ -155,5 +155,39 @@ func TestAdapterTemplateCacheMemoryRegisterArm64(t *testing.T) {
 				t.Fatal("matching adapter was not cached")
 			}
 		}
+	}
+}
+
+func TestAdapterTemplateCacheRetainsInterleavedTypesArm64(t *testing.T) {
+	var cache adapterTemplateCache
+	var types [64]wasm.CompType
+	for i := range types {
+		code := []byte{byte(i), 2, 3, 4, 5, 6, 7, 8}
+		cache.observe(&types[i], X27, code, 8, 8)
+		cache.observe(&types[i], X27, code, 8, 8)
+	}
+	hits := 0
+	for i := range types {
+		code, _, _, ok := cache.lookup(&types[i], X27)
+		if ok {
+			hits++
+			if code[0] != byte(i) {
+				t.Fatalf("type %d reused a different adapter: %x", i, code)
+			}
+		}
+	}
+	if hits < 2 {
+		t.Fatalf("retained %d repeated adapter shapes; want interleaved reuse", hits)
+	}
+}
+
+func TestAdapterTemplateCacheDoesNotPromoteOneUseTypesArm64(t *testing.T) {
+	var cache adapterTemplateCache
+	var types [64]wasm.CompType
+	for i := range types {
+		cache.observe(&types[i], X27, []byte{1, 2, 3, 4, 5, 6, 7, 8}, 8, 8)
+	}
+	if cache.ways != nil {
+		t.Fatal("one-use types allocated an adapter table")
 	}
 }

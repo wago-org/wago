@@ -461,7 +461,9 @@ func (f *fn) ctrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
 	if fr.mergeIndex == 0 {
 		return nil
 	}
-	return &f.scratchState().ctrlMerges[fr.mergeIndex-1]
+	sc := f.scratchState()
+	sc.ctrlMergeTouched = max(sc.ctrlMergeTouched, int(fr.mergeIndex))
+	return &sc.ctrlMerges[fr.mergeIndex-1]
 }
 
 func (f *fn) ensureCtrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
@@ -474,6 +476,7 @@ func (f *fn) ensureCtrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
 	}
 	sc.ctrlMerges = append(sc.ctrlMerges, ctrlFrameMerge{})
 	fr.mergeIndex = uint32(len(sc.ctrlMerges))
+	sc.ctrlMergeTouched = max(sc.ctrlMergeTouched, int(fr.mergeIndex))
 	return &sc.ctrlMerges[fr.mergeIndex-1]
 }
 
@@ -483,6 +486,7 @@ func (f *fn) ctrlRoots(fr *ctrlFrame) *ctrlFrameRoots {
 	}
 	sc := f.scratchState()
 	if int(fr.mergeIndex) <= len(sc.ctrlRoots) {
+		sc.ctrlMergeTouched = max(sc.ctrlMergeTouched, int(fr.mergeIndex))
 		return &sc.ctrlRoots[fr.mergeIndex-1]
 	}
 	return nil
@@ -540,6 +544,7 @@ func (f *fn) pushCtrl(fr *ctrlFrame) {
 		case stale != 0 && stale != fr.mergeIndex:
 			sc := f.scratchState()
 			fresh := fr.mergeIndex
+			sc.ctrlMergeTouched = max(sc.ctrlMergeTouched, int(stale), int(fresh))
 			sc.ctrlMerges[stale-1] = sc.ctrlMerges[fresh-1]
 			sc.ctrlMerges[fresh-1] = ctrlFrameMerge{}
 			moveCtrlSidecarSlot(&sc.ctrlRoots, stale, fresh)
@@ -897,10 +902,13 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 }
 
 func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
-	if n == 0 {
+	if n == 0 || !f.s.hasGCRoots {
 		return
 	}
-	roots := f.rootsBottomToTop()
+	f.recordGCBranchResultRoots(fr, n, f.rootsBottomToTop())
+}
+
+func (f *fn) recordGCBranchResultRoots(fr *ctrlFrame, n int, roots []*elem) {
 	if n > len(roots) {
 		return
 	}
@@ -924,10 +932,11 @@ func frameGCRootFlags(base, suffix []bool) []bool {
 }
 
 func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
-	if fr.kind != cfLoop {
-		f.recordGCBranchResults(fr, a)
+	roots := f.rootsBottomToTop()
+	if fr.kind != cfLoop && a != 0 && f.s.hasGCRoots {
+		f.recordGCBranchResultRoots(fr, a, roots)
 	}
-	types := f.currentLogicalTypes()
+	types := f.logicalTypes(roots)
 	fromSlot := slotOfLogicalTypes(types, d-a)
 	toSlot := slotsOfTypes(f.frameBaseTypes(fr))
 	nSlots := slotOfLogicalTypes(types, d) - fromSlot
@@ -1373,8 +1382,11 @@ func (f *fn) reconcileMerge1(fr *ctrlFrame) {
 // depth d-1; load it into mergeReg so the merge finds the value there. The slot
 // copy is left intact so a br_if fall-through still sees the value.
 func (f *fn) branchEdgeToMerge1(fr *ctrlFrame, d int) {
-	f.recordGCBranchResults(fr, 1)
-	slot := slotOfLogicalTypes(f.currentLogicalTypes(), d-1)
+	roots := f.rootsBottomToTop()
+	if f.s.hasGCRoots {
+		f.recordGCBranchResultRoots(fr, 1, roots)
+	}
+	slot := slotOfLogicalTypes(f.logicalTypes(roots), d-1)
 	if fr.res0.isFloat() {
 		f.a.FLoadDisp(mergeFReg, RSP, f.spillOff(slot), fr.res0 == mtF64)
 	} else {
@@ -1497,11 +1509,55 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 	for {
 		before := r2.Offset()
 		op, err := r2.Byte()
-		constReader := r2
 		if err != nil {
 			return false, 0, storage{}, false
 		}
-		if err = classifier.ClassifyInto(&r2, op, &imm); err != nil {
+		// Immediate-free instructions cannot write a local, introduce control,
+		// select a float literal, or call a GC/atomic helper. Keep their proof
+		// step scalar instead of clearing and filling an unused immediate record.
+		if _, simple := wasm.ImmediateFreeInstructionKind(op); simple {
+			if *budget == maxCallFreeLoopLookaheadBytes {
+				return false, 0, storage{}, false
+			}
+			*budget++
+			steps++
+			continue
+		}
+		// The proof observes only calls, local writes, bulk effects and float
+		// literals. Decode ordinary scalar forms without an unused full record.
+		kind, index, bulk := wasm.InstrInvalid, uint32(0), false
+		var floatBits int64
+		if op >= 0x28 && op <= 0x3e {
+			err = classifier.SkipScalarMemoryImmediate(&r2)
+		} else {
+			switch op {
+			case 0x05, 0x0b: // else/end have no immediate or proof effect.
+			case 0x20, 0x23, 0x24, 0x0c, 0x0d, 0xd2, 0xd5, 0xd6:
+				_, err = r2.U32()
+			case 0x21, 0x22:
+				index, err = r2.U32()
+				kind = wasm.InstrLocalSet
+			case 0x10, 0x12, 0x14, 0x15:
+				_, err = r2.U32()
+				kind = wasm.InstrCall
+			case 0x41:
+				_, err = r2.I32()
+			case 0x42:
+				_, err = r2.I64()
+			case 0x43:
+				var bits uint32
+				bits, err = r2.LEU32()
+				floatBits = int64(bits)
+			case 0x44:
+				var bits uint64
+				bits, err = r2.LEU64()
+				floatBits = int64(bits)
+			default:
+				err = classifier.ClassifyInto(&r2, op, &imm)
+				kind, index, bulk = imm.Kind, imm.Index, imm.UsesBulkMemory
+			}
+		}
+		if err != nil {
 			used := min(maxCallFreeLoopLookaheadBytes-*budget, r2.Offset()-before)
 			*budget += used
 			return false, 0, storage{}, false
@@ -1514,19 +1570,9 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 		}
 		*budget += consumed
 		if wantFloat && steps < 256 && (op == 0x43 || op == 0x44) {
-			var st storage
-			if op == 0x43 {
-				bits, err := constReader.LEU32()
-				if err != nil {
-					return false, 0, storage{}, false
-				}
-				st = storage{kind: stConst, typ: mtF32, cval: int64(bits)}
-			} else {
-				bits, err := constReader.LEU64()
-				if err != nil {
-					return false, 0, storage{}, false
-				}
-				st = storage{kind: stConst, typ: mtF64, cval: int64(bits)}
+			st := storage{kind: stConst, typ: mtF32, cval: floatBits}
+			if op == 0x44 {
+				st.typ = mtF64
 			}
 			weight := uint32(1) << min(depth*2, 8)
 			found := false
@@ -1546,7 +1592,7 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 		if op == 0x02 || op == 0x04 || op == 0x1f {
 			hasInnerControl = true
 		}
-		switch imm.Kind {
+		switch kind {
 		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
 			wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef,
 			wasm.InstrMemoryGrow:
@@ -1556,7 +1602,7 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 			floatSafe = false // GC table helpers may call even in a numeric loop.
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
 			for i, x := range pinnedLocals {
-				if uint32(x) == imm.Index {
+				if uint32(x) == index {
 					writes |= uint64(1) << i
 					break
 				}
@@ -1567,10 +1613,10 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 			// the hot path. Keep the existing stack convergence there.
 			brTable = true
 		}
-		if gcOrAtomicInstructionMayCall(imm.Kind, gcStructHelpers) {
+		if gcOrAtomicInstructionMayCall(kind, gcStructHelpers) {
 			return false, 0, storage{}, false
 		}
-		if imm.UsesBulkMemory {
+		if bulk {
 			floatSafe = false
 		}
 		switch op {
@@ -1771,7 +1817,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 			if fr.has(ctrlLoopCallFree) && loopRegState && loopPinnedWrites != 0 {
 				state := f.frameBranchState(&fr)
 				for i := range state {
-					if loopPinnedWrites&(uint64(1)<<i) != 0 {
+					if loopPinnedWrites&(uint64(1)<<i) != 0 && state[i] != lsReg {
 						state[i] = lsReg
 					}
 				}

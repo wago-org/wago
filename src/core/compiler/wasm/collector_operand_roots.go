@@ -385,13 +385,13 @@ func buildCollectorOperandRoots(v *moduleValidator, fv *funcValidator, localFunc
 		if selected {
 			var roots, functions, externs []uint32
 			for i, value := range fv.vals {
-				if !value.unknown && CollectorReferenceType(m, value.t) {
+				if !value.unknown() && CollectorReferenceType(m, value.t) {
 					roots = append(roots, uint32(i))
 					(*rootCount)++
-				} else if !value.unknown && FunctionReferenceType(m, value.t) {
+				} else if !value.unknown() && FunctionReferenceType(m, value.t) {
 					functions = append(functions, uint32(i))
 					(*rootCount)++
-				} else if !value.unknown && ExternReferenceType(value.t) {
+				} else if !value.unknown() && ExternReferenceType(value.t) {
 					externs = append(externs, uint32(i))
 					(*rootCount)++
 				}

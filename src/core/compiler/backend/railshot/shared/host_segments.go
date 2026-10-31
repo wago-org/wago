@@ -67,23 +67,32 @@ func boundedScalarHostCFG(body []byte, imports uint32, cutHost bool, ext hostSeg
 	}
 	type frame struct {
 		op                    byte
-		start, end, alternate int
+		start, end, alternate int16
 	}
 	type node struct {
-		op      byte
-		frame   int
-		targets []int
+		op                       byte
+		frame                    int16
+		targetStart, targetCount uint16
 	}
-	frames := []frame{{op: 0xff, start: -1, end: -1, alternate: -1}}
-	stack := []int{0}
-	nodes := make([]node, 0, len(body))
+	// Every node, frame and branch target consumes at least one byte in the
+	// bounded source body. Keep compact scratch on the stack; rejected bodies
+	// must not allocate a body-sized heap graph for each scheduler proof.
+	var frameStorage [385]frame
+	var stackStorage [385]int16
+	var nodeStorage [384]node
+	var targetStorage [384]int16
+	frames := frameStorage[:1]
+	frames[0] = frame{op: 0xff, start: -1, end: -1, alternate: -1}
+	stack := stackStorage[:1]
+	nodes := nodeStorage[:0]
+	targets := targetStorage[:0]
 	r := wasm.ReaderFrom(body)
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil || len(stack) == 0 {
 			return false
 		}
-		n := node{op: op, frame: -1}
+		n := node{op: op, frame: -1, targetStart: uint16(len(targets))}
 		var imm wasm.InstructionImmediate
 		if op == 0x0e { // br_table: retain every possible target
 			count, err := r.U32()
@@ -95,15 +104,16 @@ func boundedScalarHostCFG(body []byte, imports uint32, cutHost bool, ext hostSeg
 				if err != nil || int(depth) >= len(stack) {
 					return false
 				}
-				n.targets = append(n.targets, stack[len(stack)-1-int(depth)])
+				targets = append(targets, stack[len(stack)-1-int(depth)])
+				n.targetCount++
 			}
 		} else if wasm.ClassifyInstructionImmediateInto(&r, op, &imm) != nil {
 			return false
 		}
 		switch {
 		case op == 0x02 || op == 0x03 || op == 0x04:
-			n.frame = len(frames)
-			frames = append(frames, frame{op: op, start: len(nodes), end: -1, alternate: -1})
+			n.frame = int16(len(frames))
+			frames = append(frames, frame{op: op, start: int16(len(nodes)), end: -1, alternate: -1})
 			stack = append(stack, n.frame)
 		case op == 0x05:
 			n.frame = stack[len(stack)-1]
@@ -111,15 +121,16 @@ func boundedScalarHostCFG(body []byte, imports uint32, cutHost bool, ext hostSeg
 			if f.op != 0x04 || f.alternate != -1 {
 				return false
 			}
-			f.alternate = len(nodes)
+			f.alternate = int16(len(nodes))
 		case op == 0x0b:
-			frames[stack[len(stack)-1]].end = len(nodes)
+			frames[stack[len(stack)-1]].end = int16(len(nodes))
 			stack = stack[:len(stack)-1]
 		case op == 0x0c || op == 0x0d:
 			if int(imm.Index) >= len(stack) {
 				return false
 			}
-			n.targets = []int{stack[len(stack)-1-int(imm.Index)]}
+			targets = append(targets, stack[len(stack)-1-int(imm.Index)])
+			n.targetCount = 1
 		case op == 0x10:
 			if imm.Index >= imports {
 				local := imm.Index - imports
@@ -148,7 +159,7 @@ func boundedScalarHostCFG(body []byte, imports uint32, cutHost bool, ext hostSeg
 	}
 	// The selected CFG must be a DAG. Checking every node also
 	// checks all post-host continuations, including ones unreachable at entry.
-	color := make([]uint8, len(nodes))
+	var color [384]uint8
 	var visit func(int) bool
 	visit = func(i int) bool {
 		if i == len(nodes) {
@@ -171,23 +182,23 @@ func boundedScalarHostCFG(body []byte, imports uint32, cutHost bool, ext hostSeg
 			}
 		case 0x04:
 			f := frames[n.frame]
-			other := f.end + 1
+			other := int(f.end) + 1
 			if f.alternate >= 0 {
-				other = f.alternate + 1
+				other = int(f.alternate) + 1
 			}
 			if !edge(i+1) || !edge(other) {
 				return false
 			}
 		case 0x05:
-			if !edge(frames[n.frame].end + 1) {
+			if !edge(int(frames[n.frame].end) + 1) {
 				return false
 			}
 		case 0x0c, 0x0d, 0x0e:
-			for _, target := range n.targets {
+			for _, target := range targets[n.targetStart : n.targetStart+n.targetCount] {
 				f := frames[target]
-				to := f.end + 1
+				to := int(f.end) + 1
 				if f.op == 0x03 {
-					to = f.start + 1
+					to = int(f.start) + 1
 				}
 				if !edge(to) {
 					return false
