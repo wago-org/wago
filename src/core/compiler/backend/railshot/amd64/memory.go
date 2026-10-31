@@ -1509,6 +1509,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if dstMemory == 0 && srcMemory == 0 && !f.memoryAddr64(0) {
 		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
+				if done, err := f.tryBulkCopyAppend(r, int(n)); done || err != nil {
+					return err
+				}
 				f.stats.peep("memcopy-unroll")
 				f.memoryCopyConst(int(n), dstMemory, srcMemory)
 				return nil

@@ -652,6 +652,15 @@ declared-minimum bounds proof before materialization. Proven constant memory32
 addresses can then become native displacements. Pressure and unproved spans
 retain checked lowering. Adjacent filled-source forwarding also remaps inline
 local indexes before matching its three pure operands.
+The same copy control admits constant left-shift copies of 15, 31, 47 or 63
+bytes followed immediately by an adjacent byte append. A declared-minimum proof
+must cover the entire enclosing span, including the extra first-byte read;
+shared and memory64 sources retain ordinary lowering. AVX/SSSE3/SSE4.1 align
+whole original vectors in registers and insert the append byte before full-vector
+stores, avoiding reads across partial stores on a later iteration. At most twelve
+pure i32 constant/local/add/subtract/multiply/bitwise operations may produce the
+appended value. Calls, loads, local writes, control operations, source profiling,
+custom instructions and unsupported register states reject the combination.
 
 AMD64 large fills use AVX2 stores, or AVX-512 stores when available. An in-range
 prefix aligns the middle; a fixed store group ending at the checked end covers

@@ -133,3 +133,45 @@ sample CV is 0.020. The goal of meeting or beating Wasmtime on every individual
 AMD64 workload remains unmet. All five improve against the Wago baseline in this
 campaign. No runtime allocation-layout change or workload-identity dispatch is
 included.
+
+## AMD64 copy-and-append qualification, 2026-10-31
+
+A further `bulk-copy-vector` improvement combines short left-shift copies and
+adjacent byte appends after proving the complete unshared span. The native
+sequence loads original vectors at the same addresses as the previous iteration's
+stores, then aligns and inserts bytes in registers. It replaces partial stores
+that made the next overlapping read stall. No fill, allocation-layout, adapter
+or workload-identity change is included.
+
+The [complete fresh campaign](amd64-copy-append.json) uses the same native Hub,
+Go/Rust versions, Wasmtime 50.0.0, exact artifacts, independent oracles, lock,
+affinity and alternating fresh-process protocol. All five workloads were
+requalified for eight launches with seven samples of at least 75 ms each; all
+840 measured samples pass. Fill and overlap-copy native code match the initial
+candidate byte for byte. The three curated kernels share one module, so the
+changed compaction lowering also changes native layout in the other two modules;
+those results were measured again rather than carried forward.
+
+| Contract | Wago baseline us | Wago candidate us | Wasmtime us | Delta vs baseline | Delta vs Wasmtime |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| fill | 30.193 | 30.018 | 28.933 | -1.1% | +3.4% |
+| copy-overlap | 73.517 | 60.209 | 61.578 | -18.0% | -2.5% |
+| record-pack | 34.453 | 7.691 | 30.627 | -77.8% | -75.0% |
+| sliding-window-compaction | 20.173 | 11.236 | 18.565 | -44.3% | -39.4% |
+| doubling-pattern-expansion | 37.658 | 6.701 | 29.497 | -82.2% | -77.3% |
+
+Compaction now beats Wasmtime in every paired launch. Four of the five AMD64
+contracts meet or beat it; fill remains 3.4% slower by the median paired ratio.
+The five-workload geometric mean is 1.96x faster, but individual-workload parity
+is still unfinished. Maximum sample CV is 0.020. ARM64 source and runtime layout
+are unchanged from the already qualified implementation.
+
+The final source passes the full checked `./src/...` suite with pinned WABT and
+Release 3 interpreter tools, plus targeted checked/codegen-stat SSE2, guard-page
+and source-profile builds. New whole-memory tests cover lengths 0 through 65,
+unaligned and boundary spans, nonmatching sources, trapping appends after visible
+copies, earlier load/division traps, repeated calls, modular append expressions,
+dirty upper argument bits and up to twenty live vectors. Admission tests cover
+inlined locals and rejection of shared memory, missing CPU features, disabled
+minimum proofs, effects, memory reads, and source profiling. `go generate ./...`
+and diff checks pass. No hosted CI or push has been performed for this update.
