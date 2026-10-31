@@ -1373,17 +1373,18 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 		}
 	}
-	gcMetadata, err := frontend.BuildGCTypeMetadata(m)
+	moduleFacts := requirements.moduleFacts
+	if err := frontend.RejectUnsupportedWithFeaturesFactsAndValidation(m, features, moduleFacts, &validationAnalysis); err != nil {
+		return nil, wrapContextError("compile", err)
+	}
+	ownedExceptionReferences := railshotManagedExceptionReferences(m)
+	gcMetadata, err := frontend.BuildGCTypeMetadataWithOptions(m, frontend.GCTypeMetadataOptions{OwnedExceptionReferences: ownedExceptionReferences})
 	if err != nil {
 		return nil, wrapContextError("gc descriptors", err)
 	}
 	gcDescs := gcMetadata.Descs
 	if err := configureStagedGCArrayTypeDescs(gcArrayProduct, gcDescs); err != nil {
 		return nil, wrapContextError("gc array descriptors", err)
-	}
-	moduleFacts := requirements.moduleFacts
-	if err := frontend.RejectUnsupportedWithFeaturesFactsAndValidation(m, features, moduleFacts, &validationAnalysis); err != nil {
-		return nil, wrapContextError("compile", err)
 	}
 	var unsafeDirectTailImports []uint64
 	if features.TailCalls {
@@ -1409,7 +1410,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	// fixed artifact image. Generic collector calls use frame-root maps.
 	boundedPersistentGCRoots := exactGCRefTestAbstractSource || exactGCExternSource || exactGCRefCastAbstractSource || exactGCBrOnCastAbstractSource || exactGCBrOnCastFailAbstractSource ||
 		exactGCStructBasicSource || exactGCArrayFixedOfficialSource || exactGCArrayDefaultOfficialSource || exactGCArrayPackedDataSource
-	ownedExceptionReferences := railshotManagedExceptionReferences(m)
 	opaqueExternFrames := compiledArchitecture == 4 && len(m.Code) > 0 && (requiredByModule.IsEnabled(CoreFeatureGC) || moduleHasOpaqueExternTable(m)) && exactGCRootedScalarSource && moduleHasOpaqueExternSignatures(m) && !genericGCExecution && !boundedPersistentGCRoots && !ownedExceptionReferences && !collectorReferenceCallBoundary && !moduleHasInternalCollectorReferenceFunctions(m)
 	rootedReferenceDeclarations := opaqueExternFrames || compiledArchitecture == 4 && exactGCRootedScalarSource && (!metadataOnlyTypes || opaqueExternFrames) && gcStructProduct == 0 && gcArrayProduct == 0 && !gcAllocationSites && (opaqueExternFrames || moduleHasInternalCollectorReferenceFunctions(m) || collectorReferenceCallBoundary)
 	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary && !boundedPersistentGCRoots || ownedExceptionReferences || rootedReferenceDeclarations
