@@ -45,7 +45,7 @@ concurrency:
 jobs:
   fixtures:
     name: Prepare pinned specification fixtures
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -175,7 +175,7 @@ jobs:
   native:
     name: JIT / native Linux RISC-V64
     needs: qualification
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     if: always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
     env:

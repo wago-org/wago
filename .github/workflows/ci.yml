@@ -37,7 +37,7 @@ jobs:
   changes:
     name: Plan CI profile
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       profile: ${{ steps.plan.outputs.profile }}
       code: ${{ steps.plan.outputs.code }}
@@ -72,7 +72,7 @@ jobs:
     # Code changes can delete or rename a path referenced by unchanged
     # documentation, so every change validates documentation.
     if: needs.changes.outputs.profile == 'docs' || needs.changes.outputs.profile == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
@@ -96,7 +96,7 @@ jobs:
     name: Lint & format
     needs: changes
     if: needs.changes.outputs.profile == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
@@ -154,7 +154,7 @@ jobs:
     name: Regression corpus integrity
     needs: changes
     if: needs.changes.outputs.profile == 'full'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -175,7 +175,7 @@ jobs:
     name: Regenerate regression corpus from pinned source
     needs: changes
     if: needs.changes.outputs.profile == 'full' && needs.changes.outputs.corpus_sources == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -236,7 +236,7 @@ jobs:
       corpus_sources: ${{ steps.plan.outputs.corpus_sources }}
       source_sha: ${{ steps.plan.outputs.source_sha }}
       expected_jobs: ${{ steps.plan.outputs.expected_jobs }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -279,7 +279,7 @@ jobs:
     name: Race detector / Linux amd64
     needs: changes
     if: needs.changes.outputs.profile == 'full'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -306,7 +306,7 @@ jobs:
     name: Current Go / Linux amd64
     needs: changes
     if: needs.changes.outputs.profile == 'full'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -338,42 +338,42 @@ jobs:
       matrix:
         include:
           - name: Linux / amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             goos: linux
             goarch: amd64
             runtime: true
             guard: true
             corpus: true
           - name: Linux / arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             goos: linux
             goarch: arm64
             runtime: true
             guard: true
             corpus: true
           - name: Darwin / amd64
-            runner: macos-15-intel
+            runner: macos-26-intel
             goos: darwin
             goarch: amd64
             runtime: true
             guard: true
             corpus: false
           - name: Darwin / arm64
-            runner: macos-15
+            runner: macos-26
             goos: darwin
             goarch: arm64
             runtime: true
             guard: true
             corpus: true
           - name: Windows / amd64
-            runner: windows-2025
+            runner: windows-2025-vs2026
             goos: windows
             goarch: amd64
             runtime: true
             guard: true
             corpus: true
           - name: Windows / arm64
-            runner: windows-11-arm
+            runner: windows-11-vs2026-arm
             goos: windows
             goarch: arm64
             runtime: true
@@ -423,7 +423,7 @@ jobs:
 
       - name: Install Release 3 interpreter toolchain
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
-        run: sudo apt-get update && sudo apt-get install -y ocaml-nox ocaml-dune menhir
+        run: sudo apt-get update && sudo apt-get install -y ocaml ocaml-dune menhir
 
       - name: Identify Release 3 interpreter toolchain
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
@@ -672,49 +672,49 @@ jobs:
       matrix:
         include:
           - name: Darwin amd64 / shard 1 of 4
-            runner: macos-15-intel
+            runner: macos-26-intel
             platform: darwin/amd64
             target: darwin-amd64
             shard: 0
             shards: 4
           - name: Darwin amd64 / shard 2 of 4
-            runner: macos-15-intel
+            runner: macos-26-intel
             platform: darwin/amd64
             target: darwin-amd64
             shard: 1
             shards: 4
           - name: Darwin amd64 / shard 3 of 4
-            runner: macos-15-intel
+            runner: macos-26-intel
             platform: darwin/amd64
             target: darwin-amd64
             shard: 2
             shards: 4
           - name: Darwin amd64 / shard 4 of 4
-            runner: macos-15-intel
+            runner: macos-26-intel
             platform: darwin/amd64
             target: darwin-amd64
             shard: 3
             shards: 4
           - name: Windows arm64 / shard 1 of 4
-            runner: windows-11-arm
+            runner: windows-11-vs2026-arm
             platform: windows/arm64
             target: windows-arm64
             shard: 0
             shards: 4
           - name: Windows arm64 / shard 2 of 4
-            runner: windows-11-arm
+            runner: windows-11-vs2026-arm
             platform: windows/arm64
             target: windows-arm64
             shard: 1
             shards: 4
           - name: Windows arm64 / shard 3 of 4
-            runner: windows-11-arm
+            runner: windows-11-vs2026-arm
             platform: windows/arm64
             target: windows-arm64
             shard: 2
             shards: 4
           - name: Windows arm64 / shard 4 of 4
-            runner: windows-11-arm
+            runner: windows-11-vs2026-arm
             platform: windows/arm64
             target: windows-arm64
             shard: 3
@@ -788,7 +788,7 @@ jobs:
       matrix:
         include:
           - name: Linux amd64 / shard 1 of 2
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             goos: linux
             goarch: amd64
             target: linux-amd64
@@ -796,7 +796,7 @@ jobs:
             shards: 2
             reference: all
           - name: Linux amd64 / shard 2 of 2
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             goos: linux
             goarch: amd64
             target: linux-amd64
@@ -804,7 +804,7 @@ jobs:
             shards: 2
             reference: all
           - name: Linux arm64 / shard 1 of 2
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             goos: linux
             goarch: arm64
             target: linux-arm64
@@ -812,7 +812,7 @@ jobs:
             shards: 2
             reference: wago-only
           - name: Linux arm64 / shard 2 of 2
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             goos: linux
             goarch: arm64
             target: linux-arm64
@@ -820,7 +820,7 @@ jobs:
             shards: 2
             reference: wago-only
           - name: Darwin amd64 / shard 1 of 4
-            runner: macos-15-intel
+            runner: macos-26-intel
             goos: darwin
             goarch: amd64
             target: darwin-amd64
@@ -828,7 +828,7 @@ jobs:
             shards: 4
             reference: wago-only
           - name: Darwin amd64 / shard 2 of 4
-            runner: macos-15-intel
+            runner: macos-26-intel
             goos: darwin
             goarch: amd64
             target: darwin-amd64
@@ -836,7 +836,7 @@ jobs:
             shards: 4
             reference: wago-only
           - name: Darwin amd64 / shard 3 of 4
-            runner: macos-15-intel
+            runner: macos-26-intel
             goos: darwin
             goarch: amd64
             target: darwin-amd64
@@ -844,7 +844,7 @@ jobs:
             shards: 4
             reference: wago-only
           - name: Darwin amd64 / shard 4 of 4
-            runner: macos-15-intel
+            runner: macos-26-intel
             goos: darwin
             goarch: amd64
             target: darwin-amd64
@@ -852,7 +852,7 @@ jobs:
             shards: 4
             reference: wago-only
           - name: Darwin arm64 / shard 1 of 2
-            runner: macos-15
+            runner: macos-26
             goos: darwin
             goarch: arm64
             target: darwin-arm64
@@ -860,7 +860,7 @@ jobs:
             shards: 2
             reference: wago-only
           - name: Darwin arm64 / shard 2 of 2
-            runner: macos-15
+            runner: macos-26
             goos: darwin
             goarch: arm64
             target: darwin-arm64
@@ -868,7 +868,7 @@ jobs:
             shards: 2
             reference: wago-only
           - name: Windows amd64
-            runner: windows-2025
+            runner: windows-2025-vs2026
             goos: windows
             goarch: amd64
             target: windows-amd64
@@ -876,7 +876,7 @@ jobs:
             shards: 1
             reference: wago-only
           - name: Windows arm64
-            runner: windows-11-arm
+            runner: windows-11-vs2026-arm
             goos: windows
             goarch: arm64
             target: windows-arm64
@@ -926,7 +926,7 @@ jobs:
     name: Verify corpus shard coverage
     needs: [changes, app-corpus, corpus-correctness]
     if: always() && needs.changes.outputs.profile == 'full' && needs.app-corpus.result == 'success' && needs.corpus-correctness.result == 'success'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -968,9 +968,9 @@ jobs:
       matrix:
         include:
           - name: Linux amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
           - name: Linux arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -1004,9 +1004,9 @@ jobs:
       matrix:
         include:
           - name: Linux amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
           - name: Linux arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -1044,11 +1044,11 @@ jobs:
       matrix:
         include:
           - name: Linux amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
           - name: Linux arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
           - name: Darwin arm64
-            runner: macos-15
+            runner: macos-26
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -1070,7 +1070,7 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = Linux ]; then
             sudo apt-get update
-            sudo apt-get install -y ocaml-nox ocaml-dune menhir
+            sudo apt-get install -y ocaml ocaml-dune menhir
           else
             brew install ocaml dune menhir
           fi
@@ -1098,7 +1098,7 @@ jobs:
     name: Bounded fuzzing / Linux amd64
     needs: changes
     if: needs.changes.outputs.profile == 'full'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -1128,19 +1128,19 @@ jobs:
       matrix:
         include:
           - name: Linux / amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             runtime: true
             cli: true
           - name: Linux / arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             runtime: true
             cli: true
           - name: Darwin / amd64
-            runner: macos-15-intel
+            runner: macos-26-intel
             runtime: false
             cli: false
           - name: Darwin / arm64
-            runner: macos-15
+            runner: macos-26
             runtime: true
             cli: false
     runs-on: ${{ matrix.runner }}
@@ -1244,7 +1244,7 @@ jobs:
     name: Build size
     needs: changes
     if: needs.changes.outputs.profile == 'full'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
@@ -1332,7 +1332,7 @@ jobs:
     name: CI
     if: always()
     needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Identify qualification profile
         env:
