@@ -243,12 +243,12 @@ func TestReferenceIndexedTypesBoundsAndImmediateForms(t *testing.T) {
 					} else {
 						dir.scalar[count-1].signature = sig
 					}
-					if got := dir.function(uint32(count - 1)); got != (arity == limit && count == MaxFunctions) {
+					if got := dir.function(uint32(count - 1)); got != (arity == limit && count <= MaxTypeDeclarations) {
 						t.Fatal("directory/profile boundary", vector, arity, count, result, got)
 					}
 					decoded := make([]wasm.RecType, count)
 					decoded[count-1].SubTypes = []wasm.SubType{{Final: true, Comp: *sig}}
-					if got := (internalReferenceTypes{decoded: decoded, decodedSWAR: vector}).function(uint32(count - 1)); got != (arity == limit && count == MaxFunctions) {
+					if got := (internalReferenceTypes{decoded: decoded, decodedSWAR: vector}).function(uint32(count - 1)); got != (arity == limit && count <= MaxTypeDeclarations) {
 						t.Fatal("decoded directory/profile boundary", vector, arity, count, result, got)
 					}
 				}

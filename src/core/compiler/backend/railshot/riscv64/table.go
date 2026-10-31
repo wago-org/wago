@@ -2753,7 +2753,7 @@ func (f *integerEmitter) ownedIndirectTargetAt(key uint64, tableIndex uint32) {
 }
 
 func (f *integerEmitter) guardSignatureKeys(actual enc.Reg, keys []uint64) {
-	if len(keys) == 0 || len(keys) > MaxFunctions || len(keys) > 1 && !f.mode.gcTypeSubtypingRuntimeCallCast && f.mode.primitiveTailTypes == nil {
+	if len(keys) == 0 || len(keys) > MaxTypeDeclarations || len(keys) > 1 && !f.mode.gcTypeSubtypingRuntimeCallCast && f.mode.primitiveTailTypes == nil {
 		f.err = unsupported("indirect signature set")
 		return
 	}

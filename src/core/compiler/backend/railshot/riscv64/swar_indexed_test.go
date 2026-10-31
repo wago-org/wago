@@ -97,7 +97,7 @@ func TestSWARIndexedClassesLoopBridgesAndDirectoryBounds(t *testing.T) {
 			types[i] = ft
 		}
 		code, _, err := compileSWARPairsWithTypes(fn, ft, nil, types, emissionMode{production: true})
-		if count == 1024 && (len(code) == 0 || err != nil) || count == 1025 && (code != nil || err == nil) {
+		if len(code) == 0 || err != nil {
 			t.Fatal("type directory bound", count, err)
 		}
 	}

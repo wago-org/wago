@@ -24,7 +24,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 	if len(custom) != 0 {
 		instructions = custom[0]
 	}
-	if m == nil || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
+	if m == nil || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxTypeDeclarations || len(m.Exports) > MaxFunctions ||
 		len(m.Tables) > MaxFunctions || len(m.Memories) > maxRootedScalarMemories || len(m.Globals) > 256 ||
 		len(m.Elements) > 256 || len(m.Data) > 256 || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
@@ -366,7 +366,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 	}
 	for i := range m.Types {
 		group := &m.Types[i]
-		if len(group.SubTypes) == 0 || flatTypes+len(group.SubTypes) > MaxFunctions {
+		if len(group.SubTypes) == 0 || len(group.SubTypes) > MaxTypeDeclarations-flatTypes {
 			return false
 		}
 		multi := len(group.SubTypes) > 1
@@ -466,7 +466,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 			flatTypes++
 		}
 	}
-	if !hasAggregate && !opaqueExternSignatures && !immediateReferenceExecution && !(hasCollectorFunction && (collectorFunctionUse || m.ImportedFuncCount() > 0)) || flatTypes > MaxFunctions || len(m.FuncTypes) != len(m.Code) {
+	if !hasAggregate && !opaqueExternSignatures && !immediateReferenceExecution && !(hasCollectorFunction && (collectorFunctionUse || m.ImportedFuncCount() > 0)) || flatTypes > MaxTypeDeclarations || len(m.FuncTypes) != len(m.Code) {
 		return false
 	}
 	for _, typ := range m.FuncTypes {
@@ -787,6 +787,9 @@ func rootedScalarFlatTypeCount(m *wasm.Module) int {
 	}
 	total := 0
 	for i := range m.Types {
+		if len(m.Types[i].SubTypes) > MaxTypeDeclarations-total {
+			return -1
+		}
 		total += len(m.Types[i].SubTypes)
 	}
 	return total
@@ -801,7 +804,7 @@ type rootedScalarAggregateParser struct {
 func newRootedScalarAggregateParser(m *wasm.Module) *rootedScalarAggregateParser {
 	p := &rootedScalarAggregateParser{m: m}
 	flatCount := rootedScalarFlatTypeCount(m)
-	if m == nil || flatCount == 0 || flatCount > MaxFunctions {
+	if m == nil || flatCount <= 0 || flatCount > MaxTypeDeclarations {
 		return p
 	}
 	children := make([][]uint32, flatCount)
@@ -1248,11 +1251,11 @@ func AdmitGCRootedScalarSource(data []byte) bool {
 func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 	r := wasm.ReaderFrom(payload)
 	count, err := r.U32()
-	if err != nil || count == 0 || count > MaxFunctions {
+	if err != nil || count == 0 || count > MaxTypeDeclarations {
 		return false
 	}
-	kinds := make([]byte, 0, MaxFunctions)
-	finals := make([]bool, 0, MaxFunctions)
+	kinds := make([]byte, 0, int(count))
+	finals := make([]bool, 0, int(count))
 	valueTypes := func(owner, groupBase, groupLimit uint32) bool {
 		n, err := r.U32()
 		if err != nil || n > 256 {
@@ -1400,7 +1403,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		if marker, ok := r.Peek(); ok && marker == 0x4e {
 			_, _ = r.Byte()
 			members, err = r.U32()
-			if err != nil || members == 0 || uint64(groupBase)+uint64(members) > MaxFunctions {
+			if err != nil || members == 0 || uint64(groupBase)+uint64(members) > uint64(MaxTypeDeclarations) {
 				return false
 			}
 		}
