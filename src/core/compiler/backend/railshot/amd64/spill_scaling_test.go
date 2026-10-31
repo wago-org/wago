@@ -27,7 +27,7 @@ func BenchmarkCompileSpillPressure(b *testing.B) {
 }
 
 func TestLiveSpillExtentReclaimsSlots(t *testing.T) {
-	if unsafe.Sizeof(stack{}) != 104 {
+	if unsafe.Sizeof(stack{}) != 112 {
 		t.Fatal("unexpected scratch size")
 	}
 	f := fn{s: newStackWithCap(16)}

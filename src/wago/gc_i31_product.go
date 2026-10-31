@@ -3,6 +3,7 @@ package wago
 import (
 	"crypto/sha256"
 	"fmt"
+	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -204,4 +205,9 @@ func generalCollectorFreeI31Module(m *wasm.Module) bool {
 		}
 	}
 	return moduleUsesI31Operations(m)
+}
+
+// The override retains the full scan as an attribution/rollback control.
+func compilerGCProductAnalysisNeeded(required CoreFeatures) bool {
+	return required.IsEnabled(CoreFeatureGC) || os.Getenv("WAGO_GC_PRODUCT_SUMMARIES") == "0"
 }

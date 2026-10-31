@@ -27,7 +27,7 @@ func (p CodegenPolicy) Enabled(name string) bool { return p.Selection.Enabled(na
 func (p CodegenPolicy) EnabledOption(option optimization.Option) bool {
 	return p.Selection.EnabledOption(option)
 }
-func (p CodegenPolicy) EnabledResolvedOption(option optimization.Option) bool {
+func (p *CodegenPolicy) EnabledResolvedOption(option optimization.Option) bool {
 	return p.Selection.EnabledResolvedOption(option)
 }
 func (p CodegenPolicy) Valid() bool { return p.Selection.Valid() }

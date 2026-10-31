@@ -2297,7 +2297,7 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
 // or an indirect register call. Explicit operands avoid a closure per wasm call.
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) uint32 {
 	p, rN := len(ft.Params), len(ft.Results)
-	callTarget := f.preserveIndirectCallTarget(indirect, p)
+	callTarget, callTargetSpilled := f.preserveIndirectCallTarget(indirect, p)
 	allRoots := f.rootsBottomToTop()
 	d := len(allRoots)
 	allTypes := f.logicalTypes(allRoots)
@@ -2399,8 +2399,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		f.a.CallReg(callTarget)
-		if callTarget != indirect {
+		if callTargetSpilled {
+			f.a.CallMem(RBX, -int32(offSpillRegion))
+		} else {
+			f.a.CallReg(callTarget)
+		}
+		if callTarget != regNone && callTarget != indirect {
 			f.pinned = f.pinned.remove(callTarget)
 			f.release(callTarget)
 		}
@@ -2487,19 +2491,26 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 // argument staging. Stack canonicalization clears the compiler's pinned mask,
 // so even a target outside the fixed argument registers must be re-pinned here.
 // A target inside an argument register is first moved to a safe register.
-func (f *fn) preserveIndirectCallTarget(indirect Reg, paramCount int) Reg {
+func (f *fn) preserveIndirectCallTarget(indirect Reg, paramCount int) (Reg, bool) {
 	if indirect == regNone {
-		return indirect
+		return indirect, false
 	}
 	argRegs := maskOf(intArgRegs[:paramCount]...)
 	if !argRegs.has(indirect) {
 		f.pinned = f.pinned.add(indirect)
-		return indirect
+		return indirect, false
 	}
-	target := f.allocReg(argRegs)
+	target := f.allocRegOrNone(argRegs)
+	if target == regNone {
+		// Every non-argument register can be reserved by persistent module state.
+		// The instance scratch cell survives argument staging and is already the
+		// canonical home for wrapper-call targets, so call through it directly.
+		f.a.Store64(RBX, -int32(offSpillRegion), indirect)
+		return regNone, true
+	}
 	f.a.MovReg64(target, indirect)
 	f.pinned = f.pinned.add(target)
-	return target
+	return target, false
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.

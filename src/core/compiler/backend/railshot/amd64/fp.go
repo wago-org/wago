@@ -304,7 +304,6 @@ func (f *fn) preloadFloatConsts(code []byte) {
 		return
 	}
 	r := wasm.NewReader(code)
-	var imm wasm.InstructionImmediate
 	for r.HasNext() && len(f.fconsts) < 2 {
 		op, err := r.Byte()
 		if err != nil {
@@ -324,7 +323,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 			}
 			f.preloadFloatConst(storage{kind: stConst, typ: mtF64, cval: int64(bits)})
 		default:
-			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+			if err := f.classifier.SkipImmediate(r, op); err != nil {
 				return
 			}
 		}

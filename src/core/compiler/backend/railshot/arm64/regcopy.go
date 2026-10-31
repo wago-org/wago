@@ -73,6 +73,21 @@ func (w *machineWindow) flush() {
 
 func resolveRegMovesWindow(moves []regMove, emitMove func(dst, src Reg), emitSwap func(a, b Reg), emitSwapChain func(a, b, c Reg)) int {
 
+	// No adjacent swap chain is possible with fewer than three requests. Avoid
+	// building and flushing a symbolic window for the common empty/single moves.
+	switch len(moves) {
+	case 0:
+		return 0
+	case 1:
+		if m := moves[0]; m.dst != m.src {
+			emitMove(m.dst, m.src)
+		}
+		return 0
+	case 2:
+		resolveRegMoves(moves, emitMove, emitSwap)
+		return 0
+	}
+
 	w := machineWindow{move: emitMove, swap: emitSwap, swapChain: emitSwapChain}
 	resolveRegMoves(moves,
 		func(dst, src Reg) { w.append(machineOp{kind: machineMove, dst: dst, src: src}) },

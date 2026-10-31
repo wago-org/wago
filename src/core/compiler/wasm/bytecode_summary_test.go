@@ -281,7 +281,8 @@ func TestBytecodeSummaryMalformed(t *testing.T) {
 			r := ReaderFrom(data)
 			op, _ := r.Byte()
 			var imm InstructionImmediate
-			fast := NewModuleInstructionClassifier(bytecodeSummaryModule(), true).ClassifyInto(&r, op, &imm)
+			classifier := NewModuleInstructionClassifier(bytecodeSummaryModule(), true)
+			fast := classifier.ClassifyInto(&r, op, &imm)
 			full := newReader(data)
 			_, slow := decodeInstructionWithMemargWidths(full, 0, moduleMemargWidths(bytecodeSummaryModule()))
 			if fast == nil || slow == nil {

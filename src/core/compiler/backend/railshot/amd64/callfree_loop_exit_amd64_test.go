@@ -183,3 +183,35 @@ func TestCallFreeLoopDetailsSharedBudgetAMD64(t *testing.T) {
 		t.Fatal("partial scan published loop facts")
 	}
 }
+
+func TestCallFreeLoopImmediateFreeBudgetAndFloatWindowAMD64(t *testing.T) {
+	classifier := wasm.ModuleInstructionClassifier{}
+	for opcode := 0; opcode < 256; opcode++ {
+		if _, simple := wasm.ImmediateFreeInstructionKind(byte(opcode)); !simple {
+			continue
+		}
+		body := []byte{byte(opcode), 0x21, 2, 0x0b}
+		budget := maxCallFreeLoopLookaheadBytes - len(body)
+		ok, writes, _, _ := scanLoopCallFreeDetails(wasm.NewReader(body), classifier, false, []int{2}, true, &budget)
+		if !ok || writes != 1 || budget != maxCallFreeLoopLookaheadBytes {
+			t.Fatalf("opcode %x: ok=%t writes=%x budget=%d", opcode, ok, writes, budget)
+		}
+		budget = maxCallFreeLoopLookaheadBytes - 1 // Only the first byte fits.
+		ok, writes, _, _ = scanLoopCallFreeDetails(wasm.NewReader(body), classifier, false, []int{2}, true, &budget)
+		if ok || writes != 0 || budget != maxCallFreeLoopLookaheadBytes {
+			t.Fatalf("opcode %x: exhausted proof published facts", opcode)
+		}
+	}
+	for _, prefix := range []int{255, 256} {
+		body := make([]byte, prefix, prefix+6)
+		for i := range body {
+			body[i] = 0x6a
+		}
+		body = append(body, 0x43, 0, 0, 0x80, 0x3f, 0x0b)
+		budget := 0
+		ok, _, st, hasFloat := scanLoopCallFreeDetails(wasm.NewReader(body), classifier, false, nil, true, &budget)
+		if !ok || hasFloat != (prefix < 256) || hasFloat && st.cval != 0x3f800000 || budget != len(body) {
+			t.Fatalf("prefix=%d: ok=%t float=%t storage=%+v budget=%d", prefix, ok, hasFloat, st, budget)
+		}
+	}
+}

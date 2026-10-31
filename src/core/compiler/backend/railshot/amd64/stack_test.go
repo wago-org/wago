@@ -68,11 +68,30 @@ func TestHintedStackGrowthMatchesLegacyRetention(t *testing.T) {
 		hinted.alloc()
 		legacy.alloc()
 	}
-	if len(hinted.chunks) < 2 || cap(hinted.chunks[1]) != 768-firstCap {
-		t.Fatalf("hinted fallback chunks = %v, want second cap %d", stackChunkCaps(hinted), 768-firstCap)
+	if len(hinted.chunks) < 2 || cap(hinted.chunks[1]) != 512-firstCap {
+		t.Fatalf("hinted fallback chunks = %v, want second cap %d", stackChunkCaps(hinted), 512-firstCap)
 	}
 	if got, want := retainedStackArenaCapacity(hinted), retainedStackArenaCapacity(legacy); got != want {
 		t.Fatalf("hinted retained capacity = %d, want legacy %d; hinted=%v legacy=%v", got, want, stackChunkCaps(hinted), stackChunkCaps(legacy))
+	}
+}
+
+func TestStackArenaGrowthCaps(t *testing.T) {
+	for _, tc := range []struct {
+		first, next, geometric int
+	}{
+		{16, 16, 32},
+		{101, 27, 128},
+		{256, 256, 512},
+		{386, 126, 512},
+		{512, 512, 1024},
+		{8192, 8192, 8192},
+		{9000, 7384, 8192},
+	} {
+		next, geometric := stackArenaGrowthCaps(tc.first)
+		if next != tc.next || geometric != tc.geometric {
+			t.Fatalf("first %d: growth=(%d,%d), want (%d,%d)", tc.first, next, geometric, tc.next, tc.geometric)
+		}
 	}
 }
 

@@ -101,10 +101,14 @@ func (p gcArrayNewFillPlan) replaceInitializer(f *fn) {
 // fusion moves this read before array.new, so it must also preserve interval
 // ownership, pinned dirty values, and lazy-zero locals.
 func (f *fn) pushI32LocalValue(x, pos int) {
-	f.activateIntervalLocal(x, pos, true)
-	if reg, ok := f.takeFinalIntervalGet(x, pos); ok {
-		f.pushReg(reg, mtI32)
-		return
+	if f.hasIntervalLocal(x) {
+		f.activateIntervalLocal(x, pos, true)
+		if !f.intervalControl {
+			if reg, ok := f.takeFinalIntervalGet(x, pos); ok {
+				f.pushReg(reg, mtI32)
+				return
+			}
+		}
 	}
 	if f.localConstZero(x) {
 		if pr, _, ok := f.pinReg(x); ok {

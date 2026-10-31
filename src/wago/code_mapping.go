@@ -97,11 +97,11 @@ type compilerCompiledOwner struct {
 	state compilerCompiledState
 }
 
-func newCompilerCompiled(initial Compiled) *Compiled {
-	initial.nativeContextTrapABI = railshotNativeContextTrapABI()
-	initial.nativeTableContextABI = railshotNativeContextTrapABI()
-	initial.nativeTableReferenceABI = railshotNativeContextTrapABI()
-	owner := &compilerCompiledOwner{Compiled: initial}
+func newCompilerCompiled() *Compiled {
+	owner := &compilerCompiledOwner{}
+	owner.Compiled.nativeContextTrapABI = railshotNativeContextTrapABI()
+	owner.Compiled.nativeTableContextABI = railshotNativeContextTrapABI()
+	owner.Compiled.nativeTableReferenceABI = railshotNativeContextTrapABI()
 	owner.Compiled.codeCache = &owner.state.codeCache
 	owner.Compiled.validateMemo = &owner.state.validateMemo
 	owner.Compiled.memoryDir = &owner.state.memoryDir

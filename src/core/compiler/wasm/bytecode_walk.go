@@ -59,7 +59,8 @@ func ClassifyInstructionImmediateIntoWithMemarg64(r *Reader, op byte, imm *Instr
 // by validated module walkers. multiMemory selects indexed memargs and memory
 // index grammar for scalar and bulk instructions; memarg64 selects u64 offsets.
 func ClassifyInstructionImmediateIntoWithFeatures(r *Reader, op byte, imm *InstructionImmediate, memarg64, multiMemory bool) error {
-	return classifyInstructionImmediateIntoWithWidths(r, op, imm, fixedMemargWidths(memarg64), multiMemory)
+	widths := fixedMemargWidths(memarg64)
+	return classifyInstructionImmediateIntoWithWidths(r, op, imm, &widths, multiMemory)
 }
 
 // ModuleInstructionClassifier caches one module's memarg-width classification
@@ -74,18 +75,58 @@ func NewModuleInstructionClassifier(m *Module, multiMemory bool) ModuleInstructi
 	return ModuleInstructionClassifier{widths: moduleMemargWidths(m), multiMemory: multiMemory}
 }
 
-func (c ModuleInstructionClassifier) ClassifyInto(r *Reader, op byte, imm *InstructionImmediate) error {
-	return classifyInstructionImmediateIntoWithWidths(r, op, imm, c.widths, c.multiMemory)
+func (c *ModuleInstructionClassifier) ClassifyInto(r *Reader, op byte, imm *InstructionImmediate) error {
+	return classifyInstructionImmediateIntoWithWidths(r, op, imm, &c.widths, c.multiMemory)
+}
+
+// SkipImmediate consumes exactly the same immediates as ClassifyInto without
+// constructing metadata when a walker only needs the following opcode.
+func (c *ModuleInstructionClassifier) SkipImmediate(r *Reader, op byte) error {
+	return skipInstructionImmediateWithWidths(r, op, &c.widths, c.multiMemory)
+}
+
+func skipInstructionImmediateWithWidths(r *Reader, op byte, widths *memargWidths, multiMemory bool) error {
+	if simpleOpcode[op] != InstrInvalid {
+		return nil
+	}
+	switch op {
+	case 0x05, 0x0b:
+		return nil
+	case 0x08, 0x0c, 0x0d, 0x10, 0x12, 0x14, 0x15, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd2, 0xd5, 0xd6:
+		_, err := r.U32()
+		return err
+	case 0x41:
+		_, err := r.I32()
+		return err
+	case 0x42:
+		_, err := r.I64()
+		return err
+	case 0x43:
+		_, err := r.Bytes(4)
+		return err
+	case 0x44:
+		_, err := r.Bytes(8)
+		return err
+	}
+	if op >= 0x28 && op <= 0x3e {
+		internal := reader{data: r.data, pos: r.pos}
+		err := skipScalarMemoryImmediate(&internal, *widths, multiMemory)
+		r.pos = internal.pos
+		return err
+	}
+	var imm InstructionImmediate
+	return classifyInstructionImmediateIntoWithWidths(r, op, &imm, widths, multiMemory)
 }
 
 // ClassifyInstructionImmediateIntoWithModuleFeatures selects each memarg offset
 // width from the memory index encoded by that instruction. It is intended for
 // one-shot classification; repeated walks should cache NewModuleInstructionClassifier.
 func ClassifyInstructionImmediateIntoWithModuleFeatures(r *Reader, op byte, imm *InstructionImmediate, m *Module, multiMemory bool) error {
-	return NewModuleInstructionClassifier(m, multiMemory).ClassifyInto(r, op, imm)
+	classifier := NewModuleInstructionClassifier(m, multiMemory)
+	return classifier.ClassifyInto(r, op, imm)
 }
 
-func classifyInstructionImmediateIntoWithWidths(r *Reader, op byte, imm *InstructionImmediate, widths memargWidths, multiMemory bool) error {
+func classifyInstructionImmediateIntoWithWidths(r *Reader, op byte, imm *InstructionImmediate, widths *memargWidths, multiMemory bool) error {
 	*imm = InstructionImmediate{}
 	if kind := simpleOpcode[op]; kind != InstrInvalid {
 		imm.Kind = kind
@@ -119,7 +160,7 @@ func classifyInstructionImmediateIntoWithWidths(r *Reader, op byte, imm *Instruc
 		return err
 	}
 	ir := reader{data: r.data, pos: r.pos}
-	_, err := classifyExprOpAfterOpcodeWithWidths(&ir, op, imm, widths, multiMemory)
+	_, err := classifyExprOpAfterOpcodeWithWidths(&ir, op, imm, *widths, multiMemory)
 	r.pos = ir.pos
 	return err
 }
@@ -136,6 +177,41 @@ func SkipInstructionImmediate(r *Reader, op byte) error {
 // SkipInstructionImmediateWithMemarg64 is the memory-width-aware form used by
 // backends while traversing validated dead code.
 func SkipInstructionImmediateWithMemarg64(r *Reader, op byte, memarg64 bool) error {
-	var scratch InstructionImmediate
-	return ClassifyInstructionImmediateIntoWithMemarg64(r, op, &scratch, memarg64)
+	widths := fixedMemargWidths(memarg64)
+	return skipInstructionImmediateWithWidths(r, op, &widths, true)
+}
+
+// SkipScalarMemoryImmediate consumes an ordinary scalar load/store memarg when
+// a validated body walker needs only its extent, not a decoded instruction.
+// It retains the classifier's memory-index grammar and per-memory offset width.
+
+func (c ModuleInstructionClassifier) SkipScalarMemoryImmediate(r *Reader) error {
+	internal := reader{data: r.data, pos: r.pos}
+	err := skipScalarMemoryImmediate(&internal, c.widths, c.multiMemory)
+	r.pos = internal.pos
+	return err
+}
+
+func skipScalarMemoryImmediate(r *reader, widths memargWidths, multiMemory bool) error {
+	alignment, err := r.u32()
+	if err != nil {
+		return err
+	}
+	index := uint32(0)
+	switch {
+	case alignment < 64:
+	case alignment < 128 && multiMemory:
+		index, err = r.u32()
+		if err != nil {
+			return err
+		}
+	default:
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+	}
+	if widths.offset64(index) {
+		_, err = r.u64()
+	} else {
+		_, err = r.u32()
+	}
+	return err
 }
