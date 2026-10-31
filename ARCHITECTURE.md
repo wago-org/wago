@@ -988,6 +988,24 @@ Running on a separate stack keeps native wasm code off the goroutine stack,
 which Go may grow/move (`morestack`) — that would be catastrophic mid-execution.
 After the call returns, a non-zero trap slot becomes a Go `*TrapError`.
 
+Ordinary native entry releases the Go P. On Linux/AMD64, a fresh-compilation proof
+can keep an isolated `WasmFunc.Invoke` on that P for a bounded bulk-memory call
+under `prepared-bounded-entry`. The proof admits at most four i32 parameters,
+i32 locals and at most one i32 result, acyclic local calls and exact non-wrapping constant-count
+up-counter loops. It limits the complete invocation to 4096 admitted source
+operations and 4 MiB of logical bulk bytes (copies charge reads and writes).
+One invariant count parameter may contribute a linear byte cost; its unsigned
+argument limit is checked on every call. Input-independent work needs no count
+check. Larger inputs and unproved code retain ordinary scheduler transitions.
+
+The proof rejects imports, shared/memory64 memories, tables, globals, exception
+handling, unknown helpers/control flow, loop-carried counts and changed induction
+variables. Profiling, custom instructions and GC execution retain their
+existing entry policy. The capability is private, omitted from encoded metadata,
+and shared read-only by execution snapshots; it does not change generated guest
+code or replace the instance's ownership and trap checks. These are logical work
+budgets, not wall-clock guarantees. ARM64 retains its existing entry selection.
+
 ---
 
 ## 8. The wrapper ABI

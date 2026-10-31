@@ -11,9 +11,10 @@
 // scan frames with no pointer maps). We switch RSP to a fixed mmap'd stack and
 // switch back on return.
 //
-// The Go wrapper releases its P and records a scannable Go stack before this
-// leaf runs. It reacquires a P after the Go stack is restored. No Go callback
-// runs on the foreign stack.
+// Ordinary entry releases its P and records a scannable Go stack before this
+// leaf runs, then reacquires a P after restoring the Go stack. Proven bounded
+// entry retains the P until that restoration. No Go callback runs on the
+// foreign stack.
 //
 // WasmWrapper System V mapping: serArgs->RDI, linMem->RSI, trap->RDX, results->RCX.
 TEXT ·enterNativeRaw(SB), NOSPLIT, $0-48

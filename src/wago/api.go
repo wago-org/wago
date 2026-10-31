@@ -1601,6 +1601,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	c.nativeTable64ABI = stagedNativeTable64ABI(m)
 	c.independentInstances = cfg.independentInstances
 	c.preparedIsolatedTables = cm.PreparedIsolatedTables
+	if goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64" && preparedBoundedWrapperSchedulerSupported && requiredByModule.IsEnabled(CoreFeatureBulkMemoryOperations) && cfg.optimizations["prepared-bounded-entry"] &&
+		len(customInstructions) == 0 && !compileOptions.Interruptible && !compileOptions.Profile && !compileOptions.SourceMaps && !usesGCHelpers {
+		c.boundedBulkPlans = boundedBulkArgumentPlans(m)
+	}
 	c.GCTypeDescs = gcDescs
 	c.requiredFeatures = requiredByModule
 	c.dynamicImports = importedFuncs > 0

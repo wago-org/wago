@@ -153,7 +153,7 @@ func rv64BareReferenceFunctionSource() []byte {
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.FuncRef}))), wasmtest.Section(3, []byte{2, 0, 1}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x10, 1, 0xd1, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x0b}))))
 }
 func TestRV64PublicReferenceFunctionsBaselineAndDestination(t *testing.T) {
-	if unsafe.Sizeof(Compiled{}) != 784 {
+	if unsafe.Sizeof(Compiled{}) != 808 {
 		t.Fatal("compiled footprint", unsafe.Sizeof(Compiled{}))
 	}
 	source := rv64BareReferenceFunctionSource()

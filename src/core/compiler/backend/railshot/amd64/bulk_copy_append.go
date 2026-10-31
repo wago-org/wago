@@ -114,13 +114,25 @@ func (f *fn) tryBulkCopyAppend(r *wasm.Reader, n int) (bool, error) {
 	f.erase(f.s.back())
 	f.erase(f.s.back())
 	f.erase(f.s.back())
-	// Reuse ordinary integer expression lowering. The bounded lookahead admits
+	// Use the proved arithmetic subset: the general dispatcher also includes
+	// callbacks that make the expression reader escape to the heap. The lookahead admits
 	// only non-trapping reads/arithmetic, so evaluating it before the copy cannot
 	// change memory effects or trap ordering.
 	for expression.Offset() < expressionEnd {
 		op, _ := expression.Byte()
-		if err := f.emitPlain(&expression, op); err != nil {
-			return true, err
+		switch op {
+		case 0x41:
+			v, _ := expression.I32()
+			f.s.pushIntegerConstant(mtI32, int64(v))
+		case 0x20:
+			x, _ := expression.U32()
+			x = uint32(int(x) + f.localBase)
+			if regallocCheckEnabled {
+				checkNativeSourceGet(f, x)
+			}
+			f.pushPlainLocalGet(x)
+		default:
+			f.pushBinOp(integerBinaryOps[op-0x6a], mtI32)
 		}
 	}
 	value, owned := f.materializeRead(f.popValue())
@@ -147,7 +159,9 @@ func (f *fn) tryBulkCopyAppend(r *wasm.Reader, n int) (bool, error) {
 		f.release(value)
 	}
 	f.invalidateStoreForward()
-	*r = scan
+	// Advance only the position: assigning the whole reader would make its
+	// input buffer escape even when the caller uses the dynamic-copy fallback.
+	_, _ = r.Bytes(scan.Offset() - r.Offset())
 	f.stats.peep("bulk-copy-append")
 	return true, nil
 }

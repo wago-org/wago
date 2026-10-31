@@ -469,7 +469,7 @@ var catalog = []Definition{
 	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
 	{Name: "prepared-direct-entry", Label: "Direct prepared entry", Description: "enter compiler-proved integer functions through the register ABI", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	arm64("prepared-light-entry", "Light prepared entry", "use caller-clobber proofs to select a smaller native entry thunk"),
-	{Name: "prepared-bounded-entry", Label: "Bounded prepared entry", Description: "keep compiler-bounded native leaves on the Go scheduler", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
+	{Name: "prepared-bounded-entry", Label: "Bounded prepared entry", Description: "keep compiler-proven bounded native invocations on the Go scheduler", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	{Name: "native-leaf-host", Label: "Native scalar host leaves", Description: "lower proven pure Go scalar callbacks into native import trampolines", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	both("direct-go-host-import", "Direct Go host imports", "bypass cross-instance marshaling for bound Go imports in bounded numeric functions"),
 	amd64("wide-loop-int-const", "Wide loop integer constants", "keep repeatedly materialized non-imm32 i64 loop constants in otherwise-idle registers"),
