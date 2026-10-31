@@ -72,6 +72,7 @@ type GCFrameRootPlan struct {
 	Candidate    bool
 	Exact        bool
 	Conservative bool // local masks retain every tracked local at each site
+	UnwindOnly   bool // zero-root return maps; retain ordinary numeric host lowering
 	FrameBytes   uint32
 	Locals       []GCFrameLocal
 	// AllReferenceLocals retains the source types for local.get after exact
