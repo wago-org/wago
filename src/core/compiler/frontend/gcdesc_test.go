@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -53,6 +54,36 @@ func arr(elem wasm.StorageType) wasm.SubType {
 	return wasm.SubType{Final: true, Comp: wasm.CompType{Kind: wasm.CompArray, Array: field(elem)}}
 }
 func fn() wasm.SubType { return wasm.SubType{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}} }
+
+func TestGCExceptionStorageRequiresOwnedReferences(t *testing.T) {
+	for _, heap := range []wasm.AbsHeapType{wasm.HeapExn, wasm.HeapNoExn} {
+		for _, nullable := range []bool{false, true} {
+			storage := ref(nullable, heap)
+			for _, sub := range []wasm.SubType{st(field(storage)), arr(storage)} {
+				m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{sub}}}}
+				if _, err := BuildGCTypeMetadata(m); err == nil || !strings.Contains(err.Error(), "exception reference storage requires owned exception references") {
+					t.Fatalf("heap=%v nullable=%v kind=%v: %v", heap, nullable, sub.Comp.Kind, err)
+				}
+				metadata, err := BuildGCTypeMetadataWithOptions(m, GCTypeMetadataOptions{OwnedExceptionReferences: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				desc, layout := metadata.Descs[0], metadata.Layouts[0]
+				want := gc.StorageRef
+				if nullable {
+					want = gc.StorageRefNull
+				}
+				if sub.Comp.Kind == wasm.CompStruct {
+					if desc.Fields[0].Kind != want || !desc.HasRefs || layout.FieldLayout[0].Size != 4 || !layout.FieldLayout[0].CollectorRef {
+						t.Fatalf("owned struct layout = %+v / %+v", desc, layout)
+					}
+				} else if desc.Elem != want || !desc.HasRefs || layout.ElemLayout.Size != 4 || !layout.ElemLayout.CollectorRef {
+					t.Fatalf("owned array layout = %+v / %+v", desc, layout)
+				}
+			}
+		}
+	}
+}
 
 var flattenedGCTypeSink []flattenedGCType
 
