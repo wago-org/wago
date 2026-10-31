@@ -1430,6 +1430,16 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		atomicFast = offset.kind == stConst && uint64(offset.cval) <= 0xffffffff
 		atomicOffset = uint32(offset.cval)
 	}
+	growFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow &&
+		(p == 1 || p == 2) && roots[d-p].st.kind != stConst
+	growIndex := uint32(0)
+	if growFast && p == 2 {
+		index := roots[d-1].st
+		growFast = index.kind == stConst
+		growIndex = uint32(index.cval)
+	}
+	// Keep the helper when the selected directory entry exceeds scaled LDR64.
+	growFast = growFast && uint64(growIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset <= 0xfff*8
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -1453,11 +1463,15 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 
 	atomicDone := -1
-	if atomicFast {
+	if atomicFast || growFast {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicOffset)
+		if growFast {
+			atomicDone = f.emitSharedMemoryGrowZeroFastPath(int(slotOf[d-p]), growIndex)
+		} else {
+			atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicOffset)
+		}
 		if notifyFast {
 			f.stats.peep("atomic-notify-empty")
 		}
