@@ -4,14 +4,12 @@ package arm64
 
 import (
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/arm64spike"
 )
 
 // TestCallExec compiles a 2-function module where f(x) = g(x) + 1 and g(x) = 2x,
-// then executes f's register-ABI internal entry under qemu — exercising an
+// then executes f through its runtime wrapper, exercising an actual
 // inter-function call (BL relocation + reg-ABI arg/result passing).
 func TestCallExec(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
@@ -21,17 +19,19 @@ func TestCallExec(t *testing.T) {
 		// func 1 (g): local.get 0; local.get 0; i32.add  (= 2x)
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x20, 0x00, 0x6a, 0x0b}},
 	)
-	cm, err := CompileModule(m)
+	cm, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"inline": false}})
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	code, err := arm64spike.MapExec(cm.Code)
-	if err != nil {
-		t.Fatalf("map: %v", err)
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
 	}
-	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
 	for _, x := range []uintptr{5, 0, 100} {
-		if got := arm64spike.Call2(entry, x, 0); uint32(got) != uint32(2*x+1) {
+		got, err := runArm64CompiledWrapper(t, cm, uint64(x))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != uint32(2*x+1) {
 			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), 2*x+1)
 		}
 	}
@@ -70,13 +70,15 @@ func TestMixedCallWrapperArgsExec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	code, err := arm64spike.MapExec(cm.Code)
-	if err != nil {
-		t.Fatalf("map: %v", err)
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
 	}
-	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
 	for _, x := range []uintptr{0, 1, 7, 100} {
-		if got := arm64spike.Call2(entry, x, 0); uint32(got) != uint32(2*x) {
+		got, err := runArm64CompiledWrapper(t, cm, uint64(x))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != uint32(2*x) {
 			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), 2*x)
 		}
 	}
@@ -94,13 +96,15 @@ func TestMixedCallPreservesBelowOperandsAndConstants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	code, err := arm64spike.MapExec(cm.Code)
-	if err != nil {
-		t.Fatalf("map: %v", err)
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
 	}
-	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
 	for _, x := range []uintptr{0, 1, 17} {
-		if got := arm64spike.Call2(entry, x, 0); uint32(got) != uint32(x+8) {
+		got, err := runArm64CompiledWrapper(t, cm, uint64(x))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != uint32(x+8) {
 			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), x+8)
 		}
 	}
@@ -124,13 +128,15 @@ func TestTwoIntegerResultRegisterCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	code, err := arm64spike.MapExec(cm.Code)
-	if err != nil {
-		t.Fatalf("map: %v", err)
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
 	}
-	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
 	for _, x := range []uintptr{0, 1, 7, 100} {
-		if got := arm64spike.Call2(entry, x, 0); uint32(got) != uint32(2*x+1) {
+		got, err := runArm64CompiledWrapper(t, cm, uint64(x))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != uint32(2*x+1) {
 			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), 2*x+1)
 		}
 	}

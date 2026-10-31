@@ -11,7 +11,6 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
-	"github.com/wago-org/wago/src/core/runtime/arm64spike"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -408,11 +407,11 @@ func TestCompactInlineAdmitsTinySingleUseLeafArm64(t *testing.T) {
 	if cm.Entry[1] != cm.InternalEntry[1] || cm.InternalEntry[1] != cm.InternalEntry[0] {
 		t.Fatalf("omitted entry/internal = %v/%v", cm.Entry, cm.InternalEntry)
 	}
-	code, err := arm64spike.MapExec(cm.Code)
+	got, err := runArm64CompiledWrapper(t, cm)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := arm64spike.Call2(uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]])), 0, 0); uint32(got) != 6 {
+	if uint32(got) != 6 {
 		t.Fatalf("inlined caller result = %d, want 6", got)
 	}
 	parallel, parallelStats := func() (*a64.CompiledModule, *ModuleStats) {
