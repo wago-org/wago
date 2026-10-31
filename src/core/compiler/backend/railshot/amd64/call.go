@@ -363,6 +363,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
 		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
+			// Native lowering replaces the source call without a return address.
+			// Consume its mask so later calls retain their source-site liveness.
+			f.consumeGCFrameCallsite()
 			return f.emitCustomInstruction(custom, ft)
 		}
 	}
@@ -2219,7 +2222,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	return nil
 }
 
-// Advance the source mask when an inline zero-timeout wait cannot suspend.
+// Advance the source mask when lowering eliminates a source call.
 func (f *fn) consumeGCFrameCallsite() {
 	plan := f.gcFrameRoots
 	if plan == nil || !plan.Candidate {
