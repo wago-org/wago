@@ -256,7 +256,22 @@ func (c *Collector) refDescPtrBytes(r Ref) (*TypeDesc, []byte, error) {
 	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
 		return nil, nil, errors.New("gc: invalid object ref")
 	}
-	object := c.bytes(r)
+	entry := &c.handles[h]
+	var span []byte
+	switch entry.space {
+	case spaceNursery:
+		span = c.nursery
+	case spaceOld, spaceLarge:
+		span = c.throughput.mem
+	case spaceTiny:
+		span = c.tiny.mem
+	default:
+		return nil, nil, errors.New("gc: invalid object ref")
+	}
+	if entry.size < HeaderSize || uint64(entry.off)+uint64(entry.size) > uint64(len(span)) {
+		return nil, nil, errors.New("gc: invalid object ref")
+	}
+	object := span[entry.off : uint64(entry.off)+uint64(entry.size)]
 	id := TypeID(binary.LittleEndian.Uint32(object))
 	if int(id) >= len(c.types) {
 		return nil, nil, fmt.Errorf("gc: unknown type id %d", id)
