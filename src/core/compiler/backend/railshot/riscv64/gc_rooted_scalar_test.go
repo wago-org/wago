@@ -2896,55 +2896,45 @@ func rv64RootedAggregateReferenceGlobalTableInitializerModule() []byte {
 }
 
 func TestRV64RootedAggregateGlobalTableInitializerCompiles(t *testing.T) {
-	source := rv64RootedAggregateGlobalTableInitializerModule()
-	if err := AdmitProductionSource(source); err != nil {
-		t.Fatal(err)
-	}
-	m, err := wasm.DecodeModule(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !admitRV64GCRootedScalarModule(m) {
-		t.Fatal("aggregate global table initializer was not admitted")
-	}
-	referenceSource := rv64RootedAggregateReferenceGlobalTableInitializerModule()
-	if err := AdmitProductionSource(referenceSource); err != nil {
-		t.Fatal(err)
-	}
-	reference, err := wasm.DecodeModule(referenceSource)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !admitRV64GCRootedScalarModule(reference) {
-		t.Fatal("aggregate reference-global table initializer was not admitted")
+	for name, source := range map[string][]byte{
+		"numeric":   rv64RootedAggregateGlobalTableInitializerModule(),
+		"reference": rv64RootedAggregateReferenceGlobalTableInitializerModule(),
+	} {
+		t.Run("defined-global-"+name, func(t *testing.T) {
+			if err := wasm.ValidateByteBackedModule(source); err == nil {
+				t.Fatal("table initializer referencing a defined global was admitted")
+			}
+		})
 	}
 	importedSource := rv64RootedAggregateImportedGlobalTableInitializerModule()
 	if err := AdmitProductionSource(importedSource); err != nil {
 		t.Fatal(err)
 	}
-	imported, err := wasm.DecodeModule(importedSource)
+	m, err := wasm.DecodeModule(importedSource)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !admitRV64GCRootedScalarModule(imported) {
+	if !admitRV64GCRootedScalarModule(m) {
 		t.Fatal("aggregate imported-global table initializer was not admitted")
+	}
+	imported, err := wasm.DecodeModule(importedSource)
+	if err != nil {
+		t.Fatal(err)
 	}
 	imported.Imports[0].Type = wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I32, Mutable: true})
 	if admitRV64GCRootedScalarModule(imported) {
 		t.Fatal("mutable imported aggregate-constructor global was admitted")
 	}
 	for name, mutate := range map[string]func(*wasm.Module){
-		"mutable": func(candidate *wasm.Module) { candidate.Globals[0].Type.Mutable = true },
 		"out-of-range": func(candidate *wasm.Module) {
 			candidate.Tables[0].Init.BodyBytes = []byte{0x23, 0x01, 0xfb, 0x00, 0x00, 0x0b}
 		},
 		"wrong-width": func(candidate *wasm.Module) {
-			candidate.Globals[0].Type.Type = wasm.I64
-			candidate.Globals[0].Init.BodyBytes = []byte{0x42, 0x37, 0x0b}
+			candidate.Imports[0].Type = wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I64})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate, err := wasm.DecodeModule(source)
+			candidate, err := wasm.DecodeModule(importedSource)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -4790,6 +4780,12 @@ func TestRV64RootedDirectReferenceGlobalTableInitializersCompile(t *testing.T) {
 	for _, imported := range []bool{false, true} {
 		t.Run(map[bool]string{false: "local", true: "imported"}[imported], func(t *testing.T) {
 			source := rv64RootedDirectReferenceGlobalTableInitializerModule(imported)
+			if !imported {
+				if err := wasm.ValidateByteBackedModule(source); err == nil {
+					t.Fatal("table initializer referencing a defined global was admitted")
+				}
+				return
+			}
 			if err := AdmitProductionSource(source); err != nil {
 				t.Fatal(err)
 			}
