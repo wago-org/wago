@@ -1183,6 +1183,12 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.invalidateBoundsCertFor(1, uint32(x))
 	f.clearV128LocalAliases(x)
 	e := f.s.back()
+	// Once an exception reference escapes into a local, dropping the operand
+	// alias must not clear the shared exception record. The local can rethrow
+	// it later, and its payload must remain rooted across collections.
+	if e != nil && e.isValue() {
+		e.st.setEHRoot(false)
+	}
 	if f.gcSubtypeProofN&gcFreshStructFactMode != 0 {
 		f.bindOrInvalidateGCFreshStructLocal(x)
 	}

@@ -356,6 +356,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
 		if custom, ok := f.customInstructions[idx]; ok && (pluginARM64Lowering(custom) != nil || instructionRecipeEligible(custom)) {
+			// Native lowering replaces the source call without a return address.
+			// Consume its mask so later calls retain their source-site liveness.
+			f.consumeGCFrameCallsite()
 			return f.emitCustomInstruction(custom, ft)
 		}
 	}
