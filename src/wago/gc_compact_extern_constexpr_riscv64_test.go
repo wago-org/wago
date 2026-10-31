@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -39,9 +39,8 @@ func TestRV64CompactExternConstantPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{c, loaded} {
+
+		for artifact, candidate := range []*Compiled{c} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true}})
@@ -100,9 +99,8 @@ func TestRV64CompactExternUnusedNullHasNoSidecar(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	loaded := publicArtifactRoundTrip(t, c)
-	defer loaded.Close()
-	for _, candidate := range []*Compiled{c, loaded} {
+
+	for _, candidate := range []*Compiled{c} {
 		if compactExternConstructionNeeded(candidate) {
 			t.Fatal("unused nullable declaration requested construction journal")
 		}
@@ -129,9 +127,8 @@ func TestRV64CompactExternStandalonePrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	loaded := publicArtifactRoundTrip(t, c)
-	defer loaded.Close()
-	for _, candidate := range []*Compiled{c, loaded} {
+
+	for _, candidate := range []*Compiled{c} {
 		in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true}})
 		if err != nil {
 			t.Fatal(err)

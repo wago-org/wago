@@ -10,8 +10,6 @@ import (
 	"fmt"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"sync"
@@ -22,7 +20,6 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -33,50 +30,14 @@ func rv64NativeTailConfig() *RuntimeConfig {
 }
 func rv64NativeTailCompile(t *testing.T, name string, source []byte, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_TAIL_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE")
-	if mode == "load" {
-		if !artifact {
-			t.Fatal("compiler-free runner selected source case")
-		}
-		blob, err := os.ReadFile(filepath.Join(dir, name+".wago"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = c.Close() })
-		return c
-	}
+
 	c, err := rv64NativeTailConfig().Compile(source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	sourceCompiled := c
 	t.Cleanup(func() { _ = sourceCompiled.Close() })
-	if artifact || mode == "prepare" {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err = os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err = os.WriteFile(filepath.Join(dir, name+".wago"), blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			c, err = LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			artifactCompiled := c
-			t.Cleanup(func() { _ = artifactCompiled.Close() })
-		}
-	}
+
 	return c
 }
 func rv64PublicTailModule(types []wasm.ValType, ordinary bool) []byte {
@@ -175,163 +136,6 @@ func TestRV64PublicNativeTailSourceArtifactTransportLifetime(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestRV64PublicNativeTailAdmissionAndCodec(t *testing.T) {
-	source := rv64PublicTailModule([]wasm.ValType{wasm.I32}, false)
-	if c, err := compatibilityDefaultConfig().Compile(source); c != nil || err == nil {
-		t.Fatal("public default tail gate opened", err)
-	}
-	c := rv64NativeTailCompile(t, "native-tail-admission", source, false)
-	vector := rv64NativeTailCompile(t, "native-tail-vector-host-reject", rv64PublicTailModule([]wasm.ValType{wasm.V128}, false), false)
-	if in, err := Instantiate(vector, testImports("env.tail", HostCallFunc(func(HostCall) {}))); in != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("vector host target published", err)
-	}
-	// The isolated appendix permits exact negative controls without publishing
-	// any executable bytes or relying on a corrupt-artifact checksum failure.
-	w := compiledWriter{}
-	if err := railshotWriteNativeTail(&w, c); err != nil {
-		t.Fatal(err)
-	}
-	if len(w.buf) != 29 {
-		t.Fatal("symbolic tail appendix size", len(w.buf))
-	}
-	for _, kind := range []string{"version", "function", "import", "frame", "source", "stride", "count", "truncated", "result"} {
-		t.Run(kind, func(t *testing.T) {
-			blob := bytes.Clone(w.buf)
-			v := *c
-			v.validateMemo = &validateMemo{}
-			v.codeCache = nil
-			switch kind {
-			case "version":
-				binary.LittleEndian.PutUint32(blob, 2)
-			case "function":
-				binary.LittleEndian.PutUint32(blob[5:], 0)
-			case "import":
-				binary.LittleEndian.PutUint32(blob[9:], uint32(c.NumImports))
-			case "frame":
-				binary.LittleEndian.PutUint32(blob[17:], 0xfffffff0)
-			case "source":
-				binary.LittleEndian.PutUint32(blob[21:], 0xfffffff0)
-			case "stride":
-				binary.LittleEndian.PutUint32(blob[25:], 4)
-			case "count":
-				blob[4] = 2
-			case "truncated":
-				blob = blob[:len(blob)-1]
-			case "result":
-				v.Funcs = slices.Clone(v.Funcs)
-				v.Funcs[0].Results = []ValType{ValI64}
-			}
-			r := compiledReader{data: blob, budget: newArtifactDecodeBudget(0)}
-			if err := rv64ReadValidatedNativeTailForTest(&r, &v); err == nil {
-				t.Fatal("bad plan accepted")
-			}
-		})
-	}
-	if err := checkArtifactAdmissionLimits(c, uint64(len(c.code)), 100); err == nil {
-		t.Fatal("helper code bypassed code quota")
-	}
-	if _, err := rv64NativeTailConfig().WithMaxNativeCodeBytes(uint64(len(c.code))).Compile(source); err == nil {
-		t.Fatal("source factory code bypassed code quota")
-	}
-	wide := *c
-	wide.validateMemo = &validateMemo{}
-	wide.codeCache = nil
-	values := make([]ValType, 64)
-	for i := range values {
-		values[i] = ValI32
-	}
-	wide.Funcs = []FuncSig{{Params: values, Results: values}}
-	wide.importFuncSigs = []FuncSig{{Params: values, Results: values}}
-	plan := rv64NativeTailModule(c).Plans[0]
-	plan.FrameBytes, plan.SourceBase, plan.SourceStride = 576, 48, 8
-	module := &encoder.NativeTailModule{Plans: make([]encoder.NativeTailPlan, 512)}
-	for i := range module.Plans {
-		module.Plans[i] = plan
-	}
-	rv64StoreNativeTailModule(&wide, module)
-	if err := rv64ValidateNativeTail(&wide); err == nil {
-		t.Fatal("wide repeated source signatures passed aggregate metadata budget")
-	}
-	pc := rv64NativeTailCompile(t, "native-tail-quota-leaf", rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
-	producer, err := Instantiate(pc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer producer.Close()
-	export, err := producer.ExportedFunc("identity")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bindings := testImports("env.tail", export)
-	context := rv64NativeInvocationContext(producer)
-	anchor := binary.LittleEndian.Uint64(context[16:])
-	binary.LittleEndian.PutUint64(context[16:], anchor^8)
-	beforeBase, beforeSealed, beforeRefs := c.codeCache.base, c.codeCache.sealed, c.codeCache.refs
-	bad, linkErr := Instantiate(c, bindings)
-	binary.LittleEndian.PutUint64(context[16:], anchor)
-	if bad != nil || !errors.Is(linkErr, railshot.ErrUnsupported) || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || c.codeCache.refs != beforeRefs {
-		t.Fatal("anchorless target reached caller publication", linkErr)
-	}
-	view := c.executionView()
-	if err := view.validateCached(); err != nil {
-		t.Fatal(err)
-	}
-	syncMode := view.importsRequireSync(bindings.bindings, false)
-	need := view.arenaNeedForImports(bindings.bindings, syncMode) + railshotNativeImportMetadataBytes(view, bindings.bindings)
-	roots := producer.referenceLifetime().snapshot().ResourceRoots
-	if err := c.prepareCodeMapping(); err != nil {
-		t.Fatal(err)
-	}
-	base, sealed, refs := c.codeCache.base, c.codeCache.sealed, c.codeCache.refs
-	if in, err := Instantiate(c, InstantiateOptions{Imports: bindings, maxInstanceMetadataBytes: uint64(need - 1)}); in != nil || !errors.Is(err, ErrResourceLimit) || c.codeCache.base != base || c.codeCache.sealed != sealed || c.codeCache.refs != refs || producer.referenceLifetime().snapshot().ResourceRoots != roots {
-		t.Fatalf("capability quota failed after publication/attachment: err=%v limit=%t base=%x/%x sealed=%t/%t refs=%d/%d roots=%d/%d", err, errors.Is(err, ErrResourceLimit), c.codeCache.base, base, c.codeCache.sealed, sealed, c.codeCache.refs, refs, producer.referenceLifetime().snapshot().ResourceRoots, roots)
-	}
-	if in, err := Instantiate(c, InstantiateOptions{Imports: bindings, maxInstanceMetadataBytes: uint64(need)}); err != nil {
-		t.Fatal("exact capability footprint", err)
-	} else {
-		_ = in.Close()
-	}
-}
-
-func TestRV64PublicNativeTailNumericArtifactWithoutAnchor(t *testing.T) {
-	pc := rv64NativeTailCompile(t, "native-tail-old4-leaf", rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
-	// A numeric leaf has no reference or import use that needs descriptor zero.
-	// Its artifact must remain callable through a retained tail bridge.
-	old := cloneCompiledMetadata(pc)
-	old.needsFuncRefContextHeader = false
-	old.validateMemo = &validateMemo{}
-	blob, err := marshalCompiled(old)
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.needsFuncRefContextHeader || loaded.needsFuncRefDescs() {
-		t.Fatal("numeric leaf acquired unused descriptor storage")
-	}
-	producer, err := Instantiate(loaded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer producer.Close()
-	export, err := producer.ExportedFunc("identity")
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := rv64NativeTailCompile(t, "native-tail-old4-caller", rv64PublicTailModule([]wasm.ValType{wasm.I32}, false), false)
-	in, err := Instantiate(c, testImports("env.tail", export))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	if got, err := in.Invoke("call", 0xcafe123480000001); err != nil || !slices.Equal(got, []uint64{0x80000001}) {
-		t.Fatal("old4 retained tail target", got, err)
 	}
 }
 

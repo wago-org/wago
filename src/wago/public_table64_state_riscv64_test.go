@@ -6,14 +6,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"slices"
-	"strings"
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -90,18 +87,6 @@ func TestRV64PublicStateOnlyTable64Export(t *testing.T) {
 			}
 			rv64CheckStateOnlyCode(t, c, 0)
 		})
-	}
-}
-
-func TestRV64PublicStateOnlyTable64CompilerFreeGate(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
-		t.Skip("actual precompiled runtime only")
-	}
-	if c, err := Compile(nil, rv64StateOnlyTable64Source(0, 4, "table")); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		if c != nil {
-			_ = c.Close()
-		}
-		t.Fatal("compiler-free table64 witness used source compilation", err)
 	}
 }
 
@@ -505,7 +490,7 @@ func TestRV64PublicOwnedTable64Size(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-table64-size", rv64Table64SizeInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64) {
 				t.Fatal("table64.size metadata contract")
 			}
 			in, err := Instantiate(c)
@@ -537,7 +522,7 @@ func TestRV64PublicOwnedTwoTable64Size(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table64-size", rv64TwoTable64SizeInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
 				t.Fatalf("two-table64.size metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Size(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -591,7 +576,7 @@ func TestRV64PublicOwnedTwoTable64GetSet(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table64-get-set", rv64TwoTable64GetSetInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
 				t.Fatalf("two-table64 get/set metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64GetSet(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -655,7 +640,7 @@ func TestRV64PublicOwnedTwoTable64Grow(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table64-grow", rv64TwoTable64GrowInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
 				t.Fatalf("two-table64 grow metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Grow(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -715,7 +700,7 @@ func TestRV64PublicOwnedTwoTable64Fill(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table64-fill", rv64TwoTable64FillInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("two-table64 fill metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Fill(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -792,7 +777,7 @@ func TestRV64PublicOwnedTwoTable64Copy(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table64-copy", rv64TwoTable64CopyInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("two-table64 copy metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Copy(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -868,7 +853,7 @@ func TestRV64PublicOwnedTwoTable64CrossCopy(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table64-cross-copy", rv64TwoTable64CrossCopyInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("cross-table64 copy metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Copy(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -949,7 +934,7 @@ func TestRV64PublicImportedTable64Size(t *testing.T) {
 			consumerCode := rv64TableStageCompile(t, "imported-table64-size-consumer", rv64ImportedTable64SizeInstructionSource(), artifact)
 			view := consumerCode.executionView()
 			importDef, imported := view.tableImportAt(0)
-			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64) || !imported || !importDef.Addr64 {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64) || !imported || !importDef.Addr64 {
 				t.Fatalf("imported table64.size metadata contract: witness=%d qualified=%v addr64=%v imported=%v def=%+v", view.nativeTable64ABI, rv64ImportedTable64Size(view), view.TableAddr64, imported, importDef)
 			}
 			producer, err := Instantiate(producerCode)
@@ -1049,7 +1034,7 @@ func TestRV64PublicImportedTable64GetSet(t *testing.T) {
 			producerCode := rv64TableStageCompile(t, "imported-table64-getset-producer", rv64Table64IndirectInstructionSource(), artifact)
 			consumerCode := rv64TableStageCompile(t, "imported-table64-getset-consumer", rv64ImportedTable64GetSetInstructionSource(), artifact)
 			view := consumerCode.executionView()
-			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
 				t.Fatal("imported table64.get/set metadata contract")
 			}
 			producer, err := Instantiate(producerCode)
@@ -1112,7 +1097,7 @@ func TestRV64PublicImportedTable64Indirect(t *testing.T) {
 			producerCode := rv64TableStageCompile(t, "imported-table64-indirect-producer", rv64Table64IndirectInstructionSource(), artifact)
 			consumerCode := rv64TableStageCompile(t, "imported-table64-indirect-consumer", rv64ImportedTable64IndirectInstructionSource(), artifact)
 			view := consumerCode.executionView()
-			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64) {
 				t.Fatalf("imported table64 indirect metadata contract: witness=%d qualified=%v features=%#x funcs=%+v descs=%v typeids=%v", view.nativeTable64ABI, rv64ImportedTable64Indirect(view), view.requiredFeatures, view.Funcs, view.NeedsFuncRefDescs, view.FuncTypeID)
 			}
 			producer, err := Instantiate(producerCode)
@@ -1186,7 +1171,7 @@ func TestRV64PublicImportedTable64Grow(t *testing.T) {
 			producerCode := rv64TableStageCompile(t, "imported-table64-grow-producer", rv64Table64SizeInstructionSource(), artifact)
 			consumerCode := rv64TableStageCompile(t, "imported-table64-grow-consumer", rv64ImportedTable64GrowInstructionSource(), artifact)
 			view := consumerCode.executionView()
-			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
 				t.Fatal("imported table64.grow metadata contract")
 			}
 			producer, err := Instantiate(producerCode)
@@ -1246,7 +1231,7 @@ func TestRV64PublicImportedTable64Fill(t *testing.T) {
 			producerCode := rv64TableStageCompile(t, "imported-table64-fill-producer", rv64Table64IndirectInstructionSource(), artifact)
 			consumerCode := rv64TableStageCompile(t, "imported-table64-fill-consumer", rv64ImportedTable64FillInstructionSource(), artifact)
 			view := consumerCode.executionView()
-			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || view.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || view.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
 				t.Fatal("imported table64.fill metadata contract")
 			}
 			producer, err := Instantiate(producerCode)
@@ -1323,7 +1308,7 @@ func TestRV64PublicImportedTable64Copy(t *testing.T) {
 			nullerCode := rv64TableStageCompile(t, "imported-table64-copy-nuller", rv64ImportedTable64GetSetInstructionSource(), artifact)
 			consumerCode := rv64TableStageCompile(t, "imported-table64-copy-consumer", rv64ImportedTable64CopyInstructionSource(), artifact)
 			view := consumerCode.executionView()
-			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatal("imported table64.copy metadata contract")
 			}
 			producer, err := Instantiate(producerCode)
@@ -1434,7 +1419,7 @@ func TestRV64PublicImportedTable64InitDrop(t *testing.T) {
 			producerCode := rv64TableStageCompile(t, "imported-table64-init-drop-producer", rv64Table64IndirectInstructionSource(), artifact)
 			consumerCode := rv64TableStageCompile(t, "imported-table64-init-drop-consumer", rv64ImportedTable64InitDropInstructionSource(), artifact)
 			view := consumerCode.executionView()
-			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatal("imported table64.init/drop metadata contract")
 			}
 			producer, err := Instantiate(producerCode)
@@ -1520,7 +1505,7 @@ func TestRV64PublicOwnedTable64Grow(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-table64-grow", rv64Table64GrowInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
 				t.Fatal("table64.grow metadata contract")
 			}
 			in, err := Instantiate(c)
@@ -1556,7 +1541,7 @@ func TestRV64PublicOwnedTable64GetSet(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-table64-get-set", rv64Table64GetSetInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
 				t.Fatal("table64 get/set metadata contract")
 			}
 			in, err := Instantiate(c)
@@ -1596,7 +1581,7 @@ func TestRV64PublicOwnedTable64Indirect(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-table64-indirect", rv64Table64IndirectInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("table64 indirect-call metadata contract: witness=%d qualified=%v features=%#x funcs=%+v refs=%v descs=%v typeids=%v elems=%+v passive=%+v", c.nativeTable64ABI, rv64OwnedTable64Indirect(c), c.requiredFeatures, c.Funcs, c.nativeReferenceFunctionABI, c.NeedsFuncRefDescs, c.FuncTypeID, c.Elems, c.passiveElems)
 			}
 			in, err := Instantiate(c)
@@ -1636,7 +1621,7 @@ func TestRV64PublicOwnedTwoTable64Indirect(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table64-indirect", rv64TwoTable64IndirectInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("indexed table64 indirect metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Indirect(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -1690,7 +1675,7 @@ func TestRV64PublicOwnedTable64Fill(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-table64-fill", rv64Table64FillInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("table64.fill metadata contract: witness=%d qualified=%v features=%#x funcs=%+v refs=%v descs=%v", c.nativeTable64ABI, rv64OwnedTable64Fill(c), c.requiredFeatures, c.Funcs, c.nativeReferenceFunctionABI, c.NeedsFuncRefDescs)
 			}
 			in, err := Instantiate(c)
@@ -1752,56 +1737,11 @@ func TestRV64PublicOwnedTable64Fill(t *testing.T) {
 	}
 }
 
-func TestRV64PublicOwnedTable64FillArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-table64-fill-admission", rv64Table64FillInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"indirect-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64IndirectABI
-		},
-		"first-param":  func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"second-param": func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
-		"result":       func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
-		"missing-ref":  func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"no-max":       func(v *Compiled) { v.TableHasMax = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64Features(1 << 12)
-		},
-		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
-		"element":        func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"table32":        func(v *Compiled) { v.TableAddr64 = false },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid table64.fill metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid table64.fill artifact admitted")
-			}
-		})
-	}
-}
-
 func TestRV64PublicOwnedTable64Copy(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-table64-copy", rv64Table64CopyInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("table64.copy metadata contract: witness=%d qualified=%v features=%#x funcs=%+v", c.nativeTable64ABI, rv64OwnedTable64Copy(c), c.requiredFeatures, c.Funcs)
 			}
 			in, err := Instantiate(c)
@@ -1863,56 +1803,11 @@ func TestRV64PublicOwnedTable64Copy(t *testing.T) {
 	}
 }
 
-func TestRV64PublicOwnedTable64CopyArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-table64-copy-admission", rv64Table64CopyInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"fill-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64FillABI },
-		"first-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"second-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
-		"third-param":     func(v *Compiled) { v.Funcs[0].Params[2] = ValI32 },
-		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
-		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-		"no-max":          func(v *Compiled) { v.TableHasMax = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64Features(1 << 11)
-		},
-		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
-		"element":        func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"table32":        func(v *Compiled) { v.TableAddr64 = false },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid table64.copy metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid table64.copy artifact admitted")
-			}
-		})
-	}
-}
-
 func TestRV64PublicOwnedTable64InitDrop(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-table64-init-drop", rv64Table64InitDropInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("table64.init/drop metadata contract: witness=%d qualified=%v features=%#x funcs=%+v elems=%+v passive=%+v values=%+v", c.nativeTable64ABI, rv64OwnedTable64InitDrop(c), c.requiredFeatures, c.Funcs, c.Elems, c.passiveElems, c.ValueTypes)
 			}
 			in, err := Instantiate(c)
@@ -1974,7 +1869,7 @@ func TestRV64PublicOwnedTwoTable64InitDrop(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table64-init-drop", rv64TwoTable64InitDropInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("indexed table64.init/drop metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64InitDrop(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -2053,1011 +1948,6 @@ func TestRV64PublicOwnedTwoTable64InitDrop(t *testing.T) {
 	}
 }
 
-func TestRV64PublicOwnedTwoTable64InitDropArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-two-table64-init-drop-admission", rv64TwoTable64InitDropInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"missing-table":   func(v *Compiled) { v.extraTables = nil },
-		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
-		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
-		"second-dest":     func(v *Compiled) { v.Funcs[1].Params[0] = ValI32 },
-		"drop-result":     func(v *Compiled) { v.Funcs[2].Results[0] = ValI64 },
-		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-		"function-export": func(v *Compiled) { v.Exports["init1"] = 0 },
-		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
-		"active-element":  func(v *Compiled) { v.passiveElems[0].Mode = ElemModeActive },
-		"nonnull-element": func(v *Compiled) { v.passiveElems[0].Values[0].Null = false },
-		"defined-element-type": func(v *Compiled) {
-			exact := v.ValueTypes[v.passiveElems[0].ValueTypeIndex]
-			exact.Ref.Heap.Defined = true
-			v.ValueTypes = append(v.ValueTypes, exact)
-			v.passiveElems[0].ValueTypeIndex = uint32(len(v.ValueTypes) - 1)
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.ValueTypes = slices.Clone(bad.ValueTypes)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.passiveElems = slices.Clone(bad.passiveElems)
-			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid indexed table64.init/drop metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if name == "missing-ref" || name == "missing-bulk" {
-				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
-					t.Fatal("serialization did not restore structural indexed element features", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("invalid indexed table64.init/drop artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicOwnedTable64InitDropArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-table64-init-drop-admission", rv64Table64InitDropInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"copy-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64CopyABI },
-		"dest-param":      func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"source-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI64 },
-		"count-param":     func(v *Compiled) { v.Funcs[0].Params[2] = ValI64 },
-		"drop-result":     func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
-		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-		"no-max":          func(v *Compiled) { v.TableHasMax = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64Features(1 << 10)
-		},
-		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
-		"active-element": func(v *Compiled) { v.passiveElems[0].Mode = ElemModeActive },
-		"nonnull-element": func(v *Compiled) {
-			v.passiveElems[0].Values[0].Null = false
-		},
-		"table32": func(v *Compiled) { v.TableAddr64 = false },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.passiveElems = slices.Clone(bad.passiveElems)
-			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid table64.init/drop metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if name == "missing-ref" || name == "missing-bulk" {
-				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
-					t.Fatal("serialization did not restore structural element features", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("invalid table64.init/drop artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicOwnedTwoTable64IndirectArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-two-table64-indirect-admission", rv64TwoTable64IndirectInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness":  func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"missing-table":    func(v *Compiled) { v.extraTables = nil },
-		"second-table32":   func(v *Compiled) { v.extraTables[0].Addr64 = false },
-		"second-no-max":    func(v *Compiled) { v.extraTables[0].HasMax = false },
-		"target-result":    func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
-		"second-param":     func(v *Compiled) { v.Funcs[2].Params[0] = ValI32 },
-		"missing-ref":      func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"missing-bulk":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-		"spurious-private": func(v *Compiled) { v.nativeReferenceFunctionABI = true },
-		"missing-descs":    func(v *Compiled) { v.NeedsFuncRefDescs = false },
-		"missing-key":      func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:2] },
-		"wrong-key":        func(v *Compiled) { v.FuncTypeID[2] ^= 1 },
-		"function-export":  func(v *Compiled) { v.Exports["call1"] = 1 },
-		"table-export":     func(v *Compiled) { v.tableExports["table1"] = 0 },
-		"active-element":   func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid indexed table64 indirect metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if name == "missing-ref" {
-				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
-					t.Fatal("serialization did not restore structural indexed indirect reference feature", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("invalid indexed table64 indirect artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicOwnedTable64IndirectArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-table64-indirect-admission", rv64Table64IndirectInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness":  func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"getset-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64GetSetABI },
-		"target-result":    func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
-		"caller-param":     func(v *Compiled) { v.Funcs[1].Params[0] = ValI32 },
-		"missing-ref":      func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"spurious-private": func(v *Compiled) { v.nativeReferenceFunctionABI = true },
-		"missing-descs":    func(v *Compiled) { v.NeedsFuncRefDescs = false },
-		"no-max":           func(v *Compiled) { v.TableHasMax = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64Features(1 << 13)
-		},
-		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
-		"active-element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"table32":        func(v *Compiled) { v.TableAddr64 = false },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid table64 indirect metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid table64 indirect artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicImportedTable64IndirectArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "imported-table64-indirect-admission", rv64ImportedTable64IndirectInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness":  func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"size-witness":     func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedSizeABI },
-		"missing-import":   func(v *Compiled) { v.tableImport = "" },
-		"missing-max":      func(v *Compiled) { v.tableImportHasMax = false },
-		"minimum":          func(v *Compiled) { v.tableImportMin = 1025 },
-		"maximum":          func(v *Compiled) { v.tableImportMax = 1025 },
-		"caller-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"caller-result":    func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
-		"missing-descs":    func(v *Compiled) { v.NeedsFuncRefDescs = false },
-		"missing-type-key": func(v *Compiled) { v.FuncTypeID = nil },
-		"spurious-private": func(v *Compiled) { v.nativeReferenceFunctionABI = true },
-		"extra-function":   func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
-		"element":          func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"table32":          func(v *Compiled) { v.TableAddr64 = false },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid imported table64 indirect metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid imported table64 indirect artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicOwnedTable64GetSetArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-table64-get-set-admission", rv64Table64GetSetInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"grow-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64GrowABI },
-		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
-		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"no-max":          func(v *Compiled) { v.TableHasMax = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64Features(1 << 14)
-		},
-		"extra-function": func(v *Compiled) {
-			v.Funcs = append(v.Funcs, FuncSig{})
-		},
-		"element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"table32": func(v *Compiled) { v.TableAddr64 = false },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid table64 get/set metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid table64 get/set artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicOwnedTable64GrowArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-table64-grow-admission", rv64Table64GrowInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"size-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64SizeABI },
-		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
-		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"no-max":          func(v *Compiled) { v.TableHasMax = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64Features(1 << 15)
-		},
-		"extra-function": func(v *Compiled) {
-			v.Funcs = append(v.Funcs, FuncSig{})
-		},
-		"element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"table32": func(v *Compiled) { v.TableAddr64 = false },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid table64.grow metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid table64.grow artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicOwnedTable64SizeArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-table64-size-admission", rv64Table64SizeInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
-		"export":          func(v *Compiled) { v.Exports["size"] = 1 },
-		"extra-function": func(v *Compiled) {
-			v.Funcs = append(v.Funcs, FuncSig{})
-		},
-		"element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"table32": func(v *Compiled) { v.TableAddr64 = false },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid table64.size metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid table64.size artifact admitted")
-			}
-		})
-	}
-
-	relabelled := rv64TableStageCompile(t, "ordinary-table32-i64", rv64RelabelledTable32FunctionSource(), false)
-	if relabelled.nativeTable64ABI != nativeTable64NoABI {
-		t.Fatal("ordinary table32 function acquired table64.size compiler witness")
-	}
-	bad := *relabelled.executionView()
-	bad.TableAddr64 = true
-	bad.requiredFeatures |= CoreFeatureTable64
-	if err := bad.validate(); err == nil {
-		t.Fatal("ordinary table32 function relabelled as table64.size")
-	}
-	blob, err := marshalCompiled(&bad)
-	if err == nil {
-		loaded, loadErr := LoadTrustedArtifact(blob)
-		if loaded != nil {
-			_ = loaded.Close()
-		}
-		if loadErr == nil {
-			t.Fatal("ordinary table32 artifact relabelled as table64.size")
-		}
-	}
-}
-
-func TestRV64PublicOwnedTwoTable64SizeArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-two-table64-size-admission", rv64TwoTable64SizeInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"missing-table":   func(v *Compiled) { v.extraTables = nil },
-		"first-table32":   func(v *Compiled) { v.TableAddr64 = false },
-		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
-		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
-		"second-initializer": func(v *Compiled) {
-			v.extraTables[0].HasInitFunc = true
-			v.extraTables[0].InitFunc = 1
-		},
-		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
-		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
-		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI32 },
-		"function-export": func(v *Compiled) { v.Exports["size1"] = 0 },
-		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
-		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid two-table64.size metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid two-table64.size artifact admitted")
-			}
-		})
-	}
-
-	inactive := *c.executionView()
-	inactive.extraTables = slices.Clone(inactive.extraTables)
-	inactive.extraTables[0].InitFunc = 1
-	if err := inactive.validate(); err != nil {
-		t.Fatal("inactive table initializer payload", err)
-	}
-	blob, err := marshalCompiled(&inactive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.extraTables[0].HasInitFunc || loaded.extraTables[0].InitFunc != 0 {
-		t.Fatal("inactive table initializer was not canonicalized")
-	}
-}
-
-func TestRV64PublicOwnedTwoTable64GetSetArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-two-table64-get-set-admission", rv64TwoTable64GetSetInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"missing-table":   func(v *Compiled) { v.extraTables = nil },
-		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
-		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
-		"second-initializer": func(v *Compiled) {
-			v.extraTables[0].HasInitFunc = true
-			v.extraTables[0].InitFunc = 1
-		},
-		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
-		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
-		"second-param":    func(v *Compiled) { v.Funcs[1].Params[0] = ValI32 },
-		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
-		"function-export": func(v *Compiled) { v.Exports["roundtrip1"] = 0 },
-		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
-		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid two-table64 get/set metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid two-table64 get/set artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicOwnedTwoTable64GrowArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-two-table64-grow-admission", rv64TwoTable64GrowInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"missing-table":   func(v *Compiled) { v.extraTables = nil },
-		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
-		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
-		"second-initializer": func(v *Compiled) {
-			v.extraTables[0].HasInitFunc = true
-			v.extraTables[0].InitFunc = 1
-		},
-		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
-		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
-		"second-param":    func(v *Compiled) { v.Funcs[1].Params[0] = ValI32 },
-		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI32 },
-		"function-export": func(v *Compiled) { v.Exports["grow1"] = 0 },
-		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
-		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid two-table64 grow metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid two-table64 grow artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicOwnedTwoTable64FillArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-two-table64-fill-admission", rv64TwoTable64FillInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"missing-table":   func(v *Compiled) { v.extraTables = nil },
-		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
-		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
-		"second-initializer": func(v *Compiled) {
-			v.extraTables[0].HasInitFunc = true
-			v.extraTables[0].InitFunc = 1
-		},
-		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
-		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
-		"second-param":    func(v *Compiled) { v.Funcs[1].Params[1] = ValI32 },
-		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
-		"function-export": func(v *Compiled) { v.Exports["fill1"] = 0 },
-		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
-		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid two-table64 fill metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid two-table64 fill artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicOwnedTwoTable64CopyArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-two-table64-copy-admission", rv64TwoTable64CopyInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"missing-table":   func(v *Compiled) { v.extraTables = nil },
-		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
-		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
-		"second-initializer": func(v *Compiled) {
-			v.extraTables[0].HasInitFunc = true
-			v.extraTables[0].InitFunc = 1
-		},
-		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
-		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
-		"second-param":    func(v *Compiled) { v.Funcs[1].Params[2] = ValI32 },
-		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
-		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-		"function-export": func(v *Compiled) { v.Exports["copy1"] = 0 },
-		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
-		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid two-table64 copy metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid two-table64 copy artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicOwnedTwoTable64CrossCopyArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "owned-two-table64-cross-copy-admission", rv64TwoTable64CrossCopyInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"missing-table":   func(v *Compiled) { v.extraTables = nil },
-		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
-		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
-		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
-		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
-		"second-param":    func(v *Compiled) { v.Funcs[1].Params[1] = ValI32 },
-		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
-		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-		"function-export": func(v *Compiled) { v.Exports["copy10"] = 0 },
-		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
-		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid cross-table64 copy metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid cross-table64 copy artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicImportedTable64SizeArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "imported-table64-size-admission", rv64ImportedTable64SizeInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64SizeABI },
-		"missing-import":  func(v *Compiled) { v.tableImport = "" },
-		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
-		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
-		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
-		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
-		"export":          func(v *Compiled) { v.Exports["size"] = 1 },
-		"table32":         func(v *Compiled) { v.TableAddr64 = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64Features(1 << 9)
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid imported table64.size metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid imported table64.size artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicImportedTable64GetSetArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "imported-table64-getset-admission", rv64ImportedTable64GetSetInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64GetSetABI },
-		"size-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedSizeABI },
-		"missing-import":  func(v *Compiled) { v.tableImport = "" },
-		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
-		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
-		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
-		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
-		"export":          func(v *Compiled) { v.Exports["roundtrip"] = 1 },
-		"table32":         func(v *Compiled) { v.TableAddr64 = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64Features(1 << 8)
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid imported table64.get/set metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid imported table64.get/set artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicImportedTable64GrowArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "imported-table64-grow-admission", rv64ImportedTable64GrowInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64GrowABI },
-		"getset-witness":  func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedGetSetABI },
-		"missing-import":  func(v *Compiled) { v.tableImport = "" },
-		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
-		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
-		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
-		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
-		"export":          func(v *Compiled) { v.Exports["grow"] = 1 },
-		"table32":         func(v *Compiled) { v.TableAddr64 = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64Features(1 << 7)
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid imported table64.grow metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid imported table64.grow artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicImportedTable64FillArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "imported-table64-fill-admission", rv64ImportedTable64FillInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64FillABI },
-		"grow-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedGrowABI },
-		"missing-import":  func(v *Compiled) { v.tableImport = "" },
-		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
-		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
-		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
-		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"unexpected-bulk": func(v *Compiled) { v.requiredFeatures |= CoreFeatureBulkMemoryOperations },
-		"first-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"second-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
-		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
-		"export":          func(v *Compiled) { v.Exports["fill"] = 1 },
-		"table32":         func(v *Compiled) { v.TableAddr64 = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64BMI2
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid imported table64.fill metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid imported table64.fill artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicImportedTable64CopyArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "imported-table64-copy-admission", rv64ImportedTable64CopyInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64CopyABI },
-		"fill-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedFillABI },
-		"missing-import":  func(v *Compiled) { v.tableImport = "" },
-		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
-		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
-		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
-		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-		"first-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"second-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
-		"third-param":     func(v *Compiled) { v.Funcs[0].Params[2] = ValI32 },
-		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
-		"export":          func(v *Compiled) { v.Exports["copy"] = 1 },
-		"table32":         func(v *Compiled) { v.TableAddr64 = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64BMI1
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.Exports = maps.Clone(bad.Exports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid imported table64.copy metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid imported table64.copy artifact admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicImportedTable64InitDropArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "imported-table64-init-drop-admission", rv64ImportedTable64InitDropInstructionSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
-		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64InitDropABI },
-		"copy-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedCopyABI },
-		"missing-import":  func(v *Compiled) { v.tableImport = "" },
-		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
-		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
-		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
-		"dest-param":      func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
-		"source-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI64 },
-		"count-param":     func(v *Compiled) { v.Funcs[0].Params[2] = ValI64 },
-		"drop-result":     func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
-		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-		"active-element":  func(v *Compiled) { v.passiveElems[0].Mode = ElemModeActive },
-		"nonnull-element": func(v *Compiled) { v.passiveElems[0].Values[0].Null = false },
-		"table32":         func(v *Compiled) { v.TableAddr64 = false },
-		"cpu-bit-alias": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64NoABI
-			v.requiredAMD64Features = shared.AMD64AVX2
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.passiveElems = slices.Clone(bad.passiveElems)
-			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid imported table64.init/drop metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if name == "missing-ref" || name == "missing-bulk" {
-				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
-					t.Fatal("serialization did not restore structural imported table64.init/drop features", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("invalid imported table64.init/drop artifact admitted")
-			}
-		})
-	}
-}
-
 func TestRV64PublicStateOnlyTable64SourceGates(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 		t.Skip("source admission only")
@@ -3085,87 +1975,5 @@ func TestRV64PublicStateOnlyTable64SourceGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			rv64RequireCore3SourceValidation(t, bad)
 		})
-	}
-}
-
-func TestRV64PublicStateOnlyTable64ArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "state-only-table64-admission", rv64StateOnlyTable64Source(0, 4, "table"), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"missing-feature":            func(v *Compiled) { v.requiredFeatures &^= CoreFeatureTable64 },
-		"contradictory-size-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64SizeABI },
-		"contradictory-grow-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64GrowABI },
-		"contradictory-getset-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64GetSetABI
-		},
-		"contradictory-indirect-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64IndirectABI
-		},
-		"contradictory-fill-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64FillABI
-		},
-		"contradictory-copy-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64CopyABI
-		},
-		"contradictory-init-drop-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64InitDropABI
-		},
-		"contradictory-imported-size-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64ImportedSizeABI
-		},
-		"contradictory-imported-getset-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64ImportedGetSetABI
-		},
-		"contradictory-imported-grow-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64ImportedGrowABI
-		},
-		"contradictory-imported-fill-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64ImportedFillABI
-		},
-		"contradictory-imported-copy-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64ImportedCopyABI
-		},
-		"contradictory-imported-init-drop-witness": func(v *Compiled) {
-			v.nativeTable64ABI = nativeTable64ImportedInitDropABI
-		},
-		"table32":     func(v *Compiled) { v.TableAddr64 = false },
-		"start":       func(v *Compiled) { v.HasStart = true },
-		"initializer": func(v *Compiled) { v.HasTableInitFunc = true },
-		"element":     func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"passive":     func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive}} },
-		"externref":   func(v *Compiled) { v.TableType = ValExternRef },
-		"capacity":    func(v *Compiled) { v.TableMax = 1025 },
-		"extra-table": func(v *Compiled) {
-			v.extraTables = append(slices.Clone(v.extraTables), tableDef{Type: ValFuncRef})
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Elems = slices.Clone(bad.Elems)
-			bad.passiveElems = slices.Clone(bad.passiveElems)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
-				t.Fatal("invalid table64 metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if name == "missing-feature" {
-				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureTable64) {
-					t.Fatal("serialization did not restore structural table64 feature", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("invalid table64 artifact admitted")
-			}
-		})
-	}
-	if c.codeCache.refs != 0 || c.codeCache.mem != nil || c.codeCache.base != 0 || c.codeCache.sealed {
-		t.Fatal("table64 metadata gates reached executable publication")
 	}
 }

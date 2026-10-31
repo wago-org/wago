@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_guardpage && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_guardpage
 
 package wago
 
@@ -26,19 +26,9 @@ func TestRV64ManagedFunctionAggregateExecutionAndArtifacts(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						for _, artifact := range []bool{false, true} {
+						for _, artifact := range []bool{false} {
 							run := c
-							if artifact {
-								blob, err := c.MarshalBinary()
-								if err != nil {
-									t.Fatal(err)
-								}
-								run, err = LoadTrustedArtifact(blob)
-								if err != nil {
-									t.Fatal(err)
-								}
-								defer run.Close()
-							}
+
 							in, err := instantiateCore(run, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 512, VerifyAfterCollect: true}})
 							if err != nil {
 								t.Fatal(err)
@@ -83,28 +73,9 @@ func TestRV64ManagedFunctionAggregateForeignExecutionAndArtifacts(t *testing.T) 
 								t.Fatal(err)
 							}
 							defer pc.Close()
-							for _, artifact := range []bool{false, true} {
+							for _, artifact := range []bool{false} {
 								run, producerRun := c, pc
-								if artifact {
-									blob, err := c.MarshalBinary()
-									if err != nil {
-										t.Fatal(err)
-									}
-									run, err = LoadTrustedArtifact(blob)
-									if err != nil {
-										t.Fatal(err)
-									}
-									defer run.Close()
-									producerBlob, err := pc.MarshalBinary()
-									if err != nil {
-										t.Fatal(err)
-									}
-									producerRun, err = LoadTrustedArtifact(producerBlob)
-									if err != nil {
-										t.Fatal(err)
-									}
-									defer producerRun.Close()
-								}
+
 								rt := NewRuntime()
 								defer rt.Close()
 								opts := InstantiateOptions{store: rt.refStore, GC: GCConfig{Profile: profile, CollectEveryAlloc: true, StressNurseryBytes: 512, TinyHeapBytes: 64 << 10, VerifyAfterCollect: true}}
@@ -170,7 +141,7 @@ func TestRV64ManagedFunctionAggregateForeignExecutionAndArtifacts(t *testing.T) 
 
 func TestRV64ManagedFunctionConstructionExecutionAndArtifacts(t *testing.T) {
 	for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(fmt.Sprintf("profile%d/artifact%t", profile, artifact), func(t *testing.T) {
 				source := gcConstExprFuncrefModule()
 				c, err := CompileWithConfig(rv64I31Config(), source)
@@ -178,17 +149,7 @@ func TestRV64ManagedFunctionConstructionExecutionAndArtifacts(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				if artifact {
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					c, err = LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer c.Close()
-				}
+
 				in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, StressNurseryBytes: 512, TinyHeapBytes: 64 << 10, VerifyAfterCollect: true}})
 				if err != nil {
 					t.Fatal(err)

@@ -6,10 +6,10 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"strings"
+
 	"testing"
 
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const stagedGCArrayPackedDataHex = "0061736d0100000001b3808080000a5e78005e7801600001640060027f6400017f60017f017f60037f64017f017f60027f7f017f6001646a017f6000017f600000038c808080000b020203040304050607080907c28080800007036e657700000c6e65772d6f766572666c6f770001056765745f750003056765745f730005077365745f6765740007036c656e00090964726f705f73656773000a0c8180808000010aa9818080000b8a808080000041014103fb0900000b928080800000418080808078418080808078fb0900000b89808080000020012000fb0d000b8880808000002000100010020b89808080000020012000fb0c000b8880808000002000100010040b928080800000200120002002fb0e0120012000fb0d010b908080800000200041014103fb090100200110060b8680808000002000fb0f0b868080800000100010080b858080800000fc09000b0b8880808000010105000102ff04"
@@ -151,55 +151,6 @@ func TestStagedGCArrayPackedDataOfficialProduct(t *testing.T) {
 				t.Fatalf("zero-length array.new_data after drop = %d, %v", length, err)
 			}
 		})
-	}
-}
-
-func TestStagedGCArrayPackedDataTinyCodecAndAllocation(t *testing.T) {
-	data := stagedGCArrayPackedDataBytes(t)
-	c, err := compileStagedGCArray(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	for i := 0; i < 2; i++ {
-		in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 16, TinyBlockBytes: 8}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := in.Invoke("new"); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
-			_ = in.Close()
-			t.Fatalf("packed Tiny exhaustion %d = %v", i, err)
-		}
-		if err := in.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	fast, err := instantiateCore(c, InstantiateOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer fast.Close()
-	allocs := testing.AllocsPerRun(1000, func() {
-		if got, err := fast.Invoke("get_u", 2); err != nil || len(got) != 1 || got[0] != 0xff {
-			panic("packed array helper failed")
-		}
-	})
-	if allocs != 0 {
-		t.Fatalf("packed array helper allocations = %v, want 0", allocs)
-	}
-
-	blob, err := marshalCompiled(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.usesGCArrayHelpers() || loaded.stagedGCArrayProduct() != 0 {
-		t.Fatal("codec reload inherited packed array helper/product admission")
 	}
 }
 

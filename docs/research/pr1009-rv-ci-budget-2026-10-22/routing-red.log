@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/tmp/wago-pr1009-rv-ci-budget-20261022/tests/scripts/ci-riscv64.py", line 70, in <module>
-    assert (artifacts/check/'portable-features/test-artifact').is_file(), 'prepare must retain artifacts'
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-AssertionError: prepare must retain artifacts

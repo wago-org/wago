@@ -1,25 +1,18 @@
 package wago
 
+// This internal encoder binds source-compiled RV64 code to its metadata for
+// mutation detection. It has no file framing, loader, or public serialization API.
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
-	"math/bits"
 	"sort"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const (
-	compiledSectionCode                  = 1
-	compiledSectionMetadata              = 2
-	compiledSectionCount                 = 2
-	compiledHeader                       = compiledArchitecture<<4 | compiledSectionCount
-	_                             byte   = 15 - compiledSectionCount
 	compiledStartFunction         uint64 = 1 << 29
 	compiledCore1SegmentPreflight uint64 = 1 << 31
 
@@ -72,11 +65,6 @@ const (
 	compiledCPUFeatureARM64LSE             uint64 = 1 << 52
 	compiledCPUFeatures                    uint64 = 0xfffff << 32
 	compiledGCExecutionMask                       = compiledGCExecutionI31Product | compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
-
-	// Import names are attacker-controlled artifact metadata. Bound the decoded
-	// string headers plus exact-name sidecar independently of the encoded section
-	// size so compact empty strings cannot amplify into multi-gigabyte allocations.
-	maxImportDirectoryAllocationBytes = 64 << 20
 )
 
 func compiledUvarintLen(v uint64) int {
@@ -134,276 +122,23 @@ func valTypesUseSIMD(ts []ValType) bool {
 	return false
 }
 
-func marshalCompiled(c *Compiled) ([]byte, error) {
-	if c == nil {
-		return nil, fmt.Errorf("compiled module is nil")
-	}
-	metadata, err := marshalCompiledMetadata(c)
-	if err != nil {
-		return nil, err
-	}
-	w := compiledWriter{buf: make([]byte, 0, len(c.code)+len(metadata)+32)}
-	w.buf = append(w.buf, wagoMagic...)
-	w.u8(wagoVersion)
-	w.u8(compiledHeader)
-	w.section(compiledSectionCode, c.code)
-	w.section(compiledSectionMetadata, metadata)
-	return w.buf, nil
-}
-
-func writeCompiled(w io.Writer, c *Compiled) (int64, error) {
-	if c == nil {
-		return 0, fmt.Errorf("compiled module is nil")
-	}
-	metadata, err := marshalCompiledMetadata(c)
-	if err != nil {
-		return 0, err
-	}
-	written := int64(0)
-	write := func(p []byte) error {
-		n, err := w.Write(p)
-		written += int64(n)
-		if err != nil {
-			return err
-		}
-		if n != len(p) {
-			return io.ErrShortWrite
-		}
-		return nil
-	}
-	if err := write([]byte{wagoMagic[0], wagoMagic[1], wagoMagic[2], wagoMagic[3], wagoVersion, compiledHeader}); err != nil {
-		return written, err
-	}
-	var header [1 + binary.MaxVarintLen64]byte
-	writeSection := func(id byte, payload []byte) error {
-		header[0] = id
-		n := binary.PutUvarint(header[1:], uint64(len(payload)))
-		if err := write(header[:1+n]); err != nil {
-			return err
-		}
-		return write(payload)
-	}
-	if err := writeSection(compiledSectionCode, c.code); err != nil {
-		return written, err
-	}
-	if err := writeSection(compiledSectionMetadata, metadata); err != nil {
-		return written, err
-	}
-	return written, nil
-}
-
-type artifactCountingReader struct {
-	r io.Reader
-	n int64
-}
-
-func (r *artifactCountingReader) Read(p []byte) (int, error) {
-	n, err := r.r.Read(p)
-	r.n += int64(n)
-	return n, err
-}
-
-func readArtifactUvar(r *artifactCountingReader) (uint64, error) {
-	var encoded [binary.MaxVarintLen64]byte
-	for i := range encoded {
-		if _, err := io.ReadFull(r, encoded[i:i+1]); err != nil {
-			return 0, err
-		}
-		if encoded[i]&0x80 == 0 {
-			value, n := binary.Uvarint(encoded[:i+1])
-			if n != i+1 {
-				return 0, fmt.Errorf("invalid section length")
-			}
-			var canonical [binary.MaxVarintLen64]byte
-			if binary.PutUvarint(canonical[:], value) != n {
-				return 0, fmt.Errorf("non-canonical section length")
-			}
-			return value, nil
-		}
-	}
-	return 0, fmt.Errorf("section length overflows u64")
-}
-
-func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compiled, image *coreruntime.CodeBuffer, read int64, err error) {
-	if source == nil {
-		return decoded, nil, 0, fmt.Errorf("wago: compiled artifact reader is nil")
-	}
-	if limits.MaxCodeBytes < 0 || limits.MaxMetadataBytes < 0 || limits.MaxDecodedBytes < 0 {
-		return decoded, nil, 0, fmt.Errorf("wago: compiled artifact limits must be non-negative")
-	}
-	// Return the staging owner itself: atomic cache publication makes this
-	// value escape, so returning it by value would allocate another copy.
-	decoded = &Compiled{}
-	r := &artifactCountingReader{r: source}
-	defer func() { read = r.n }()
-	var header [6]byte
-	if _, err = io.ReadFull(r, header[:]); err != nil {
-		return decoded, nil, 0, wrapContextError("compiled artifact header", err)
-	}
-	if string(header[:4]) != wagoMagic {
-		return decoded, nil, 0, fmt.Errorf("not a wago module")
-	}
-	if header[4] != wagoVersion {
-		return decoded, nil, 0, fmt.Errorf("wago module version %d unsupported (want %d)", header[4], wagoVersion)
-	}
-	if err = validateCompiledHeader(header[5]); err != nil {
-		return decoded, nil, 0, err
-	}
-	readSectionHeader := func(want byte, label string, limit int64) (int, error) {
-		var id [1]byte
-		if _, err := io.ReadFull(r, id[:]); err != nil {
-			return 0, fmt.Errorf("%s section id: %w", label, err)
-		}
-		if id[0] != want {
-			return 0, fmt.Errorf("compiled section %d out of order (want %s section %d)", id[0], label, want)
-		}
-		size, err := readArtifactUvar(r)
-		if err != nil {
-			return 0, fmt.Errorf("%s section length: %w", label, err)
-		}
-		if size > uint64(limit) {
-			return 0, fmt.Errorf("%s section length %d exceeds limit %d", label, size, limit)
-		}
-		if size > uint64(maxInt()) {
-			return 0, fmt.Errorf("%s section length %d overflows int", label, size)
-		}
-		return int(size), nil
-	}
-	codeLen, err := readSectionHeader(compiledSectionCode, "code", limits.MaxCodeBytes)
-	if err != nil {
-		return decoded, nil, 0, err
-	}
-	var code []byte
-	if codeLen != 0 {
-		image, err = coreruntime.NewCodeBuffer(codeLen)
-		if err != nil {
-			return decoded, nil, 0, wrapContextError("allocate compiled code section", err)
-		}
-		code, err = image.AppendSpace(codeLen)
-		if err != nil {
-			_ = image.Close()
-			return decoded, nil, 0, wrapContextError("size compiled code section", err)
-		}
-		if _, err := io.ReadFull(r, code); err != nil {
-			_ = image.Close()
-			return decoded, nil, 0, wrapContextError("truncated code section", err)
-		}
-	}
-	metadataLen, err := readSectionHeader(compiledSectionMetadata, "metadata", limits.MaxMetadataBytes)
-	if err != nil {
-		_ = image.Close()
-		return decoded, nil, 0, err
-	}
-	budget := newArtifactDecodeBudget(limits.MaxDecodedBytes)
-	if err := budget.charge(uint64(metadataLen), 1); err != nil {
-		_ = image.Close()
-		return decoded, nil, 0, err
-	}
-	metadata := make([]byte, metadataLen)
-	if _, err := io.ReadFull(r, metadata); err != nil {
-		_ = image.Close()
-		return decoded, nil, 0, wrapContextError("truncated metadata section", err)
-	}
-	decoded.code = code
-	if err := unmarshalCompiledMetadataBudget(decoded, metadata, budget); err != nil {
-		_ = image.Close()
-		return decoded, nil, 0, err
-	}
-	if image == nil && !decoded.hasNoFunctionCode() {
-		// Empty defined code does not imply a state-only module: imported
-		// bridges preserve their established mapped code-owner lifetime.
-		image, err = coreruntime.NewCodeBuffer(0)
-		if err != nil {
-			return decoded, nil, 0, wrapContextError("allocate compiled code section", err)
-		}
-	}
-	return decoded, image, 0, nil
-}
-
-func marshalCompiledMetadata(c *Compiled) ([]byte, error) {
-	metadata, _, err := marshalCompiledMetadataMeasured(c)
-	return metadata, err
-}
-
-func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes, error) {
-	return encodeCompiledMetadataMeasured(c, false)
-}
-
-func measureCompiledMetadata(c *Compiled) (ArtifactSectionSizes, error) {
-	_, sizes, err := encodeCompiledMetadataMeasured(c, true)
-	return sizes, err
-}
-
-func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, ArtifactSectionSizes, error) {
-	metadata, sizes, err := encodeCompiledMetadataBody(c, countOnly, true)
-	if err != nil || compiledArchitecture != 4 || !hasRV64ExecutionContract(c) {
-		return metadata, sizes, err
-	}
-	if !rv64ArtifactContractSource(c) {
-		return nil, sizes, fmt.Errorf("RV64 native execution contract lacks admitted source or artifact metadata")
-	}
-	capacities := c.rv64ExecutionTableCapacities()
-	if len(capacities) > maxRV64ExecutionTables || len(capacities) != 0 && len(capacities) != c.tableCount() {
-		return nil, sizes, fmt.Errorf("invalid RV64 execution table capacity count")
-	}
-	sizes.GC += int64(rv64ExecutionContractSize(c))
-	sizes.Metadata += int64(rv64ExecutionContractSize(c))
-	if !countOnly {
-		storageFree := rv64StorageFreeProof(c)
-		digest := rv64ExecutionDigestProof(c.code, metadata, c.syncHostSlots, storageFree, capacities...)
-		metadata = append(metadata, rv64ExecutionContractMarker[:]...)
-		version := byte(1)
-		if len(capacities) != 0 {
-			version = 2
-		}
-		if storageFree {
-			version += 2
-		}
-		metadata = append(metadata, version)
-		if storageFree {
-			metadata = append(metadata, 1)
-		}
-		metadata = append(metadata, byte(c.syncHostSlots), byte(c.syncHostSlots>>8))
-		if len(capacities) != 0 {
-			metadata = binary.LittleEndian.AppendUint32(metadata, uint32(len(capacities)))
-			for _, capacity := range capacities {
-				metadata = binary.LittleEndian.AppendUint32(metadata, capacity)
-			}
-		}
-		metadata = append(metadata, digest[:]...)
-	}
-	return metadata, sizes, nil
-}
-
-// Contract verification serializes the same canonical execution metadata without
-// its trailer or recursive root admission. All field codecs still validate.
-func encodeCompiledMetadataBody(c *Compiled, countOnly, checkRoots bool) ([]byte, ArtifactSectionSizes, error) {
+func compiledMetadataBytes(c *Compiled, checkRoots bool) ([]byte, error) {
 	if err := c.validateCompactData(); err != nil {
-		return nil, ArtifactSectionSizes{}, err
+		return nil, err
 	}
 	// CPU requirements must never alias the architecture execution markers.
 	if c.nativeTable64ABI > nativeTable64ImportedInitDropABI {
-		return nil, ArtifactSectionSizes{}, fmt.Errorf("unknown RV64 table64 compiler witness")
+		return nil, fmt.Errorf("unknown RV64 table64 compiler witness")
 	}
 	if uint64(c.requiredAMD64Features)&^(compiledCPUFeatures>>32) != 0 {
-		return nil, ArtifactSectionSizes{}, fmt.Errorf("AMD64 CPU requirements exceed the encoded feature field")
+		return nil, fmt.Errorf("AMD64 CPU requirements exceed the encoded feature field")
 	}
 	if compiledArchitecture == 4 && uint64(c.requiredAMD64Features)&((compiledRV64OwnedExceptionReferences|compiledRV64Table64ImportedInitDropABI|compiledRV64Table64ImportedCopyABI|compiledRV64Table64ImportedFillABI|compiledRV64Table64ImportedGrowABI|compiledRV64Table64ImportedGetSetABI|compiledRV64Table64ImportedSizeABI|compiledRV64Table64InitDropABI|compiledRV64Table64CopyABI|compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI|compiledRV64ReferenceFunctionABI|compiledRV64ReferenceControlABI|compiledRV64ReferenceCallABI)>>32) != 0 {
-		return nil, ArtifactSectionSizes{}, fmt.Errorf("AMD64 CPU requirement aliases an RV64 execution marker")
+		return nil, fmt.Errorf("AMD64 CPU requirement aliases an RV64 execution marker")
 	}
-	w := compiledWriter{countOnly: countOnly}
-	if !countOnly {
-		w.buf = make([]byte, 0, 256)
-	}
-	var sizes ArtifactSectionSizes
-	start := int64(0)
-	mark := func(dst *int64) {
-		*dst = w.length() - start
-		start = w.length()
-	}
+	w := compiledWriter{buf: make([]byte, 0, 256)}
 	w.intSlice(c.Entry)
 	w.internalEntrySlice(c.InternalEntry)
-	mark(&sizes.Entries)
 	w.uvar(uint64(c.NumImports))
 	w.stringSlice(c.Imports)
 	funcModuleEnds, _, _, _, exactImportNames := c.importModuleEndSections()
@@ -414,58 +149,46 @@ func encodeCompiledMetadataBody(c *Compiled, countOnly, checkRoots bool) ([]byte
 		}
 		w.uvar(moduleEnd)
 	}
-	mark(&sizes.Imports)
 	if err := w.typeDescriptors(c.Types); err != nil {
-		return nil, sizes, err
+		return nil, err
 	}
 	if err := validateValueTypeDescriptors(c.Types, c.ValueTypes); err != nil {
-		return nil, sizes, err
+		return nil, err
 	}
 	w.valueTypes(c.ValueTypes)
-	mark(&sizes.Types)
 	if err := w.funcSigs(c.importFuncSigs, c.Types); err != nil {
-		return nil, sizes, err
+		return nil, err
 	}
 	if err := w.funcSigs(c.Funcs, c.Types); err != nil {
-		return nil, sizes, err
+		return nil, err
 	}
-	mark(&sizes.Functions)
 	w.stringIntMap(c.Exports)
 	w.nameSec(c.Names)
-	mark(&sizes.ExportsAndNames)
 	if err := w.globalImports(c.GlobalImports, c); err != nil {
-		return nil, sizes, err
+		return nil, err
 	}
 	if err := w.globals(c.Globals, c); err != nil {
-		return nil, sizes, err
+		return nil, err
 	}
 	w.stringIntMap(c.GlobalExports)
-	mark(&sizes.Globals)
 	if err := w.tables(c); err != nil {
-		return nil, sizes, err
+		return nil, err
 	}
 	w.stringIntMap(c.tableExports)
 	w.u64Slice(c.FuncTypeID)
 	w.bool(c.NeedsFuncRefDescs)
-	mark(&sizes.Tables)
 	if err := w.elems(c.Elems, c); err != nil {
-		return nil, sizes, err
+		return nil, err
 	}
 	if err := w.elems(c.passiveElems, c); err != nil {
-		return nil, sizes, err
+		return nil, err
 	}
-	mark(&sizes.Elements)
 	w.compiledData(c)
 	w.passiveData(c.PassiveData)
-	mark(&sizes.Data)
 	w.memories(c)
 	w.stringIntMap(c.memoryExportMap())
-	mark(&sizes.Memories)
 	w.bool(c.dynamicImports)
-	sizes.Features = w.length() - start
-	start = w.length()
 	w.tags(c)
-	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
 	if c.needsOwnedExceptionReferences() {
 		required |= compiledRV64OwnedExceptionReferences
@@ -493,79 +216,79 @@ func encodeCompiledMetadataBody(c *Compiled, countOnly, checkRoots bool) ([]byte
 	}
 	if c.nativeTable64ABI == nativeTable64SizeABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 table.size compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 table.size compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64SizeABI
 	}
 	if c.nativeTable64ABI == nativeTable64GrowABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 table64.grow compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 table64.grow compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64GrowABI
 	}
 	if c.nativeTable64ABI == nativeTable64GetSetABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 table64.get/set compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 table64.get/set compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64GetSetABI
 	}
 	if c.nativeTable64ABI == nativeTable64IndirectABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 table64 indirect-call compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 table64 indirect-call compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64IndirectABI
 	}
 	if c.nativeTable64ABI == nativeTable64FillABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 table64.fill compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 table64.fill compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64FillABI
 	}
 	if c.nativeTable64ABI == nativeTable64CopyABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 table64.copy compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 table64.copy compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64CopyABI
 	}
 	if c.nativeTable64ABI == nativeTable64InitDropABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 table64.init/drop compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 table64.init/drop compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64InitDropABI
 	}
 	if c.nativeTable64ABI == nativeTable64ImportedSizeABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 imported table64.size compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 imported table64.size compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64ImportedSizeABI
 	}
 	if c.nativeTable64ABI == nativeTable64ImportedGetSetABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 imported table64.get/set compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 imported table64.get/set compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64ImportedGetSetABI
 	}
 	if c.nativeTable64ABI == nativeTable64ImportedGrowABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 imported table64.grow compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 imported table64.grow compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64ImportedGrowABI
 	}
 	if c.nativeTable64ABI == nativeTable64ImportedFillABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 imported table64.fill compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 imported table64.fill compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64ImportedFillABI
 	}
 	if c.nativeTable64ABI == nativeTable64ImportedCopyABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 imported table64.copy compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 imported table64.copy compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64ImportedCopyABI
 	}
 	if c.nativeTable64ABI == nativeTable64ImportedInitDropABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 imported table64.init/drop compiler witness on a foreign architecture")
+			return nil, fmt.Errorf("RV64 imported table64.init/drop compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64ImportedInitDropABI
 	}
@@ -605,7 +328,7 @@ func encodeCompiledMetadataBody(c *Compiled, countOnly, checkRoots bool) ([]byte
 		var err error
 		startIndex, err = compiledStartIndex(c)
 		if err != nil {
-			return nil, sizes, err
+			return nil, err
 		}
 		required |= compiledStartFunction
 	}
@@ -620,63 +343,36 @@ func encodeCompiledMetadataBody(c *Compiled, countOnly, checkRoots bool) ([]byte
 		w.u32(startIndex)
 	}
 	if err := railshotWriteNativeTail(&w, c); err != nil {
-		return nil, sizes, err
+		return nil, err
 	}
-	sizes.Features += w.length() - start
-	start = w.length()
 	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.hasInternalCollectorReferenceFunctions() || c.hasOpaqueExternFrames() || c.hasFunctionEnvironmentFrames() {
 		w.u32(c.nativeGCABIRequirement())
 	}
 	w.gcTypeDescs(c.GCTypeDescs)
 	if checkRoots {
 		if err := validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()); err != nil {
-			return nil, sizes, err
+			return nil, err
 		}
 	}
 	if rootMap := c.genericGCFrameRoots(); rootMap != nil {
 		w.gcFrameRoots(rootMap)
 	}
-	mark(&sizes.GC)
-	sizes.Metadata = w.length()
-	return w.buf, sizes, nil
+	return w.buf, nil
 }
 
 type compiledWriter struct {
-	buf       []byte
-	tmp       [binary.MaxVarintLen64]byte
-	count     int64
-	countOnly bool
+	buf []byte
+	tmp [binary.MaxVarintLen64]byte
 }
 
-func (w *compiledWriter) length() int64 {
-	if w.countOnly {
-		return w.count
-	}
-	return int64(len(w.buf))
-}
-
-func (w *compiledWriter) appendBytes(p []byte) {
-	if w.countOnly {
-		w.count += int64(len(p))
-	} else {
-		w.buf = append(w.buf, p...)
-	}
-}
-
-func (w *compiledWriter) appendString(s string) {
-	if w.countOnly {
-		w.count += int64(len(s))
-	} else {
-		w.buf = append(w.buf, s...)
-	}
-}
-
+func (w *compiledWriter) appendBytes(p []byte)  { w.buf = append(w.buf, p...) }
+func (w *compiledWriter) appendString(s string) { w.buf = append(w.buf, s...) }
 func (w *compiledWriter) u8(v byte) {
 	w.tmp[0] = v
 	w.appendBytes(w.tmp[:1])
 }
 
-// Share scalar metadata encoding across artifact-writing paths, with buffer
+// Share scalar metadata encoding for mutation fingerprints, with buffer
 // appends inline inside each encoder.
 //
 //go:noinline
@@ -713,11 +409,7 @@ func (w *compiledWriter) bytes(b []byte) {
 	w.uvar(uint64(len(b)))
 	w.appendBytes(b)
 }
-func (w *compiledWriter) section(id byte, payload []byte) {
-	w.u8(id)
-	w.uvar(uint64(len(payload)))
-	w.appendBytes(payload)
-}
+
 func (w *compiledWriter) str(s string) {
 	w.uvar(uint64(len(s)))
 	w.appendString(s)
@@ -790,13 +482,6 @@ func (w *compiledWriter) memories(c *Compiled) {
 
 func (w *compiledWriter) stringIntMap(m map[string]int) {
 	w.uvar(uint64(len(m)))
-	if w.countOnly {
-		for k, v := range m {
-			w.str(k)
-			w.ivar(v)
-		}
-		return
-	}
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -1139,1631 +824,4 @@ func (w *compiledWriter) gcTypeDescs(v []gc.TypeDesc) {
 		w.u32(uint32(d.Super))
 		w.bool(d.HasSuper)
 	}
-}
-
-func unmarshalCompiled(c *Compiled, data []byte) error {
-	r := compiledReader{data: data}
-	header, err := r.u8()
-	if err != nil {
-		return wrapContextError("compiled artifact target and section count", err)
-	}
-	if err := validateCompiledHeader(header); err != nil {
-		return err
-	}
-	code, err := r.requiredSection(compiledSectionCode, "code")
-	if err != nil {
-		return err
-	}
-	metadata, err := r.requiredSection(compiledSectionMetadata, "metadata")
-	if err != nil {
-		return err
-	}
-	if len(r.data) != 0 {
-		return fmt.Errorf("trailing %d byte(s) after compiled sections", len(r.data))
-	}
-	c.code = code
-	return unmarshalCompiledMetadata(c, metadata)
-}
-
-func validateCompiledHeader(header byte) error {
-	count := header & 0x0f
-	if count != compiledSectionCount {
-		return fmt.Errorf("compiled section count %d unsupported (want %d)", count, compiledSectionCount)
-	}
-	architecture := header >> 4
-	if architecture != compiledArchitecture {
-		return fmt.Errorf("compiled architecture %d unsupported (want %d)", architecture, compiledArchitecture)
-	}
-	return nil
-}
-
-func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
-	budget := newArtifactDecodeBudget(0)
-	if err := budget.charge(uint64(len(data)), 1); err != nil {
-		return err
-	}
-	return unmarshalCompiledMetadataBudget(c, data, budget)
-}
-
-func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactDecodeBudget) error {
-	if err := budget.charge(1, 16384); err != nil {
-		return err
-	}
-	r := compiledReader{data: data, budget: budget}
-	var err error
-	c.Entry, err = r.intSlice()
-	if err != nil {
-		return err
-	}
-	c.InternalEntry, err = r.intSlice()
-	if err != nil {
-		return err
-	}
-	if err := c.validateInternalEntries(true); err != nil {
-		return err
-	}
-	n, err := r.uvar()
-	if err != nil {
-		return err
-	}
-	if n > uint64(maxInt()) {
-		return fmt.Errorf("NumImports overflows int")
-	}
-	c.NumImports = int(n)
-	var functionModuleEnds []uint64
-	c.Imports, functionModuleEnds, err = r.importDirectory(c.NumImports)
-	if err != nil {
-		return err
-	}
-	if len(functionModuleEnds) != 0 {
-		c.validateMemo = &validateMemo{importModuleEnds: functionModuleEnds}
-	}
-	c.Types, err = r.typeDescriptors()
-	if err != nil {
-		return err
-	}
-	c.ValueTypes, err = r.valueTypes("value type pool")
-	if err != nil {
-		return err
-	}
-	if err := validateValueTypeDescriptors(c.Types, c.ValueTypes); err != nil {
-		return err
-	}
-	c.importFuncSigs, err = r.funcSigs(c.Types)
-	if err != nil {
-		return err
-	}
-	c.Funcs, err = r.funcSigs(c.Types)
-	if err != nil {
-		return err
-	}
-	c.Exports, err = r.stringIntMap()
-	if err != nil {
-		return err
-	}
-	c.Names, err = r.nameSec()
-	if err != nil {
-		return err
-	}
-	c.GlobalImports, err = r.globalImports(c.ValueTypes, c.Types)
-	if err != nil {
-		return err
-	}
-	c.Globals, err = r.globals(c.ValueTypes, c.Types)
-	if err != nil {
-		return err
-	}
-	c.GlobalExports, err = r.stringIntMap()
-	if err != nil {
-		return err
-	}
-	if err := r.tables(c, c.ValueTypes, c.Types); err != nil {
-		return err
-	}
-	c.tableExports, err = r.stringIntMap()
-	if err != nil {
-		return err
-	}
-	c.hasTableExportMetadata = true
-	c.FuncTypeID, err = r.u64Slice()
-	if err != nil {
-		return err
-	}
-	c.NeedsFuncRefDescs, err = r.bool()
-	if err != nil {
-		return err
-	}
-	c.Elems, err = r.elems(c.ValueTypes, c.Types)
-	if err != nil {
-		return err
-	}
-	c.passiveElems, err = r.elems(c.ValueTypes, c.Types)
-	if err != nil {
-		return err
-	}
-	c.Data, err = r.dataInits()
-	if err != nil {
-		return err
-	}
-	c.PassiveData, err = r.passiveDataInits()
-	if err != nil {
-		return err
-	}
-	if err := r.memories(c); err != nil {
-		return err
-	}
-	if c.memoryDir == nil {
-		c.memoryDir = &compiledMemoryDirectory{}
-	}
-	c.memoryDir.exports, err = r.stringIntMap()
-	if err != nil {
-		return err
-	}
-	c.memoryDir.exactExports = true
-	c.dynamicImports, err = r.bool()
-	if err != nil {
-		return err
-	}
-	if err := r.tags(c); err != nil {
-		return err
-	}
-	required, err := r.u64()
-	if err != nil {
-		return err
-	}
-	if compiledArchitecture != 4 && required&(compiledRV64TableContextABI|compiledRV64ContextTrapABI) != 0 {
-		return fmt.Errorf("RV64 native-context ABI on a foreign architecture")
-	}
-	gcExecution := required & compiledGCExecutionMask
-	if compiledArchitecture == 4 {
-		c.setOwnedExceptionReferences(required&compiledRV64OwnedExceptionReferences != 0)
-	}
-	c.nativeReferenceFunctionABI = compiledArchitecture == 4 && required&compiledRV64ReferenceFunctionABI != 0
-	c.nativeReferenceControlABI = compiledArchitecture == 4 && required&compiledRV64ReferenceControlABI != 0
-	c.nativeReferenceCallABI = compiledArchitecture == 4 && required&compiledRV64ReferenceCallABI != 0
-	c.nativeContextTrapABI = compiledArchitecture == 4 && required&compiledRV64ContextTrapABI != 0
-	c.nativeTableContextABI = compiledArchitecture == 4 && required&compiledRV64TableContextABI != 0
-	c.nativeTableReferenceABI = compiledArchitecture == 4 && required&compiledRV64TableReferenceABI != 0
-	sizeABI := compiledArchitecture == 4 && required&compiledRV64Table64SizeABI != 0
-	growABI := compiledArchitecture == 4 && required&compiledRV64Table64GrowABI != 0
-	getSetABI := compiledArchitecture == 4 && required&compiledRV64Table64GetSetABI != 0
-	indirectABI := compiledArchitecture == 4 && required&compiledRV64Table64IndirectABI != 0
-	fillABI := compiledArchitecture == 4 && required&compiledRV64Table64FillABI != 0
-	copyABI := compiledArchitecture == 4 && required&compiledRV64Table64CopyABI != 0
-	initDropABI := compiledArchitecture == 4 && required&compiledRV64Table64InitDropABI != 0
-	importedSizeABI := compiledArchitecture == 4 && required&compiledRV64Table64ImportedSizeABI != 0
-	importedGetSetABI := compiledArchitecture == 4 && required&compiledRV64Table64ImportedGetSetABI != 0
-	importedGrowABI := compiledArchitecture == 4 && required&compiledRV64Table64ImportedGrowABI != 0
-	importedFillABI := compiledArchitecture == 4 && required&compiledRV64Table64ImportedFillABI != 0
-	importedCopyABI := compiledArchitecture == 4 && required&compiledRV64Table64ImportedCopyABI != 0
-	importedInitDropABI := compiledArchitecture == 4 && required&compiledRV64Table64ImportedInitDropABI != 0
-	if compiledArchitecture == 4 && bits.OnesCount64(required&(compiledRV64Table64ImportedInitDropABI|compiledRV64Table64ImportedCopyABI|compiledRV64Table64ImportedFillABI|compiledRV64Table64ImportedGrowABI|compiledRV64Table64ImportedGetSetABI|compiledRV64Table64ImportedSizeABI|compiledRV64Table64InitDropABI|compiledRV64Table64CopyABI|compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI)) > 1 {
-		return fmt.Errorf("conflicting RV64 table64 compiler witnesses")
-	}
-	c.nativeTable64ABI = nativeTable64NoABI
-	if sizeABI {
-		c.nativeTable64ABI = nativeTable64SizeABI
-	} else if growABI {
-		c.nativeTable64ABI = nativeTable64GrowABI
-	} else if getSetABI {
-		c.nativeTable64ABI = nativeTable64GetSetABI
-	} else if indirectABI {
-		c.nativeTable64ABI = nativeTable64IndirectABI
-	} else if fillABI {
-		c.nativeTable64ABI = nativeTable64FillABI
-	} else if copyABI {
-		c.nativeTable64ABI = nativeTable64CopyABI
-	} else if initDropABI {
-		c.nativeTable64ABI = nativeTable64InitDropABI
-	} else if importedSizeABI {
-		c.nativeTable64ABI = nativeTable64ImportedSizeABI
-	} else if importedGetSetABI {
-		c.nativeTable64ABI = nativeTable64ImportedGetSetABI
-	} else if importedGrowABI {
-		c.nativeTable64ABI = nativeTable64ImportedGrowABI
-	} else if importedFillABI {
-		c.nativeTable64ABI = nativeTable64ImportedFillABI
-	} else if importedCopyABI {
-		c.nativeTable64ABI = nativeTable64ImportedCopyABI
-	} else if importedInitDropABI {
-		c.nativeTable64ABI = nativeTable64ImportedInitDropABI
-	}
-	if c.nativeReferenceFunctionABI && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&compiledRegisterABIDisabled == 0 || required&uint64(CoreFeatureReferenceTypes) == 0) {
-		return fmt.Errorf("RV64 closed reference function ABI requires framed retained reference contexts")
-	}
-	if (c.nativeReferenceCallABI || c.nativeReferenceControlABI) && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&uint64(CoreFeatureTypedFunctionReferences|CoreFeatureGC) == 0) {
-		return fmt.Errorf("RV64 typed-reference ABI requires typed retained native reference contexts")
-	}
-	if c.nativeTableReferenceABI && (compiledArchitecture != 4 || !c.nativeTableContextABI || !c.nativeContextTrapABI) {
-		return fmt.Errorf("RV64 table reference ABI requires retained native table contexts")
-	}
-	if c.nativeTableContextABI && (compiledArchitecture != 4 || !c.nativeContextTrapABI) {
-		return fmt.Errorf("RV64 native table context ABI requires RV64 native-context traps")
-	}
-	if c.nativeContextTrapABI && compiledArchitecture != 4 {
-		return fmt.Errorf("RV64 native-context trap ABI on a foreign architecture")
-	}
-	cpuRequirements := required & compiledCPUFeatures
-	if compiledArchitecture == 4 {
-		cpuRequirements &^= compiledRV64FunctionEnvironmentFrames | compiledRV64OpaqueExternFrames | compiledRV64OwnedExceptionReferences | compiledRV64Table64ImportedInitDropABI | compiledRV64Table64ImportedCopyABI | compiledRV64Table64ImportedFillABI | compiledRV64Table64ImportedGrowABI | compiledRV64Table64ImportedGetSetABI | compiledRV64Table64ImportedSizeABI | compiledRV64Table64InitDropABI | compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI | compiledRV64ReferenceFunctionABI | compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI
-	}
-	c.requiredAMD64Features = shared.AMD64Features(cpuRequirements >> 32)
-	if c.requiredAMD64Features&^shared.AMD64KnownFeatures != 0 {
-		return fmt.Errorf("unknown AMD64 CPU requirements %#x", c.requiredAMD64Features)
-	}
-	c.requiresNotifyPending = compiledArchitecture != 4 && required&compiledNotifyPendingExecution != 0
-	c.requiresARM64LSE = compiledArchitecture == 2 && required&compiledCPUFeatureARM64LSE != 0
-	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
-	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.core1SegmentPreflight = required&compiledCore1SegmentPreflight != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledCore1SegmentPreflight | compiledRV64FunctionEnvironmentFrames | compiledRV64OpaqueExternFrames | compiledRV64OwnedExceptionReferences | compiledRV64Table64ImportedInitDropABI | compiledRV64Table64ImportedCopyABI | compiledRV64Table64ImportedFillABI | compiledRV64Table64ImportedGrowABI | compiledRV64Table64ImportedGetSetABI | compiledRV64Table64ImportedSizeABI | compiledRV64Table64InitDropABI | compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI | compiledRV64ReferenceFunctionABI | compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledNotifyPendingExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures | compiledCPUFeatureARM64LSE))
-	if c.nativeReferenceCallABI || c.nativeReferenceControlABI {
-		c.ensureCodeCache()
-		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
-	}
-	c.HasStart, c.StartIsImport, c.StartLocalFunc, c.StartImportIdx = false, false, 0, 0
-	if required&compiledStartFunction != 0 {
-		index, err := r.u32()
-		if err != nil {
-			return fmt.Errorf("start function index: %w", err)
-		}
-		c.HasStart = true
-		c.StartIsImport = uint64(index) < uint64(c.NumImports)
-		if c.StartIsImport {
-			c.StartImportIdx = int(index)
-		} else {
-			c.StartLocalFunc = int(uint64(index) - uint64(c.NumImports))
-		}
-		if _, err := compiledStartIndex(c); err != nil {
-			return err
-		}
-	}
-	if err := railshotReadNativeTail(&r, c); err != nil {
-		return err
-	}
-	// Version-5 EH code dereferences descriptor zero to recover its owning native
-	// context on an exceptional cross-instance return. Derive the fixed-header
-	// requirement from authoritative feature metadata as well as the redundant
-	// bit before footprint validation, so a sparse producer cannot create native
-	// code with a missing context anchor.
-	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0 || compiledArchitecture == 4 && required&compiledAtomicWaitExecution != 0 || c.nativeContextTrapABI && railshotNeedsImportContextHeader(c) || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling)
-	if compiledArchitecture == 4 && required&compiledRV64FunctionEnvironmentFrames != 0 {
-		c.ensureCodeCache()
-		c.codeCache.gcMetadataFlags |= compiledGCMetadataFunctionFrames
-	}
-	if compiledArchitecture == 4 && required&compiledRV64OpaqueExternFrames != 0 {
-		c.ensureCodeCache()
-		c.codeCache.gcMetadataFlags |= compiledGCMetadataOpaqueExternFrames
-	}
-	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
-	if genericNativeGC || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.hasInternalCollectorReferenceFunctions() || c.hasOpaqueExternFrames() || c.hasFunctionEnvironmentFrames() {
-		label := "native GC call-boundary"
-		if genericNativeGC {
-			label = "generic GC native"
-		}
-		nativeGCABIVersion, readErr := r.u32()
-		if readErr != nil {
-			return fmt.Errorf("%s ABI version: %w", label, readErr)
-		}
-		if nativeGCABIVersion != gc.NativeABIVersion {
-			return fmt.Errorf("%s ABI version %d unsupported (want %d)", label, nativeGCABIVersion, gc.NativeABIVersion)
-		}
-		c.ensureCodeCache()
-		c.codeCache.setNativeGCABIVersion(nativeGCABIVersion)
-	}
-	c.GCTypeDescs, err = r.gcTypeDescs()
-	if err != nil {
-		return err
-	}
-	var gcFrameRoots *compiledGCFrameRoots
-	if len(r.data) != 0 && !rv64ExecutionContractTrailer(r.data) {
-		gcFrameRoots, err = r.gcFrameRoots()
-		if err != nil {
-			return err
-		}
-	}
-	if gcExecution&compiledGCExecutionDynamicFuncRefTest != 0 {
-		// A nonfinal function type also requires GC type declarations when its
-		// only use is call_indirect. Such an image still needs the owner-backed
-		// subtype helper, without a typed-function instruction or GC allocation.
-		functionTypeMetadata := c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) || compiledArchitecture == 4 && c.requiredFeatures.IsEnabled(CoreFeatureGC)
-		if !functionTypeMetadata || len(c.FuncTypeID) == 0 || !c.needsFuncRefDescs() {
-			return fmt.Errorf("dynamic indexed-function ref.test execution flag requires typed function descriptor metadata")
-		}
-		c.ensureCodeCache()
-		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
-		c.codeCache.flags |= compiledCacheDynamicFuncRefTest
-	}
-	if gcExecution&compiledGCExecutionI31Product != 0 {
-		if !c.requiredFeatures.IsEnabled(CoreFeatureGC) {
-			return fmt.Errorf("i31 execution product flag requires the recorded GC feature")
-		}
-		c.ensureCodeCache()
-		c.codeCache.stagedFeatures |= c.requiredFeatures & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
-		c.codeCache.gcI31Product = stagedGCI31ProductCore
-	}
-	if c.requiresNotifyPending && required&compiledAtomicWaitExecution == 0 {
-		return fmt.Errorf("native notify queue requirement needs recorded atomic helper execution")
-	}
-	if required&compiledAtomicWaitExecution != 0 {
-		if !c.requiredFeatures.IsEnabled(CoreFeatureThreads) {
-			return fmt.Errorf("atomic wait execution flag requires recorded threads feature")
-		}
-		c.ensureCodeCache()
-		c.codeCache.flags |= compiledCacheAtomicWaitHelpers
-	}
-	genericGCExecution := gcExecution & (compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray)
-	if genericGCExecution != 0 {
-		// i31 ref.test may use the reference helper without allocating a heap
-		// object. Its separate execution bit and exact function-only graph are
-		// persisted; ordinary generic heap helpers still need object descriptors.
-		i31ReferenceHelper := c.stagedGCI31Product() != 0 && compiledFunctionOnlyTypeGraph(c)
-		if !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !gc.HasHeapObjectTypes(c.GCTypeDescs) && !i31ReferenceHelper {
-			return fmt.Errorf("generic GC execution flags %#x require recorded GC heap metadata", genericGCExecution)
-		}
-		hasStruct, hasArray := false, false
-		for _, desc := range c.GCTypeDescs {
-			hasStruct = hasStruct || desc.Kind == gc.KindStruct
-			hasArray = hasArray || desc.Kind == gc.KindArray
-		}
-		if genericGCExecution&compiledGCExecutionGenericStruct != 0 && !hasStruct && !hasArray && !i31ReferenceHelper {
-			return fmt.Errorf("generic GC reference-helper execution flag has no struct or array descriptor")
-		}
-		if genericGCExecution&compiledGCExecutionGenericArray != 0 && !hasArray {
-			return fmt.Errorf("generic GC array execution flag has no array descriptor")
-		}
-		c.ensureCodeCache()
-		c.codeCache.stagedFeatures |= CoreFeatureGC | CoreFeatureTypedFunctionReferences
-		if genericGCExecution&compiledGCExecutionGenericStruct != 0 {
-			c.codeCache.gcStructProduct = stagedGCStructGeneric
-		}
-		if genericGCExecution&compiledGCExecutionGenericArray != 0 {
-			c.codeCache.gcArrayProduct = stagedGCArrayProductGeneric
-		}
-	}
-	if gcFrameRoots != nil {
-		if c.validateMemo == nil {
-			c.validateMemo = &validateMemo{}
-		}
-		c.validateMemo.gcFrameRoots = gcFrameRoots
-	}
-	if len(r.data) != 0 {
-		if c.validateMemo == nil {
-			c.validateMemo = &validateMemo{}
-		}
-		if err := readRV64ExecutionContract(c, r.data, data[:len(data)-len(r.data)]); err != nil {
-			return err
-		}
-		r.data = nil
-	}
-	if gcFrameRoots != nil {
-		if err := validateCompiledGCFrameRoots(c, gcFrameRoots); err != nil {
-			return err
-		}
-	}
-	if err := railshotValidateDecodedNativeTail(c); err != nil {
-		return err
-	}
-	if !rv64StructuralCodecMetadata(c) && !rv64ArtifactRootedContract(c) {
-		if err := railshotValidateReferenceCalls(c); err != nil {
-			return err
-		}
-	}
-	if len(r.data) != 0 {
-		return fmt.Errorf("trailing %d byte(s)", len(r.data))
-	}
-	return nil
-}
-
-type compiledReader struct {
-	data   []byte
-	budget *artifactDecodeBudget
-}
-
-func (r *compiledReader) requiredSection(want byte, label string) ([]byte, error) {
-	id, err := r.u8()
-	if err != nil {
-		return nil, fmt.Errorf("%s section id: %w", label, err)
-	}
-	if id != want {
-		return nil, fmt.Errorf("compiled section %d out of order (want %s section %d)", id, label, want)
-	}
-	size, err := r.canonicalUvar()
-	if err != nil {
-		return nil, fmt.Errorf("%s section length: %w", label, err)
-	}
-	if size > uint64(maxInt()) {
-		return nil, fmt.Errorf("%s section length overflows int", label)
-	}
-	payload, err := r.take(int(size))
-	if err != nil {
-		return nil, fmt.Errorf("truncated %s section: %w", label, err)
-	}
-	return payload, nil
-}
-
-func (r *compiledReader) canonicalUvar() (uint64, error) {
-	return r.uvar()
-}
-
-const (
-	minStringBytes       = 1
-	minVarintBytes       = 1
-	minU32Bytes          = 4
-	minStringIntMapBytes = minStringBytes + minVarintBytes
-	minNameAssocBytes    = minU32Bytes + minStringBytes
-	minFuncSigBytes      = 1
-	minDefinedTypeBytes  = minU32Bytes + 1 + minVarintBytes + 1 + 1 + 1
-	minFieldTypeBytes    = 3
-	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes + minStringBytes
-	minElemInitBytes     = minU32Bytes + 1 + 1 + minOffsetInitBytes + minVarintBytes
-	minDataInitBytes     = minU32Bytes + minOffsetInitBytes + minStringBytes
-	minPassiveDataBytes  = minStringBytes
-	minGlobalBytes       = 1 + 1 + 1
-	minTableBytes        = 1 + 1 + minVarintBytes + minVarintBytes + 1
-	minGlobalImportBytes = minStringBytes + minStringBytes + 1 + 1
-	minTagBytes          = minStringBytes + minVarintBytes + minU32Bytes
-	minGCDescTailBytes   = 20
-	minGCDescBytes       = minU32Bytes + 1 + 1 + minVarintBytes + minGCDescTailBytes
-	minGCFieldBytes      = 1 + minU32Bytes
-)
-
-func (r *compiledReader) take(n int) ([]byte, error) {
-	if n < 0 || n > len(r.data) {
-		return nil, fmt.Errorf("unexpected EOF")
-	}
-	b := r.data[:n]
-	r.data = r.data[n:]
-	return b, nil
-}
-func (r *compiledReader) u8() (byte, error) {
-	b, err := r.take(1)
-	if err != nil {
-		return 0, err
-	}
-	return b[0], nil
-}
-func (r *compiledReader) bool() (bool, error) {
-	b, err := r.u8()
-	if err != nil {
-		return false, err
-	}
-	switch b {
-	case 0:
-		return false, nil
-	case 1:
-		return true, nil
-	default:
-		return false, fmt.Errorf("invalid bool %d", b)
-	}
-}
-func (r *compiledReader) uvar() (uint64, error) {
-	v, n := binary.Uvarint(r.data)
-	if n <= 0 {
-		return 0, fmt.Errorf("invalid uvarint")
-	}
-	var canonical [binary.MaxVarintLen64]byte
-	if binary.PutUvarint(canonical[:], v) != n {
-		return 0, fmt.Errorf("non-canonical uvarint")
-	}
-	r.data = r.data[n:]
-	return v, nil
-}
-
-func (r *compiledReader) importModuleEnd(key string) (uint64, error) {
-	moduleEnd, err := r.uvar()
-	if err != nil {
-		return 0, err
-	}
-	if err := validateImportModuleEnd(key, moduleEnd); err != nil {
-		return 0, err
-	}
-	return moduleEnd, nil
-}
-func (r *compiledReader) ivar() (int, error) {
-	v, n := binary.Varint(r.data)
-	if n <= 0 {
-		return 0, fmt.Errorf("invalid varint")
-	}
-	var canonical [binary.MaxVarintLen64]byte
-	if binary.PutVarint(canonical[:], v) != n {
-		return 0, fmt.Errorf("non-canonical varint")
-	}
-	r.data = r.data[n:]
-	if int64(int(v)) != v {
-		return 0, fmt.Errorf("int overflows")
-	}
-	return int(v), nil
-}
-func (r *compiledReader) u32() (uint32, error) {
-	b, err := r.take(4)
-	if err != nil {
-		return 0, err
-	}
-	return binary.LittleEndian.Uint32(b), nil
-}
-func (r *compiledReader) u64() (uint64, error) {
-	b, err := r.take(8)
-	if err != nil {
-		return 0, err
-	}
-	return binary.LittleEndian.Uint64(b), nil
-}
-func (r *compiledReader) countMax(label string, max int) (int, error) {
-	n, err := r.uvar()
-	if err != nil {
-		return 0, err
-	}
-	if n > uint64(maxInt()) {
-		return 0, fmt.Errorf("%s count overflows int", label)
-	}
-	if max < 0 || n > uint64(max) {
-		return 0, fmt.Errorf("%s count %d exceeds remaining encoding capacity %d", label, n, max)
-	}
-	return int(n), nil
-}
-func (r *compiledReader) countElements(label string, minElemBytes int, decodedElemBytes uintptr) (int, error) {
-	if minElemBytes <= 0 {
-		return 0, fmt.Errorf("%s count has invalid element size %d", label, minElemBytes)
-	}
-	n, err := r.countMax(label, len(r.data)/minElemBytes)
-	if err != nil {
-		return 0, err
-	}
-	// Charge the actual container type, including its frozen copy and bounded
-	// validation/capacity overhead. Callers add explicit map/interner overhead;
-	// nested vectors and byte payloads are charged independently.
-	if err := r.reserve(uint64(n), uint64(decodedElemBytes)*artifactCollectionCopies); err != nil {
-		return 0, fmt.Errorf("%s: %w", label, err)
-	}
-	return n, nil
-}
-func (r *compiledReader) countBytes(label string) (int, error) {
-	return r.countMax(label, len(r.data))
-}
-func (r *compiledReader) bytes() ([]byte, error) {
-	return r.bytesLabel("byte slice")
-}
-func (r *compiledReader) bytesLabel(label string) ([]byte, error) {
-	n, err := r.countBytes(label)
-	if err != nil {
-		return nil, err
-	}
-	if err := r.reserve(uint64(n), 2); err != nil {
-		return nil, err
-	}
-	return r.take(n)
-}
-func (r *compiledReader) str() (string, error) {
-	return r.strLabel("string")
-}
-func (r *compiledReader) strLabel(label string) (string, error) {
-	b, err := r.bytesLabel(label)
-	if err != nil {
-		return "", err
-	}
-	if err := r.reserve(uint64(len(b)), 1); err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-func (r *compiledReader) stringSlice() ([]string, error) {
-	n, err := r.countElements("string slice", minStringBytes, unsafe.Sizeof(""))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]string, n)
-	for i := range out {
-		out[i], err = r.str()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-
-func (r *compiledReader) importDirectory(want int) ([]string, []uint64, error) {
-	return r.importDirectoryWithAllocationLimit(want, maxImportDirectoryAllocationBytes)
-}
-
-func (r *compiledReader) importDirectoryWithAllocationLimit(want, allocationLimit int) ([]string, []uint64, error) {
-	// Each entry needs at least an empty string length and one module-boundary
-	// varint in the remainder. This also rejects an impossible count before any
-	// decoded directory allocation.
-	n, err := r.countElements("function imports", minStringBytes+minVarintBytes, unsafe.Sizeof("")+unsafe.Sizeof(uint64(0)))
-	if err != nil {
-		return nil, nil, err
-	}
-	if n != want {
-		return nil, nil, fmt.Errorf("function import directory count %d != NumImports %d", n, want)
-	}
-	const moduleEndBytes = 8
-	decodedBytesPerImport := bits.UintSize/4 + moduleEndBytes // string header + uint64
-	if allocationLimit < 0 || n > allocationLimit/decodedBytesPerImport {
-		return nil, nil, fmt.Errorf("function import count %d exceeds decoded directory allocation limit %d bytes", n, allocationLimit)
-	}
-	keys := make([]string, n)
-	for i := range keys {
-		keys[i], err = r.str()
-		if err != nil {
-			return nil, nil, fmt.Errorf("function import %d key: %w", i, err)
-		}
-	}
-	ends := make([]uint64, n)
-	for i, key := range keys {
-		ends[i], err = r.importModuleEnd(key)
-		if err != nil {
-			return nil, nil, fmt.Errorf("function import %d name: %w", i, err)
-		}
-	}
-	return keys, ends, nil
-}
-func (r *compiledReader) intSlice() ([]int, error) {
-	n, err := r.countElements("int slice", minVarintBytes, unsafe.Sizeof(int(0)))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]int, n)
-	for i := range out {
-		out[i], err = r.ivar()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) u64Slice() ([]uint64, error) {
-	n, err := r.countElements("u64 slice", 8, unsafe.Sizeof(uint64(0)))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]uint64, n)
-	for i := range out {
-		out[i], err = r.u64()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) tags(c *Compiled) error {
-	n, err := r.countElements("exception tags", minTagBytes, unsafe.Sizeof(compiledTagDef{})+unsafe.Sizeof(uint64(0)))
-	if err != nil {
-		return err
-	}
-	if c.memoryDir == nil {
-		c.memoryDir = &compiledMemoryDirectory{}
-	}
-	if n != 0 {
-		c.memoryDir.ehTags = make([]compiledTagDef, n)
-	}
-	importEnded := false
-	for i := range c.memoryDir.ehTags {
-		tag := &c.memoryDir.ehTags[i]
-		tag.ImportKey, err = r.str()
-		if err != nil {
-			return fmt.Errorf("exception tag %d import: %w", i, err)
-		}
-		moduleEnd, readErr := r.importModuleEnd(tag.ImportKey)
-		if readErr != nil {
-			return fmt.Errorf("exception tag %d import name: %w", i, readErr)
-		}
-		if tag.ImportKey != "" {
-			c.appendImportModuleEnd(moduleEnd)
-		}
-		tag.TypeIndex, err = r.u32()
-		if err != nil {
-			return fmt.Errorf("exception tag %d type: %w", i, err)
-		}
-		if tag.ImportKey == "" {
-			importEnded = true
-		} else if importEnded {
-			return fmt.Errorf("exception tag %d import follows local declaration", i)
-		}
-	}
-	c.memoryDir.ehTagExports, err = r.stringIntMap()
-	if err != nil {
-		return wrapContextError("exception tag exports", err)
-	}
-	return nil
-}
-
-func (r *compiledReader) memories(c *Compiled) error {
-	n, err := r.countElements("memories", 7, unsafe.Sizeof(memoryDef{})+unsafe.Sizeof(uint64(0)))
-	if err != nil {
-		return err
-	}
-	if c.memoryDir == nil {
-		c.memoryDir = &compiledMemoryDirectory{}
-	}
-	if n != 0 {
-		c.memoryDir.defs = make([]memoryDef, n)
-	}
-	for i := range c.memoryDir.defs {
-		def := &c.memoryDir.defs[i]
-		def.ImportKey, err = r.str()
-		if err != nil {
-			return fmt.Errorf("memory %d import: %w", i, err)
-		}
-		moduleEnd, readErr := r.importModuleEnd(def.ImportKey)
-		if readErr != nil {
-			return fmt.Errorf("memory %d import name: %w", i, readErr)
-		}
-		if def.ImportKey != "" {
-			c.appendImportModuleEnd(moduleEnd)
-		}
-		def.Min, err = r.uvar()
-		if err != nil {
-			return fmt.Errorf("memory %d minimum: %w", i, err)
-		}
-		def.Max, err = r.uvar()
-		if err != nil {
-			return fmt.Errorf("memory %d maximum: %w", i, err)
-		}
-		def.HasMax, err = r.bool()
-		if err != nil {
-			return fmt.Errorf("memory %d has-max: %w", i, err)
-		}
-		def.Addr64, err = r.bool()
-		if err != nil {
-			return fmt.Errorf("memory %d address type: %w", i, err)
-		}
-		def.Shared, err = r.bool()
-		if err != nil {
-			return fmt.Errorf("memory %d shared flag: %w", i, err)
-		}
-		if i == 0 && def.ImportKey != "" {
-			c.memoryImport = def.ImportKey
-		}
-	}
-	c.HasMemory, err = r.bool()
-	if err != nil {
-		return err
-	}
-	c.MemMinPages, err = r.u32()
-	if err != nil {
-		return err
-	}
-	c.MemMaxPages, err = r.u32()
-	if err == nil && len(c.memoryDir.defs) != 0 {
-		c.MemHasMax = c.memoryDir.defs[0].HasMax
-	}
-	return err
-}
-
-func (r *compiledReader) stringIntMap() (map[string]int, error) {
-	n, err := r.countElements("string-int map", minStringIntMapBytes, unsafe.Sizeof("")+unsafe.Sizeof(int(0))+16)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]int, n)
-	for i := 0; i < n; i++ {
-		k, err := r.str()
-		if err != nil {
-			return nil, err
-		}
-		v, err := r.ivar()
-		if err != nil {
-			return nil, err
-		}
-		out[k] = v
-	}
-	return out, nil
-}
-func (r *compiledReader) nameMap(label string) (wasm.NameMap, error) {
-	n, err := r.countElements(label, minNameAssocBytes, unsafe.Sizeof(wasm.NameAssoc{}))
-	if err != nil {
-		return nil, err
-	}
-	out := make(wasm.NameMap, n)
-	for i := range out {
-		out[i].Index, err = r.u32()
-		if err != nil {
-			return nil, err
-		}
-		out[i].Name, err = r.strLabel(label + " name")
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) indirectNameMap(label, nestedLabel string) (wasm.IndirectNameMap, error) {
-	n, err := r.countElements(label, minNameAssocBytes, unsafe.Sizeof(wasm.IndirectNameAssoc{}))
-	if err != nil {
-		return nil, err
-	}
-	out := make(wasm.IndirectNameMap, n)
-	for i := range out {
-		out[i].Index, err = r.u32()
-		if err != nil {
-			return nil, err
-		}
-		out[i].Names, err = r.nameMap(nestedLabel)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) nameSec() (*wasm.NameSec, error) {
-	has, err := r.bool()
-	if err != nil || !has {
-		return nil, err
-	}
-	n := &wasm.NameSec{}
-	hasModule, err := r.bool()
-	if err != nil {
-		return nil, err
-	}
-	if hasModule {
-		s, err := r.strLabel("module name")
-		if err != nil {
-			return nil, err
-		}
-		n.ModuleName = &s
-	}
-	if n.FunctionNames, err = r.nameMap("function name map"); err != nil {
-		return nil, err
-	}
-	if n.LocalNames, err = r.indirectNameMap("local indirect name map", "local name map"); err != nil {
-		return nil, err
-	}
-	if n.LabelNames, err = r.indirectNameMap("label indirect name map", "label name map"); err != nil {
-		return nil, err
-	}
-	if n.TypeNames, err = r.nameMap("type name map"); err != nil {
-		return nil, err
-	}
-	if n.TableNames, err = r.nameMap("table name map"); err != nil {
-		return nil, err
-	}
-	if n.MemoryNames, err = r.nameMap("memory name map"); err != nil {
-		return nil, err
-	}
-	if n.GlobalNames, err = r.nameMap("global name map"); err != nil {
-		return nil, err
-	}
-	if n.ElementNames, err = r.nameMap("element name map"); err != nil {
-		return nil, err
-	}
-	if n.DataNames, err = r.nameMap("data name map"); err != nil {
-		return nil, err
-	}
-	if n.FieldNames, err = r.indirectNameMap("field indirect name map", "field name map"); err != nil {
-		return nil, err
-	}
-	if n.TagNames, err = r.nameMap("tag name map"); err != nil {
-		return nil, err
-	}
-	return n, nil
-}
-func (r *compiledReader) valType() (ValType, error) {
-	code, err := r.u8()
-	if err != nil {
-		return 0, err
-	}
-	t, ok := valTypeFromCode(code)
-	if !ok {
-		return 0, fmt.Errorf("unsupported value type code 0x%02x", code)
-	}
-	return t, nil
-}
-func (r *compiledReader) valueTypeRef(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) (legacy ValType, index uint32, has bool, err error) {
-	has, err = r.bool()
-	if err != nil {
-		return 0, 0, false, err
-	}
-	if has {
-		index, err = r.u32()
-		if err != nil {
-			return 0, 0, false, err
-		}
-		if int(index) >= len(pool) {
-			return 0, 0, false, fmt.Errorf("value type index %d out of range", index)
-		}
-		legacy, ok := pool[index].ABIType(types)
-		if !ok {
-			return 0, 0, false, fmt.Errorf("value type index %d is outside the current ABI", index)
-		}
-		return legacy, index, true, nil
-	}
-	legacy, err = r.valType()
-	return legacy, 0, false, err
-}
-
-func (r *compiledReader) valueType() (ValueTypeDescriptor, error) {
-	kind, err := r.u8()
-	if err != nil {
-		return ValueTypeDescriptor{}, err
-	}
-	t := ValueTypeDescriptor{Kind: ValueTypeKind(kind)}
-	if t.Kind > ValueTypeReference {
-		return t, fmt.Errorf("invalid structural value type kind %d", kind)
-	}
-	if t.Kind != ValueTypeReference {
-		return t, nil
-	}
-	if t.Ref.Nullable, err = r.bool(); err != nil {
-		return t, err
-	}
-	if t.Ref.Exact, err = r.bool(); err != nil {
-		return t, err
-	}
-	if t.Ref.Heap.Defined, err = r.bool(); err != nil {
-		return t, err
-	}
-	if t.Ref.Heap.Defined {
-		t.Ref.Heap.TypeIndex, err = r.u32()
-		return t, err
-	}
-	abs, err := r.u8()
-	if err != nil {
-		return t, err
-	}
-	t.Ref.Heap.Abstract = AbstractHeapType(abs)
-	if t.Ref.Heap.Abstract > AbstractHeapNoExn {
-		return t, fmt.Errorf("invalid abstract heap type %d", abs)
-	}
-	return t, nil
-}
-
-func (r *compiledReader) valueTypes(label string) ([]ValueTypeDescriptor, error) {
-	n, err := r.countElements(label, minVarintBytes, unsafe.Sizeof(ValueTypeDescriptor{}))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]ValueTypeDescriptor, n)
-	for i := range out {
-		out[i], err = r.valueType()
-		if err != nil {
-			return nil, fmt.Errorf("%s %d: %w", label, i, err)
-		}
-	}
-	return out, nil
-}
-
-func (r *compiledReader) fieldType() (FieldTypeDescriptor, error) {
-	var f FieldTypeDescriptor
-	var err error
-	if f.Storage.Packed, err = r.bool(); err != nil {
-		return f, err
-	}
-	if f.Storage.Packed {
-		pack, err := r.u8()
-		if err != nil {
-			return f, err
-		}
-		f.Storage.PackedType = PackedType(pack)
-		if f.Storage.PackedType > PackedTypeI16 {
-			return f, fmt.Errorf("invalid packed type %d", pack)
-		}
-	} else if f.Storage.Value, err = r.valueType(); err != nil {
-		return f, err
-	}
-	f.Mutable, err = r.bool()
-	return f, err
-}
-
-func (r *compiledReader) typeDescriptors() ([]DefinedTypeDescriptor, error) {
-	n, err := r.countElements("defined types", minDefinedTypeBytes, unsafe.Sizeof(DefinedTypeDescriptor{}))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]DefinedTypeDescriptor, n)
-	for i := range out {
-		d := &out[i]
-		if d.RecGroup, err = r.u32(); err != nil {
-			return nil, err
-		}
-		if d.Final, err = r.bool(); err != nil {
-			return nil, err
-		}
-		sn, err := r.countElements("supertypes", minU32Bytes, unsafe.Sizeof(uint32(0)))
-		if err != nil {
-			return nil, err
-		}
-		if sn != 0 {
-			d.Supers = make([]uint32, sn)
-		}
-		for j := range d.Supers {
-			if d.Supers[j], err = r.u32(); err != nil {
-				return nil, err
-			}
-		}
-		if d.HasDescribes, err = r.bool(); err != nil {
-			return nil, err
-		}
-		if d.HasDescribes {
-			if d.Describes, err = r.u32(); err != nil {
-				return nil, err
-			}
-		}
-		if d.HasDescriptor, err = r.bool(); err != nil {
-			return nil, err
-		}
-		if d.HasDescriptor {
-			if d.Descriptor, err = r.u32(); err != nil {
-				return nil, err
-			}
-		}
-		kind, err := r.u8()
-		if err != nil {
-			return nil, err
-		}
-		d.Kind = CompositeTypeKind(kind)
-		switch d.Kind {
-		case CompositeTypeFunction:
-			if d.Params, err = r.valueTypes("function parameters"); err != nil {
-				return nil, err
-			}
-			if d.Results, err = r.valueTypes("function results"); err != nil {
-				return nil, err
-			}
-		case CompositeTypeStruct:
-			fn, err := r.countElements("struct fields", minFieldTypeBytes, unsafe.Sizeof(FieldTypeDescriptor{}))
-			if err != nil {
-				return nil, err
-			}
-			d.Fields = make([]FieldTypeDescriptor, fn)
-			for j := range d.Fields {
-				if d.Fields[j], err = r.fieldType(); err != nil {
-					return nil, err
-				}
-			}
-		case CompositeTypeArray:
-			if d.Array, err = r.fieldType(); err != nil {
-				return nil, err
-			}
-		default:
-			return nil, fmt.Errorf("invalid composite type kind %d", kind)
-		}
-	}
-	if err := validateDefinedTypeDescriptors(out); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (r *compiledReader) funcSigs(types []DefinedTypeDescriptor) ([]FuncSig, error) {
-	n, err := r.countElements("function signatures", minFuncSigBytes, unsafe.Sizeof(FuncSig{}))
-	if err != nil {
-		return nil, err
-	}
-	if n == 0 {
-		return nil, nil
-	}
-	out := make([]FuncSig, n)
-	for i := range out {
-		out[i].HasTypeIndex, err = r.bool()
-		if err != nil {
-			return nil, err
-		}
-		if out[i].HasTypeIndex {
-			out[i].TypeIndex, err = r.u32()
-			if err != nil {
-				return nil, err
-			}
-			if int(out[i].TypeIndex) >= len(types) || types[out[i].TypeIndex].Kind != CompositeTypeFunction {
-				return nil, fmt.Errorf("function signature %d type index %d is not a function", i, out[i].TypeIndex)
-			}
-			params, results := types[out[i].TypeIndex].Params, types[out[i].TypeIndex].Results
-			if err := r.reserve(uint64(len(params)), 16); err != nil {
-				return nil, err
-			}
-			out[i].Params, err = valTypesFromDescriptors(params, types)
-			if err != nil {
-				return nil, fmt.Errorf("function signature %d params: %w", i, err)
-			}
-			if err := r.reserve(uint64(len(results)), 16); err != nil {
-				return nil, err
-			}
-			out[i].Results, err = valTypesFromDescriptors(results, types)
-			if err != nil {
-				return nil, fmt.Errorf("function signature %d results: %w", i, err)
-			}
-			continue
-		}
-		params, err := r.valueTypes("function parameters")
-		if err != nil {
-			return nil, err
-		}
-		if err := r.reserve(uint64(len(params)), 16); err != nil {
-			return nil, err
-		}
-		out[i].Params, err = valTypesFromDescriptors(params, types)
-		if err != nil {
-			return nil, fmt.Errorf("function signature %d params: %w", i, err)
-		}
-		results, err := r.valueTypes("function results")
-		if err != nil {
-			return nil, err
-		}
-		if err := r.reserve(uint64(len(results)), 16); err != nil {
-			return nil, err
-		}
-		out[i].Results, err = valTypesFromDescriptors(results, types)
-		if err != nil {
-			return nil, fmt.Errorf("function signature %d results: %w", i, err)
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) offset() (OffsetInit, error) {
-	base, err := r.u32()
-	if err != nil {
-		return OffsetInit{}, err
-	}
-	has, err := r.bool()
-	if err != nil {
-		return OffsetInit{}, err
-	}
-	glob, err := r.ivar()
-	if err != nil {
-		return OffsetInit{}, err
-	}
-	expr, err := r.bytes()
-	if err != nil {
-		return OffsetInit{}, err
-	}
-	if len(expr) == 0 {
-		expr = nil
-	}
-	return OffsetInit{Base: base, HasGlobal: has, Global: glob, Expr: expr}, nil
-}
-func (r *compiledReader) elems(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) ([]ElemInit, error) {
-	n, err := r.countElements("element segments", minElemInitBytes, unsafe.Sizeof(ElemInit{}))
-	if err != nil {
-		return nil, err
-	}
-	if n == 0 {
-		return nil, nil
-	}
-	out := make([]ElemInit, n)
-	for i := range out {
-		out[i].TableIndex, err = r.u32()
-		if err != nil {
-			return nil, err
-		}
-		out[i].RefType, out[i].ValueTypeIndex, out[i].HasValueType, err = r.valueTypeRef(pool, types)
-		if err != nil {
-			return nil, err
-		}
-		mode, err := r.u8()
-		if err != nil {
-			return nil, err
-		}
-		out[i].Mode = ElemMode(mode)
-		out[i].Offset, err = r.offset()
-		if err != nil {
-			return nil, err
-		}
-		vn, err := r.countElements("element values", 1, unsafe.Sizeof(RefInit{}))
-		if err != nil {
-			return nil, err
-		}
-		if vn != 0 {
-			out[i].Values = make([]RefInit, vn)
-		}
-		for j := range out[i].Values {
-			tag, err := r.u8()
-			if err != nil {
-				return nil, err
-			}
-			switch tag {
-			case 0:
-				out[i].Values[j].Null = true
-			case 1:
-				out[i].Values[j].FuncIndex, err = r.u32()
-				if err != nil {
-					return nil, err
-				}
-			case 2, 3:
-				out[i].Values[j].GlobalIndex, err = r.u32()
-				if err != nil {
-					return nil, err
-				}
-				out[i].Values[j].HasGlobal = true
-				out[i].Values[j].I31Wrap = tag == 3
-			case 4:
-				out[i].Values[j].Expr, err = r.bytes()
-				if err != nil {
-					return nil, err
-				}
-				if len(out[i].Values[j].Expr) == 0 {
-					return nil, fmt.Errorf("empty GC element initializer expression")
-				}
-			case 5:
-				if j == 0 {
-					return nil, fmt.Errorf("element initializer repeats a missing previous value")
-				}
-				out[i].Values[j].RepeatPrevious = true
-			default:
-				return nil, fmt.Errorf("invalid element initializer tag %d", tag)
-			}
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) dataInits() ([]DataInit, error) {
-	n, err := r.countElements("data segments", minDataInitBytes, unsafe.Sizeof(DataInit{}))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]DataInit, n)
-	for i := range out {
-		out[i].MemoryIndex, err = r.u32()
-		if err != nil {
-			return nil, err
-		}
-		out[i].Offset, err = r.offset()
-		if err != nil {
-			return nil, err
-		}
-		out[i].Bytes, err = r.bytes()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) passiveDataInits() ([]PassiveDataInit, error) {
-	n, err := r.countElements("passive data segments", minPassiveDataBytes, unsafe.Sizeof(PassiveDataInit{}))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]PassiveDataInit, n)
-	for i := range out {
-		out[i].Bytes, err = r.bytes()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) globals(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) ([]GlobalDef, error) {
-	n, err := r.countElements("globals", minGlobalBytes, unsafe.Sizeof(GlobalDef{}))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]GlobalDef, n)
-	for i := range out {
-		out[i].Type, out[i].ValueTypeIndex, out[i].HasValueType, err = r.valueTypeRef(pool, types)
-		if err != nil {
-			return nil, err
-		}
-		out[i].Mutable, err = r.bool()
-		if err != nil {
-			return nil, err
-		}
-		kind, err := r.u8()
-		if err != nil {
-			return nil, err
-		}
-		switch kind {
-		case 0:
-			out[i].Bits, err = r.u64()
-			if err != nil {
-				return nil, err
-			}
-			if out[i].Type == ValV128 {
-				vec, err := r.take(16)
-				if err != nil {
-					return nil, err
-				}
-				copy(out[i].V128[:], vec)
-			}
-		case 1:
-			out[i].HasInitGlobal = true
-			out[i].InitGlobal, err = r.ivar()
-			if err != nil {
-				return nil, err
-			}
-		case 2:
-			out[i].HasInitFunc = true
-			out[i].InitFunc, err = r.u32()
-			if err != nil {
-				return nil, err
-			}
-		case 3:
-			out[i].InitExpr, err = r.bytes()
-			if err != nil {
-				return nil, err
-			}
-		default:
-			return nil, fmt.Errorf("invalid global initializer kind %d", kind)
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) tables(c *Compiled, pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) error {
-	n, err := r.countElements("tables", minTableBytes, unsafe.Sizeof(tableDef{})+unsafe.Sizeof(uint64(0)))
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return nil
-	}
-	c.HasTable = true
-	if n > 1 {
-		c.extraTables = make([]tableDef, n-1)
-	}
-	for i := 0; i < n; i++ {
-		typ, valueTypeIndex, hasValueType, err := r.valueTypeRef(pool, types)
-		if err != nil {
-			return err
-		}
-		addr64, err := r.bool()
-		if err != nil {
-			return err
-		}
-		kind, err := r.u8()
-		if err != nil {
-			return err
-		}
-		var def tableDef
-		def.Type, def.ValueTypeIndex, def.HasValueType, def.Addr64 = typ, valueTypeIndex, hasValueType, addr64
-		switch kind {
-		case 0:
-			size, err := r.uvar()
-			if err != nil {
-				return err
-			}
-			max, err := r.uvar()
-			if err != nil {
-				return err
-			}
-			def.HasMax, err = r.bool()
-			if err != nil {
-				return err
-			}
-			if size > uint64(maxInt()) || (max > uint64(maxInt()) && (!addr64 || !def.HasMax)) {
-				return fmt.Errorf("table %d limits overflow executable capacity", i)
-			}
-			def.Size, def.Max = int(size), max
-			def.HasInitFunc, err = r.bool()
-			if err != nil {
-				return err
-			}
-			if def.HasInitFunc {
-				def.InitFunc, err = r.u32()
-				if err != nil {
-					return err
-				}
-			}
-		case 1:
-			def.ImportKey, err = r.strLabel("table import key")
-			if err != nil {
-				return err
-			}
-			moduleEnd, readErr := r.importModuleEnd(def.ImportKey)
-			if readErr != nil {
-				return fmt.Errorf("table import %d name: %w", i, readErr)
-			}
-			c.appendImportModuleEnd(moduleEnd)
-			min, err := r.uvar()
-			if err != nil {
-				return err
-			}
-			max, err := r.uvar()
-			if err != nil {
-				return err
-			}
-			if min > uint64(maxInt()) || max > uint64(maxInt()) {
-				return fmt.Errorf("table import %d limits overflow int", i)
-			}
-			def.Size, def.Max = int(min), max
-			def.ImportHasMax, err = r.bool()
-			if err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("invalid table %d kind %d", i, kind)
-		}
-		if i == 0 {
-			c.TableType, c.TableValueTypeIndex, c.TableHasValueType, c.TableAddr64 = def.Type, def.ValueTypeIndex, def.HasValueType, def.Addr64
-			if def.ImportKey != "" {
-				c.tableImport = def.ImportKey
-				c.tableImportMin = def.Size
-				c.tableImportMax = int(def.Max)
-				c.tableImportHasMax = def.ImportHasMax
-			} else {
-				c.TableSize = def.Size
-				c.TableMax = def.Max
-				c.TableHasMax = def.HasMax
-				c.HasTableInitFunc = def.HasInitFunc
-				c.TableInitFunc = def.InitFunc
-			}
-		} else {
-			c.extraTables[i-1] = def
-		}
-	}
-	return nil
-}
-
-func (r *compiledReader) globalImports(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) ([]GlobalImportDef, error) {
-	n, err := r.countElements("global imports", minGlobalImportBytes, unsafe.Sizeof(GlobalImportDef{}))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]GlobalImportDef, n)
-	for i := range out {
-		out[i].Module, err = r.str()
-		if err != nil {
-			return nil, err
-		}
-		out[i].Name, err = r.str()
-		if err != nil {
-			return nil, err
-		}
-		out[i].Type, out[i].ValueTypeIndex, out[i].HasValueType, err = r.valueTypeRef(pool, types)
-		if err != nil {
-			return nil, err
-		}
-		out[i].Mutable, err = r.bool()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
-	n, err := r.countElements("GC type descriptors", minGCDescBytes, unsafe.Sizeof(gc.TypeDesc{}))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]gc.TypeDesc, n)
-	for i := range out {
-		id, err := r.u32()
-		if err != nil {
-			return nil, err
-		}
-		kind, err := r.u8()
-		if err != nil {
-			return nil, err
-		}
-		out[i].ID = gc.TypeID(id)
-		out[i].Kind = gc.TypeKind(kind)
-		fieldsPresent, err := r.bool()
-		if err != nil {
-			return nil, err
-		}
-		fieldCount, err := r.countElements("GC type fields", minGCFieldBytes, unsafe.Sizeof(gc.FieldDesc{}))
-		if err != nil {
-			return nil, err
-		}
-		if fieldsPresent {
-			if len(r.data) < minGCDescTailBytes {
-				return nil, fmt.Errorf("GC type fields missing descriptor tail")
-			}
-			maxFields := (len(r.data) - minGCDescTailBytes) / minGCFieldBytes
-			if fieldCount > maxFields {
-				return nil, fmt.Errorf("GC type fields count %d exceeds remaining encoding capacity %d", fieldCount, maxFields)
-			}
-			out[i].Fields = make([]gc.FieldDesc, fieldCount)
-		} else if fieldCount != 0 {
-			return nil, fmt.Errorf("nil GC type field list with count %d", fieldCount)
-		}
-		for j := range out[i].Fields {
-			storage, err := r.u8()
-			if err != nil {
-				return nil, err
-			}
-			off, err := r.u32()
-			if err != nil {
-				return nil, err
-			}
-			out[i].Fields[j] = gc.FieldDesc{Kind: gc.StorageKind(storage), Offset: off}
-		}
-		elem, err := r.u8()
-		if err != nil {
-			return nil, err
-		}
-		out[i].Elem = gc.StorageKind(elem)
-		if out[i].Size, err = r.u32(); err != nil {
-			return nil, err
-		}
-		if out[i].ElemSize, err = r.u32(); err != nil {
-			return nil, err
-		}
-		if out[i].Align, err = r.u32(); err != nil {
-			return nil, err
-		}
-		if out[i].HasRefs, err = r.bool(); err != nil {
-			return nil, err
-		}
-		if out[i].Final, err = r.bool(); err != nil {
-			return nil, err
-		}
-		super, err := r.u32()
-		if err != nil {
-			return nil, err
-		}
-		out[i].Super = gc.TypeID(super)
-		if out[i].HasSuper, err = r.bool(); err != nil {
-			return nil, err
-		}
-		out[i].PrepareScanPlan()
-	}
-	return out, nil
-}
-
-func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
-	// Each distinct vector can add a hash key, slice header, and map-bucket
-	// overhead to the offset interner, independently of the vector's payload.
-	const internerEntryBytes = unsafe.Sizeof(uint64(0)) + unsafe.Sizeof([]uint32(nil)) + 16
-	adapterCount, err := r.countElements("GC frame adapter returns", 4, unsafe.Sizeof(uint32(0)))
-	if err != nil {
-		return nil, err
-	}
-	rootMap := &compiledGCFrameRoots{adapterReturnOffsets: make([]uint32, adapterCount)}
-	var offsetInterner gcFrameOffsetInterner
-	for i := range rootMap.adapterReturnOffsets {
-		rootMap.adapterReturnOffsets[i], err = r.u32()
-		if err != nil {
-			return nil, err
-		}
-	}
-	n, err := r.countElements("GC frame safepoints", 9, unsafe.Sizeof(compiledGCFrameSafepoint{})+internerEntryBytes)
-	if err != nil {
-		return nil, err
-	}
-	if uint64(n) > uint64(shared.GCSafepointIDMax) {
-		return nil, fmt.Errorf("GC frame safepoint count %d is invalid", n)
-	}
-	rootMap.safepoints = make([]compiledGCFrameSafepoint, n)
-	for i := range rootMap.safepoints {
-		rootMap.safepoints[i].id, err = r.u32()
-		if err != nil {
-			return nil, err
-		}
-		rootMap.safepoints[i].frameBytes, err = r.u32()
-		if err != nil {
-			return nil, err
-		}
-		count, err := r.countElements("GC frame root offsets", 4, unsafe.Sizeof(uint32(0)))
-		if err != nil {
-			return nil, err
-		}
-		rootMap.safepoints[i].offsets = make([]uint32, count)
-		for j := range rootMap.safepoints[i].offsets {
-			rootMap.safepoints[i].offsets[j], err = r.u32()
-			if err != nil {
-				return nil, err
-			}
-		}
-		rootMap.safepoints[i].offsets = offsetInterner.intern(rootMap.safepoints[i].offsets, false)
-	}
-	callCount, err := r.countElements("GC frame callsites", 13, unsafe.Sizeof(compiledGCFrameCallsite{})+internerEntryBytes)
-	if err != nil {
-		return nil, err
-	}
-	rootMap.callsites = make([]compiledGCFrameCallsite, callCount)
-	for i := range rootMap.callsites {
-		rootMap.callsites[i].returnOffset, err = r.u32()
-		if err != nil {
-			return nil, err
-		}
-		rootMap.callsites[i].frameBytes, err = r.u32()
-		if err != nil {
-			return nil, err
-		}
-		rootMap.callsites[i].stackAdjust, err = r.u32()
-		if err != nil {
-			return nil, err
-		}
-		count, err := r.countElements("GC callsite root offsets", 4, unsafe.Sizeof(uint32(0)))
-		if err != nil {
-			return nil, err
-		}
-		rootMap.callsites[i].offsets = make([]uint32, count)
-		for j := range rootMap.callsites[i].offsets {
-			rootMap.callsites[i].offsets[j], err = r.u32()
-			if err != nil {
-				return nil, err
-			}
-		}
-		rootMap.callsites[i].offsets = offsetInterner.intern(rootMap.callsites[i].offsets, false)
-	}
-	return rootMap, nil
 }

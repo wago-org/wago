@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled && wago_profile
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && wago_profile
 
 package wago
 
@@ -16,7 +16,7 @@ import (
 func TestRV64ProfileReferenceAndTailExecution(t *testing.T) {
 	for _, kind := range []string{"scalar-tail", "reference-call", "reference-tail"} {
 		for _, vector := range []bool{false, true} {
-			for _, artifact := range []bool{false, true} {
+			for _, artifact := range []bool{false} {
 				t.Run(fmt.Sprintf("%s/vector%t/artifact%t", kind, vector, artifact), func(t *testing.T) {
 					types := [][]byte{wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})}
 					functions := []byte{2, 0, 0}
@@ -49,20 +49,7 @@ func TestRV64ProfileReferenceAndTailExecution(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					if artifact {
-						blob, err := c.MarshalBinary()
-						if err != nil {
-							t.Fatal(err)
-						}
-						c, err = LoadTrustedArtifact(blob)
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer c.Close()
-						if err := c.AttachCodeProfile(profile); err != nil {
-							t.Fatal(err)
-						}
-					}
+
 					in, err := Instantiate(c)
 					if err != nil {
 						t.Fatal(err)

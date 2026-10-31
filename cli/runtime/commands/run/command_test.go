@@ -3,7 +3,6 @@ package run
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -17,7 +16,6 @@ import (
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/settings"
-	"github.com/wago-org/wago/cli/runtime/internal/artifactcache"
 )
 
 type testEnvironment struct{}
@@ -28,7 +26,6 @@ func (testEnvironment) ProfileFlags() []command.Flag {
 func (testEnvironment) LoadRuntime(cfg *wago.RuntimeConfig, guestArgs []string) *wago.Runtime {
 	return wago.NewRuntime(wago.WithRuntimeConfig(cfg), wago.WithGuestArguments(guestArgs))
 }
-func (testEnvironment) ArtifactCache() artifactcache.Cache { return artifactcache.Cache{} }
 
 type runTeardownEnvironment struct{ plugin *runTeardownPlugin }
 
@@ -70,8 +67,6 @@ func (environment runTeardownEnvironment) LoadRuntime(config *wago.RuntimeConfig
 	}
 	return runtime
 }
-
-func (runTeardownEnvironment) ArtifactCache() artifactcache.Cache { return artifactcache.Cache{} }
 
 type runTeardownPlugin struct {
 	moduleClosed func()
@@ -260,26 +255,6 @@ func TestRunGCHeapFlags(t *testing.T) {
 	}
 }
 
-func TestRunParsesNativeArtifactOptInAsBoolean(t *testing.T) {
-	cmd := Command(testEnvironment{})
-	for _, args := range [][]string{
-		{"--allow-native-artifact", "module.wago"},
-		{"module.wago", "--allow-native-artifact"},
-	} {
-		normalized, err := cmd.Normalize(args)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ctx, err := cmd.Parse("wago run", normalized)
-		if err != nil {
-			t.Fatalf("parse %v: %v", args, err)
-		}
-		if !ctx.Bool("allow-native-artifact") || len(ctx.Args) != 1 || ctx.Args[0] != "module.wago" {
-			t.Fatalf("parse %v = opt-in %v, args %v", args, ctx.Bool("allow-native-artifact"), ctx.Args)
-		}
-	}
-}
-
 func TestFriendlyInstantiationErrorIsProviderNeutral(t *testing.T) {
 	for _, importName := range []string{"wasi_snapshot_preview1.fd_write", "acme_host.render"} {
 		err := fmt.Errorf(`module imports %q, but nothing provides it: %w`, importName, wago.ErrMissingImport)
@@ -325,72 +300,15 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	}
 	rt := wago.NewRuntime()
 	defer rt.Close()
-	config := wago.NewRuntimeConfig()
-	mod := mustLoadModule(path, config, rt, artifactcache.Cache{}, false)
+	mod, err := loadModule(path, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := mustResolveExport(mod.Compiled(), ""); got != "f" {
 		t.Fatalf("default export = %q", got)
 	}
 	if got := mustResolveExport(mod.Compiled(), "f"); got != "f" {
 		t.Fatalf("named export = %q", got)
-	}
-	encoded, err := mod.Compiled().MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	compiledPath := filepath.Join(t.TempDir(), "f.wago")
-	if err := os.WriteFile(compiledPath, encoded, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if mod, err := loadModule(compiledPath, config, rt, artifactcache.Cache{}, false); err == nil || mod != nil || !strings.Contains(err.Error(), "--allow-native-artifact") {
-		t.Fatalf("untrusted artifact load = %v, %v; want explicit opt-in", mod, err)
-	}
-	if got := mustResolveExport(mustLoadModule(compiledPath, config, rt, artifactcache.Cache{}, true).Compiled(), "f"); got != "f" {
-		t.Fatalf("loaded export = %q", got)
-	}
-	withTrailing := append(append([]byte(nil), encoded...), 0)
-	if compiled, err := loadCompiledArtifact(withTrailing); err == nil || compiled != nil || !strings.Contains(err.Error(), "trailing 1 byte") {
-		t.Fatalf("artifact with trailing byte = %v, %v; want rejection", compiled, err)
-	}
-	if compiled, err := loadCompiledArtifactReader(bytes.NewReader(withTrailing), -1); err == nil || compiled != nil || !strings.Contains(err.Error(), "trailing data") {
-		t.Fatalf("streamed artifact with trailing byte = %v, %v; want rejection", compiled, err)
-	}
-}
-
-func TestLoadCompiledArtifactEnforcesSectionLimits(t *testing.T) {
-	// Derive the header from the current encoder so format revisions do not
-	// turn section-limit checks into version-mismatch checks.
-	rt := wago.NewRuntime()
-	defer rt.Close()
-	module, err := rt.Compile([]byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0})
-	if err != nil {
-		t.Fatal(err)
-	}
-	encoded, err := module.Compiled().MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	limits := wago.DefaultArtifactLimits()
-	for _, tc := range []struct {
-		name        string
-		codeBytes   uint64
-		metadataLen uint64
-		want        string
-	}{
-		{name: "code", codeBytes: uint64(limits.MaxCodeBytes) + 1, want: "code section length"},
-		{name: "metadata", metadataLen: uint64(limits.MaxMetadataBytes) + 1, want: "metadata section length"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			artifact := append([]byte(nil), encoded[:7]...)
-			artifact = binary.AppendUvarint(artifact, tc.codeBytes)
-			if tc.codeBytes == 0 {
-				artifact = append(artifact, 2)
-				artifact = binary.AppendUvarint(artifact, tc.metadataLen)
-			}
-			compiled, err := loadCompiledArtifact(artifact)
-			if err == nil || compiled != nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "exceeds limit") {
-				t.Fatalf("loadCompiledArtifact = %v, %v; want bounded %s error", compiled, err, tc.want)
-			}
-		})
 	}
 }
 
@@ -840,5 +758,11 @@ func invokeSequenceModule() []byte {
 		0x03, 0x73, 0x65, 0x74, 0x00, 0x00, 0x03, 0x61, 0x64, 0x64, 0x00, 0x01,
 		0x0a, 0x10, 0x02, 0x06, 0x00, 0x20, 0x00, 0x24, 0x00, 0x0b, 0x07, 0x00,
 		0x23, 0x00, 0x20, 0x00, 0x6a, 0x0b,
+	}
+}
+
+func TestRunRejectsRetiredArtifactFlag(t *testing.T) {
+	if _, err := Command(testEnvironment{}).Parse("wago run", []string{"--allow-native-artifact", "module.wago"}); err == nil {
+		t.Fatal("retired native artifact flag was accepted")
 	}
 }

@@ -6,15 +6,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"math"
-	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 )
 
 const rv64GCArrayFixedOfficialHex = "0061736d0100000001b080808000095e7d005e7d01600001640060027f6400017d60017f017d60037f64017d017d60027f7d017d6001646a017f6000017f038880808000070203040506070806938080800001640000430000803f4300000040fb0800020b079d8080800004036e65770000036765740002077365745f6765740004036c656e00060afe8080800007908080800000430000803f4300000040fb0800020b89808080000020012000fb0b000b8880808000002000100010010b928080800000200120002002fb0e0120012000fb0b010b9b80808000002000430000803f43000000404300004040fb080103200110030b8680808000002000fb0f0b868080800000100010050b"
@@ -30,51 +24,14 @@ func rv64GCArrayFixedOfficialBytes(t testing.TB) []byte {
 
 func rv64GCArrayFixedOfficialCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-array-fixed-official.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = loaded.Close() })
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64GCArrayFixedOfficialBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = original.Close() })
 	c := original
-	if artifact || mode == "prepare" {
-		blob, err := original.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err = os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err = os.WriteFile(path, blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = loaded.Close() })
-			c = loaded
-		}
-	}
+
 	return c
 }
 
@@ -88,7 +45,7 @@ func TestRV64PublicGCArrayFixedOfficialExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64GCArrayFixedOfficialCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64ArtifactContractValid(view) || err != nil {
+			if err := railshotValidateCompiled(view); !rv64SourceContractValid(view) || err != nil {
 				t.Fatalf("missing exact retained gc array fixed official witness: validation=%v products=%v/%v code=%d/%x entries=%v/%v", err, view.stagedGCStructProduct(), view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry)
 			}
 			for _, profile := range []struct {
@@ -152,57 +109,6 @@ func TestRV64PublicGCArrayFixedOfficialExecutionAndArtifact(t *testing.T) {
 						t.Fatal(err)
 					}
 				})
-			}
-		})
-	}
-}
-
-func TestRV64PublicGCArrayFixedOfficialCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(rv64GCArrayFixedOfficialBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free gc array fixed official path used source compilation", err)
-	}
-}
-
-func TestRV64PublicGCArrayFixedOfficialAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	base := rv64GCArrayFixedOfficialCompile(t, false).executionView()
-	for name, mutate := range map[string]func(*Compiled){
-		"code":        func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"entry":       func(v *Compiled) { v.Entry[4], v.InternalEntry[4] = 2992, 2992 },
-		"function":    func(v *Compiled) { v.Funcs[3].Params[2] = ValI64 },
-		"type":        func(v *Compiled) { v.Types[1].Array.Mutable = false },
-		"type-key":    func(v *Compiled) { v.FuncTypeID[5] ^= 1 },
-		"descriptor":  func(v *Compiled) { v.GCTypeDescs[1].ElemSize++ },
-		"global":      func(v *Compiled) { v.Globals[0].Mutable = true },
-		"initializer": func(v *Compiled) { v.Globals[0].InitExpr[0] ^= 1 },
-		"export": func(v *Compiled) {
-			delete(v.Exports, "new")
-			v.Exports["make"] = 0
-		},
-		"feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureMemory64 },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(base)
-			mutate(candidate)
-			if rv64ArtifactContractValid(candidate) {
-				t.Fatal("hostile retained mutation retained the fixed official witness")
-			}
-			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("hostile retained fixed official mutation admitted", err)
-			}
-			if !candidate.requiredFeatures.IsEnabled(CoreFeatureGC) {
-				rv64RequireRestoredGCFeature(t, candidate)
-			} else {
-				rv64RequireRejectedArtifact(t, candidate)
 			}
 		})
 	}

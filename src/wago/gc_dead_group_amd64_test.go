@@ -79,9 +79,7 @@ func TestGCDeadDefaultGroup(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer c.Close()
-				c = publicArtifactRoundTrip(t, c)
-				defer c.Close()
+
 				for _, profile := range []GCProfile{GCProfileThroughput, GCProfileTiny} {
 					for _, stress := range []bool{false, true} {
 						in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: stress, StressNurseryBytes: 256, VerifyAfterCollect: true}})

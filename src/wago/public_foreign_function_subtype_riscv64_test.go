@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !wago_precompiled && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -185,7 +185,7 @@ func TestRV64ForeignFunctionSubtypeWarmAllocations(t *testing.T) {
 func TestRV64ForeignFunctionSubtypeIsolatedCalls(t *testing.T) {
 	for _, kind := range []string{"indirect", "reference"} {
 		for _, vector := range []bool{false, true} {
-			for _, artifact := range []bool{false, true} {
+			for _, artifact := range []bool{false} {
 				t.Run(fmt.Sprintf("%s/vector%t/artifact%t", kind, vector, artifact), func(t *testing.T) {
 					cfg := NewRuntimeConfig()
 					compile := func(source []byte) *Compiled {
@@ -195,17 +195,7 @@ func TestRV64ForeignFunctionSubtypeIsolatedCalls(t *testing.T) {
 							t.Fatal(err)
 						}
 						t.Cleanup(func() { c.Close() })
-						if artifact {
-							blob, e := c.MarshalBinary()
-							if e != nil {
-								t.Fatal(e)
-							}
-							c, e = LoadTrustedArtifact(blob)
-							if e != nil {
-								t.Fatal(e)
-							}
-							t.Cleanup(func() { c.Close() })
-						}
+
 						return c
 					}
 					ps, cs := rv64ForeignFunctionSubtypeSourcesFor(vector, []string{kind})
@@ -267,17 +257,7 @@ func testRV64ForeignFunctionSubtypeNestedOwnerScope(t *testing.T, closeConsumer,
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { c.Close() })
-		if artifact {
-			blob, e := c.MarshalBinary()
-			if e != nil {
-				t.Fatal(e)
-			}
-			c, e = LoadTrustedArtifact(blob)
-			if e != nil {
-				t.Fatal(e)
-			}
-			t.Cleanup(func() { c.Close() })
-		}
+
 		return c
 	}
 	ps, cs := rv64ForeignFunctionSubtypeSourcesFor(false, []string{"test"})
@@ -349,7 +329,7 @@ func testRV64ForeignFunctionSubtypeNestedOwnerScope(t *testing.T, closeConsumer,
 
 func TestRV64ForeignDeclaredFunctionSubtypeOrdinaryCalls(t *testing.T) {
 	for _, vector := range []bool{false, true} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(fmt.Sprintf("vector%t/artifact%t", vector, artifact), func(t *testing.T) {
 				cfg := NewRuntimeConfig()
 				compile := func(source []byte) *Compiled {
@@ -359,17 +339,7 @@ func TestRV64ForeignDeclaredFunctionSubtypeOrdinaryCalls(t *testing.T) {
 						t.Fatal(e)
 					}
 					t.Cleanup(func() { c.Close() })
-					if artifact {
-						blob, e := c.MarshalBinary()
-						if e != nil {
-							t.Fatal(e)
-						}
-						c, e = LoadTrustedArtifact(blob)
-						if e != nil {
-							t.Fatal(e)
-						}
-						t.Cleanup(func() { c.Close() })
-					}
+
 					return c
 				}
 				ps, cs := rv64ForeignFunctionSubtypeSources(vector)

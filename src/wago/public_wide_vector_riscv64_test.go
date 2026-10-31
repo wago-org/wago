@@ -5,7 +5,6 @@ package wago
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"testing"
 
@@ -36,47 +35,13 @@ func rv64WideVectorCallModule(count int, tail bool) []byte {
 
 func rv64WideVectorCallCompile(t *testing.T, count int, tail, artifact bool) *Compiled {
 	t.Helper()
-	mode, dir := os.Getenv("WAGO_RV64_WIDE_CALL_ARTIFACT_MODE"), os.Getenv("WAGO_RV64_WIDE_CALL_ARTIFACT_DIR")
-	name := filepath.Join(dir, fmt.Sprintf("wide-vector-%d-tail%t.wago", count, tail))
-	if mode == "load" {
-		blob, err := os.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { c.Close() })
-		return c
-	}
+
 	c, err := Compile(nil, rv64WideVectorCallModule(count, tail))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { c.Close() })
-	if artifact || mode == "prepare" {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err := os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(name, blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { loaded.Close() })
-			return loaded
-		}
-	}
+
 	return c
 }
 

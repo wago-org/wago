@@ -1,4 +1,4 @@
-//go:build !tinygo && !wago_precompiled
+//go:build !tinygo
 
 package wago
 

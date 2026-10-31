@@ -1,134 +1,17 @@
-//go:build linux && riscv64 && !wago_precompiled && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"testing"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
-
-func TestRV64DeclaredFunctionSubtypeTailSourceAndArtifact(t *testing.T) {
-	for _, tail := range []bool{false, true} {
-		for _, vector := range []bool{false, true} {
-			for _, inert := range []bool{false, true} {
-				t.Run(fmt.Sprintf("tail%t/vector%t/inert%t", tail, vector, inert), func(t *testing.T) {
-					functions := []byte{13, 6, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-					bodies := [][]byte{
-						wasmtest.Code([]byte{0x41, 42, 0x0b}),
-						wasmtest.Code([]byte{0xd2, 0, 0x15, 0, 0x0b}),
-						wasmtest.Code([]byte{0x41, 7, 0x0b}),
-						wasmtest.Code([]byte{0x41, 0, 0x13, 0, 0, 0x0b}),
-						wasmtest.Code([]byte{0x41, 1, 0x13, 0, 0, 0x0b}),
-						wasmtest.Code([]byte{0xd2, 0, 0xfb, 20, 0, 0x0b}),
-						wasmtest.Code([]byte{0xd2, 2, 0xfb, 20, 0, 0x0b}),
-						wasmtest.Code([]byte{0xd2, 0, 0xfb, 22, 0, 0x1a, 0x41, 1, 0x0b}),
-						wasmtest.Code([]byte{0xd2, 2, 0xfb, 22, 0, 0x1a, 0x41, 1, 0x0b}),
-						wasmtest.Code([]byte{0xd0, 0x70, 0xfb, 20, 0, 0x0b}),
-						wasmtest.Code([]byte{0xd0, 0x70, 0xfb, 21, 0, 0x0b}),
-						wasmtest.Code([]byte{0xd0, 0x70, 0xfb, 23, 0, 0x1a, 0x41, 1, 0x0b}),
-						wasmtest.Code([]byte{0xd0, 0x70, 0xfb, 22, 0, 0x1a, 0x41, 1, 0x0b}),
-					}
-					if !tail {
-						bodies[1] = wasmtest.Code([]byte{0xd2, 0, 0x14, 0, 0x0b})
-						bodies[3] = wasmtest.Code([]byte{0x41, 0, 0x11, 0, 0, 0x0b})
-						bodies[4] = wasmtest.Code([]byte{0x41, 1, 0x11, 0, 0, 0x0b})
-					}
-					if vector {
-						functions[0]++
-						functions = append(functions, 2)
-						body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-						body = append(body, 0x1a, 0x41, 0, 0x0b)
-						bodies = append(bodies, wasmtest.Code(body))
-					}
-					types := []byte{7, 0x50, 0, 0x60, 0, 1, 0x7f, 0x4f, 1, 0, 0x60, 0, 1, 0x7f, 0x60, 0, 1, 0x7f,
-						0x50, 1, 0, 0x60, 0, 1, 0x7f, 0x50, 1, 3, 0x60, 0, 1, 0x7f, 0x50, 1, 4, 0x60, 0, 1, 0x7f, 0x4f, 1, 5, 0x60, 0, 1, 0x7f}
-					if inert {
-						types[0]++
-						types = append(types, 0x5f, 0)
-					}
-
-					source := wasmtest.Module(
-						wasmtest.Section(1, types),
-						wasmtest.Section(3, functions),
-						wasmtest.Section(4, []byte{1, 0x70, 0, 2}),
-						wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("reference", 0, 1), wasmtest.ExportEntry("indirect", 0, 3), wasmtest.ExportEntry("unrelated", 0, 4), wasmtest.ExportEntry("test", 0, 5), wasmtest.ExportEntry("test-unrelated", 0, 6), wasmtest.ExportEntry("cast", 0, 7), wasmtest.ExportEntry("cast-unrelated", 0, 8), wasmtest.ExportEntry("test-null", 0, 9), wasmtest.ExportEntry("test-nullable", 0, 10), wasmtest.ExportEntry("cast-nullable", 0, 11), wasmtest.ExportEntry("cast-null", 0, 12))),
-						wasmtest.Section(9, []byte{1, 0, 0x41, 0, 0x0b, 2, 0, 2}),
-						wasmtest.Section(10, wasmtest.Vec(bodies...)),
-					)
-					cfg := rv64RootedScalarConfig().WithCoreFeatures(platformCoreFeatures() | CoreFeatureTypedFunctionReferences | CoreFeatureTailCall | CoreFeatureGC)
-					cfg.railshotState.tailProducts = true
-					c, err := cfg.Compile(source)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer c.Close()
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					t.Logf("native code=%dB artifact=%dB dynamic type-ID directory=%t", len(c.code), len(blob), c.usesDynamicFuncRefTest())
-					loaded, err := LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer loaded.Close()
-					for _, code := range []*Compiled{c, loaded} {
-						view := code.executionView()
-						wantType := ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 0}}
-						unrelatedType := ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 2}}
-						if referenceTypeSubtype(unrelatedType, view.Types, wantType, view.Types) {
-							t.Fatal("negative fixture type is a subtype")
-						}
-						t.Logf("site key=%x unrelated key=%x", view.funcTypeKey(1), view.funcTypeKey(2))
-						in, err := Instantiate(code)
-						if err != nil {
-							t.Fatal(err)
-						}
-						if in.gc != nil || code.needsNativeGCABI() {
-							t.Fatal("primitive function operations allocated a collector")
-						}
-						for _, name := range []string{"reference", "indirect"} {
-							got, err := in.Invoke(name)
-							if err != nil || !slices.Equal(got, []uint64{42}) {
-								t.Fatal(name, got, err)
-							}
-						}
-						for _, check := range []struct {
-							name string
-							want uint64
-						}{{"test", 1}, {"test-unrelated", 0}, {"cast", 1}, {"test-null", 0}, {"test-nullable", 1}, {"cast-nullable", 1}} {
-							got, err := in.Invoke(check.name)
-							if err != nil || !slices.Equal(got, []uint64{check.want}) {
-								t.Fatal(check.name, got, err)
-							}
-						}
-						for _, name := range []string{"cast-unrelated", "cast-null"} {
-							_, err := in.Invoke(name)
-							var trap *coreruntime.TrapError
-							if !errors.As(err, &trap) || trap.Code != coreruntime.TrapCastFailure {
-								t.Fatal(name, err)
-							}
-						}
-						_, err = in.Invoke("unrelated")
-						in.Close()
-						var trap *coreruntime.TrapError
-						if !errors.As(err, &trap) || trap.Code != coreruntime.TrapIndirectWrongSig {
-							t.Fatal("unrelated canonical type did not trap", err)
-						}
-					}
-				})
-			}
-		}
-	}
-}
 
 func TestRV64PrimitiveTailTypeKeysSnapshotQuota(t *testing.T) {
 	c := rv64NativeTailCompile(t, "primitive-tail-type-quota", rv64PublicReferenceTailModule(nil, false), false)
@@ -155,7 +38,7 @@ func TestRV64PrimitiveTailTypeKeysSnapshotQuota(t *testing.T) {
 
 func TestRV64PublicGroupedFunctionSourceAndArtifact(t *testing.T) {
 	for _, vector := range []bool{false, true} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			name, carrier, params, body := "scalar", byte(0x7f), byte(0), []byte{0x41, 42, 0x0b}
 			var args []uint64
 			want := []uint64{42}
@@ -182,17 +65,7 @@ func TestRV64PublicGroupedFunctionSourceAndArtifact(t *testing.T) {
 				if c.codeCache.gcI31Product != 0 {
 					t.Fatal("function-only graph gained i31 execution product")
 				}
-				if artifact {
-					data, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					c, err = LoadTrustedArtifact(data)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer c.Close()
-				}
+
 				rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
 				defer rt.Close()
 				mod, err := rt.Module(c)
@@ -221,16 +94,8 @@ func TestRV64PublicAggregateTypeDeclarationsSourceAndArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	data, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	for _, code := range []*Compiled{c, loaded} {
+
+	for _, code := range []*Compiled{c} {
 		in, err := Instantiate(code)
 		if err != nil {
 			t.Fatal(err)
@@ -266,16 +131,8 @@ func TestRV64ExecutableFunctionsWithInertAggregateGraph(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			for _, code := range []*Compiled{c, loaded} {
+
+			for _, code := range []*Compiled{c} {
 				if code.needsNativeGCABI() {
 					t.Fatal("inert graph gained a native GC ABI")
 				}
@@ -309,16 +166,8 @@ func TestRV64EmptyStructAndInternalCollectorFunctionSourceAndArtifact(t *testing
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	for _, code := range []*Compiled{c, loaded} {
+
+	for _, code := range []*Compiled{c} {
 		in, err := Instantiate(code)
 		if err != nil {
 			t.Fatal(err)
@@ -338,16 +187,8 @@ func TestRV64OpaqueAggregateDeclarationsWithoutExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	data, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	for _, code := range []*Compiled{c, loaded} {
+
+	for _, code := range []*Compiled{c} {
 		if len(code.code) != 0 || code.needsNativeGCABI() || code.needsFuncRefContextHeader {
 			t.Fatal("opaque declarations gained native execution state")
 		}
@@ -385,16 +226,8 @@ func TestRV64RecursiveReferenceIndirectCallSourceAndArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	data, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	for _, code := range []*Compiled{c, loaded} {
+
+	for _, code := range []*Compiled{c} {
 		in, err := Instantiate(code)
 		if err != nil {
 			t.Fatal(err)
@@ -442,16 +275,8 @@ func TestRV64CovariantReferenceTailResultSourceAndArtifact(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			data, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := LoadTrustedArtifact(data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			for _, code := range []*Compiled{c, loaded} {
+
+			for _, code := range []*Compiled{c} {
 				in, err := Instantiate(code)
 				if err != nil {
 					t.Fatal(err)
@@ -493,7 +318,7 @@ func TestRV64ImportOnlyTypedFunctionSourceAndArtifact(t *testing.T) {
 		wasmtest.Section(2, []byte{1, 3, 'e', 'n', 'v', 1, 'f', 0, 1}),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 	)
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			var codes [2]*Compiled
 			for i, source := range [][]byte{providerSource, consumerSource} {
@@ -502,17 +327,7 @@ func TestRV64ImportOnlyTypedFunctionSourceAndArtifact(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				if artifact {
-					data, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					c, err = LoadTrustedArtifact(data)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer c.Close()
-				}
+
 				codes[i] = c
 			}
 			rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))

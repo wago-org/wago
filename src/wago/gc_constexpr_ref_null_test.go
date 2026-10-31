@@ -22,9 +22,8 @@ func TestAbstractGCRefNullGlobalInitializers(t *testing.T) {
 	if got := len(compiled.Globals); got != len(globals) {
 		t.Fatalf("compiled global count = %d, want %d", got, len(globals))
 	}
-	loaded := publicArtifactRoundTrip(t, compiled)
-	defer loaded.Close()
-	for _, candidate := range []*Compiled{compiled, loaded} {
+
+	for _, candidate := range []*Compiled{compiled} {
 		if candidate.needsRuntimeGCCollectorDomain() || candidate.nativeGCABIRequirement() != 0 {
 			t.Fatal("abstract null state acquired a collector execution ABI")
 		}

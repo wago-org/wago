@@ -1,8 +1,0 @@
-{
-  "base": "049cb7e40bb70ce3555556a674066ec4151456bb",
-  "production_file": "src/core/compiler/backend/railshot/amd64/gc_direct.go",
-  "base_source_sha256": "5944477027b71a39180ca7b6af1e12988e53e2908f050f6c49f6b8c731cdac98",
-  "candidate_source_sha256": "c662ee3eafb12859fe2f3f442931e88a1c888cdc6041415dd85f159c0c785364",
-  "overlay_changes_only_production_file": true,
-  "go": "go version go1.27.1 linux/amd64"
-}

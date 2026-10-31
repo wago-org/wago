@@ -1,3 +1,0 @@
-**No findings in the safety fix.** Every recorded cast failure branches to the cold block after the normal return, where R9–R11 are popped in reverse push order before `trapAlways` enters the shared trap tail. Test mismatches still return false through the normal pops; cast mismatches and physical or subtype metadata failures still trap. The restored pins are available when either trap-tail form writes dirty globals, and the trap exit resets the native stack from its recorded entry pointer.
-
-The regression checks both compiled and round-tripped artifacts and exercises dirty R9–R11 global pins. Material coverage gaps are pinned locals, foreign and i31 inputs, subtype interval failures, and several physical checks beyond space and size. I did not run tests, as requested.

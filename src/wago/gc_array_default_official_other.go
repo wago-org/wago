@@ -2,6 +2,5 @@
 
 package wago
 
-func rv64GCArrayDefaultOfficial(*Compiled) bool               { return false }
-func rv64GCArrayDefaultOfficialExecutionCode(*Compiled) bool  { return false }
-func railshotRestoreGCArrayDefaultOfficialArtifact(*Compiled) {}
+func rv64GCArrayDefaultOfficial(*Compiled) bool              { return false }
+func rv64GCArrayDefaultOfficialExecutionCode(*Compiled) bool { return false }

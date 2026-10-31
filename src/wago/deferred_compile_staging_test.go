@@ -41,12 +41,6 @@ func TestDeferredCompilerStagingLifecycle(t *testing.T) {
 		if len(c.code) == 0 || unsafe.SliceData(c.code) != unsafe.SliceData(snapshot.code) {
 			t.Fatal("published views do not share heap staging")
 		}
-		if _, err := c.MarshalBinary(); err != nil {
-			t.Fatal(err)
-		}
-		if c.codeCache.mem != nil {
-			t.Fatal("serialization mapped deferred code")
-		}
 		if activate {
 			in, err := Instantiate(c, InstantiateOptions{})
 			if err != nil {

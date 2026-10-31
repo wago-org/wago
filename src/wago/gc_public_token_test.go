@@ -80,10 +80,7 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 		mode := map[bool]string{false: "compiled", true: "codec"}[codec]
 		t.Run(mode, func(t *testing.T) {
 			compiled := base
-			if codec {
-				compiled = publicArtifactRoundTrip(t, base)
-				defer compiled.Close()
-			}
+
 			for _, tc := range []struct {
 				name string
 				gc   GCConfig

@@ -508,7 +508,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	borrow = -1
 	leaDisp := int32(size)
 	needAdd := int64(off32)+int64(size) > 0x7FFFFFFF && off32 != 0
-	if aliasPinned && !needAdd {
+	// Deferred-load borrows track local indices, so a global needs an owned
+	// address copy that remains valid if global.set overwrites its pinned value.
+	if aliasPinned && !needAdd && e.st.kind != stGlobReg {
 		ea, eaOwned = f.materializeRead(e) // a pinned local's reg is read in place
 		if !eaOwned {
 			borrow = e.st.index()

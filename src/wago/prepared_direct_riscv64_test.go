@@ -107,19 +107,8 @@ func TestRV64DirectIntegerArtifactAndPolicy(t *testing.T) {
 			if c.directPreparedAt(0) != enabled {
 				t.Fatalf("source direct=%v", c.directPreparedAt(0))
 			}
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			var loaded Compiled
-			if err := loaded.UnmarshalBinary(blob); err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			if loaded.directPreparedAt(0) {
-				t.Fatal("artifact retained compile-only direct selection")
-			}
-			for _, image := range []*Compiled{c, &loaded} {
+
+			for _, image := range []*Compiled{c} {
 				in, err := Instantiate(image)
 				if err != nil {
 					t.Fatal(err)

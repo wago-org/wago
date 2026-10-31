@@ -4,15 +4,11 @@ package wago
 
 import (
 	"fmt"
-	"maps"
 	"os"
-	"slices"
 	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -135,18 +131,6 @@ func TestRV64PublicStateOnlyTwoTable32Export(t *testing.T) {
 	}
 }
 
-func TestRV64PublicStateOnlyTwoTable32CompilerFreeGate(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
-		t.Skip("actual precompiled runtime only")
-	}
-	if c, err := Compile(nil, rv64StateOnlyTwoTable32Source()); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		if c != nil {
-			_ = c.Close()
-		}
-		t.Fatal("compiler-free two-table32 witness used source compilation", err)
-	}
-}
-
 func TestRV64PublicStateOnlyTwoTable32SourceGates(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 		t.Skip("source admission only")
@@ -174,104 +158,6 @@ func TestRV64PublicStateOnlyTwoTable32SourceGates(t *testing.T) {
 			defer c.Close()
 			rv64RequireTableSourceArtifact(t, c)
 		})
-	}
-}
-
-func TestRV64PublicStateOnlyTwoTable32ArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "state-only-two-table32-admission", rv64StateOnlyTwoTable32Source(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"missing-ref":   func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"table64-ref":   func(v *Compiled) { v.requiredFeatures |= CoreFeatureTable64 },
-		"bulk-feature":  func(v *Compiled) { v.requiredFeatures |= CoreFeatureBulkMemoryOperations },
-		"size-witness":  func(v *Compiled) { v.nativeTable64ABI = nativeTable64SizeABI },
-		"missing-table": func(v *Compiled) { v.extraTables = nil },
-		"third-table": func(v *Compiled) {
-			v.extraTables = append(v.extraTables, tableDef{Size: 0, Max: 1, HasMax: true})
-		},
-		"first-table64":  func(v *Compiled) { v.TableAddr64 = true },
-		"second-table64": func(v *Compiled) { v.extraTables[0].Addr64 = true },
-		"second-no-max":  func(v *Compiled) { v.extraTables[0].HasMax = false },
-		"second-capacity": func(v *Compiled) {
-			v.extraTables[0].Max = railshot.MaxOwnedTableEntries + 1
-		},
-		"second-externref": func(v *Compiled) { v.extraTables[0].Type = ValExternRef },
-		"second-initializer": func(v *Compiled) {
-			v.extraTables[0].HasInitFunc = true
-			v.extraTables[0].InitFunc = 1
-		},
-		"function":        func(v *Compiled) { v.Funcs = []FuncSig{{}} },
-		"function-export": func(v *Compiled) { v.Exports["f"] = 0 },
-		"missing-export":  func(v *Compiled) { delete(v.tableExports, "table1") },
-		"aliased-export":  func(v *Compiled) { v.tableExports["table1"] = 0 },
-		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"passive":         func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive}} },
-		"start":           func(v *Compiled) { v.HasStart = true },
-		"memory": func(v *Compiled) {
-			v.HasMemory = true
-			v.MemMinPages = 1
-			v.MemMaxPages = 1
-		},
-		"reference-key": func(v *Compiled) { v.FuncTypeID = []uint64{1} },
-		"defined-type": func(v *Compiled) {
-			v.Types = []DefinedTypeDescriptor{{Kind: CompositeTypeFunction, Final: true}}
-		},
-		"gc-type": func(v *Compiled) {
-			v.GCTypeDescs = append(v.GCTypeDescs, gc.TypeDesc{})
-		},
-		"value-type-extra": func(v *Compiled) {
-			v.ValueTypes = append(v.ValueTypes, ValueTypeDescriptor{Kind: ValueTypeI32})
-		},
-		"second-value-index": func(v *Compiled) { v.extraTables[0].ValueTypeIndex = 1 },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.Types = slices.Clone(bad.Types)
-			bad.GCTypeDescs = slices.Clone(bad.GCTypeDescs)
-			bad.ValueTypes = slices.Clone(bad.ValueTypes)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.Elems = slices.Clone(bad.Elems)
-			bad.passiveElems = slices.Clone(bad.passiveElems)
-			mutate(&bad)
-			validDeclaration := false
-			switch name {
-			case "third-table", "second-capacity", "defined-type", "missing-export", "aliased-export", "element", "memory", "value-type-extra", "missing-ref", "size-witness", "second-no-max", "passive", "bulk-feature", "table64-ref":
-				validDeclaration = true
-			}
-			// General declarations may be valid. Mutating this frozen image
-			// must still fail its complete serialization/loading contract.
-			if err := bad.validate(); err == nil && !validDeclaration {
-				t.Fatal("invalid state-only two-table32 metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				if name == "missing-ref" {
-					t.Fatalf("structural feature restoration must serialize: %v", err)
-				}
-				rv64RequireTableMutationSerializationError(t, name, err)
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if name == "missing-ref" {
-				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
-					t.Fatal("structural multi-table feature was not restored", loaded, err)
-				}
-				_ = loaded.Close()
-				return
-			}
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid state-only two-table32 artifact admitted")
-			}
-		})
-	}
-	if c.codeCache.refs != 0 || c.codeCache.mem != nil || c.codeCache.base != 0 || c.codeCache.sealed {
-		t.Fatal("state-only two-table32 gates reached executable publication")
 	}
 }
 

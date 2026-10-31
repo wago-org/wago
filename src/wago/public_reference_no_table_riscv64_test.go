@@ -5,10 +5,7 @@ package wago
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	"os"
 	"slices"
 	"testing"
 	"time"
@@ -259,54 +256,6 @@ func TestRV64PublicReferenceGlobalsWithoutTableAuthentication(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestRV64PublicReferenceGlobalsWithoutTableAdmission(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source and metadata admission")
-	}
-	for _, vector := range []bool{false, true} {
-		source := rv64ReferenceNoTableModule(vector, false, false)
-		c := rv64TableStageCompile(t, fmt.Sprintf("ref-no-table-producer-vector%t-local", vector), source, false)
-		for name, mutate := range map[string]func(*Compiled){
-			"key-count":         func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:len(v.FuncTypeID)-1] },
-			"table-size":        func(v *Compiled) { v.TableSize = 1 },
-			"table-type":        func(v *Compiled) { v.TableType = ValFuncRef },
-			"table-max":         func(v *Compiled) { v.TableMax = 1 },
-			"table-limits":      func(v *Compiled) { v.TableHasMax = true },
-			"table-address":     func(v *Compiled) { v.TableAddr64 = true },
-			"table-initializer": func(v *Compiled) { v.HasTableInitFunc = true },
-			"table-export":      func(v *Compiled) { v.tableExports = map[string]int{"table": 0} },
-			"element":           func(v *Compiled) { v.Elems = []ElemInit{{}} },
-			"table-abi":         func(v *Compiled) { v.nativeTableContextABI = false },
-			"reference-abi":     func(v *Compiled) { v.nativeTableReferenceABI = false },
-			"frame":             func(v *Compiled) { v.registerABIDisabled = false },
-			"descriptor":        func(v *Compiled) { v.NeedsFuncRefDescs = false },
-			"key":               func(v *Compiled) { v.FuncTypeID[0] ^= 1 },
-		} {
-			v := *c.executionView()
-			v.FuncTypeID = slices.Clone(v.FuncTypeID)
-			mutate(&v)
-			if err := railshotValidateCompiled(&v); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("invalid table-free metadata", name, vector, err)
-			}
-			blob, err := marshalCompiled(&v)
-			if err != nil {
-				continue
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				normalized := (name == "table-size" || name == "table-type" || name == "table-max" || name == "table-limits" || name == "table-address" || name == "table-initializer") && loaded.TableSize == 0 && loaded.TableType == 0 && loaded.TableMax == 0 && !loaded.TableHasMax && !loaded.TableAddr64 && !loaded.HasTableInitFunc
-				loaded.Close()
-				if err == nil && normalized {
-					continue
-				} // Absent-table fields are not serialized.
-			}
-			if err == nil {
-				t.Fatal("invalid table-free artifact", name, vector)
-			}
-		}
 	}
 }
 

@@ -6,9 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"runtime"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -94,51 +92,6 @@ func TestRV64PublicLocalMutableReferenceCells(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestRV64PublicLocalMutableReferenceMetadataAdmission(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source and mutable metadata admission only")
-	}
-	for _, vector := range []bool{false, true} {
-		source := rv64LocalMutableReferenceModule(vector)
-		c := rv64PublicStartCompile(t, source, false)
-		for name, mutate := range map[string]func(*Compiled){
-			"export":          func(v *Compiled) { v.GlobalExports = map[string]int{"hidden": 0} },
-			"alias":           func(v *Compiled) { v.GlobalExports = map[string]int{"a": 0, "b": 0} },
-			"bad-index":       func(v *Compiled) { v.GlobalExports = map[string]int{"bad": 1} },
-			"missing-feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-			"raw-bits":        func(v *Compiled) { v.Globals[0].Bits = 7 },
-			"reference-ABI":   func(v *Compiled) { v.nativeTableReferenceABI = false },
-		} {
-			copy := *c.executionView()
-			copy.Globals = slices.Clone(copy.Globals)
-			mutate(&copy)
-			if err := railshotValidateCompiled(&copy); err == nil {
-				t.Fatal("metadata admitted", vector, name)
-			}
-			blob, err := marshalCompiled(&copy)
-			if err == nil {
-				loaded, err := LoadTrustedArtifact(blob)
-				// The codec recomputes feature requirements and normalizes unused
-				// reference payload bits. Those contradictory fields do not
-				// survive serialization as an invalid published artifact.
-				canonical := false
-				if loaded != nil {
-					view := loaded.executionView()
-					canonical = (name == "missing-feature" && view.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes)) || (name == "raw-bits" && len(view.Globals) == 1 && view.Globals[0].Bits == 0 && view.Globals[0].Mutable && view.Globals[0].Type == ValFuncRef)
-				}
-				if loaded != nil {
-					loaded.Close()
-				}
-				if err == nil && !canonical {
-					t.Fatal("artifact admitted", vector, name)
-				}
-			}
-		}
-		exported := rv64ReplaceTableStageSection(t, source, 7, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("target", 0, 3), wasmtest.ExportEntry("hidden", 3, 0))))
-		rv64RequireCore3SourceValidation(t, exported)
 	}
 }
 

@@ -3,13 +3,10 @@
 package wago
 
 import (
-	"maps"
 	"os"
-	"slices"
 	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -120,19 +117,6 @@ func TestRV64PublicStateOnlyTable32ScalarGlobals(t *testing.T) {
 	}
 }
 
-func TestRV64PublicStateOnlyTable32ScalarGlobalsCompilerFreeGate(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
-		t.Skip("compiler-free gate")
-	}
-	if c, err := Compile(nil, rv64StateOnlyTable32ScalarGlobalsSource()); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free table32/scalar-global witness used source compilation", c, err)
-	}
-	c := rv64TableStageCompile(t, "state-only-table32-scalar-globals", rv64StateOnlyTable32ScalarGlobalsSource(), true)
-	if !rv64StateOnlyTable32ScalarGlobals(c) {
-		t.Fatal("compiler-free table32/scalar-global artifact lost its witness")
-	}
-}
-
 func TestRV64PublicStateOnlyTable32ScalarGlobalsSourceGates(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 		t.Skip("source admission only")
@@ -179,81 +163,5 @@ func TestRV64PublicStateOnlyTable32ScalarGlobalsSourceGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			rv64RequireCore3SourceValidation(t, source)
 		})
-	}
-}
-
-func TestRV64PublicStateOnlyTable32ScalarGlobalsArtifactGates(t *testing.T) {
-	c := rv64TableStageCompile(t, "state-only-table32-scalar-globals-admission", rv64StateOnlyTable32ScalarGlobalsSource(), true)
-	for name, mutate := range map[string]func(*Compiled){
-		"extra-feature":     func(v *Compiled) { v.requiredFeatures |= CoreFeatureSIMD },
-		"mutable":           func(v *Compiled) { v.Globals[0].Mutable = true },
-		"wrong-global-type": func(v *Compiled) { v.Globals[0].Type = ValI64 },
-		"wrong-global-pool": func(v *Compiled) { v.Globals[0].ValueTypeIndex = 1 },
-		"derived-global":    func(v *Compiled) { v.Globals[1].HasInitGlobal = true; v.Globals[1].InitGlobal = 0 },
-		"global-expression": func(v *Compiled) { v.Globals[0].InitExpr = []byte{0x41, 0, 0x0b} },
-		"vector-payload":    func(v *Compiled) { v.Globals[0].V128[0] = 1 },
-		"i32-upper-bits":    func(v *Compiled) { v.Globals[0].Bits |= 1 << 32 },
-		"f32-upper-bits":    func(v *Compiled) { v.Globals[2].Bits |= 1 << 32 },
-		"missing-global-export": func(v *Compiled) {
-			delete(v.GlobalExports, "f64")
-		},
-		"aliased-global-export": func(v *Compiled) { v.GlobalExports["f64"] = 2 },
-		"missing-table-export":  func(v *Compiled) { delete(v.tableExports, "table") },
-		"wrong-table-export":    func(v *Compiled) { v.tableExports["table"] = 1 },
-		"cross-kind-export-name": func(v *Compiled) {
-			delete(v.tableExports, "table")
-			v.tableExports["i32"] = 0
-		},
-		"table64":           func(v *Compiled) { v.TableAddr64 = true },
-		"missing-table-max": func(v *Compiled) { v.TableHasMax = false },
-		"oversize-table":    func(v *Compiled) { v.TableMax = railshot.MaxOwnedTableEntries + 1 },
-		"table-initializer": func(v *Compiled) { v.HasTableInitFunc = true; v.TableInitFunc = 1 },
-		"element":           func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"function":          func(v *Compiled) { v.Funcs = []FuncSig{{}} },
-		"function-export":   func(v *Compiled) { v.Exports["f"] = 0 },
-		"start":             func(v *Compiled) { v.HasStart = true },
-		"memory": func(v *Compiled) {
-			v.HasMemory = true
-			v.MemMinPages = 1
-			v.MemMaxPages = 1
-		},
-		"extra-value-type": func(v *Compiled) {
-			v.ValueTypes = append(v.ValueTypes, ValueTypeDescriptor{Kind: ValueTypeI32})
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *rv64ReferenceStartCopy(c.executionView())
-			bad.Globals = slices.Clone(bad.Globals)
-			bad.ValueTypes = slices.Clone(bad.ValueTypes)
-			bad.GlobalExports = maps.Clone(bad.GlobalExports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.Elems = slices.Clone(bad.Elems)
-			mutate(&bad)
-			if err := bad.validate(); err == nil && name != "vector-payload" {
-				t.Fatal("invalid table32/scalar-global metadata admitted")
-			}
-			blob, err := marshalCompiled(&bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if name == "vector-payload" {
-				if err != nil || loaded == nil || loaded.Globals[0].V128 != (V128{}) || !rv64StateOnlyTable32ScalarGlobals(loaded) {
-					t.Fatal("irrelevant vector payload was not normalized", loaded, err)
-				}
-				_ = loaded.Close()
-				return
-			}
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid table32/scalar-global artifact admitted")
-			}
-		})
-	}
-	if c.codeCache.refs != 0 || c.codeCache.mem != nil || c.codeCache.base != 0 || c.codeCache.sealed {
-		t.Fatal("table32/scalar-global gates reached executable publication")
 	}
 }

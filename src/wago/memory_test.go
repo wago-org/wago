@@ -168,31 +168,21 @@ func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blob, err := consumerCompiled.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := consumerCompiled.Close(); err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
+
 	defer func() {
-		if err := loaded.Close(); err != nil {
+		if err := consumerCompiled.Close(); err != nil {
 			t.Errorf("close decoded consumer: %v", err)
 		}
 	}()
-	if !loaded.HasMemory || loaded.MemMinPages != 2 || loaded.MemMaxPages != 3 || !loaded.MemHasMax {
-		t.Fatalf("decoded memory import limits = present:%v min:%d max:%d hasMax:%v, want true/2/3/true", loaded.HasMemory, loaded.MemMinPages, loaded.MemMaxPages, loaded.MemHasMax)
+	if !consumerCompiled.HasMemory || consumerCompiled.MemMinPages != 2 || consumerCompiled.MemMaxPages != 3 || !consumerCompiled.MemHasMax {
+		t.Fatalf("decoded memory import limits = present:%v min:%d max:%d hasMax:%v, want true/2/3/true", consumerCompiled.HasMemory, consumerCompiled.MemMinPages, consumerCompiled.MemMaxPages, consumerCompiled.MemHasMax)
 	}
 
 	tooSmall, err := NewMemory(1, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if in, err := Instantiate(&loaded, testImports("env.mem", tooSmall)); err == nil {
+	if in, err := Instantiate(consumerCompiled, testImports("env.mem", tooSmall)); err == nil {
 		_ = in.Close()
 		t.Fatal("memory below the imported minimum linked successfully")
 	}
@@ -204,7 +194,7 @@ func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if in, err := Instantiate(&loaded, testImports("env.mem", tooWide)); err == nil {
+	if in, err := Instantiate(consumerCompiled, testImports("env.mem", tooWide)); err == nil {
 		_ = in.Close()
 		t.Fatal("memory above the imported maximum linked successfully")
 	}
@@ -216,7 +206,7 @@ func TestImportedMemoryLinkingValidatesExportNameAndCodecLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(&loaded, testImports("env.mem", compatible))
+	in, err := Instantiate(consumerCompiled, testImports("env.mem", compatible))
 	if err != nil {
 		t.Fatalf("compatible memory import: %v", err)
 	}
@@ -451,40 +441,5 @@ func TestImportedMemoryReexportPreservesOriginalOwner(t *testing.T) {
 	}
 	if !owner.resourcesClosed {
 		t.Fatal("memory owner resources remained live after final consumer close")
-	}
-}
-
-func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
-	t.Setenv("WAGO_BOUNDS", "explicit") // pin explicit: serializing a signals-based module is unsupported (see TestSignalsBasedNotSerializable)
-	c, err := Compile(nil, importMemModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Instantiate(loaded, InstantiateOptions{}); err == nil {
-		t.Fatal("loaded module should still require imported memory")
-	}
-	mem, err := NewMemory(1, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mem.Close()
-	in, err := Instantiate(loaded, InstantiateOptions{Imports: testImports("env.mem", mem)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("store", I32(4), I32(0x55AA)); err != nil {
-		t.Fatal(err)
-	}
-	if got := binary.LittleEndian.Uint32(mem.UnsafeBytes()[4:]); got != 0x55AA {
-		t.Fatalf("host sees mem[4] = %#x, want 0x55AA", got)
 	}
 }

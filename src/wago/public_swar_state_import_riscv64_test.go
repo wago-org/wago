@@ -19,24 +19,9 @@ func rv64PublicSWARStateImportsCompile(t *testing.T, position int, artifact bool
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	if !artifact {
-		return c
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if loaded != nil {
-		t.Cleanup(func() { _ = loaded.Close() })
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return loaded
+
+	return c
+
 }
 
 func rv64PublicSWARBorrowState(t *testing.T, producer *Instance, memory *Memory) (*Imports, []*Global) {

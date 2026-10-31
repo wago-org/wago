@@ -1,5 +1,0 @@
-=== RUN   TestRealCastArrayStaticAdmission
-    real_cast_array_capture_test.go:32: fusions=164 functions=156 native_bytes=24170827 compile_seconds=0.512951 roots={Required:true Exact:true Reason: Safepoints:25794 Callsites:56923 MaximumRoots:77 MetadataBytes:1983045}
---- PASS: TestRealCastArrayStaticAdmission (0.53s)
-PASS
-ok  	github.com/wago-org/wago/src/wago	0.531s

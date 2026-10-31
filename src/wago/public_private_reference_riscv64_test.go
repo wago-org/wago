@@ -32,22 +32,14 @@ func TestRV64PrivateReferenceCancellationPreservesCompleteEntry(t *testing.T) {
 		)),
 	)
 	c := ownedTableCompile(t, data)
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := Instantiate(loaded)
+
+	in, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
 	_ = c.Close()
-	_ = loaded.Close()
+	_ = c.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)

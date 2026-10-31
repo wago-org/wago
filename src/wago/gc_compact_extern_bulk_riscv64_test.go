@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -9,7 +9,6 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"os"
 	"slices"
 	"testing"
 	"unsafe"
@@ -102,9 +101,8 @@ func TestRV64CompactExternBulkPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{c, loaded} {
+
+		for artifact, candidate := range []*Compiled{c} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt := NewRuntime()
@@ -284,7 +282,7 @@ func TestRV64CompactExternImportedBulkPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer imported.Close()
-		loadedSource, loadedImported := publicArtifactRoundTrip(t, source), publicArtifactRoundTrip(t, imported)
+		loadedSource, loadedImported := source, imported
 		defer loadedSource.Close()
 		defer loadedImported.Close()
 		for artifact, pair := range [][2]*Compiled{{source, imported}, {loadedSource, loadedImported}} {
@@ -397,9 +395,8 @@ func TestRV64CompactExternPassiveBulkPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{c, loaded} {
+
+		for artifact, candidate := range []*Compiled{c} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt := NewRuntime()
@@ -488,9 +485,8 @@ func TestRV64CompactExternBulkScratchPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{c, loaded} {
+
+		for artifact, candidate := range []*Compiled{c} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt := NewRuntime()
@@ -563,9 +559,8 @@ func TestRV64CompactExternConstructorRollbackPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	loaded := publicArtifactRoundTrip(t, c)
-	defer loaded.Close()
-	for artifact, candidate := range []*Compiled{c, loaded} {
+
+	for artifact, candidate := range []*Compiled{c} {
 		for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 			t.Run(fmt.Sprintf("artifact%t/profile%d", artifact != 0, profile), func(t *testing.T) {
 				rt := NewRuntime()
@@ -595,36 +590,6 @@ func TestRV64CompactExternConstructorRollbackPrivate(t *testing.T) {
 					t.Fatal("failed constructor retained extern pins")
 				}
 			})
-		}
-	}
-}
-
-func TestRV64CompactExternPreparePrivate(t *testing.T) {
-	dir := os.Getenv("WAGO_RV64_COMPACT_EXTERN_ARTIFACT_DIR")
-	if dir == "" {
-		t.Skip("private artifact producer")
-	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	for _, vector := range []bool{false, true} {
-		for _, fixture := range []struct {
-			name   string
-			source []byte
-		}{{"bulk", rv64CompactExternBulkModule(vector)}, {"passive", rv64CompactExternBulkModuleWith(vector, false, true)}, {"constant", rv64CompactExternConstantModule(vector)}, {"aggregate-struct", rv64CompactExternAggregateSource(vector, false)}, {"aggregate-array", rv64CompactExternAggregateSource(vector, true)}, {"exception", rv64CompactExternExceptionSource(vector)}, {"host-bulk", rv64CompactExternBulkModule(vector, true)}, {"host-cycle", rv64CompactExternHostCycleSource(vector)}, {"constant-struct", rv64CompactExternAggregateConstantSource(vector, false)}, {"constant-array", rv64CompactExternAggregateConstantSource(vector, true)}, {"host-global", rv64CompactExternHostGlobalSource(vector)}, {"host-global-cycle", rv64CompactExternHostGlobalCycleSource(vector)}, {"plain-reentry", rv64CompactExternPlainReentrySource(vector)}, {"function-signature", rv64FunctionSignatureFrameSource(vector)}, {"function-producer", rv64FunctionSignatureProducerSource()}} {
-			c, err := NewRuntimeConfig().Compile(fixture.source)
-			if err != nil {
-				t.Fatal(err)
-			}
-			data, err := c.MarshalBinary()
-			c.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
-			name := fmt.Sprintf("%s-%t.wago", fixture.name, vector)
-			if err := os.WriteFile(dir+"/"+name, data, 0600); err != nil {
-				t.Fatal(err)
-			}
 		}
 	}
 }

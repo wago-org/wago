@@ -1,7 +1,0 @@
-{
-  "Replace": {
-    "/home/dev/Projects/dewdrop/.tmp/wago-trapping-guard-qualification/src/wago/api.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/trapping-guard-static-reader/api.go.txt",
-    "/home/dev/Projects/dewdrop/.tmp/wago-trapping-guard-qualification/src/wago/real_trapping_guard_capture.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/trapping-guard-static-reader/hook.go.txt",
-    "/home/dev/Projects/dewdrop/.tmp/wago-trapping-guard-qualification/src/wago/real_trapping_guard_capture_test.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/trapping-guard-static-reader/capture_test.go.txt"
-  }
-}

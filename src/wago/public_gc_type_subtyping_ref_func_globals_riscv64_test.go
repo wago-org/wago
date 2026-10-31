@@ -6,10 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -51,53 +48,14 @@ func rv64GCTypeSubtypingRefFuncGlobalBytes(t testing.TB, variant uint8) []byte {
 
 func rv64CompileGCTypeSubtypingRefFuncGlobal(t testing.TB, variant uint8, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_REF_FUNC_GLOBALS_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_REF_FUNC_GLOBALS_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-type-subtyping-ref-func-globals-"+strconv.Itoa(int(variant))+".wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64GCTypeSubtypingRefFuncGlobalBytes(t, variant))
 	if err != nil {
 		t.Fatal(variant, err)
 	}
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		original.Close()
-		t.Fatal(variant, err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	original.Close()
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(variant, err)
-	}
-	return loaded
+
+	return original
+
 }
 
 func TestRV64GCTypeSubtypingRefFuncGlobalsSourceAndArtifact(t *testing.T) {
@@ -105,11 +63,11 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsSourceAndArtifact(t *testing.T) {
 		t.Fatal("official ref.func-global inventory changed")
 	}
 	for variant := uint8(1); variant <= 6; variant++ {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(strconv.Itoa(int(variant))+"/artifact="+strconv.FormatBool(artifact), func(t *testing.T) {
 				compiled := rv64CompileGCTypeSubtypingRefFuncGlobal(t, variant, artifact)
 				view := compiled.executionView()
-				if !rv64ArtifactContractValid(view) || view.validate() != nil {
+				if !rv64SourceContractValid(view) || view.validate() != nil {
 					t.Fatal("invalid public ref.func global execution contract")
 				}
 				cache := compiled.loadCodeCache()
@@ -177,77 +135,18 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsSourceAndArtifact(t *testing.T) {
 	}
 }
 
-func TestRV64GCTypeSubtypingRefFuncGlobalsRejectHostileRetainedState(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_REF_FUNC_GLOBALS_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	for variant := uint8(1); variant <= 6; variant++ {
-		compiled := rv64CompileGCTypeSubtypingRefFuncGlobal(t, variant, false)
-		base := compiled.executionView()
-		for name, mutate := range map[string]func(*Compiled){
-			"code":                       func(v *Compiled) { v.code[len(v.code)-1] ^= 1 },
-			"entry":                      func(v *Compiled) { v.Entry[0] += 4; v.InternalEntry[0] += 4 },
-			"function":                   func(v *Compiled) { v.Funcs[0].TypeIndex ^= 1 },
-			"type":                       func(v *Compiled) { v.Types[0].Final = !v.Types[0].Final },
-			"type-key":                   func(v *Compiled) { v.FuncTypeID[0] ^= 1 },
-			"descriptor":                 func(v *Compiled) { v.GCTypeDescs[0].Final = !v.GCTypeDescs[0].Final },
-			"global":                     func(v *Compiled) { v.Globals[0].InitFunc = uint32(len(v.Funcs)) },
-			"value-type":                 func(v *Compiled) { v.ValueTypes[0].Ref.Nullable = !v.ValueTypes[0].Ref.Nullable },
-			"feature":                    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-			"invalid-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
-			"all-claims": func(v *Compiled) {
-				v.requiredFeatures &^= CoreFeatureGC
-				v.codeCache.stagedFeatures &^= CoreFeatureGC
-				v.codeCache.gcTypeSubtypingProduct = 0
-			},
-		} {
-			t.Run(strconv.Itoa(int(variant))+"/"+name, func(t *testing.T) {
-				candidate := rv64ReferenceStartCopy(base)
-				mutate(candidate)
-				if err := candidate.validate(); err == nil {
-					t.Fatal("hostile retained ref.func global mutation admitted")
-				}
-				if name == "feature" || name == "all-claims" {
-					rv64RequireRestoredGCFeature(t, candidate)
-				} else {
-					rv64RequireRejectedArtifact(t, candidate)
-				}
-				if !rv64ArtifactContractValid(base) || base.validate() != nil {
-					t.Fatal("hostile mutation contaminated baseline")
-				}
-			})
-		}
-		compiled.Close()
-	}
-}
-
 func TestRV64GCTypeSubtypingRefFuncGlobalsCodeFingerprintCollisionCompatibility(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run("artifact="+strconv.FormatBool(artifact), func(t *testing.T) {
 			compiled := rv64NativeTailCompile(t, "ref-func-global-code-collision", rv64PublicNativeIdentityModule(nil), artifact)
 			defer compiled.Close()
 			view := compiled.executionView()
-			if !rv64ArtifactContractValid(view) || view.stagedGCTypeSubtypingProduct() != 0 {
+			if !rv64SourceContractValid(view) || view.stagedGCTypeSubtypingProduct() != 0 {
 				t.Fatal("ordinary numeric identity lost its public execution contract")
 			}
 			if err := railshotValidateCompiled(view); err != nil {
 				t.Fatal("ordinary numeric identity rejected by a GC-only code fingerprint", err)
 			}
 		})
-	}
-}
-
-func TestRV64GCTypeSubtypingRefFuncGlobalsCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_REF_FUNC_GLOBALS_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	for variant := uint8(1); variant <= 6; variant++ {
-		compiled, err := rv64I31Config().Compile(rv64GCTypeSubtypingRefFuncGlobalBytes(t, variant))
-		if compiled != nil {
-			compiled.Close()
-		}
-		if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-			t.Fatal("compiler-free ref.func-global path used source compilation", variant, err)
-		}
 	}
 }

@@ -7,31 +7,8 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
-
-func TestCompiledGenericGCArtifactRejectsNativeABIMismatch(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), v128StructModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	if got := compiled.nativeGCABIRequirement(); got != gc.NativeABIVersion {
-		t.Fatalf("compiled native GC ABI = %d, want %d", got, gc.NativeABIVersion)
-	}
-	for _, version := range []uint32{0, gc.NativeABIVersion + 1} {
-		compiled.codeCache.setNativeGCABIVersion(version)
-		blob, err := marshalCompiled(compiled)
-		compiled.codeCache.setNativeGCABIVersion(gc.NativeABIVersion)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var loaded Compiled
-		if err := loaded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "native ABI version") {
-			t.Fatalf("native GC ABI version %d load = %v", version, err)
-		}
-	}
-}
 
 func TestNativeGCViewVersionAndAllocationRefresh(t *testing.T) {
 	compiled, err := compileStagedGCArray(stagedGCArrayNumericLocalBytes(t))

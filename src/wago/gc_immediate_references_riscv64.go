@@ -8,7 +8,7 @@ import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 // values. The native image and every retained initializer are bound together by
 // the trusted artifact contract; old images retain their independent checks.
 func rv64ImmediateReferenceContract(c *Compiled) bool {
-	if c == nil || c.tableImportCount() != 0 || c.stagedGCI31Product() == 0 || c.nativeGCABIRequirement() != 0 || c.genericGCFrameRoots() != nil || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !rv64ArtifactContractValid(c) {
+	if c == nil || c.tableImportCount() != 0 || c.stagedGCI31Product() == 0 || c.nativeGCABIRequirement() != 0 || c.genericGCFrameRoots() != nil || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !rv64SourceContractValid(c) {
 		return false
 	}
 	for _, desc := range c.GCTypeDescs {
@@ -82,7 +82,7 @@ func rv64ImmediateReferenceContract(c *Compiled) bool {
 // function references use the separate callable descriptor lifetime.
 func rv64GeneralI31Contract(c *Compiled) bool {
 	if c == nil || c.stagedGCI31Product() != stagedGCI31ProductCore || c.nativeGCABIRequirement() != 0 || c.genericGCFrameRoots() != nil ||
-		c.usesGCStructHelpers() || c.usesGCArrayHelpers() || !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !rv64ArtifactContractValid(c) {
+		c.usesGCStructHelpers() || c.usesGCArrayHelpers() || !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !rv64SourceContractValid(c) {
 		return false
 	}
 	carrier := func(t ValType) bool {

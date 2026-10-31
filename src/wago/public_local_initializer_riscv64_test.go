@@ -5,7 +5,6 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
-	"os"
 	"slices"
 	"testing"
 
@@ -137,73 +136,6 @@ func TestRV64PublicLocalInitializers(t *testing.T) {
 
 func rv64CompactLocalInitializerModule() []byte {
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(4, []byte{1, 0x70, 1, 3, 3}), wasmtest.Section(5, []byte{1, 1, 1, 1}), wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 2, 0x0b}), wasmtest.GlobalEntry(wasm.I32, false, []byte{0x23, 0, 0x0b}))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))), wasmtest.Section(9, []byte{1, 0, 0x23, 1, 0x0b, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 1, 0x0b}))), wasmtest.Section(11, []byte{1, 0, 0x23, 1, 0x0b, 1, 42}))
-}
-
-func TestRV64PublicLocalInitializerArtifactAdmission(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source metadata mutations")
-	}
-	c := rv64TableStageCompile(t, "local-init-metadata", rv64CompactLocalInitializerModule(), false)
-	for index, mutate := range []func(*Compiled){
-		func(v *Compiled) {
-			v.requiredFeatures &^= CoreFeatureExtendedConstExpressions
-			v.Data[0].Offset.HasGlobal = false
-			v.Data[0].Offset.Base = 2
-			v.Elems[0].Offset.HasGlobal = false
-			v.Elems[0].Offset.Base = 2
-		},
-		func(v *Compiled) {
-			v.requiredFeatures &^= CoreFeatureExtendedConstExpressions
-			v.Globals[1].HasInitGlobal = false
-			v.Globals[1].Bits = 2
-			v.Elems[0].Offset.HasGlobal = false
-			v.Elems[0].Offset.Base = 2
-		},
-		func(v *Compiled) {
-			v.requiredFeatures &^= CoreFeatureExtendedConstExpressions
-			v.Globals[1].HasInitGlobal = false
-			v.Globals[1].Bits = 2
-			v.Data[0].Offset.HasGlobal = false
-			v.Data[0].Offset.Base = 2
-		},
-		func(v *Compiled) { v.Globals[1].InitGlobal = 1 },
-		func(v *Compiled) { v.Globals[0].Mutable = true },
-		func(v *Compiled) { v.Data[0].Offset.Global = 2 },
-		func(v *Compiled) { v.Elems[0].Offset.Global = -1 },
-	} {
-		v := *c.executionView()
-		v.Globals = slices.Clone(v.Globals)
-		v.Data = slices.Clone(v.Data)
-		v.Elems = slices.Clone(v.Elems)
-		mutate(&v)
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("invalid local metadata admitted", index)
-		}
-		blob, err := marshalCompiled(&v)
-		if err != nil {
-			continue
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if index == 0 {
-			if err != nil || loaded == nil || loaded.requiredFeatures != c.requiredFeatures || railshotValidateCompiled(loaded.executionView()) != nil {
-				t.Fatal("local initializer feature was not reconstructed", index, loaded, err)
-			}
-			loaded.Close()
-			continue
-		}
-		if loaded != nil {
-			loaded.Close()
-		}
-		if err == nil {
-			t.Fatal("invalid local artifact admitted", index)
-		}
-	}
-	if c, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureExtendedConstExpressions, false), rv64CompactLocalInitializerModule()); c != nil || err == nil {
-		if c != nil {
-			c.Close()
-		}
-		t.Fatal("disabled local initializer feature admitted", err)
-	}
 }
 
 func TestRV64PublicLocalInitializerIndex255(t *testing.T) {

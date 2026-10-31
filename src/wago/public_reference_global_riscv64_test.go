@@ -4,7 +4,6 @@ package wago
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 	"slices"
 	"testing"
@@ -228,57 +227,4 @@ func TestRV64PublicReferenceGlobalIndex255(t *testing.T) {
 			})
 		}
 	}
-}
-
-func TestRV64PublicReferenceGlobalArtifactAdmission(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source metadata mutations")
-	}
-	c := rv64TableStageCompile(t, "ref-global-metadata", rv64ReferenceGlobalModule(false, false, false, true, 1), false)
-	for index, mutate := range []func(*Compiled){
-		func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		func(v *Compiled) { v.Globals[0].Mutable = true },
-		func(v *Compiled) { v.Globals[0].Bits = 1 },
-		func(v *Compiled) { v.Globals[0].HasInitGlobal = true; v.Globals[0].InitGlobal = 0 },
-		func(v *Compiled) { v.Globals[0].InitExpr = []byte{0xd0, 0x70, 0x0b} },
-		func(v *Compiled) { v.Globals[0].HasInitFunc = true; v.Globals[0].InitFunc = uint32(len(v.Funcs)) },
-		func(v *Compiled) { v.GlobalExports = map[string]int{"reference": 1} },
-		func(v *Compiled) { v.ValueTypes[v.Globals[0].ValueTypeIndex].Ref.Nullable = false },
-		func(v *Compiled) { v.HasTable = false },
-	} {
-		v := *c.executionView()
-		v.Globals = slices.Clone(v.Globals)
-		v.ValueTypes = slices.Clone(v.ValueTypes)
-		mutate(&v)
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("unqualified reference global metadata admitted", index)
-		}
-		blob, err := marshalCompiled(&v)
-		if err != nil {
-			continue
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if index == 0 && err == nil {
-			repaired := loaded.executionView()
-			if !repaired.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || railshotValidateCompiled(repaired) != nil {
-				loaded.Close()
-				t.Fatal("invalid reconstructed reference feature")
-			}
-			loaded.Close()
-			continue
-		}
-		if loaded != nil {
-			loaded.Close()
-		}
-		if err == nil {
-			t.Fatal("unqualified reference global artifact admitted", index)
-		}
-	}
-	if c, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false), rv64ReferenceGlobalModule(false, false, false, true, 1)); c != nil || err == nil {
-		if c != nil {
-			c.Close()
-		}
-		t.Fatal("disabled reference feature admitted", err)
-	}
-
 }

@@ -93,5 +93,5 @@ func setRV64StorageFreeProof(c *Compiled, enabled bool) {
 }
 
 func rv64StorageFreeCallable(c *Compiled) bool {
-	return rv64StorageFreeProof(c) && rv64ArtifactContractValid(c)
+	return rv64StorageFreeProof(c) && rv64SourceContractValid(c)
 }

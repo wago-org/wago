@@ -59,9 +59,8 @@ func TestNativeImportVariantSourceArtifactAndCalls(t *testing.T) {
 							t.Fatal(err)
 						}
 						images[mode] = append([]byte(nil), image.Bytes()...)
-						decoded := publicArtifactRoundTrip(t, c)
-						defer decoded.Close()
-						for index, code := range []*Compiled{c, decoded} {
+
+						for index, code := range []*Compiled{c} {
 							for _, native := range []bool{false, true} {
 								rt := NewRuntime(WithRuntimeConfig(cfg))
 								module, err := rt.Module(code)

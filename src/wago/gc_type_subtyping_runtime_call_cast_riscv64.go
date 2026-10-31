@@ -41,7 +41,7 @@ func rv64GCTypeSubtypingRuntimeCallCastProfileWithCode(c *Compiled, allowUnresto
 		requireCode && (len(c.code) != rv64GCTypeSubtypingRuntimeCallCastCodeLen || sha256.Sum256(c.code) != rv64GCTypeSubtypingRuntimeCallCastCodeDigest) {
 		return false
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	return err == nil && len(metadata) == rv64GCTypeSubtypingRuntimeCallCastMetadataLen && sha256.Sum256(metadata) == rv64GCTypeSubtypingRuntimeCallCastMetadataDigest
 }
 
@@ -51,13 +51,4 @@ func rv64GCTypeSubtypingRuntimeCallCast(c *Compiled) bool {
 
 func rv64GCTypeSubtypingRuntimeCallCastExecutionCode(c *Compiled) bool {
 	return c != nil && len(c.code) == rv64GCTypeSubtypingRuntimeCallCastCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingRuntimeCallCastCodeDigest
-}
-
-func railshotRestoreGCTypeSubtypingRuntimeCallCastArtifact(c *Compiled) {
-	if !rv64GCTypeSubtypingRuntimeCallCastProfileWithCode(c, true, true) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRuntimeCallCast
 }

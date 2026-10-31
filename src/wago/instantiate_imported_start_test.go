@@ -18,17 +18,9 @@ func TestImportedStartPreservesHostTrapCauses(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
+
 	cause := errors.New("imported start sentinel")
-	for index, compiled := range []*Compiled{c, loaded} {
+	for index, compiled := range []*Compiled{c} {
 		for _, tc := range []struct {
 			name  string
 			value any

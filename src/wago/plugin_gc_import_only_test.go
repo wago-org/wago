@@ -46,19 +46,4 @@ func TestPluginGCHostImportOnlyModuleUsesEmptyExactRootSet(t *testing.T) {
 		t.Fatal("import-only GC plugin instance has no Runtime GC domain")
 	}
 
-	loaded := publicArtifactRoundTrip(t, mod.c)
-	defer loaded.Close()
-	restored, err := rt.Module(loaded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer restored.Close()
-	restoredInstance, err := rt.Instantiate(context.Background(), restored)
-	if err != nil {
-		t.Fatalf("artifact import-only GC instance: %v", err)
-	}
-	defer restoredInstance.Close()
-	if restoredInstance.gc == nil || restoredInstance.gcInvocationDomain() == nil {
-		t.Fatal("artifact import-only module lost its collector domain")
-	}
 }

@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -131,66 +130,6 @@ func TestRV64PublicReferenceCallDeadAndNullSourceArtifact(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestRV64PublicReferenceCallMarkerAdmission(t *testing.T) {
-	// Isolate the ordinary-call witness. An indexed null now legitimately adds
-	// its own retained-control witness, which also admits the typed feature.
-	// Metadata validation does not reconstruct opcodes from trusted native code.
-	sig := []wasm.ValType{wasm.I32}
-	source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(sig, sig))), wasmtest.Section(3, []byte{2, 0, 0}), wasmtest.Section(9, []byte{1, 3, 0, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0xd2, 0, 0x14, 0, 0x0b}))))
-	base := rv64NativeTailCompile(t, "reference-call-marker", source, false)
-	if !base.nativeReferenceCallABI || base.nativeReferenceControlABI || rv64NativeTailModule(base) != nil {
-		t.Fatal("ordinary-call-only marker fixture")
-	}
-	for _, tc := range []struct {
-		name   string
-		mutate func(*Compiled)
-	}{
-		{"missing-marker", func(c *Compiled) { c.nativeReferenceCallABI = false }},
-		{"missing-typed", func(c *Compiled) { c.requiredFeatures &^= CoreFeatureTypedFunctionReferences }},
-		{"missing-reference-abi", func(c *Compiled) { c.nativeTableReferenceABI = false }},
-		{"missing-context-abi", func(c *Compiled) { c.nativeTableContextABI = false }},
-		{"missing-descriptor-extent", func(c *Compiled) { c.FuncTypeID = nil }},
-		{"reference-signature", func(c *Compiled) { c.Types[0].Params[0] = ValueTypeDescriptor{Kind: ValueTypeReference} }},
-		{"nonfinal-type", func(c *Compiled) { c.Types[0].Final = false }},
-		{"subtype", func(c *Compiled) { c.Types[0].Supers = []uint32{1} }},
-		{"ref-test", func(c *Compiled) { c.codeCache.flags |= compiledCacheDynamicFuncRefTest }},
-		{"unknown-cpu-bit", func(c *Compiled) { c.requiredAMD64Features = shared.AMD64Features(1 << 18) }},
-		{"cpu-marker-alias", func(c *Compiled) { c.requiredAMD64Features = shared.AMD64Features(1 << 19) }},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			c := rv64ReferenceImportTailCopy(base)
-			if err := c.validate(); err != nil {
-				t.Fatal("unchanged call_ref metadata", err)
-			}
-			tc.mutate(c)
-			if err := c.validate(); err == nil {
-				t.Fatal("invalid call_ref shape accepted", err)
-			}
-			blob, err := marshalCompiled(c)
-			if err != nil {
-				return
-			} // Structural writer validation is also a rejection.
-			got, err := LoadTrustedArtifact(blob)
-			if err == nil {
-				if got != nil {
-					_ = got.Close()
-				}
-				t.Fatal("loader accepted invalid call_ref marker contract")
-			}
-		})
-	}
-	if a := testing.AllocsPerRun(5, func() {
-		if err := railshotValidateReferenceCalls(base); err != nil {
-			panic(err)
-		}
-	}); a != 0 {
-		t.Fatal("marker admission copied declared signatures", a)
-	}
-	if c, err := compatibilityDefaultConfig().Compile(rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, false, true)); c != nil || err == nil {
-		t.Fatal("default typed-reference features opened", err)
 	}
 }
 

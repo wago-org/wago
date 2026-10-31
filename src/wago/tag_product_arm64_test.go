@@ -113,40 +113,6 @@ func stagedImportedTagThrowModule() []byte {
 	)
 }
 
-func TestExceptionTagDirectoryCodecGrowth(t *testing.T) {
-	c := compileStagedExceptionHandling(t, stagedTagDeclarationModule(9))
-	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal nine-tag product: %v", err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("unmarshal nine-tag product: %v", err)
-	}
-	defer loaded.Close()
-	if got := len((&Module{c: &loaded}).Metadata().Tags); got != 9 {
-		t.Fatalf("reloaded tag count = %d, want 9", got)
-	}
-	ten, err := compileStagedExceptionHandlingFeaturesForTest(stagedTagDeclarationModule(10), false)
-	if err != nil {
-		t.Fatalf("ten-tag compile = %v", err)
-	}
-	defer ten.Close()
-	tenBlob, err := ten.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal ten-tag product: %v", err)
-	}
-	var tenLoaded Compiled
-	if err := tenLoaded.UnmarshalBinary(tenBlob); err != nil {
-		t.Fatalf("unmarshal ten-tag product: %v", err)
-	}
-	defer tenLoaded.Close()
-	if got := len((&Module{c: &tenLoaded}).Metadata().Tags); got != 10 {
-		t.Fatalf("reloaded tag count = %d, want 10", got)
-	}
-}
-
 func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 	producerCompiled := compileStagedExceptionHandling(t, stagedTagProductProducerModule())
 	defer producerCompiled.Close()
@@ -160,19 +126,11 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 	if err := applyPolicy(&Module{c: producerCompiled}, Policy{MaxTags: 1}); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("tag policy error = %v, want ErrPermissionDenied", err)
 	}
-	blob, err := producerCompiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal tag product: %v", err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("unmarshal tag product: %v", err)
-	}
-	defer loaded.Close()
-	if got := (&Module{c: &loaded}).Metadata().Tags; !reflect.DeepEqual(got, producerMeta.Tags) {
+
+	if got := (&Module{c: producerCompiled}).Metadata().Tags; !reflect.DeepEqual(got, producerMeta.Tags) {
 		t.Fatalf("reloaded tag metadata = %#v, want %#v", got, producerMeta.Tags)
 	}
-	loadedProducer, err := instantiateCore(&loaded, InstantiateOptions{})
+	loadedProducer, err := instantiateCore(producerCompiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate reloaded tag producer: %v", err)
 	}
@@ -206,16 +164,8 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 
 	consumerCompiled := compileStagedExceptionHandling(t, stagedTagProductConsumerModule(0, 0))
 	defer consumerCompiled.Close()
-	consumerBlob, err := consumerCompiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal imported tag product: %v", err)
-	}
-	var loadedConsumer Compiled
-	if err := loadedConsumer.UnmarshalBinary(consumerBlob); err != nil {
-		t.Fatalf("unmarshal imported tag product: %v", err)
-	}
-	defer loadedConsumer.Close()
-	loadedConsumerInstance, err := instantiateCore(&loadedConsumer, InstantiateOptions{Imports: testImports("env.first", primary, "env.second", primary)})
+
+	loadedConsumerInstance, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.first", primary, "env.second", primary)})
 	if err != nil {
 		t.Fatalf("instantiate reloaded imported tags: %v", err)
 	}

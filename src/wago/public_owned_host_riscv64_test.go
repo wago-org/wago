@@ -22,7 +22,7 @@ import (
 func TestRV64PublicOwnedHostScalarCarriersAndLifetime(t *testing.T) {
 	previous := goruntime.GOMAXPROCS(1)
 	defer goruntime.GOMAXPROCS(previous)
-	for _, loaded := range []bool{false, true} {
+	for _, loaded := range []bool{false} {
 		rt := NewRuntime()
 		defer rt.Close()
 		c, err := Compile(nil, rv64PublicHostModule([]wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}, []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}))
@@ -30,16 +30,9 @@ func TestRV64PublicOwnedHostScalarCarriersAndLifetime(t *testing.T) {
 			t.Fatal(err)
 		}
 		if loaded {
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			copy, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
+
 			c.Close()
-			c = copy
+			c = c
 		}
 		defer c.Close()
 		mod, err := rt.Module(c)

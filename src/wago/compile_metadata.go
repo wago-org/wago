@@ -571,7 +571,7 @@ func isRefNullConstExpr(body []byte) bool {
 	if op, err := r.Byte(); err != nil || op != 0xd0 {
 		return false
 	}
-	if _, err := r.S33(); err != nil {
+	if _, _, err := r.RefHeapType(); err != nil {
 		return false
 	}
 	end, err := r.Byte()

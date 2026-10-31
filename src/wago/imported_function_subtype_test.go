@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || arm64 || riscv64) && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && (amd64 || arm64 || riscv64) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -24,7 +24,7 @@ func TestImportedFunctionPreservesDynamicSubtype(t *testing.T) {
 		wasmtest.Section(9, []byte{1, 0, 0x41, 0, 0x0b, 1, 0}),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x41, 0, 0x11, 1, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x41, 0, 0x11, 0, 0, 0x0b}))),
 	)
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			compile := func(source []byte) *Compiled {
 				t.Helper()
@@ -34,18 +34,7 @@ func TestImportedFunctionPreservesDynamicSubtype(t *testing.T) {
 				}
 				closeCompiled := c.Close
 				t.Cleanup(func() { _ = closeCompiled() })
-				if artifact {
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					c, err = LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					closeLoaded := c.Close
-					t.Cleanup(func() { _ = closeLoaded() })
-				}
+
 				return c
 			}
 			p, c := compile(provider), compile(consumer)

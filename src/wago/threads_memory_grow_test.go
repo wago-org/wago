@@ -75,8 +75,8 @@ func TestThreadsSharedMemoryGrowExecutionAndCodec(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					loaded := publicArtifactRoundTrip(t, c)
-					for _, compiled := range []*Compiled{c, loaded} {
+
+					for _, compiled := range []*Compiled{c} {
 						opts := InstantiateOptions{memoryLimitPages: quota}
 						if imported {
 							memory, err := NewSharedMemory(minimum, 3)
@@ -160,7 +160,7 @@ func TestThreadsSharedMemoryGrowToMemory32Limit(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+	for _, compiled := range []*Compiled{c} {
 		in, err := Instantiate(compiled, InstantiateOptions{memoryLimitPages: 65536})
 		if err != nil {
 			t.Fatal(err)
@@ -193,7 +193,7 @@ func TestThreadsSharedMemoryGrowAndAccessSameActivation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+	for _, compiled := range []*Compiled{c} {
 		in, err := Instantiate(compiled, InstantiateOptions{})
 		if err != nil {
 			t.Fatal(err)
@@ -212,8 +212,7 @@ func TestThreadsSharedMemoryConcurrentGrowth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
-	c = publicArtifactRoundTrip(t, c)
+
 	mem, err := NewSharedMemory(1, 65)
 	if err != nil {
 		t.Fatal(err)
@@ -281,7 +280,7 @@ func TestThreadsSharedGrowthVisibleDuringOtherActivation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer grower.Close()
-	observer, err := Instantiate(publicArtifactRoundTrip(t, c), testImports("env.memory", mem))
+	observer, err := Instantiate(c, testImports("env.memory", mem))
 	if err != nil {
 		t.Fatal(err)
 	}

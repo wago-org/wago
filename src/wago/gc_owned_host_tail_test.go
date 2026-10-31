@@ -5,8 +5,6 @@ package wago
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -185,7 +183,7 @@ func TestRV64CollectorHostTailRetainedClosedProducer(t *testing.T) {
 
 func TestRV64CollectorHostTailWarmAllocations(t *testing.T) {
 	for _, vector := range []bool{false, true} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			baseline := float64(-1)
 			for _, kind := range []string{"ordinary", "direct", "reference", "indirect"} {
 				t.Run(fmt.Sprintf("%s/vector%t/artifact%t", kind, vector, artifact), func(t *testing.T) {
@@ -201,17 +199,7 @@ func TestRV64CollectorHostTailWarmAllocations(t *testing.T) {
 						t.Fatal(e)
 					}
 					defer c.Close()
-					if artifact {
-						blob, e := c.MarshalBinary()
-						if e != nil {
-							t.Fatal(e)
-						}
-						c, e = LoadTrustedArtifact(blob)
-						if e != nil {
-							t.Fatal(e)
-						}
-						defer c.Close()
-					}
+
 					mod, e := rt.Module(c)
 					if e != nil {
 						t.Fatal(e)
@@ -276,49 +264,13 @@ func TestRV64CollectorHostTailWarmAllocations(t *testing.T) {
 // images use the actual default configuration, with no private feature flags.
 func rv64CollectorHostCompile(t *testing.T, name string, source []byte, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_TAIL_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE")
-	if mode == "load" {
-		if !artifact {
-			t.Fatal("compiler-free runner selected source case")
-		}
-		blob, e := os.ReadFile(filepath.Join(dir, name+".wago"))
-		if e != nil {
-			t.Fatal(e)
-		}
-		c, e := LoadTrustedArtifact(blob)
-		if e != nil {
-			t.Fatal(e)
-		}
-		t.Cleanup(func() { c.Close() })
-		return c
-	}
+
 	c, e := NewRuntimeConfig().Compile(source)
 	if e != nil {
 		t.Fatal(e)
 	}
 	original := c
 	t.Cleanup(func() { original.Close() })
-	if artifact || mode == "prepare" {
-		blob, e := c.MarshalBinary()
-		if e != nil {
-			t.Fatal(e)
-		}
-		if mode == "prepare" {
-			if e := os.MkdirAll(dir, 0700); e != nil {
-				t.Fatal(e)
-			}
-			if e := os.WriteFile(filepath.Join(dir, name+".wago"), blob, 0600); e != nil {
-				t.Fatal(e)
-			}
-		}
-		if artifact {
-			c, e = LoadTrustedArtifact(blob)
-			if e != nil {
-				t.Fatal(e)
-			}
-			saved := c
-			t.Cleanup(func() { saved.Close() })
-		}
-	}
+
 	return c
 }

@@ -6,8 +6,18 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Breaking
+
+- Remove the `.wago` native-code artifact format, compiled-module serialization
+  and loading APIs, `wago build`, the automatic compiled disk cache, and the
+  `wago_precompiled` build profile. Use the original `.wasm` source instead;
+  existing artifacts cannot be migrated. `wago compile` still builds standalone
+  executables containing machine code and the runtime, without a Wasm compiler.
+
 ### Fixed
 
+- Preserve deferred load addresses derived from pinned mutable globals on
+  ARM64, including loads kept live across guest stack-pointer updates.
 - Compile ARM64 memory operations at large valid directory indexes by forming
   an encodable entry address before loading or updating its fields.
 - Compile large ARM64 functions whose conditional branches exceed 1 MiB by

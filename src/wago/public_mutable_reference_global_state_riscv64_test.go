@@ -4,13 +4,10 @@ package wago
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -111,43 +108,6 @@ func TestRV64PublicMutableFuncrefStateImport(t *testing.T) {
 				t.Fatal("global close", err)
 			}
 			rv64CheckStateOnlyCode(t, compiled, 0)
-		})
-	}
-}
-
-func TestRV64PublicMutableFuncrefStateAdmission(t *testing.T) {
-	compiled := rv64TableStageCompile(t, "mutable-funcref-state-admission", rv64MutableFuncrefStateModule(), true)
-	defer compiled.Close()
-	if !rv64StateOnlyMutableFuncrefImport(compiled.executionView()) {
-		t.Fatalf("base mutable funcref state witness rejected: imports=%#v globals=%#v exports=%#v values=%#v features=%#x structural=%#x types=%d funcs=%d funcids=%d code=%d", compiled.GlobalImports, compiled.Globals, compiled.GlobalExports, compiled.ValueTypes, compiled.requiredFeatures, compiledStructuralRequiredFeatures(compiled), len(compiled.Types), len(compiled.Funcs), len(compiled.FuncTypeID), len(compiled.code))
-	}
-	for name, mutate := range map[string]func(*Compiled){
-		"immutable-import": func(v *Compiled) { v.GlobalImports[0].Mutable = false },
-		"immutable-cell":   func(v *Compiled) { v.Globals[0].Mutable = false },
-		"missing-export":   func(v *Compiled) { v.GlobalExports = nil },
-		"extra-global":     func(v *Compiled) { v.Globals = append(v.Globals, GlobalDef{Type: ValFuncRef, Mutable: true}) },
-		"initializer":      func(v *Compiled) { v.Globals[0].Bits = 1 },
-		"missing-feature":  func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-	} {
-		t.Run(name, func(t *testing.T) {
-			bad := *compiled.executionView()
-			bad.Globals = slices.Clone(bad.Globals)
-			bad.GlobalImports = slices.Clone(bad.GlobalImports)
-			bad.GlobalExports = map[string]int{"cell": 0}
-			mutate(&bad)
-			if err := railshotValidateCompiled(&bad); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("invalid mutable state artifact admitted", err)
-			}
-			blob, err := marshalCompiled(&bad)
-			if err == nil && name != "missing-feature" {
-				loaded, loadErr := LoadTrustedArtifact(blob)
-				if loaded != nil {
-					loaded.Close()
-				}
-				if loadErr == nil {
-					t.Fatal("invalid mutable state artifact loaded")
-				}
-			}
 		})
 	}
 }

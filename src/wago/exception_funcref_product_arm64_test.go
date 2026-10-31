@@ -80,17 +80,6 @@ func TestStagedExceptionFuncrefProductIdentityLifetimeAndGates(t *testing.T) {
 		c.Close()
 		t.Fatalf("exact funcref-payload metadata = %#v", meta)
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		c.Close()
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-		loaded.Close()
-		c.Close()
-		t.Fatalf("public codec load = %v, want typed/EH feature rejection", err)
-	}
 
 	in, err := instantiateCore(c, InstantiateOptions{})
 	if err != nil {

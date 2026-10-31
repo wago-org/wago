@@ -40,7 +40,7 @@ func TestThreadsSharedMutableGlobalConcurrentImportersAndCodec(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer compiled.Close()
-				for _, c := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+				for _, c := range []*Compiled{compiled} {
 					global := NewGlobalI32(17, true)
 					defer global.Close()
 					const workers, iterations = 8, 10000

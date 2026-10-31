@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -39,9 +39,8 @@ func TestRV64CompactExternSourceAndArtifactPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{c, loaded} {
+
+		for artifact, candidate := range []*Compiled{c} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Logf("vector=%t artifact=%t profile=%v", vector, artifact != 0, profile)
 				rt := NewRuntime()

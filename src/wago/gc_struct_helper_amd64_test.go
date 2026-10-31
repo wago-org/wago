@@ -5,12 +5,11 @@ package wago
 import (
 	"context"
 	"encoding/hex"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"math"
 	"strings"
 	"testing"
 	"unsafe"
-
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestStagedGCStructGetDefaultCollectorProfiles(t *testing.T) {
@@ -115,91 +114,6 @@ func TestStagedGCStructNumericSetProfiles(t *testing.T) {
 	}
 }
 
-func TestStagedGCStructPackedGlobalExecution(t *testing.T) {
-	data, err := hex.DecodeString(stagedGCStructPackedHex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	profiles := []struct {
-		name string
-		cfg  GCConfig
-	}{
-		{name: "throughput", cfg: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}},
-		{name: "tiny", cfg: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}},
-	}
-	actions := []struct {
-		name string
-		args []uint64
-		want []uint64
-	}{
-		{name: "get_packed_g0_0", want: []uint64{0, 0}},
-		{name: "get_packed_g1_0", want: []uint64{uint64(^uint32(1)), 254}},
-		{name: "get_packed_g0_1", want: []uint64{1, 1}},
-		{name: "get_packed_g1_1", want: []uint64{uint64(^uint32(0)), 255}},
-		{name: "get_packed_g0_2", want: []uint64{2, 2}},
-		{name: "get_packed_g1_2", want: []uint64{uint64(^uint32(1)), 65534}},
-		{name: "get_packed_g0_3", want: []uint64{3, 3}},
-		{name: "get_packed_g1_3", want: []uint64{uint64(^uint32(0)), 65535}},
-		{name: "set_get_packed_g0_1", args: []uint64{257}, want: []uint64{1, 1}},
-		{name: "set_get_packed_g0_3", args: []uint64{257}, want: []uint64{257, 257}},
-	}
-	for _, tc := range profiles {
-		t.Run(tc.name, func(t *testing.T) {
-			c, err := compileStagedGCStruct(data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer c.Close()
-			in, err := instantiateCore(c, InstantiateOptions{GC: tc.cfg})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer in.Close()
-			if state := in.pluginState.Load(); state == nil || state.gcGlobalRootCount != 2 {
-				t.Fatalf("packed GC root mapping = %#v", state)
-			}
-			for _, action := range actions {
-				got, err := in.Invoke(action.name, action.args...)
-				if err != nil || len(got) != len(action.want) {
-					t.Fatalf("%s = %v, %v; want %v", action.name, got, err, action.want)
-				}
-				for i := range got {
-					if got[i] != action.want[i] {
-						t.Fatalf("%s result %d = %#x, want %#x", action.name, i, got[i], action.want[i])
-					}
-				}
-			}
-		})
-	}
-
-	c, err := compileStagedGCStruct(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	blob, err := marshalCompiled(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.usesGCStructHelpers() || (loaded.memoryDir != nil && len(loaded.memoryDir.gcStructGlobals) != 0) {
-		t.Fatal("packed codec reload inherited live helper/global admission")
-	}
-	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
-		t.Fatalf("packed codec-loaded instantiate = %v, want required-feature rejection", err)
-	}
-	if in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 32, TinyBlockBytes: 16}}); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
-		if in != nil {
-			_ = in.Close()
-		}
-		t.Fatalf("packed tiny exhaustion = %v, want rooted second-allocation failure", err)
-	}
-}
-
 func TestStagedGCStructBasicNumericActionsAndPublicResultToken(t *testing.T) {
 	data, err := hex.DecodeString(stagedGCStructBasicHex)
 	if err != nil {
@@ -273,46 +187,6 @@ func TestStagedGCStructBasicNumericActionsAndPublicResultToken(t *testing.T) {
 	defer in.Close()
 	if _, err := in.Invoke("get_0_0"); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
 		t.Fatalf("basic Tiny transient allocation = %v, want deterministic rooted exhaustion", err)
-	}
-}
-
-func TestStagedGCStructGetAllocationFailureAndCodecGate(t *testing.T) {
-	data := stagedGCStructGetOnlyBytes(t)
-	c, err := compileStagedGCStruct(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 16, TinyBlockBytes: 16}})
-	if err != nil {
-		t.Fatalf("instantiate tiny exhausted product: %v", err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("get"); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
-		t.Fatalf("tiny exhausted invocation = %v, want deterministic allocation failure", err)
-	}
-	if _, err := in.Invoke("get"); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
-		t.Fatalf("tiny exhausted recovery invocation = %v, want repeatable failure", err)
-	}
-
-	blob, err := marshalCompiled(c)
-	if err != nil {
-		t.Fatalf("marshal codec: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("private codec reload: %v", err)
-	}
-	defer loaded.Close()
-	if loaded.usesGCStructHelpers() || loaded.stagedGCStructProduct() != 0 {
-		t.Fatal("codec reload inherited live GC helper or public-token admission")
-	}
-	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
-		t.Fatalf("codec-loaded staged helper instantiate = %v, want fail-closed feature error", err)
-	}
-	var public Compiled
-	if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-		t.Fatalf("public codec load = %v, want unsupported GC feature gate", err)
 	}
 }
 

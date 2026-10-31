@@ -149,66 +149,6 @@ func TestRV64PublicIntegerInitializerFoldedBounds(t *testing.T) {
 	}
 }
 
-func TestRV64PublicIntegerInitializerArtifactAdmission(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source metadata mutation fixture")
-	}
-	c := rv64TableStageCompile(t, "integer-init-artifact", rv64IntegerInitializerModule(true), false)
-	for index, mutate := range []func(*Compiled){
-		func(v *Compiled) { v.requiredFeatures &^= CoreFeatureExtendedConst },
-		func(v *Compiled) { v.Globals[2].InitExpr = []byte{0x23, 1, 0x41, 1, 0x6a, 0x0b} },
-		func(v *Compiled) { v.Globals[2].InitExpr = []byte{0x23, 2, 0x41, 1, 0x6a, 0x0b} },
-		func(v *Compiled) { v.Globals[2].HasInitGlobal = true; v.Globals[2].InitGlobal = 0 },
-		func(v *Compiled) { v.GlobalImports[0].Mutable = true; v.Globals[0].Mutable = true },
-		func(v *Compiled) { v.Data[0].Offset.HasGlobal = true },
-		func(v *Compiled) { v.Elems[0].Offset.HasGlobal = true },
-		func(v *Compiled) { v.Data[0].Offset.Expr = make([]byte, 129) },
-		func(v *Compiled) {
-			var b []byte
-			for range 9 {
-				b = append(b, 0x23, 0)
-			}
-			for range 8 {
-				b = append(b, 0x6a)
-			}
-			v.Elems[0].Offset.Expr = append(b, 0x0b)
-		},
-	} {
-		v := *c.executionView()
-		v.Globals = slices.Clone(v.Globals)
-		v.GlobalImports = slices.Clone(v.GlobalImports)
-		v.Data = slices.Clone(v.Data)
-		v.Elems = slices.Clone(v.Elems)
-		mutate(&v)
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("unqualified integer metadata admitted")
-		}
-
-		blob, err := marshalCompiled(&v)
-		if err != nil {
-			continue
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err == nil && (index == 0 || index == 3) {
-			// The codec derives feature bits and writes only the selected
-			// initializer tag; validate any normalized supported artifact.
-			repaired := loaded.executionView()
-			if err := railshotValidateCompiled(repaired); err != nil || !repaired.requiredFeatures.IsEnabled(CoreFeatureExtendedConst) || index == 3 && (!repaired.Globals[2].HasInitGlobal || len(repaired.Globals[2].InitExpr) != 0) {
-				loaded.Close()
-				t.Fatal("invalid normalized integer metadata", index, err)
-			}
-			loaded.Close()
-			continue
-		}
-		if loaded != nil {
-			loaded.Close()
-		}
-		if err == nil {
-			t.Fatal("unqualified integer artifact loaded", index)
-		}
-	}
-}
-
 func TestRV64PublicIntegerInitializerIndex255(t *testing.T) {
 	rv64SWARImportedInitializerIndexBoundary(t, true)
 }

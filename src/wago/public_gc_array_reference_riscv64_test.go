@@ -7,10 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -29,52 +26,15 @@ func rv64PublicGCArrayReferenceBytes(t testing.TB) []byte {
 
 func rv64PublicGCArrayReferenceCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_ARRAY_REFERENCE_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_ARRAY_REFERENCE_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-array-reference.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = loaded.Close() })
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCArrayReferenceBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = original.Close() })
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = loaded.Close() })
-	return loaded
+
+	return original
+
 }
 
 func TestRV64PublicGCArrayReferenceExecutionAndArtifact(t *testing.T) {
@@ -87,7 +47,7 @@ func TestRV64PublicGCArrayReferenceExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCArrayReferenceCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64ArtifactContractValid(view) || view.validate() != nil {
+			if !rv64SourceContractValid(view) || view.validate() != nil {
 				t.Fatal("invalid public reference array execution contract")
 			}
 			for _, profile := range []struct {
@@ -221,60 +181,6 @@ func TestRV64PublicGCArrayReferenceCloseDropsOnlyOwnedSegmentRoots(t *testing.T)
 		if want := []uint64{7, 1}[i]; err != nil || value.Bits != want {
 			t.Fatal("surviving element value", i, value, err)
 		}
-	}
-}
-
-func TestRV64PublicGCArrayReferenceAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_ARRAY_REFERENCE_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	base := rv64PublicGCArrayReferenceCompile(t, false).executionView()
-	for name, mutate := range map[string]func(*Compiled){
-		"code":     func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"entry":    func(v *Compiled) { v.Entry[7]++; v.InternalEntry[7]++ },
-		"function": func(v *Compiled) { v.Funcs[6].Params[2] = ValI64 },
-		"type":     func(v *Compiled) { v.Types[2].Array.Mutable = false },
-		"type-key": func(v *Compiled) { v.FuncTypeID[8] ^= 1 },
-		"descriptor": func(v *Compiled) {
-			v.GCTypeDescs[1].ElemSize++
-		},
-		"element-mode": func(v *Compiled) { v.passiveElems[0].Mode = ElemModeDeclarative },
-		"initializer":  func(v *Compiled) { v.passiveElems[0].Values[0].Expr[0] ^= 1 },
-		"export":       func(v *Compiled) { delete(v.Exports, "new"); v.Exports["make"] = 0 },
-		"feature":      func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(base)
-			if candidate.memoryDir != nil && candidate.memoryDir.gcArrayElement != nil {
-				dir := *candidate.memoryDir
-				candidate.memoryDir = &dir
-				init := *candidate.memoryDir.gcArrayElement
-				init.Values = slices.Clone(init.Values)
-				for i := range init.Values {
-					init.Values[i].Bits = slices.Clone(init.Values[i].Bits)
-				}
-				candidate.memoryDir.gcArrayElement = &init
-			}
-			mutate(candidate)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("hostile retained array mutation admitted")
-			}
-
-			rv64RequireRejectedArtifact(t, candidate)
-		})
-	}
-}
-
-func TestRV64PublicGCArrayReferenceCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_ARRAY_REFERENCE_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(rv64PublicGCArrayReferenceBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free reference array path used source compilation", err)
 	}
 }
 

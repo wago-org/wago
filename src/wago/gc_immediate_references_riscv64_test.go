@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -38,10 +38,9 @@ func TestRV64ImmediateReferenceTestsAndCasts(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						loaded := publicArtifactRoundTrip(t, c)
-						defer loaded.Close()
+
 						want := !null && (heap == wasm.HeapAny || heap == wasm.HeapEq || heap == wasm.HeapI31) || null && nullable
-						for _, candidate := range []*Compiled{c, loaded} {
+						for _, candidate := range []*Compiled{c} {
 							if candidate.nativeGCABIRequirement() != 0 || candidate.needsRuntimeGCCollectorDomain() {
 								t.Fatal("immediate-only module acquired collector ABI/domain")
 							}

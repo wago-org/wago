@@ -1,5 +1,0 @@
-=== RUN   TestGCTrappingGuard
---- PASS: TestGCTrappingGuard (0.00s)
-=== RUN   TestGCTrappingGuardFirstExtent
---- PASS: TestGCTrappingGuardFirstExtent (0.00s)
-PASS

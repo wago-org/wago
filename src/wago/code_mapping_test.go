@@ -45,9 +45,7 @@ func TestCompiledMapsExecutableCodeAtFirstInstantiate(t *testing.T) {
 	if mapped == original {
 		t.Fatalf("first Instantiate did not move heap staging into executable memory: %p", mapped)
 	}
-	if _, err := c.MarshalBinary(); err != nil {
-		t.Fatalf("marshal mapped code: %v", err)
-	}
+
 }
 
 func TestCompiledCloseRejectsFutureInstantiate(t *testing.T) {

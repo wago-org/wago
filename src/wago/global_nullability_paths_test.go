@@ -60,9 +60,8 @@ func TestGlobalNullabilityDirectAndExported(t *testing.T) {
 				defer c.Close()
 				variants := []*Compiled{c}
 				if nullable {
-					loaded := publicArtifactRoundTrip(t, c)
-					defer loaded.Close()
-					variants = append(variants, loaded)
+
+					variants = append(variants, c)
 				}
 				for _, compiled := range variants {
 					module, err := rt.Module(compiled)

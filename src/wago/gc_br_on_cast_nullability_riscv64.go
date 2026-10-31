@@ -103,19 +103,3 @@ func rv64GCBrOnCastNullabilityProduct(c *Compiled, fail bool) bool {
 	return (product == wantProduct || product == stagedGCStructGeneric) && c.stagedGCArrayProduct() == 0 && c.stagedFeatures() == CoreFeatureTypedFunctionReferences|CoreFeatureGC &&
 		c.usesGCStructHelpers() && !c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil && c.requiredFeatures == CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.requiredAMD64Features == 0
 }
-
-func railshotRestoreGCBrOnCastNullabilityArtifact(c *Compiled) {
-	if !rv64GCBrOnCastNullability(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructBrOnCastNullability
-}
-
-func railshotRestoreGCBrOnCastFailNullabilityArtifact(c *Compiled) {
-	if !rv64GCBrOnCastFailNullability(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructBrOnCastFailNullability
-}

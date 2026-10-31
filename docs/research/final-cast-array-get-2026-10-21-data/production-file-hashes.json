@@ -1,6 +1,0 @@
-{
-  "src/core/compiler/backend/railshot/amd64/compile.go": "99ccd649eaedbe8a1cb5d4db7b35cf60844aa88bf7d5740a3f08bf39446fa741",
-  "src/core/compiler/backend/railshot/amd64/gc_direct.go": "b370fbca9aca0c7b3f6f732fdd41b13a56c8bebe87e6f3397ac8c447cfcdf3f2",
-  "src/core/compiler/backend/railshot/amd64/gc_struct.go": "3270e798d7c7a9962b8826389eaa3a470e3f8e450129bba73f02c530173ef9d0",
-  "src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go": "ddd4c524faf4dc6489bdd0be9b4811026168c0899a59401df2e116a14ffb1599"
-}

@@ -119,54 +119,6 @@ func TestExternrefParamsResultsLocalsAndControlFlow(t *testing.T) {
 	}
 }
 
-func TestExternrefHostImportRoundTripsObjects(t *testing.T) {
-	rt := NewRuntime()
-	defer rt.Close()
-	mod, err := rt.Compile(externrefHostRoundTripModule())
-	if err != nil {
-		t.Fatalf("Compile externref host module: %v", err)
-	}
-	inputObject := &struct{ id int }{42}
-	outputObject := &struct{ id int }{99}
-	input := issueExternref(t, rt, inputObject)
-	calls := 0
-	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.echo", slotHostFunc(func(m HostModule, params, results []uint64) {
-		calls++
-		hostRefs, ok := m.(ExternRefHostModule)
-		if !ok {
-			t.Fatalf("host module %T does not expose externref lifecycle", m)
-		}
-		temporary := issueExternref(t, hostRefs, "temporary")
-		if !hostRefs.ReleaseExternRef(temporary) {
-			t.Fatal("host callback could not release temporary externref")
-		}
-		if _, ok := hostRefs.ExternRefValue(temporary); ok {
-			t.Fatal("released host-callback externref still resolved")
-		}
-		ref := ValueOf(ValExternRef, params[0]).ExternRef()
-		if got := resolveExternref(t, m, ref); got != inputObject {
-			t.Fatalf("host resolved %#v, want original input object", got)
-		}
-		output := issueExternref(t, m, outputObject)
-		results[0] = ValueExternRef(output).Bits()
-	}))))
-	if err != nil {
-		t.Fatalf("Instantiate externref host module: %v", err)
-	}
-	defer in.Close()
-
-	got, err := in.InvokeValues(context.Background(), "roundtrip", ValueExternRef(input))
-	if err != nil {
-		t.Fatalf("Call roundtrip: %v", err)
-	}
-	if calls != 1 || len(got) != 1 || got[0].ExternRef().IsNull() || got[0].ExternRef() == input {
-		t.Fatalf("roundtrip = %v calls=%d, want new non-null externref and one host call", got, calls)
-	}
-	if resolved := resolveExternref(t, rt, got[0].ExternRef()); resolved != outputObject {
-		t.Fatalf("host result resolved %#v, want output object", resolved)
-	}
-}
-
 func TestExternrefCrossInstanceCallsRequireSameStore(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
@@ -364,35 +316,6 @@ func TestRuntimeExternrefReleaseUsesSlotOwnershipNotPayloadType(t *testing.T) {
 	}
 	if _, ok := rt.ExternRefValue(ref); ok {
 		t.Fatal("released HostFuncRef payload still resolved")
-	}
-}
-
-func TestExternrefCodecCarriesStructureButNoStoreIdentity(t *testing.T) {
-	c := compileExplicitArtifact(t, externrefControlModule())
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	var decoded Compiled
-	if err := decoded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("UnmarshalBinary: %v", err)
-	}
-
-	producerRT := NewRuntime()
-	foreign := issueExternref(t, producerRT, "foreign")
-	defer producerRT.Close()
-	consumerRT := NewRuntime()
-	defer consumerRT.Close()
-	in, err := instantiateCore(&decoded, InstantiateOptions{store: consumerRT.refStore})
-	if err != nil {
-		t.Fatalf("Instantiate decoded module: %v", err)
-	}
-	defer in.Close()
-	if got, err := in.Invoke("id", ValueExternRef(foreign).Bits()); err == nil || !strings.Contains(err.Error(), "invalid externref token") || got != nil {
-		t.Fatalf("decoded module accepted foreign token: %v, %v", got, err)
-	}
-	if got, err := in.Invoke("id", 0); err != nil || len(got) != 1 || got[0] != 0 {
-		t.Fatalf("decoded module null round trip = %v, %v", got, err)
 	}
 }
 

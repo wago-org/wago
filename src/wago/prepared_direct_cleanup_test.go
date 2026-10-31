@@ -45,19 +45,9 @@ func preparedDirectCleanupCompile(t *testing.T, kind string, artifact bool) *Com
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	if !artifact {
-		return c
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = loaded.Close() })
-	return loaded
+
+	return c
+
 }
 
 func preparedDirectCleanupCatalog(t *testing.T, owner, probe *Instance, ownerTable *Table, artifact, linkLocal bool) (*Instance, *Table, any, *[2]int) {

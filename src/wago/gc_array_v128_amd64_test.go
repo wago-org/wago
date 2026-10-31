@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -170,56 +171,6 @@ func TestGCArrayV128FixedConstructorSlotBound(t *testing.T) {
 		t.Fatalf("128 v128 values: %v", err)
 	}
 	_ = large.Close()
-}
-
-func TestGCVectorGenericCodecReload(t *testing.T) {
-	if !hostSupportsSIMD() {
-		t.Skip("host SIMD unavailable")
-	}
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
-	for _, tc := range []struct {
-		name       string
-		module     []byte
-		export     string
-		args, want []uint64
-		check      func(*Compiled) bool
-	}{
-		{name: "array", module: v128ArrayModule(), export: "global", want: []uint64{0x0706050403020100, 0x0f0e0d0c0b0a0908}, check: func(c *Compiled) bool {
-			return c.stagedGCArrayProduct() == stagedGCArrayProductGeneric && c.usesGCArrayHelpers()
-		}},
-		{name: "struct", module: v128StructModule(), export: "global", want: []uint64{0x0706050403020100, 0x0f0e0d0c0b0a0908}, check: func(c *Compiled) bool {
-			return c.stagedGCStructProduct() == stagedGCStructGeneric && c.usesGCStructHelpers()
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			compiled, err := Compile(cfg, tc.module)
-			if err != nil {
-				t.Fatal(err)
-			}
-			blob, err := compiled.MarshalBinary()
-			_ = compiled.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
-			var loaded Compiled
-			if err := loaded.UnmarshalBinary(blob); err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			if !tc.check(&loaded) {
-				t.Fatal("codec reload lost generic GC helper admission")
-			}
-			in, err := Instantiate(&loaded, InstantiateOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer in.Close()
-			got, err := in.Invoke(tc.export, tc.args...)
-			if err != nil || !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("%s = %#x, %v; want %#x", tc.export, got, err, tc.want)
-			}
-		})
-	}
 }
 
 func BenchmarkGCArrayV128Set(b *testing.B) {

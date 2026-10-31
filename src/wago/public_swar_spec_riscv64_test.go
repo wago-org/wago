@@ -125,29 +125,7 @@ func rv64PublicSpecInstantiatePolicy(t *testing.T, source []byte, artifact bool,
 	if in.compiled.codeCache.base != 0 || in.compiled.requiredAMD64Features != 0 {
 		t.Fatal("source compilation published code or selected a foreign ISA")
 	}
-	if artifact {
-		blob, err := in.compiled.MarshalBinary()
-		if err != nil {
-			t.Fatal("marshal pinned module", err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			if loaded != nil {
-				if cleanup := loaded.Close(); cleanup != nil {
-					t.Error("partial artifact cleanup", cleanup)
-				}
-			}
-			t.Fatal("load pinned module", err)
-		}
-		if err := in.compiled.Close(); err != nil {
-			if cleanup := loaded.Close(); cleanup != nil {
-				t.Error("loaded artifact cleanup", cleanup)
-			}
-			t.Fatal(err)
-		}
-		in.compiled = loaded
-		rv64PublicSpecPendingArtifact(t, loaded)
-	}
+
 	if err := in.activate(t, registered, policy); err != nil {
 		return nil, err
 	}

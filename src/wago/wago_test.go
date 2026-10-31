@@ -5,16 +5,17 @@ package wago
 import (
 	"errors"
 	"fmt"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"math"
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
+
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -380,43 +381,6 @@ func TestAssemblyScriptFloat(t *testing.T) {
 	}
 }
 
-func TestCompiledRoundtrip(t *testing.T) {
-	t.Setenv("WAGO_BOUNDS", "explicit") // signals-based modules can't be serialized (the guard-tag default)
-	c, err := Compile(nil, fibWasm)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gc.HasHeapObjectTypes(c.GCTypeDescs) {
-		t.Fatalf("MVP compile produced heap-object GC descriptors: %+v", c.GCTypeDescs)
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !IsCompiled(blob) {
-		t.Fatal("blob not recognized as compiled")
-	}
-	if loaded, err := Load(blob); err == nil || loaded != nil || !strings.Contains(err.Error(), "refuses native-code artifacts") {
-		t.Fatalf("ambiguous Load artifact = %v, %v; want trust-boundary rejection", loaded, err)
-	}
-	c2, err := LoadTrustedArtifact(blob) // load precompiled, no recompile
-	if err != nil {
-		t.Fatal(err)
-	}
-	in, err := Instantiate(c2, InstantiateOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	res, err := in.Invoke("fib", I32(30))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if AsI32(res[0]) != 832040 {
-		t.Fatalf("fib(30) from blob = %d, want 832040", AsI32(res[0]))
-	}
-}
-
 func TestLoadCompilesRawWasm(t *testing.T) {
 	compiled, err := Load(fibWasm)
 	if err != nil {
@@ -425,87 +389,6 @@ func TestLoadCompilesRawWasm(t *testing.T) {
 	defer compiled.Close()
 	if len(compiled.Entry) == 0 {
 		t.Fatal("raw Wasm was not compiled")
-	}
-}
-
-func TestCompiledRoundtripPreservesDebugNames(t *testing.T) {
-	t.Setenv("WAGO_BOUNDS", "explicit") // signals-based modules can't be serialized (the guard-tag default)
-	importEntry := append(wasmtest.Name("env"), wasmtest.Name("imp")...)
-	importEntry = append(importEntry, 0x00) // func import
-	importEntry = append(importEntry, wasmtest.ULEB(0)...)
-	namePayload := append([]byte{}, wasmtest.NameSubsection(0, wasmtest.Name("mod"))...)
-	namePayload = append(namePayload, wasmtest.NameSubsection(1, wasmtest.NameMap(
-		wasmtest.NameAssoc{Index: 0, Name: "imported"},
-		wasmtest.NameAssoc{Index: 1, Name: ""},
-	))...)
-	namePayload = append(namePayload, wasmtest.NameSubsection(2, wasmtest.IndirectNameMap(
-		wasmtest.IndirectNameAssoc{Index: 1, Names: []wasmtest.NameAssoc{{Index: 0, Name: "local0"}}},
-	))...)
-	mod := wasmtest.Module(
-		wasmtest.Custom("name", namePayload),
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType(nil, nil),
-			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
-		)),
-		wasmtest.Section(2, wasmtest.Vec(importEntry)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(
-			wasmtest.ExportEntry("z", 0, 1),
-			wasmtest.ExportEntry("a", 0, 1),
-		)),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x2a, 0x0b}))),
-	)
-	c, err := Compile(nil, mod)
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	if c.Names == nil || c.Names.ModuleName == nil || *c.Names.ModuleName != "mod" {
-		t.Fatalf("compiled names not preserved: %#v", c.Names)
-	}
-	if got, ok := c.FuncName(0); !ok || got != "imported" {
-		t.Fatalf("FuncName(0) = %q, %v; want imported, true", got, ok)
-	}
-	if got, ok := c.LocalFuncName(0); !ok || got != "" {
-		t.Fatalf("LocalFuncName(0) = %q, %v; want empty name present", got, ok)
-	}
-	if got, ok := c.Names.LocalName(1, 0); !ok || got != "local0" {
-		t.Fatalf("LocalName(1, 0) = %q, %v; want local0, true", got, ok)
-	}
-	if got := c.FuncDebugName(0); got != "imported" {
-		t.Fatalf("FuncDebugName(0) = %q, want imported", got)
-	}
-	if got := c.FuncDebugName(1); got != "a" {
-		t.Fatalf("FuncDebugName(1) = %q, want stable export fallback a", got)
-	}
-	if got := c.FuncDebugName(99); got != "func99" {
-		t.Fatalf("FuncDebugName(99) = %q, want func99", got)
-	}
-
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatalf("Load compiled: %v", err)
-	}
-	if got, ok := loaded.FuncName(0); !ok || got != "imported" {
-		t.Fatalf("loaded FuncName(0) = %q, %v; want imported, true", got, ok)
-	}
-	if got, ok := loaded.LocalFuncName(0); !ok || got != "" {
-		t.Fatalf("loaded LocalFuncName(0) = %q, %v; want empty name present", got, ok)
-	}
-	if got := loaded.FuncDebugName(1); got != "a" {
-		t.Fatalf("loaded FuncDebugName(1) = %q, want a", got)
-	}
-}
-
-func TestCompiledUnsupportedVersionsRejected(t *testing.T) {
-	for _, version := range []byte{0, wagoVersion + 1} {
-		blob := []byte{'W', 'A', 'G', 'O', version}
-		if _, err := LoadTrustedArtifact(blob); err == nil {
-			t.Fatalf("Load compiled version %d succeeded, want error", version)
-		}
 	}
 }
 
@@ -531,81 +414,6 @@ func representativeGCTypeDescs(t *testing.T) []gc.TypeDesc {
 	arrRef.HasSuper = true
 	arrRef.Super = 3
 	return []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, Final: true}, pf, pr, arrRefBase, arrRef}
-}
-
-func TestCompiledGCTypeDescsRoundTrip(t *testing.T) {
-	c := &Compiled{GCTypeDescs: representativeGCTypeDescs(t)}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if blob[4] != wagoVersion {
-		t.Fatalf("version byte = %d, want %d", blob[4], wagoVersion)
-	}
-	var out Compiled
-	if err := out.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(out.GCTypeDescs, c.GCTypeDescs) {
-		t.Fatalf("GCTypeDescs mismatch after round trip\n got: %#v\nwant: %#v", out.GCTypeDescs, c.GCTypeDescs)
-	}
-}
-
-func TestCompiledUnmarshalRejectsMalformedGCTypeSuperMetadata(t *testing.T) {
-	finalBase, err := gc.NewStructDesc(0, []gc.StorageKind{gc.StorageI32})
-	if err != nil {
-		t.Fatal(err)
-	}
-	childOfFinal, err := gc.NewStructDesc(1, []gc.StorageKind{gc.StorageRef})
-	if err != nil {
-		t.Fatal(err)
-	}
-	childOfFinal.HasSuper = true
-	childOfFinal.Super = 0
-	arrayBase, err := gc.NewArrayDesc(0, gc.StorageI32)
-	if err != nil {
-		t.Fatal(err)
-	}
-	arrayBase.Final = false
-	structExtendsArray, err := gc.NewStructDesc(1, []gc.StorageKind{gc.StorageI32})
-	if err != nil {
-		t.Fatal(err)
-	}
-	structExtendsArray.HasSuper = true
-	structExtendsArray.Super = 0
-	structBase, err := gc.NewStructDesc(0, []gc.StorageKind{gc.StorageI32})
-	if err != nil {
-		t.Fatal(err)
-	}
-	structBase.Final = false
-	arrayExtendsStruct, err := gc.NewArrayDesc(1, gc.StorageI32)
-	if err != nil {
-		t.Fatal(err)
-	}
-	arrayExtendsStruct.HasSuper = true
-	arrayExtendsStruct.Super = 0
-
-	cases := []struct {
-		name string
-		desc []gc.TypeDesc
-	}{
-		{"final super", []gc.TypeDesc{finalBase, childOfFinal}},
-		{"struct extends array", []gc.TypeDesc{arrayBase, structExtendsArray}},
-		{"array extends struct", []gc.TypeDesc{structBase, arrayExtendsStruct}},
-		{"heap extends func", []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc}, structExtendsArray}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			blob, err := (&Compiled{GCTypeDescs: tc.desc}).MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			var out Compiled
-			if err := out.UnmarshalBinary(blob); err == nil {
-				t.Fatal("UnmarshalBinary accepted malformed GC super metadata")
-			}
-		})
-	}
 }
 
 func TestCompiledValidateGCTypeDescFailures(t *testing.T) {

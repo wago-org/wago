@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"testing"
 
@@ -62,7 +61,7 @@ func TestRV64PublicMixedTable64DualActiveElements(t *testing.T) {
 				producerCode := rv64TableStageCompile(t, "mixed-table64-dual-active-imported-producer", rv64MixedTable64DualActiveElementsSource(), artifact)
 				readerCode := rv64TableStageCompile(t, "mixed-table64-dual-active-imported-reader", rv64ImportedTable64IndirectInstructionSource(), artifact)
 				defer readerCode.Close()
-				if !rv64ArtifactContractValid(producerCode.executionView()) {
+				if !rv64SourceContractValid(producerCode.executionView()) {
 					t.Fatal("mixed table64 dual-active metadata contract")
 				}
 				imported := rv64MixedSizeTestTable(t, true, 3, 3)
@@ -199,60 +198,6 @@ func TestRV64PublicMixedTable64DualActiveElementsSourceGates(t *testing.T) {
 				if err == nil {
 					t.Fatal("invalid table width or malformed source admitted")
 				}
-			}
-		})
-	}
-}
-
-func TestRV64PublicMixedTable64DualActiveElementsArtifactGates(t *testing.T) {
-	mutations := map[string]func(*Compiled){
-		"feature":       func(c *Compiled) { c.requiredFeatures |= CoreFeatureBulkMemoryOperations },
-		"reference-abi": func(c *Compiled) { c.nativeReferenceCallABI = true },
-		"descriptor":    func(c *Compiled) { c.NeedsFuncRefDescs = false },
-		"type-key":      func(c *Compiled) { c.FuncTypeID[0] ^= 1 },
-		"import-limit":  func(c *Compiled) { c.tableImportMin = 2 },
-		"local-limit":   func(c *Compiled) { c.extraTables[0].Size = 2 },
-		"table-export":  func(c *Compiled) { c.tableExports["table1"] = 0 },
-		"element-count": func(c *Compiled) { c.Elems = c.Elems[:1] },
-		"element-table": func(c *Compiled) { c.Elems[1].TableIndex = 0 },
-		"element-offset": func(c *Compiled) {
-			c.Elems[1].Offset.Expr = []byte{0x42, 2, 0x0b}
-		},
-		"element-value": func(c *Compiled) { c.Elems[1].Values[0].FuncIndex = 1 },
-		"code": func(c *Compiled) {
-			c.code = bytes.Clone(c.code)
-			c.code[0] ^= 1
-		},
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			base := rv64TableStageCompile(t, "mixed-table64-dual-active-gates", rv64MixedTable64DualActiveElementsSource(), false)
-			defer base.Close()
-			bad := rv64ReferenceImportTailCopy(base)
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.Elems = slices.Clone(bad.Elems)
-			for i := range bad.Elems {
-				bad.Elems[i].Offset.Expr = bytes.Clone(bad.Elems[i].Offset.Expr)
-				bad.Elems[i].Values = slices.Clone(bad.Elems[i].Values)
-			}
-			mutate(bad)
-			if bad.validate() == nil {
-				t.Fatal("hostile mixed dual-active metadata admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile mixed dual-active artifact admitted")
 			}
 		})
 	}

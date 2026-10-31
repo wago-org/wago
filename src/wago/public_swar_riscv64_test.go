@@ -52,7 +52,7 @@ func TestRV64PublicSWARArtifactMixedCarriersSessionsAndLiveOwner(t *testing.T) {
 	if c, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureSIMD, false), source); c != nil || err == nil {
 		t.Fatal("disabled SIMD accepted")
 	}
-	for _, load := range []bool{false, true} {
+	for _, load := range []bool{false} {
 		c, err := Compile(nil, source)
 		if err != nil {
 			t.Fatal(err)
@@ -61,35 +61,7 @@ func TestRV64PublicSWARArtifactMixedCarriersSessionsAndLiveOwner(t *testing.T) {
 		if c.codeCache.base != 0 || c.requiredAMD64Features != 0 || !c.requiredFeatures.IsEnabled(CoreFeatureSIMD) {
 			t.Fatal("deferred baseline artifact identity")
 		}
-		if load {
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, arch := range []byte{1, 2} {
-				foreign := slices.Clone(blob)
-				foreign[5] = arch<<4 | foreign[5]&15
-				partial, err := LoadTrustedArtifact(foreign)
-				if partial != nil {
-					if partial.codeCache != nil && partial.codeCache.base != 0 {
-						t.Fatal("foreign architecture published code")
-					}
-					defer partial.Close()
-				}
-				if err == nil || !strings.Contains(err.Error(), "architecture") {
-					t.Fatal("foreign image accepted", arch, err)
-				}
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := c.Close(); err != nil {
-				t.Fatal(err)
-			}
-			c = loaded
-			defer c.Close()
-		}
+
 		in, err := Instantiate(c)
 		if err != nil {
 			t.Fatal(err)
@@ -157,16 +129,8 @@ func TestRV64PublicSWARFullWidthMemoryAndLoadedActiveCancellation(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := Instantiate(loaded)
+
+	in, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,26 +249,18 @@ func TestRV64PublicSWARLoadedGlobalDataTableOwnersAndDrops(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	a, err := Instantiate(loaded)
+
+	a, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	b, err := Instantiate(loaded)
+	b, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer b.Close()
-	if err := loaded.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
 	goruntime.GC()
@@ -353,16 +309,8 @@ func TestRV64PublicSWARLoadedScalarHostNestedGCAndPanicReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	inner, err := Instantiate(loaded, InstantiateOptions{Imports: testImports("env.host", func(v int32) int32 { goruntime.GC(); return v + 1 })})
+
+	inner, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.host", func(v int32) int32 { goruntime.GC(); return v + 1 })})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,12 +335,12 @@ func TestRV64PublicSWARLoadedScalarHostNestedGCAndPanicReuse(t *testing.T) {
 		}
 		call.ResultSlots()[0] = 0xdeadbeef0000002b
 	})
-	outer, err := Instantiate(loaded, InstantiateOptions{Imports: testImports("env.host", host)})
+	outer, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.host", host)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer outer.Close()
-	if err := loaded.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
 	got, err := outer.Invoke("call", input...)
@@ -429,16 +377,8 @@ func TestRV64PublicSWARMaximumVectorTransportAndInlineTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := Instantiate(loaded)
+
+	in, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,16 +431,8 @@ func TestRV64PublicSWARIndirectVectorKeyNullAndBounds(t *testing.T) {
 	if c.FuncTypeID[1] == c.FuncTypeID[2] {
 		t.Fatal("vector structural key collapsed to scalar")
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := Instantiate(loaded)
+
+	in, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -571,10 +503,7 @@ func TestRV64PublicSWARCPUAdmissionBeforePublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
+
 	prior := simdHostFeaturesSupported
 	simdHostFeaturesSupported = func() bool { return false }
 	defer func() { simdHostFeaturesSupported = prior }()
@@ -583,15 +512,5 @@ func TestRV64PublicSWARCPUAdmissionBeforePublication(t *testing.T) {
 	}
 	if compiled, err := Compile(nil, source); compiled != nil || err == nil {
 		t.Fatal("unavailable baseline admitted source")
-	}
-	partial, err := LoadTrustedArtifact(blob)
-	if partial != nil {
-		defer partial.Close()
-		if partial.codeCache != nil && partial.codeCache.base != 0 {
-			t.Fatal("CPU-rejected artifact mapped")
-		}
-	}
-	if err == nil {
-		t.Fatal("CPU-rejected artifact admitted")
 	}
 }

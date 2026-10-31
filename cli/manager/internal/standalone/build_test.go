@@ -1,6 +1,7 @@
 package standalone
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,7 +47,7 @@ func TestRequireToolchainAcceptsVersionFoundOnPath(t *testing.T) {
 }
 
 func TestMainSourceBakesInvokeExport(t *testing.T) {
-	source := string(mainSource(nil, nil, "fib", 3, false, 4, map[string]bool{"inline": false}, 0, false, false))
+	source := string(mainSource(nil, nil, "fib", 3, false, 4, map[string]bool{"inline": false}, 0, false))
 	if !strings.Contains(source, `Invoke: "fib", Core: 3, DeferBoundsChecks: false, FunctionWorkers: 4`) ||
 		!strings.Contains(source, `"inline": false`) ||
 		!strings.Contains(source, `standalone.Run(module, pluginSet(), options, os.Args)`) {
@@ -54,37 +55,7 @@ func TestMainSourceBakesInvokeExport(t *testing.T) {
 	}
 }
 
-func TestMainSourceEmbedsPrecompiledArtifact(t *testing.T) {
-	source := string(mainSource(nil, nil, "", 2, true, 0, nil, 0, false, true))
-	if !strings.Contains(source, "//go:embed module.wago") ||
-		!strings.Contains(source, `standalone.RunArtifact(module, pluginSet(), options, os.Args)`) ||
-		strings.Contains(source, "module.wasm") {
-		t.Fatalf("generated main does not load the precompiled artifact:\n%s", source)
-	}
-	compiler := string(artifactCompilerSource(nil, nil, "", 2, true, 0, nil, 0, false))
-	if !strings.Contains(compiler, `standalone.CompileArtifact(module, pluginSet(), options)`) ||
-		!strings.Contains(compiler, `os.WriteFile("module.wago", artifact, 0o644)`) {
-		t.Fatalf("generated artifact compiler does not precompile the module:\n%s", compiler)
-	}
-}
-
-func TestBuildRejectsNonNativeTarget(t *testing.T) {
-	project := t.TempDir()
-	input := filepath.Join(project, "hello.wasm")
-	if err := os.WriteFile(input, emptyStartModule(), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	target := Target{OS: "linux", Arch: "amd64"}
-	if target == (Target{OS: runtime.GOOS, Arch: runtime.GOARCH}) {
-		target = Target{OS: "linux", Arch: "arm64"}
-	}
-	_, err := Build(Request{Input: input, Target: target})
-	if err == nil || !strings.Contains(err.Error(), "precompiled standalone builds require the native target") {
-		t.Fatalf("build error = %v", err)
-	}
-}
-
-func TestBuildEmbedsArtifactWithoutCompiler(t *testing.T) {
+func TestBuildLinksMachineCodeWithoutCompiler(t *testing.T) {
 	host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
 	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
 	if err != nil {
@@ -106,16 +77,28 @@ func TestBuildEmbedsArtifactWithoutCompiler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertNoCompilerSymbols(t, result.Output)
+	binary, err := os.ReadFile(result.Output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wasm, err := os.ReadFile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(binary, wasm) {
+		t.Fatal("standalone embeds the original Wasm instead of only its native image")
+	}
+
 	command := exec.Command(result.Output, "20")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("run standalone: %v\n%s", err, output)
 	} else if got := strings.TrimSpace(string(output)); got != "6765" {
 		t.Fatalf("standalone output = %q, want 6765", got)
 	}
-	assertNoCompilerSymbols(t, result.Output, "standalone")
 }
 
-func TestBuildTinyGoEmbedsArtifactWithoutCompiler(t *testing.T) {
+func TestBuildTinyGoLinksMachineCodeWithoutCompiler(t *testing.T) {
 	host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
 	if !host.supportsTinyGo() {
 		t.Skipf("TinyGo standalone is unsupported on %s", host)
@@ -149,32 +132,7 @@ func TestBuildTinyGoEmbedsArtifactWithoutCompiler(t *testing.T) {
 	if output, err := exec.Command(result.Output).CombinedOutput(); err != nil {
 		t.Fatalf("run TinyGo standalone: %v\n%s", err, output)
 	}
-	assertNoCompilerSymbols(t, result.Output, "TinyGo standalone")
-}
-
-func assertNoCompilerSymbols(t *testing.T, executable, description string) {
-	t.Helper()
-	names, err := exec.Command("go", "tool", "nm", executable).Output()
-	if err != nil {
-		t.Fatalf("inspect %s: %v", description, err)
-	}
-	for _, forbidden := range []string{
-		"compiler/backend/railshot/amd64.", "compiler/backend/railshot/arm64.", "CompileArtifact",
-		"compiler/backend/railshot/riscv64.CompileModuleWith", "compiler/backend/railshot/riscv64.compileInteger",
-	} {
-		if strings.Contains(string(names), forbidden) {
-			var matches []string
-			for _, line := range strings.Split(string(names), "\n") {
-				if strings.Contains(line, forbidden) {
-					matches = append(matches, line)
-					if len(matches) == 5 {
-						break
-					}
-				}
-			}
-			t.Errorf("%s retains compiler symbol containing %q:\n%s", description, forbidden, strings.Join(matches, "\n"))
-		}
-	}
+	assertNoCompilerSymbols(t, result.Output)
 }
 
 func TestBuildTinyGoStripsByDefault(t *testing.T) {
@@ -244,9 +202,8 @@ func emptyStartModule() []byte {
 
 func TestGeneratedSourcesBakeFeatures(t *testing.T) {
 	for _, source := range [][]byte{
-		mainSource(nil, nil, "", 0, true, 0, nil, 0, true, false),
-		mainSource(nil, nil, "", 0, true, 0, nil, 0, true, true),
-		artifactCompilerSource(nil, nil, "", 0, true, 0, nil, 0, true),
+		mainSource(nil, nil, "", 0, true, 0, nil, 0, true),
+		mainSource(nil, nil, "", 0, true, 0, nil, 0, true),
 	} {
 		if !strings.Contains(string(source), "Features: 0, FeaturesSet: true") {
 			t.Fatalf("generated source lost explicit empty feature mask:\n%s", source)
@@ -269,5 +226,91 @@ func TestLinuxRISCV64StandaloneTarget(t *testing.T) {
 		if _, err := ParseTarget(goos + "/riscv64"); err == nil {
 			t.Fatalf("accepted %s/riscv64", goos)
 		}
+	}
+}
+
+func TestBuildRejectsNonNativeTarget(t *testing.T) {
+	project := t.TempDir()
+	input := filepath.Join(project, "hello.wasm")
+	if err := os.WriteFile(input, emptyStartModule(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	target := Target{OS: "linux", Arch: "amd64"}
+	if target == (Target{OS: runtime.GOOS, Arch: runtime.GOARCH}) {
+		target = Target{OS: "linux", Arch: "arm64"}
+	}
+	_, err := Build(Request{Input: input, Target: target})
+	if err == nil || !strings.Contains(err.Error(), "standalone builds require the native target") {
+		t.Fatalf("build error = %v", err)
+	}
+}
+
+func assertNoCompilerSymbols(t *testing.T, executable string) {
+	t.Helper()
+	names, err := exec.Command("go", "tool", "nm", executable).CombinedOutput()
+	if err != nil {
+		t.Fatalf("inspect standalone symbols: %v\n%s", err, names)
+	}
+	for _, forbidden := range []string{"compiler/backend/railshot/amd64.", "compiler/backend/railshot/arm64.", "compiler/backend/railshot/riscv64.Compile", "compiler/wasm.DecodeModule", "compiler/wasm.decodeModule", "compiler/frontend.Lower", "standalonegen."} {
+		if strings.Contains(string(names), forbidden) {
+			for _, line := range strings.Split(string(names), "\n") {
+				if strings.Contains(line, forbidden) {
+					t.Errorf("standalone retains compiler: %s", line)
+					break
+				}
+			}
+		}
+	}
+}
+
+func TestBuildNativeModuleWithData(t *testing.T) {
+	root, err := filepath.Abs("../../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_SRC", root)
+	t.Setenv("WAGO_HOME", t.TempDir())
+	t.Setenv("WAGO_BARE", "1")
+	dir := t.TempDir()
+	input := filepath.Join(dir, "data.wasm")
+	// (module (memory 1) (data (i32.const 0) "M")
+	//   (func (export "run") (result i32) (i32.load8_u (i32.const 0))))
+	source := []byte{0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 127, 3, 2, 1, 0, 5, 3, 1, 0, 1, 7, 7, 1, 3, 114, 117, 110, 0, 0, 10, 9, 1, 7, 0, 65, 0, 45, 0, 0, 11, 11, 7, 1, 0, 65, 0, 11, 1, 77}
+	if err := os.WriteFile(input, source, 0644); err != nil {
+		t.Fatal(err)
+	}
+	target := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	result, err := Build(Request{Input: input, Output: filepath.Join(dir, DefaultOutput("program.wasm", target)), Target: target, Invoke: "run", Core: 2, KeepSymbols: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command(result.Output).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "77" {
+		t.Fatalf("native data initialization: %s %v", output, err)
+	}
+	assertNoCompilerSymbols(t, result.Output)
+}
+
+func TestBuildNativeModuleWithGCReferences(t *testing.T) {
+	host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	if !host.supportsCore3() || host.Arch == "riscv64" {
+		t.Skip("requires general native GC support")
+	}
+	root, err := filepath.Abs("../../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_SRC", root)
+	t.Setenv("WAGO_HOME", t.TempDir())
+	t.Setenv("WAGO_BARE", "1")
+	output := filepath.Join(t.TempDir(), "gc")
+	result, err := Build(Request{Input: filepath.Join(root, "tests/fixtures/wasm/gc-allocation-mix.wasm"), Output: output, Target: host, Core: 3, Invoke: "structs", KeepSymbols: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNoCompilerSymbols(t, result.Output)
+	got, err := exec.Command(result.Output, "1000").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(got)) != "499500" {
+		t.Fatalf("GC standalone: %s, %v", got, err)
 	}
 }

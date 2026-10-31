@@ -20,9 +20,6 @@ func TestSmallCompileDefersCodeMapping(t *testing.T) {
 	if c.codeCache != nil && len(c.codeCache.mem) != 0 {
 		t.Fatal("small compile allocated a code mapping before instantiation")
 	}
-	if _, err := c.MarshalBinary(); err != nil {
-		t.Fatal(err)
-	}
 	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -48,8 +45,5 @@ func TestDarwinLargeCompileDefersCodeMapping(t *testing.T) {
 	defer c.Close()
 	if c.codeCache != nil && len(c.codeCache.mem) != 0 {
 		t.Fatal("Darwin compile-only path acquired a MAP_JIT image")
-	}
-	if _, err := c.MarshalBinary(); err != nil {
-		t.Fatal(err)
 	}
 }

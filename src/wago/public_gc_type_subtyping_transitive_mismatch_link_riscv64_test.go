@@ -8,8 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -35,173 +33,14 @@ func rv64PublicGCTypeSubtypingTransitiveMismatchLinkBytes(t testing.TB, variant 
 
 func rv64PublicGCTypeSubtypingTransitiveMismatchLinkCompile(t *testing.T, variant int, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_TRANSITIVE_MISMATCH_LINK_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_TRANSITIVE_MISMATCH_LINK_ARTIFACT_MODE")
-	path := filepath.Join(dir, []string{"provider.wago", "consumer.wago"}[variant-1])
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingTransitiveMismatchLinkBytes(t, variant))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		original.Close()
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	original.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return loaded
-}
 
-func TestRV64PublicGCTypeSubtypingTransitiveMismatchLinkExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
-		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
-			providerCompiled := rv64PublicGCTypeSubtypingTransitiveMismatchLinkCompile(t, 1, artifact)
-			defer providerCompiled.Close()
-			consumerCompiled := rv64PublicGCTypeSubtypingTransitiveMismatchLinkCompile(t, 2, artifact)
-			defer consumerCompiled.Close()
-			for _, compiled := range []*Compiled{providerCompiled, consumerCompiled} {
-				view := compiled.executionView()
-				if !rv64ArtifactContractValid(view) || view.validate() != nil {
-					t.Fatal("invalid public subtype link execution contract")
-				}
-			}
+	return original
 
-			rt := NewRuntime()
-			defer rt.Close()
-			providerModule, err := rt.Module(providerCompiled)
-			if err != nil {
-				t.Fatal(err)
-			}
-			provider, err := rt.Instantiate(context.Background(), providerModule, WithImports(NewImports()))
-			providerModule.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer provider.Close()
-			if provider.gc != nil {
-				t.Fatal("transitive-mismatch-link provider allocated a collector")
-			}
-			rv64RequireSubtypeStorage(t, provider)
-
-			if got, invokeErr := provider.Invoke("f"); invokeErr != nil || len(got) != 0 {
-				t.Fatalf("f = %v, %v; want []", got, invokeErr)
-			}
-			exported, err := provider.ExportedFunc("f")
-			if err != nil {
-				t.Fatal(err)
-			}
-			consumerModule, err := rt.Module(consumerCompiled)
-			if err != nil {
-				t.Fatal(err)
-			}
-			consumer, linkErr := rt.Instantiate(context.Background(), consumerModule, WithImports(testImports("M11.f", exported)))
-			consumerModule.Close()
-			if consumer != nil || linkErr == nil || !strings.Contains(linkErr.Error(), "signature mismatch") {
-				t.Fatalf("incompatible consumer link = %v, %v; want nil/signature mismatch", consumer, linkErr)
-			}
-			provider.lifeMu.Lock()
-			refs, closed := provider.resourceRefs, provider.resourcesClosed
-			provider.lifeMu.Unlock()
-			if refs != 0 || closed {
-				t.Fatalf("mismatched link retained provider refs/closed = %d/%v, want 0/false", refs, closed)
-			}
-			if _, err = marshalCompiled(consumerCompiled.executionView()); err != nil {
-				t.Fatal("failed link mutated binding-independent consumer", err)
-			}
-		})
-	}
-}
-
-func TestRV64PublicGCTypeSubtypingTransitiveMismatchLinkAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_TRANSITIVE_MISMATCH_LINK_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	provider := rv64PublicGCTypeSubtypingTransitiveMismatchLinkCompile(t, 1, false)
-	consumer := rv64PublicGCTypeSubtypingTransitiveMismatchLinkCompile(t, 2, false)
-	defer provider.Close()
-	defer consumer.Close()
-	for name, mutate := range map[string]func(*Compiled){
-		"provider-code":               func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"provider-type":               func(v *Compiled) { v.Types[5].Supers = nil },
-		"provider-desc":               func(v *Compiled) { v.GCTypeDescs[5].HasSuper = false },
-		"provider-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(provider.executionView())
-			mutate(candidate)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("hostile transitive-mismatch-link provider mutation admitted")
-			}
-			rv64RequireRejectedArtifact(t, candidate)
-		})
-	}
-	for name, mutate := range map[string]func(*Compiled){
-		"consumer-import":             func(v *Compiled) { v.Imports[0] = "M9.f" },
-		"consumer-signature":          func(v *Compiled) { v.importFuncSigs[0].TypeIndex = 0 },
-		"consumer-type":               func(v *Compiled) { v.Types[3].Supers = nil },
-		"consumer-desc":               func(v *Compiled) { v.GCTypeDescs[3].HasSuper = false },
-		"consumer-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(consumer.executionView())
-			mutate(candidate)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("hostile transitive-mismatch-link consumer mutation admitted")
-			}
-			rv64RequireRejectedArtifact(t, candidate)
-		})
-	}
-	providerView, consumerView := provider.executionView(), consumer.executionView()
-	for _, pair := range []struct {
-		name                     string
-		metadataOwner, codeOwner *Compiled
-	}{
-		{"consumer-metadata-provider-image", consumerView, providerView},
-		{"provider-metadata-consumer-image", providerView, consumerView},
-	} {
-		t.Run(pair.name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(pair.metadataOwner)
-			candidate.code = slices.Clone(pair.codeOwner.code)
-			candidate.Entry = slices.Clone(pair.codeOwner.Entry)
-			candidate.InternalEntry = slices.Clone(pair.codeOwner.InternalEntry)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("cross-paired transitive-mismatch-link artifact admitted")
-			}
-			rv64RequireRejectedArtifact(t, candidate)
-		})
-	}
 }
 
 func TestRV64PublicGCTypeSubtypingTransitiveMismatchLinkMismatchAndPublicInstantiation(t *testing.T) {
@@ -278,20 +117,5 @@ func TestRV64PublicGCTypeSubtypingTransitiveMismatchLinkMismatchAndPublicInstant
 	provider.lifeMu.Unlock()
 	if refs != 0 || closed || exported == nil {
 		t.Fatalf("rejected imports retained provider refs/closed=%d/%v export=%v", refs, closed, exported)
-	}
-}
-
-func TestRV64PublicGCTypeSubtypingTransitiveMismatchLinkCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_TRANSITIVE_MISMATCH_LINK_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	for variant := 1; variant <= 2; variant++ {
-		c, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingTransitiveMismatchLinkBytes(t, variant))
-		if c != nil {
-			c.Close()
-		}
-		if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-			t.Fatal("compiler-free transitive-mismatch-link path used source compilation", variant, err)
-		}
 	}
 }

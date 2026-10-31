@@ -8,9 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -34,56 +32,15 @@ func rv64PublicGCBrOnCastAbstractBytes(t testing.TB, fail bool) []byte {
 
 func rv64PublicGCBrOnCastAbstractCompile(t *testing.T, fail, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_BR_ON_CAST_ABSTRACT_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_BR_ON_CAST_ABSTRACT_ARTIFACT_MODE")
-	name := "gc-br-on-cast-abstract.wago"
-	if fail {
-		name = "gc-br-on-cast-fail-abstract.wago"
-	}
-	path := filepath.Join(dir, name)
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = loaded.Close() })
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCBrOnCastAbstractBytes(t, fail))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = original.Close() })
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = loaded.Close() })
-	return loaded
+
+	return original
+
 }
 
 func TestRV64PublicGCBrOnCastAbstractExecutionAndArtifact(t *testing.T) {
@@ -102,7 +59,7 @@ func TestRV64PublicGCBrOnCastAbstractExecutionAndArtifact(t *testing.T) {
 				t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 					compiled := rv64PublicGCBrOnCastAbstractCompile(t, fail, artifact)
 					view := compiled.executionView()
-					if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
+					if !rv64SourceContractValid(view) || railshotValidateCompiled(view) != nil {
 						t.Fatalf("invalid branch-cast execution contract: %v", railshotValidateCompiled(view))
 					}
 					if params, results, err := view.maxCallSlots(); err != nil || params != 4 || results != 1 {
@@ -209,7 +166,7 @@ func TestRV64PublicGCBrOnCastAbstractAdmissionIsExact(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					candidate := rv64ReferenceStartCopy(base)
 					mutate(candidate)
-					if rv64ArtifactContractValid(candidate) {
+					if rv64SourceContractValid(candidate) {
 						t.Fatal("hostile retained mutation kept abstract branch-cast witness")
 					}
 					if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
@@ -223,7 +180,7 @@ func TestRV64PublicGCBrOnCastAbstractAdmissionIsExact(t *testing.T) {
 				previous := candidate.codeCache.gcArrayProduct
 				candidate.codeCache.gcArrayProduct = stagedGCArrayProductGeneric
 				t.Cleanup(func() { candidate.codeCache.gcArrayProduct = previous })
-				if rv64ArtifactContractValid(candidate) {
+				if rv64SourceContractValid(candidate) {
 					t.Fatal("hostile retained array product kept abstract branch-cast witness")
 				}
 				if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
@@ -231,20 +188,5 @@ func TestRV64PublicGCBrOnCastAbstractAdmissionIsExact(t *testing.T) {
 				}
 			})
 		})
-	}
-}
-
-func TestRV64PublicGCBrOnCastAbstractCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_BR_ON_CAST_ABSTRACT_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	for _, fail := range []bool{false, true} {
-		c, err := rv64I31Config().Compile(rv64PublicGCBrOnCastAbstractBytes(t, fail))
-		if c != nil {
-			_ = c.Close()
-		}
-		if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-			t.Fatal("compiler-free branch-cast path used source compilation", err)
-		}
 	}
 }

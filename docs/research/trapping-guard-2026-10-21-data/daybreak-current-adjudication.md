@@ -1,3 +1,0 @@
-Yes. [Line 143](/home/dev/Projects/wago-gc-trapping-guard-pr/src/core/compiler/backend/railshot/amd64/gc_trapping_guard.go:143) requires `unreachable` before the loop starts. Empty and NOP-only true arms are rejected. My Candidate 2 admission-gap claim was wrong; I withdraw it.
-
-The only remaining gap I noted is test coverage: the tests do not directly show successful reuse with cache registers R12–R14. I found no genuine admission bug.

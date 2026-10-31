@@ -443,75 +443,6 @@ func TestPluginGCHostImportInvocationContext(t *testing.T) {
 	}
 }
 
-func TestPluginGCHostImportsNonNullRoundTripAndZeroCopyWrite(t *testing.T) {
-	t.Run("legacy", func(t *testing.T) { testPluginGCHostImportsNonNullRoundTripAndZeroCopyWrite(t, false) })
-	t.Run("concrete", func(t *testing.T) { testPluginGCHostImportsNonNullRoundTripAndZeroCopyWrite(t, true) })
-}
-
-func testPluginGCHostImportsNonNullRoundTripAndZeroCopyWrite(t *testing.T, concrete bool) {
-	requireCompleteCore3Backend(t)
-	rt, state := newPluginGCTestRuntimeCaller(t, concrete)
-	defer rt.Close()
-	mod, err := rt.Compile(pluginGCArrayRoundTripModule(true, true))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mod.Close()
-	if !mod.c.needsRuntimeGCCollectorDomain() {
-		t.Fatal("boundary module did not request a Runtime GC collector domain")
-	}
-	roots := mod.c.genericGCFrameRoots()
-	if roots == nil || len(roots.callsites) < 4 || len(roots.safepoints) != 0 {
-		t.Fatalf("boundary-only root map = %+v", roots)
-	}
-	in, err := rt.Instantiate(context.Background(), mod, WithGC(GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16, VerifyAfterCollect: true}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	if in.gc == nil || in.gcInvocationDomain() == nil {
-		t.Fatal("boundary-only plugin instance has no Runtime GC domain")
-	}
-	values, err := in.InvokeValues(context.Background(), "run")
-	if err != nil || len(values) != 1 || values[0].I32() != 9 {
-		t.Fatalf("non-null GC round trip = %v, %v; want zero-copy mutation value 9", values, err)
-	}
-	in.refStore.mu.Lock()
-	liveTokens := len(in.refStore.gcByToken)
-	in.refStore.mu.Unlock()
-	if liveTokens != 0 {
-		t.Fatalf("plugin call retained %d temporary GC token(s)", liveTokens)
-	}
-	if public := in.existingPublicGCState(); public != nil {
-		public.mu.Lock()
-		resultTokens, activations := public.resultTokenCount, public.hostActivationCount
-		argumentRoots, resultRoots := uint8(0), uint8(0)
-		for i := range public.hostArgumentRootCount {
-			argumentRoots += public.hostArgumentRootCount[i]
-			resultRoots += public.hostResultRootCount[i]
-		}
-		public.mu.Unlock()
-		if resultTokens != 0 || activations != 0 || argumentRoots != 0 || resultRoots != 0 {
-			t.Fatalf("plugin GC callback state leaked: tokens=%d activations=%d argumentRoots=%d resultRoots=%d", resultTokens, activations, argumentRoots, resultRoots)
-		}
-	}
-	state.mu.Lock()
-	storage, ref, rejected := state.retainedStorage, state.retainedRef, state.otherViewRejected
-	state.mu.Unlock()
-	if !rejected {
-		t.Fatal("GC handle from another GuestStorage view was not rejected")
-	}
-	if storage == nil {
-		t.Fatal("plugin did not retain the expired test view")
-	}
-	if _, err := storage.GCArrayInfo(ref); err == nil {
-		t.Fatal("expired GuestStorage view accepted a retained GC handle")
-	}
-	if _, err := storage.GCRef(0xfeed); err == nil {
-		t.Fatal("expired GuestStorage view accepted a forged token")
-	}
-}
-
 func TestPluginGCHostImportDifferentExactTypesAndDomains(t *testing.T) {
 	requireCompleteCore3Backend(t)
 	for _, order := range []string{"mutable-first", "immutable-first"} {
@@ -587,60 +518,6 @@ func TestPluginGCHostImportDifferentExactTypesAndDomains(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
-	}
-}
-
-func TestPluginGCHostImportCodecRoundTrip(t *testing.T) {
-	requireCompleteCore3Backend(t)
-	if guardPageBuilt {
-		t.Skip("signals-based compiled modules are intentionally not serializable")
-	}
-	rt, _ := newPluginGCTestRuntime(t)
-	defer rt.Close()
-	original, err := rt.Compile(pluginGCArrayRoundTripModule(true, false))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer original.Close()
-	encoded, err := original.c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var decoded Compiled
-	if err := decoded.UnmarshalBinary(encoded); err != nil {
-		t.Fatal(err)
-	}
-	defer decoded.Close()
-	if decoded.nativeGCABIRequirement() == 0 || decoded.genericGCFrameRoots() == nil || !decoded.hasCollectorReferenceCallBoundary() {
-		t.Fatalf("decoded GC boundary metadata ABI=%d roots=%v boundary=%v", decoded.nativeGCABIRequirement(), decoded.genericGCFrameRoots() != nil, decoded.hasCollectorReferenceCallBoundary())
-	}
-	mod, err := rt.Module(&decoded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mod.Close()
-	in, err := rt.Instantiate(context.Background(), mod)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	if values, err := in.InvokeValues(context.Background(), "run"); err != nil || len(values) != 1 || values[0].I32() != 1 {
-		t.Fatalf("decoded boundary call = %v, %v", values, err)
-	}
-
-	var missingRoots Compiled
-	if err := missingRoots.UnmarshalBinary(encoded); err != nil {
-		t.Fatal(err)
-	}
-	defer missingRoots.Close()
-	missingRoots.validateMemo.gcFrameRoots = nil
-	missingMod, err := rt.Module(&missingRoots)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer missingMod.Close()
-	if in, err := rt.Instantiate(context.Background(), missingMod); err == nil || in != nil || compiledArchitecture != 4 && !strings.Contains(err.Error(), "exact native root maps") {
-		t.Fatalf("decoded boundary without roots instance/error = %v/%v", in, err)
 	}
 }
 

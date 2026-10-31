@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -24,9 +24,8 @@ func TestRV64CompactExternPublicTokenLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	loaded := publicArtifactRoundTrip(t, c)
-	defer loaded.Close()
-	for _, candidate := range []*Compiled{c, loaded} {
+
+	for _, candidate := range []*Compiled{c} {
 		rt := NewRuntime()
 		in := rv64NativeTokenInstantiate(t, rt, candidate, NewImports())
 		domain := in.lockGCCollector()

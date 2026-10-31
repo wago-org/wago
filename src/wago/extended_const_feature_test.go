@@ -1,7 +1,6 @@
 package wago
 
 import (
-	"encoding/binary"
 	"strings"
 	"testing"
 
@@ -13,18 +12,6 @@ func extendedConstFeatureModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{
 			0x41, 0x01, // i32.const 1
-			0x41, 0x02, // i32.const 2
-			0x6a, // i32.add
-			0x0b,
-		}))),
-	)
-}
-
-func extendedConstImportedGlobalModule() []byte {
-	return wasmtest.Module(
-		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "base", wasm.I32, false))),
-		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{
-			0x23, 0x00, // global.get 0
 			0x41, 0x02, // i32.const 2
 			0x6a, // i32.add
 			0x0b,
@@ -47,33 +34,5 @@ func TestExtendedConstRespectsCoreFeatureConfiguration(t *testing.T) {
 	defer compiled.Close()
 	if got := CoreFeatures(compiled.requiredFeatures); got != CoreFeatureExtendedConst {
 		t.Fatalf("required features = %s, want %s", got, CoreFeatureExtendedConst)
-	}
-}
-
-func TestExtendedConstRequiredFeatureSurvivesCodecAndFailsClosed(t *testing.T) {
-	compiled := compileExplicitArtifact(t, extendedConstImportedGlobalModule())
-	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
-	if got := CoreFeatures(loaded.requiredFeatures); got != CoreFeatureExtendedConst {
-		t.Fatalf("loaded required features = %s, want %s", got, CoreFeatureExtendedConst)
-	}
-
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	metadataEnd := len(blob)
-	if compiled.rv64ExecutionContract() != nil {
-		metadataEnd -= rv64ExecutionContractSize(compiled)
-	}
-	featureOffset := metadataEnd - 9
-	required := binary.LittleEndian.Uint64(blob[featureOffset : metadataEnd-1])
-	if got := CoreFeatures(required) & coreFeaturesWago; got != CoreFeatureExtendedConst || blob[metadataEnd-1] != 0 {
-		t.Fatalf("codec feature tail = %x, want u64 extended-constant mask then zero GC count", blob[featureOffset:metadataEnd])
-	}
-	binary.LittleEndian.PutUint64(blob[featureOffset:metadataEnd-1], required&^uint64(CoreFeatureExtendedConst))
-	var missing Compiled
-	if err := missing.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") && !strings.Contains(err.Error(), "code/metadata binding mismatch") {
-		t.Fatalf("missing extended-constant bit error = %v", err)
 	}
 }

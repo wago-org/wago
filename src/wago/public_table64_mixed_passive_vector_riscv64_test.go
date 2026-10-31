@@ -3,10 +3,8 @@
 package wago
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"testing"
 
@@ -62,7 +60,7 @@ func TestRV64PublicMixedTable64PassiveVector(t *testing.T) {
 			code := rv64TableStageCompile(t, "mixed-table64-passive-vector", rv64MixedTable64PassiveVectorSource(), artifact)
 			defer code.Close()
 			view := code.executionView()
-			if !rv64ArtifactContractValid(view) {
+			if !rv64SourceContractValid(view) {
 				t.Fatal("mixed passive vector metadata contract")
 			}
 			imported := rv64MixedSizeTestTable(t, true, 4, 4)
@@ -246,108 +244,6 @@ func TestRV64PublicMixedTable64PassiveVectorLifetimes(t *testing.T) {
 					}
 				}
 			})
-		})
-	}
-}
-
-func TestRV64PublicMixedTable64PassiveVectorGates(t *testing.T) {
-	base := rv64MixedTable64PassiveVectorSource()
-	for name, source := range map[string][]byte{
-		"import-table32": bytes.Replace(bytes.Clone(base), []byte{0x70, 0x05, 4, 4}, []byte{0x70, 0x01, 4, 4}, 1),
-		"wrong-init":     bytes.Replace(bytes.Clone(base), []byte{0xfc, 0x0c, 0, 1}, []byte{0xfc, 0x0c, 0, 0}, 1),
-		"wrong-call":     bytes.Replace(bytes.Clone(base), []byte{0x20, 0, 0x11, 1, 1}, []byte{0x20, 0, 0x11, 1, 0}, 1),
-		"target-order":   bytes.Replace(bytes.Clone(base), []byte{0xd2, 0, 0x0b, 0xd2, 1}, []byte{0xd2, 1, 0x0b, 0xd2, 0}, 1),
-		"target-body":    bytes.Replace(bytes.Clone(base), []byte{0x41, 8, 0x0b}, []byte{0x41, 9, 0x0b}, 1),
-	} {
-		t.Run(name, func(t *testing.T) {
-			c, err := Compile(nil, source)
-			if name != "import-table32" {
-				if err != nil {
-					t.Fatal("valid mixed table source", err)
-				}
-				defer c.Close()
-				rv64RequireTableArtifactMetadata(t, c)
-			} else {
-				if c != nil {
-					c.Close()
-				}
-				if err == nil {
-					t.Fatal("invalid table width or malformed source admitted")
-				}
-			}
-		})
-	}
-	for _, artifact := range []bool{false, true} {
-		t.Run(fmt.Sprintf("import-artifact%t", artifact), func(t *testing.T) {
-			compiled := rv64TableStageCompile(t, "mixed-passive-vector-import-gate", base, artifact)
-			defer compiled.Close()
-			for _, tc := range []struct {
-				name  string
-				table *Table
-			}{
-				{"table32", rv64MixedSizeTestTable(t, false, 4, 4)},
-				{"small", rv64MixedSizeTestTable(t, true, 3, 4)},
-				{"large-max", rv64MixedSizeTestTable(t, true, 4, 5)},
-			} {
-				t.Run(tc.name, func(t *testing.T) {
-					defer tc.table.Close()
-					before := slices.Clone(tc.table.desc)
-					in, err := Instantiate(compiled, NewImports().Table("env", "table", tc.table))
-					if in != nil {
-						in.Close()
-					}
-					if err == nil || !slices.Equal(tc.table.desc, before) {
-						t.Fatal("incompatible mixed passive-vector import admitted or mutated")
-					}
-				})
-			}
-		})
-	}
-	for name, mutate := range map[string]func(*Compiled){
-		"feature":       func(c *Compiled) { c.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-		"reference-abi": func(c *Compiled) { c.nativeReferenceCallABI = true },
-		"type-key":      func(c *Compiled) { c.FuncTypeID[6] ^= 1 },
-		"entry":         func(c *Compiled) { c.Entry[6]-- },
-		"internal-entry": func(c *Compiled) {
-			c.InternalEntry[6]--
-		},
-		"element":      func(c *Compiled) { c.passiveElems[0].Values[1].FuncIndex = 0 },
-		"table-export": func(c *Compiled) { c.tableExports["table1"] = 0 },
-		"code": func(c *Compiled) {
-			c.code = bytes.Clone(c.code)
-			c.code[len(c.code)-1] ^= 1
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			compiled := rv64TableStageCompile(t, "mixed-passive-vector-gate", base, false)
-			defer compiled.Close()
-			bad := rv64ReferenceImportTailCopy(compiled)
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.passiveElems = slices.Clone(bad.passiveElems)
-			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
-			mutate(bad)
-			if bad.validate() == nil {
-				t.Fatal("hostile mixed passive-vector metadata admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if name == "feature" {
-				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
-					t.Fatal("serialization did not restore structural passive-vector features", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("hostile mixed passive-vector artifact admitted")
-			}
 		})
 	}
 }

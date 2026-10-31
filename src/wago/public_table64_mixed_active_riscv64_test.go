@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"testing"
 
@@ -38,7 +37,7 @@ func TestRV64PublicMixedTable64ActiveElement(t *testing.T) {
 			producerCode := rv64TableStageCompile(t, "mixed-table64-active-producer", rv64MixedTable64ActiveElementSource(), artifact)
 			readerCode := rv64TableStageCompile(t, "mixed-table64-active-reader", rv64ImportedTable64IndirectInstructionSource(), artifact)
 			defer readerCode.Close()
-			if !rv64ArtifactContractValid(producerCode.executionView()) {
+			if !rv64SourceContractValid(producerCode.executionView()) {
 				t.Fatal("mixed table64 active metadata contract")
 			}
 			imported := rv64MixedSizeTestTable(t, true, 3, 3)
@@ -158,77 +157,6 @@ func TestRV64PublicMixedTable64ActiveElementSourceGates(t *testing.T) {
 				if err == nil {
 					t.Fatal("invalid table index width admitted")
 				}
-			}
-		})
-	}
-}
-
-func TestRV64PublicMixedTable64ActiveElementArtifactGates(t *testing.T) {
-	mutations := map[string]func(*Compiled){
-		"witness":        func(c *Compiled) { c.nativeTable64ABI = nativeTable64SizeABI },
-		"feature":        func(c *Compiled) { c.requiredFeatures |= CoreFeatureBulkMemoryOperations },
-		"missing-ref":    func(c *Compiled) { c.requiredFeatures &^= CoreFeatureReferenceTypes },
-		"reference-abi":  func(c *Compiled) { c.nativeReferenceCallABI = true },
-		"descriptor":     func(c *Compiled) { c.NeedsFuncRefDescs = false },
-		"type-key":       func(c *Compiled) { c.FuncTypeID[0] ^= 1 },
-		"import-table32": func(c *Compiled) { c.TableAddr64 = false },
-		"import-limit":   func(c *Compiled) { c.tableImportMin = 2 },
-		"local-table32":  func(c *Compiled) { c.extraTables[0].Addr64 = false },
-		"local-import":   func(c *Compiled) { c.extraTables[0].ImportKey = "env.other" },
-		"local-import-max": func(c *Compiled) {
-			c.extraTables[0].ImportHasMax = true
-		},
-		"signature":      func(c *Compiled) { c.Funcs[0].Results[0] = ValI64 },
-		"table-export":   func(c *Compiled) { c.tableExports["table1"] = 0 },
-		"element-table":  func(c *Compiled) { c.Elems[0].TableIndex = 1 },
-		"element-offset": func(c *Compiled) { c.Elems[0].Offset.Expr = []byte{0x42, 2, 0x0b} },
-		"element-value":  func(c *Compiled) { c.Elems[0].Values[0].FuncIndex = 1 },
-		"code": func(c *Compiled) {
-			c.code = bytes.Clone(c.code)
-			c.code[0] ^= 1
-		},
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			base := rv64TableStageCompile(t, "mixed-table64-active-gates", rv64MixedTable64ActiveElementSource(), false)
-			defer base.Close()
-			bad := rv64ReferenceImportTailCopy(base)
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.Elems = slices.Clone(bad.Elems)
-			bad.Elems[0].Offset.Expr = bytes.Clone(bad.Elems[0].Offset.Expr)
-			bad.Elems[0].Values = slices.Clone(bad.Elems[0].Values)
-			mutate(bad)
-			if bad.validate() == nil {
-				t.Fatal("hostile mixed active metadata admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if name == "local-import-max" {
-				if err != nil || loaded == nil || loaded.extraTables[0].ImportHasMax || !rv64ArtifactContractValid(loaded.executionView()) {
-					t.Fatal("serialized local table retained stale import maximum", err)
-				}
-				loaded.Close()
-				return
-			}
-			if name == "missing-ref" {
-				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !rv64ArtifactContractValid(loaded.executionView()) {
-					t.Fatal("serialized mixed active structural feature was not restored", err)
-				}
-				loaded.Close()
-				return
-			}
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile mixed active artifact admitted")
 			}
 		})
 	}

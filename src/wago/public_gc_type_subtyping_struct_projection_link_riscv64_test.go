@@ -7,8 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
-	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -34,195 +32,14 @@ func rv64PublicGCTypeSubtypingStructProjectionLinkBytes(t testing.TB, variant in
 
 func rv64PublicGCTypeSubtypingStructProjectionLinkCompile(t *testing.T, variant int, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_STRUCT_PROJECTION_LINK_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_STRUCT_PROJECTION_LINK_ARTIFACT_MODE")
-	path := filepath.Join(dir, []string{"provider.wago", "consumer.wago"}[variant-1])
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingStructProjectionLinkBytes(t, variant))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		original.Close()
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	original.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return loaded
-}
 
-func TestRV64PublicGCTypeSubtypingStructProjectionLinkExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
-		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
-			providerCompiled := rv64PublicGCTypeSubtypingStructProjectionLinkCompile(t, 1, artifact)
-			defer providerCompiled.Close()
-			consumerCompiled := rv64PublicGCTypeSubtypingStructProjectionLinkCompile(t, 2, artifact)
-			defer consumerCompiled.Close()
-			for _, compiled := range []*Compiled{providerCompiled, consumerCompiled} {
-				view := compiled.executionView()
-				if !rv64ArtifactContractValid(view) || view.validate() != nil {
-					t.Fatal("invalid public subtype link execution contract")
-				}
-			}
+	return original
 
-			rt := NewRuntime()
-			defer rt.Close()
-			providerModule, err := rt.Module(providerCompiled)
-			if err != nil {
-				t.Fatal(err)
-			}
-			provider, err := rt.Instantiate(context.Background(), providerModule, WithImports(NewImports()))
-			providerModule.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if provider.gc != nil {
-				t.Fatal("struct-projection-link provider allocated a collector")
-			}
-			rv64RequireSubtypeStorage(t, provider)
-
-			if got, invokeErr := provider.Invoke("g"); invokeErr != nil || len(got) != 0 {
-				t.Fatalf("g = %v, %v; want []", got, invokeErr)
-			}
-			exported, err := provider.ExportedFunc("g")
-			if err != nil {
-				t.Fatal(err)
-			}
-			consumerModule, err := rt.Module(consumerCompiled)
-			if err != nil {
-				t.Fatal(err)
-			}
-			consumer, err := rt.Instantiate(context.Background(), consumerModule, WithImports(testImports("M4.g", exported)))
-			consumerModule.Close()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if consumer.gc != nil {
-				t.Fatal("struct-projection-link consumer allocated a collector")
-			}
-			rv64RequireSubtypeStorage(t, consumer)
-			rv64RequireSubtypeNativeImports(t, consumer, provider, 0)
-			if _, err = marshalCompiled(consumer.c); err != nil {
-				t.Fatal("binding-independent projected-struct consumer codec", err)
-			}
-			provider.lifeMu.Lock()
-			refs, closed := provider.resourceRefs, provider.resourcesClosed
-			provider.lifeMu.Unlock()
-			if refs != 1 || closed {
-				t.Fatalf("linked provider refs/closed = %d/%v, want 1/false", refs, closed)
-			}
-			if err = provider.Close(); err != nil {
-				t.Fatal(err)
-			}
-			provider.lifeMu.Lock()
-			refs, closed = provider.resourceRefs, provider.resourcesClosed
-			provider.lifeMu.Unlock()
-			if refs != 1 || closed {
-				t.Fatalf("logically closed provider refs/closed = %d/%v, want 1/false", refs, closed)
-			}
-			if err = consumer.Close(); err != nil {
-				t.Fatal(err)
-			}
-			provider.lifeMu.Lock()
-			refs, closed = provider.resourceRefs, provider.resourcesClosed
-			provider.lifeMu.Unlock()
-			if refs != 0 || !closed {
-				t.Fatalf("released provider refs/closed = %d/%v, want 0/true", refs, closed)
-			}
-		})
-	}
-}
-
-func TestRV64PublicGCTypeSubtypingStructProjectionLinkAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_STRUCT_PROJECTION_LINK_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	provider := rv64PublicGCTypeSubtypingStructProjectionLinkCompile(t, 1, false)
-	consumer := rv64PublicGCTypeSubtypingStructProjectionLinkCompile(t, 2, false)
-	defer provider.Close()
-	defer consumer.Close()
-	for name, mutate := range map[string]func(*Compiled){
-		"provider-code":               func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"provider-type":               func(v *Compiled) { v.Types[4].Supers = nil },
-		"provider-desc":               func(v *Compiled) { v.GCTypeDescs[4].HasSuper = false },
-		"provider-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(provider.executionView())
-			mutate(candidate)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("hostile struct-projection-link provider mutation admitted")
-			}
-			rv64RequireRejectedArtifact(t, candidate)
-		})
-	}
-	for name, mutate := range map[string]func(*Compiled){
-		"consumer-import":             func(v *Compiled) { v.Imports[0] = "M3.g" },
-		"consumer-signature":          func(v *Compiled) { v.importFuncSigs[0].TypeIndex = 0 },
-		"consumer-type":               func(v *Compiled) { v.Types[4].Supers = nil },
-		"consumer-desc":               func(v *Compiled) { v.GCTypeDescs[4].HasSuper = false },
-		"consumer-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(consumer.executionView())
-			mutate(candidate)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("hostile struct-projection-link consumer mutation admitted")
-			}
-			rv64RequireRejectedArtifact(t, candidate)
-		})
-	}
-	providerView, consumerView := provider.executionView(), consumer.executionView()
-	for _, pair := range []struct {
-		name                     string
-		metadataOwner, codeOwner *Compiled
-	}{
-		{"consumer-metadata-provider-image", consumerView, providerView},
-		{"provider-metadata-consumer-image", providerView, consumerView},
-	} {
-		t.Run(pair.name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(pair.metadataOwner)
-			candidate.code = slices.Clone(pair.codeOwner.code)
-			candidate.Entry = slices.Clone(pair.codeOwner.Entry)
-			candidate.InternalEntry = slices.Clone(pair.codeOwner.InternalEntry)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("cross-paired struct-projection-link artifact admitted")
-			}
-			rv64RequireRejectedArtifact(t, candidate)
-		})
-	}
 }
 
 func TestRV64PublicGCTypeSubtypingStructProjectionLinkMismatchAndPublicRuntime(t *testing.T) {
@@ -321,20 +138,5 @@ func TestRV64PublicGCTypeSubtypingStructProjectionLinkMismatchAndPublicRuntime(t
 	}
 	if exported == nil {
 		t.Fatal("provider export missing")
-	}
-}
-
-func TestRV64PublicGCTypeSubtypingStructProjectionLinkCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_STRUCT_PROJECTION_LINK_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	for variant := 1; variant <= 2; variant++ {
-		c, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingStructProjectionLinkBytes(t, variant))
-		if c != nil {
-			c.Close()
-		}
-		if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-			t.Fatal("compiler-free struct-projection-link path used source compilation", variant, err)
-		}
 	}
 }

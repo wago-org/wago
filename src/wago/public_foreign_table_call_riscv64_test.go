@@ -5,11 +5,8 @@ package wago
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -17,103 +14,16 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func TestRV64ActualForeignTablePrecompiledCompilerGate(t *testing.T) {
-	if os.Getenv("WAGO_RV64_FOREIGN_TABLE_ARTIFACT_MODE") != "load" {
-		t.Skip("actual precompiled artifact qualification only")
-	}
-	source := rv64ForeignTableCallModule([]wasm.ValType{wasm.I32}, 7, false, false)
-	if c, err := Compile(nil, source); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		if c != nil {
-			_ = c.Close()
-		}
-		t.Fatal("artifact qualification accidentally used a source compiler", err)
-	}
-}
-
 // The same witnesses can prepare source artifacts and then run in a binary
-// built with wago_precompiled, where source compilation is unavailable.
+// exercises source-compiled modules.
 func rv64ForeignTableCompile(t *testing.T, types []wasm.ValType, seed byte, shared, trapping, artifact bool) *Compiled {
 	t.Helper()
-	dir := os.Getenv("WAGO_RV64_FOREIGN_TABLE_ARTIFACT_DIR")
-	mode := os.Getenv("WAGO_RV64_FOREIGN_TABLE_ARTIFACT_MODE")
-	if mode == "load" {
-		if !artifact {
-			// A precompiled runtime cannot execute a source path.
-			t.Skip("actual precompiled runtime: artifact path only")
-		}
-		if dir == "" {
-			t.Fatal("precompiled artifact directory missing")
-		}
-		blob, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("types%d-seed%d-shared%t-trap%t.wago", len(types), seed, shared, trapping)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if c != nil {
-			t.Cleanup(func() { _ = c.Close() })
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		return c
-	}
-	c := rv64PublicStartCompile(t, rv64ForeignTableCallModule(types, seed, shared, trapping), artifact)
-	if mode == "prepare" {
-		if dir == "" {
-			t.Fatal("source artifact output directory missing")
-		}
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("types%d-seed%d-shared%t-trap%t.wago", len(types), seed, shared, trapping)), blob, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return c
-}
 
-func TestRV64PublicForeignTableArtifactCapabilities(t *testing.T) {
-	c := rv64PublicStartCompile(t, rv64ForeignTableCallModule([]wasm.ValType{wasm.I32}, 7, false, false), false)
-	for _, flags := range []struct {
-		name                    string
-		reference, table, traps bool
-	}{
-		{"legacy-reference", false, true, true},
-		{"reference-without-table", true, false, true},
-		{"reference-without-traps", true, true, false},
-	} {
-		t.Run(flags.name, func(t *testing.T) {
-			view := rv64ReferenceImportTailCopy(c)
-			view.nativeTableReferenceABI, view.nativeTableContextABI, view.nativeContextTrapABI = flags.reference, flags.table, flags.traps
-			rv64RequireRejectedArtifact(t, view)
-		})
-	}
-	// The execution view owns frozen capabilities even if a public mirror changes.
-	c.nativeTableReferenceABI = false
-	if !c.executionView().nativeTableReferenceABI {
-		t.Fatal("reference ABI was not frozen")
-	}
-	blobFrozen, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	frozen, err := LoadTrustedArtifact(blobFrozen)
-	if frozen != nil {
-		defer frozen.Close()
-	}
-	if err != nil || !frozen.executionView().nativeTableReferenceABI || uint64(frozen.executionView().requiredFeatures)&compiledRV64TableReferenceABI != 0 {
-		t.Fatal("frozen reference capability or feature stripping", err)
-	}
-	view := rv64ReferenceImportTailCopy(c)
-	view.nativeTableContextABI = false
-	view.nativeTableReferenceABI = false
-	rv64RequireRejectedArtifact(t, view)
-	view.nativeTableContextABI, view.nativeContextTrapABI = true, false
-	rv64RequireRejectedArtifact(t, view)
+	// A precompiled runtime cannot execute a source path.
+
+	c := rv64PublicStartCompile(t, rv64ForeignTableCallModule(types, seed, shared, trapping), artifact)
+
+	return c
 }
 
 // The first parameter is i32. The target adds its own global, while the caller

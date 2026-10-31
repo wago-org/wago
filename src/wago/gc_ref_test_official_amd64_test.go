@@ -165,6 +165,61 @@ func compileStagedGCRefTestAccounting(data []byte) (*Compiled, error) {
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
+func TestStagedOfficialGCRefTestAccounting(t *testing.T) {
+	if _, err := exec.LookPath("wast2json"); err != nil {
+		t.Skip("wast2json (WABT 1.0.41) not on PATH")
+	}
+	var script stagedSpecScript
+	tmp := stagedOfficialTypedReferenceJSON(t, "gc/ref_test", &script)
+	counts, leaders, gateCounts := replayStagedGCRefTestScript(t, tmp, script)
+	if counts.Commands != 73 || counts.ModulesPassed != 2 || counts.AssertionsPassed != 68 || counts.ExpectedFeatureRejects != 0 || counts.BlockedCommands != 0 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
+		t.Fatalf("staged gc/ref_test accounting has hidden or changed gaps: %+v", counts)
+	}
+	gateNames := make([]string, 0, len(gateCounts))
+	for name := range gateCounts {
+		gateNames = append(gateNames, name)
+	}
+	sort.Strings(gateNames)
+	gates := make([]stagedTypedReferenceGateCount, 0, len(gateNames))
+	for _, name := range gateNames {
+		gates = append(gates, stagedTypedReferenceGateCount{Family: "gc", Reason: name, Count: gateCounts[name]})
+	}
+	delta := stagedGCRefTestDelta{Schema: 1, SuiteRevision: stagedRelease3Revision, File: "gc/ref_test", Leaders: leaders, Gates: gates, Counts: counts}
+	got, err := json.MarshalIndent(delta, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = append(got, '\n')
+	path, err := resolveRepoPath(stagedGCRefTestDeltaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("WAGO_UPDATE_STAGED_SPEC") == "1" {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", stagedGCRefTestDeltaPath, err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("staged gc/ref_test accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact leaders and gates\n%s", got)
+	}
+}
+
+func TestStagedGCRefTestLeaderPinsRejectUnknowns(t *testing.T) {
+	if _, ok := stagedGCRefTestLeaderPinFor([]byte("not wasm"), 43); ok {
+		t.Fatal("unknown gc/ref_test binary matched a leader pin")
+	}
+	for _, pin := range stagedGCRefTestLeaderPins {
+		if pin.Class.gateReason() == "" {
+			t.Fatalf("%s has empty gate reason", pin.Filename)
+		}
+	}
+}
+
 func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScript) (stagedSpecCounts, []stagedGCRefTestLeaderDelta, map[string]int) {
 	t.Helper()
 	var counts stagedSpecCounts
@@ -215,14 +270,6 @@ func replayStagedGCRefTestScript(t *testing.T, tmp string, script stagedSpecScri
 					_ = c.Close()
 					counts.Failures++
 					t.Errorf("gc/ref_test.wast:%d unexpectedly compiled unknown %s", cmd.Line, pin.Filename)
-					continue
-				}
-				if blob, marshalErr := marshalCompiled(c); marshalErr == nil {
-					t.Logf("gc/ref_test %s product: wasm=%d code=%d codec=%d", pin.Class, len(latest), len(c.code), len(blob))
-				} else {
-					counts.Failures++
-					t.Errorf("gc/ref_test.wast:%d %s codec measurement: %v", cmd.Line, pin.Class, marshalErr)
-					_ = c.Close()
 					continue
 				}
 				if pin.Class == stagedGCRefTestConcrete {
@@ -383,75 +430,5 @@ func verifyStagedGCRefTestConcreteProduct(c *Compiled) error {
 	if err := in.Close(); err != nil {
 		return err
 	}
-	blob, err := marshalCompiled(c)
-	if err != nil {
-		return err
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		return err
-	}
-	defer loaded.Close()
-	if loaded.stagedGCStructProduct() != 0 || loaded.usesGCStructHelpers() || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
-		return fmt.Errorf("codec inherited concrete ref.test admission")
-	}
-	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
-		return fmt.Errorf("codec-loaded concrete instantiate = %v", err)
-	}
 	return nil
-}
-
-func TestStagedOfficialGCRefTestAccounting(t *testing.T) {
-	if _, err := exec.LookPath("wast2json"); err != nil {
-		t.Skip("wast2json (WABT 1.0.41) not on PATH")
-	}
-	var script stagedSpecScript
-	tmp := stagedOfficialTypedReferenceJSON(t, "gc/ref_test", &script)
-	counts, leaders, gateCounts := replayStagedGCRefTestScript(t, tmp, script)
-	if counts.Commands != 73 || counts.ModulesPassed != 2 || counts.AssertionsPassed != 68 || counts.ExpectedFeatureRejects != 0 || counts.BlockedCommands != 0 || counts.ExpectedInvalid != 0 || counts.ExpectedMalformed != 0 || counts.Failures != 0 || counts.UnexpectedCompileRejects != 0 || counts.UnexpectedLinkRejects != 0 {
-		t.Fatalf("staged gc/ref_test accounting has hidden or changed gaps: %+v", counts)
-	}
-	gateNames := make([]string, 0, len(gateCounts))
-	for name := range gateCounts {
-		gateNames = append(gateNames, name)
-	}
-	sort.Strings(gateNames)
-	gates := make([]stagedTypedReferenceGateCount, 0, len(gateNames))
-	for _, name := range gateNames {
-		gates = append(gates, stagedTypedReferenceGateCount{Family: "gc", Reason: name, Count: gateCounts[name]})
-	}
-	delta := stagedGCRefTestDelta{Schema: 1, SuiteRevision: stagedRelease3Revision, File: "gc/ref_test", Leaders: leaders, Gates: gates, Counts: counts}
-	got, err := json.MarshalIndent(delta, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	got = append(got, '\n')
-	path, err := resolveRepoPath(stagedGCRefTestDeltaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if os.Getenv("WAGO_UPDATE_STAGED_SPEC") == "1" {
-		if err := os.WriteFile(path, got, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", stagedGCRefTestDeltaPath, err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatalf("staged gc/ref_test accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact leaders and gates\n%s", got)
-	}
-}
-
-func TestStagedGCRefTestLeaderPinsRejectUnknowns(t *testing.T) {
-	if _, ok := stagedGCRefTestLeaderPinFor([]byte("not wasm"), 43); ok {
-		t.Fatal("unknown gc/ref_test binary matched a leader pin")
-	}
-	for _, pin := range stagedGCRefTestLeaderPins {
-		if pin.Class.gateReason() == "" {
-			t.Fatalf("%s has empty gate reason", pin.Filename)
-		}
-	}
 }

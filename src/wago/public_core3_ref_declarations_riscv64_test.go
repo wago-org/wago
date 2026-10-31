@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,50 +33,13 @@ func rv64Core3RefDeclarationsSource() []byte {
 
 func rv64Core3RefDeclarationsCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_CORE3_REF_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_CORE3_REF_ARTIFACT_MODE")
-	path := filepath.Join(dir, "core3-ref-declarations.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Fatal("compiler-free runner selected source case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = c.Close() })
-		return c
-	}
+
 	c, err := rv64NativeTailConfig().Compile(rv64Core3RefDeclarationsSource())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	if artifact || mode == "prepare" {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err := os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(path, blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = loaded.Close() })
-			c = loaded
-		}
-	}
+
 	return c
 }
 
@@ -86,15 +48,15 @@ func TestRV64Core3RefPinnedDeclarations(t *testing.T) {
 	if len(source) != 47 || fmt.Sprintf("%x", sha256.Sum256(source)) != "c9615f60f19a2d7a416ae8e7d6383b0f478cf8a5f9864adf8b095d14576d00a9" {
 		t.Fatal("pinned declaration source identity", len(source))
 	}
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			if os.Getenv("WAGO_RV64_CORE3_REF_ARTIFACT_MODE") == "load" && !artifact {
 				t.Skip("compiler-free artifact case only")
 			}
 			c := rv64Core3RefDeclarationsCompile(t, artifact)
 			view := c.executionView()
-			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.NumImports != 0 || len(c.Funcs) != 1 || len(c.Types) != 2 || len(c.Exports) != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.HasStart {
-				t.Fatalf("pinned ref declaration-only source/artifact witnesses: contract=%t validation=%v function=%t control=%t call=%t features=%#x imports=%d funcs=%d types=%d exports=%d tables=%d memories=%d globals=%d elems=%d passive=%d start=%t", rv64ArtifactContractValid(view), railshotValidateCompiled(view), c.nativeReferenceFunctionABI, c.nativeReferenceControlABI, c.nativeReferenceCallABI, c.requiredFeatures, c.NumImports, len(c.Funcs), len(c.Types), len(c.Exports), c.tableCount(), c.memoryCount(), len(c.Globals), len(c.Elems), len(c.passiveElems), c.HasStart)
+			if !rv64SourceContractValid(view) || railshotValidateCompiled(view) != nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.NumImports != 0 || len(c.Funcs) != 1 || len(c.Types) != 2 || len(c.Exports) != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.HasStart {
+				t.Fatalf("pinned ref declaration-only source/artifact witnesses: contract=%t validation=%v function=%t control=%t call=%t features=%#x imports=%d funcs=%d types=%d exports=%d tables=%d memories=%d globals=%d elems=%d passive=%d start=%t", rv64SourceContractValid(view), railshotValidateCompiled(view), c.nativeReferenceFunctionABI, c.nativeReferenceControlABI, c.nativeReferenceCallABI, c.requiredFeatures, c.NumImports, len(c.Funcs), len(c.Types), len(c.Exports), c.tableCount(), c.memoryCount(), len(c.Globals), len(c.Elems), len(c.passiveElems), c.HasStart)
 			}
 			if len(c.FuncTypeID) != 1 || c.FuncTypeID[0] != 0x452bd5aba9b3044d {
 				t.Fatal("function type identity")
@@ -183,61 +145,6 @@ func TestRV64Core3RefPinnedDeclarationSourceGates(t *testing.T) {
 	}
 }
 
-func TestRV64Core3RefPinnedDeclarationArtifactGates(t *testing.T) {
-	if os.Getenv("WAGO_RV64_CORE3_REF_ARTIFACT_MODE") == "load" {
-		t.Skip("source and hostile artifact admission")
-	}
-	base := rv64Core3RefDeclarationsCompile(t, false)
-	mutations := map[string]func(*Compiled){
-		"function-abi":      func(c *Compiled) { c.nativeReferenceFunctionABI = false },
-		"control-abi":       func(c *Compiled) { c.nativeReferenceControlABI = false },
-		"call-abi":          func(c *Compiled) { c.nativeReferenceCallABI = true },
-		"context-abi":       func(c *Compiled) { c.nativeContextTrapABI = false },
-		"table-context-abi": func(c *Compiled) { c.nativeTableContextABI = false },
-		"table-ref-abi":     func(c *Compiled) { c.nativeTableReferenceABI = false },
-		"register-abi":      func(c *Compiled) { c.registerABIDisabled = false },
-		"entry":             func(c *Compiled) { c.Entry[0] = 16 },
-		"internal-entry":    func(c *Compiled) { c.InternalEntry[0] = 16 },
-		"function-binding":  func(c *Compiled) { c.Funcs[0].TypeIndex = 0 },
-		"type-id":           func(c *Compiled) { c.FuncTypeID[0] = 0 },
-		"feature":           func(c *Compiled) { c.requiredFeatures |= CoreFeatureTailCall },
-		"extern-nullable":   func(c *Compiled) { c.Types[1].Params[3].Ref.Nullable = true },
-		"extern-heap":       func(c *Compiled) { c.Types[1].Params[3].Ref.Heap.Abstract = AbstractHeapAny },
-		"indexed-heap":      func(c *Compiled) { c.Types[1].Params[4].Ref.Heap.TypeIndex = 1 },
-		"gc-id":             func(c *Compiled) { c.GCTypeDescs[1].ID-- },
-		"gc-layout":         func(c *Compiled) { c.GCTypeDescs[1].Size = 8 },
-		"descriptor-arena":  func(c *Compiled) { c.NeedsFuncRefDescs = true },
-		"export":            func(c *Compiled) { c.Exports["escape"] = 0 },
-		"passive":           func(c *Compiled) { c.passiveElems = []ElemInit{{Mode: ElemModePassive, RefType: ValExternRef}} },
-		"code":              func(c *Compiled) { c.code = nil },
-		"code-byte": func(c *Compiled) {
-			c.code = bytes.Clone(c.code)
-			c.code[0] ^= 1
-		},
-		"names": func(c *Compiled) { c.Names = &wasm.NameSec{} },
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			bad := rv64Core3DeclarationCompiledCopy(base)
-			mutate(bad)
-			if rv64Core3RefDeclarations(bad) || railshotValidateCompiled(bad) == nil {
-				t.Fatal("hostile ref declaration metadata admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				_ = loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile serialized ref declaration metadata admitted")
-			}
-		})
-	}
-}
-
 func TestRV64Core3RefPinnedInvalidModules(t *testing.T) {
 	tests := []struct{ name, encoded, hash string }{
 		{"ref.1", "0061736d0100000001060160016401000021046e616d65041a010017747970652d66756e632d706172616d2d696e76616c6964", "dabd93adbf7b189063f67c848a6e699552fefbc708a968fa146f559bd88dc074"},
@@ -285,20 +192,6 @@ func TestRV64Core3RefPinnedInvalidModules(t *testing.T) {
 	}
 }
 
-func TestRV64Core3RefDeclarationCompilerFreeGate(t *testing.T) {
-	if os.Getenv("WAGO_RV64_CORE3_REF_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	if c, err := Compile(nil, rv64Core3RefDeclarationsSource()); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		if c != nil {
-			_ = c.Close()
-		}
-		t.Fatal("compiler-free pinned declaration used source compilation", err)
-	}
-}
-
-// The shared validator defines valid Wasm input. RV64 must admit those modules
-// without a byte allowlist, while malformed neighboring inputs stay rejected.
 func rv64RequireCore3SourceValidation(t *testing.T, source []byte) {
 	t.Helper()
 	module, invalid := wasm.DecodeModule(source)
@@ -319,36 +212,7 @@ func rv64RequireCore3SourceValidation(t *testing.T, source []byte) {
 		t.Fatal("valid source rejected", err)
 	}
 	defer compiled.Close()
-	if !rv64ArtifactContractValid(compiled.executionView()) || compiled.executionView().validate() != nil {
+	if !rv64SourceContractValid(compiled.executionView()) || compiled.executionView().validate() != nil {
 		t.Fatal("valid source lost its execution contract")
-	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	rt := NewRuntime()
-	defer rt.Close()
-	mod, err := rt.Module(loaded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	instance, err := rt.Instantiate(context.Background(), mod, WithImports(NewImports()))
-	mod.Close()
-	if compiled.NumImports != 0 || len(compiled.GlobalImports) != 0 || compiled.memoryImportCount() != 0 || compiled.tableImportCount() != 0 || compiled.tagImportCount() != 0 {
-		if instance != nil || err == nil || !errors.Is(err, ErrMissingImport) && !strings.HasPrefix(err.Error(), "missing imported ") && err.Error() != "RV64 reference import requires an explicit store-bound *Global" {
-			t.Fatal("unbound valid artifact import", err)
-		}
-		return
-	}
-	if err != nil || instance == nil {
-		t.Fatal("valid artifact instantiation", err)
-	}
-	if err := instance.Close(); err != nil {
-		t.Fatal(err)
 	}
 }

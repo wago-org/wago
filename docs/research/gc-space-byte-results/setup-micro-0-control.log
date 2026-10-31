@@ -1,7 +1,0 @@
-panic: open ../../tests/fixtures/wasm/fib.wasm: no such file or directory
-
-goroutine 1 [running]:
-github.com/wago-org/wago/src/wago.testdata({0x1548625?, 0x2eba28d7f1a0?})
-        /home/dev/Projects/wago-gc-space-byte-pr/src/wago/wago_test.go:27 +0xb7
-github.com/wago-org/wago/src/wago.init()
-        /home/dev/Projects/wago-gc-space-byte-pr/src/wago/wago_test.go:36 +0x1afe

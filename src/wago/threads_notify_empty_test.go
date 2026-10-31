@@ -5,7 +5,6 @@ package wago
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
@@ -134,64 +133,6 @@ func TestThreadsNotifyPublishesBeforeWaitRegistration(t *testing.T) {
 	}
 }
 
-func TestThreadsNotifyEmptyPolicyCodecAndTraps(t *testing.T) {
-	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
-	for _, enabled := range []bool{false, true} {
-		for _, wide := range []bool{false, true} {
-			for _, shared := range []bool{false, true} {
-				for _, regABI := range []bool{false, true} {
-					t.Run(fmt.Sprintf("enabled=%t/wide=%t/shared=%t/regabi=%t", enabled, wide, shared, regABI), func(t *testing.T) {
-						cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("atomic-notify-empty", enabled).WithOptimization("reg-abi", regABI)
-						c, err := cfg.Compile(threadsSecondaryAtomicModuleWithSharing(!wide, wide, false, false, shared))
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer c.Close()
-						if c.requiresNotifyPending != enabled {
-							t.Fatalf("runtime requirement=%t", c.requiresNotifyPending)
-						}
-						for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
-							if compiled.requiresNotifyPending != enabled {
-								t.Fatal("codec lost notify ABI requirement")
-							}
-							in, err := Instantiate(compiled)
-							if err != nil {
-								t.Fatal(err)
-							}
-							defer in.Close()
-							for _, count := range []uint64{0, 1, ^uint64(0)} {
-								got, err := in.Invoke("helper0", 0, count)
-								if err != nil || len(got) != 1 || got[0] != 0 {
-									t.Fatalf("empty count=%x: %v,%v", count, got, err)
-								}
-							}
-							for _, addr := range []uint64{1, 65536, 1 << 32, ^uint64(0) - 3} {
-								if !wide && addr == 1<<32 {
-									got, err := in.Invoke("helper0", addr, 1)
-									if err != nil || got[0] != 0 {
-										t.Fatalf("i32 carrier=%v,%v", got, err)
-									}
-									continue
-								}
-								_, err := in.Invoke("helper0", addr, 1)
-								var trap *TrapError
-								want := TrapLinMemOutOfBounds
-								if addr == 1 {
-									want = TrapAtomicUnaligned
-								}
-								// memory32 truncates the carrier but retains the eight-byte memarg.
-								if !errors.As(err, &trap) || trap.Code != want {
-									t.Fatalf("address=%x: %v, want %v", addr, err, want)
-								}
-							}
-						}
-					})
-				}
-			}
-		}
-	}
-}
-
 func TestThreadsNotifyPendingQueuesUseSlowPath(t *testing.T) {
 	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, regABI := range []bool{false, true} {
@@ -207,7 +148,7 @@ func TestThreadsNotifyPendingQueuesUseSlowPath(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+			for _, compiled := range []*Compiled{c} {
 				in, err := Instantiate(compiled, NewImports().Memory("env", "memory", memory).Memory("env", "secondary", memory))
 				if err != nil {
 					t.Fatal(err)
@@ -316,7 +257,7 @@ func TestThreadsNotifyPlainStoreOrdering(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer memory.Close()
-			for artifact, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+			for artifact, code := range []*Compiled{c} {
 				if code != c {
 					defer code.Close()
 				}

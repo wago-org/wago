@@ -6,14 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
-	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 )
 
 const rv64I31OfficialGlobalInitializerHex = "0061736d01000000018580808000016000017f028a808080000103656e760167037f000382808080000100068880808000016c002300fb1c0b078780808000010367657400000a8c80808000018680808000002301fb1e0b"
@@ -29,51 +23,14 @@ func rv64I31OfficialGlobalInitializerBytes(t testing.TB) []byte {
 
 func rv64I31OfficialGlobalInitializerCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_I31_GLOBAL_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_I31_GLOBAL_ARTIFACT_MODE")
-	path := filepath.Join(dir, "i31-official-global-global-initializer.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = loaded.Close() })
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64I31OfficialGlobalInitializerBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = original.Close() })
 	c := original
-	if artifact || mode == "prepare" {
-		blob, err := original.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err = os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err = os.WriteFile(path, blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = loaded.Close() })
-			c = loaded
-		}
-	}
+
 	return c
 }
 
@@ -83,7 +40,7 @@ func TestRV64PublicI31OfficialGlobalInitializerExecutionAndArtifact(t *testing.T
 	if len(data) != 88 || sha256.Sum256(data) != wantSource {
 		t.Fatal("official i31 global-global initializer source identity changed")
 	}
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			c := rv64I31OfficialGlobalInitializerCompile(t, artifact)
 			view := c.executionView()
@@ -131,78 +88,6 @@ func TestRV64PublicI31OfficialGlobalInitializerExecutionAndArtifact(t *testing.T
 					t.Fatal("imported initializer global retained after instance close")
 				}
 				_ = g.Close()
-			}
-		})
-	}
-}
-
-func TestRV64PublicI31OfficialGlobalInitializerCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_I31_GLOBAL_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(rv64I31OfficialGlobalInitializerBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free official i31 global-global initializer path used source compilation", err)
-	}
-}
-
-func TestRV64PublicI31OfficialGlobalInitializerAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_I31_GLOBAL_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	base := rv64I31OfficialGlobalInitializerCompile(t, false).executionView()
-	for name, mutate := range map[string]func(*Compiled){
-		"code": func(v *Compiled) {
-			v.code = slices.Clone(v.code)
-			v.code[len(v.code)-1] ^= 1
-		},
-		"entry":      func(v *Compiled) { v.Entry[0], v.InternalEntry[0] = 16, 16 },
-		"function":   func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
-		"type-key":   func(v *Compiled) { v.FuncTypeID[0] ^= 1 },
-		"descriptor": func(v *Compiled) { v.GCTypeDescs[0].Final = false },
-		"i32-value-type": func(v *Compiled) {
-			v.ValueTypes[0].Kind = ValueTypeI64
-		},
-		"i31-non-null":  func(v *Compiled) { v.ValueTypes[1].Ref.Nullable = false },
-		"import-global": func(v *Compiled) { v.Globals[0].Type = ValI64 },
-		"local-global":  func(v *Compiled) { v.Globals[1].Type = ValAnyRef },
-		"initializer":   func(v *Compiled) { v.Globals[1].InitExpr[1] = 1 },
-		"import-name":   func(v *Compiled) { v.GlobalImports[0].Name = "g_x" },
-		"import-type":   func(v *Compiled) { v.GlobalImports[0].Type = ValI64 },
-		"export": func(v *Compiled) {
-			delete(v.Exports, "get")
-			v.Exports["get_x"] = 0
-		},
-		"missing-gc":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-		"extra-typed":   func(v *Compiled) { v.requiredFeatures |= CoreFeatureTypedFunctionReferences },
-		"extra-feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureTailCall },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
-			mutate(candidate)
-			if rv64I31OfficialGlobalInitializer(candidate) || rv64I31Core(candidate) {
-				t.Fatal("hostile retained mutation retained the official global-global initializer witness")
-			}
-			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("hostile retained global-global initializer mutation admitted", err)
-			}
-			blob, err := marshalCompiled(candidate)
-			if err != nil {
-				return
-			}
-			loaded, loadErr := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				defer loaded.Close()
-				if loadErr == nil && rv64I31OfficialGlobalInitializer(loaded.executionView()) {
-					return // Canonical encoding repaired a derived/redundant field.
-				}
-			}
-			if loadErr == nil {
-				t.Fatal("hostile official global-global initializer artifact mutation admitted")
 			}
 		})
 	}
