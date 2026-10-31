@@ -15,7 +15,7 @@ import (
 // binds address-free indirect/reference plans through the exact entry owner
 // lease, including certified native imports. Host descriptor rows stay closed.
 func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.CompType, key uint64, base, indexSlot int, indexWide bool, tableIndex uint32, spill func(int) int32, stride int) {
-	if !f.mode.dynamicTailCalls || !f.mode.importTailCalls || !f.mode.invocationContext || !f.mode.foreignTableCalls || f.mode.tailPlans == nil || !f.admitLocalTailFrame() || sig == nil || spill == nil || typeIndex >= MaxFunctions {
+	if !f.mode.dynamicTailCalls || !f.mode.importTailCalls || !f.mode.invocationContext || !f.mode.foreignTableCalls || f.mode.tailPlans == nil || !f.admitLocalTailFrame() || !f.dynamicTailType(typeIndex, sig) || spill == nil {
 		f.err = unsupported("private dynamic indirect source contract")
 		return
 	}
@@ -90,7 +90,7 @@ func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.Com
 // remains separate from the source/target function namespace. Only the retained
 // factory may authenticate or dereference the selected canonical descriptor.
 func (f *integerEmitter) dynamicReferenceTailCall(typeIndex uint32, sig *wasm.CompType, base, referenceSlot int, spill func(int) int32, stride int) {
-	if !f.mode.dynamicTailCalls || !f.mode.importTailCalls || !f.mode.invocationContext || !f.mode.foreignTableCalls || f.mode.tailPlans == nil || !f.admitLocalTailFrame() || sig == nil || spill == nil || typeIndex >= MaxFunctions {
+	if !f.mode.dynamicTailCalls || !f.mode.importTailCalls || !f.mode.invocationContext || !f.mode.foreignTableCalls || f.mode.tailPlans == nil || !f.admitLocalTailFrame() || !f.dynamicTailType(typeIndex, sig) || spill == nil {
 		f.err = unsupported("private dynamic reference source contract")
 		return
 	}
@@ -111,6 +111,14 @@ func (f *integerEmitter) dynamicReferenceTailCall(typeIndex uint32, sig *wasm.Co
 	f.guardCollectorTailContext(sig)
 	*f.mode.tailPlans = append(*f.mode.tailPlans, p)
 	f.tailRAProofCall(p.site, sig, base, spill)
+}
+
+func (f *integerEmitter) dynamicTailType(typeIndex uint32, sig *wasm.CompType) bool {
+	if sig == nil || uint64(typeIndex) >= uint64(MaxTypeDeclarations) || f.mode.primitiveTailTypes == nil {
+		return false
+	}
+	declared, ok := f.mode.primitiveTailTypes.function(typeIndex)
+	return ok && declared != nil
 }
 
 // Compact object references can leave a discarded frame only through an
@@ -136,12 +144,12 @@ func compileDynamicTailSource(source []byte, siteBase uint32, forceSWAR bool) (*
 		return nil, unsupported("private dynamic source/base bound")
 	}
 	owned := bytes.Clone(source)
-	d, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: MaxModuleBytes})
+	d, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxTypeDeclarations, MaxMetadataBytes: MaxModuleBytes})
 	if err != nil {
 		return nil, err
 	}
 	m := d.Module
-	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.Imports) > MaxHostFunctionImports || len(m.Tables) != 1 || m.Tables[0].Init != nil || m.Tables[0].Type.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.FuncRef) || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Data) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) > MaxTypeDeclarations || len(m.Imports) > MaxHostFunctionImports || len(m.Tables) != 1 || m.Tables[0].Init != nil || m.Tables[0].Type.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.FuncRef) || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Data) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return nil, unsupported("private dynamic owned-table whole-module profile")
 	}
 	for _, im := range m.Imports {

@@ -22,7 +22,7 @@ func admitLocalMutableFunctionGlobals(m *wasm.Module) (bool, error) {
 	if admitPublicPrimitiveReferenceModule(m, false) || admitPublicPrimitiveReferenceModule(m, true) {
 		return true, nil
 	}
-	if len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions {
+	if len(m.Types) > MaxTypeDeclarations || len(m.Exports) > MaxFunctions {
 		return false, unsupported("local mutable references require bounded table-free private cells")
 	}
 	for _, im := range m.Imports {

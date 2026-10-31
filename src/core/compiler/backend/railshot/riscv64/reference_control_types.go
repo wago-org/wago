@@ -189,13 +189,13 @@ func admitDeclaredControlSignature(sig *wasm.CompType, types internalReferenceTy
 // frontend validation expands type metadata. Both source paths share the charge;
 // reference encodings conservatively use a prefix plus a maximal S33 heap index.
 func chargeDeclaredTypeBytes(m *wasm.Module, remaining *int) error {
-	if len(m.Types) > MaxFunctions || *remaining < 0 {
+	if len(m.Types) > MaxTypeDeclarations || *remaining < 0 {
 		return unsupported("decoded declared type byte bound")
 	}
 	flatTypes := 0
 	for _, group := range m.Types {
 		flatTypes += len(group.SubTypes)
-		if flatTypes > MaxFunctions {
+		if flatTypes > MaxTypeDeclarations {
 			return unsupported("decoded declared type directory bound")
 		}
 		for subtypeIndex := range group.SubTypes {

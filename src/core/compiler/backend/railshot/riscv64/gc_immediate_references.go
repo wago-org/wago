@@ -8,7 +8,7 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // Their any/eq storage contains only null and i31 values. Extern conversions
 // remain internal identity operations: no extern carrier crosses a boundary.
 func admitRV64ImmediateReferenceModule(m *wasm.Module) bool {
-	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Globals) > 256 || len(m.Tables) > 2 || len(m.Elements) > MaxOwnedElementSegments || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
+	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxTypeDeclarations || len(m.Globals) > 256 || len(m.Tables) > 2 || len(m.Elements) > MaxOwnedElementSegments || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
 		return false
 	}
 	seenReference := false

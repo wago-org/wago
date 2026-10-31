@@ -70,7 +70,7 @@ func compileSWARModulePolicy(data []byte, mode emissionMode, policy swarModulePo
 	if err := admitSWARWirePolicy(owned, policy); err != nil {
 		return nil, err
 	}
-	decoded, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxTypeDeclarations, MaxMetadataBytes: 16 << 20})
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if state.publicStarts && state.exports {
 		tableLimit = MaxFunctions
 	}
-	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions && !state.publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions && !state.publicStarts || len(m.Imports) > productionImportLimit(state.publicStarts) || len(m.Tables) > tableLimit || len(m.Globals) > productionGlobalLimit(state.publicStarts) || len(m.Tags) != 0 && mode.exceptionModule == nil || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > productionElementSegmentLimit(state.publicStarts) || len(m.Data) > 256 && !state.publicStarts || !state.publicStarts && m.BranchHints != nil || len(m.Memories) > MaxProductionMemories {
+	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions && !state.publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxTypeDeclarations && !state.publicStarts || len(m.Imports) > productionImportLimit(state.publicStarts) || len(m.Tables) > tableLimit || len(m.Globals) > productionGlobalLimit(state.publicStarts) || len(m.Tags) != 0 && mode.exceptionModule == nil || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > productionElementSegmentLimit(state.publicStarts) || len(m.Data) > 256 && !state.publicStarts || !state.publicStarts && m.BranchHints != nil || len(m.Memories) > MaxProductionMemories {
 		return nil, unsupported("SWAR module state/features/function bound")
 	}
 	imported, memoryImports, globalImports := 0, 0, 0
@@ -676,7 +676,7 @@ func admitSWARDecodedBudgetReferencesLimit(m *wasm.Module, publicStarts, referen
 	}
 	// Count and byte budgets precede validation, metadata expansion and payload
 	// copies. Decoded callers do not necessarily retain a bounded source blob.
-	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions && !publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions && !publicStarts || len(m.Imports) > productionImportLimit(publicStarts) || len(m.Tables) > maxTables || len(m.Memories) > maxMemories || len(m.Globals) > productionGlobalLimit(publicStarts) || len(m.Data) > 256 && !publicStarts || len(m.Elements) > productionElementSegmentLimit(publicStarts) || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || !publicStarts && m.BranchHints != nil {
+	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions && !publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxTypeDeclarations && !publicStarts || len(m.Imports) > productionImportLimit(publicStarts) || len(m.Tables) > maxTables || len(m.Memories) > maxMemories || len(m.Globals) > productionGlobalLimit(publicStarts) || len(m.Data) > 256 && !publicStarts || len(m.Elements) > productionElementSegmentLimit(publicStarts) || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || !publicStarts && m.BranchHints != nil {
 		return unsupported("SWAR module state/features/function bound")
 	}
 	globalCount, functionCount, memoryCount := len(m.Globals), 0, len(m.Memories)
@@ -843,7 +843,7 @@ func admitSWARWirePolicy(data []byte, policy swarModulePolicy) error {
 			start := 8 + r.Offset()
 			types := wasm.ReaderFrom(data[start : start+int(size)])
 			count, err := types.U32()
-			if err != nil || count > MaxFunctions {
+			if err != nil || count > MaxTypeDeclarations {
 				return unsupported("SWAR wire type count")
 			}
 			for range count {

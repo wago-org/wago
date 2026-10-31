@@ -13,7 +13,7 @@ func admitPublicDynamicHostReferenceBoundaryWire(data []byte) bool {
 	if !admitExactProductWireShape(data, nil) {
 		return false
 	}
-	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxTypeDeclarations, MaxMetadataBytes: 16 << 20})
 	return err == nil && admitPublicDynamicHostReferenceBoundary(decoded.Module)
 }
 
@@ -21,7 +21,7 @@ func admitPublicReferenceCallBoundaryWire(data []byte) bool {
 	if !publicReferenceCallBoundaryWireShape(data) {
 		return false
 	}
-	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxTypeDeclarations, MaxMetadataBytes: 16 << 20})
 	return err == nil && admitPublicReferenceCallBoundary(decoded.Module)
 }
 
@@ -377,7 +377,7 @@ func admitProductionReferenceFunctionModule(m *wasm.Module, vector bool) error {
 }
 
 func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
-	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions || len(m.Elements) > MaxOwnedElementSegments || len(m.Customs) > MaxFunctions {
+	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxTypeDeclarations || len(m.Exports) > MaxFunctions || len(m.Elements) > MaxOwnedElementSegments || len(m.Customs) > MaxFunctions {
 		return unsupported("closed reference module directory bound")
 	}
 	if !vector && isCore3RefIsNullExecution(m) {

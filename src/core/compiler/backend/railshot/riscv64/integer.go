@@ -180,7 +180,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	referenceTypes := internalReferenceTypes{}
 	if state != nil {
 		referenceTypes.exception = exceptionMode
-		if len(state.types) > MaxFunctions && !(state.production && state.foreignTableCalls) {
+		if len(state.types) > MaxTypeDeclarations && !(state.production && state.foreignTableCalls) {
 			return integerSummary{}, unsupported("integer control type directory bound")
 		}
 		profile = makeMemoryProfile(state.memories, state.indexedMemories)

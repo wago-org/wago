@@ -45,8 +45,8 @@ func admitSWARDecodedMetadataBudget(m *wasm.Module, remaining *int) error {
 		// Account decoded maps/strings as well as encoded payloads. Hand-built
 		// callers may provide either representation, or inconsistent copies.
 		// Small entry overhead also bounds work for arbitrary empty names.
-		nameMap := func(rows wasm.NameMap) bool {
-			if len(rows) > MaxFunctions {
+		nameMap := func(rows wasm.NameMap, limit int) bool {
+			if len(rows) > limit {
 				return false
 			}
 			for _, row := range rows {
@@ -59,19 +59,30 @@ func admitSWARDecodedMetadataBudget(m *wasm.Module, remaining *int) error {
 		if names.ModuleName != nil && !consume(len(*names.ModuleName)) {
 			return unsupported("SWAR decoded module name byte bound")
 		}
-		for _, rows := range []wasm.NameMap{names.FunctionNames, names.TypeNames, names.TableNames, names.MemoryNames, names.GlobalNames, names.ElementNames, names.DataNames, names.TagNames} {
-			if !nameMap(rows) {
+		for _, rows := range []wasm.NameMap{names.FunctionNames, names.TableNames, names.MemoryNames, names.GlobalNames, names.ElementNames, names.DataNames, names.TagNames} {
+			if !nameMap(rows, MaxFunctions) {
 				return unsupported("SWAR decoded name map byte/count bound")
 			}
 		}
-		for _, groups := range []wasm.IndirectNameMap{names.LocalNames, names.LabelNames, names.FieldNames} {
+		if !nameMap(names.TypeNames, MaxTypeDeclarations) {
+			return unsupported("SWAR decoded type name byte/count bound")
+		}
+		for _, groups := range []wasm.IndirectNameMap{names.LocalNames, names.LabelNames} {
 			if len(groups) > MaxFunctions {
 				return unsupported("SWAR decoded indirect name count bound")
 			}
 			for _, group := range groups {
-				if !consume(2) || !nameMap(group.Names) {
+				if !consume(2) || !nameMap(group.Names, MaxFunctions) {
 					return unsupported("SWAR decoded indirect name byte/count bound")
 				}
+			}
+		}
+		if len(names.FieldNames) > MaxTypeDeclarations {
+			return unsupported("SWAR decoded field name count bound")
+		}
+		for _, group := range names.FieldNames {
+			if !consume(2) || !nameMap(group.Names, MaxTypeDeclarations) {
+				return unsupported("SWAR decoded field name byte/count bound")
 			}
 		}
 	}

@@ -232,7 +232,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 			}
 		}
 	}
-	if len(types) > 1024 {
+	if len(types) > MaxTypeDeclarations {
 		return swarSummary{}, unsupported("SWAR control type bound")
 	}
 	for _, typ := range types {
