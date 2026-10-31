@@ -522,10 +522,10 @@ Validator operands share the two-word value-type representation. A private tag
 in the unused high bit of the low word records a polymorphic unknown operand;
 ordinary bottom and reference-bottom types remain distinct. This tag never
 enters module declarations or runtime metadata. Flat native-signature hashes
-are memoized with an owned parameter/result snapshot, so repeated queries avoid
-rehashing while in-place signature edits retain their existing behavior. Flat
-and indexed identity formats use separate cache entries and retain their exact
-serialized key values.
+are computed directly from the current parameters and results on each query,
+without cache allocation, so in-place signature edits are reflected immediately.
+Indexed identities use the module-local type-key cache. Flat and indexed
+identity formats retain their distinct serialized key values.
 
 Bytecode walkers that need only the next opcode use the module classifier's
 `SkipImmediate` method. Scalar immediates and memory arguments retain the same
