@@ -12,18 +12,24 @@ Use Go 1.27.1 on native Linux AMD64/ARM64 or Darwin ARM64. From the repository r
 python3 bench/suite/compare-cold.py
 ```
 
-The script builds exact main `dc13730184e8` and the current revision before
-measurement, copying the same measurement tests into the base worktree. It uses
+The script requires a clean working tree, then builds exact main `dc13730184e8`
+and the current revision before measurement, copying the same measurement tests
+into the base worktree. It uses
 one worker, GOMAXPROCS=1, Linux CPU affinity (Darwin uses its scheduler),
 and one alternating fresh-process pair for each
 of 20 pinned wasm.fyi inputs per phase. `bench/suite/testdata/cold-compilation/manifest.json`
 contains input hashes and result contracts; command cases use the pinned corpus
 catalog's input/output checks. No code export occurs before the first result.
 
-`.validation/cold-comparison/` contains source/toolchain/host identity, raw samples, per-input
+Each invocation prints a new `.validation/cold-comparison/run-*/` directory containing
+source/toolchain/host identity, raw samples, per-input
 ratios, native-code hashes and a 10,000-iteration tiny compile/close probe. The
 manual **Cold compilation review** workflow runs native regression tests first
 and uploads the same artifacts.
+Failed or timed-out samples retain captured output and their phase, revision and
+input label in `raw.log`. Each run owns its files; a failed rerun cannot inherit
+an earlier successful summary. Evidence-handling regressions can be checked with
+`python3 -B -m unittest discover -s bench/suite -p test_compare_cold.py -v`.
 
 The compile phase reports compile wall time, Go allocation traffic, process peak
 RSS before instantiation, and warm execution. The separate first-result phase
@@ -85,3 +91,17 @@ backend passed, including a final GOMAXPROCS=1, WAGO_SHARED_SCALAR=0 native-spik
 run. One unrestricted checked run hit a foreign-stack split-stack crash;
 alternating pre/post-shortcut verbose controls subsequently passed twice each.
 The crash's cause was not established, and it is retained as a validation limit.
+
+Review follow-up, 2026-10-30: the original crash trace and exact failing command
+were not found in the retained local evidence. With unchanged compiler/runtime
+source at `2ff70e21164a`, native Darwin ARM64 / Go 1.27.1 passed these commands
+with no GOMAXPROCS or WAGO overrides:
+
+```sh
+go test ./src/core/compiler/wasm ./src/core/compiler/backend/railshot/arm64 ./src/core/encoder/arm64 -count=1 -timeout=5m
+go test -tags=wago_regalloccheck ./src/core/compiler/wasm ./src/core/compiler/backend/railshot/arm64 ./src/core/encoder/arm64 -count=1 -timeout=5m
+go test -tags=wago_regalloccheck ./src/core/runtime/arm64spike -count=1 -v -timeout=5m
+```
+
+These are fresh successful checks, not a reproduction or explanation of the
+historical crash. No runtime fix is attributed to that unresolved report.

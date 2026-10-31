@@ -20,6 +20,8 @@ jobs:
             bench/go.sum
       - name: Initialize pinned public-test fixtures
         run: git submodule update --init --depth=1 tests/conformance/spec-v3
+      - name: Validate comparison evidence handling
+        run: python3 -B -m unittest discover -s bench/suite -p test_compare_cold.py -v
       - name: Validate the native compiler and regressions
         run: go test -tags wago_regalloccheck ./src/core/compiler/wasm ./src/core/compiler/frontend ./src/core/compiler/backend/railshot/shared ./src/core/compiler/backend/railshot/amd64 ./src/core/encoder/amd64 ./src/wago -count=1 -timeout=15m
       - name: Compare defaults and time through first result
