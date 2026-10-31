@@ -951,7 +951,7 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		}
 		payload = dispatchHelper
 	}
-	if helper == gcArrayGet || helper == gcArrayFill || helper == gcArrayAllocUniform || helper == gcArrayAllocDefault {
+	if helper == gcArrayGet || helper == gcArraySet || helper == gcArrayFill || helper == gcArrayAllocUniform || helper == gcArrayAllocDefault {
 		top := f.s.back()
 		if top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			f.nativeArrayHelper, f.nativeArrayType = helper, uint32(top.st.cval)

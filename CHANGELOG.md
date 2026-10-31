@@ -87,6 +87,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Keep AMD64 `v128` array loads and stores in native code with checked handles,
   type identity, bounds, and object extents. Add a visible V8 timing comparison.
 
+- Store ARM64 scalar numeric array elements through checked native object
+  resolution, preserving the typed helper for failed bounds and extent checks.
+
 - Detect writes to live deferred-load address registers, cached global-cell
   pointers, and forwarded store values in the AMD64 and ARM64 compilers when
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
