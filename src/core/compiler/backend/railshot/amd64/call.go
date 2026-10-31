@@ -586,11 +586,16 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 		maskTop(custom.ResultWidth)
 	}
 	if !custom.StackCompatible {
-		result := f.popValue()
+		// Keep the result node (and its register ownership) on the stack while
+		// removing the argument snapshots below it. Copying detached storage
+		// into a new node leaves regUser pointing at the old result.
+		result := f.s.back()
+		if result.isDeferred() {
+			f.condense(result, regNone)
+		}
 		for _, arg := range args {
 			f.erase(arg)
 		}
-		f.pushValue(result.st)
 	}
 	f.stats.call("custom")
 	return nil
