@@ -70,7 +70,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return fmt.Errorf("amd64: unsupported staged extern conversion opcode %d without GC helpers", sub)
 		}
 		if sub == 26 {
-			return f.callGCStructHelper(gcAnyConvertExtern, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.AnyRef})
+			return f.emitNullExternConversion(sub)
 		}
 		if next, ok := r.Peek(); ok && next == 0x1a {
 			// The converted identity cannot escape an immediate drop. Keep the
@@ -82,7 +82,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			f.stats.peep("gc-dead-extern-convert")
 			return nil
 		}
-		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
+		return f.emitNullExternConversion(sub)
 	}
 	if !f.gcStructHelpers {
 		return fmt.Errorf("amd64: unsupported 0xfb opcode %d without staged GC struct helpers", sub)
