@@ -4,6 +4,43 @@ package gc
 
 import "testing"
 
+func TestTinySweepBarrierPublishesPartiallyScannedArray(t *testing.T) {
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 16, TinyBlockBytes: 16, VerifyAfterCollect: true}, tinyScanTypes(t))
+	global := c.NewGlobalSlot(Null())
+	for steps := 0; c.tinyGC.state != tinySweep; steps++ {
+		if steps > 100 {
+			t.Fatal("did not reach sweep")
+		}
+		if err := c.Step(nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	array, err := c.NewArrayDefault(2, tinyStepScanEntries+1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := Root(array)
+	roots := Slots{&root}
+	if err := c.Step(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.tinyGC.state != tinyMark || c.tinyGC.rootPhase != tinyRootsSweepBarrier ||
+		c.tinyGC.scan.handle != handleOf(array) || c.tinyGC.scan.scan.index == 0 || c.tinyColorOf(handleOf(array)) != tinyGray {
+		t.Fatalf("expected partial sweep-barrier mark: state=%d phase=%d scan=%+v color=%d", c.tinyGC.state, c.tinyGC.rootPhase, c.tinyGC.scan, c.tinyColorOf(handleOf(array)))
+	}
+	if err := c.SetGlobalSlot(global, array); err != nil {
+		t.Fatalf("publish live partially scanned array: %v", err)
+	}
+	root = Root(Null())
+	drainTinyWithWorkChecks(t, c, roots)
+	if err := c.CollectFull(nil); err != nil {
+		t.Fatal(err)
+	}
+	if !c.validObjectRef(array) {
+		t.Fatal("published array was reclaimed")
+	}
+}
+
 func TestTinySweepBarrierQueuesBoundedMarkWork(t *testing.T) {
 	leaf, err := NewStructDesc(0, nil)
 	if err != nil {
