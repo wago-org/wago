@@ -661,36 +661,13 @@ func TestGenericGCExactAggregateStorage(t *testing.T) {
 	}
 }
 
-func TestGenericGCAggregateGlobalTableInitializer(t *testing.T) {
+func TestGenericGCAggregateDefinedGlobalTableInitializerRejected(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCAggregateGlobalTableInitializerModule())
-	if err != nil {
-		t.Fatal(err)
+	if compiled != nil {
+		defer compiled.Close()
 	}
-	defer compiled.Close()
-	if len(compiled.Globals) != 1 || len(compiled.Elems) != 1 || len(compiled.Elems[0].Values) != 2 || len(compiled.Elems[0].Values[0].Expr) == 0 ||
-		!compiled.Elems[0].Values[1].RepeatPrevious {
-		t.Fatalf("aggregate global table initializer metadata globals=%#v elems=%#v", compiled.Globals, compiled.Elems)
-	}
-	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer instance.Close()
-	if _, err := instance.Invoke("run"); err != nil {
-		t.Fatal(err)
-	}
-	if err := instance.CollectGC(); err != nil {
-		t.Fatal(err)
-	}
-	descriptor := instance.tableDescriptor(0)
-	want := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
-	got := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
-	if want.IsNull() || got != want {
-		t.Fatalf("aggregate global table initializer refs = %v/%v", want, got)
-	}
-	value, err := instance.gc.StructGet(want, 0)
-	if err != nil || value.Bits != 55 {
-		t.Fatalf("aggregate global table initializer field = %+v, %v", value, err)
+	if err == nil {
+		t.Fatal("table initializer referencing a defined global was admitted")
 	}
 }
 
@@ -726,36 +703,13 @@ func TestGenericGCAggregateImportedGlobalTableInitializer(t *testing.T) {
 	}
 }
 
-func TestGenericGCAggregateReferenceGlobalTableInitializer(t *testing.T) {
+func TestGenericGCAggregateReferenceDefinedGlobalTableInitializerRejected(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCAggregateReferenceGlobalTableInitializerModule())
-	if err != nil {
-		t.Fatal(err)
+	if compiled != nil {
+		defer compiled.Close()
 	}
-	defer compiled.Close()
-	if len(compiled.Globals) != 1 || len(compiled.Elems) != 1 || len(compiled.Elems[0].Values) != 2 || len(compiled.Elems[0].Values[0].Expr) == 0 ||
-		!compiled.Elems[0].Values[1].RepeatPrevious {
-		t.Fatalf("aggregate reference-global table initializer metadata globals=%#v elems=%#v", compiled.Globals, compiled.Elems)
-	}
-	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer instance.Close()
-	if _, err := instance.Invoke("run"); err != nil {
-		t.Fatal(err)
-	}
-	if err := instance.CollectGC(); err != nil {
-		t.Fatal(err)
-	}
-	descriptor := instance.tableDescriptor(0)
-	want := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
-	got := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
-	if want.IsNull() || got != want {
-		t.Fatalf("aggregate reference-global table initializer refs = %v/%v", want, got)
-	}
-	value, err := instance.gc.StructGet(want, 0)
-	if err != nil || value.Bits != 0 {
-		t.Fatalf("aggregate reference-global table initializer field = %+v, %v", value, err)
+	if err == nil {
+		t.Fatal("table initializer referencing a defined global was admitted")
 	}
 }
 
