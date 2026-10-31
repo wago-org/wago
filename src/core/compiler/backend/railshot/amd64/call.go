@@ -435,6 +435,9 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 		if len(roots) < len(ft.Params) {
 			return fmt.Errorf("custom instruction %d has %d stack argument(s), want %d", f.globalIdx, len(roots), len(ft.Params))
 		}
+		// Snapshotting an argument can trap before an earlier deferred stack
+		// value. Resolve pending traps in bytecode order before visiting arguments.
+		f.materializePendingTraps()
 		args = append([]*elem(nil), roots[len(roots)-len(ft.Params):]...)
 		argSlots = make([]int, len(args))
 		for i, arg := range args {
