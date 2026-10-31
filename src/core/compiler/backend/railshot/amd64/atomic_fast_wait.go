@@ -11,8 +11,15 @@ import (
 // host-call arguments. Caller-saved registers are available after local spills.
 // The returned branch skips the Go transition and joins its result reload.
 // Invalid arguments use Go's existing traps instead of duplicate native stubs.
-func (f *fn) emitAtomicWaitFastPath(helper uint32, slot int, offset uint32) int {
-	f.a.Load32(RAX, RSP, f.spillOff(slot))
+func (f *fn) emitAtomicWaitFastPath(helper uint32, slot int, memoryIndex uint32, offset uint64) int {
+	memory64 := f.memoryAddr64(memoryIndex)
+	checkOverflow := memory64 || offset > 0xffffffff
+	overflow := [2]int{-1, -1}
+	if memory64 {
+		f.a.Load64(RAX, RSP, f.spillOff(slot))
+	} else {
+		f.a.Load32(RAX, RSP, f.spillOff(slot))
+	}
 	size := int32(4)
 	if helper != railshared.AtomicHelperNotify {
 		if helper == railshared.AtomicHelperWait64 {
@@ -20,15 +27,25 @@ func (f *fn) emitAtomicWaitFastPath(helper uint32, slot int, offset uint32) int 
 		}
 	}
 	if offset != 0 {
-		f.a.MovImm32(RDI, int32(offset))
+		if offset <= 0xffffffff {
+			f.a.MovImm32(RDI, int32(offset))
+		} else {
+			f.a.MovImm64(RDI, offset)
+		}
 		f.a.Add64(RAX, RDI)
+		if checkOverflow {
+			overflow[0] = f.a.JccPlaceholder(condB)
+		}
 	}
 	f.a.TestImm(RAX, uint32(size-1), false)
 	badAlignment := f.a.JccPlaceholder(condNE)
 	f.a.Load64(RSI, RBX, -offMemoryDirPtr)
-	f.a.Load64(RSI, RSI, abi.MemoryDirBaseOffset)
+	f.a.Load64(RSI, RSI, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
 	f.a.Load64(RDI, RSI, -abi.ActualLinMemByteSize64Offset)
 	f.a.AluRI(0, RAX, size, true)
+	if checkOverflow {
+		overflow[1] = f.a.JccPlaceholder(condB)
+	}
 	f.a.Cmp64(RAX, RDI)
 	outOfBounds := f.a.JccPlaceholder(condA)
 	if helper == railshared.AtomicHelperNotify {
@@ -48,6 +65,11 @@ func (f *fn) emitAtomicWaitFastPath(helper uint32, slot int, offset uint32) int 
 		f.a.PatchRel32(slow, f.a.Len())
 		f.a.PatchRel32(badAlignment, f.a.Len())
 		f.a.PatchRel32(outOfBounds, f.a.Len())
+		for _, site := range overflow {
+			if site >= 0 {
+				f.a.PatchRel32(site, f.a.Len())
+			}
+		}
 		return done
 	}
 	f.a.Load64(RDI, RSP, f.spillOff(slot+1))
@@ -67,5 +89,10 @@ func (f *fn) emitAtomicWaitFastPath(helper uint32, slot int, offset uint32) int 
 	f.a.PatchRel32(slow, f.a.Len())
 	f.a.PatchRel32(badAlignment, f.a.Len())
 	f.a.PatchRel32(outOfBounds, f.a.Len())
+	for _, site := range overflow {
+		if site >= 0 {
+			f.a.PatchRel32(site, f.a.Len())
+		}
+	}
 	return done
 }

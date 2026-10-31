@@ -67,6 +67,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
   ([#895](https://github.com/wago-org/wago/pull/895))
+- Return dynamic shared atomic-wait mismatches in native AMD64 and ARM64 code
+  for indexed memories and memory64. Preserve overflow/alignment/bounds traps
+  and use the synchronized queue helper for matching values.
 - Keep small uniform `array.new` allocations with run-time lengths in native
   AMD64 code. Larger arrays retain the checked helper fallback.
 
