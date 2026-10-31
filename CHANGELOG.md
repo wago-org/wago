@@ -16,6 +16,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- AMD64 and ARM64 discard `try_table` handlers on `return`, so a throw after
+  the call is caught by the caller's handler instead of the returned frame's.
 - Preserve deferred load addresses derived from pinned mutable globals on
   ARM64, including loads kept live across guest stack-pointer updates.
 - Compile ARM64 memory operations at large valid directory indexes by forming
