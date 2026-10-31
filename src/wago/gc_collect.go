@@ -8,6 +8,7 @@ import (
 func gcCollectFrameRoots(in *Instance, public *gcPublicState, frameLayout uint8, allowExternalReturn bool) gcNativeFrameRoots {
 	return gcNativeFrameRoots{
 		owner:               in,
+		domainHostRoots:     true,
 		frameLayout:         frameLayout,
 		allowExternalReturn: allowExternalReturn,
 		suspended:           public,
