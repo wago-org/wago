@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"testing"
 
-	amd "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -80,9 +79,7 @@ func TestRV64TypeDeclarationBoundary(t *testing.T) {
 				if directory, ok := newInternalReferenceTypeDirectory(m.Types); !ok || len(directory.flat) != count {
 					t.Fatalf("directory count: ok=%t length=%d", ok, len(directory.flat))
 				}
-				if _, err := amd.CompileModuleWith(m, amd.CompileOptions{DeferCodeMapping: true}); err != nil {
-					t.Fatal("amd64 control", err)
-				}
+				typeCapAMD64Control(t, m)
 				if shape != "numeric" && !admitRV64GCRootedScalarModule(m) {
 					t.Fatal("rooted decoded admission")
 				}
