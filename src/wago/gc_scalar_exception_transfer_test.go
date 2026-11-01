@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -131,5 +132,39 @@ func TestGCScalarExceptionTransfer(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestGCScalarExceptionRejectsNonEHProducer(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	types := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil)))
+	pc, err := Compile(cfg, wasmtest.Module(types, wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b})))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("call")...), 0, 0)
+	cc, err := Compile(cfg, wasmtest.Module(types, wasmtest.Section(2, wasmtest.Vec(imp)), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x02, 0x69, 0x1f, 0x40, 1, byte(wasm.CatchAllRef), 0, 0x10, 0, 0x0b, 0x00, 0x0b, 0x1a, 0x0b})))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cc.Close()
+	store := newReferenceStore(false)
+	defer store.closeRuntime()
+	provider, err := instantiateCore(pc, InstantiateOptions{store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	fn, err := provider.ExportedFunc("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumer, err := instantiateCore(cc, InstantiateOptions{store: store, Imports: testImports("env.call", fn)})
+	if consumer != nil {
+		consumer.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "exception-enabled producer") {
+		t.Fatalf("scalar non-EH producer admission=%v", err)
 	}
 }
