@@ -1,0 +1,2 @@
+$ go test -tags=wago_regalloccheck ./src/wago -run ^TestGC -count=1
+ok  	github.com/wago-org/wago/src/wago	3.690s

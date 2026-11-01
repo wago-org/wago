@@ -1,0 +1,78 @@
+[
+  {
+    "mode": "ordinary",
+    "suite": "collector",
+    "command": [
+      "go",
+      "test",
+      "./src/core/runtime/gc/...",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "ordinary",
+    "suite": "guest",
+    "command": [
+      "go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestGC",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "collector",
+    "command": [
+      "go",
+      "test",
+      "-tags=wagodebug",
+      "./src/core/runtime/gc/...",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "guest",
+    "command": [
+      "go",
+      "test",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestGC",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "regalloccheck",
+    "suite": "collector",
+    "command": [
+      "go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime/gc/...",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "regalloccheck",
+    "suite": "guest",
+    "command": [
+      "go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestGC",
+      "-count=1"
+    ],
+    "exit": 0
+  }
+]
