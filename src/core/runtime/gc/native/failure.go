@@ -4,6 +4,8 @@ type failurePoint uint8
 
 const (
 	failPromotionPlan failurePoint = iota + 1
+	failEvacuationCopy
+	failEvacuationCommit
 	failPromotionDestination
 	failPromotionCommit
 	failHandlePublication

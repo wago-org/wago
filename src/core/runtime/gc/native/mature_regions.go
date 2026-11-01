@@ -12,6 +12,10 @@ type matureRegion struct {
 }
 
 type matureHeap struct {
+	pressure            bool
+	poison              error
+	cursor              uint32
+	diagnostics         CollectionDiagnostics
 	admission, required bool
 	regions             []matureRegion
 	// First cause belongs to this attempt. Optional refusal cannot latch a
@@ -41,6 +45,7 @@ func (h *throughputHeap) matureRefusal(err error) {
 	}
 	if h.mature.required {
 		h.mature.refused = true
+		h.mature.pressure = true
 	}
 }
 
@@ -140,6 +145,9 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 		}
 	}
 	if err != nil {
+		if !h.mature.admission {
+			h.mature.pressure = true
+		}
 		h.matureRefusal(err)
 		return handleEntry{}, err
 	}
