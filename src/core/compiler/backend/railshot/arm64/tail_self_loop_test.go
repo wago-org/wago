@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"bytes"
 	"encoding/binary"
 	"testing"
 
@@ -49,7 +50,7 @@ func TestTailSelfLoopRetainsNativeFrame(t *testing.T) {
 }
 
 func TestTailSelfLeafProofRejectsPhysicalCallsAndHelpers(t *testing.T) {
-	f := fn{m: &wasm.Module{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.ExternRef}}, {Type: wasm.GlobalType{Type: wasm.I32}}}}, ft: &wasm.CompType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, traceFuncIdx: 3, policy: currentCodegenPolicy()}
+	f := fn{m: &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}}}}, FuncTypes: []wasm.TypeIdx{{}, {}, {}, {}}, Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.ExternRef}}, {Type: wasm.GlobalType{Type: wasm.I32}}}}, ft: &wasm.CompType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, traceFuncIdx: 3, policy: currentCodegenPolicy()}
 	for _, tc := range []struct {
 		name string
 		body []byte
@@ -72,7 +73,7 @@ func TestTailSelfLeafProofRejectsPhysicalCallsAndHelpers(t *testing.T) {
 		{"no-tail", []byte{0x20, 0, 0x0b}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := f.onlySelfTailTransfers(tc.body); got != (tc.want && !profileEnabled) {
+			if got := f.onlyLocalTailTransfers(tc.body); got != (tc.want && !profileEnabled) {
 				t.Fatalf("proof=%t want=%t", got, tc.want && !profileEnabled)
 			}
 		})
@@ -110,7 +111,7 @@ func TestTailSelfEntryTestThreadsBothEdges(t *testing.T) {
 			}
 			f := fn{a: a, entryTrapEnd: entry}
 			old := a.Len()
-			if !f.threadSelfTailEntryTest() {
+			if !f.threadSelfTailEntryTest(f.entryTrapEnd) {
 				t.Fatal("entry test was not threaded")
 			}
 			if a.Len() != old+8 {
@@ -153,8 +154,98 @@ func TestTailSelfEntryTestRetainsInitializationAndRange(t *testing.T) {
 		}
 		f := fn{a: a, entryTrapEnd: entry}
 		old := a.Len()
-		if f.threadSelfTailEntryTest() || a.Len() != old {
+		if f.threadSelfTailEntryTest(f.entryTrapEnd) || a.Len() != old {
 			t.Fatalf("%s: invalid entry test admitted", mode)
+		}
+	}
+}
+
+func TestTailLocalLeafTransfersKeepCycleRelocations(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	i32 := []wasm.ValType{wasm.I32}
+	body := func(target byte) []byte {
+		return []byte{0, 0x20, 0, 0x45, 0x04, 0x7f, 0x41, 0, 0x05, 0x20, 0, 0x41, 1, 0x6b, 0x12, target, 0x0b, 0x0b}
+	}
+	m := modFuncs(t, funcDef{i32, i32, body(1)}, funcDef{i32, i32, body(0)})
+	var stats ModuleStats
+	c, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CodeImage.Close()
+	for i := range 2 {
+		want := 1
+		if profileEnabled {
+			want = 0
+		}
+		if got := stats.Funcs[i].Peephole["tail-local-leaf"]; got != want {
+			t.Fatalf("function %d leaf=%d want=%d", i, got, want)
+		}
+	}
+}
+
+func TestTailLocalEntryTestThreadingGuards(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		for _, nonzero := range []bool{false, true} {
+			for _, siteFirst := range []bool{false, true} {
+				for _, bad := range []int{-1, 0, 1, 2, 3, 4, 5, 6} {
+					a := &a64.Asm{}
+					for range 24 {
+						a.Nop()
+					}
+					site, target := 80, 0
+					if siteFirst {
+						site, target = 12, 48
+					}
+					entry := target + 12
+					word := uint32(0x34000006)
+					if wide {
+						word |= 1 << 31
+					}
+					if nonzero {
+						word |= 1 << 24
+					}
+					a.PatchU32(entry, word|3<<5)
+					a.PatchU32(site, 0x14000000)
+					if !a.PatchBranch26(site, target) {
+						t.Fatal("branch")
+					}
+					if bad >= 0 && bad < 3 {
+						a.PatchU32(site-12+bad*4, 0x910043ff)
+					}
+					if bad >= 3 && bad < 6 {
+						a.PatchU32(target+(bad-3)*4, 0xd10043ff)
+					}
+					if bad == 6 {
+						a.PatchU32(entry, 0x91000400)
+					}
+					original := append([]byte(nil), a.B...)
+					got := threadTailEntryTest(a.B, site, target)
+					if got != (bad < 0) {
+						t.Fatalf("wide=%t nonzero=%t siteFirst=%t bad=%d got=%t", wide, nonzero, siteFirst, bad, got)
+					}
+					if !got {
+						if !bytes.Equal(original, a.B) {
+							t.Fatal("failed proof changed code")
+						}
+						continue
+					}
+					h, ok := branchTarget(site-12, rdWord(a.B, site-12))
+					if !ok || h != entry+12 {
+						t.Fatal("hot target")
+					}
+					c, ok := branchTarget(site-8, rdWord(a.B, site-8))
+					if !ok || c != entry+4 {
+						t.Fatal("cold target")
+					}
+					if rdWord(a.B, site-12)&0xff00001f != word&0xff00001f {
+						t.Fatal("test width, polarity or register changed")
+					}
+					if rdWord(a.B, site) != rdWord(original, site) {
+						t.Fatal("call graph branch changed")
+					}
+				}
+			}
 		}
 	}
 }

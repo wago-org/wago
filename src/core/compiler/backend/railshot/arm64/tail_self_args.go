@@ -2,13 +2,16 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"encoding/binary"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
-// Self-tail arguments need no round trip through the outgoing frame. Capture
+// Integer tail arguments need no round trip through the outgoing frame. Capture
 // live register/deferred roots first, resolve register cycles, then load homes
 // and constants. This is the same staging order as ordinary integer calls;
 // locals need no preservation because re-entry initializes the whole function.
-func (f *fn) emitTailSelfRegisterJump(ft *wasm.CompType, jump func()) {
+func (f *fn) emitTailIntegerRegisterArgs(ft *wasm.CompType, localHomes bool, jump func()) {
 	roots := f.rootsBottomToTop()
 	p := len(ft.Params)
 	base := len(roots) - p
@@ -21,10 +24,16 @@ func (f *fn) emitTailSelfRegisterJump(ft *wasm.CompType, jump func()) {
 	// ordinary local assignment sinking there: it realizes old local reads
 	// before overwriting them, so simultaneous argument permutations remain
 	// correct while arithmetic can write directly into the final register.
-	direct := f.preserveCallerPins
+	direct := (localHomes || f.preserveCallerPins) && len(ft.Params) == len(f.ft.Params)
+	for i := range ft.Params {
+		if i >= len(f.ft.Params) || !wasm.EqualValType(ft.Params[i], f.ft.Params[i]) {
+			direct = false
+			break
+		}
+	}
 	for i := range ft.Params {
 		reg, floating, pinned := f.pinReg(i)
-		if !pinned || floating || reg != intArgRegs[i] {
+		if !pinned || floating || !localHomes && reg != intArgRegs[i] {
 			direct = false
 			break
 		}
@@ -36,6 +45,14 @@ func (f *fn) emitTailSelfRegisterJump(ft *wasm.CompType, jump func()) {
 			f.flush()
 		}
 		for i := p - 1; i >= 0; i-- {
+			root := f.s.back()
+			// An unchanged local is already in its final home. If a later
+			// assignment captured its old value, realizeLocalRefs has replaced
+			// this root with owned storage and the ordinary assignment remains.
+			if root != nil && root.elemKind() == ekValue && root.st.kind == stLocalReg && root.st.index() == i {
+				f.erase(root)
+				continue
+			}
 			f.setLocal(nil, i, false)
 		}
 		f.storePinnedGlobals(false)
@@ -118,11 +135,13 @@ func (f *fn) emitTailSelfRegisterJump(ft *wasm.CompType, jump func()) {
 	jump()
 }
 
-// A body whose only transfers resolve to itself makes no native calls.
+// A body containing only local register-ABI tail transfers makes no native calls.
 // Classifying it as a physical leaf enables argument-register homes. Preserve
-// its logical loop identity so it can never acquire bounded scheduler entry.
+// call relocations so recursive cycles remain visible to scheduler admission.
 // Helpers and indirect transfers retain ordinary call/frame planning.
-func (f *fn) onlySelfTailTransfers(body []byte) bool {
+func (f *fn) onlyLocalTailTransfers(body []byte) bool { return f.tailTransferLeaf(body, false) }
+func (f *fn) onlySelfTailTransfers(body []byte) bool  { return f.tailTransferLeaf(body, true) }
+func (f *fn) tailTransferLeaf(body []byte, selfOnly bool) bool {
 	if !f.opt(optTailSelfLoop) || !f.opt(optRegABI) || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || !sigFitsRegABI(f.ft) || !sigIsIntOnly(f.ft) {
 		return false
 	}
@@ -161,7 +180,14 @@ func (f *fn) onlySelfTailTransfers(body []byte) bool {
 			continue
 		case 0x12:
 			target, err := r.U32()
-			if err != nil || target != f.traceFuncIdx {
+			if err != nil {
+				return false
+			}
+			ft, ok := f.functionSignature(target)
+			if selfOnly && target != f.traceFuncIdx {
+				return false
+			}
+			if !ok || int(target) < f.importedFunctionCount() || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || !tailResultABICompatible(f.ft.Results, ft.Results) {
 				return false
 			}
 			found = true
@@ -185,8 +211,8 @@ func (f *fn) onlySelfTailTransfers(body []byte) bool {
 // iteration then takes one conditional branch instead of an unconditional
 // backedge followed by a taken conditional branch. No entry initialization is
 // skipped: the test must be the first word at the existing re-entry point.
-func (f *fn) threadSelfTailEntryTest() bool {
-	entry, at := f.entryTrapEnd, f.a.Len()
+func (f *fn) threadSelfTailEntryTest(entry int) bool {
+	at := f.a.Len()
 	if entry < 0 || entry+4 > at {
 		return false
 	}
@@ -220,4 +246,51 @@ func (f *fn) threadSelfTailEntryTest() bool {
 	}
 	f.stats.peep("tail-self-entry-test")
 	return true
+}
+
+// Reuse two words of a zero-frame tail release for the callee's entry test.
+// Both sides must have the exact three-NOP frame reservation, excluding saved
+// LR/FP, initialization, stack checks and nonzero frames. Keep the original B
+// and its relocation, so call-graph admission still sees recursive cycles.
+// Final module layout is fixed here; no code moves or grows.
+func threadTailEntryTest(code []byte, site, target int) bool {
+	const nop = 0xd503201f
+	if site < 12 || site+4 > len(code) || target < 0 || target+20 > len(code) || site%4 != 0 || target%4 != 0 || rdWord(code, site)&0xfc000000 != 0x14000000 {
+		return false
+	}
+	for off := 0; off < 12; off += 4 {
+		if rdWord(code, site-12+off) != nop || rdWord(code, target+off) != nop {
+			return false
+		}
+	}
+	entry := target + 12
+	word := rdWord(code, entry)
+	if word&0x7e000000 != 0x34000000 {
+		return false
+	}
+	hot, ok := branchTarget(entry, word)
+	first, second := site-12, site-8
+	delta := hot - first
+	coldDelta := entry + 4 - second
+	if !ok || hot <= entry+4 || hot >= len(code) || delta%4 != 0 || delta/4 < -(1<<18) || delta/4 >= 1<<18 || coldDelta/4 < -(1<<25) || coldDelta/4 >= 1<<25 {
+		return false
+	}
+	binary.LittleEndian.PutUint32(code[first:], word&^(0x7ffff<<5)|(uint32(delta/4)&0x7ffff)<<5)
+	binary.LittleEndian.PutUint32(code[second:], 0x14000000|uint32(coldDelta/4)&0x3ffffff)
+	return true
+}
+
+// Every incoming parameter has a permanent integer local home. A self-tail
+// transfer can assign those homes directly, then re-enter before declared-local
+// initialization rather than shuttling through the public argument registers.
+func (f *fn) selfTailLocalEntry() int {
+	if f.entryLocalsInit == 0 {
+		return 0
+	}
+	for i := range f.ft.Params {
+		if _, floating, ok := f.pinReg(i); !ok || floating {
+			return 0
+		}
+	}
+	return f.entryLocalsInit
 }

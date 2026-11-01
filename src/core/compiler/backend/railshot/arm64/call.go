@@ -52,6 +52,7 @@ type callReloc struct {
 	target   uint32 // target function index; gcObject uses the positive helper-fallback byte delta
 	internal bool   // target the callee's register-ABI internal entry (else offset 0)
 	gcObject bool   // target the module checked-object leaf (not a local function)
+	tail     bool   // integer proper-tail transfer eligible for entry-test threading
 }
 
 // callRelocTable stores every module relocation in source-function order. One
@@ -464,7 +465,9 @@ func (f *fn) returnCallIndex(idx uint32) error {
 	if f.opt(optRegABI) && targetRegisterABI {
 		jump := func() {
 			site := f.a.Branch()
-			f.relocs = append(f.relocs, f.newCallReloc(site, target, true))
+			rl := f.newCallReloc(site, target, true)
+			rl.tail = f.canReuseSelfTailFrame() && sigIsIntOnly(ft)
+			f.relocs = append(f.relocs, rl)
 		}
 		if callerRegisterABI {
 			if int(idx) == int(f.traceFuncIdx) && f.canReuseSelfTailFrame() {
@@ -474,16 +477,23 @@ func (f *fn) returnCallIndex(idx uint32) error {
 				if f.sc != nil {
 					f.sc.directPreparedBounded = false
 				}
-				f.emitTailSelfRegisterJump(ft, func() {
-					if f.threadSelfTailEntryTest() {
+				entry := f.entryTrapEnd
+				localEntry := f.selfTailLocalEntry()
+				if localEntry != 0 {
+					entry = localEntry
+				}
+				f.emitTailIntegerRegisterArgs(ft, localEntry != 0, func() {
+					if f.threadSelfTailEntryTest(entry) {
 						return
 					}
 					site := f.a.Branch()
-					if !f.a.PatchBranch26(site, f.entryTrapEnd) {
+					if !f.a.PatchBranch26(site, entry) {
 						panic("arm64 self-tail backedge is out of range")
 					}
 				})
 				f.stats.peep("tail-self-loop")
+			} else if f.canReuseSelfTailFrame() && sigIsIntOnly(ft) {
+				f.emitTailIntegerRegisterArgs(ft, false, func() { f.emitTailFrameRelease(); jump() })
 			} else {
 				f.emitTailRegisterJump(ft, jump)
 			}
