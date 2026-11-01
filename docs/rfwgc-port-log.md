@@ -637,3 +637,39 @@ Read-only roll-up assessment can proceed concurrently; conflicting integration
 will follow their coherent commits. Historical source/type-cap exclusions remain
 source facts, but the seven Wago PR exclusions no longer apply. This order/log
 entry changes documentation only and cannot affect runtime performance.
+
+
+## 2026-11-01 — Owner order: propagate Slipstream round-9 findings
+
+Source report: Slipstream `hunt/daybreak-slipstream-r9`, commit
+`dcb45b56386327a1f71fb039ed02e13562e1e2d7`, `hunt-findings.md`, reviewed against
+source master `82d546679bab4887acfab056f6ad773a969b1e03`. The report verifies
+six Slipstream findings; it does not establish that Wago has the same defects.
+Fresh Wago main comparison pin is `90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e`;
+initial committed port comparison pin is `ca30843801956bae67d5cd1219f66d191518c125`.
+Active rooting/collector edits must be assessed again after their commits.
+
+Each finding must receive one evidence-backed final disposition: INCLUDED-FIX
+(fix integrated into this branch/big PR and gates green), PRESENT-OUT-OF-SCOPE
+(present in Wago outside port territory, evidence for Joshua, no separate PR),
+or ABSENT (concrete file evidence). Assess both current main and port, including
+patterns newly introduced by future rollups. Do not manufacture a final bucket
+before assessment/fix gates complete. Mirror the source fix wave's correct shape
+when it becomes available; the current hunt report itself makes no fixes.
+
+| Finding | Priority and scope | Final disposition |
+| --- | --- | --- |
+| H2-F1 | HIGH; pre-GC table/global-only providers lack persistent root registration; first priority | Pending main/port audit and gates |
+| H6-F3 | HIGH; failed-start rollback misses nested escaping function references; first priority | Pending main/port audit and gates |
+| H4-F1 | HIGH; standards-only Core 3 Threads profile omission | Pending main/port audit and gates |
+| H6-F1 | MEDIUM; managed-reference module without type section skips collector setup | Pending main/port audit and gates |
+| H6-F2 | MEDIUM; immutable-global none-to-defined-heap subtype rejection | Pending main/port audit and gates |
+| H1-F1 | LOW; truncated futex generation aliases lose phase/teardown wake | Pending main/port and upcoming parallel-rollup audit |
+
+Two bounded audit workers own distinct new evidence/probes; active integrators
+retain production ownership. Priority lifecycle findings are assessed before any
+assumption that existing rooting work covers them. The helper-ticket finding is
+also a mandatory design check for the forthcoming PR1020/Snap parallel adaptation.
+All included fixes join the same combined perfection/review gate. No separate PR
+or existing PR closure is authorized by this propagation work. Documentation-only
+recording cannot affect shipped performance; no measurement occurred.
