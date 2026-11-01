@@ -50,6 +50,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Keep ARM64 integer block parameters and surrounding operands resident through
+  bounded nested straight-line blocks.
+
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.
 
