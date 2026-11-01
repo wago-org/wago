@@ -27,10 +27,18 @@ func TestEvacuationStage7ExactAdmissionEdges(t *testing.T) {
 	}
 }
 func TestEvacuationStage7CheckedGeneration(t *testing.T) {
-	c, roots := stage7Heap(t, 1, 128, 6, true)
+	c := newTestCollector(t, Config{NurseryBytes: 4096, NurseryRegionShift: 6, MatureEvacuation: true, ThroughputHeapBytes: 1 << 20, VerifyAfterCollect: true})
 	if err := c.EnableCheckedHandles(); err != nil {
 		t.Fatal(err)
 	}
+	r, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = c.ForcePromote(r); err != nil {
+		t.Fatal(err)
+	}
+	roots := RefSliceRoots{r}
 	generation, err := c.CheckedIdentity(roots[0])
 	if err != nil {
 		t.Fatal(err)
