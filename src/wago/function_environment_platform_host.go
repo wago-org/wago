@@ -3,7 +3,9 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
@@ -29,7 +31,7 @@ func managedFunctionAfterLifetimeBoundary(in *Instance) {
 	}
 }
 func compiledManagedFunctionReachability(c *Compiled) bool {
-	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureGC) {
+	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !c.usesGenericGCExecution() {
 		return false
 	}
 	for _, d := range c.GCTypeDescs {
@@ -43,6 +45,39 @@ func compiledManagedFunctionReachability(c *Compiled) bool {
 		}
 	}
 	return false
+}
+
+// A standalone bare provider has no descriptor arena. Its importer owns the
+// proxy bytes and the installed function attachment owns the provider. Retain
+// that proxy owner, not an unregistered foreign-store member. This is solely a
+// physical ownership proof; public cross-store token admission is unchanged.
+func managedFunctionPrivateProxyOwner(source *Instance, descriptor uint64) *Instance {
+	index, ok := source.funcrefDescriptorIndex(descriptor)
+	if !ok || index < 0 || index >= source.c.NumImports || index >= len(source.c.Imports) {
+		return nil
+	}
+	export, ok := source.imports[source.c.functionImportBindingKey(index)].(*InstanceExport)
+	if !ok || export == nil || export.inst == nil || source.ownsTransferredFunctionAttachment(export.inst) {
+		return nil
+	}
+	producer := export.inst
+	if producer.refStore == source.refStore || producer.gc != nil || producer.reachesPrivateGCInvocationDomain() {
+		return nil
+	}
+	if _, exists := producer.localFuncrefDescriptor(export.localIdx); exists {
+		return nil
+	}
+	producer.lifeMu.Lock()
+	live := !producer.resourcesClosed && producer.resourceRefs > 0
+	producer.lifeMu.Unlock()
+	if !live {
+		return nil
+	}
+	off := (index + 1) * coreruntime.FuncRefDescBytes
+	if binary.LittleEndian.Uint64(source.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:]) != descriptor {
+		return nil
+	}
+	return source
 }
 func (c *Compiled) usesManagedOpaqueStorage() bool { return compiledManagedFunctionReachability(c) }
 func functionEnvironmentHostQuiescent(g *managedFunctionGraph) bool {
@@ -76,6 +111,20 @@ func compactExternHostRootIsStrong(*gc.Collector, uint32) bool                  
 func (*managedFunctionMarkDomain) clearUnreachableHostExternRoots() error          { return nil }
 
 func (s *managedFunctionCollector) publishHostEnvironment(env *managedFunctionEnv) error {
-	slot := s.collector.NewGlobalSlot(env.root.GetRef())
-	return s.bindPersistentSlot(env.member.owner, gc.SlotGlobal, slot)
+	if s.hostEnvSlots == nil {
+		s.hostEnvSlots = make(map[uint32]gc.Ref)
+	}
+	ref := env.root.GetRef()
+	var slot uint32
+	if n := len(s.hostFreeSlots); n != 0 {
+		slot = s.hostFreeSlots[n-1]
+		if err := s.collector.SetGlobalSlot(slot, ref); err != nil {
+			return err
+		}
+		s.hostFreeSlots = s.hostFreeSlots[:n-1]
+	} else {
+		slot = s.collector.NewGlobalSlot(ref)
+	}
+	s.hostEnvSlots[slot] = ref
+	return nil
 }

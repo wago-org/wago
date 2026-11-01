@@ -131,23 +131,25 @@ type managedFunctionEnv struct {
 }
 
 type managedFunctionCollector struct {
-	mu           sync.Mutex // observer journal only; maps are collector-domain serialized
-	graph        *managedFunctionGraph
-	collector    *gc.Collector
-	typeID       gc.TypeID
-	envs         map[gc.Ref]*managedFunctionEnv    // weak, removed before handle reuse
-	byOwner      map[*Instance]*managedFunctionEnv // same weak identity
-	byDescriptor map[uint64]*managedFunctionEnv
-	shadows      map[gc.Ref]managedFunctionEdge   // inline first producer; null tombstones preserve Tiny cursors
-	extraShadows map[gc.Ref][]managedFunctionEdge // cold overflow for multiple producers
-	aggregate    *managedFunctionAggregateScratch
-	globalOwners map[uint32]*managedFunctionMember
-	tableOwners  map[uint32]*managedFunctionMember
-	authorized   bool // only a validated joint mark may make slots conditional
-	liveOwners   map[*managedFunctionMember]bool
-	reclaimed    []*managedFunctionEnv
-	closed       bool
-	exception    *managedFunctionExceptionScratch
+	mu            sync.Mutex // observer journal only; maps are collector-domain serialized
+	graph         *managedFunctionGraph
+	collector     *gc.Collector
+	typeID        gc.TypeID
+	envs          map[gc.Ref]*managedFunctionEnv    // weak, removed before handle reuse
+	byOwner       map[*Instance]*managedFunctionEnv // same weak identity
+	byDescriptor  map[uint64]*managedFunctionEnv
+	shadows       map[gc.Ref]managedFunctionEdge   // inline first producer; null tombstones preserve Tiny cursors
+	extraShadows  map[gc.Ref][]managedFunctionEdge // cold overflow for multiple producers
+	aggregate     *managedFunctionAggregateScratch
+	globalOwners  map[uint32]*managedFunctionMember
+	tableOwners   map[uint32]*managedFunctionMember
+	hostEnvSlots  map[uint32]gc.Ref // floating roots, excluded from the quiescent joint mark
+	hostFreeSlots []uint32
+	authorized    bool // only a validated joint mark may make slots conditional
+	liveOwners    map[*managedFunctionMember]bool
+	reclaimed     []*managedFunctionEnv
+	closed        bool
+	exception     *managedFunctionExceptionScratch
 }
 
 func (s *managedFunctionCollector) ObjectEdgeCount(ref gc.Ref) uint32 {
@@ -162,6 +164,9 @@ func (s *managedFunctionCollector) ObjectEdgeAt(ref gc.Ref, index uint32) gc.Ref
 func (s *managedFunctionCollector) ObjectEdgesMutated(gc.Ref)  { s.graph.epoch.Add(1) }
 func (s *managedFunctionCollector) ObjectRootPublished(gc.Ref) { s.graph.epoch.Add(1) }
 func (s *managedFunctionCollector) PersistentRootIsStrong(kind gc.SlotKind, index uint32) bool {
+	if s.authorized && kind == gc.SlotGlobal && s.hostEnvSlots[index] != gc.Null() {
+		return false
+	}
 	if s.authorized && kind == gc.SlotGlobal && !compactExternHostRootIsStrong(s.collector, index) {
 		return false
 	}
@@ -376,6 +381,11 @@ func managedFunctionDescriptorOwner(source *Instance, descriptor uint64) *Instan
 	store := source.refStore
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	if store.hasInstanceResourcesLocked(source) {
+		if owner := managedFunctionPrivateProxyOwner(source, descriptor); owner != nil {
+			return owner
+		}
+	}
 	if entry := store.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil && store.hasInstanceResourcesLocked(entry.owner) {
 		return entry.owner
 	}
