@@ -781,3 +781,30 @@ recheck after stage7. Stage7 worker owns remaining public controls, bounded run
 reservation, pressure policy and optional mature evacuation. Final INCLUDED
 dispositions, H2/H6 repairs, full suites/corpus/conformance/platform execution,
 measurements and consolidated review remain open.
+
+## Owner checkpoint: immutable H6 gate before H2 production
+
+Requested pin1059c88e8e97840c121b3e4bc4e9f44b4b0c9a0b. At checkpoint,
+r9-nested-owner-fix/qualification-provenance.txt names that pin but the current
+qualification-results.txt is empty; qualified-full-ordinary.log is unfinished.
+Earlier backend log contains a mise trust harness failure from a different
+archive. No final three-mode/full/race/backend/ARM64/RV64 cross PASS can be
+attributed to the restarted run yet. All five suite categories remain PENDING
+current authoritative results. Cross-builds will not count as target execution.
+Owner's latest condition gates further H2 production on all requested H6 suites
+green. Worker notified;6a25f86e5 is an already committed converted-replacement
+validation prerequisite, not completed H2 and not covered by1059 qualification.
+
+Seven-PR roll-up progress (final buckets require combined gates):
+-997: integrated4ad440e86, provisional sourcee2736f0f3; missing421119d1d unresolved.
+-1003: extent topic integrateda3f26602d from9666ec48e; missing11bcf23fd unresolved.
+-1019: integratede23657e6a, scoped all3/race green.
+-1020: native integrationbc05eef3e and tests779fb3f70 scoped green; stage7
+97cb56269/e0d3abddd and followups under qualification.
+-1026: reconciled4ad440e86; rooting matrix45c83820f scoped all3 green.
+-1027: integrated866e6b5e7 plus distinct EH repairs27690e182; same scoped gate.
+-1030: integrated9bfe98360; scoped all3/race green.
+All seven target INCLUDED but none has final INCLUDED status before combined
+gates/review. No SUPERSEDED or INCOMPATIBLE conclusion is currently established;
+no PR closed. H2/H6, final collector/full/corpus/conformance/platform/TinyGo
+joint qualification, measurement and consolidated review remain open.
