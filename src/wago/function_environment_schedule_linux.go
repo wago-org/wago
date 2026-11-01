@@ -51,6 +51,14 @@ func (g *managedFunctionGraph) tryCollectAfterGate() {
 		if entry == nil || entry.resourcesReleased {
 			continue
 		}
+		if !managedFunctionDomainRegisteredLocked(g.store, owner, entry.gcDomain) {
+			// Store retirement unlinks domains before closing collectors outside
+			// the writer lease. Physical instance rows can outlive that claim.
+			// Their collector pointers no longer authorize any heap operation.
+			g.store.mu.Unlock()
+			g.pendingCollection.Store(false)
+			return
+		}
 		domains.add(entry.gcDomain)
 		if owner.gc != nil {
 			requester = owner

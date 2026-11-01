@@ -475,3 +475,34 @@ func TestR9OwnershipWakeupConcurrentRequests(t *testing.T) {
 		t.Fatal("concurrent requests leaked graph")
 	}
 }
+
+// A physical instance row can outlive the store's collector-retirement claim.
+// Exercise the admission proof using Go metadata only, with no native heap.
+func TestR9OwnershipWakeupRetiredDomainAdmission(t *testing.T) {
+	store := newReferenceStore(false)
+	topology := store.ensureGCTopology()
+	collector := new(gc.Collector)
+	owner := &Instance{gc: collector}
+	domain := &gcStoreDomain{collector: collector}
+	topology.Lock()
+	store.mu.Lock()
+	topology.appendDomainLocked(domain)
+	if !managedFunctionDomainRegisteredLocked(store, owner, domain) {
+		store.mu.Unlock()
+		topology.Unlock()
+		t.Fatal("registered collector rejected")
+	}
+	if !topology.unlinkDomainLocked(domain) {
+		store.mu.Unlock()
+		topology.Unlock()
+		t.Fatal("retirement claim not installed")
+	}
+	if managedFunctionDomainRegisteredLocked(store, owner, domain) {
+		store.mu.Unlock()
+		topology.Unlock()
+		t.Fatal("retired domain authorized heap access through stale owner row")
+	}
+	store.mu.Unlock()
+	topology.Unlock()
+	// No collector API is called: the zero-value collector is only an identity.
+}
