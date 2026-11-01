@@ -39,3 +39,5 @@ for path, old, new in changes:
     path.write_text(source.replace(old, new, 1))
 print("patch-tinygo-042: upstream task-exit fix present")
 PY
+
+"$python_cmd" "$(dirname "$0")/patch-tinygo-foreign-stack.py" "$tinygo_root"
