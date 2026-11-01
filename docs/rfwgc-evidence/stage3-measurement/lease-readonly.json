@@ -1,0 +1,8 @@
+{
+  "lease_files": {
+    "/tmp/gc-trim-regate-laptop-measurement.lease": "{\n  \"grant_id\": \"GC-TRIM-REGATE-20261030\",\n  \"host\": \"laptop\",\n  \"status\": \"released\",\n  \"owner_direction\": \"Joshua 2026-10-30 19:25 ET\",\n  \"started_utc\": \"2026-10-30T23:30:56.685854+00:00\",\n  \"affinity\": \"0,2,4,6,8,10,12,14\",\n  \"thermal_start_limit_mC\": 60000,\n  \"phase\": \"approved_service_guard_qualification\",\n  \"finished_utc\": \"2026-10-31T21:25:48.486165+00:00\",\n  \"reason\": \"Full laptop regate acquired, independently replayed and recorded; private build and tool caches removed\"\n}\n",
+    "/tmp/gc-wakejoin-laptop-measurement.lease": "{\n  \"grant_id\": \"WAKEJOIN-LAPTOP-20261031\",\n  \"status\": \"active\",\n  \"host\": \"laptop\",\n  \"started_utc\": \"2026-10-31T22:11:10.938394+00:00\",\n  \"owner_direction\": \"/tmp/brief-wakejoin.txt\",\n  \"affinity\": \"0,2,4,6,8,10,12,14\",\n  \"thermal_start_limit_mC\": 60000\n}"
+  },
+  "visible_measurement_locks": [],
+  "conclusion": "No acquisition attempted. Wake/join record active; owner must reconcile. lslocks visibility is not global permission."
+}
