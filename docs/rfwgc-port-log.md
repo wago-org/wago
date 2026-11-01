@@ -825,3 +825,27 @@ Worker authorized narrow host retry driver and deterministic contention/Close/
 coalescing/no-lost-wake tests, then immutable qualification. H2 production remains
 paused until that gate closes. Seven roll-up PRs retain integrated/pending-final
 status; no final INCLUDED/INCLUDED-FIX or combined stage7/TinyGo/platform claim.
+
+## Stage7 and actual TinyGo evacuation gates
+
+Stage7 standard-Go collector qualification PASS: production75e438784,
+tests831200ae6, evidence0fbc269b2;32 commands across all3 modes including full
+collector/race, focused guest/backend/CLI, capacity/credit/identity and target
+checks. ARM64/RV64 are compile-only. Bounded run/pressure/mature relocation and
+public controls implemented; R9H1-F1 protocol checks pass. See stage7-evacuation.
+
+Actual TinyGo serial evacuation PASS at9c26df2d4b35c89fd3cf6e591f3b033370a50a07,
+productioncff52eaa6, evidence20a4f0a85efba65f7ac0dda66063cbf334a3d4c0. All11
+expanded commands pass using real patched0.42 on Linux amd64 with threads
+scheduler/conservative GC. Wago collector is serial; helpers remain rejected.
+Ordinary/debug/regalloc TinyGo collector counts15/30/15, joint guest+foreign
+stack9/9/9, zero target skips/failures; full Go collector2225/2307/2225 passes
+with0/3/0 existing skips. All9122 export members unchanged. Focused joint smoke
+is not the complete34-command foreign-stack lane or H6/H2 qualification.
+TinyGo host sidecar/receipt APIs remain build-excluded and are not counted passed.
+
+H6 source86cacffeb failed its ordinary scoped race retirement check; preserved
+FAIL. Correction631cb7049 has fresh18-command qualification underway, no final
+verdict yet. H2 remains paused. Seven tabled fixes retain integrated/pending-final
+buckets; all combined-head/platform/corpus/conformance, measurements and final
+four-reviewer gates remain open. No PR publication, closure or timings.
