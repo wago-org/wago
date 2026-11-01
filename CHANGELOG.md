@@ -60,7 +60,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Inline bounded ARM64 integer tuple leaves with structured control when the
   caller can eliminate all calls, preserving private-local initialization.
 - Unroll bounded ARM64 register-only integer induction loops, checking each
-  iteration and preserving the exact induction value on early exits.
+  iteration and preserving the exact induction value on early exits. Unroll
+  small register-only loops with a forward exit while retaining every exit test.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.
