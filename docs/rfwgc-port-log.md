@@ -849,3 +849,23 @@ FAIL. Correction631cb7049 has fresh18-command qualification underway, no final
 verdict yet. H2 remains paused. Seven tabled fixes retain integrated/pending-final
 buckets; all combined-head/platform/corpus/conformance, measurements and final
 four-reviewer gates remain open. No PR publication, closure or timings.
+
+## H6 wakeup gate PASS; H2 production authorized
+
+Verified committed30ad134bf48f94a3a64c7e0700d7fbf9e269c813: immutable source
+631cb70499e3fa61357171a0e3d1a60e7a0883fa,18/18 commands exit0, driver0 and
+unchanged hash35961ef71a6c2bebc253b8c152f110f792912e33f86ee3c4fec2d8a1937689d6.
+Focused ownership/full Wago/scoped race/backend/ARM64 cross/RV64 cross each PASS
+in ordinary, wagodebug and wago_regalloccheck. Cross-only, no target execution.
+Failed86cacffeb retirement race remains recorded FAIL;631cb topology membership
+proof fixes it. This closes the prerequisite pause, not final INCLUDED-FIX.
+
+Parent explicitly authorizes H2 production now: before-publication converted
+identity/root/domain receipts attached to actual surviving containers, exact
+replacement/clear/bulk balance, publisher-independent collector lifetime, and
+conditional participation in H6 joint reachability. Converted aggregate/producer/
+provider cycles must release after final external edge without permanent roots.
+Use separate coherent commits and immutable all3/race/target gates, retain prior
+failed probes and honest supported-region admission. Final H6/H2 integration,
+Stage7/TinyGo/QEMU combined-head and full conformance/corpus/performance/review
+gates remain open; seven tabled PRs remain integrated/pending final buckets.
