@@ -1,0 +1,3842 @@
+[
+  {
+    "id": "sed-records",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "sed-records",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "sed-records",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "seqtk-fastq-to-fasta",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "seqtk-fastq-to-fasta",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "seqtk-fastq-to-fasta",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "lcs-substrings",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "lcs-substrings",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "lcs-substrings",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "needleman-wunsch-dna",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "needleman-wunsch-dna",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "needleman-wunsch-dna",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "smith-waterman-dna",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "smith-waterman-dna",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "smith-waterman-dna",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "fasttree-phylogeny",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "fasttree-phylogeny",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "fasttree-phylogeny",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "gnu-seq-range",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "gnu-seq-range",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "gnu-seq-range",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "gnu-tr-uppercase",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "gnu-tr-uppercase",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "gnu-tr-uppercase",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "php-buckets",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "php-buckets",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "php-buckets",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ruby-buckets",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ruby-buckets",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ruby-buckets",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "clang-cpp-kernels",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "clang-cpp-kernels",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "clang-cpp-kernels",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "clang-c-kernels",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "clang-c-kernels",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "clang-c-kernels",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "lua-cli-buckets",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "lua-cli-buckets",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "lua-cli-buckets",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "micropython-squares",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "micropython-squares",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "micropython-squares",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "skip",
+    "port_reference": "skip"
+  },
+  {
+    "id": "ecpunpack-config",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecpunpack-config",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecpunpack-config",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecppack-bitstream",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecppack-bitstream",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecppack-bitstream",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-sort",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-sort",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-sort",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-sha256sum",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-sha256sum",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-sha256sum",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-base64",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-base64",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-base64",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-wc",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-wc",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "coreutils-wc",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ripgrep-source",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ripgrep-source",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ripgrep-source",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "yosys-counter",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "yosys-counter",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "yosys-counter",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icemulti-image",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icemulti-image",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icemulti-image",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icepack-pack",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icepack-pack",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icepack-pack",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "iceunpack-unpack",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "iceunpack-unpack",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "iceunpack-unpack",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecpbram-generate",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecpbram-generate",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecpbram-generate",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icebram-generate",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icebram-generate",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icebram-generate",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecppll-clock",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecppll-clock",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "ecppll-clock",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icepll-clock",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icepll-clock",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "icepll-clock",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "json2csv-people",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "json2csv-people",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "json2csv-people",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tree-ashell-list",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tree-ashell-list",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tree-ashell-list",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tree-list",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tree-list",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tree-list",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "brotli-compress",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "brotli-compress",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "brotli-compress",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "brotli-decompress",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "brotli-decompress",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "brotli-decompress",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "jq-json-transform",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "jq-json-transform",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "jq-json-transform",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "age-decrypt",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "age-decrypt",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "age-decrypt",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "age-keygen-public",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "age-keygen-public",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "age-keygen-public",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lzmainfo-header",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lzmainfo-header",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lzmainfo-header",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lzmadec-decompress",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lzmadec-decompress",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lzmadec-decompress",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "xzdec-decompress",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "xzdec-decompress",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "xzdec-decompress",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "sqlite3-query",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "sqlite3-query",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "sqlite3-query",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "duktape-script",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "duktape-script",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "duktape-script",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "quickjs-script",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "quickjs-script",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "quickjs-script",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "swift-format-source",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "swift-format-source",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "swift-format-source",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "esbuild-minify",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "esbuild-minify",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "esbuild-minify",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tiny",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "tiny",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "tiny",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "fib_rec",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "fib_rec",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "fib_rec",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "memory",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "memory",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "memory",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "memory_tree",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "memory_tree",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "memory_tree",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "dispatch",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "dispatch",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "dispatch",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "many_funcs",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "many_funcs",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "many_funcs",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "linked_list",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "linked_list",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "linked_list",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "nbody",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "nbody",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "nbody",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "fannkuch",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "fannkuch",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "fannkuch",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "matmul",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "matmul",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "matmul",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "sha256",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "sha256",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "sha256",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "raytrace",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "raytrace",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "raytrace",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "json-as",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "json-as",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "json-as",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "blake-as",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "blake-as",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "blake-as",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "utf-as",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "utf-as",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "utf-as",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "json-as-simd",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "json-as-simd",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "json-as-simd",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "blake-as-simd",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "blake-as-simd",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "blake-as-simd",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "utf-as-simd",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "utf-as-simd",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "utf-as-simd",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "coremark",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "coremark",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "coremark",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "blake3",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "blake3",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "blake3",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "qoi",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "qoi",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "qoi",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "lz4",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "lz4",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "lz4",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "zlib",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "zlib",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "zlib",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "zstd",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "zstd",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "zstd",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "yyjson",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "yyjson",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "yyjson",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "utf8proc",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "utf8proc",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "utf8proc",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "xxhash",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "xxhash",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "xxhash",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "libtommath",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "libtommath",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "libtommath",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "nanosvg",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "nanosvg",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "nanosvg",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "kissfft",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "kissfft",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "kissfft",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "miniz",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "miniz",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "miniz",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "monocypher",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "monocypher",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "monocypher",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "drwav",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "drwav",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "drwav",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "fastfloat",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "fastfloat",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "fastfloat",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "pcre2",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "pcre2",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "pcre2",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "cjson",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "cjson",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "cjson",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lodepng",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lodepng",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lodepng",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "wren",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "wren",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "wren",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tinyxml2",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tinyxml2",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tinyxml2",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lua",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lua",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "lua",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-crc32",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-crc32",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-crc32",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-huffbench",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-huffbench",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-huffbench",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-matmult-int",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-matmult-int",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-matmult-int",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-nettle-aes",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-nettle-aes",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-nettle-aes",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-nettle-sha256",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-nettle-sha256",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-nettle-sha256",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-qrduino",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-qrduino",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "embench-qrduino",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "sightglass-shootout-base64",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "sightglass-shootout-base64",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "sightglass-shootout-base64",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "sightglass-libsodium-hash",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "sightglass-libsodium-hash",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "sightglass-libsodium-hash",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tacle-bsort",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tacle-bsort",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "tacle-bsort",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "polybench-2mm",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-2mm",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-2mm",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-3mm",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-3mm",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-3mm",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-adi",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-adi",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-adi",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-atax",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-atax",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-atax",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-bicg",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-bicg",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-bicg",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-cholesky",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-cholesky",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-cholesky",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-correlation",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-correlation",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-correlation",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-covariance",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-covariance",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-covariance",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-deriche",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-deriche",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-deriche",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-doitgen",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-doitgen",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-doitgen",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-durbin",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-durbin",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-durbin",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-fdtd-2d",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-fdtd-2d",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-fdtd-2d",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-floyd-warshall",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-floyd-warshall",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-floyd-warshall",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gemm",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gemm",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gemm",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gemver",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gemver",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gemver",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gesummv",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gesummv",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gesummv",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gramschmidt",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gramschmidt",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-gramschmidt",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-heat-3d",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-heat-3d",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-heat-3d",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-jacobi-1d",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-jacobi-1d",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-jacobi-1d",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-jacobi-2d",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-jacobi-2d",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-jacobi-2d",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-lu",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-lu",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-lu",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-ludcmp",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-ludcmp",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-ludcmp",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-mvt",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-mvt",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-mvt",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-nussinov",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-nussinov",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-nussinov",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-seidel-2d",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-seidel-2d",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-seidel-2d",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-symm",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-symm",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-symm",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-syr2k",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-syr2k",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-syr2k",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-syrk",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-syrk",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-syrk",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-trisolv",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-trisolv",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-trisolv",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-trmm",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-trmm",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "polybench-trmm",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": null,
+    "port_reference": null
+  },
+  {
+    "id": "wren-modulo",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "wren-modulo",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "wren-modulo",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "grain-stdlib-array",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "grain-stdlib-array",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "grain-stdlib-array",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "grain-stdlib-string",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "grain-stdlib-string",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "grain-stdlib-string",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "grain-stdlib-json-subset",
+    "mode": "ordinary",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "grain-stdlib-json-subset",
+    "mode": "wagodebug",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  },
+  {
+    "id": "grain-stdlib-json-subset",
+    "mode": "wago_regalloccheck",
+    "baseline": "pass",
+    "port": "pass",
+    "disposition": "baseline-matched-pass",
+    "reference_match": true,
+    "baseline_reference": "pass",
+    "port_reference": "pass"
+  }
+]

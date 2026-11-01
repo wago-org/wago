@@ -1,0 +1,23 @@
+[
+  {
+    "id": "graph",
+    "path": "docs/rfwgc-evidence/stage3-measurement/fixtures/graph.wasm",
+    "sha256": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+    "bytes": 357,
+    "fresh_execution": false
+  },
+  {
+    "id": "noGC",
+    "path": "docs/rfwgc-evidence/stage3-measurement/fixtures/noGC.wasm",
+    "sha256": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0",
+    "bytes": 47,
+    "fresh_execution": false
+  },
+  {
+    "id": "scalar",
+    "path": "docs/rfwgc-evidence/stage3-measurement/fixtures/scalar.wasm",
+    "sha256": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+    "bytes": 54,
+    "fresh_execution": false
+  }
+]
