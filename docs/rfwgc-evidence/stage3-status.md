@@ -18,13 +18,28 @@ The full Snap port and final review/PR gates remain open.
 
 ## Full-port work still required
 
-Next-slice native region reservation implementation is active under one production
-owner. Mature baseline probes/design committed at `4eeaea8fc`: 12 cases per mode,
+Native region reservation implementation committed at `98939b4dd`: bounded native
+live structs/small arrays, refill/cancel and metadata/trap invalidation, with
+large arrays/dead charges retaining checked fallback. Scoped collector/backend/
+guest validation passed all three modes. Independent review `e33e4ac5d` found no
+new correctness defects, with independent probes passing all modes on that frozen
+head. ARM64 cross-compiles but execution is unverified. Two interval-register
+diagnostic failures reproduce on complete baseline `5b31c81ec` in all modes;
+they remain red qualification issues, not silently waived or new port regressions.
+
+Mature baseline probes/design committed at `4eeaea8fc`: 12 cases per mode,
 plus six debug rollback cases, all passing without skips on frozen `94846b133`.
 These include 20,001 promotions, fragmentation, zero-credit survivor copies,
 refusal/retry and high LOS cards. They establish existing allocator controls,
 not implemented mature regions. Mature descriptor/transaction/reclamation work
-will follow the native reservation checkpoint to avoid concurrent source edits.
+is now active under one collector production owner.
+
+TinyGo investigation `b6a36dec` identified a pre-existing foreign-stack scanning
+defect on both baseline and current, including pinned TinyGo 0.42.0. GC scans
+between foreign SP and the original host stack boundary. A separate prerequisite
+fix worker owns TinyGo entry/toolchain integration, not collector source. Passing
+retries cannot close this demonstrated defect; aggregate qualification stays
+blocked until a correct fix and deterministic boundary tests pass.
 
 Native region reservations/refill/cancellation; mature and large-space region
 policy with transactional admission; inspection of the eventual landed source
