@@ -707,6 +707,16 @@ store path during address preparation, and the first FP input in `fbin` and
 instruction. Known address normalization can preserve a guarded i32 input, but
 cannot truncate a guarded i64 input.
 
+AMD64 checked builds also provide an opt-in local-pin scope for raw fast paths
+that bypass ordinary local recovery. An adopting lowering calls
+`checkProtectLocalPins` after local reconciliation and before scratch allocation,
+then restores the returned read masks on every exit. While the scope is active,
+typed GP and FP writes to incoming pins are rejected even if allocator metadata
+relinquishes a pin. At an intentional result-local write,
+`checkAllowLocalPinWrite` releases only this scope's protection; enclosing read
+guards remain active. Each lowering must install these hooks explicitly; the
+helpers alone do not add coverage to existing raw fast paths.
+
 The ordinary build retains no checker state or observer work. Transfer windows
 assume correct incoming values. The lifetime observers classify destinations,
 not arithmetic semantics; unknown generic effects conservatively report possible
