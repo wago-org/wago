@@ -419,16 +419,41 @@ func (f *fn) callOp(r *wasm.Reader) error {
 // tail bank and jump to the target wrapper. Both paths release the current native
 // frame before branching, so recursive tail chains remain stack bounded.
 func (f *fn) returnCall(r *wasm.Reader) error {
-	// Tail transfer discards the operand prefix; preserve its traps first.
-	f.materializePendingTraps()
 	idx, err := r.U32()
 	if err != nil {
 		return err
+	}
+	// A sole argument trap can stay attached to its destination-directed
+	// expression. Discarded prefixes and competing traps keep source order.
+	if f.canDeferInlineTailTrap(idx) {
+		f.stats.peep("inline-tail-deferred-trap")
+	} else {
+		f.materializePendingTraps()
 	}
 	return f.returnCallIndex(idx)
 }
 
 func (f *fn) returnCallIndex(idx uint32) error {
+	if f.inlineTailLoopFrame != 0 && idx == f.traceFuncIdx {
+		target := f.inlineTargets.target(int(idx))
+		if target == nil || !target.tailLoop() {
+			return fmt.Errorf("missing inline tail target")
+		}
+		for i := target.paramCount() - 1; i >= 0; i-- {
+			root := f.s.back()
+			if root != nil && root.elemKind() == ekValue && root.st.kind == stLocalReg && root.st.index() == f.localBase+i {
+				f.erase(root)
+				f.stats.peep("inline-tail-identity-arg")
+				continue
+			}
+			f.setLocal(nil, f.localBase+i, false)
+		}
+		f.zeroTailInlineLocals(target, f.localBase)
+		f.branchToInlineTailLoop(f.inlineTailLoopFrame - 1)
+		f.unreachable = true
+		f.stats.peep("inline-tail-loop")
+		return nil
+	}
 	ft, ok := f.functionSignature(idx)
 	if !ok {
 		return fmt.Errorf("return_call: unknown function %d", idx)

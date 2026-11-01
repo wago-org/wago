@@ -350,7 +350,7 @@ func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, er
 	if !f.opt(optZeroBranch) || top == nil || top.deferredOp() != opEqz {
 		return false, nil
 	}
-	fi := len(f.ctrl) - 1 - int(labelIdx)
+	fi := f.sourceLabelFrame(labelIdx)
 	if fi < 0 {
 		return false, errBadLabel
 	}
@@ -436,7 +436,7 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 // flag-transparent, so storing the compare result between CMP and B.cond keeps
 // the flags live and avoids rematerializing/re-comparing the boolean.
 func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
-	fi := len(f.ctrl) - 1 - int(labelIdx)
+	fi := f.sourceLabelFrame(labelIdx)
 	if fi < 0 {
 		return errBadLabel
 	}

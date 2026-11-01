@@ -43,3 +43,25 @@ func TestUnsignedMagicQuotientLocalAssignment(t *testing.T) {
 		}
 	}
 }
+
+func TestUnsignedMagicRemainderProductShift(t *testing.T) {
+	for _, d := range []uint32{3, 5, 10, 17, 100, 1000, 0x7fffffff, 0xffffffff} {
+		m := divConstMod(t, false, divOp{"i32.rem_u", 0x70, false, true}, uint64(d))
+		for _, n := range []uint32{0, 1, d - 1, d, d + 1, 0x7fffffff, 0x80000000, 0xffffffff} {
+			var stats ModuleStats
+			opts := CompileOptions{}
+			if diagnosticsEnabled {
+				opts.Stats = &stats
+			}
+			got, err := runArm64WrapperWithOptions(t, m, opts, uint64(n)|0xdeadbeef00000000)
+			if err != nil || got != uint64(n%d) {
+				t.Fatalf("%d%%%d=%d,%v want %d", n, d, got, err, n%d)
+			}
+			// Divisors needing an add correction retain their intermediate high
+			// half; the no-correction divisors exercise the fused product shift.
+			if diagnosticsEnabled && d != 0x7fffffff && stats.Funcs[0].Peephole["magic-product-shift"] == 0 {
+				t.Fatalf("d=%d product shift was not combined", d)
+			}
+		}
+	}
+}

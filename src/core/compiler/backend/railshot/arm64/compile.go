@@ -410,10 +410,13 @@ type fn struct {
 	// prologue's zeroDeclaredLocals never touches them). localBase is added to every
 	// local index while a splice runs, remapping the callee's locals onto that base;
 	// it is 0 outside a splice.
-	inlineTargets inlineTargetTable
-	inlineBase    map[int]int
-	localBase     int
-	inlineDepth   int
+	inlineTargets           inlineTargetTable
+	inlineBase              map[int]int
+	localBase               int
+	inlineDepth             int
+	inlineTailLoopFrame     int // index+1 of synthetic self-tail loop while inlining
+	inlineWriteVersions     [5]uint32
+	inlineNonzeroPredicates [8]uint32
 	// inlineRetFrame is the f.ctrl index of the synthetic block frame standing in
 	// for an inlined control-flow callee's function boundary: `return` inside the
 	// callee branches to it (not the real function frame). 0 when not inside such a
@@ -1806,7 +1809,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	// Compile is sequential, so sharing one scratch is safe.
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
 	// call sites, keyed by global func index. Empty when inlining is disabled.
-	inlineTargets := buildInlineTargets(m, allHints, policy)
+	inlineTargets := buildInlineTargets(m, allHints, policy, policy.EnabledOption(optTailLoopInline) && !profileEnabled && !opts.Interruptible && opts.GCFrameRoots == nil && len(opts.CustomInstructions) == 0 && !opts.SourceMaps && !opts.UnwindMaps)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range allHints {
 		ft, ok := m.LocalFuncType(i)
@@ -3477,6 +3480,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// function may additionally become a leaf after all of its calls inline, so
 	// classify its effective post-inline hints here as before.
 	f.preserveCallerPins = preservesCallerPins(ft, nLocals, effectiveHints.funcHints)
+	for _, target := range inlinedCallees {
+		if target.tailLoop() {
+			f.preserveCallerPins = false
+			f.hasLoop = true
+			break
+		}
+	}
 	if f.preserveCallerPins {
 		// Keep this leaf out of every register a direct caller may use for a
 		// pinned local or merge value. Its parameters stay in X0..X7 below; all
@@ -3771,6 +3781,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
+	for _, target := range inlinedCallees {
+		if target.tailLoop() {
+			f.noteTailInlineDivConstants(c.BodyBytes)
+			break
+		}
+	}
 	// Reject an already-oversized locals/header frame before emitting any
 	// SP-relative homes whose architecture encoding has a smaller displacement.
 	// Operand spills can only grow this frame and remain checked after lowering.
@@ -3813,6 +3829,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	f.prologue(hints.localScore)
 	f.preloadLoopIntConsts(hints)
+	f.preloadTailInlineDivConstants()
 	if hints.flags.has(hintHasFloatConst) {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
@@ -4886,6 +4903,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	f.preloadV128Consts(c.BodyBytes)
 	f.derivePinnedGlobals()
 	f.preloadLoopIntConsts(intConstHints)
+	f.preloadTailInlineDivConstants()
 	if f.memSizeReg == X17 {
 		// X17 is caller-clobbered backend scratch, so establish this leaf-local
 		// cache after entry setup and immediately before the body that consumes it.

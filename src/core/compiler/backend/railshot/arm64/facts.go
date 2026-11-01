@@ -13,7 +13,8 @@ const (
 	factBoolean
 	storageGCRoot
 	storageEHRoot
-	valueFactMask = factUpper32Zero | factBoolean
+	factNonZero
+	valueFactMask = factUpper32Zero | factBoolean | factNonZero
 )
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
@@ -60,6 +61,9 @@ func (f *fn) factsForLocal(x int) valueFacts {
 	if f.localFactsEnabled {
 		facts |= f.locals[x].facts
 	}
+	if f.inlineLocalNonzero(x) {
+		facts |= factNonZero
+	}
 	return facts
 }
 
@@ -95,7 +99,7 @@ func canonicalI32ParamMask(hints *funcHintView, localTypes []machineType, nParam
 
 func (f *fn) setFactsForLocal(x int, facts valueFacts) {
 	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
-		f.locals[x].facts = facts
+		f.locals[x].facts = facts &^ factNonZero
 	}
 }
 

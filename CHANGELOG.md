@@ -50,6 +50,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Keep eligible ARM64 self-tail calls in native register loops, including
+  private immutable table targets and small numeric helpers inlined into callers.
+  Reuse loop constants and reduce integer argument transfers and return branches.
+
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.
 
