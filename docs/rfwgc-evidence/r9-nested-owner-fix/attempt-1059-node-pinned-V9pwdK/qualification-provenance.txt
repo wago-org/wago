@@ -1,0 +1,10 @@
+head=1059c88e8e97840c121b3e4bc4e9f44b4b0c9a0b
+source=/tmp/wago-nested-owner-source.V9pwdK
+go version go1.27.3 linux/amd64
+1.0.41
+v26.11.1
+160000 commit a8bcbafe6d2fb191ce0188de0e18fdc107fa2598	tests/conformance/spec-v1
+160000 commit 05ca4182176763112561ae20153975c12bd689e4	tests/conformance/spec-v2
+160000 commit 9d36019973201a19f9c9ebb0f10828b2fe2374aa	tests/conformance/spec-v3
+0f20f49c1153d30993235d5959cac5941328e32e0eac279cbb44b5b3dbd17e4b  /home/dev/Projects/wago/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm
+5a1201dca94d1901369005930f3081b67ad97493e4ce1cc017faf415c4dc09c8  /home/dev/Projects/wago/.tools/wabt-1.0.41-linux-x64/bin/wast2json

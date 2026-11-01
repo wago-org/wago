@@ -85,3 +85,61 @@ ARM64/RV64 test packages cross-compiled (`-exec=true` is compile-only). Broader
 three-mode/corpus/race qualification is still pending; the first broad ordinary
 run exposed the now-fixed array.init_elem safepoint and missing corpus setup.
 Do not treat these development logs as final combined qualification.
+
+## Foundation follow-up and immutable qualification ledger
+
+Production foundation `9573c6249` passed the scoped three-mode matrix, but its
+full ordinary package gate **failed**: an importer-owned bare-provider proxy
+was rejected by the physical-owner lookup, and unused function-field type
+metadata caused four unexpected corpus link rejections. The stopped checked
+lookup did not authorize access to escaped code. `full-ordinary.log` preserves
+that failed foundation run. No full-green claim applies to9573c6249.
+
+Follow-up `1059c88e8e97840c121b3e4bc4e9f44b4b0c9a0b` restricts host graph
+activation to actual generic GC execution and recognizes a proven importer-owned
+proxy whose ordinary installed attachment retains its bare foreign provider.
+Public cross-store token admission is unchanged. It also fixes a separate
+retention defect: floating Env roots are excluded from **all** quiescent joint
+mark seeds, including the live producer's owner roots. Only traced aggregate
+edges retain the Env after the outer boundary. Unreachable floating slots are
+cleared and reused. Each collecting mutation test repeats eight times while its
+producer stays open and requires zero Envs/active floating slots at each return
+and a stable persistent-slot count.
+
+The first immutable1059 attempt stopped at a backend tooling failure after full
+ordinary and scoped race ordinary passed. See
+`attempt-1059-node-shim-failure/README.md`: Node resolved through an untrusted
+mise shim. That attempt remains **FAIL**, not a historical PASS. The replay pins
+Node26.11.1 explicitly. `qualify.sh` now creates a distinct evidence directory
+per run and rejects overwriting an explicit existing qualification directory.
+Each successful result applies only to the exact source/provenance and command
+in that run; do not infer a result from leftover flat-directory logs.
+
+A further source-audit limitation remains: the post-boundary driver uses
+nonblocking topology/domain/native lock acquisition. Contention leaves a
+pending request, but an unrelated Runtime releasing the global native lock does
+not itself guarantee a local wakeup. Current deterministic no-contention tests
+do not establish eventual release for that case. This scheduling obligation
+must be resolved and tested before claiming the complete H6 eventual-release
+contract, even if1059's requested suites pass. H2 production is paused pending
+the parent's immutable-foundation gate directive.
+
+## Independent H2 preparatory transaction repair
+
+`6a25f86e5` validates replacement overflow before clearing the previous checked
+root, and checks the table entry representation before changing ownership.
+Its bounded test saturates only ordinary receipt metadata, requests a rejected
+replacement, and checks that the visible slot, old checked root, and both counts
+are unchanged before any cleanup. The test does not inspect a released object.
+`transaction-6a25f86e5/` records a separate immutable three-mode qualification;
+1059 does not cover this later commit. This is **not** the H2 container lifetime
+repair: surviving-container receipts, independent domain claims, conditional
+converted roots, bulk publication hooks and default/actual-region end-to-end
+gates remain outstanding.
+
+Read-only H2 source comparison: Slipstream
+`084be3d4bf70fb5337085ceddfab1bfa9db8b1c9` (merged by `1a4759e5c`)
+registers collectors before the first semantic section even without types, and
+registers imported table/global root regions before publication. Wago's host
+opaque identity bridge additionally needs balanced per-container receipts; an
+opaque word cannot be used as a compact root.

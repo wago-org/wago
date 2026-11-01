@@ -1,0 +1,2 @@
+head=6a25f86e5c0df856481bec483ba9dcf3fb46b9fe
+source=/tmp/wago-extern-transaction-source.fMKsMD
