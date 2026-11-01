@@ -1,0 +1,3 @@
+bench/go.mod
+cli/wago-installer/go.mod
+go.mod

@@ -1,0 +1,6 @@
+/home/dev/.local/share/wago-rfwgc-opam/rfwgc/bin/ocamlc -version
+4.14.3
+/home/dev/.local/share/wago-rfwgc-opam/rfwgc/bin/dune --version
+3.22.1
+/home/dev/.local/share/wago-rfwgc-opam/rfwgc/bin/menhir --version
+menhir, version 20260209
