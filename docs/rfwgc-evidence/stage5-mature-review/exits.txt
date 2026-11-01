@@ -1,0 +1,12 @@
+ordinary probes exit=0
+ordinary collector exit=0
+ordinary backend exit=0
+ordinary guest exit=0
+wagodebug probes exit=0
+wagodebug collector exit=0
+wagodebug backend exit=0
+wagodebug guest exit=0
+wago_regalloccheck probes exit=0
+wago_regalloccheck collector exit=0
+wago_regalloccheck backend exit=0
+wago_regalloccheck guest exit=0
