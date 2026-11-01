@@ -1,0 +1,12 @@
+=== RUN   TestCheckedHandleGenerationRetiresBeforeWrap
+--- PASS: TestCheckedHandleGenerationRetiresBeforeWrap (0.00s)
+=== RUN   TestNativeThroughputArrayReservationCanceledAtCollection
+--- PASS: TestNativeThroughputArrayReservationCanceledAtCollection (0.00s)
+=== RUN   TestNativeStructHandleBatchReservationAndCollection
+--- PASS: TestNativeStructHandleBatchReservationAndCollection (0.00s)
+=== RUN   TestThroughputOldSpaceReuseAfterFullGC
+--- PASS: TestThroughputOldSpaceReuseAfterFullGC (0.00s)
+=== RUN   TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved
+--- PASS: TestCollectMinorPromotionFailureLeavesNurserySurvivorsUnmoved (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	0.009s

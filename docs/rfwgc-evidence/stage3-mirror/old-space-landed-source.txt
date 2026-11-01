@@ -1,0 +1,37 @@
+Source: 506b08d3d3fa3c8e8b1ce9ac0cb4f30a2463cdc3:gc/native.goose
+Unchanged ng_admit since db6014de2316f13dd08ea8618d614c28132f2688: True
+
+fn ng_admit(h: u64, bytes: u64, workers: u64, largest: u64) -> bool {
+    ng_put(h, N_RUNS, 0); ng_put(h, N_RUN_CLAIM, 0);
+    if bytes == 0 { return true; }
+    var credit: u64 = 0; let need = bytes + workers * NG_BLOCK;
+    var high = ng_get(h, N_OLD_HIGH);
+    let maximum = max(16, largest);
+    for bitmap_word in (NG_OLD / NG_BLOCK / 64)..(NG_LOS / NG_BLOCK / 64) {
+      let available = ss_ng_load64(h + N_FREE_BLOCKS + bitmap_word * 8);
+      if available == 0 { continue; }
+      for bit in 64 {
+        if available & ((1 as u64) << bit) == 0 { continue; }
+        let block_index = bitmap_word * 64 + bit as u64;
+        let b = h + N_BLOCKS + block_index * 64; var line: u64 = 0;
+        if ng_get(b, 24) != 0 { continue; }
+        while line < 128 {
+            if ss_ng_load64(b + 8 + (line / 64) * 8) & ((1 as u64) << (line & 63)) != 0 { line += 1; continue; }
+            let first = line;
+            while line < 128 && ss_ng_load64(b + 8 + (line / 64) * 8) & ((1 as u64) << (line & 63)) == 0 { line += 1; }
+            let size = (line - first) * NG_LINE;
+            if size <= maximum { continue; }
+            if ng_get(b, 0) == 0 {
+                if ng_fault(h) || ss_ng_protect(ng_get(h, N_HEAP) + block_index * NG_BLOCK, NG_BLOCK, 3) != 0 { return false; }
+                ng_put(b, 0, 1); high = max(high, (block_index + 1) * NG_BLOCK); ng_put(h, N_OLD_HIGH, high);
+            }
+            let n = ng_get(h, N_RUNS); if n >= 65536 { return false; }
+            ng_put(h, N_RUN_DATA + n * 16, block_index * NG_BLOCK + first * NG_LINE);
+            ng_put(h, N_RUN_DATA + n * 16 + 8, block_index * NG_BLOCK + line * NG_LINE);
+            ng_put(h, N_RUNS, n + 1); credit += size - maximum;
+            if credit >= need { return true; }
+        }
+      }
+    }
+    return false;
+}
