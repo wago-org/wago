@@ -738,3 +738,22 @@ reclaim notifications are explicit joint gates. Preserve RV64 dependency receipt
 semantics rather than blindly enabling them on host. Slipstream staged e1ef65d6b
 conservative failed-runtime retention does not prove cycle/eventual-release
 requirements; exact host graph remains required.
+
+## H2-F1 confirmed converted-reference ownership gap — 2026-11-01
+
+Evidence70359b920a7c4a37b18c8e1a52824037cab51b10 establishes24 bounded
+ownership failures on main90f2b57da and port45c83820f across all three modes:
+extern.convert_any publishes into an older provider's extern table/global, but
+publisher Close drops the checked conversion root and private collector while
+the provider survives.24 region cases explicitly skip at admission; they are
+not passes. Every failing case stops before further access/collection/teardown.
+H2-F1 is confirmed IN SCOPE and blocks final qualification; INCLUDED-FIX remains
+pending repair and gates. Lifetime worker now owns this receipt repair alongside
+H6-F3, in separate coherent commits. Provider-backed identity/root/domain leases
+must survive publisher retirement and release exactly once on final clear;
+permanent owner retention is insufficient. See r9-converted-provider/README.md.
+
+Source-wave evidence records Slipstream084be3d4bf (merged1a4759e5c) installing
+imported container roots and early runtime registration. Actual H6 fixef06c3710
+conservatively retains failed ABI2 runtimes; Wago's exact cycle/eventual-release
+obligation remains. Source-specific representations require adaptation.
