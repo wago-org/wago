@@ -34,8 +34,9 @@ python3 tests/scripts/patch-tinygo-foreign-stack.py >> "$evidence/qualification-
 run() {
  local label=$1
  shift
- printf '%q ' "$@" > "$evidence/$label.command"
- printf '\n' >> "$evidence/$label.command"
+ local command_text
+ printf -v command_text '%q ' "$@"
+ printf '%s\n' "${command_text% }" > "$evidence/$label.command"
  local rc=0
  timeout 30m "$@" > "$evidence/$label.log" 2>&1 || rc=$?
  printf '%s exit=%s\n' "$label" "$rc" >> "$evidence/qualification-results.txt"
