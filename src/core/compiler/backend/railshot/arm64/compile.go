@@ -414,6 +414,11 @@ type fn struct {
 	inlineBase    map[int]int
 	localBase     int
 	inlineDepth   int
+	// Read-only pair splices can read an original caller local directly. The
+	// emitted stack references retain its original index, so setLocal preserves
+	// their get-time values before any subsequent caller mutation.
+	inlineForward  [4]uint32
+	inlineForwardN uint32
 	// inlineRetFrame is the f.ctrl index of the synthetic block frame standing in
 	// for an inlined control-flow callee's function boundary: `return` inside the
 	// callee branches to it (not the real function frame). 0 when not inside such a
@@ -3738,8 +3743,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	// Auto-inlining: reserve each spliced callee's locals past f.nLocals (after all
 	// nLocals-dependent setup above, so zeroDeclaredLocals/skipFence/lazyZero see the
-	// caller's own locals only). Extends the frame's local arrays with unpinned
-	// scratch; the splice at each call site binds/zeroes them.
+	// caller's own locals only). Extends the frame's local arrays with private
+	// scratch, optionally pinned for bounded pairs; each splice binds/zeroes it.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
 	// Reject an already-oversized locals/header frame before emitting any
 	// SP-relative homes whose architecture encoding has a smaller displacement.

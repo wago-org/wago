@@ -213,18 +213,24 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
-		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+		forwarded := x32 < f.inlineForwardN
+		if forwarded {
+			x = f.inlineForward[x32]
+		}
+		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}
 		}
 		var value *elem
-		f.activateIntervalLocal(int(x), r.Offset(), true)
-		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
-			value = f.pushReg(reg, f.localType[x])
-			value.st.setGCRoot(f.gcFrameLocal(int(x)))
-			f.applyFactsForLocal(value, int(x))
-			break
+		if !forwarded {
+			f.activateIntervalLocal(int(x), r.Offset(), true)
+			if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
+				value = f.pushReg(reg, f.localType[x])
+				value.st.setGCRoot(f.gcFrameLocal(int(x)))
+				f.applyFactsForLocal(value, int(x))
+				break
+			}
 		}
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {

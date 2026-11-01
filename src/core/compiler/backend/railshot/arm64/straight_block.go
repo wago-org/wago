@@ -37,7 +37,14 @@ func (f *fn) straightLineBlock(r *wasm.Reader, kind ctrlKind, params, results in
 			}
 		}
 	}
-	return shared.IsStraightLineBlock(r, f.classifier)
+	if f.makesCalls || f.inlineTargets.empty() {
+		return shared.IsStraightLineBlock(r, f.classifier)
+	}
+	return shared.IsStraightLineBlockWithSplicedCalls(r, f.classifier, func(index uint32) bool {
+		t := f.inlineTargets.target(int(index))
+		_, reserved := f.inlineBase[int(index)]
+		return reserved && t != nil && t.integerPairLeaf()
+	})
 }
 
 // Ordinary blocks have no header branch site (-1). This distinct sentinel

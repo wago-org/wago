@@ -9,6 +9,14 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // Keeping the control frame is still necessary for its stack-height contract;
 // only entry/exit reconciliation can be omitted. The original reader is unchanged.
 func IsStraightLineBlock(source *wasm.Reader, classifier wasm.ModuleInstructionClassifier) bool {
+	return IsStraightLineBlockWithSplicedCalls(source, classifier, nil)
+}
+
+// IsStraightLineBlockWithSplicedCalls additionally admits calls for which the
+// backend proves that lowering will splice a bounded native fallthrough body.
+// The predicate must reject every actual call, helper and control-flow callee.
+// All structural bounds and reader-preservation rules remain unchanged.
+func IsStraightLineBlockWithSplicedCalls(source *wasm.Reader, classifier wasm.ModuleInstructionClassifier, spliced func(uint32) bool) bool {
 	r := *source
 	start := r.Offset()
 	depth := 0
@@ -30,6 +38,12 @@ func IsStraightLineBlock(source *wasm.Reader, classifier wasm.ModuleInstructionC
 				return false
 			}
 			depth++
+		}
+		if op == 0x10 && spliced != nil {
+			if err := classifier.ClassifyInto(&r, op, &imm); err != nil || !spliced(imm.Index) {
+				return false
+			}
+			continue
 		}
 		if !(op == 0x02 || op == 0x01 || op >= 0x1a && op <= 0x1c || op >= 0x20 && op <= 0x24 || op >= 0x28 && op <= 0x3f || op >= 0x41 && op <= 0xc4 || op == 0xfd || op == 0xfc || op == 0xfe) {
 			return false
