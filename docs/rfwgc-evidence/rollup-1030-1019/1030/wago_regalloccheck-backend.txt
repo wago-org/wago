@@ -1,0 +1,366 @@
+=== RUN   TestGCTypeSubtypingUsesExpandedStackLowering
+--- PASS: TestGCTypeSubtypingUsesExpandedStackLowering
+=== RUN   TestControlGCRootSidecarAMD64
+--- PASS: TestControlGCRootSidecarAMD64
+=== RUN   TestControlGCRootSegmentsShareBackingAMD64
+--- PASS: TestControlGCRootSegmentsShareBackingAMD64
+=== RUN   TestCaptureControlGCRootSegmentsAMD64
+--- PASS: TestCaptureControlGCRootSegmentsAMD64
+=== RUN   TestCaptureControlGCRootShapeSkipsScalarStackAMD64
+--- PASS: TestCaptureControlGCRootShapeSkipsScalarStackAMD64
+=== RUN   TestGCRootFlagsAvoidsAllFalseBacking
+--- PASS: TestGCRootFlagsAvoidsAllFalseBacking
+=== RUN   TestBuildExceptionRootMapsCatchAllGCLanes
+--- PASS: TestBuildExceptionRootMapsCatchAllGCLanes
+=== RUN   TestRegisterABICompactHeaderRemapsGCFrameLocalsAMD64
+--- PASS: TestRegisterABICompactHeaderRemapsGCFrameLocalsAMD64
+=== RUN   TestGCArrayCopyNativeSelection
+    gc_array_copy_test.go:13: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCArrayCopyNativeSelection
+=== RUN   TestGCArrayCopyNativeSelectionLayouts
+    gc_array_copy_test.go:86: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCArrayCopyNativeSelectionLayouts
+=== RUN   TestGCArrayCopyNativeSelectionGlobals
+    gc_array_copy_test.go:137: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCArrayCopyNativeSelectionGlobals
+=== RUN   TestGCArrayFillReductionSelection
+=== RUN   TestGCArrayFillReductionSelection/accepted
+=== RUN   TestGCArrayFillReductionSelection/partial-fill
+=== RUN   TestGCArrayFillReductionSelection/nonzero-start
+=== RUN   TestGCArrayFillReductionSelection/prelude
+=== RUN   TestGCArrayFillReductionSelection/interruptible
+=== RUN   TestGCArrayFillReductionSelection/source-profile
+    gc_array_fill_reduction_test.go:47: source profiles disabled
+=== RUN   TestGCArrayFillReductionSelection/unsafe-index
+=== RUN   TestGCArrayFillReductionSelection/different-step
+=== RUN   TestGCArrayFillReductionSelection/signed-bound
+=== RUN   TestGCArrayFillReductionSelection/non-power-length
+--- PASS: TestGCArrayFillReductionSelection
+    --- PASS: TestGCArrayFillReductionSelection/accepted
+    --- PASS: TestGCArrayFillReductionSelection/partial-fill
+    --- PASS: TestGCArrayFillReductionSelection/nonzero-start
+    --- PASS: TestGCArrayFillReductionSelection/prelude
+    --- PASS: TestGCArrayFillReductionSelection/interruptible
+    --- SKIP: TestGCArrayFillReductionSelection/source-profile
+    --- PASS: TestGCArrayFillReductionSelection/unsafe-index
+    --- PASS: TestGCArrayFillReductionSelection/different-step
+    --- PASS: TestGCArrayFillReductionSelection/signed-bound
+    --- PASS: TestGCArrayFillReductionSelection/non-power-length
+=== RUN   TestGCArrayFillResolverHints
+=== RUN   TestGCArrayFillResolverHints/i32-boundary
+=== RUN   TestGCArrayFillResolverHints/i64-boundary
+=== RUN   TestGCArrayFillResolverHints/i64-too-wide
+=== RUN   TestGCArrayFillResolverHints/too-many
+=== RUN   TestGCArrayFillResolverHints/negative
+=== RUN   TestGCArrayFillResolverHints/dynamic
+=== RUN   TestGCArrayFillResolverHints/open
+--- PASS: TestGCArrayFillResolverHints
+    --- PASS: TestGCArrayFillResolverHints/i32-boundary
+    --- PASS: TestGCArrayFillResolverHints/i64-boundary
+    --- PASS: TestGCArrayFillResolverHints/i64-too-wide
+    --- PASS: TestGCArrayFillResolverHints/too-many
+    --- PASS: TestGCArrayFillResolverHints/negative
+    --- PASS: TestGCArrayFillResolverHints/dynamic
+    --- PASS: TestGCArrayFillResolverHints/open
+=== RUN   TestGCGeneralArrayLenEligibility
+    gc_array_len_test.go:12: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCGeneralArrayLenEligibility
+=== RUN   TestGCGeneralArrayLenRespectsSharedStubSwitch
+    gc_array_len_test.go:48: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCGeneralArrayLenRespectsSharedStubSwitch
+=== RUN   TestGCArrayReductionSelection
+=== RUN   TestGCArrayReductionSelection/accepted
+=== RUN   TestGCArrayReductionSelection/prelude
+=== RUN   TestGCArrayReductionSelection/interruptible
+=== RUN   TestGCArrayReductionSelection/source-profile
+    gc_array_reduction_test.go:42: source profiles disabled
+=== RUN   TestGCArrayReductionSelection/unsafe-index
+=== RUN   TestGCArrayReductionSelection/different-step
+=== RUN   TestGCArrayReductionSelection/signed-bound
+=== RUN   TestGCArrayReductionSelection/non-power-length
+--- PASS: TestGCArrayReductionSelection
+    --- PASS: TestGCArrayReductionSelection/accepted
+    --- PASS: TestGCArrayReductionSelection/prelude
+    --- PASS: TestGCArrayReductionSelection/interruptible
+    --- SKIP: TestGCArrayReductionSelection/source-profile
+    --- PASS: TestGCArrayReductionSelection/unsafe-index
+    --- PASS: TestGCArrayReductionSelection/different-step
+    --- PASS: TestGCArrayReductionSelection/signed-bound
+    --- PASS: TestGCArrayReductionSelection/non-power-length
+=== RUN   TestGCVectorArrayAccessStaysNative
+    gc_array_vector_test.go:13: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCVectorArrayAccessStaysNative
+=== RUN   TestGCFinalCastFieldReadResolvesOnce
+    gc_cast_scalar_get_test.go:15: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCFinalCastFieldReadResolvesOnce
+=== RUN   TestGCConstructorGetForwardSelection
+    gc_constructor_forward_test.go:44: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCConstructorGetForwardSelection
+=== RUN   TestGCConstructorScalarReplacementSelection
+    gc_constructor_forward_test.go:72: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCConstructorScalarReplacementSelection
+=== RUN   TestGCStructHasOnlyDirectScalars
+=== RUN   TestGCStructHasOnlyDirectScalars/scalar_widths
+=== RUN   TestGCStructHasOnlyDirectScalars/packed
+=== RUN   TestGCStructHasOnlyDirectScalars/reference
+=== RUN   TestGCStructHasOnlyDirectScalars/vector
+--- PASS: TestGCStructHasOnlyDirectScalars
+    --- PASS: TestGCStructHasOnlyDirectScalars/scalar_widths
+    --- PASS: TestGCStructHasOnlyDirectScalars/packed
+    --- PASS: TestGCStructHasOnlyDirectScalars/reference
+    --- PASS: TestGCStructHasOnlyDirectScalars/vector
+=== RUN   TestGCSubtypeProofCacheBound
+--- PASS: TestGCSubtypeProofCacheBound
+=== RUN   TestGCFreshStructFactEncoding
+--- PASS: TestGCFreshStructFactEncoding
+=== RUN   TestGCFreshStructFactPreservesSubtypeProofs
+--- PASS: TestGCFreshStructFactPreservesSubtypeProofs
+=== RUN   TestGCFreshStructLocalGetForwardSelection
+    gc_constructor_forward_test.go:246: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCFreshStructLocalGetForwardSelection
+=== RUN   TestGCFreshArrayLocalGetForwardSelection
+    gc_constructor_forward_test.go:310: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCFreshArrayLocalGetForwardSelection
+=== RUN   TestSkipImmediatesConsumesGCStructNew
+--- PASS: TestSkipImmediatesConsumesGCStructNew
+=== RUN   TestCheckedDeadGCArrayConstructorsPreservePreflight
+    gc_dead_new_opt_test.go:135: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestCheckedDeadGCArrayConstructorsPreservePreflight
+=== RUN   TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors
+    gc_dead_new_opt_test.go:218: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors
+=== RUN   TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate
+    gc_dead_new_opt_test.go:246: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate
+=== RUN   TestDeadGCConstructorTreeElimination
+    gc_dead_new_opt_test.go:283: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestDeadGCConstructorTreeElimination
+=== RUN   TestGCI31ReductionMetadata
+--- PASS: TestGCI31ReductionMetadata
+=== RUN   TestWideGCHelperCapacityDoesNotAdmitWidePublicImport
+--- PASS: TestWideGCHelperCapacityDoesNotAdmitWidePublicImport
+=== RUN   TestGCLayoutMetadataMatchesLegacyDerivation
+--- PASS: TestGCLayoutMetadataMatchesLegacyDerivation
+=== RUN   TestGCLifetimeProof
+=== RUN   TestGCLifetimeProof/adjacent
+=== RUN   TestGCLifetimeProof/default
+=== RUN   TestGCLifetimeProof/overwrite
+=== RUN   TestGCLifetimeProof/alias-overwrite
+=== RUN   TestGCLifetimeProof/call
+=== RUN   TestGCLifetimeProof/store
+=== RUN   TestGCLifetimeProof/return
+=== RUN   TestGCLifetimeProof/branch
+=== RUN   TestGCLifetimeProof/identity
+=== RUN   TestGCLifetimeProof/unknown
+=== RUN   TestGCLifetimeProof/array
+=== RUN   TestGCLifetimeProof/truncated
+=== RUN   TestGCLifetimeProof/missing-end
+=== RUN   TestGCLifetimeProof/trailing
+=== RUN   TestGCLifetimeProof/stack-underflow
+=== RUN   TestGCLifetimeProof/bad-local
+=== RUN   TestGCLifetimeProof/no-gc
+--- PASS: TestGCLifetimeProof
+    --- PASS: TestGCLifetimeProof/adjacent
+    --- PASS: TestGCLifetimeProof/default
+    --- PASS: TestGCLifetimeProof/overwrite
+    --- PASS: TestGCLifetimeProof/alias-overwrite
+    --- PASS: TestGCLifetimeProof/call
+    --- PASS: TestGCLifetimeProof/store
+    --- PASS: TestGCLifetimeProof/return
+    --- PASS: TestGCLifetimeProof/branch
+    --- PASS: TestGCLifetimeProof/identity
+    --- PASS: TestGCLifetimeProof/unknown
+    --- PASS: TestGCLifetimeProof/array
+    --- PASS: TestGCLifetimeProof/truncated
+    --- PASS: TestGCLifetimeProof/missing-end
+    --- PASS: TestGCLifetimeProof/trailing
+    --- PASS: TestGCLifetimeProof/stack-underflow
+    --- PASS: TestGCLifetimeProof/bad-local
+    --- PASS: TestGCLifetimeProof/no-gc
+=== RUN   TestGCLifetimeBoundsAndTypes
+--- PASS: TestGCLifetimeBoundsAndTypes
+=== RUN   TestGCLifetimeCompileIdentity
+=== RUN   TestGCLifetimeCompileIdentity/qualifying
+=== RUN   TestGCLifetimeCompileIdentity/nonqualifying
+=== RUN   TestGCLifetimeCompileIdentity/no-gc
+--- PASS: TestGCLifetimeCompileIdentity
+    --- PASS: TestGCLifetimeCompileIdentity/qualifying
+    --- PASS: TestGCLifetimeCompileIdentity/nonqualifying
+    --- PASS: TestGCLifetimeCompileIdentity/no-gc
+=== RUN   TestGCLifetimeExactBudgets
+--- PASS: TestGCLifetimeExactBudgets
+=== RUN   TestGCLifetimeNumericTypes
+=== RUN   TestGCLifetimeNumericTypes/i32
+=== RUN   TestGCLifetimeNumericTypes/i64
+=== RUN   TestGCLifetimeNumericTypes/f32
+=== RUN   TestGCLifetimeNumericTypes/f64
+--- PASS: TestGCLifetimeNumericTypes
+    --- PASS: TestGCLifetimeNumericTypes/i32
+    --- PASS: TestGCLifetimeNumericTypes/i64
+    --- PASS: TestGCLifetimeNumericTypes/f32
+    --- PASS: TestGCLifetimeNumericTypes/f64
+=== RUN   TestGCLifetimeIdentityAndInitializer
+--- PASS: TestGCLifetimeIdentityAndInitializer
+=== RUN   TestGCLifetimeReplay
+--- PASS: TestGCLifetimeReplay
+=== RUN   TestGCLifetimeReplayContextFallback
+=== RUN   TestGCLifetimeReplayContextFallback/type
+=== RUN   TestGCLifetimeReplayContextFallback/locals
+=== RUN   TestGCLifetimeReplayContextFallback/signature
+=== RUN   TestGCLifetimeReplayContextFallback/options
+--- PASS: TestGCLifetimeReplayContextFallback
+    --- PASS: TestGCLifetimeReplayContextFallback/type
+    --- PASS: TestGCLifetimeReplayContextFallback/locals
+    --- PASS: TestGCLifetimeReplayContextFallback/signature
+    --- PASS: TestGCLifetimeReplayContextFallback/options
+=== RUN   TestGCNumericInlineLeafBoundary
+=== RUN   TestGCNumericInlineLeafBoundary/add
+=== RUN   TestGCNumericInlineLeafBoundary/division
+=== RUN   TestGCNumericInlineLeafBoundary/select
+=== RUN   TestGCNumericInlineLeafBoundary/integer-local
+=== RUN   TestGCNumericInlineLeafBoundary/float-local
+=== RUN   TestGCNumericInlineLeafBoundary/reference-local
+=== RUN   TestGCNumericInlineLeafBoundary/call
+=== RUN   TestGCNumericInlineLeafBoundary/memory
+=== RUN   TestGCNumericInlineLeafBoundary/global
+=== RUN   TestGCNumericInlineLeafBoundary/allocation
+=== RUN   TestGCNumericInlineLeafBoundary/if
+=== RUN   TestGCNumericInlineLeafBoundary/loop
+=== RUN   TestGCNumericInlineLeafBoundary/unreachable
+--- PASS: TestGCNumericInlineLeafBoundary
+    --- PASS: TestGCNumericInlineLeafBoundary/add
+    --- PASS: TestGCNumericInlineLeafBoundary/division
+    --- PASS: TestGCNumericInlineLeafBoundary/select
+    --- PASS: TestGCNumericInlineLeafBoundary/integer-local
+    --- PASS: TestGCNumericInlineLeafBoundary/float-local
+    --- PASS: TestGCNumericInlineLeafBoundary/reference-local
+    --- PASS: TestGCNumericInlineLeafBoundary/call
+    --- PASS: TestGCNumericInlineLeafBoundary/memory
+    --- PASS: TestGCNumericInlineLeafBoundary/global
+    --- PASS: TestGCNumericInlineLeafBoundary/allocation
+    --- PASS: TestGCNumericInlineLeafBoundary/if
+    --- PASS: TestGCNumericInlineLeafBoundary/loop
+    --- PASS: TestGCNumericInlineLeafBoundary/unreachable
+=== RUN   TestGCPureIfProofBounds
+=== RUN   TestGCPureIfProofBounds/void
+=== RUN   TestGCPureIfProofBounds/else
+=== RUN   TestGCPureIfProofBounds/result-conflict
+=== RUN   TestGCPureIfProofBounds/result-other-register
+=== RUN   TestGCPureIfProofBounds/nested
+=== RUN   TestGCPureIfProofBounds/call
+=== RUN   TestGCPureIfProofBounds/assign
+=== RUN   TestGCPureIfProofBounds/gc
+=== RUN   TestGCPureIfProofBounds/truncated
+=== RUN   TestGCPureIfProofBounds/repeat-else
+=== RUN   TestGCPureIfProofBounds/no-end
+--- PASS: TestGCPureIfProofBounds
+    --- PASS: TestGCPureIfProofBounds/void
+    --- PASS: TestGCPureIfProofBounds/else
+    --- PASS: TestGCPureIfProofBounds/result-conflict
+    --- PASS: TestGCPureIfProofBounds/result-other-register
+    --- PASS: TestGCPureIfProofBounds/nested
+    --- PASS: TestGCPureIfProofBounds/call
+    --- PASS: TestGCPureIfProofBounds/assign
+    --- PASS: TestGCPureIfProofBounds/gc
+    --- PASS: TestGCPureIfProofBounds/truncated
+    --- PASS: TestGCPureIfProofBounds/repeat-else
+    --- PASS: TestGCPureIfProofBounds/no-end
+=== RUN   TestDirectGCStructReferenceReadRetainsRoot
+--- PASS: TestDirectGCStructReferenceReadRetainsRoot
+=== RUN   TestDirectGCStructReferenceReadLimits
+=== RUN   TestDirectGCStructReferenceReadLimits/eq
+=== RUN   TestDirectGCStructReferenceReadLimits/any
+=== RUN   TestDirectGCStructReferenceReadLimits/i31
+=== RUN   TestDirectGCStructReferenceReadLimits/struct
+=== RUN   TestDirectGCStructReferenceReadLimits/array
+=== RUN   TestDirectGCStructReferenceReadLimits/func
+=== RUN   TestDirectGCStructReferenceReadLimits/extern
+=== RUN   TestDirectGCStructReferenceReadLimits/open
+--- PASS: TestDirectGCStructReferenceReadLimits
+    --- PASS: TestDirectGCStructReferenceReadLimits/eq
+    --- PASS: TestDirectGCStructReferenceReadLimits/any
+    --- PASS: TestDirectGCStructReferenceReadLimits/i31
+    --- PASS: TestDirectGCStructReferenceReadLimits/struct
+    --- PASS: TestDirectGCStructReferenceReadLimits/array
+    --- PASS: TestDirectGCStructReferenceReadLimits/func
+    --- PASS: TestDirectGCStructReferenceReadLimits/extern
+    --- PASS: TestDirectGCStructReferenceReadLimits/open
+=== RUN   TestGCReferenceReadRejectsInvalidNativeOffset
+--- PASS: TestGCReferenceReadRejectsInvalidNativeOffset
+=== RUN   TestGCResolvedObjectRemainsPinnedAfterFlush
+--- PASS: TestGCResolvedObjectRemainsPinnedAfterFlush
+=== RUN   TestGCOpenStructGetUsesNativeSubtypeResolver
+    gc_resolver_test.go:47: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCOpenStructGetUsesNativeSubtypeResolver
+=== RUN   TestGCResolvedHandleReuseAndInvalidation
+    gc_resolver_test.go:47: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCResolvedHandleReuseAndInvalidation
+=== RUN   TestModuleSharedGCResolverStubReducesDenseSites
+    gc_resolver_test.go:132: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestModuleSharedGCResolverStubReducesDenseSites
+=== RUN   TestModuleGCResolverFamilyCounts
+--- PASS: TestModuleGCResolverFamilyCounts
+=== RUN   TestModuleMixedGCResolverDiagnostics
+    gc_resolver_test.go:210: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestModuleMixedGCResolverDiagnostics
+=== RUN   TestGCResolversLoadSpaceByte
+=== RUN   TestGCResolversLoadSpaceByte/inline-struct
+=== RUN   TestGCResolversLoadSpaceByte/shared-open-struct
+=== RUN   TestGCResolversLoadSpaceByte/defined-cast
+=== RUN   TestGCResolversLoadSpaceByte/defined-test
+=== RUN   TestGCResolversLoadSpaceByte/cast-array-length
+=== RUN   TestGCResolversLoadSpaceByte/array-reference-get
+=== RUN   TestGCResolversLoadSpaceByte/cast-struct-get
+--- PASS: TestGCResolversLoadSpaceByte
+    --- PASS: TestGCResolversLoadSpaceByte/inline-struct
+    --- PASS: TestGCResolversLoadSpaceByte/shared-open-struct
+    --- PASS: TestGCResolversLoadSpaceByte/defined-cast
+    --- PASS: TestGCResolversLoadSpaceByte/defined-test
+    --- PASS: TestGCResolversLoadSpaceByte/cast-array-length
+    --- PASS: TestGCResolversLoadSpaceByte/array-reference-get
+    --- PASS: TestGCResolversLoadSpaceByte/cast-struct-get
+=== RUN   TestGCStructReductionSelection
+    gc_struct_reduction_test.go:43: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCStructReductionSelection
+=== RUN   TestGCStructReductionBoundedMetadata
+--- PASS: TestGCStructReductionBoundedMetadata
+=== RUN   TestGCStructReductionRejectsCustomInstructionContext
+--- PASS: TestGCStructReductionRejectsCustomInstructionContext
+=== RUN   TestGCStaticSiteTelemetrySmoke
+    gc_telemetry_bench_test.go:206: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestGCStaticSiteTelemetrySmoke
+=== RUN   TestGCHelperHintScannersMarkNativeCalls
+--- PASS: TestGCHelperHintScannersMarkNativeCalls
+=== RUN   TestGCReferenceHintRequiresHelperAdmission
+--- PASS: TestGCReferenceHintRequiresHelperAdmission
+=== RUN   TestLocalSlotOrderSkipsGCFrameRootFunctions
+    local_slot_order_test.go:119: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestLocalSlotOrderSkipsGCFrameRootFunctions
+=== RUN   TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64
+    shared_adapters_test.go:12: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64
+=== RUN   TestNativeSourcePlanActualDAGControls
+=== RUN   TestNativeSourcePlanActualDAGControls/positive
+=== RUN   TestNativeSourcePlanActualDAGControls/wrong_operator
+=== RUN   TestNativeSourcePlanActualDAGControls/wrong_type
+=== RUN   TestNativeSourcePlanActualDAGControls/swapped_children
+=== RUN   TestNativeSourcePlanActualDAGControls/missing_child_tag
+=== RUN   TestNativeSourcePlanActualDAGControls/stale_child_generation
+=== RUN   TestNativeSourcePlanActualDAGControls/prefix_replaced
+=== RUN   TestNativeSourcePlanActualDAGControls/missing_prehook
+=== RUN   TestNativeSourcePlanActualDAGControls/reader_fusion
+--- PASS: TestNativeSourcePlanActualDAGControls
+    --- PASS: TestNativeSourcePlanActualDAGControls/positive
+    --- PASS: TestNativeSourcePlanActualDAGControls/wrong_operator
+    --- PASS: TestNativeSourcePlanActualDAGControls/wrong_type
+    --- PASS: TestNativeSourcePlanActualDAGControls/swapped_children
+    --- PASS: TestNativeSourcePlanActualDAGControls/missing_child_tag
+    --- PASS: TestNativeSourcePlanActualDAGControls/stale_child_generation
+    --- PASS: TestNativeSourcePlanActualDAGControls/prefix_replaced
+    --- PASS: TestNativeSourcePlanActualDAGControls/missing_prehook
+    --- PASS: TestNativeSourcePlanActualDAGControls/reader_fusion
+=== RUN   TestCodegenStatsGCNativeByteAttribution
+    stats_test.go:244: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)
+--- SKIP: TestCodegenStatsGCNativeByteAttribution
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64

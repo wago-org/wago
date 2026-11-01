@@ -1,0 +1,205 @@
+[
+  {
+    "mode": "ordinary",
+    "suite": "collector",
+    "command": [
+      "go",
+      "test",
+      "-p=4",
+      "./src/core/runtime/gc/...",
+      "-run",
+      ".",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "ordinary",
+    "suite": "backend",
+    "command": [
+      "go",
+      "test",
+      "-p=4",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "GC|Collector|NativeAlloc|Eden",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "ordinary",
+    "suite": "guest",
+    "command": [
+      "go",
+      "test",
+      "-p=4",
+      "./src/wago",
+      "-run",
+      "^TestGC",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "ordinary",
+    "suite": "race",
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-p=4",
+      "./src/core/runtime/gc/native",
+      "-run",
+      ".",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "collector",
+    "command": [
+      "go",
+      "test",
+      "-p=4",
+      "-tags=wagodebug",
+      "./src/core/runtime/gc/...",
+      "-run",
+      ".",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "backend",
+    "command": [
+      "go",
+      "test",
+      "-p=4",
+      "-tags=wagodebug",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "GC|Collector|NativeAlloc|Eden",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "guest",
+    "command": [
+      "go",
+      "test",
+      "-p=4",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestGC",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "race",
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-p=4",
+      "-tags=wagodebug",
+      "./src/core/runtime/gc/native",
+      "-run",
+      ".",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "collector",
+    "command": [
+      "go",
+      "test",
+      "-p=4",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime/gc/...",
+      "-run",
+      ".",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "backend",
+    "command": [
+      "go",
+      "test",
+      "-p=4",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "GC|Collector|NativeAlloc|Eden",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "guest",
+    "command": [
+      "go",
+      "test",
+      "-p=4",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestGC",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "race",
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-p=4",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime/gc/native",
+      "-run",
+      ".",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 1
+  }
+]

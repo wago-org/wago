@@ -1,0 +1,11 @@
+{
+  "start_head": "5e76cff2fa36b858934f21eee894ea564b571a4c",
+  "base": "27abf4470e1137c18233d246e05dee6fb76ef266",
+  "1030": "fba8e2b50ea0cbc31089789dd27dde628c55fe9d",
+  "1019": "b6cb0e829011ab08d98d64eaefbc0085c34a0284",
+  "additional_panic_tests": "0bef34b13d51a2d941ed4b2167fb5a8b58e47dff",
+  "native": "98939b4dd875efbcda6dd53ba769ad25dec2b4f1",
+  "mature": "14f1f7696344b7d24e9f968b02a0b6f2cf747651",
+  "status": "integrated pending final gates",
+  "scope": "PR-specific collector hunks only; no unrelated main ancestry, 1003 or 1020"
+}
