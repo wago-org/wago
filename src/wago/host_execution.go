@@ -373,7 +373,7 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 		// even though the parked control frame and callsite map belong to active.
 		physicalStack = root.eng
 	}
-	activation := active.pushGCHostActivation(ctrl, importIdx, physicalStack)
+	activation := active.pushGCHostActivation(ctrl, importIdx, physicalStack, root)
 	if err := active.rootGCHostArguments(activation, importIdx, args); err != nil {
 		active.clearGCHostResultRoots(activation)
 		active.popGCHostActivation(activation)
@@ -394,7 +394,7 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 	// while arbitrary host code runs. A non-GC relay may have pre-acquired more
 	// imported GC domains than the active producer whose frame parked here.
 	leaseOwner := active
-	if root != nil && root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
+	if root != nil && root.hostCallNeedsGCSuspension() {
 		leaseOwner = root
 	}
 	id := invocation.id
@@ -586,10 +586,10 @@ func (a *hostLoopActivation) dispatchSharedAtomicWait(active *Instance, ctrl uin
 	if a.root != nil {
 		physicalStack = a.root.eng
 	}
-	activation := active.pushGCHostActivation(ctrl, helper|shared.AtomicWaitDispatchBit, physicalStack)
+	activation := active.pushGCHostActivation(ctrl, helper|shared.AtomicWaitDispatchBit, physicalStack, a.root)
 	defer active.popGCHostActivation(activation)
 	leaseOwner := active
-	if a.root != nil && a.root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
+	if a.root != nil && a.root.hostCallNeedsGCSuspension() {
 		leaseOwner = a.root
 	}
 	var gcSuspension *gcInvocationSuspension
