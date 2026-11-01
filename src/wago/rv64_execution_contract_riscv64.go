@@ -46,7 +46,7 @@ func rv64ArtifactLinkingCall(code []byte, returnOffset uint32) bool {
 func rv64SourceFrameOwnership(c *Compiled) bool {
 	roots := c.genericGCFrameRoots()
 	if len(c.Entry) != len(c.Funcs) || len(c.Entry) != len(c.InternalEntry) ||
-		len(c.code) > 1<<31-1 || roots != nil && len(c.Entry) > railshot.MaxFunctions {
+		len(c.code) > 1<<31-1 || roots != nil && len(c.Entry) > railshot.MaxModuleFunctions {
 		return false
 	}
 	if len(c.Entry) == 0 {

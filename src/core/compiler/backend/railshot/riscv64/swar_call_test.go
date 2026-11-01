@@ -92,7 +92,7 @@ func TestSWARDirectCallDirectoryAndResourceGates(t *testing.T) {
 		body := append(bytes.Repeat([]byte{0x10, 1}, count), 0x0b)
 		fixtures := []fixtureFunc{{body: body}, {body: []byte{0x0b}}}
 		image, err := compileSWARModule(binaryModule(fixtures...), emissionMode{production: true})
-		if count == maxDirectCalls {
+		if count <= maxFunctionCallSites {
 			if err != nil || image.functions[0].DirectCalls != count {
 				t.Fatal("max calls", err)
 			}

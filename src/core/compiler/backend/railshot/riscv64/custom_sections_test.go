@@ -86,7 +86,7 @@ func TestProductionCustomSectionBoundsAndSemanticGates(t *testing.T) {
 				name   string
 				mutate func(*wasm.Module)
 			}{
-				{"count", func(m *wasm.Module) { m.Customs = make([]wasm.CustomSec, MaxFunctions+1) }},
+				{"count", func(m *wasm.Module) { m.Customs = make([]wasm.CustomSec, MaxModuleBytes/16+1) }},
 				{"payload", func(m *wasm.Module) {
 					m.Customs = []wasm.CustomSec{{Name: "opaque", Data: make([]byte, MaxModuleBytes)}}
 				}},
@@ -145,7 +145,7 @@ func TestProductionCustomMetadataAccountingAllocations(t *testing.T) {
 	m := &wasm.Module{Customs: []wasm.CustomSec{{Name: "opaque", Data: []byte{0xff, 0}}}}
 	allocs := testing.AllocsPerRun(100, func() {
 		remaining := MaxModuleBytes
-		if err := admitSWARDecodedMetadataBudget(m, &remaining); err != nil || remaining != MaxModuleBytes-len("opaque")-2 {
+		if err := admitSWARDecodedMetadataBudget(m, &remaining); err != nil || remaining != MaxModuleBytes-len("opaque")-2-16 {
 			t.Fatal("metadata byte accounting", remaining, err)
 		}
 	})

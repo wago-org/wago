@@ -25,7 +25,7 @@ func TestPrivateNativeTableThunkBounds(t *testing.T) {
 			}
 		}
 	}
-	for _, limits := range [][3]int{{-1, 0, 0}, {257, 0, 0}, {0, -1, 0}, {0, 257, 0}, {0, 0, MaxFunctions}} {
+	for _, limits := range [][3]int{{-1, 0, 0}, {257, 0, 0}, {0, -1, 0}, {0, 257, 0}, {0, 0, MaxModuleFunctions}} {
 		if code, err := nativeTableThunk(0, limits[0], limits[1], uint32(limits[2])); code != nil || err == nil {
 			t.Fatal("unbounded table transport emitted", limits, err)
 		}
@@ -115,7 +115,7 @@ func TestPrivateNativeTableCallRepeatedAdmission(t *testing.T) {
 				if scalarErr == nil {
 					scalar, _, _, scalarErr = compileIntegerMode(fn, ft, &state, summary, mode)
 				}
-				if count > maxDirectCalls {
+				if count > maxFunctionCallSites {
 					if ordinaryErr == nil || foreignErr == nil || swarErr == nil || scalarErr == nil || code != nil || scalar != nil {
 						t.Fatal("call-count bound escaped")
 					}

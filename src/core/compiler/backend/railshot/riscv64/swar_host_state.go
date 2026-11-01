@@ -26,7 +26,7 @@ func swarImportSignature(sig *wasm.CompType) error {
 // Generate bounded numeric/vector transport templates, with an image budget already
 // reduced by every admitted defined function. Empty inputs retain nil images.
 func swarHostThunks(signatures []swarHostSignature, limit int) ([]byte, []int, error) {
-	if len(signatures) > MaxHostFunctionImports || limit < 0 || limit > MaxCodeBytes {
+	if len(signatures) > MaxFunctionImports || limit < 0 || limit > MaxCodeBytes {
 		return nil, nil, unsupported("SWAR host thunk resource bound")
 	}
 	for _, sig := range signatures {
@@ -68,7 +68,7 @@ func (image *swarModuleImage) instantiateHosts(job *coreruntime.JobMemory, guest
 }
 
 func (image *swarModuleImage) instantiateHostsWithArena(job *coreruntime.JobMemory, guest, thunks *coreruntime.CodeBuffer, allocate func(int) (*coreruntime.Arena, error)) (*swarHostOwner, error) {
-	if image == nil || job == nil || len(image.hosts) > MaxHostFunctionImports || image.table != nil || len(image.elements) != 0 || len(image.functionKeys) != 0 {
+	if image == nil || job == nil || len(image.hosts) > MaxFunctionImports || image.table != nil || len(image.elements) != 0 || len(image.functionKeys) != 0 {
 		return nil, unsupported("SWAR host owner image/job/table shape")
 	}
 	ctx := job.CaptureInstanceContext()
@@ -81,7 +81,7 @@ func (image *swarModuleImage) instantiateHostsWithArena(job *coreruntime.JobMemo
 		}
 		return &swarHostOwner{}, nil
 	}
-	if allocate == nil || guest == nil || thunks == nil || len(image.code) == 0 || len(image.code) > MaxCodeBytes || len(image.hostCode) > MaxCodeBytes-len(image.code) || len(image.functions) == 0 || len(image.functions) > MaxFunctions-len(image.hosts) || !bytes.Equal(guest.Bytes(), image.code) || !bytes.Equal(thunks.Bytes(), image.hostCode) {
+	if allocate == nil || guest == nil || thunks == nil || len(image.code) == 0 || len(image.code) > MaxCodeBytes || len(image.hostCode) > MaxCodeBytes-len(image.code) || len(image.functions) == 0 || len(image.functions) > MaxModuleFunctions-len(image.hosts) || !bytes.Equal(guest.Bytes(), image.code) || !bytes.Equal(thunks.Bytes(), image.hostCode) {
 		return nil, unsupported("SWAR host owner code/directory bound")
 	}
 	previousEnd := 0

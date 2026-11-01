@@ -10,7 +10,7 @@ import (
 )
 
 const maxRootedScalarArrayFixed = 254
-const maxRootedScalarHostImports = MaxHostFunctionImports
+const maxRootedScalarHostImports = MaxFunctionImports
 const maxRootedScalarMemories = 4
 
 // admitRV64GCRootedScalarModule is the first source-shape admission shared by
@@ -24,8 +24,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 	if len(custom) != 0 {
 		instructions = custom[0]
 	}
-	if m == nil || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxTypeDeclarations || len(m.Exports) > MaxFunctions ||
-		len(m.Tables) > MaxFunctions || len(m.Memories) > maxRootedScalarMemories || len(m.Globals) > 256 ||
+	if m == nil || len(m.Code) > MaxModuleFunctions || len(m.Types) == 0 || len(m.Types) > MaxTypeDeclarations || len(m.Exports) > MaxModuleExports ||
+		len(m.Tables) > MaxModuleTables || len(m.Memories) > maxRootedScalarMemories || len(m.Globals) > 256 ||
 		len(m.Elements) > 256 || len(m.Data) > 256 || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
 		return false
@@ -49,8 +49,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 	importedTables := m.ImportedTableCount()
 	memoryCount := importedMemories + len(m.Memories)
 	tableCount := importedTables + len(m.Tables)
-	if importedFunctions+importedGlobals+importedMemories+importedTables != len(m.Imports) || importedFunctions > maxRootedScalarHostImports || importedFunctions+len(m.Code) > MaxFunctions ||
-		importedGlobals+len(m.Globals) > 256 || memoryCount > maxRootedScalarMemories || tableCount > MaxFunctions {
+	if importedFunctions+importedGlobals+importedMemories+importedTables != len(m.Imports) || importedFunctions > maxRootedScalarHostImports || importedFunctions+len(m.Code) > MaxModuleFunctions ||
+		importedGlobals+len(m.Globals) > 256 || memoryCount > maxRootedScalarMemories || tableCount > MaxModuleTables {
 		return false
 	}
 	if len(m.Imports) != 0 {

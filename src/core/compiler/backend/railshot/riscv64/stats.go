@@ -5,7 +5,7 @@ package riscv64
 // collectFinalizedStats runs only after the whole image has been staged and its
 // deferred ownership transfer has succeeded. FunctionInfo contains final framed
 // sizes; fixed-width direct-call patching cannot change them. The compiler bounds
-// this directory by MaxFunctions before lowering. Two contiguous allocations
+// this directory by directory byte budgets before lowering. Two contiguous allocations
 // own the common pointer-shaped result, with no code or compiler scratch retained.
 func collectFinalizedStats(c *Compiled, destination *ModuleStats) {
 	if !diagnosticsEnabled || destination == nil {

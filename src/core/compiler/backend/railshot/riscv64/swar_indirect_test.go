@@ -111,7 +111,7 @@ func TestSWARIndirectDeadTypingAndSourceBudget(t *testing.T) {
 		leaf := fixtureFunc{body: []byte{0x0b}}
 		m, types, keys := swarValidatedIndirectModule(t, caller, leaf)
 		code, _, calls, err := compileSWARPairsWithIndirectKeys(&m.Code[0], types[0], nil, types, types, nil, 0, &m.Tables[0].Type, keys, mode)
-		if count == maxDirectCalls {
+		if count <= maxFunctionCallSites {
 			if err != nil || len(code) == 0 || calls != nil {
 				t.Fatal("maximum source indirect calls", err)
 			}

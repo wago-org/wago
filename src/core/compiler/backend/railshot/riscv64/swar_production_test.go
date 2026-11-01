@@ -528,8 +528,8 @@ func TestSWARProductionCombinedImportBounds(t *testing.T) {
 			}
 		}
 		bad.Imports = append(bad.Imports, extra)
-		if err := admitSWARDecodedBudget(&bad); !errors.Is(err, ErrUnsupported) {
-			t.Fatal("per-kind import bound bypassed", kind, err)
+		if err := admitSWARDecodedBudget(&bad); (err == nil) != (kind == wasm.ExternFunc) {
+			t.Fatal("per-kind import budget", kind, err)
 		}
 	}
 	bad := *m

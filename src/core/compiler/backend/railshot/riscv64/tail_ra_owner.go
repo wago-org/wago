@@ -183,7 +183,7 @@ func tailRAOwnedBound(s tailRAOwnerSpec) (int, int, error) {
 			entry int
 		}{site.caller.codeKey(), site.caller.info.Entry}
 		perFunction[key]++
-		if perFunction[key] > maxDirectCalls || len(perFunction) > MaxFunctions {
+		if perFunction[key] > maxFunctionCallSites || len(perFunction) > MaxFunctions {
 			return 0, 0, unsupported("private tail per-function site bound")
 		}
 		for _, f := range []tailRAFunction{site.caller, site.target} {

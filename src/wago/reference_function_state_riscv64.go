@@ -199,7 +199,7 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 // across the retained maps without allocating another name directory.
 func rv64ValidateReferenceFunctionExports(c *Compiled, remaining *int) error {
 	memories := c.memoryExportMap()
-	if len(c.Exports)+len(c.GlobalExports)+len(memories) > railshot.MaxFunctions {
+	if len(c.Exports)+len(c.GlobalExports)+len(memories) > railshot.MaxModuleExports {
 		return fmt.Errorf("RV64 closed reference export count bound")
 	}
 	for name, index := range c.GlobalExports {

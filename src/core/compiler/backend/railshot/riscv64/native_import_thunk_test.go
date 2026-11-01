@@ -75,7 +75,7 @@ func TestPrivateNativeImportThunkAddressAdmission(t *testing.T) {
 		func(_ *nativeImportTarget, home, _ *uintptr, _ *uint32) { *home++ },
 		func(_ *nativeImportTarget, _, ctx *uintptr, _ *uint32) { *ctx = 0 },
 		func(_ *nativeImportTarget, _, ctx *uintptr, _ *uint32) { *ctx++ },
-		func(_ *nativeImportTarget, _, _ *uintptr, index *uint32) { *index = MaxHostFunctionImports },
+		func(_ *nativeImportTarget, _, _ *uintptr, index *uint32) { *index = MaxFunctionImports },
 	} {
 		candidate, home, context, index := target, uintptr(0x30000), uintptr(0x40000), uint32(0)
 		mutate(&candidate, &home, &context, &index)

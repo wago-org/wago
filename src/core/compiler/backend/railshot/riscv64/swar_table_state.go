@@ -95,7 +95,7 @@ func (image *swarModuleImage) instantiateTablesWithArena(job *coreruntime.JobMem
 	if ctx.TablePtr != 0 || ctx.FuncRefDescPtr != 0 || ctx.PassiveElemPtr != 0 {
 		return nil, unsupported("SWAR table owner requires unbound job")
 	}
-	if allocate == nil || code == nil || len(image.code) == 0 || len(image.code) > MaxCodeBytes || len(code.Bytes()) != len(image.code) || !bytes.Equal(code.Bytes(), image.code) || len(image.functions) == 0 || len(image.functions) > MaxFunctions || len(image.functionKeys) != len(image.functions) || len(image.elements) > MaxOwnedElementSegments {
+	if allocate == nil || code == nil || len(image.code) == 0 || len(image.code) > MaxCodeBytes || len(code.Bytes()) != len(image.code) || !bytes.Equal(code.Bytes(), image.code) || len(image.functions) == 0 || len(image.functions) > MaxModuleFunctions || len(image.functionKeys) != len(image.functions) || len(image.elements) > MaxOwnedElementSegments {
 		return nil, unsupported("SWAR table owner image/code/directory bound")
 	}
 	previousEnd := 0

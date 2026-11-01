@@ -18,7 +18,7 @@ func railshotConfigureFrontendTable64(features *frontend.Features) {
 // Native lowering applies its own carrier rules. General table combinations use
 // indexed descriptors; they do not depend on an exact module operation shape.
 func validateRV64GenericTable64Source(m *wasm.Module) error {
-	if m == nil || m.TableCount() == 0 || m.TableCount() > railshot.MaxFunctions {
+	if m == nil || m.TableCount() == 0 || m.TableCount() > railshot.MaxModuleTables {
 		return fmt.Errorf("compile: RV64 table64 directory count exceeds its bound")
 	}
 	for index := 0; index < m.TableCount(); index++ {

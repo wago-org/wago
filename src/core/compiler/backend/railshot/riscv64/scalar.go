@@ -28,6 +28,7 @@ type target struct {
 
 type emissionMode struct {
 	profileMode
+	swarDirectoriesAdmitted  bool         // module-scoped validation of immutable SWAR directories
 	tableModuleSource        *wasm.Module // borrowed validated public table types
 	customInstructions       *pluginInstructionDirectory
 	customMemory             bool

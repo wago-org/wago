@@ -8,7 +8,7 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // targets carry exact primitive signatures; ordinary direct local calls
 // may pass the validated nullable carriers through the existing frame ABI.
 func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
-	if m == nil || len(m.Code) > MaxPublicCodeBytes/16 || len(m.FuncTypes) != len(m.Code) || len(m.Imports) > MaxPublicImports || len(m.Types) > MaxPublicCodeBytes/8 || len(m.Tables)+m.ImportedTableCount() > MaxFunctions || len(m.Elements) > MaxPublicElementSegments || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
+	if m == nil || len(m.Code) > MaxPublicCodeBytes/16 || len(m.FuncTypes) != len(m.Code) || len(m.Imports) > MaxPublicImports || len(m.Types) > MaxPublicCodeBytes/8 || len(m.Tables)+m.ImportedTableCount() > MaxModuleTables || len(m.Elements) > MaxPublicElementSegments || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
 		return false
 	}
 	directory, directoryErr := newSourceFunctionTypeDirectory(m)

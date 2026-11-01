@@ -94,7 +94,7 @@ func admitModuleIntegerInitializer(expr wasm.Expr, expected wasm.ValType, m *was
 // frontend folding. Literal folding must not erase source resource limits.
 func AdmitPublicInitializers(m *wasm.Module) error {
 	immediate := admitRV64ImmediateReferenceModule(m)
-	if m == nil || len(m.Imports) > MaxPublicImports || len(m.Memories) > MaxProductionMemories || m.MemCount() > MaxProductionMemories || m.TableCount() > MaxFunctions || m.ImportedGlobalCount()+len(m.Globals) > MaxPublicGlobals || uint64(len(m.Data)) > uint64(MaxPublicCodeBytes)/16 || len(m.Elements) > MaxPublicElementSegments {
+	if m == nil || len(m.Imports) > MaxPublicImports || len(m.Memories) > MaxProductionMemories || m.MemCount() > MaxProductionMemories || m.TableCount() > MaxModuleTables || m.ImportedGlobalCount()+len(m.Globals) > MaxPublicGlobals || uint64(len(m.Data)) > uint64(MaxPublicCodeBytes)/16 || len(m.Elements) > MaxPublicElementSegments {
 		return unsupported("public initializer count bound")
 	}
 	aggregateParser := newRootedScalarAggregateParser(m)
@@ -200,7 +200,7 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 		}
 	}
 	if hasReferenceGlobal {
-		if len(m.Exports) > MaxFunctions {
+		if len(m.Exports) > MaxModuleExports {
 			return unsupported("reference-global export count bound")
 		}
 		for _, ex := range m.Exports {

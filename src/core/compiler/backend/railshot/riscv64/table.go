@@ -122,7 +122,7 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 	rootedScalar := admitRV64GCRootedScalarModule(m)
 	// Public descriptors use table indices and do not depend on a selected
 	// module shape. Private compilation retains its one-table contract.
-	if public && tableCount > MaxFunctions || !public && tableCount > 1 && !rootedScalar || len(m.Elements) > productionElementSegmentLimit(public) {
+	if public && tableCount > MaxModuleTables || !public && tableCount > 1 && !rootedScalar || len(m.Elements) > productionElementSegmentLimit(public) {
 		return unsupported("private table/element count")
 	}
 	// The exact reference-array checkpoint owns a passive GC initializer rather

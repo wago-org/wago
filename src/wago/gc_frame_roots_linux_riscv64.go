@@ -53,7 +53,7 @@ func newGCFrameRootPlanOwned(m *wasm.Module, exactRoots bool, diagnostic *string
 	importedTables := m.ImportedTableCount()
 	memoryCount := importedMemories + len(m.Memories)
 	tableCount := importedTables + len(m.Tables)
-	if importedFunctions+importedGlobals+importedMemories+importedTables+m.ImportedTagCount() != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > maxRV64ExecutionTables || tableCount > maxRV64ExecutionTables || memoryCount > rv64RootedMaxMemories || m.TagCount() > railshot.MaxFunctions || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	if importedFunctions+importedGlobals+importedMemories+importedTables+m.ImportedTagCount() != len(m.Imports) || importedFunctions > railshot.MaxFunctionImports || importedFunctions+len(m.Code) > railshot.MaxModuleFunctions || len(m.Tables) > maxRV64ExecutionTables || tableCount > maxRV64ExecutionTables || memoryCount > rv64RootedMaxMemories || m.TagCount() > railshot.MaxModuleTags || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
 	rootedImportValue := func(typ wasm.ValType) bool {

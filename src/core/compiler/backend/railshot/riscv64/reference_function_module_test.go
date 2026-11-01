@@ -796,7 +796,7 @@ func TestReferenceFunctionModuleImmediateAndAggregateBounds(t *testing.T) {
 		for _, ex := range m.Exports {
 			used += len(ex.Name)
 		}
-		m.Customs = []wasm.CustomSec{{Name: "opaque", Data: make([]byte, MaxModuleBytes-used-len("opaque"))}}
+		m.Customs = []wasm.CustomSec{{Name: "opaque", Data: make([]byte, MaxModuleBytes-used-len("opaque")-16)}}
 		if err := admitClosedReferenceFunctionModule(m, vector); err != nil {
 			t.Fatal("exact aggregate bound", vector, err)
 		}
@@ -815,7 +815,7 @@ func TestReferenceFunctionModuleDirectoryAndLocalBounds(t *testing.T) {
 			acceptPlusOne bool
 			resize        func(*wasm.Module, int)
 		}{
-			{"functions", MaxFunctions, false, func(m *wasm.Module, n int) {
+			{"functions", MaxFunctions, true, func(m *wasm.Module, n int) {
 				for len(m.Code) < n {
 					m.FuncTypes = append(m.FuncTypes, wasm.TypeIdx{})
 					m.Code = append(m.Code, wasm.Func{BodyBytes: []byte{0x0b}, LocalDeclBytes: 1})
@@ -826,13 +826,13 @@ func TestReferenceFunctionModuleDirectoryAndLocalBounds(t *testing.T) {
 					m.Types = append(m.Types, m.Types[0])
 				}
 			}},
-			{"exports", MaxFunctions, false, func(m *wasm.Module, n int) {
+			{"exports", MaxFunctions, true, func(m *wasm.Module, n int) {
 				m.Exports = nil
 				for i := 0; i < n; i++ {
 					m.Exports = append(m.Exports, wasm.Export{Name: fmt.Sprint(i), Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 0}})
 				}
 			}},
-			{"customs", MaxFunctions, false, func(m *wasm.Module, n int) { m.Customs = make([]wasm.CustomSec, n) }},
+			{"customs", MaxFunctions, true, func(m *wasm.Module, n int) { m.Customs = make([]wasm.CustomSec, n) }},
 			{"segments", MaxOwnedElementSegments, false, func(m *wasm.Module, n int) {
 				for len(m.Elements) < n {
 					m.Elements = append(m.Elements, wasm.Elem{Mode: wasm.ElemMode{Kind: wasm.ElemDeclarative}})
@@ -986,7 +986,7 @@ func TestReferenceFunctionModuleUnderstatedLocalBytes(t *testing.T) {
 		for _, ex := range m.Exports {
 			used += len(ex.Name)
 		}
-		m.Customs = []wasm.CustomSec{{Name: "opaque", Data: make([]byte, MaxModuleBytes-used-len("opaque"))}}
+		m.Customs = []wasm.CustomSec{{Name: "opaque", Data: make([]byte, MaxModuleBytes-used-len("opaque")-16)}}
 		if err := admitClosedReferenceFunctionModule(m, vector); err != nil {
 			t.Fatal("derived local aggregate exact bound", vector, err)
 		}
