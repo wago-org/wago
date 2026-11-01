@@ -434,8 +434,12 @@ func preferredGCCollectorFromImports(c *Compiled, imports resolvedImports, store
 	// so large import sets remain linear instead of rescanning the complete key
 	// list for every InstanceExport in the imports map.
 	if c != nil {
+		// Native exception transfers can carry collector references even through
+		// () -> () imports. Match the EH transfer admission in validateImportBindings;
+		// the explicit function signature does not describe those payloads.
+		exceptionTransfers := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) || c.needsOwnedExceptionReferences()
 		for i, displayKey := range c.Imports {
-			if i >= len(c.importFuncSigs) || !c.needsOwnedExceptionReferences() && !funcSigHasGCRefs(c.importFuncSigs[i]) {
+			if i >= len(c.importFuncSigs) || !exceptionTransfers && !funcSigHasGCRefs(c.importFuncSigs[i]) {
 				continue
 			}
 			v, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport)
