@@ -1,0 +1,50 @@
+[
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/wago-org/wago/commits/421119d1d",
+      "--jq",
+      "{sha: .sha, message: .commit.message}"
+    ],
+    "exit": 1,
+    "stdout": "{\"message\":\"No commit found for SHA: 421119d1d\",\"documentation_url\":\"https://docs.github.com/rest/commits/commits#get-a-commit\",\"status\":\"422\"}",
+    "stderr": "gh: No commit found for SHA: 421119d1d (HTTP 422)\n"
+  },
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/wago-org/wago/commits/11bcf23fd",
+      "--jq",
+      "{sha: .sha, message: .commit.message}"
+    ],
+    "exit": 1,
+    "stdout": "{\"message\":\"No commit found for SHA: 11bcf23fd\",\"documentation_url\":\"https://docs.github.com/rest/commits/commits#get-a-commit\",\"status\":\"422\"}",
+    "stderr": "gh: No commit found for SHA: 11bcf23fd (HTTP 422)\n"
+  },
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/jtenner/wago/commits/421119d1d",
+      "--jq",
+      "{sha: .sha, message: .commit.message}"
+    ],
+    "exit": 1,
+    "stdout": "{\"message\":\"Not Found\",\"documentation_url\":\"https://docs.github.com/rest/commits/commits#get-a-commit\",\"status\":\"404\"}",
+    "stderr": "gh: Not Found (HTTP 404)\n"
+  },
+  {
+    "command": [
+      "gh",
+      "api",
+      "repos/jtenner/wago/commits/11bcf23fd",
+      "--jq",
+      "{sha: .sha, message: .commit.message}"
+    ],
+    "exit": 1,
+    "stdout": "{\"message\":\"Not Found\",\"documentation_url\":\"https://docs.github.com/rest/commits/commits#get-a-commit\",\"status\":\"404\"}",
+    "stderr": "gh: Not Found (HTTP 404)\n"
+  }
+]

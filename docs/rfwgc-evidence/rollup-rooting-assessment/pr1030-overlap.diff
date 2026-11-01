@@ -1,0 +1,154 @@
+diff --git a/src/core/runtime/gc/native/native_alloc.go b/src/core/runtime/gc/native/native_alloc.go
+index c41a4ec66..c6bd479dd 100644
+--- a/src/core/runtime/gc/native/native_alloc.go
++++ b/src/core/runtime/gc/native/native_alloc.go
+@@ -431,12 +431,9 @@ func (c *Collector) discardNativeStructHandles() {
+ 		}
+ 		c.nurseryBump = rewind
+ 	}
+-	chargedBump := c.nurseryBump
+ 	if canceled {
+-		// Reserved handles are appended as one tail batch and no Go allocation or
+-		// collection can append another nursery identity before cancellation. Trim
+-		// that bounded tail directly and retain only consumed live handles. Keep the
+-		// full compaction as a fail-closed fallback if the invariant is not exact.
++		// Usually this batch is the ledger tail. An independent large-array
++		// reservation can follow it, so use the bounded trim only when exact.
+ 		trimmed := false
+ 		if int(end) <= len(c.nurseryHandles) {
+ 			start := len(c.nurseryHandles) - int(end)
+@@ -459,15 +456,25 @@ func (c *Collector) discardNativeStructHandles() {
+ 			}
+ 		}
+ 		if !trimmed {
+-			// A failed collection can return before normal nursery compaction, and
+-			// later handle reuse must not append a duplicate identity to the dense
+-			// young set.
+-			c.compactNurseryHandles()
+-			if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
+-				// Native dead-struct charges have no handle extent for compaction
+-				// to discover. Keep their high-water mark until collection reclaims
+-				// the charged bytes and clears the pending object count.
+-				c.nurseryBump = chargedBump
++			reserved := &c.nativeLargeArrayAlloc
++			if reserved.Cursor < reserved.Count {
++				// An unpublished array owns bytes and a free handle that ordinary
++				// nursery compaction cannot see. Preserve both until it commits.
++				out := c.nurseryHandles[:0]
++				for _, h := range c.nurseryHandles {
++					if c.isYoungHandle(h) || h == reserved.Handle {
++						out = append(out, h)
++					}
++				}
++				clear(c.nurseryHandles[len(out):])
++				c.nurseryHandles = out
++			} else {
++				chargedBump := c.nurseryBump
++				c.compactNurseryHandles()
++				if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
++					// Dead native structs have no handle extent to reconstruct.
++					c.nurseryBump = chargedBump
++				}
+ 			}
+ 		}
+ 	}
+diff --git a/src/core/runtime/gc/native/native_batch_cancel_overlap_test.go b/src/core/runtime/gc/native/native_batch_cancel_overlap_test.go
+new file mode 100644
+index 000000000..a8a066d97
+--- /dev/null
++++ b/src/core/runtime/gc/native/native_batch_cancel_overlap_test.go
+@@ -0,0 +1,94 @@
++package gc
++
++import (
++	"fmt"
++	"slices"
++	"testing"
++)
++
++func TestNativeBatchCancellationPreservesActiveArrayReservation(t *testing.T) {
++	for _, checked := range []bool{false, true} {
++		for _, bytes := range []uint32{512, 40 << 10} {
++			for _, chunk := range []bool{false, true} {
++				t.Run(fmt.Sprintf("checked=%t/bytes=%d/chunk=%t", checked, bytes, chunk), func(t *testing.T) {
++					c := batchTestCollector(t)
++					if checked {
++						if err := c.EnableCheckedHandles(); err != nil {
++							t.Fatal(err)
++						}
++					}
++					// The later independent array reservation makes the first batch cease
++					// to be the nursery ledger's tail, exercising cancellation's fallback.
++					prepare := c.PrepareNativeStructAllocation
++					if chunk {
++						prepare = c.PrepareNativeAllocation
++					}
++					if !prepare(16) {
++						t.Fatal("batch reservation unavailable")
++					}
++					if !c.PrepareNativeArrayAllocationImmediate(bytes) {
++						t.Fatal("array reservation unavailable")
++					}
++					reserved := c.nativeLargeArrayAlloc
++					bump := c.nurseryBump
++					c.CancelNativeAllocationBatch()
++					if spaceKind((reserved.ChunkBump>>16)&0xff) == spaceNursery && c.nurseryBump != bump {
++						t.Fatalf("cancellation moved bump from %d to %d", bump, c.nurseryBump)
++					}
++					if !slices.Equal(c.nurseryHandles, []uint32{reserved.Handle}) {
++						t.Fatalf("ledger after cancellation = %v", c.nurseryHandles)
++					}
++					// Reproduce the reported [0,512) versus [0,16) overlap through an ordinary
++					// allocation while the unpublished native array reservation remains live.
++					ref, err := c.NewStructDefault(0)
++					if err != nil {
++						t.Fatal(err)
++					}
++					e := c.handles[handleOf(ref)]
++					if spaceKind((reserved.ChunkBump>>16)&0xff) == spaceNursery &&
++						e.off < reserved.ChunkEnd && reserved.ChunkStart < e.off+e.size {
++						t.Fatalf("allocation [%d,%d) overlaps active reservation [%d,%d)", e.off, e.off+e.size, reserved.ChunkStart, reserved.ChunkEnd)
++					}
++					if c.nativeLargeArrayAlloc != reserved {
++						t.Fatal("cancellation changed independent reservation")
++					}
++					if !slices.Contains(c.nurseryHandles, reserved.Handle) {
++						t.Fatal("cancellation removed active reservation from nursery ledger")
++					}
++					if slices.Contains(c.freeHandles, reserved.Handle) {
++						t.Fatal("active reservation handle recycled")
++					}
++					c.discardNativeLargeArrayAllocation()
++					if slices.Contains(c.nurseryHandles, reserved.Handle) {
++						t.Fatal("canceled array remains in ledger")
++					}
++				})
++			}
++		}
++	}
++}
++
++func TestNativeBatchCancellationReclaimsPromotedNurseryWithoutReservation(t *testing.T) {
++	c := batchTestCollector(t)
++	if !c.PrepareNativeStructHandles() {
++		t.Fatal("batch reservation unavailable")
++	}
++	publishBatchTestStructs(c, 1)
++	ref := makeObjRef(c.nativeStructAlloc.Handles[0])
++	if err := c.ForcePromote(ref); err != nil {
++		t.Fatal(err)
++	}
++	// Promotion removes the consumed identity from the nursery ledger, so the
++	// remaining reservation is no longer an exact tail batch. No array or dead
++	// allocation charge owns the now-empty nursery extent.
++	if c.hasPendingDeadNurseryObjects() {
++		t.Fatal("unexpected pending dead allocation charge")
++	}
++	c.CancelNativeAllocationBatch()
++	if c.nurseryBump != 0 || len(c.nurseryHandles) != 0 {
++		t.Fatalf("cancellation retained empty nursery: bump=%d handles=%v", c.nurseryBump, c.nurseryHandles)
++	}
++	if !c.validObjectRef(ref) {
++		t.Fatal("cancellation invalidated promoted object")
++	}
++}

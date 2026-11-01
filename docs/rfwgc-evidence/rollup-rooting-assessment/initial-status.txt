@@ -1,0 +1,51 @@
+ M .github/workflows/ci.yml
+ M cli/manager/internal/standalone/build_linux_test.go
+ M docs/rfwgc-evidence/stage2-corpus/measure.py
+ M docs/rfwgc-evidence/stage2-corpus/summarize.py
+A  docs/rfwgc-evidence/stage5-mature-runtime/README.md
+A  docs/rfwgc-evidence/stage5-mature-runtime/initial-debug-footprint.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/initial-ordinary-footprint.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/ordinary-backend-diagnostics.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/ordinary-backend.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/ordinary-collector.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/ordinary-guest.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/ordinary-stage5.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/results.json
+A  docs/rfwgc-evidence/stage5-mature-runtime/source-sha256.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/unowned-review-tests-sha256.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/validate-diagnostics.sh
+A  docs/rfwgc-evidence/stage5-mature-runtime/validate.sh
+A  docs/rfwgc-evidence/stage5-mature-runtime/wago_regalloccheck-backend-diagnostics.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/wago_regalloccheck-backend.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/wago_regalloccheck-collector.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/wago_regalloccheck-guest.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/wago_regalloccheck-stage5.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/wagodebug-backend-diagnostics.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/wagodebug-backend.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/wagodebug-collector.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/wagodebug-guest.txt
+A  docs/rfwgc-evidence/stage5-mature-runtime/wagodebug-stage5.txt
+ M docs/rfwgc-port-log.md
+ M scripts/patch-tinygo-042.sh
+ M src/core/runtime/engine_prepared_state_tinygo.go
+M  src/core/runtime/gc/native/alloc.go
+M  src/core/runtime/gc/native/card_driven_test.go
+M  src/core/runtime/gc/native/collect.go
+M  src/core/runtime/gc/native/collector.go
+M  src/core/runtime/gc/native/failure.go
+M  src/core/runtime/gc/native/major_blocks_coverage_test.go
+A  src/core/runtime/gc/native/mature_regions.go
+M  src/core/runtime/gc/native/profile_throughput_test.go
+A  src/core/runtime/gc/native/rfwgc_mature_stage5_debug_test.go
+A  src/core/runtime/gc/native/rfwgc_mature_stage5_test.go
+M  src/core/runtime/gc/native/throughput_alloc.go
+ M src/core/runtime/stress_tinygo_test.go
+ M src/core/runtime/trampoline_tinygo_amd64.go
+ M src/core/runtime/trampoline_tinygo_arm64.go
+ M tests/conformance/spec-v1
+ M tests/conformance/spec-v2
+?? scripts/patch-tinygo-foreign-stack.py
+?? scripts/tinygo-042/
+?? src/core/runtime/foreign_stack_tinygo_serial.go
+?? src/core/runtime/foreign_stack_tinygo_threads.go
+?? src/core/runtime/foreign_stack_tinygo_threads_amd64_test.go

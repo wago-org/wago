@@ -1,0 +1,9 @@
+1:  7e6927f68 < -:  --------- perf(amd64): combine abstract array casts and length reads
+2:  f600f30c9 < -:  --------- test: expose array kind confusion after runtime type growth
+3:  44ac1bbf2 < -:  --------- fix(gc): preserve kind encoding when appending root types
+4:  21fb47c09 < -:  --------- fix(amd64): honor disabled abstract array length shared stubs
+5:  4bfc46b92 < -:  --------- test(gc): reject unrelated structs in appended runtime domains
+6:  d7b8ac6ef < -:  --------- fix(gc): validate object extents before dynamic type reads
+7:  254473b30 < -:  --------- perf(amd64): load abstract array handle space byte directly
+8:  5b1943728 < -:  --------- test(gc): isolate descriptor and abstract decoder checks
+-:  --------- > 1:  9666ec48e fix(gc): validate ref descriptor object extents
