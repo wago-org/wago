@@ -1,0 +1,37 @@
+=== RUN   TestR9ConvertedProviderState
+=== RUN   TestR9ConvertedProviderState/region=false/table=false/type=false
+    r9_converted_provider_state_test.go:146: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+    r9_converted_provider_state_test.go:156: retirement: conversionClosed=true entries=0 attached=false publisherLive=false providerLive=true
+    r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows
+=== RUN   TestR9ConvertedProviderState/region=false/table=false/type=true
+    r9_converted_provider_state_test.go:146: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+    r9_converted_provider_state_test.go:156: retirement: conversionClosed=true entries=0 attached=false publisherLive=false providerLive=true
+    r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows
+=== RUN   TestR9ConvertedProviderState/region=false/table=true/type=false
+    r9_converted_provider_state_test.go:146: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+    r9_converted_provider_state_test.go:156: retirement: conversionClosed=true entries=0 attached=false publisherLive=false providerLive=true
+    r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows
+=== RUN   TestR9ConvertedProviderState/region=false/table=true/type=true
+    r9_converted_provider_state_test.go:146: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+    r9_converted_provider_state_test.go:156: retirement: conversionClosed=true entries=0 attached=false publisherLive=false providerLive=true
+    r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows
+=== RUN   TestR9ConvertedProviderState/region=true/table=false/type=false
+    r9_converted_provider_state_test.go:88: ADMISSION publisher instantiate before publication: gc: region Eden requires fixed divisible nursery, power-of-two regions >=64, <=65536 regions, and collecting throughput without pause target or stress override
+=== RUN   TestR9ConvertedProviderState/region=true/table=false/type=true
+    r9_converted_provider_state_test.go:88: ADMISSION publisher instantiate before publication: gc: region Eden requires fixed divisible nursery, power-of-two regions >=64, <=65536 regions, and collecting throughput without pause target or stress override
+=== RUN   TestR9ConvertedProviderState/region=true/table=true/type=false
+    r9_converted_provider_state_test.go:88: ADMISSION publisher instantiate before publication: gc: region Eden requires fixed divisible nursery, power-of-two regions >=64, <=65536 regions, and collecting throughput without pause target or stress override
+=== RUN   TestR9ConvertedProviderState/region=true/table=true/type=true
+    r9_converted_provider_state_test.go:88: ADMISSION publisher instantiate before publication: gc: region Eden requires fixed divisible nursery, power-of-two regions >=64, <=65536 regions, and collecting throughput without pause target or stress override
+--- FAIL: TestR9ConvertedProviderState (0.00s)
+    --- FAIL: TestR9ConvertedProviderState/region=false/table=false/type=false (0.00s)
+    --- FAIL: TestR9ConvertedProviderState/region=false/table=false/type=true (0.00s)
+    --- FAIL: TestR9ConvertedProviderState/region=false/table=true/type=false (0.00s)
+    --- FAIL: TestR9ConvertedProviderState/region=false/table=true/type=true (0.00s)
+    --- SKIP: TestR9ConvertedProviderState/region=true/table=false/type=false (0.00s)
+    --- SKIP: TestR9ConvertedProviderState/region=true/table=false/type=true (0.00s)
+    --- SKIP: TestR9ConvertedProviderState/region=true/table=true/type=false (0.00s)
+    --- SKIP: TestR9ConvertedProviderState/region=true/table=true/type=true (0.00s)
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.007s
+FAIL
