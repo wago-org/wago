@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -92,6 +92,9 @@ func (s *managedFunctionCollector) aggregateScratch(parent gc.RootSet, object gc
 		panic(gcHelperFailuref("reentrant function aggregate scratch"))
 	}
 	a.parent = parent
+	if object.IsObj() {
+		a.roots = append(a.roots, gc.Root(object))
+	}
 	for i := uint32(0); i < s.ObjectEdgeCount(object); i++ {
 		a.edges = append(a.edges, s.objectShadowEdge(object, i))
 	}

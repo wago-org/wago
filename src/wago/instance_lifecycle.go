@@ -309,6 +309,7 @@ func (in *Instance) tryBeginDirectInvocation() bool {
 }
 
 func (in *Instance) endInvocation() {
+	defer managedFunctionAfterLifetimeBoundary(in)
 	if in == nil {
 		return
 	}
@@ -357,6 +358,7 @@ func (in *Instance) endRuntimeInvocation() {
 // endInvocation finalization path; Runtime-owned instances retain operation accounting.
 func (in *Instance) endDirectInvocation() {
 	if in.rt == nil && in.invocationState.word.CompareAndSwap(1, 0) {
+		managedFunctionAfterLifetimeBoundary(in)
 		return
 	}
 	in.endInvocation()
@@ -617,6 +619,7 @@ func (in *Instance) beginConstruction(reservation *pluginOperationReservation) {
 }
 
 func (in *Instance) endConstruction() {
+	defer managedFunctionAfterLifetimeBoundary(in)
 	if in == nil {
 		return
 	}

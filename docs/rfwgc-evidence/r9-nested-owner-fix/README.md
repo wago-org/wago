@@ -38,3 +38,50 @@ Host graph integration and expanded lifecycle gates are still in progress.
 No INCLUDED-FIX disposition, full combined gate, RV64 execution, or performance
 claim is made. All original STOP assertions remain mandatory before follow-up
 collection, container access, or teardown.
+
+## Host graph working slice
+
+The host path now shares RV64's descriptor-to-environment mapping, aggregate
+shadow edges, construction journal, joint object/owner mark and post-lock
+reclaim journals. Platform-specific dependency proofs remain separate: RV64
+uses its existing typed receipts; hosts classify installed deduplicated import
+attachments and revalidate the common physical-root epoch under owner locks.
+Unclassified roots remain external. Claimed dead host components consume import
+units through idempotent transfer records before ordinary physical journals.
+
+Host environments have conditional persistent slots. Ordinary or in-callback
+collections keep these slots strong, because host frame maps do not enumerate
+all raw function words. Joint host collection requires every graph member's
+atomic invocation count to be zero and construction inactive, across all store
+members (including noncollector import participants). Complete domain/native
+leases prevent native execution during the mark. End-of-invocation, direct-entry
+and construction boundaries request and drain pending work; terminal Close also
+requests it. The floating-retention bound is the outermost store-wide quiescent
+boundary, not an additional guest invocation. Unknown external roots and borrowed
+owners remain strong; this does not claim arbitrary external ownership disappears.
+
+The original bounded probes now pass, with a producer pin already present at the
+publication checkpoint, zero public function tokens, no escaped function calls,
+and eventual physical callback exactly once. Expanded ordinary tests cover32
+combinations: struct/array, two-level nested aggregates, failed/successful start,
+last-edge clear versus provider/producer cycle close, and default versus actual
+region shift6 (checked collector state). Reentrant provider allocation and host
+callback collection retain the producer. Eight repeated callback-drop/Close
+rounds per collector policy retain ownership throughout the callback, reclaim at
+the failed-start outer boundary, and leave no environment/closed-store graph.
+
+Environment creation makes function-storage mutations allocating helpers. Host
+root-plan admission/liveness and AMD64/ARM64 safepoint emission now classify
+struct.set, array.set, array.fill and array.init_elem only for function storage.
+Numeric/compact-reference/ordinary extern mutations remain nonallocating.
+array.copy reuses existing edges and does not allocate an environment. Aggregate
+scratch roots the destination and mixed constructor compact operands before
+creating environments. The preexisting generic array.init_elem regression and
+new CollectEveryAlloc mutation/constructor fixtures pass; missing-safepoint
+checks were retained. RV64 allocation classification and receipts are unchanged.
+
+Focused host tests passed ordinary, wagodebug and wago_regalloccheck. Linux
+ARM64/RV64 test packages cross-compiled (`-exec=true` is compile-only). Broader
+three-mode/corpus/race qualification is still pending; the first broad ordinary
+run exposed the now-fixed array.init_elem safepoint and missing corpus setup.
+Do not treat these development logs as final combined qualification.

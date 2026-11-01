@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -41,14 +41,7 @@ func (g *managedFunctionGraph) gateStillOwnedLocked(id invocationID) bool {
 		if member == nil {
 			continue
 		}
-		state := member.owner.pluginState.Load()
-		if state == nil {
-			continue
-		}
-		state.activations.mu.Lock()
-		owner := state.railshotInvocation.gateOwner
-		state.activations.mu.Unlock()
-		if owner != 0 && (id == 0 || owner == id) {
+		if managedFunctionMemberActive(member, id) {
 			return true
 		}
 	}
@@ -70,6 +63,7 @@ func (g *managedFunctionGraph) drainAfterGate(id invocationID) {
 	g.drainingReclaims = true
 	g.mu.Unlock()
 	var cleanup resourceCleanup
+	cleanup.run(func() { managedFunctionDrainDeadDependencies(g) })
 	for {
 		g.pendingMetadata.Store(false)
 		// A native pin can be the last reason a public converted token stayed
