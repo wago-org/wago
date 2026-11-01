@@ -1476,6 +1476,9 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 	switch fr.kind {
 	case cfLoop:
+		if f.unrollScalarLatch(fr, cc) {
+			return true
+		}
 		site := f.a.Bcond(cc)
 		if !f.a.PatchBranch19(site, fr.controlSite) {
 			if profileEnabled && f.stats != nil && f.stats.RecordSources {
