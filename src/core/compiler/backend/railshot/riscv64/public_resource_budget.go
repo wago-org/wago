@@ -16,6 +16,14 @@ const MaxPublicGlobals = MaxPublicCodeBytes / 16
 const MaxPublicImports = MaxPublicCodeBytes / 16
 const MaxPublicElementSegments = MaxPublicCodeBytes / 16
 
+// Independent directory extents. These are minimum record charges, not a
+// guarantee that a module fits the configured metadata/native-code quotas.
+// The stricter function bound reserves a nonzero index+1 source packet.
+const MaxModuleFunctions = MaxPublicCodeBytes / 16
+const MaxFunctionImports = MaxModuleFunctions
+const MaxModuleTables = MaxPublicCodeBytes / 32
+const MaxModuleExports = MaxPublicCodeBytes / 16
+
 func productionElementSegmentLimit(public bool) int {
 	if public {
 		return MaxPublicElementSegments

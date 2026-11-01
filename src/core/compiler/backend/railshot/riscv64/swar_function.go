@@ -210,7 +210,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 			return swarSummary{}, unsupported("SWAR global carrier")
 		}
 	}
-	if len(functions) > MaxFunctions {
+	if len(functions) > MaxModuleFunctions {
 		return swarSummary{}, unsupported("SWAR function directory bound")
 	}
 	for i, typ := range functions {
