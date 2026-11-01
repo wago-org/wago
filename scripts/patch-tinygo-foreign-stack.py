@@ -5,7 +5,7 @@ import hashlib
 import sys
 
 root = Path(sys.argv[1])
-source = Path(__file__).resolve().parent / 'tinygo-042/wago_foreign_stack.go'
+source = Path(__file__).resolve().parent / 'tinygo-042/wago_foreign_stack.go.in'
 changes = [
  ('src/internal/task/task_threads.go',
   'b30042e2a95668106bf6f369a6f02bf69fe6d3868abede4fca9d1a3dc7ec88f9',
