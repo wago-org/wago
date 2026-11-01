@@ -143,3 +143,13 @@ registers collectors before the first semantic section even without types, and
 registers imported table/global root regions before publication. Wago's host
 opaque identity bridge additionally needs balanced per-container receipts; an
 opaque word cannot be used as a compact root.
+
+Attempt `attempt-1059-node-pinned-V9pwdK` completed all fifteen requested
+commands with exit0: full src/wago, scoped race, backend packages, and ARM64/RV64
+compile-only in each of the three modes. Its `SHA256SUMS` covers the archived
+per-suite ledger and artifacts. The driver subsequently exited127 because this
+worker edited the live script while Bash was executing the parsed loop; Bash
+then resumed reading at an obsolete byte offset. `driver-status.txt` records
+this orchestration failure separately. The driver is **not** called PASS. A
+clean replay runs an unchanged script copy in a fresh directory; no H2
+production progression is based on concealing this failure.
