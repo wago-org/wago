@@ -28,6 +28,9 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	c.clearMarks()
 	c.markRoots(roots)
 	c.sweepAll()
+	if len(c.edenRegions) != 0 {
+		c.reclaimEmptyEdenRegions()
+	}
 	c.pruneRemembered()
 	c.finishFullCardMetadata()
 	if c.cfg.VerifyAfterCollect {
@@ -105,6 +108,10 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		if scanned != 0 || !c.finishDeadNurseryEvacuation() {
 			c.finishMinorEvacuation(scanned)
 		}
+	}
+	if len(c.edenRegions) != 0 {
+		clear(c.edenRegions)
+		c.edenRegionCursor = 0
 	}
 	c.finishMinorCardMetadata()
 	pauseNS := uint64(0)

@@ -18,6 +18,15 @@ func ValidateConfig(cfg Config) error {
 }
 
 func normalizeConfig(cfg Config) (Config, error) {
+	if shift := cfg.NurseryRegionShift; shift != 0 {
+		n := uint32(1) << shift
+		if cfg.Profile != ProfileThroughput || cfg.DisableCollection || cfg.MinorPauseTargetMicros != 0 ||
+			cfg.StressNurseryBytes != 0 || shift < 6 || shift > 30 || cfg.NurseryBytes == 0 ||
+			cfg.NurseryBytes%n != 0 || cfg.NurseryBytes/n > 65536 {
+			return cfg, fmt.Errorf("gc: region Eden requires fixed divisible nursery, power-of-two regions >=64, <=65536 regions, and collecting throughput without pause target or stress override")
+		}
+	}
+
 	switch cfg.Profile {
 	case ProfileThroughput:
 		if cfg.Allocator == 0 && cfg.Runtime == 0 {

@@ -1,0 +1,46 @@
+[
+  {
+    "mode": "ordinary",
+    "command": [
+      "go",
+      "test",
+      "./src/core/runtime/gc/...",
+      "./src/wago",
+      "-run",
+      "TestEdenRegions|TestGCEdenRegions",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wagodebug",
+    "command": [
+      "go",
+      "test",
+      "-tags=wagodebug",
+      "./src/core/runtime/gc/...",
+      "./src/wago",
+      "-run",
+      "TestEdenRegions|TestGCEdenRegions",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "regalloccheck",
+    "command": [
+      "go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime/gc/...",
+      "./src/wago",
+      "-run",
+      "TestEdenRegions|TestGCEdenRegions",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  }
+]

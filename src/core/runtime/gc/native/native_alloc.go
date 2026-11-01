@@ -66,7 +66,7 @@ const (
 )
 
 func (c *Collector) nativeAllocationAllowed(minObjectBytes uint32) bool {
-	return c != nil && !c.closed && c.cfg.Profile == ProfileThroughput && !c.cfg.DisableCollection && !c.cfg.CollectEveryAlloc &&
+	return c != nil && !c.closed && c.cfg.Profile == ProfileThroughput && !c.cfg.DisableCollection && c.cfg.NurseryRegionShift == 0 && !c.cfg.CollectEveryAlloc &&
 		minObjectBytes < c.cfg.LargeObjectBytes && minObjectBytes <= NativeAllocationChunkBytes && minObjectBytes <= ^uint32(0)-15
 }
 
@@ -248,7 +248,7 @@ func (c *Collector) PrepareNativeArrayAllocationImmediate(objectBytes uint32) bo
 }
 
 func (c *Collector) prepareNativeLargeArrayAllocation(objectBytes uint32) bool {
-	if c == nil || c.closed || c.cfg.Profile != ProfileThroughput || c.cfg.DisableCollection || c.cfg.CollectEveryAlloc ||
+	if c == nil || c.closed || c.cfg.Profile != ProfileThroughput || c.cfg.DisableCollection || c.cfg.NurseryRegionShift != 0 || c.cfg.CollectEveryAlloc ||
 		objectBytes <= NativeArrayAllocMaxBytes || objectBytes > NativeLargeArrayAllocMaxBytes {
 		return false
 	}

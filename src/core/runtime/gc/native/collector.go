@@ -85,6 +85,12 @@ type Config struct {
 	DisableCollection     bool
 	TinyCollectEveryAlloc bool
 	TinyStepEveryAlloc    bool
+	// NurseryRegionShift opts into experimental region-first Eden allocation.
+	// Zero preserves the default; 6..30 selects 1<<shift bytes per region.
+	// Requires fixed divisible NurseryBytes and at most 65536 regions.
+	// Exhaustion first reclaims empty regions by exact tracing, then evacuates.
+	// Native allocation batches are disabled in this mode.
+	NurseryRegionShift uint8
 }
 
 type Stats struct {
@@ -173,6 +179,8 @@ type Collector struct {
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
+	edenRegions                  []edenRegion
+	edenRegionCursor             uint32
 }
 
 const defaultNursery = 64 << 10
@@ -234,6 +242,9 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := c.throughput.Init(config); err != nil {
 		return nil, err
 	}
+	if config.NurseryRegionShift != 0 {
+		c.edenRegions = make([]edenRegion, config.NurseryBytes/(uint32(1)<<config.NurseryRegionShift))
+	}
 	c.initNativeView()
 	return c, nil
 }
@@ -248,6 +259,7 @@ func (c *Collector) Close() {
 	c.stats.LiveObjects = 0
 	c.closed = true
 	c.nursery = nil
+	c.edenRegions = nil
 	c.tiny.Close()
 	c.throughput.Close()
 	c.handles = nil

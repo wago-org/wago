@@ -10,6 +10,9 @@ func (c *Collector) Verify(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	if err := c.verifyEdenRegions(); err != nil {
+		return err
+	}
 	if c.cfg.Profile == ProfileThroughput && c.throughput.limit != 0 {
 		if err := c.throughput.verify(c.handles); err != nil {
 			return err
