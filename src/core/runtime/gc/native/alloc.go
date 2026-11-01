@@ -18,7 +18,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	}
 	if c.cfg.DisableCollection {
 		var tx throughputAllocTransaction
-		if failureInjectionEnabled {
+		if failureInjectionEnabled || c.throughput.mature != nil {
 			if err := c.throughput.sweepAllPending(); err != nil {
 				return Null(), err
 			}
@@ -26,17 +26,23 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		}
 		e, err := c.throughput.alloc(size, spaceLarge)
 		if err != nil {
-			if isInjectedFailure(err) {
+			if failureInjectionEnabled || c.throughput.mature != nil {
 				c.throughput.restoreAllocTransaction(tx)
+			}
+			if isInjectedFailure(err) {
 				return Null(), err
 			}
 			return Null(), fmt.Errorf("gc: collection-disabled heap exhausted: %w", err)
 		}
 		if err := injectFailure(c, failHandlePublication); err != nil {
+			if c.throughput.mature != nil && c.throughput.mature.admission {
+				c.throughput.matureRefusal(err)
+			}
 			c.throughput.rollbackSuccessfulAlloc(e, tx.bump)
 			c.throughput.restoreAllocTransaction(tx)
 			return Null(), err
 		}
+		c.throughput.commitMatureAdmission()
 		h := c.newHandle(e)
 		r := makeObjRef(h)
 		flags := uint32(FlagLarge)
@@ -72,7 +78,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	var allocationTx throughputAllocTransaction
 	if c.shouldAllocateLarge(size) {
 		var err error
-		if failureInjectionEnabled {
+		if failureInjectionEnabled || c.throughput.mature != nil {
 			if err := c.throughput.sweepAllPending(); err != nil {
 				return Null(), err
 			}
@@ -80,8 +86,10 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		}
 		e, err = c.throughput.alloc(size, spaceLarge)
 		if err != nil {
-			if isInjectedFailure(err) {
+			if failureInjectionEnabled || c.throughput.mature != nil {
 				c.throughput.restoreAllocTransaction(allocationTx)
+			}
+			if isInjectedFailure(err) {
 				return Null(), err
 			}
 			if errors.Is(err, ErrAllocationTooLarge) {
@@ -93,7 +101,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			if err := c.CollectFull(roots); err != nil {
 				return Null(), err
 			}
-			if failureInjectionEnabled {
+			if failureInjectionEnabled || c.throughput.mature != nil {
 				if err := c.throughput.sweepAllPending(); err != nil {
 					return Null(), err
 				}
@@ -101,6 +109,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			}
 			e, err = c.throughput.alloc(size, spaceLarge)
 			if err != nil {
+				if failureInjectionEnabled || c.throughput.mature != nil {
+					c.throughput.restoreAllocTransaction(allocationTx)
+				}
 				return Null(), err
 			}
 		}
@@ -156,6 +167,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		e = handleEntry{off: off, size: size, space: sp}
 	}
 	if err := injectFailure(c, failHandlePublication); err != nil {
+		if c.throughput.mature != nil && c.throughput.mature.admission {
+			c.throughput.matureRefusal(err)
+		}
 		if sp == spaceNursery {
 			c.nurseryBump = oldNurseryBump
 		} else {
@@ -166,6 +180,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	}
 	if sp == spaceNursery && len(c.edenRegions) != 0 {
 		c.commitRegionAllocation(off, size)
+	}
+	if sp == spaceLarge {
+		c.throughput.commitMatureAdmission()
 	}
 	h := c.newHandle(e)
 	if sp == spaceNursery || (sp == spaceLarge && e.young()) {
