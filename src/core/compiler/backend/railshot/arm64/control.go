@@ -2619,6 +2619,8 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		if !f.unreachable {
 			if f.singleRegResult {
 				f.placeSingleResult() // fall-through return: result straight to X0/V0
+			} else if f.directPairResult {
+				f.placeDirectIntegerPair()
 			} else {
 				f.flush() // results land in slots [0, resultN)
 			}

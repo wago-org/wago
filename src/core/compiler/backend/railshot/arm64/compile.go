@@ -349,10 +349,11 @@ type fn struct {
 	// (int) or V0 (float) — via the WARP-style target hint, skipping the
 	// flush-to-slot-0 + epilogue-reload round trip. resultFloat/resultF64 cache the
 	// result's type for that placement.
-	singleRegResult bool
-	resultFloat     bool
-	resultF64       bool
-	regMerge        bool // reconcile single-int-result blocks in mergeReg (phase 2)
+	singleRegResult  bool
+	directPairResult bool // bounded fallthrough-only integer pair, staged before return-register writes
+	resultFloat      bool
+	resultF64        bool
+	regMerge         bool // reconcile single-int-result blocks in mergeReg (phase 2)
 
 	// globalCellReg caches the cell pointer (&global[globalCellIdx]) of the most
 	// recently accessed global in a register across a straight-line run, so repeated
@@ -1423,7 +1424,7 @@ func (f *fn) elideRegisterOnlyFrame() bool {
 	}
 
 	voidResult := len(f.ft.Results) == 0
-	registerResult := f.singleRegResult || voidResult
+	registerResult := f.singleRegResult || f.directPairResult || voidResult
 	if f.moduleEH || !registerResult || f.makesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
@@ -3727,6 +3728,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
 	// !touchesMemory so it only fires where it's a win.
 	f.singleRegResult = regABI && !touchesMemory && len(ft.Results) == 1
+	f.directPairResult = regABI && !policy.CompactNative && !touchesMemory && hints.globalCount == 0 && f.directIntegerPairCandidate(c)
 	if f.singleRegResult {
 		rt := mtOf(ft.Results[0])
 		f.resultFloat = rt.isFloat()
@@ -4881,7 +4883,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		} else {
 			f.ld64(X0, SP, f.spillOff(0)) // result -> X0
 		}
-	} else if rN == 2 {
+	} else if rN == 2 && !f.directPairResult {
 		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
 			a.FLoadDisp(0, SP, f.spillOff(0), mtOf(f.ft.Results[0]) == mtF64)
 			f.ld64(X0, SP, f.spillOff(1))
