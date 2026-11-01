@@ -144,9 +144,9 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		var liveMasks gcFrameLiveMasks
 		plan.Conservative = arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) || len(plan.Locals) == 0 && !gcFrameNeedsReachableMasks(m.Code[function].BodyBytes, &classifier)
 		if plan.Conservative {
-			liveMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
+			liveMasks, err = gcFrameAllLiveMasksArenaWithClassifier(m.Code[function].BodyBytes, len(plan.Locals), &classifier, m)
 		} else {
-			liveMasks, err = gcFrameLocalLivenessArenaWithClassifier(m.Code[function].BodyBytes, plan.Locals, &classifier)
+			liveMasks, err = gcFrameLocalLivenessArenaWithClassifier(m.Code[function].BodyBytes, plan.Locals, &classifier, m)
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)

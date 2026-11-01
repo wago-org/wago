@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -507,6 +507,9 @@ func (s *managedFunctionCollector) newManagedFunctionEnv(producer *Instance, roo
 	env.root = gc.Root(ref)
 	s.envs[ref] = env
 	s.byOwner[producer] = env
+	if err := s.publishHostEnvironment(env); err != nil {
+		return gc.Null(), err
+	}
 	return ref, nil
 }
 

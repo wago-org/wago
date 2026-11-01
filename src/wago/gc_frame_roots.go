@@ -77,7 +77,7 @@ func gcFrameBodyNeedsRootPlanWithClassifier(m *wasm.Module, body []byte, classif
 				return true
 			}
 		}
-		if gcFrameInstructionMayAllocate(op, imm) || compiledArchitecture == 4 && wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
+		if gcFrameInstructionMayAllocate(op, imm) || gcFrameStorageMayAllocate(m, imm) {
 			return true
 		}
 	}

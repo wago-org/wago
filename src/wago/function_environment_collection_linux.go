@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -6,8 +6,6 @@ import (
 	"fmt"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
-
-func compiledManagedFunctionReachability(c *Compiled) bool { return c.usesManagedFunctionStorage() }
 
 // Explicit collection through a numeric module can span a Runtime's managed
 // edges. This private captured lease has no requesting-instance refresh: its
@@ -65,6 +63,9 @@ func collectManagedFunctionGraph(in *Instance, public *gcPublicState, topologyLe
 		return false, nil
 	}
 	graph := value.(*managedFunctionGraph)
+	if !functionEnvironmentHostQuiescent(graph) {
+		return false, nil
+	}
 	in.refStore.mu.Lock()
 	var domains gcInvocationDomainSet
 	owners := make([]*Instance, 0, len(in.refStore.instances))

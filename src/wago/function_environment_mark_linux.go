@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -19,11 +19,6 @@ type managedFunctionSlot struct {
 type managedFunctionObjectWork struct {
 	ref    gc.Ref
 	cursor gc.ObjectTraceCursor
-}
-
-type managedFunctionReceiptProof struct {
-	slot   int
-	record dependencyRecord
 }
 
 type managedFunctionMarkDomain struct {
@@ -110,23 +105,8 @@ func (g *managedFunctionGraph) newMark() *managedFunctionMark {
 	// Dependency receipt identity and physical counts are read under the same
 	// graph-to-lifetime order as the ordinary dependency collector. A target with
 	// a pending, external, releasing, or foreign consumer root stays strong.
-	dependencies := rv64FunctionDependencyGraph()
-	dependencies.mu.Lock()
-	defer dependencies.mu.Unlock()
-	for i := range dependencies.records {
-		record := &dependencies.records[i]
-		if record.state != dependencyTyped || record.target == nil || record.consumer == nil {
-			continue
-		}
-		target := g.members[record.target.owner]
-		consumer := g.members[record.consumer.owner]
-		if target == nil || consumer == nil || !dependencies.authoritativeLocked(record.target) || !dependencies.authoritativeLocked(record.consumer) {
-			continue
-		}
-		m.incoming[target]++
-		m.edges[consumer] = append(m.edges[consumer], target)
-		m.receipts = append(m.receipts, managedFunctionReceiptProof{i, *record})
-	}
+	unlockDependencies := m.lockDependencySnapshot()
+	defer unlockDependencies()
 	for _, member := range g.rows {
 		if member == nil {
 			continue
@@ -335,13 +315,9 @@ func (m *managedFunctionMark) collect() error {
 	}
 	// The caller's topology/execution lease freezes directories. Exact physical
 	// root revalidation and claims close the acquisition race at commit.
-	dependencies := rv64FunctionDependencyGraph()
-	dependencies.mu.Lock()
-	for _, proof := range m.receipts {
-		if proof.slot >= len(dependencies.records) || dependencies.records[proof.slot] != proof.record {
-			dependencies.mu.Unlock()
-			return errManagedFunctionMarkChanged
-		}
+	unlockDependencies, valid := m.lockDependencyCommit()
+	if !valid {
+		return errManagedFunctionMarkChanged
 	}
 	for _, member := range m.members {
 		member.owner.lifeMu.Lock()
@@ -350,7 +326,7 @@ func (m *managedFunctionMark) collect() error {
 		for i := len(m.members) - 1; i >= 0; i-- {
 			m.members[i].owner.lifeMu.Unlock()
 		}
-		dependencies.mu.Unlock()
+		unlockDependencies()
 		return errManagedFunctionMarkChanged
 	}
 	for _, member := range m.members {
@@ -361,7 +337,7 @@ func (m *managedFunctionMark) collect() error {
 	for i := len(m.members) - 1; i >= 0; i-- {
 		m.members[i].owner.lifeMu.Unlock()
 	}
-	dependencies.mu.Unlock()
+	unlockDependencies()
 	// Dead owners remain claimed until physical cleanup retires their member.
 	// Their native cells can still contain collected references while outgoing
 	// receipt cleanup runs; no external lifetime may resurrect that state.
