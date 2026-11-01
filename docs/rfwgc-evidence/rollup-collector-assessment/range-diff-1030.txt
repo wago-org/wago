@@ -1,0 +1,4 @@
+1:  477f1c6d3 = 1:  4f22e5a5c test(gc): reproduce native batch cancellation reservation overlap
+2:  51183593e = 2:  c1d1e83ea fix(gc): preserve live reservations when canceling native batches
+3:  487e67213 < -:  --------- perf(gc): outline reservation-preserving batch cancellation fallback
+-:  --------- > 3:  fba8e2b50 fix(gc): reclaim nursery after promotion without pending arrays

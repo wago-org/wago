@@ -1,0 +1,50 @@
+diff --git a/src/core/runtime/gc/native/native_alloc.go b/src/core/runtime/gc/native/native_alloc.go
+index 290dcbadf..eb89dce2c 100644
+--- a/src/core/runtime/gc/native/native_alloc.go
++++ b/src/core/runtime/gc/native/native_alloc.go
+@@ -452,20 +452,7 @@ func (c *Collector) discardNativeStructHandles() {
+ 			}
+ 		}
+ 		if !trimmed {
+-			// Unpublished large-array handles are also spaceFree, but remain
+-			// owned by their independent reservation. Keep that ledger entry.
+-			// Cancellation must not recompute nurseryBump from published handle
+-			// extents: they omit reserved array bytes and dead-struct charges.
+-			// The guarded chunk rewind above is the only safe reclamation here.
+-			reserved := &c.nativeLargeArrayAlloc
+-			out := c.nurseryHandles[:0]
+-			for _, h := range c.nurseryHandles {
+-				if c.isYoungHandle(h) || (reserved.Count != 0 && h == reserved.Handle) {
+-					out = append(out, h)
+-				}
+-			}
+-			clear(c.nurseryHandles[len(out):])
+-			c.nurseryHandles = out
++			c.compactCanceledNativeStructHandles()
+ 		}
+ 	}
+ 	clear(s.Handles[:end])
+@@ -483,3 +470,23 @@ func (c *Collector) discardNativeStructHandles() {
+ 	}
+ 	s.Epoch = c.nativeAllocEpoch
+ }
++
++// compactCanceledNativeStructHandles handles the uncommon non-tail ledger case.
++// Keep its reservation-preserving walk outside discardNativeStructHandles so
++// ordinary bounded tail cancellation does not carry the fallback's stack frame.
++func (c *Collector) compactCanceledNativeStructHandles() {
++	// Unpublished large-array handles are also spaceFree, but remain
++	// owned by their independent reservation. Keep that ledger entry.
++	// Cancellation must not recompute nurseryBump from published handle
++	// extents: they omit reserved array bytes and dead-struct charges.
++	// The guarded chunk rewind above is the only safe reclamation here.
++	reserved := &c.nativeLargeArrayAlloc
++	out := c.nurseryHandles[:0]
++	for _, h := range c.nurseryHandles {
++		if c.isYoungHandle(h) || (reserved.Count != 0 && h == reserved.Handle) {
++			out = append(out, h)
++		}
++	}
++	clear(c.nurseryHandles[len(out):])
++	c.nurseryHandles = out
++}

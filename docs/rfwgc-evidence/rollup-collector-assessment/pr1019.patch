@@ -1,0 +1,369 @@
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index dd666748f..0aee270a9 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -800,6 +800,12 @@ AMD64 prefix spill relocation uses an allocator-owned scratch register. It
+ respects pending load addresses and pinned inputs without temporarily borrowing
+ RAX; newly spilled sources remain outside the destination range.
+ 
++Throughput full mark resets clear only the highest marked handle prefix, with
++the bound stored in existing collector padding. Complete young evacuation clears
++remembered owners and their card-list heads together before dropping scalar card
++lists. Nursery storage remains Go-owned and reused across minor collections;
++it has no collector-specific Linux mapping advice.
++
+ ### Off-heap allocation
+ 
+ `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 1b7eafb88..ab4eaac33 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -50,6 +50,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
+ 
+ ### Changed
+ 
++- Bound full GC mark clearing by the highest marked handle and reduce redundant
++  card metadata cleanup after complete young evacuation.
++
+ - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
+   native casts, tests, and branch casts.
+ 
+diff --git a/src/core/runtime/gc/native/barrier.go b/src/core/runtime/gc/native/barrier.go
+index 2e8971746..371b3cbb7 100644
+--- a/src/core/runtime/gc/native/barrier.go
++++ b/src/core/runtime/gc/native/barrier.go
+@@ -521,10 +521,13 @@ func (c *Collector) clearRememberedMetadata() {
+ 	for _, h := range c.remembered {
+ 		if h != 0 && int(h) < len(c.handles) {
+ 			c.handles[h].remembered = false
++			c.handles[h].cardSlot = 0
+ 		}
+ 	}
+-	clear(c.remembered)
+ 	c.remembered = c.remembered[:0]
++	// Every object card belongs to a remembered owner. Clearing its head above
++	// avoids revisiting that owner once per range in clearCardMetadata.
++	c.clearCardLists()
+ }
+ func (c *Collector) isNurseryRef(r Ref) bool {
+ 	if !r.IsObj() || !c.validObjectRef(r) {
+@@ -553,20 +556,24 @@ func (c *Collector) removeCardsForHandle(h uint32) {
+ 	e.cardSlot = 0
+ }
+ func (c *Collector) clearCardMetadata() {
+-	c.lastCardBounds = objectCardBounds{}
+ 	for _, card := range c.objectCards {
+ 		if card.handle != 0 && int(card.handle) < len(c.handles) {
+ 			c.handles[card.handle].cardSlot = 0
+ 		}
+ 	}
++	c.clearCardLists()
++}
++
++func (c *Collector) clearCardLists() {
++	c.lastCardBounds = objectCardBounds{}
+ 	for _, card := range c.slotCards {
+ 		bits := c.slotCardBits(card.kind)
+ 		if bits != nil && cardBitIsSet(*bits, card.index) {
+ 			(*bits)[card.index>>6] &^= uint64(1) << (card.index & 63)
+ 		}
+ 	}
+-	clear(c.objectCards)
+-	clear(c.slotCards)
++	// These entries contain only scalars. Appending overwrites the complete
++	// entry, and no reader can observe the discarded tail.
+ 	c.objectCards = c.objectCards[:0]
+ 	c.freeObjectCardSlot = 0
+ 	c.slotCards = c.slotCards[:0]
+diff --git a/src/core/runtime/gc/native/collector.go b/src/core/runtime/gc/native/collector.go
+index 4b6c201e7..72aa2195a 100644
+--- a/src/core/runtime/gc/native/collector.go
++++ b/src/core/runtime/gc/native/collector.go
+@@ -158,7 +158,8 @@ type Collector struct {
+ 	slotCards             []slotCard
+ 	globalCardBits        []uint64
+ 	tableCardBits         []uint64
+-	cardFallback          bool // shared full remembered-object/persistent-root scan
++	cardFallback          bool   // shared full remembered-object/persistent-root scan
++	markHighWater         uint32 // exclusive reset bound; uses padding before globalSlots
+ 	globalSlots           []Ref
+ 	tableSlots            []Ref
+ 	stats                 Stats
+@@ -255,6 +256,7 @@ func (c *Collector) Close() {
+ 	c.freeHandles = nil
+ 	c.nurseryHandles = nil
+ 	c.mark = nil
++	c.markHighWater = 0
+ 	c.majorBlocks = nil
+ 	c.majorYoungDirty = false
+ 	c.markStack = nil
+diff --git a/src/core/runtime/gc/native/fixed_collection_cost_test.go b/src/core/runtime/gc/native/fixed_collection_cost_test.go
+new file mode 100644
+index 000000000..b6d531084
+--- /dev/null
++++ b/src/core/runtime/gc/native/fixed_collection_cost_test.go
+@@ -0,0 +1,191 @@
++package gc
++
++import "testing"
++
++type panickingQueuedRoots struct{ ref Ref }
++
++func (panickingQueuedRoots) RangeRoots(func(RootSlot) bool) {}
++func (r panickingQueuedRoots) RangeRootRefs(sink RootRefSink) bool {
++	sink.VisitRootRef(r.ref)
++	panic("root walk after queuing parent")
++}
++
++func TestMarkResetPreservesGraphAfterPanicMinorFull(t *testing.T) {
++	c := newTestCollector(t, Config{NurseryBytes: 1 << 20})
++	child, err := c.NewStructDefault(0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	parent, err := c.NewStructDefault(1)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
++		t.Fatal(err)
++	}
++	roots := RefSliceRoots{parent}
++	// Promote the graph so a later nursery reset cannot clear the parent's mark.
++	if err := c.CollectMinor(roots); err != nil {
++		t.Fatal(err)
++	}
++	if c.entry(parent).young() || c.entry(child).young() {
++		t.Fatal("setup did not promote the graph")
++	}
++	func() {
++		defer func() {
++			if got := recover(); got != "root walk after queuing parent" {
++				t.Fatalf("root walk panic = %v", got)
++			}
++		}()
++		if err := c.CollectFull(panickingQueuedRoots{ref: parent}); err != nil {
++			t.Fatal(err)
++		}
++	}()
++	// The interrupted full trace queued the parent without draining it. The
++	// minor reset must preserve that mark's reset bound before dropping the queue.
++	if err := c.CollectMinor(roots); err != nil {
++		t.Fatal(err)
++	}
++	if err := c.CollectFull(roots); err != nil {
++		t.Fatal(err)
++	}
++	if !c.validObjectRef(parent) || !c.validObjectRef(child) {
++		t.Fatalf("panic/minor/full lost rooted graph: parent valid=%v child valid=%v", c.validObjectRef(parent), c.validObjectRef(child))
++	}
++	if err := c.Verify(roots); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestMarkResetCoversQueuedAndDrainedRoots(t *testing.T) {
++	for _, mode := range []string{"queued", "minor", "captured-minor", "full"} {
++		t.Run(mode, func(t *testing.T) {
++			c := newTestCollector(t, Config{NurseryBytes: 1 << 20})
++			var ref Ref
++			for range 65 {
++				var err error
++				ref, err = c.NewStructDefault(0)
++				if err != nil {
++					t.Fatal(err)
++				}
++			}
++			c.clearNurseryMarks()
++			if mode == "full" {
++				c.markRef(ref)
++				c.drainMarkStack()
++			} else {
++				c.markNurseryRef(ref)
++				switch mode {
++				case "minor":
++					c.drainNurseryMarkStack()
++				case "captured-minor":
++					c.drainNurseryMarkStackForPromotion()
++				}
++			}
++			c.clearMarks()
++			for _, marked := range c.mark {
++				if marked {
++					t.Fatal("reset left a stale mark")
++				}
++			}
++			if c.markHighWater != 0 || len(c.markStack) != 0 {
++				t.Fatal("reset left tracing state")
++			}
++		})
++	}
++}
++
++func TestFullMarkResetTracksReachableHighWater(t *testing.T) {
++	d, err := NewStructDesc(0, []StorageKind{StorageRefNull})
++	if err != nil {
++		t.Fatal(err)
++	}
++	c := newTestCollectorWithTypes(t, Config{NurseryBytes: 1 << 20, VerifyAfterCollect: true}, []TypeDesc{d})
++	refs := make([]Ref, 1025)
++	for i := range refs {
++		refs[i], err = c.NewStructDefault(0)
++		if err != nil {
++			t.Fatal(err)
++		}
++	}
++	low, high := refs[0], refs[1023]
++	if err := c.StructSet(low, 0, RefValue(high)); err != nil {
++		t.Fatal(err)
++	}
++	roots := RefSliceRoots{low}
++	if err := c.CollectFull(roots); err != nil {
++		t.Fatal(err)
++	}
++	if c.markHighWater != handleOf(high)+1 || c.Stats().LiveObjects != 2 {
++		t.Fatalf("transitive full mark: high-water=%d live=%d", c.markHighWater, c.Stats().LiveObjects)
++	}
++	if err := c.StructSet(low, 0, RefValue(Null())); err != nil {
++		t.Fatal(err)
++	}
++	if err := c.CollectFull(roots); err != nil {
++		t.Fatal(err)
++	}
++	if c.validObjectRef(high) || c.markHighWater != handleOf(low)+1 || len(c.mark) < len(refs) {
++		t.Fatalf("sparse full mark: high valid=%v high-water=%d marks=%d", c.validObjectRef(high), c.markHighWater, len(c.mark))
++	}
++	// Minor tracing clears its own marks even when it reuses a high identity.
++	fresh, err := c.NewStructDefault(0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := c.CollectMinor(RefSliceRoots{low, fresh}); err != nil {
++		t.Fatal(err)
++	}
++	if c.mark[handleOf(fresh)] {
++		t.Fatal("minor marking left a stale mark on a reused identity")
++	}
++	for range 2 {
++		if err := c.CollectFull(nil); err != nil {
++			t.Fatal(err)
++		}
++		if c.Stats().LiveObjects != 0 || c.markHighWater != 0 {
++			t.Fatal("empty full collection retained old marks")
++		}
++	}
++}
++
++func TestEvacuatedCardListsReuseScalarTails(t *testing.T) {
++	c, parent, _ := sparseCardBoundsFixture(t, 64)
++	children := make([]Ref, 64)
++	for i := 0; i <= 4096; i++ {
++		c.NewGlobalSlot(Null())
++		c.NewTableSlot(Null())
++	}
++	for cycle := range 3 {
++		fillSparseWholeMinor(t, c, parent, children)
++		for _, index := range []uint32{0, 63, 64, 4096} {
++			if err := c.SetGlobalSlot(index, children[0]); err != nil {
++				t.Fatal(err)
++			}
++			if err := c.SetTableSlot(index, children[1]); err != nil {
++				t.Fatal(err)
++			}
++		}
++		if err := c.CollectMinor(RefSliceRoots{parent}); err != nil {
++			t.Fatal(err)
++		}
++		if c.CardCount() != 0 || c.RememberedCount() != 0 || c.entry(parent).cardSlot != 0 || c.freeObjectCardSlot != 0 {
++			t.Fatalf("cycle %d left card metadata", cycle)
++		}
++		for _, bitmap := range [][]uint64{c.globalCardBits, c.tableCardBits} {
++			for _, word := range bitmap {
++				if word != 0 {
++					t.Fatalf("cycle %d left persistent card bits", cycle)
++				}
++			}
++		}
++		for _, child := range children {
++			if !c.validObjectRef(child) || c.entry(child).young() {
++				t.Fatalf("cycle %d lost promoted child", cycle)
++			}
++		}
++		if err := c.Verify(RefSliceRoots{parent}); err != nil {
++			t.Fatal(err)
++		}
++	}
++}
+diff --git a/src/core/runtime/gc/native/mark.go b/src/core/runtime/gc/native/mark.go
+index c69d3b89b..1904d5e76 100644
+--- a/src/core/runtime/gc/native/mark.go
++++ b/src/core/runtime/gc/native/mark.go
+@@ -3,10 +3,16 @@ package gc
+ func (c *Collector) clearMarks() {
+ 	if len(c.mark) < len(c.handles) {
+ 		c.mark = make([]bool, len(c.handles))
++	} else {
++		// The handle table retains its allocation high-water capacity. Only
++		// marks set since the last reset can require clearing. Queued roots may
++		// not have reached a drain yet (for example in scan-only callers).
++		for _, h := range c.markStack {
++			c.markHighWater = max(c.markHighWater, h+1)
++		}
++		clear(c.mark[:c.markHighWater])
+ 	}
+-	for i := range c.mark {
+-		c.mark[i] = false
+-	}
++	c.markHighWater = 0
+ 	c.markStack = c.markStack[:0]
+ }
+ func (c *Collector) clearNurseryMarks() {
+@@ -18,6 +24,11 @@ func (c *Collector) clearNurseryMarks() {
+ 			c.mark[h] = false
+ 		}
+ 	}
++	// An interrupted full trace may have queued old handles whose marks must
++	// still be cleared by the next full reset after this queue is discarded.
++	for _, h := range c.markStack {
++		c.markHighWater = max(c.markHighWater, h+1)
++	}
+ 	c.markStack = c.markStack[:0]
+ }
+ 
+@@ -143,6 +154,7 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
+ 		n := len(c.markStack) - 1
+ 		h := c.markStack[n]
+ 		c.markStack = c.markStack[:n]
++		c.markHighWater = max(c.markHighWater, h+1)
+ 		c.stats.MinorObjectsScanned++
+ 		scanned++
+ 		// The mark stack contains validated live handles. Scalar payloads carry
+@@ -164,6 +176,7 @@ func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
+ 		n := len(c.markStack) - 1
+ 		h := c.markStack[n]
+ 		c.markStack = c.markStack[:n]
++		c.markHighWater = max(c.markHighWater, h+1)
+ 		c.stats.MinorObjectsScanned++
+ 		scanned++
+ 		plan := len(c.promotionScratch)
+@@ -201,6 +214,7 @@ func (c *Collector) drainMarkStack() {
+ 		n := len(c.markStack) - 1
+ 		h := c.markStack[n]
+ 		c.markStack = c.markStack[:n]
++		c.markHighWater = max(c.markHighWater, h+1)
+ 		c.scanObject(h)
+ 	}
+ }
+diff --git a/src/core/runtime/gc/native/survivor.go b/src/core/runtime/gc/native/survivor.go
+index 3a4b94dab..c182498b9 100644
+--- a/src/core/runtime/gc/native/survivor.go
++++ b/src/core/runtime/gc/native/survivor.go
+@@ -103,7 +103,6 @@ func (c *Collector) currentYoungBytes() uint64 {
+ func (c *Collector) finishMinorCardMetadata() {
+ 	if len(c.nurseryHandles) == 0 {
+ 		c.clearRememberedMetadata()
+-		c.clearCardMetadata()
+ 		return
+ 	}
+ 	out := c.remembered[:0]

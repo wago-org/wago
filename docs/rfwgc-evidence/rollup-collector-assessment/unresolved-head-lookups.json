@@ -1,0 +1,48 @@
+[
+  {
+    "argv": [
+      "git",
+      "rev-parse",
+      "--verify",
+      "421119d1d^{commit}"
+    ],
+    "exit": 128,
+    "stdout": "",
+    "stderr": "fatal: Needed a single revision\n"
+  },
+  {
+    "argv": [
+      "gh",
+      "api",
+      "repos/wago-org/wago/commits/421119d1d",
+      "--jq",
+      "{sha:.sha}"
+    ],
+    "exit": 1,
+    "stdout": "{\"message\":\"No commit found for SHA: 421119d1d\",\"documentation_url\":\"https://docs.github.com/rest/commits/commits#get-a-commit\",\"status\":\"422\"}",
+    "stderr": "gh: No commit found for SHA: 421119d1d (HTTP 422)\n"
+  },
+  {
+    "argv": [
+      "git",
+      "rev-parse",
+      "--verify",
+      "11bcf23fd^{commit}"
+    ],
+    "exit": 128,
+    "stdout": "",
+    "stderr": "fatal: Needed a single revision\n"
+  },
+  {
+    "argv": [
+      "gh",
+      "api",
+      "repos/wago-org/wago/commits/11bcf23fd",
+      "--jq",
+      "{sha:.sha}"
+    ],
+    "exit": 1,
+    "stdout": "{\"message\":\"No commit found for SHA: 11bcf23fd\",\"documentation_url\":\"https://docs.github.com/rest/commits/commits#get-a-commit\",\"status\":\"422\"}",
+    "stderr": "gh: No commit found for SHA: 11bcf23fd (HTTP 422)\n"
+  }
+]
