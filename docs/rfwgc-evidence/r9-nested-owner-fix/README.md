@@ -248,3 +248,33 @@ The corrected focused provider/store-close race test passes. A separate unit
 checks the unlink/admission transition with Go identity metadata and performs
 no collector operation. Full immutable three-mode qualification of631cb7049 is
 recorded separately;86cacffeb's failure is not overwritten.
+
+### Qualified wakeup checkpoint:631cb7049
+
+`wakeup-631cb7049/` is the authoritative corrected-source attempt: **18/18
+commands PASS, driver exit0**. `driver-final.json` verifies the unchanged
+running-copy hash against the committed driver. `SHA256SUMS` covers exact
+commands, raw logs, source/tool/corpus provenance and the final ledger.
+
+| Suite | ordinary | wagodebug | wago_regalloccheck |
+| --- | --- | --- | --- |
+| Focused `^TestR9Ownership` | PASS | PASS | PASS |
+| Full `./src/wago` with pinned corpus | PASS | PASS | PASS |
+| Recorded ownership/lifecycle race scope | PASS | PASS | PASS |
+| Full AMD64/ARM64 backend + Wasm compiler packages | PASS | PASS | PASS |
+| Linux ARM64 cross-compile | PASS | PASS | PASS |
+| Linux RV64 cross-compile | PASS | PASS | PASS |
+
+The race regex is recorded in each command; this is not a full-package race
+claim. Target commands use `-exec=true`, so these six passes are compile-only.
+Platform tooling at6fc0afd0a now provides actual QEMU10.0.13 execution for later
+source pins, but its0fbc269b2 results do not qualify this repair. The requested
+631cb matrix was kept unchanged. Joint TinyGo, future target execution and the
+final combined H6/H2/collector source remain separate gates; Darwin execution
+still has no endpoint.86cacffeb remains a preserved failed attempt.
+
+This checkpoint qualifies the narrow host contention repair and its retirement
+proof. H2 conditional receipt production remains paused until the parent's
+explicit post-checkpoint authorization. No final INCLUDED-FIX or performance
+claim is made. No native, collector-config, backend or Stage7-owned source was
+edited for the wakeup repair.
