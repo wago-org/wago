@@ -291,7 +291,22 @@ func (c *Collector) refDescPtrBytes(r Ref) (*TypeDesc, []byte, error) {
 	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
 		return nil, nil, errors.New("gc: invalid object ref")
 	}
-	object := c.bytes(r)
+	entry := &c.handles[h]
+	var span []byte
+	switch entry.space {
+	case spaceNursery:
+		span = c.nursery
+	case spaceOld, spaceLarge:
+		span = c.throughput.mem
+	case spaceTiny:
+		span = c.tiny.mem
+	default:
+		return nil, nil, errors.New("gc: invalid object ref")
+	}
+	if entry.size < HeaderSize || uint64(entry.off)+uint64(entry.size) > uint64(len(span)) {
+		return nil, nil, errors.New("gc: invalid object ref")
+	}
+	object := span[entry.off : uint64(entry.off)+uint64(entry.size)]
 	id := TypeID(binary.LittleEndian.Uint32(object))
 	if int(id) >= len(c.types) {
 		return nil, nil, fmt.Errorf("gc: unknown type id %d", id)
@@ -320,7 +335,9 @@ func (c *Collector) validateStoredRef(r Ref, nullable bool) error {
 		return errors.New("gc: invalid object ref")
 	}
 	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
-		if c.tinyGC.scan.handle == handleOf(r) {
+		// The shared cursor denotes pending reclamation only during sweep.
+		// When sweep yields to marking, it owns a live gray object instead.
+		if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle == handleOf(r) {
 			return errors.New("gc: Tiny object is pending bounded sweep reclamation")
 		}
 		if err := c.validateTinySweepRootPublication(r); err != nil {
