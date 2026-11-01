@@ -1,0 +1,70 @@
+commit f80e06c76cac916c5b5dc719bb1efb6ec253505c
+Author: Joshua Tenner <tenner.joshua@gmail.com>
+Date:   Sun Nov 1 22:22:11 2026 +0000
+
+    fix: link none globals to defined gc types
+
+diff --git a/src/jit_store.goose b/src/jit_store.goose
+index 5e7673d6b..a661de99b 100644
+--- a/src/jit_store.goose
++++ b/src/jit_store.goose
+@@ -160,8 +160,11 @@ fn store_heap_matches(store: Store&, actual: u32, expected: u32) -> bool {
+         if kind == 1 { return expected == HEAP_STRUCT || expected == HEAP_EQ || expected == HEAP_ANY; }
+         return expected == HEAP_ARRAY || expected == HEAP_EQ || expected == HEAP_ANY;
+     }
+-    if actual == HEAP_NONE { return expected == HEAP_NONE || expected == HEAP_I31 || expected == HEAP_STRUCT ||
+-        expected == HEAP_ARRAY || expected == HEAP_EQ || expected == HEAP_ANY; }
++    if actual == HEAP_NONE {
++        if expected == HEAP_NONE || expected == HEAP_I31 || expected == HEAP_STRUCT ||
++           expected == HEAP_ARRAY || expected == HEAP_EQ || expected == HEAP_ANY { return true; }
++        return heap_defined(expected) && store.types[heap_type_index(expected) as i64].kind != 0;
++    }
+     if actual == HEAP_NOFUNC {
+         if expected == HEAP_NOFUNC || expected == HEAP_FUNC { return true; }
+         return heap_defined(expected) && store.types[heap_type_index(expected) as i64].kind == 0;
+1d6c0af47140299d8f3c01ed03060d279c43ee03
+          match st1 {
+            CompTypeSubType(_, _) => false
+            SubType(_, supers, _, _) => {
+              for tu in supers {
+                if typeidx_leq_typeidx_with_fuel(tu, target, env1, fuel - 1) {
+                  return true
+                }
+              }
+              false
+            }
+          }
+        }
+      }
+  }
+}
+
+///|
+fn abs_vs_typeidx_fuel(
+  abs : AbsHeapType,
+  target : TypeIdx,
+  env : Env,
+  fuel : Int32,
+) -> Bool {
+  if fuel <= 0 {
+    return false
+  }
+  match env.resolve_subtype(target) {
+    Some(st) if !st.metadata().is_shared() =>
+      match (abs, st.get_comptype()) {
+        (NoneAbsHeapType, StructCompType(_)) => true
+        (NoneAbsHeapType, ArrayCompType(_)) => true
+        (NoFuncAbsHeapType, FuncCompType(_, _)) => true
+        (NoContAbsHeapType, ContCompType(_)) => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+///|
+fn deftype_matches_abs_fuel(
+  dt : DefType,
+  abs : AbsHeapType,
+  _env : Env,
+  fuel : Int32,
