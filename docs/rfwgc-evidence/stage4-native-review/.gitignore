@@ -1,0 +1,4 @@
+snapshot/
+baseline/
+*.tar
+*.test
