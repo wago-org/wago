@@ -3394,6 +3394,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.canonicalI32Params = canonicalI32ParamMask(hints, f.localType, f.nParams, f.opt(optValueFacts))
 	hasCall := hints.flags.has(hintHasCall)
+	selfTailLeaf := hasCall && f.onlyDirectSelfTailCalls(c.BodyBytes)
+	if selfTailLeaf {
+		hasCall = false
+		f.hasLoop = true // logical recursion remains unbounded work
+		f.stats.peep("tail-self-leaf")
+	}
 	touchesMemory := hints.flags.has(hintTouchesMemory)
 	// A private prepared entry establishes X26 and preserves the full Go
 	// callee-saved set, so small integer functions need not be leaves. Keep host
@@ -3661,7 +3667,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.noteResidencyEvents(hints)
 	callRegions := hasCall && f.opt(optIntervalCallRegions) && !f.interruptible && !f.threadedMemory0 && len(gcTypeLayouts) == 0 && gcFrameRoots == nil &&
 		!hints.flags.has(hintModuleSIMD|hintModuleEH|hintMutatesTable) && len(m.Tables) == 0 && len(customInstructions) == 0
-	intervalRegion := pinLocals && regABI && (!hasCall || callRegions) && (!hints.flags.has(hintHasControlFlow) || intervalControlsEnabled && !hints.flags.has(hintModuleSIMD) && len(m.Tables) == 0 && len(customInstructions) == 0) &&
+	intervalRegion := !selfTailLeaf && pinLocals && regABI && (!hasCall || callRegions) && (!hints.flags.has(hintHasControlFlow) || intervalControlsEnabled && !hints.flags.has(hintModuleSIMD) && len(m.Tables) == 0 && len(customInstructions) == 0) &&
 		(!hints.flags.has(hintUsesBulkMem|hintMutatesTable) || callRegions) && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion && callRegions {
 		f.stats.peep("interval-call-regions")
@@ -3732,7 +3738,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.resultFloat = rt.isFloat()
 		f.resultF64 = rt == mtF64
 	}
-	f.lazyZero = hints.flags.has(hintCallsSelf) && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
+	f.lazyZero = !selfTailLeaf && hints.flags.has(hintCallsSelf) && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
 
 	// Auto-inlining: reserve each spliced callee's locals past f.nLocals (after all
 	// nLocals-dependent setup above, so zeroDeclaredLocals/skipFence/lazyZero see the

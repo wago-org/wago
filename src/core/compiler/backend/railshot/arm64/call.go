@@ -25,6 +25,8 @@ func (f *fn) refreshCachedMemoryBoundAfterExternalCall() {
 	}
 }
 
+var tailSelfLoopEnabled = true
+
 // regABIEnabled turns on the register-based internal-call ABI (default on;
 // WAGO_ARM64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
 var regABIEnabled = os.Getenv("WAGO_ARM64_NOREGABI") != "1"
@@ -461,7 +463,26 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 			f.relocs = append(f.relocs, f.newCallReloc(site, target, true))
 		}
 		if callerRegisterABI {
-			f.emitTailRegisterJump(ft, jump)
+			if int(idx) == int(f.traceFuncIdx) && f.canReuseSelfTailFrame() {
+				// This native backedge no longer has a call relocation. Keep the
+				// logical recursion visible to scheduler-bound finalization.
+				f.hasLoop = true
+				if f.sc != nil {
+					f.sc.directPreparedBounded = false
+				}
+				f.emitTailSelfRegisterJump(ft, func() {
+					if f.threadSelfTailEntryTest() {
+						return
+					}
+					site := f.a.Branch()
+					if !f.a.PatchBranch26(site, f.entryTrapEnd) {
+						panic("arm64 self-tail backedge is out of range")
+					}
+				})
+				f.stats.peep("tail-self-loop")
+			} else {
+				f.emitTailRegisterJump(ft, jump)
+			}
 		} else {
 			// Every return_call target has an offset-zero adapter, so a wrapper
 			// caller enters it with the wrapper ABI and its own results buffer.
@@ -506,6 +527,16 @@ func (f *fn) emitTailFrameRelease() {
 	if f.makesCalls {
 		f.a.LdpPost(FP, LR, SP, 16)
 	}
+}
+
+// canReuseSelfTailFrame admits the original non-GC register-ABI frame only.
+// Re-entry starts before parameter setup and declared-local initialization.
+// Interruptible/profiled functions retain their ordinary entry checks and maps.
+func (f *fn) canReuseSelfTailFrame() bool {
+	return f.opt(optTailSelfLoop) && f.entryTrapEnd != 0 && f.localBase == 0 &&
+		!f.interruptible && !profileEnabled && !f.moduleEH && f.gcFrameRoots == nil &&
+		len(f.customInstructions) == 0 && len(f.intervalLast) == 0 && !f.lazyZero &&
+		!f.scalarSummary.Eligible && sigIsIntOnly(f.ft)
 }
 
 func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
