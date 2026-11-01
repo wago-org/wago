@@ -434,12 +434,29 @@ func validGCModuleFrameRootPlanKinds(module *shared.GCModuleFrameRootPlan, allow
 	return totalSafepoints != 0 || totalCallsites != 0 || compiledArchitecture == 4 && noCollectingBodies
 }
 
+// collectorFreeNativeUnwind grants physical traversal only. It cannot admit
+// allocation safepoints, compact object slots, or collector-bearing calls.
+func (c *Compiled) collectorFreeNativeUnwind(plan *compiledGCFrameRoots) bool {
+	if compiledArchitecture == 4 || c == nil || plan == nil || c.nativeGCABIRequirement() != 0 || c.needsExactNativeGCRoots() || gc.HasHeapObjectTypes(c.GCTypeDescs) || len(plan.safepoints) != 0 || c.hasInternalCollectorReferenceFunctions() {
+		return false
+	}
+	for _, site := range plan.callsites {
+		if len(site.offsets) != 0 {
+			return false
+		}
+	}
+	return len(plan.callsites) != 0
+}
+
 func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) error {
 	if rootMap == nil {
 		return nil
 	}
-	if c == nil || !c.needsExactNativeGCRoots() {
-		return fmt.Errorf("GC frame-root metadata requires exact native GC roots")
+	if c == nil {
+		return fmt.Errorf("GC frame-root metadata requires a compiled module")
+	}
+	if !c.needsExactNativeGCRoots() && !c.collectorFreeNativeUnwind(rootMap) {
+		return fmt.Errorf("GC frame-root metadata requires exact native GC roots or collector-free return maps")
 	}
 	ownedState := (c.hasNoFunctionCode() || compiledArchitecture == 4 && len(c.Funcs) == 0 && len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary()) && (c.needsOwnedExceptionReferences() || compiledArchitecture == 4 && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary()) && c.requiredFeatures.IsEnabled(CoreFeatureGC) && c.nativeGCABIRequirement() == gc.NativeABIVersion)
 	// Import-only plugin calls execute through the public Go boundary. Their
@@ -484,6 +501,11 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 		if compiledArchitecture == 4 && memo != nil && memo.rv64FreshRootedGC && memo.rv64RootedNoCollectingBodies && sha256.Sum256(c.code) == memo.rv64FreshRootedGCDigest && len(rootMap.adapterReturnOffsets) == 0 {
 			return nil
 		}
+		// The source-only extern bridge can prove an empty RootNone graph.
+		// This bridge admission is established only during source compilation.
+		if compiledArchitecture != 4 && c.stagedGCStructProduct() == stagedGCStructExtern {
+			return nil
+		}
 		return fmt.Errorf("GC frame-root metadata has no safepoints or callsites")
 	}
 	if len(rootMap.safepoints) == 0 && c.usesGenericGCExecution() && !c.hasCollectorReferenceCallBoundary() {
@@ -521,6 +543,8 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	}
 	totalFuncs := c.NumImports + len(c.Funcs)
 	opaqueExtern := c.compactExternFrameRoots()
+	sourceExtern := compiledArchitecture != 4 && c.stagedGCStructProduct() == stagedGCStructExtern
+	allowExternTables := opaqueExtern || sourceExtern
 	validValues := func(refType ValType, values []RefInit) bool {
 		refType = normalizedElemRefType(refType)
 		for k, value := range values {
@@ -564,7 +588,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 				}
 				continue
 			}
-			if !isGCRefValType(refType) && (!opaqueExtern || refType != ValExternRef) || !value.Null {
+			if !isGCRefValType(refType) && (!allowExternTables || refType != ValExternRef) || !value.Null {
 				return false
 			}
 		}
@@ -572,7 +596,16 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	}
 	for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
 		typ := c.tableElementType(tableIndex)
-		if typ != ValFuncRef && !isGCRefValType(typ) && (!opaqueExtern || typ != ValExternRef) {
+		if typ == ValExternRef && sourceExtern {
+			if _, imported := c.tableImportAt(tableIndex); imported {
+				return false
+			}
+			for _, exported := range c.tableExports {
+				if exported == tableIndex {
+					return false
+				}
+			}
+		} else if typ != ValFuncRef && !isGCRefValType(typ) && (!opaqueExtern || typ != ValExternRef) {
 			return false
 		}
 		if tableIndex == 0 {

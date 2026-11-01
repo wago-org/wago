@@ -24,7 +24,7 @@ type gcHostActivationToken struct {
 // the thunk SP; every qualified RV64 wrapper saves its incoming RA in word zero
 // of a fixed call-frame header, so the Wasm caller begins immediately after the
 // matching record.
-func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine) gcHostActivationToken {
+func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine, _ *Instance) gcHostActivationToken {
 	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
 	}
