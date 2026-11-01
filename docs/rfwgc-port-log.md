@@ -717,3 +717,24 @@ imports reject before publication. Neither settles converted managed externref
 root ownership. A separate bounded conversion/root-lease assessment is needed.
 See r9-lifecycle-ownership-tests/README.md for exact pins, failed assertions,
 sibling cross-check, repair proposal and unverified RV64 coverage.
+
+## Rooting stage gate and ownership coordination — 2026-11-01
+
+Rooting evidence5019bffa5164d7c6edb760e1ca9f4f7fafef8886 qualifies production
+45c83820fbc10ee31eaaa8437e12464955b2fb9d: focused guest/backend/runtime and
+diagnostic gates PASS ordinary, wagodebug and wago_regalloccheck. All3942
+archived src blobs matched the pin. ARM64/RV64 cross-compilation passes;
+actual execution remains open. Existing skips are enumerated in
+rollup-rooting-integration/README.md. PR997 uses provisional verifiede2736f0f3;
+missing421119d1d is not claimed equivalent. PR997/1026/1027 and R9 H6-F2 are
+integrated with scoped gates green, but final INCLUDED/INCLUDED-FIX awaits
+combined gates and review. No tabled PR closed, no measurement started.
+
+H6-F3 worker owns portable object_edges/object_trace/reclaim APIs and corresponding
+RV64/other variants/tests in gc/native. Parallel worker retains collect.go,
+collector.go, mark.go and native_view.go; required cross-file changes must be
+coordinated. Callback/conditional-root concurrency and post-join exactly-once
+reclaim notifications are explicit joint gates. Preserve RV64 dependency receipt
+semantics rather than blindly enabling them on host. Slipstream staged e1ef65d6b
+conservative failed-runtime retention does not prove cycle/eventual-release
+requirements; exact host graph remains required.
