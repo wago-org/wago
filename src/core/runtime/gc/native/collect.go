@@ -28,9 +28,10 @@ func (c *Collector) CollectFull(roots RootSet) (result error) {
 		return err
 	}
 	c.beginAttempt("major")
-	defer func() { c.endAttempt(result) }()
+	defer c.finishAttempt(&result)
 	selection, selectionErr := c.selectMatureEvacuation()
 	if selectionErr != nil {
+		c.throughput.mature.poison = selectionErr
 		return selectionErr
 	}
 	c.stats.FullCollections++
@@ -72,7 +73,7 @@ func (c *Collector) CollectMinor(roots RootSet) (result error) {
 		return err
 	}
 	c.beginAttempt("minor")
-	defer func() { c.endAttempt(result) }()
+	defer c.finishAttempt(&result)
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {

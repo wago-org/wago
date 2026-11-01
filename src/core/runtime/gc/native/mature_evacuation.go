@@ -51,6 +51,16 @@ func (c *Collector) endAttempt(err error) {
 	}
 }
 
+// Root sources retain their existing panic contract, but unwinding is never
+// recorded as a successful admitted attempt or allowed to consume pressure.
+func (c *Collector) finishAttempt(result *error) {
+	if r := recover(); r != nil {
+		c.endAttempt(fmt.Errorf("gc: collection unwound: %v", r))
+		panic(r)
+	}
+	c.endAttempt(*result)
+}
+
 type evacuationOverlay struct {
 	lines   [2]uint64
 	parent  int
@@ -267,15 +277,15 @@ func (h *throughputHeap) reserveEvacuationRun(s throughputFreeSpan) error {
 	} else {
 		pred, _ := h.spanNeighbors(s.off + 1)
 		if pred == throughputNoSlot {
-			return errors.New("gc: missing admitted run")
+			panic("gc: missing admitted run")
 		}
 		node := h.spanNodes[pred]
 		if node.off > s.off || uint64(node.off)+uint64(node.size) < end {
-			return errors.New("gc: admitted run changed")
+			panic("gc: admitted run changed")
 		}
 		slot, ok := h.removeFreeSpan(node.off)
 		if !ok {
-			return errors.New("gc: admitted run disappeared")
+			panic("gc: admitted run disappeared")
 		}
 		h.releaseSpanNode(slot)
 		if node.off < s.off {
