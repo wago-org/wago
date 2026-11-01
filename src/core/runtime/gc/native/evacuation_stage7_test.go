@@ -533,3 +533,52 @@ func TestEvacuationStage7AbsorbedTail(t *testing.T) {
 		t.Fatal("tail leaked")
 	}
 }
+
+type stage7PanickingRoots struct{}
+
+func (stage7PanickingRoots) RangeRoots(func(RootSlot) bool) { panic("root admission abort") }
+func TestEvacuationStage7RootFailurePressure(t *testing.T) {
+	c, roots := stage7Heap(t, 1, 1, 6, true)
+	before := *c.entry(roots[0])
+	c.throughput.mature.pressure = true
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("missing root panic")
+			}
+		}()
+		_ = c.CollectFull(stage7PanickingRoots{})
+	}()
+	d := c.CollectionDiagnostics()
+	if d.Result != "failed" || d.RequiredCause == nil || !d.Pressure || *c.entry(roots[0]) != before {
+		t.Fatal(d)
+	}
+	if err := c.CollectFull(roots); err != nil {
+		t.Fatal(err)
+	}
+	d = c.CollectionDiagnostics()
+	if d.Result != "success" || d.RequiredCause != nil || d.Evacuation != "moved" {
+		t.Fatal(d)
+	}
+}
+
+func TestEvacuationStage7LargeYoungPlan(t *testing.T) {
+	c := newTestCollector(t, Config{NurseryRegionShift: 6, NurseryBytes: 4 << 20, MatureEvacuation: true, ThroughputHeapBytes: 16 << 20, VerifyAfterCollect: true})
+	roots := make(RefSliceRoots, 65537)
+	for i := range roots {
+		r, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		roots[i] = r
+	}
+	if err := c.CollectMinor(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.Stats().PromotedBytes != uint64(len(roots))*32 || len(c.nurseryHandles) != 0 {
+		t.Fatal("candidate cap incorrectly limited young plan")
+	}
+	if d := c.CollectionDiagnostics(); d.Runs <= 0 || d.Runs > 65536 {
+		t.Fatal(d)
+	}
+}

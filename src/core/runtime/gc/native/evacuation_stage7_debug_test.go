@@ -68,3 +68,54 @@ func TestEvacuationStage7CommittedMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestEvacuationStage7PartialAdmissionRollback(t *testing.T) {
+	for _, point := range []failurePoint{failMatureMetadata, failBackingGrowth} {
+		c, roots := stage7Heap(t, 8, 1, 6, true)
+		h := &c.throughput
+		before := *c.entry(roots[0])
+		bump := h.bump
+		backing := len(h.mem)
+		h.mature.pressure = true
+		disarm := armFailure(h, point, 1)
+		err := c.CollectFull(roots)
+		disarm()
+		if err != nil || c.CollectionDiagnostics().Evacuation != "metadata" {
+			t.Fatal("second run fault not reached", point, err, c.CollectionDiagnostics())
+		}
+		if *c.entry(roots[0]) != before || h.bump != bump || len(h.mem) != backing {
+			t.Fatal("partial run rollback")
+		}
+		if err := c.Verify(roots); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+func TestEvacuationStage7SerialPartialCopyRollback(t *testing.T) {
+	for _, after := range []int{1, 129} {
+		c, roots := stage7Heap(t, 1, 129, 6, true)
+		before := append([]handleEntry(nil), c.handles...)
+		payloads := make([][]byte, len(roots))
+		for i, r := range roots {
+			payloads[i] = bytes.Clone(c.bytes(r))
+		}
+		c.throughput.mature.pressure = true
+		disarm := armFailure(c, failEvacuationCopy, after)
+		err := c.CollectFull(roots)
+		disarm()
+		if err == nil {
+			t.Fatal("partial serial copy failure not reached")
+		}
+		if !reflect.DeepEqual(before, c.handles) {
+			t.Fatal("partial publication")
+		}
+		for i, r := range roots {
+			if !bytes.Equal(payloads[i], c.bytes(r)) {
+				t.Fatal("partial copy source damaged")
+			}
+		}
+		if err = c.Verify(roots); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
