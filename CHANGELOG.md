@@ -50,6 +50,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Keep eligible AMD64 integer self-tail calls in register loops, resolve private
+  immutable table targets, and inline small numeric self-tail and two-function
+  tail cycles. Specialize constant entry arguments and reuse proved branch flags.
+
 - Keep eligible ARM64 self-tail calls in native register loops, including
   private immutable table targets and small numeric helpers inlined into callers.
   Reuse loop constants and reduce integer argument transfers and return branches.

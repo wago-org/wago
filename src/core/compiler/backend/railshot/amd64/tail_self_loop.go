@@ -10,6 +10,14 @@ var tailSelfLoopEnabled = true
 // bodies. Source self calls remain logically unbounded even though no native
 // call or frame growth remains. Unknown instructions keep ordinary tail entry.
 func (f *fn) onlySelfTailTransfers(body []byte) bool {
+	return f.integerTailTransfers(body, true)
+}
+
+func (f *fn) onlyLocalTailTransfers(body []byte) bool {
+	return f.integerTailTransfers(body, false)
+}
+
+func (f *fn) integerTailTransfers(body []byte, selfOnly bool) bool {
 	if !f.opt(optTailSelfLoop) || !f.opt(optRegABI) || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || !sigFitsRegABI(f.ft) || !sigIsIntOnly(f.ft) || len(f.ft.Results) > 1 {
 		return false
 	}
@@ -54,7 +62,11 @@ func (f *fn) onlySelfTailTransfers(body []byte) bool {
 		}
 		if op == 0x12 {
 			index, err := r.U32()
-			if err != nil || index != f.traceFuncIdx {
+			if err != nil || selfOnly && index != f.traceFuncIdx || int(index) < f.importedFunctionCount() {
+				return false
+			}
+			ft, ok := f.functionSignature(index)
+			if !ok || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || !tailResultABICompatible(f.ft.Results, ft.Results) {
 				return false
 			}
 			found = true

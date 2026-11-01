@@ -432,6 +432,7 @@ type fn struct {
 	threadedMemory0         bool   // route shared memory zero through the private instance directory
 	hasLoop                 bool   // retain loop alignment until it becomes a relaxable fragment
 	selfTailLoop            bool   // helper-free integer self tails retain this activation
+	localTailLeaf           bool   // helper-free local integer tails make no native calls
 	selfTailEntry           int    // re-entry after parameters, before declared-local initialization
 	compactLoopAlign32      bool   // small bodies use a full 32-byte loop fetch block
 	bmi2Rorx                bool   // use non-destructive rotates below the dense-code crossover
@@ -552,10 +553,19 @@ type fn struct {
 	// prologue's zeroDeclaredLocals never touches them). localBase is added to every
 	// local index while a splice runs, remapping the callee's locals onto that base;
 	// it is 0 outside a splice.
-	inlineTargets inlineTargetTable
-	inlineBase    map[int]int
-	localBase     int
-	inlineDepth   int
+	inlineTargets           inlineTargetTable
+	inlineTailLoopFrame     int
+	inlineTailExpandBytes   uint16
+	inlineTailCopyBytes     uint16
+	inlineTailExpandDepth   uint8
+	inlineTailSourceFrame   int
+	inlineTailArgumentStart int
+	inlineTailConstants     *inlineTailConstants
+	inlineTailRoot          uint32
+	inlineTailPartner       uint32
+	inlineBase              map[int]int
+	localBase               int
+	inlineDepth             int
 	// inlineRetFrame is the f.ctrl index of the synthetic block frame standing in
 	// for an inlined control-flow callee's function boundary: `return` inside the
 	// callee branches to it (not the real function frame). 0 when not inside such a
@@ -699,9 +709,9 @@ type deferredMixedArg struct {
 	float  bool
 }
 
-// alignPad is a shared zero source for inter-function 16-byte alignment padding,
+// alignPad is a shared zero source for inter-function alignment padding,
 // appended via alignPad[:pad] to avoid allocating a temporary per function.
-var alignPad [16]byte
+var alignPad [32]byte
 
 func align16(n int) int { return (n + 15) &^ 15 }
 
@@ -713,6 +723,7 @@ const (
 	layoutDirectPrepared
 	layoutDirectPreparedBounded
 	layoutOmitted
+	layoutHasTailCall
 )
 
 func boolFlag(on bool, flag uint8) uint8 {
@@ -724,11 +735,16 @@ func boolFlag(on bool, flag uint8) uint8 {
 
 func functionStartPadding(off, bodyBytes int, hostAdapter bool, hints funcHints, policy CodegenPolicy) int {
 	flags := boolFlag(hostAdapter, layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
-		boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf)
+		boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) | boolFlag(hints.flags.has(hintHasTailCall), layoutHasTailCall)
 	return functionStartPaddingFlags(off, bodyBytes, flags, policy)
 }
 
 func functionStartPaddingFlags(off, bodyBytes int, flags uint8, policy CodegenPolicy) int {
+	// Compact loop alignment is function-relative. Match the function's base
+	// alignment so its 32-byte loop targets also align in the module image.
+	if !policy.CompactNative && policy.FunctionAlignLog2 >= 4 && policy.EnabledOption(optCompactLoopAlign32) && flags&(layoutHasLoop|layoutHasTailCall) != 0 && bodyBytes <= 64 {
+		return (-off) & 31
+	}
 	optional := (-off) & 15
 	if optional == 0 || policy.FunctionAlignLog2 < 4 {
 		return 0
@@ -1967,7 +1983,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// Compile is sequential, so sharing one scratch is safe.
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
 	// call sites, keyed by global func index. Empty when inlining is disabled.
-	inlineTargets := buildInlineTargets(m, allHints, policy)
+	inlineTargets := buildInlineTargets(m, allHints, policy, policy.EnabledOption(optTailLoopInline) && !profileEnabled && !opts.Interruptible && opts.GCFrameRoots == nil && len(opts.CustomInstructions) == 0 && !opts.SourceMaps && !opts.UnwindMaps)
 	if opts.GCFrameRoots != nil {
 		restrictGCNumericInlineTargets(m, &inlineTargets)
 	}
@@ -2359,7 +2375,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			ws.usedAMD64Features |= ws.scratch.usedAMD64Features
 			ws.arena = append(ws.arena, fnCode...)
 			flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
-				boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
+				boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) | boolFlag(hints.flags.has(hintHasTailCall), layoutHasTailCall) |
 				boolFlag(ws.scratch.directPrepared, layoutDirectPrepared) | boolFlag(ws.scratch.directPreparedBounded, layoutDirectPreparedBounded)
 			ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
 
@@ -2651,6 +2667,13 @@ func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callR
 				}
 				if target < 0 || target > len(code) {
 					return fmt.Errorf("amd64: invalid call relocation target entry %#x for function %d", target, i)
+				}
+				if rl.internal && rl.tailEdge != 0 {
+					end := len(code)
+					if targetIndex+1 < len(entry) {
+						end = entry[targetIndex+1]
+					}
+					target = localTailEntryTarget(code, target, end, rl.tailEdge)
 				}
 			}
 			delta := int64(target) - int64(site+4)
@@ -3820,9 +3843,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.nLocalSlots = (localBytes + 7) / 8
 	hasCall := hints.flags.has(hintHasCall)
 	touchesMemory := hints.flags.has(hintTouchesMemory)
-	if hasCall && !touchesMemory && hints.globalCount == 0 && nLocals <= 8 && len(c.BodyBytes) <= 256 && f.onlySelfTailTransfers(c.BodyBytes) {
-		f.selfTailLoop, f.hasLoop, hasCall = true, true, false
-		f.stats.peep("tail-self-leaf")
+	if hasCall && !touchesMemory && hints.globalCount == 0 && nLocals <= 8 && len(c.BodyBytes) <= 256 && f.onlyLocalTailTransfers(c.BodyBytes) {
+		f.localTailLeaf, hasCall = true, false
+		if f.onlySelfTailTransfers(c.BodyBytes) {
+			f.selfTailLoop, f.hasLoop = true, true
+			f.stats.peep("tail-self-leaf")
+		} else {
+			f.stats.peep("tail-local-leaf")
+		}
 	}
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
@@ -3888,7 +3916,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if f.compactFrameHeader {
 		f.stats.peep("frame-header-elide")
 	}
-	if !f.selfTailLoop {
+	hasInlineTailLoop := false
+	for _, t := range inlinedCallees {
+		if t.tailLoop() {
+			hasInlineTailLoop = true
+			f.hasLoop = true
+		}
+	}
+	if !f.localTailLeaf && !hasInlineTailLoop {
 		f.scalarSummary = f.admitScalar(c)
 	}
 	if f.scalarSummary.Eligible {
@@ -3909,7 +3944,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// allocation constraint when bounded entry is disabled; the finalizer drops
 	// the direct-entry proof without changing the guest body.
 	nativeHostDirect := hostCFGEligible && coreruntime.NativeScalarLeafSupported && f.opt(optNativeLeafHost) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1)
-	directPrepared := f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall() || nativeHostDirect) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && (!hints.hasUnsupportedDynamicCall() || nativeHostDirect) &&
+	directPrepared := !hasInlineTailLoop && f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall() || nativeHostDirect) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && (!hints.hasUnsupportedDynamicCall() || nativeHostDirect) &&
 		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && gcFrameRoots == nil) &&
 		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) || nativeHostDirect) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	if directPrepared {
@@ -4028,7 +4063,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.noteResidencyEvents(hints)
 	intervalControl := f.opt(optIntervalControl) && !f.moduleHasSIMD && len(f.customInstructions) == 0 &&
 		(hasCall || hints.flags.has(hintHasControlFlow|hintUsesBulkMem))
-	intervalEligible := pinLocals && regABI && !f.selfTailLoop && len(inlinedCallees) == 0 &&
+	intervalEligible := pinLocals && regABI && !f.localTailLeaf && len(inlinedCallees) == 0 &&
 		((!hasCall && !hints.flags.has(hintHasControlFlow|hintUsesBulkMem)) || intervalControl)
 	f.intervalControl = intervalControl
 	if f.bmi2Rorx && intervalEligible && denseRotateRegionalBody(c.BodyBytes, hints, f.localType, sc.classifier) {
@@ -5229,6 +5264,7 @@ func (f *fn) patchFrameSize() error {
 	for _, site := range f.sc.tailFrameSites {
 		f.a.PatchU32(site, size)
 	}
+	f.finishLocalTailArgumentFlags(size)
 	return nil
 }
 

@@ -224,6 +224,10 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 		W = 64
 	}
 	magic, shift, add := railshot.MagicU(d, W)
+	if !w && !add {
+		f.unsignedMagic32ProductShift(res, uint32(d), uint32(magic), byte(shift), wantRem)
+		return
+	}
 	q := f.magicMulHigh(res, magic, w, false) // q = high(res * magic), pinned
 	if add {
 		// q = ((n - q) >> 1) + q  (an overflow-free way to add n before the shift).
@@ -245,6 +249,37 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 		f.a.MovReg64(res, q)
 	}
 	f.pinned = f.pinned.remove(q)
+}
+
+// A 32x32 product fits in 64 bits. Two-operand IMUL retains its exact low 64
+// bits even when the unsigned product exceeds INT64_MAX. Extracting the high
+// half and applying the unsigned magic shift can therefore share one SHR,
+// without claiming the fixed RAX/RDX pair. Add-correction divisors keep the
+// existing path because they need the intermediate high half.
+func (f *fn) unsignedMagic32ProductShift(res Reg, d, magic uint32, shift byte, wantRem bool) {
+	q := res
+	if wantRem {
+		q = f.allocReg(maskOf(res))
+		f.pinned = f.pinned.add(q)
+	}
+	// Normalize explicitly, including dirty i32 carriers when canonical facts
+	// are disabled. The remainder still reads the original low 32-bit dividend.
+	f.a.MovRegReg32(q, res)
+	mr := f.allocReg(maskOf(res, q))
+	f.pinned = f.pinned.add(mr)
+	f.a.MovImm32(mr, int32(magic))
+	f.a.IMul(q, mr, true)
+	f.pinned = f.pinned.remove(mr)
+	f.release(mr)
+	f.a.ShiftImm(5, q, 32+shift, true)
+	if wantRem {
+		// q is dead after remainder formation. Low 32-bit multiplication is
+		// identical for signed and unsigned immediate bit patterns.
+		f.a.ImulRI(q, int32(d), false)
+		f.a.AluRR(0x29, res, q, false)
+		f.pinned = f.pinned.remove(q)
+	}
+	f.stats.peep("magic-product-shift")
 }
 
 // divConstSignedMagic rewrites res (the W-bit dividend) to res / d or res % d

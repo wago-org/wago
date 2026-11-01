@@ -81,10 +81,17 @@ func selfTailAssignmentSetsZero(code []byte, reg Reg, wide bool) bool {
 }
 
 func (f *fn) threadSelfTailEntryTest(lastAssignment int) bool {
-	if !f.opt(optBranchFold) || f.nLocals != f.nParams {
+	if f.nLocals != f.nParams {
 		return false
 	}
-	entry, end := f.selfTailEntry, f.a.Len()
+	return f.threadSelfTailEntryTestAt(f.selfTailEntry, lastAssignment)
+}
+
+func (f *fn) threadSelfTailEntryTestAt(entry, lastAssignment int) bool {
+	if !f.opt(optBranchFold) {
+		return false
+	}
+	end := f.a.Len()
 	if entry < 0 || entry >= end {
 		return false
 	}
