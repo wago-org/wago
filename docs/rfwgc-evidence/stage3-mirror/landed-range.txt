@@ -1,0 +1,89 @@
+commit 506b08d3d3fa3c8e8b1ce9ac0cb4f30a2463cdc3
+Author:     Joshua Tenner <tenner.joshua@gmail.com>
+AuthorDate: Sun Nov 1 18:38:47 2026 +0000
+Commit:     Joshua Tenner <tenner.joshua@gmail.com>
+CommitDate: Sun Nov 1 19:01:45 2026 +0000
+
+    test(wasi): cover path_link symlink resolution
+
+ docs/wasi.md             |  7 +++--
+ tests/test_wasi_wago.py  | 79 ++++++++++++++++++++++++++++++++++++++++++++++--
+ tests/wasi/WAGO_TESTS.md |  3 +-
+ 3 files changed, 84 insertions(+), 5 deletions(-)
+
+commit 3ac3a3fc52c4b74e7d4128fd1b3b5e40cbd9b460
+Author:     Joshua Tenner <tenner.joshua@gmail.com>
+AuthorDate: Sun Nov 1 18:34:11 2026 +0000
+Commit:     Joshua Tenner <tenner.joshua@gmail.com>
+CommitDate: Sun Nov 1 19:01:37 2026 +0000
+
+    feat(wasi): follow confined path_link sources
+
+ src/wasi_common.goose | 20 ++++++++++++++++++++
+ src/wasi_paths.goose  | 20 +++++++++++++++-----
+ 2 files changed, 35 insertions(+), 5 deletions(-)
+
+commit f663906e35d43c1874130316952414bade135cf0
+Author:     Joshua Tenner <tenner.joshua@gmail.com>
+AuthorDate: Sun Nov 1 18:47:34 2026 +0000
+Commit:     Joshua Tenner <tenner.joshua@gmail.com>
+CommitDate: Sun Nov 1 18:55:28 2026 +0000
+
+    test(wasi): bound proc_raise stop test and reap failed children
+
+ tests/test_wasi.py | 29 +++++++++++++++++++++--------
+ 1 file changed, 21 insertions(+), 8 deletions(-)
+
+commit 3dbc7e1b58c7f63f74f87f43bda412a9af3608ef
+Author:     Joshua Tenner <tenner.joshua@gmail.com>
+AuthorDate: Sun Nov 1 18:40:26 2026 +0000
+Commit:     Joshua Tenner <tenner.joshua@gmail.com>
+CommitDate: Sun Nov 1 18:55:28 2026 +0000
+
+    feat(wasi): implement proc_raise signal delivery
+
+ docs/wasi.md       | 10 +++++++---
+ src/wasi.goose     | 18 ++++++++++++++++++
+ tests/test_wasi.py | 31 +++++++++++++++++++++++++++++++
+ 3 files changed, 56 insertions(+), 3 deletions(-)
+
+commit 2d6af18d1c5c06d417791b66b90ea99321a585b4
+Author:     Joshua Tenner <tenner.joshua@gmail.com>
+AuthorDate: Sun Nov 1 18:32:50 2026 +0000
+Commit:     Joshua Tenner <tenner.joshua@gmail.com>
+CommitDate: Sun Nov 1 18:32:50 2026 +0000
+
+    test(wasi): pin fdstat synchronous flag contract
+
+ docs/wasi.md             |  5 +++++
+ src/wasi_files.goose     |  4 +++-
+ tests/test_wasi_wago.py  | 13 +++++++++++++
+ tests/wasi/WAGO_TESTS.md |  5 +++--
+ 4 files changed, 24 insertions(+), 3 deletions(-)
+
+commit cf05aaf8149c9b0f38a74b57454f98254e8f9fc6
+Author:     Joshua Tenner <tenner.joshua@gmail.com>
+AuthorDate: Fri Oct 30 20:19:35 2026 +0000
+Commit:     Joshua Tenner <tenner.joshua@gmail.com>
+CommitDate: Sun Nov 1 18:21:51 2026 +0000
+
+    perf(gc): target active helpers and coalesce joins
+
+ gc/native.goose            | 277 ++++++++++++++++++++++++++++++++++++++-------
+ native/gc_linux_x86_64.S   |   4 +
+ tests/gc_native_heap.goose | 117 +++++++++++++++++++
+ tests/gc_native_sanitize.c |   6 +-
+ tests/test_gc_stats.py     |   3 +
+ 5 files changed, 365 insertions(+), 42 deletions(-)
+
+commit cc48b98eaa147966a2a9ca8ecbc7b48bb51fef6d
+Author:     Joshua Tenner <tenner.joshua@gmail.com>
+AuthorDate: Fri Oct 30 19:41:23 2026 +0000
+Commit:     Joshua Tenner <tenner.joshua@gmail.com>
+CommitDate: Fri Oct 30 19:41:23 2026 +0000
+
+    perf(gc): prepare matched parked dispatch trim for regate
+
+ gc/native.goose            | 29 ++++++++++++++++++++---------
+ tests/gc_native_heap.goose |  7 +++++++
+ 2 files changed, 27 insertions(+), 9 deletions(-)

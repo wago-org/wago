@@ -1,0 +1,14 @@
+{
+  "recorded_utc": "2026-11-01T20:57:40.464348+00:00",
+  "fetch_exit_code": 0,
+  "slipstream_final": "506b08d3d3fa3c8e8b1ce9ac0cb4f30a2463cdc3",
+  "advanced_since_launch": false,
+  "new_commits": [],
+  "ng_admit_unchanged_since_previous_cursor": true,
+  "typecap_ancestor_checks": {
+    "01303964b": false,
+    "059d10f17": false
+  },
+  "old_space_reservation_landing_visible": false,
+  "remaining_action": "Parent must inspect a future landed old-space diff before implementing corresponding semantics; no polling or additional fetch by this worker."
+}

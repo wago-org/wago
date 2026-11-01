@@ -1,0 +1,749 @@
+diff --git a/Makefile b/Makefile
+index 19c74f76d..b3a511da8 100644
+--- a/Makefile
++++ b/Makefile
+@@ -122,8 +122,8 @@ failed-instantiation-cleanup-test: build/starshine-spec build/starshine-spec-deb
+ test: failed-instantiation-cleanup-test
+ 
+ .PHONY: gc-type-capacity-test
+-gc-type-capacity-test: build/starshine
+-	python3 tests/test_gc_type_capacity.py build/starshine
++gc-type-capacity-test: build/starshine build/starshine-debug build/starshine-tiny
++	python3 tests/test_gc_type_capacity.py build/starshine build/starshine-debug build/starshine-tiny
+ 
+ test: gc-type-capacity-test
+ 
+diff --git a/docs/fix-typecap-c1c2-2026-10-31.md b/docs/fix-typecap-c1c2-2026-10-31.md
+new file mode 100644
+index 000000000..55ca98ba9
+--- /dev/null
++++ b/docs/fix-typecap-c1c2-2026-10-31.md
+@@ -0,0 +1,56 @@
++# C1/C2 GC type-capacity fix — 2026-10-31
++
++Branch: `fix/typecap-c1c2`
++
++Implementation commit: `059d10f` (`Grow WebAssembly GC type metadata on registration`)
++
++## Change
++
++- `gc/wasm_adapter.goose`: replaced both 4,096-entry canonical maps and checked-type arrays with store-owned growable scoped storage. Registration computes both required extents, grows only before the transactional registration, preserves the zero type sentinel, refreshes collector configuration/views, and accounts for new type metadata. `wasm_gc_type` remains a direct indexed read.
++- `src/jit.goose`: `run_file` and `spec_session` now own the scoped type and canonical-map backing for both collector ABIs and publish their flat pointer/length views to the native boundary.
++- `src/jit_gc.goose`: all collector entry points consistently reopen those views; module registration republishes views after possible growth, linked/native lookup uses the supplied map, and close, root, constant, and execution paths retain the same store-owned lifetime.
++- `native/jit_linux_x86_64.S`: native ABI shims reconstruct the scoped type/map slices from the flat owner pointer/length fields before entering Goose, preserving flat native ownership.
++- `tests/test_gc_type_capacity.py`: retained the 4,097- and 20,000-type early-managed regressions and added C1 canonical IDs 4,095/4,096 plus C2 managed-layout counts 4,095/4,096 for every release, debug, and three-byte runner.
++- `Makefile`: runs the capacity suite through release, debug, and three-byte builds.
++- `gc/api.goose`: unchanged. Its overflow/capacity checks and transactional publication remain in force.
++- `gc/native.goose`: unchanged. Its separate `NG_TYPE_LIMIT` is 65,536 and is now the next managed-type limit.
++
++Reservation and failed group registration do not publish partial map entries or advance `type_count`; the existing rollback suite exercises repeated failed instantiations in one store. The existing linked-store roots suite exercises cross-module registration and use.
++
++## Gate results
++
++The build and focused gates used:
++
++```
++PATH=/data/workspace/tools:/data/workspace/tools/wabt-1.0.42/bin:$PATH
++GOOSE_HOME=/tmp/r8-fix/goose
++GOOSE_STDLIB=/data/workspace/tools/stdlib
++```
++
++- `make -j4`: PASS, 1 build / 0 failures.
++- `make gc-type-capacity-test`: PASS, 18 cases / 0 failures. Per release, debug, and three-byte build: early-managed 4,097 and 20,000; C1 IDs 4,095 and 4,096; C2 layout counts 4,095 and 4,096.
++- `build/goosegc-test`: PASS, 32 cases and 1,064,061 assertions / 0 failures.
++- `tests/test_wasm3_gc_runtime.py` with release and tiny validators/runners: PASS. Validation: 17 assertions per validator (6 accepts, 11 rejects), 0 failures; both execution runners passed the runtime matrix, 0 failures.
++- `tests/test_gc_abi2_graph.py build/starshine`: PASS, 4 worker configurations (1/2/4/8), each with a 100,001-node cycle / 0 failures.
++- `tests/test_gc_native.py build/gc-abi2-stress`: PASS, 28 checks / 0 failures.
++- `tests/test_wasm3_gc_rollback.py` with release/debug/tiny spec runners: PASS, 3 runners / 0 failures.
++- `tests/test_wasm3_gc_roots.py` with release/tiny runners: PASS, 2 runners / 0 failures, including linked-store coverage.
++- `make conformance`: PASS in release single-worker, release 8-worker, and three-byte 8-worker modes. Each mode checked 147 files, 1,717 acceptances, and 2,880 rejections; 0 failures. The corpus was cached/available, so the anticipated GitHub-DNS block did not apply.
++
++`make -k test` was also sampled but not used as a clean gate: it was stopped during the very long re-entry stress run. Before interruption it reproduced the known parallel-JIT helper-count failure and the two known Wago corpus failures. The pinned Wago coverage checkout was unavailable. It also observed a three-byte failed-instantiation-cleanup VmSize tolerance miss; focused rollback and roots suites passed. The instantiation-descriptor harness was not blocked on this run and passed in release, debug, and three-byte modes. Standing laptop known-reds (cached-body fixture, 15 Wasm 2 execution failures, compiler success-message assertion, and Redline oracle pin mismatch) were not chased.
++
++## Performance discipline
++
++This is the cheapest correct version: growth and its zero initialization happen only at type registration. No allocations, copies, hashing, scans, or recomputation were added to execution lookup paths. `wasm_gc_type` remains a bounds check followed by a direct indexed map read, and the collector type lookup remains directly indexed.
++
++## READY TO MEASURE
++
++Status: READY TO MEASURE
++
++Branch: `fix/typecap-c1c2`
++
++Head: the report-carrying branch head; implementation is commit `059d10f`.
++
++Perf-sensitive paths: registration-time type/map growth and execution-time direct type lookup.
++
++Proposed workloads: module load with 4,096-plus types (including the 20,000-type case), the GC real-program workloads, and the collector stress set.
+diff --git a/gc/wasm_adapter.goose b/gc/wasm_adapter.goose
+index bfc978a58..54d11f8ae 100644
+--- a/gc/wasm_adapter.goose
++++ b/gc/wasm_adapter.goose
+@@ -13,7 +13,7 @@ struct WasmGcAdapter {
+     domain: u64,
+     // Zero is unmapped. GooseGC managed type IDs also reserve zero, so no
+     // extra tag or side bitmap is required.
+-    type_map: u32[:]
++    type_map: u32[:], map_storage: u32[>..]?, type_storage: GcType[>..]?
+ }
+ 
+ // Engine-owned, fixed-capacity collector storage. Unlike Collector (which
+@@ -22,7 +22,6 @@ struct WasmGcAdapter {
+ // Collector/WasmGcAdapter views and commits scalar state before returning.
+ let WASM_GC_HANDLES: u32 = 16384;
+ let WASM_GC_BLOCKS: u32 = 64;
+-let WASM_GC_TYPES: u32 = 4096;
+ let WASM_GC_FIELDS: u32 = 32768;
+ let WASM_GC_ROOTS: u32 = 1024;
+ let WASM_GC_WORDS: u32 = 256;
+@@ -31,11 +30,12 @@ let WASM_GC_BACKING: u32 = 2228224;
+ struct WasmGcRuntime {
+     abi: u64 = 1,
+     domain: u64 = 0,
++    type_data: u64 = 0, type_length: u64 = 0,
++    map_data: u64 = 0, map_length: u64 = 0,
+     bytes: u8[2228224] = [0; 2228224],
+     handles: HandleEntry[16384] = [HandleEntry {}; 16384],
+     blocks: GcBlock[64] = [GcBlock {}; 64],
+     reservations: GcReservation[64] = [GcReservation {}; 64],
+-    types: GcType[4096] = [GcType {}; 4096],
+     fields: GcField[32768] = [GcField {}; 32768],
+     scan: u32[32768] = [0; 32768], temps: u32[32768] = [0; 32768],
+     roots: GcRoot[1024] = [GcRoot {}; 1024],
+@@ -45,12 +45,7 @@ struct WasmGcRuntime {
+     dirty_summary: u64[1] = [0], large_owner: u32[512] = [0; 512],
+     embedding_counts: u32[16384] = [0; 16384],
+     embedding_bits: u64[256] = [0; 256], published_bits: u64[256] = [0; 256],
+-    published_roots: u32[16384] = [0; 16384], type_map: u32[4096] = [0; 4096],
+-    // Store canonical metadata is kept beside the collector so function
+-    // references can participate in ref.test/ref.cast without confusing
+-    // their native-pointer representation with compact managed handles.
+-    canonical_parent: u32[4096] = [0xffffffff; 4096],
+-    canonical_kind: u8[4096] = [0xff; 4096], canonical_count: u32 = 0,
++    published_roots: u32[16384] = [0; 16384],
+     error: u32 = 0, closed: bool = false, collecting: bool = false,
+     borrowed: bool = false, callback_depth: u32 = 0,
+     handle_count: u32 = 1, free_handle: u32 = 0,
+@@ -71,11 +66,12 @@ struct WasmGcRuntime {
+ struct NativeWasmGcRuntime {
+     abi: u64 = 2,
+     domain: u64 = 0,
++    type_data: u64 = 0, type_length: u64 = 0,
++    map_data: u64 = 0, map_length: u64 = 0,
+     bytes: u8[1] = [0; 1],
+     handles: HandleEntry[1] = [HandleEntry {}; 1],
+     blocks: GcBlock[1] = [GcBlock {}; 1],
+     reservations: GcReservation[1] = [GcReservation {}; 1],
+-    types: GcType[4096] = [GcType {}; 4096],
+     fields: GcField[32768] = [GcField {}; 32768],
+     scan: u32[32768] = [0; 32768], temps: u32[32768] = [0; 32768],
+     roots: GcRoot[1] = [GcRoot {}; 1],
+@@ -85,12 +81,7 @@ struct NativeWasmGcRuntime {
+     dirty_summary: u64[1] = [0], large_owner: u32[1] = [0; 1],
+     embedding_counts: u32[1] = [0; 1],
+     embedding_bits: u64[1] = [0; 1], published_bits: u64[1] = [0; 1],
+-    published_roots: u32[1] = [0; 1], type_map: u32[4096] = [0; 4096],
+-    // Store canonical metadata is kept beside the collector so function
+-    // references can participate in ref.test/ref.cast without confusing
+-    // their native-pointer representation with compact managed handles.
+-    canonical_parent: u32[4096] = [0xffffffff; 4096],
+-    canonical_kind: u8[4096] = [0xff; 4096], canonical_count: u32 = 0,
++    published_roots: u32[1] = [0; 1],
+     error: u32 = 0, closed: bool = false, collecting: bool = false,
+     borrowed: bool = false, callback_depth: u32 = 0,
+     handle_count: u32 = 1, free_handle: u32 = 0,
+@@ -104,15 +95,15 @@ struct NativeWasmGcRuntime {
+     // Append test state so the existing flat backing alignment is unchanged.
+     force_collection: bool = false, native_heap: u64 = 0
+ }
+-fn wasm_gc_runtime_config() -> GcConfig {
++fn wasm_gc_runtime_config(types: const GcType[:]) -> GcConfig {
+     return GcConfig { budget: 16777216, handles: WASM_GC_HANDLES, blocks: WASM_GC_BLOCKS,
+-        roots: WASM_GC_ROOTS, types: WASM_GC_TYPES, fields: WASM_GC_FIELDS,
++        roots: WASM_GC_ROOTS, types: types.len as u32, fields: WASM_GC_FIELDS,
+         eden: 65536, survivor: 32768, embedding_roots: WASM_GC_HANDLES };
+ }
+-fn wasm_gc_runtime_prepare<T>(runtime: T&) -> bool {
++fn wasm_gc_runtime_prepare<T>(runtime: T&, types: const GcType[:]) -> bool {
+     if runtime.domain == 0 {
+         runtime.domain = ss_gc_next_domain(); if runtime.domain == 0 { return false; }
+-        let config = wasm_gc_runtime_config();
++        let config = wasm_gc_runtime_config(types);
+         let backing = config.eden as u64 + config.survivor as u64 * 2 + config.blocks as u64 * GC_BLOCK as u64;
+         let words = (config.handles as u64 + 63) / 64;
+         let summary_words = (config.blocks as u64 + 63) / 64;
+@@ -133,10 +124,10 @@ fn wasm_gc_runtime_prepare<T>(runtime: T&) -> bool {
+     }
+     return true;
+ }
+-fn wasm_gc_runtime_open<T>(runtime: T&) -> Collector, WasmGcAdapter {
+-    let config = wasm_gc_runtime_config();
++fn wasm_gc_runtime_open<T>(runtime: T&, types: GcType[:], type_map: u32[:]) -> Collector, WasmGcAdapter {
++    let config = wasm_gc_runtime_config(types);
+     var c = Collector { runtime.domain, config, runtime.bytes, runtime.handles, runtime.blocks, runtime.reservations,
+-        runtime.types, runtime.fields, runtime.scan, runtime.roots, runtime.marks, runtime.queue, runtime.moves,
++        types, runtime.fields, runtime.scan, runtime.roots, runtime.marks, runtime.queue, runtime.moves,
+         runtime.young, runtime.temps, runtime.verify_bits, runtime.dirty_summary, runtime.large_owner,
+         runtime.embedding_counts, runtime.embedding_bits, runtime.published_roots, runtime.published_bits };
+     c.force_collection = runtime.force_collection; c.config.verify_collections = runtime.force_collection;
+@@ -151,7 +142,7 @@ fn wasm_gc_runtime_open<T>(runtime: T&) -> Collector, WasmGcAdapter {
+     c.promotion_age = runtime.promotion_age; c.root_generation = runtime.root_generation;
+     c.published_count = runtime.published_count; c.publishing_roots = runtime.publishing_roots;
+     c.fail_after = runtime.fail_after; c.stats = runtime.stats;
+-    var adapter = WasmGcAdapter { runtime.domain, runtime.type_map };
++    var adapter = WasmGcAdapter { runtime.domain, type_map };
+     return c, adapter;
+ }
+ fn wasm_gc_runtime_commit<T>(runtime: T&, c: Collector&) {
+@@ -167,17 +158,14 @@ fn wasm_gc_runtime_commit<T>(runtime: T&, c: Collector&) {
+     runtime.published_count = c.published_count; runtime.publishing_roots = c.publishing_roots;
+     runtime.fail_after = c.fail_after; runtime.stats = c.stats;
+ }
+-fn wasm_gc_runtime_close<T>(runtime: T&) -> bool {
+-    if !wasm_gc_runtime_prepare(runtime) { return false; }
+-    let c, adapter = wasm_gc_runtime_open(runtime);
++fn wasm_gc_runtime_close<T>(runtime: T&, types: GcType[:], type_map: u32[:]) -> bool {
++    if !wasm_gc_runtime_prepare(runtime, types) { return false; }
++    let c, adapter = wasm_gc_runtime_open(runtime, types, type_map);
+     if runtime.force_collection && !gc_verify(c) { wasm_gc_runtime_commit(runtime, c); return false; }
+     let closed = gc_close(c);
+     wasm_gc_runtime_commit(runtime, c);
+     return closed;
+ }
+-export fn ss_gc_close_owned(runtime: WasmGcRuntime&) -> bool {
+-    return wasm_gc_runtime_close(runtime);
+-}
+ 
+ fn wasm_gc_with_domain<F>(config: WasmGcConfig, domain: u64) -> bool {
+     if config.canonical_types == 0 || config.canonical_types > 0x7fffffff ||
+@@ -217,6 +205,26 @@ fn wasm_gc_register_group(c: Collector&, adapter: WasmGcAdapter&, canonical: con
+                           defs: const GcTypeRegistration[:], fields: const GcField[:], ids: u32[:]) -> bool {
+     if !wasm_gc_ready(c, adapter) { return false; }
+     if canonical.len == 0 || canonical.len != defs.len || ids.len != defs.len { c.error = GC_INVALID; return false; }
++    var canonical_limit: u64 = 0;
++    for id in canonical { if id as u64 + 1 > canonical_limit { canonical_limit = id as u64 + 1; } }
++    if canonical_limit > 0x7fffffff || c.type_count as u64 + defs.len as u64 > 0x7fffffff {
++        c.error = GC_LIMIT; return false;
++    }
++    let map_storage = adapter.map_storage;
++    if map_storage {
++        while map_storage.len as u64 < canonical_limit { map_storage.push(0); }
++        adapter.type_map = map_storage;
++    } else if adapter.type_map.len as u64 < canonical_limit { c.error = GC_LIMIT; return false; }
++    let storage = adapter.type_storage;
++    if storage {
++        let required = c.type_count as u64 + defs.len as u64;
++        let previous = storage.len as u64;
++        while storage.len as u64 < required { storage.push(GcType {}); }
++        c.types = storage; c.config.types = storage.len as u32;
++        let growth = (storage.len as u64 - previous) * 44;
++        c.stats.type_bytes += growth; c.stats.metadata += growth;
++        c.stats.reserved += growth; c.stats.committed += growth;
++    }
+     var mapped: u32 = 0;
+     for i in canonical.len {
+         let id = canonical[i];
+diff --git a/native/jit_linux_x86_64.S b/native/jit_linux_x86_64.S
+index 1222432e4..9982707b7 100644
+--- a/native/jit_linux_x86_64.S
++++ b/native/jit_linux_x86_64.S
+@@ -689,25 +689,94 @@ ss_gc_retain_owned_pointer:
+     cmpq $2,(%rdi)
+     je ss_gc_retain_runtime_native
+     jmp ss_gc_retain_runtime
++.globl ss_gc_retain_runtime
++ss_gc_retain_runtime:
++    mov 16(%rdi),%rdx
++    mov 24(%rdi),%rcx
++    mov 32(%rdi),%r8
++    mov 40(%rdi),%r9
++    jmp ss_gc_retain_runtime_views
++.globl ss_gc_retain_runtime_native
++ss_gc_retain_runtime_native:
++    mov 16(%rdi),%rdx
++    mov 24(%rdi),%rcx
++    mov 32(%rdi),%r8
++    mov 40(%rdi),%r9
++    jmp ss_gc_retain_runtime_native_views
+ .globl ss_gc_release_owned_pointer
+ ss_gc_release_owned_pointer:
+     cmpq $2,(%rdi)
+     je ss_gc_release_runtime_native
+     jmp ss_gc_release_runtime
++.globl ss_gc_release_runtime
++ss_gc_release_runtime:
++    mov 16(%rdi),%rdx
++    mov 24(%rdi),%rcx
++    mov 32(%rdi),%r8
++    mov 40(%rdi),%r9
++    jmp ss_gc_release_runtime_views
++.globl ss_gc_release_runtime_native
++ss_gc_release_runtime_native:
++    mov 16(%rdi),%rdx
++    mov 24(%rdi),%rcx
++    mov 32(%rdi),%r8
++    mov 40(%rdi),%r9
++    jmp ss_gc_release_runtime_native_views
+ .globl ss_gc_failed_runtime_reachable_pointer
+ ss_gc_failed_runtime_reachable_pointer:
+     jmp ss_gc_failed_runtime_reachable
++.globl ss_gc_failed_runtime_reachable
++ss_gc_failed_runtime_reachable:
++    mov 16(%rdi),%rdx
++    mov 24(%rdi),%rcx
++    mov 32(%rdi),%r8
++    mov 40(%rdi),%r9
++    jmp ss_gc_failed_runtime_reachable_views
+ .globl ss_gc_close_pointer
+ ss_gc_close_pointer:
+     cmpq $2,(%rdi)
+     je ss_gc_engine_close_native
+     jmp ss_gc_engine_close
++.globl ss_gc_engine_close
++ss_gc_engine_close:
++    mov 16(%rdi),%rsi
++    mov 24(%rdi),%rdx
++    mov 32(%rdi),%rcx
++    mov 40(%rdi),%r8
++    jmp ss_gc_engine_close_views
++.globl ss_gc_engine_close_native
++ss_gc_engine_close_native:
++    mov 16(%rdi),%rsi
++    mov 24(%rdi),%rdx
++    mov 32(%rdi),%rcx
++    mov 40(%rdi),%r8
++    jmp ss_gc_engine_close_native_views
+ .globl ss_gc_constant_op_pointer
+ .type ss_gc_constant_op_pointer,@function
+ ss_gc_constant_op_pointer:
+     cmpq $2,(%rdi)
+     je ss_gc_constant_op_native
+     jmp ss_gc_constant_op
++.globl ss_gc_constant_op
++ss_gc_constant_op:
++    sub $8,%rsp
++    pushq 40(%rdi)
++    pushq 32(%rdi)
++    pushq 24(%rdi)
++    pushq 16(%rdi)
++    call ss_gc_constant_op_views
++    add $40,%rsp
++    ret
++.globl ss_gc_constant_op_native
++ss_gc_constant_op_native:
++    sub $8,%rsp
++    pushq 40(%rdi)
++    pushq 32(%rdi)
++    pushq 24(%rdi)
++    pushq 16(%rdi)
++    call ss_gc_constant_op_native_views
++    add $40,%rsp
++    ret
+ .globl ss_bind_refs
+ ss_bind_refs:
+     mov %rsi,200(%rdi)
+@@ -802,6 +871,8 @@ ss_gc_handles_pointer:
+ .set ss_gc_u32_pointer,ss_gc_handles_pointer
+ .globl ss_gc_u64_pointer
+ .set ss_gc_u64_pointer,ss_gc_handles_pointer
++.globl ss_gc_types_pointer
++.set ss_gc_types_pointer,ss_gc_handles_pointer
+ .globl ss_gc_i64_pointer
+ .set ss_gc_i64_pointer,ss_gc_handles_pointer
+ .globl ss_gc_bool_pointer
+@@ -843,3 +914,31 @@ ss_frame_local_offset:
+     cmpq $2,(%rdi)
+     je ss_gc_runtime_op_native
+     jmp ss_gc_runtime_op
++.globl ss_gc_runtime_op
++ss_gc_runtime_op:
++    mov 8(%rsp),%r10
++    mov 16(%rsp),%r11
++    sub $8,%rsp
++    pushq 40(%rdi)
++    pushq 32(%rdi)
++    pushq 24(%rdi)
++    pushq 16(%rdi)
++    push %r11
++    push %r10
++    call ss_gc_runtime_op_views
++    add $56,%rsp
++    ret
++.globl ss_gc_runtime_op_native
++ss_gc_runtime_op_native:
++    mov 8(%rsp),%r10
++    mov 16(%rsp),%r11
++    sub $8,%rsp
++    pushq 40(%rdi)
++    pushq 32(%rdi)
++    pushq 24(%rdi)
++    pushq 16(%rdi)
++    push %r11
++    push %r10
++    call ss_gc_runtime_op_native_views
++    add $56,%rsp
++    ret
+diff --git a/src/jit.goose b/src/jit.goose
+index 2c190d23c..af25b3d8d 100644
+--- a/src/jit.goose
++++ b/src/jit.goose
+@@ -1175,6 +1175,7 @@ fn run_file(path: const u8[:], target: const u8[:], explicit: bool, arguments: c
+         return;
+     }
+     if jit_gc_abi2 {
++        var gc_types: GcType[>..] = [GcType {}]; var gc_type_map: u32[>..] = [];
+         var gc = NativeWasmGcRuntime { force_collection: jit_gc_stress };
+         let gc_owner: NativeWasmGcRuntime& = gc;
+         let pointer = ss_gc_u64_pointer(gc.abi);
+@@ -1182,24 +1183,29 @@ fn run_file(path: const u8[:], target: const u8[:], explicit: bool, arguments: c
+             r, store, m, rt =>
+             // Generic closure capture owns its flat collector copy. Bind every
+             // Runtime and the Store to that exact address before publishing types.
+-            require(r, wasm_gc_runtime_prepare(gc_owner), "garbage collector initialization failed");
+-            let c, adapter = wasm_gc_runtime_open(gc_owner);
++            require(r, wasm_gc_runtime_prepare(gc_owner, gc_types), "garbage collector initialization failed");
++            let c, adapter = wasm_gc_runtime_open(gc_owner, gc_types, gc_type_map);
++            adapter.type_storage .= gc_types; adapter.map_storage .= gc_type_map;
+             let registered = register_module_gc_types(gc_owner, c, adapter, store, m, rt, r);
++            bind_gc_metadata(gc_owner, gc_types, gc_type_map);
+             wasm_gc_runtime_commit(gc_owner, c);
+             require(r, registered, "garbage collector type registration failed");
+         };
+         return;
+     }
++    var gc_types: GcType[>..] = [GcType {}]; var gc_type_map: u32[>..] = [];
+     var gc = WasmGcRuntime { force_collection: jit_gc_stress };
+     let gc_owner: WasmGcRuntime& = gc;
+-    let pointer = ss_wasm_gc_pointer(gc);
++    let pointer = ss_gc_u64_pointer(gc.abi);
+     run_store_session(path, target, explicit, arguments, stack_forwarding, buffer, raw, import_text, imports, host_options, pointer) {
+         r, store, m, rt =>
+         // Generic closure capture owns its flat collector copy. Bind every
+         // Runtime and the Store to that exact address before publishing types.
+-        require(r, wasm_gc_runtime_prepare(gc_owner), "garbage collector initialization failed");
+-        let c, adapter = wasm_gc_runtime_open(gc_owner);
++        require(r, wasm_gc_runtime_prepare(gc_owner, gc_types), "garbage collector initialization failed");
++        let c, adapter = wasm_gc_runtime_open(gc_owner, gc_types, gc_type_map);
++        adapter.type_storage .= gc_types; adapter.map_storage .= gc_type_map;
+         let registered = register_module_gc_types(gc_owner, c, adapter, store, m, rt, r);
++        bind_gc_metadata(gc_owner, gc_types, gc_type_map);
+         wasm_gc_runtime_commit(gc_owner, c);
+         require(r, registered, "garbage collector type registration failed");
+     };
+@@ -1239,25 +1245,31 @@ fn spec_session(path: const u8[:], buffer: u8[:]) {
+     gc_allocations_seen = false;
+     gc_exceptions_seen = false;
+     if jit_gc_abi2 {
++        var gc_types: GcType[>..] = [GcType {}]; var gc_type_map: u32[>..] = [];
+         var gc = NativeWasmGcRuntime { force_collection: jit_gc_stress };
+         let gc_owner: NativeWasmGcRuntime& = gc;
+         spec_store_session(path, buffer, ss_gc_u64_pointer(gc.abi)) {
+             r, store, m, rt =>
+-            require(r, wasm_gc_runtime_prepare(gc_owner), "garbage collector initialization failed");
+-            let c, adapter = wasm_gc_runtime_open(gc_owner);
++            require(r, wasm_gc_runtime_prepare(gc_owner, gc_types), "garbage collector initialization failed");
++            let c, adapter = wasm_gc_runtime_open(gc_owner, gc_types, gc_type_map);
++            adapter.type_storage .= gc_types; adapter.map_storage .= gc_type_map;
+             let registered = register_module_gc_types(gc_owner, c, adapter, store, m, rt, r);
++            bind_gc_metadata(gc_owner, gc_types, gc_type_map);
+             wasm_gc_runtime_commit(gc_owner, c);
+             require(r, registered, "garbage collector type registration failed");
+         };
+         return;
+     }
++    var gc_types: GcType[>..] = [GcType {}]; var gc_type_map: u32[>..] = [];
+     var gc = WasmGcRuntime { force_collection: jit_gc_stress };
+     let gc_owner: WasmGcRuntime& = gc;
+-    spec_store_session(path, buffer, ss_wasm_gc_pointer(gc)) {
++    spec_store_session(path, buffer, ss_gc_u64_pointer(gc.abi)) {
+         r, store, m, rt =>
+-        require(r, wasm_gc_runtime_prepare(gc_owner), "garbage collector initialization failed");
+-        let c, adapter = wasm_gc_runtime_open(gc_owner);
++        require(r, wasm_gc_runtime_prepare(gc_owner, gc_types), "garbage collector initialization failed");
++        let c, adapter = wasm_gc_runtime_open(gc_owner, gc_types, gc_type_map);
++        adapter.type_storage .= gc_types; adapter.map_storage .= gc_type_map;
+         let registered = register_module_gc_types(gc_owner, c, adapter, store, m, rt, r);
++        bind_gc_metadata(gc_owner, gc_types, gc_type_map);
+         wasm_gc_runtime_commit(gc_owner, c);
+         require(r, registered, "garbage collector type registration failed");
+     };
+diff --git a/src/jit_gc.goose b/src/jit_gc.goose
+index 742212d19..7823a2722 100644
+--- a/src/jit_gc.goose
++++ b/src/jit_gc.goose
+@@ -3,7 +3,6 @@ import goosegc.native;
+ import .jit_platform;
+ import .jit_store;
+ 
+-extern fn ss_wasm_gc_pointer(runtime: WasmGcRuntime&) -> u64;
+ extern fn ss_gc_handles_pointer(handles: const HandleEntry[:]) -> u64;
+ extern fn ss_gc_blocks_pointer(blocks: const GcBlock[:]) -> u64;
+ extern fn ss_gc_bits_pointer(bits: const u64[:]) -> u64;
+@@ -12,6 +11,11 @@ extern fn ss_gc_u64_pointer(value: u64&) -> u64;
+ extern fn ss_gc_i64_pointer(value: i64&) -> u64;
+ extern fn ss_gc_bool_pointer(value: bool&) -> u64;
+ extern fn ss_gc_words_pointer(values: const u32[:]) -> u64;
++extern fn ss_gc_types_pointer(values: const GcType[:]) -> u64;
++fn bind_gc_metadata<T>(owner: T&, types: GcType[>..]&, type_map: u32[>..]&) {
++    owner.type_data = ss_gc_types_pointer(types); owner.type_length = types.len as u64;
++    owner.map_data = ss_gc_words_pointer(type_map); owner.map_length = type_map.len as u64;
++}
+ 
+ fn convert_reference(raw: u64, to_any: bool) -> u64 {
+     if raw == 0 { return 0; }
+@@ -336,18 +340,18 @@ fn release_runtime_gc_roots(c: Collector&, adapter: WasmGcAdapter&, rt: Runtime&
+     return true;
+ }
+ 
+-fn gc_impl_retain_runtime<T>(owner: T&, rt: Runtime&) -> bool {
++fn gc_impl_retain_runtime<T>(owner: T&, rt: Runtime&, types: GcType[:], type_map: u32[:]) -> bool {
+     if owner.native_heap != 0 { return true; }
+-    if !wasm_gc_runtime_prepare(owner) { return false; }
+-    let c, adapter = wasm_gc_runtime_open(owner);
++    if !wasm_gc_runtime_prepare(owner, types) { return false; }
++    let c, adapter = wasm_gc_runtime_open(owner, types, type_map);
+     let ok = retain_runtime_gc_roots(c, adapter, rt);
+     wasm_gc_runtime_commit(owner, c);
+     return ok;
+ }
+-fn gc_impl_release_runtime<T>(owner: T&, rt: Runtime&) -> bool {
++fn gc_impl_release_runtime<T>(owner: T&, rt: Runtime&, types: GcType[:], type_map: u32[:]) -> bool {
+     if owner.native_heap != 0 { ng_region_owner_release(owner.native_heap, rt.exception_owner); return true; }
+-    if !wasm_gc_runtime_prepare(owner) { return false; }
+-    let c, adapter = wasm_gc_runtime_open(owner);
++    if !wasm_gc_runtime_prepare(owner, types) { return false; }
++    let c, adapter = wasm_gc_runtime_open(owner, types, type_map);
+     let ok = release_runtime_gc_roots(c, adapter, rt);
+     wasm_gc_runtime_commit(owner, c);
+     return ok;
+@@ -359,9 +363,9 @@ inline fn gc_failed_function_reference(rt: Runtime&, value: u64) -> bool {
+          rt.host_function_count != 0 && value >= rt.host_function_base &&
+          value < rt.host_function_base + rt.host_function_count * 48 && (value - rt.host_function_base) % 48 == 0);
+ }
+-fn gc_impl_failed_runtime_reachable(owner: WasmGcRuntime&, rt: Runtime&) -> bool {
+-    if !wasm_gc_runtime_prepare(owner) { return true; }
+-    let c, adapter = wasm_gc_runtime_open(owner);
++fn gc_impl_failed_runtime_reachable(owner: WasmGcRuntime&, rt: Runtime&, types: GcType[:], type_map: u32[:]) -> bool {
++    if !wasm_gc_runtime_prepare(owner, types) { return true; }
++    let c, adapter = wasm_gc_runtime_open(owner, types, type_map);
+     // The start trap is not a collector failure. Begin the failure trace as a
+     // fresh collector transaction, as type registration and runtime ops do.
+     c.error = GC_OK;
+@@ -594,12 +598,12 @@ fn runtime_ref_test<T>(owner: T&, c: Collector&, adapter: WasmGcAdapter&, rt: Ru
+ // Host-stack dispatcher for all operations that change counted embedding
+ // roots.  `root` is already available for exact safepoint publication; this
+ // non-allocating phase intentionally performs no collection here.
+-fn gc_impl_runtime_op<T>(owner: T&, root: Runtime&, rt: Runtime&, op: u32,
++fn gc_impl_runtime_op<T>(owner: T&, root: Runtime&, rt: Runtime&, types: GcType[:], type_map: u32[:], op: u32,
+                            a: u64, b: u64, c: u64, imm: u64) -> u64 {
+-    if owner.native_heap != 0 { return gc2_runtime(owner, root, rt, op, a, b, c, imm); }
++    if owner.native_heap != 0 { return gc2_runtime(owner, root, rt, types, type_map, op, a, b, c, imm); }
+     var result: u64 = 0; var ok = false;
+-    if !wasm_gc_runtime_prepare(owner) { return gc_runtime_fault(rt); }
+-    let collector, adapter = wasm_gc_runtime_open(owner);
++    if !wasm_gc_runtime_prepare(owner, types) { return gc_runtime_fault(rt); }
++    let collector, adapter = wasm_gc_runtime_open(owner, types, type_map);
+         let index = imm & 0xffffffff; let other = imm >> 32;
+         match op {
+             0xfb00, 0xfb01 => {
+@@ -897,16 +901,16 @@ fn gc_impl_runtime_op<T>(owner: T&, root: Runtime&, rt: Runtime&, op: u32,
+ // temporary embedding root before returning; the streaming evaluator either
+ // transfers that count to the committed slot or explicitly releases it when
+ // the value is consumed by a later constructor.
+-fn gc_impl_constant_op<T>(owner: T&, rt: Runtime&, op: u32, base: u64, count: u64, imm: u64) -> u64 {
++fn gc_impl_constant_op<T>(owner: T&, rt: Runtime&, types: GcType[:], type_map: u32[:], op: u32, base: u64, count: u64, imm: u64) -> u64 {
+     if owner.native_heap != 0 {
+         if op < 0xfb00 {
+             if op == 2 || op == 4 { let id = ng_region_key(owner.native_heap, base); if id != 0 { ng_drop_region(owner.native_heap, id); } }
+             return 0;
+         }
+-        return gc2_runtime(owner, rt, rt, op, if op == 0xfb07 { arena_word(base, 0) } else { base }, count, 0, imm);
++        return gc2_runtime(owner, rt, rt, types, type_map, op, if op == 0xfb07 { arena_word(base, 0) } else { base }, count, 0, imm);
+     }
+-    if !wasm_gc_runtime_prepare(owner) { return 0; }
+-    let collector, adapter = wasm_gc_runtime_open(owner); var result = GcRef {};
++    if !wasm_gc_runtime_prepare(owner, types) { return 0; }
++    let collector, adapter = wasm_gc_runtime_open(owner, types, type_map); var result = GcRef {};
+     let index = imm & 0xffffffff;
+     match op {
+         0 => { if count != 0 { release_word(collector, adapter, base); } },
+@@ -1309,9 +1313,9 @@ fn gc2_region_install(rt: Runtime&, base: u64, count: u64, stride: u64, kind: u6
+ fn gc2_region_dirty(rt: Runtime&, id: u64, first: u64, count: u64) -> bool {
+     return id == 0 || ng_region_barrier(rt.native_heap, id, first, count);
+ }
+-fn gc2_runtime<T>(owner: T&, root: Runtime&, rt: Runtime&, op: u32,
++fn gc2_runtime<T>(owner: T&, root: Runtime&, rt: Runtime&, types: GcType[:], type_map: u32[:], op: u32,
+                 a: u64, b: u64, value_c: u64, imm: u64) -> u64 {
+-    let c, adapter = wasm_gc_runtime_open(owner); let h = owner.native_heap;
++    let c, adapter = wasm_gc_runtime_open(owner, types, type_map); let h = owner.native_heap;
+     let index = imm & 0xffffffff; let other = imm >> 32;
+     let heap = rt.gc_heap_base; var result: u64 = 0;
+     let id = if index < rt.gc_type_count { ss_load64(rt.gc_types + index * 8) as u32 } else { 0 as u32 };
+@@ -1430,7 +1434,7 @@ fn gc2_runtime<T>(owner: T&, root: Runtime&, rt: Runtime&, op: u32,
+             } else if a & 1 != 0 { matches = target == HEAP_I31 || target == HEAP_EQ || target == HEAP_ANY; }
+             else if a < NG_WINDOW && ng_valid(h, a) {
+                 let actual = ss_load32(heap + a) & 0xffffff;
+-                if heap_defined(target) { matches = ng_subtype(h, actual, owner.type_map[heap_type_index(target) as i64]); }
++                if heap_defined(target) { matches = ng_subtype(h, actual, type_map[heap_type_index(target) as i64]); }
+                 else { let kind = c.types[actual as i64].kind;
+                     matches = target == HEAP_ANY || target == HEAP_EQ || target == HEAP_STRUCT && kind == 0 || target == HEAP_ARRAY && kind == 1; }
+             }
+@@ -1497,12 +1501,12 @@ fn gc2_runtime<T>(owner: T&, root: Runtime&, rt: Runtime&, op: u32,
+     return result;
+ }
+ 
+-fn gc_impl_engine_close<T>(owner: T&) -> bool {
++fn gc_impl_engine_close<T>(owner: T&, types: GcType[:], type_map: u32[:]) -> bool {
+     if owner.native_heap != 0 {
+         if ng_get(owner.native_heap, N_MEASURE) != 0 { ng_report(owner.native_heap); }
+         let okay = ng_close(owner.native_heap); owner.native_heap = 0; owner.closed = true; return okay;
+     }
+-    return wasm_gc_runtime_close(owner);
++    return wasm_gc_runtime_close(owner, types, type_map);
+ }
+ 
+ fn gc2_tag(rt: Runtime&, tag: u64) -> bool {
+@@ -1518,48 +1522,48 @@ fn gc2_tag(rt: Runtime&, tag: u64) -> bool {
+     ng_put(h, 408, next + 1); ss_store64(tag + 24, next); return true;
+ }
+ 
+-export fn ss_gc_retain_runtime(owner: WasmGcRuntime&, rt: Runtime&) -> bool {
+-    return gc_impl_retain_runtime(owner, rt);
++export fn ss_gc_retain_runtime_views(owner: WasmGcRuntime&, rt: Runtime&, types: GcType[:], type_map: u32[:]) -> bool {
++    return gc_impl_retain_runtime(owner, rt, types, type_map);
+ }
+ 
+-export fn ss_gc_retain_runtime_native(owner: NativeWasmGcRuntime&, rt: Runtime&) -> bool {
+-    return gc_impl_retain_runtime(owner, rt);
++export fn ss_gc_retain_runtime_native_views(owner: NativeWasmGcRuntime&, rt: Runtime&, types: GcType[:], type_map: u32[:]) -> bool {
++    return gc_impl_retain_runtime(owner, rt, types, type_map);
+ }
+ 
+-export fn ss_gc_release_runtime(owner: WasmGcRuntime&, rt: Runtime&) -> bool {
+-    return gc_impl_release_runtime(owner, rt);
++export fn ss_gc_release_runtime_views(owner: WasmGcRuntime&, rt: Runtime&, types: GcType[:], type_map: u32[:]) -> bool {
++    return gc_impl_release_runtime(owner, rt, types, type_map);
+ }
+ 
+-export fn ss_gc_release_runtime_native(owner: NativeWasmGcRuntime&, rt: Runtime&) -> bool {
+-    return gc_impl_release_runtime(owner, rt);
++export fn ss_gc_release_runtime_native_views(owner: NativeWasmGcRuntime&, rt: Runtime&, types: GcType[:], type_map: u32[:]) -> bool {
++    return gc_impl_release_runtime(owner, rt, types, type_map);
+ }
+ 
+-export fn ss_gc_failed_runtime_reachable(owner: WasmGcRuntime&, rt: Runtime&) -> bool {
+-    return gc_impl_failed_runtime_reachable(owner, rt);
++export fn ss_gc_failed_runtime_reachable_views(owner: WasmGcRuntime&, rt: Runtime&, types: GcType[:], type_map: u32[:]) -> bool {
++    return gc_impl_failed_runtime_reachable(owner, rt, types, type_map);
+ }
+ 
+-export fn ss_gc_runtime_op(owner: WasmGcRuntime&, root: Runtime&, rt: Runtime&, op: u32,
+-                           a: u64, b: u64, c: u64, imm: u64) -> u64 {
+-    return gc_impl_runtime_op(owner, root, rt, op, a, b, c, imm);
++export fn ss_gc_runtime_op_views(owner: WasmGcRuntime&, root: Runtime&, rt: Runtime&, op: u32,
++                           a: u64, b: u64, c: u64, imm: u64, types: GcType[:], type_map: u32[:]) -> u64 {
++    return gc_impl_runtime_op(owner, root, rt, types, type_map, op, a, b, c, imm);
+ }
+ 
+-export fn ss_gc_runtime_op_native(owner: NativeWasmGcRuntime&, root: Runtime&, rt: Runtime&, op: u32,
+-                           a: u64, b: u64, c: u64, imm: u64) -> u64 {
+-    return gc_impl_runtime_op(owner, root, rt, op, a, b, c, imm);
++export fn ss_gc_runtime_op_native_views(owner: NativeWasmGcRuntime&, root: Runtime&, rt: Runtime&, op: u32,
++                           a: u64, b: u64, c: u64, imm: u64, types: GcType[:], type_map: u32[:]) -> u64 {
++    return gc_impl_runtime_op(owner, root, rt, types, type_map, op, a, b, c, imm);
+ }
+ 
+-export fn ss_gc_constant_op(owner: WasmGcRuntime&, rt: Runtime&, op: u32, base: u64, count: u64, imm: u64) -> u64 {
+-    return gc_impl_constant_op(owner, rt, op, base, count, imm);
++export fn ss_gc_constant_op_views(owner: WasmGcRuntime&, rt: Runtime&, op: u32, base: u64, count: u64, imm: u64, types: GcType[:], type_map: u32[:]) -> u64 {
++    return gc_impl_constant_op(owner, rt, types, type_map, op, base, count, imm);
+ }
+ 
+-export fn ss_gc_constant_op_native(owner: NativeWasmGcRuntime&, rt: Runtime&, op: u32, base: u64, count: u64, imm: u64) -> u64 {
+-    return gc_impl_constant_op(owner, rt, op, base, count, imm);
++export fn ss_gc_constant_op_native_views(owner: NativeWasmGcRuntime&, rt: Runtime&, op: u32, base: u64, count: u64, imm: u64, types: GcType[:], type_map: u32[:]) -> u64 {
++    return gc_impl_constant_op(owner, rt, types, type_map, op, base, count, imm);
+ }
+ 
+-export fn ss_gc_engine_close(owner: WasmGcRuntime&) -> bool {
+-    return gc_impl_engine_close(owner);
++export fn ss_gc_engine_close_views(owner: WasmGcRuntime&, types: GcType[:], type_map: u32[:]) -> bool {
++    return gc_impl_engine_close(owner, types, type_map);
+ }
+ 
+-export fn ss_gc_engine_close_native(owner: NativeWasmGcRuntime&) -> bool {
+-    return gc_impl_engine_close(owner);
++export fn ss_gc_engine_close_native_views(owner: NativeWasmGcRuntime&, types: GcType[:], type_map: u32[:]) -> bool {
++    return gc_impl_engine_close(owner, types, type_map);
+ }
+diff --git a/tests/test_gc_type_capacity.py b/tests/test_gc_type_capacity.py
+index 28571a265..0428f30aa 100644
+--- a/tests/test_gc_type_capacity.py
++++ b/tests/test_gc_type_capacity.py
+@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+ from wasm_binary import MAGIC, section, uleb, vector
+ 
+ 
+-def module(type_count: int) -> bytes:
++def early_managed_module(type_count: int) -> bytes:
+     # One nominal recursion group keeps the single managed type and every
+     # function type distinct. Its final member is used by the exported body.
+     types = bytes([0x4E]) + uleb(type_count) + b"\x5f\x00" + b"\x60\x00\x00" * (type_count - 1)
+@@ -21,10 +21,23 @@ def module(type_count: int) -> bytes:
+     return MAGIC + section(1, vector([types])) + section(3, functions) + section(7, exports) + section(10, code)
+ 
+ 
+-def run(runner: Path, type_count: int) -> None:
++def late_managed_module(canonical_id: int) -> bytes:
++    types = bytes([0x4E]) + uleb(canonical_id + 1) + b"\x60\x00\x00" * canonical_id + b"\x5f\x00"
++    functions = vector([uleb(0)])
++    return MAGIC + section(1, vector([types])) + section(3, functions) + section(7, vector([b"\x03run\x00\x00"])) + section(10, vector([b"\x02\x00\x0b"]))
++
++
++def managed_layout_module(managed_count: int) -> bytes:
++    type_count = managed_count + 1
++    types = bytes([0x4E]) + uleb(type_count) + b"\x5f\x00" * managed_count + b"\x60\x00\x00"
++    functions = vector([uleb(type_count - 1)])
++    return MAGIC + section(1, vector([types])) + section(3, functions) + section(7, vector([b"\x03run\x00\x00"])) + section(10, vector([b"\x02\x00\x0b"]))
++
++
++def run(runner: Path, name: str, contents: bytes) -> None:
+     with tempfile.TemporaryDirectory(prefix="slipstream-gc-types-") as directory:
+-        path = Path(directory) / f"canonical-{type_count}.wasm"
+-        path.write_bytes(module(type_count))
++        path = Path(directory) / f"{name}.wasm"
++        path.write_bytes(contents)
+         result = subprocess.run(
+             [str(runner), "run", "--invoke", "run", str(path)],
+             capture_output=True,
+@@ -33,18 +46,25 @@ def run(runner: Path, type_count: int) -> None:
+         )
+     if result.returncode or result.stdout or result.stderr:
+         raise AssertionError(
+-            f"{type_count} canonical types: returncode={result.returncode}, "
++            f"{name}: returncode={result.returncode}, "
+             f"stdout={result.stdout!r}, stderr={result.stderr!r}"
+         )
+ 
+ 
+ def main() -> None:
+     parser = argparse.ArgumentParser()
+-    parser.add_argument("runner", type=Path)
++    parser.add_argument("runner", type=Path, nargs="+")
+     args = parser.parse_args()
+-    for count in (4097, 20000):
+-        run(args.runner, count)
+-        print(f"canonical type registration: {count} types: ok")
++    for runner in args.runner:
++        for count in (4097, 20000):
++            run(runner, f"early-managed-{count}", early_managed_module(count))
++            print(f"{runner.name}: canonical type registration: {count} types: ok")
++        for canonical_id in (4095, 4096):
++            run(runner, f"late-managed-{canonical_id}", late_managed_module(canonical_id))
++            print(f"{runner.name}: late managed canonical id: {canonical_id}: ok")
++        for count in (4095, 4096):
++            run(runner, f"managed-layouts-{count}", managed_layout_module(count))
++            print(f"{runner.name}: managed layouts: {count}: ok")
+ 
+ 
+ if __name__ == "__main__":
