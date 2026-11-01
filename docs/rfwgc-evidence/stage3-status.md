@@ -12,8 +12,8 @@ The full Snap port and final review/PR gates remain open.
 | Toolchain | `d546a1af4`: dependency gap closed on pinned `a3c08365f` and baseline `9713878ab`; each passed 168 staged, four harness and three converter tests per mode, without skips. Does not qualify the new runtime. See `stage3-toolchain/`. |
 | Current full suites | Assigned on immutable `d546a1af4` export with repaired toolchain, all three modes. Pending result. Later test-only commits require their own scoped qualification. |
 | Region host/domain integration | `e1feed09d`: 11 scenarios, each baseline/region paired, passed all three modes without skips. Includes reentry/trap recovery, retained tokens, globals/tables and close, foreign-domain rejection, borrow exclusion, EH/tails and small successful metadata growth. Forced collection and actual region occupancy asserted. See `stage3-integration/`; its uncovered rows remain open. |
-| Runtime/compile measurements | Harness preparation assigned; no timing authorized during concurrent qualification. Independent measurement must acquire the global lease and satisfy temperature and matched-control rules. |
-| Corpus census | Preparation assigned, including explicit graph fixtures because the historical 128-entry/121-binary corpus has zero GC constructors. Pending census evidence. |
+| Runtime/compile measurements | `2cc654c7d`: pinned harness preparation complete, 81 correctness subtests passed across revisions/modes. No timings yet. The wake/join lease record still says active; release reconciliation requested from its owning thread, without authorizing restarted samples. Full-suite work must finish before independent leased measurements. |
+| Corpus census | `2cc654c7d`: 128 entries / 121 binaries available and hash-matched; 47/47 declared input references matched. Separate graph manifest prepared. This is availability, not execution: full-corpus runtime/compile/oracle reconciliation remains open. Historical catalog has zero GC constructors. |
 | Consolidated stage exit | Pending correctness reconciliation, independent measured costs, census update and consolidated evidence commit. |
 
 ## Full-port work still required
