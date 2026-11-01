@@ -1,0 +1,44 @@
+[
+  {
+    "pin": "baseline",
+    "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "mode": "ordinary",
+    "exit": 0,
+    "raw": "baseline-ordinary.jsonl"
+  },
+  {
+    "pin": "baseline",
+    "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "mode": "wagodebug",
+    "exit": 0,
+    "raw": "baseline-wagodebug.jsonl"
+  },
+  {
+    "pin": "baseline",
+    "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "mode": "wago_regalloccheck",
+    "exit": 0,
+    "raw": "baseline-wago_regalloccheck.jsonl"
+  },
+  {
+    "pin": "port",
+    "revision": "5b31c81ec0c74695a90bc8d36754b92845b59f14",
+    "mode": "ordinary",
+    "exit": 0,
+    "raw": "port-ordinary.jsonl"
+  },
+  {
+    "pin": "port",
+    "revision": "5b31c81ec0c74695a90bc8d36754b92845b59f14",
+    "mode": "wagodebug",
+    "exit": 0,
+    "raw": "port-wagodebug.jsonl"
+  },
+  {
+    "pin": "port",
+    "revision": "5b31c81ec0c74695a90bc8d36754b92845b59f14",
+    "mode": "wago_regalloccheck",
+    "exit": 0,
+    "raw": "port-wago_regalloccheck.jsonl"
+  }
+]
