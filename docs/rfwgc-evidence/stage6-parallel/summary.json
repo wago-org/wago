@@ -1,0 +1,488 @@
+[
+  {
+    "log": "final/ordinary-backend.txt",
+    "top_level_passes": 40,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCArrayCopyNativeSelection (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionLayouts (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionGlobals (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenEligibility (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenRespectsSharedStubSwitch (0.00s)",
+      "--- SKIP: TestGCVectorArrayAccessStaysNative (0.00s)",
+      "--- SKIP: TestGCFinalCastFieldReadResolvesOnce (0.00s)",
+      "--- SKIP: TestGCConstructorGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCConstructorScalarReplacementSelection (0.00s)",
+      "--- SKIP: TestGCFreshStructLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCFreshArrayLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestCheckedDeadGCArrayConstructorsPreservePreflight (0.00s)",
+      "--- SKIP: TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors (0.00s)",
+      "--- SKIP: TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate (0.00s)",
+      "--- SKIP: TestDeadGCConstructorTreeElimination (0.00s)",
+      "--- SKIP: TestGCOpenStructGetUsesNativeSubtypeResolver (0.00s)",
+      "--- SKIP: TestGCResolvedHandleReuseAndInvalidation (0.00s)",
+      "--- SKIP: TestModuleSharedGCResolverStubReducesDenseSites (0.00s)",
+      "--- SKIP: TestModuleMixedGCResolverDiagnostics (0.00s)",
+      "--- SKIP: TestGCStructReductionSelection (0.00s)",
+      "--- SKIP: TestGCStaticSiteTelemetrySmoke (0.00s)",
+      "--- SKIP: TestLocalSlotOrderSkipsGCFrameRootFunctions (0.00s)",
+      "--- SKIP: TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64 (0.00s)",
+      "--- SKIP: TestCodegenStatsGCNativeByteAttribution (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "final/ordinary-collector.txt",
+    "top_level_passes": 462,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "final/ordinary-guest.txt",
+    "top_level_passes": 410,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCNativeResolverTelemetryAttributesModuleStub (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "final/ordinary-race.txt",
+    "top_level_passes": 19,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "final/wago_regalloccheck-backend.txt",
+    "top_level_passes": 41,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCArrayCopyNativeSelection (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionLayouts (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionGlobals (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenEligibility (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenRespectsSharedStubSwitch (0.00s)",
+      "--- SKIP: TestGCVectorArrayAccessStaysNative (0.00s)",
+      "--- SKIP: TestGCFinalCastFieldReadResolvesOnce (0.00s)",
+      "--- SKIP: TestGCConstructorGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCConstructorScalarReplacementSelection (0.00s)",
+      "--- SKIP: TestGCFreshStructLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCFreshArrayLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestCheckedDeadGCArrayConstructorsPreservePreflight (0.00s)",
+      "--- SKIP: TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors (0.00s)",
+      "--- SKIP: TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate (0.00s)",
+      "--- SKIP: TestDeadGCConstructorTreeElimination (0.00s)",
+      "--- SKIP: TestGCOpenStructGetUsesNativeSubtypeResolver (0.00s)",
+      "--- SKIP: TestGCResolvedHandleReuseAndInvalidation (0.00s)",
+      "--- SKIP: TestModuleSharedGCResolverStubReducesDenseSites (0.00s)",
+      "--- SKIP: TestModuleMixedGCResolverDiagnostics (0.00s)",
+      "--- SKIP: TestGCStructReductionSelection (0.00s)",
+      "--- SKIP: TestGCStaticSiteTelemetrySmoke (0.00s)",
+      "--- SKIP: TestLocalSlotOrderSkipsGCFrameRootFunctions (0.00s)",
+      "--- SKIP: TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64 (0.00s)",
+      "--- SKIP: TestCodegenStatsGCNativeByteAttribution (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "final/wago_regalloccheck-collector.txt",
+    "top_level_passes": 462,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "final/wago_regalloccheck-guest.txt",
+    "top_level_passes": 410,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCNativeResolverTelemetryAttributesModuleStub (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "final/wago_regalloccheck-race.txt",
+    "top_level_passes": 19,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "final/wagodebug-backend.txt",
+    "top_level_passes": 38,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCArrayCopyNativeSelection (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionLayouts (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionGlobals (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenEligibility (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenRespectsSharedStubSwitch (0.00s)",
+      "--- SKIP: TestGCVectorArrayAccessStaysNative (0.00s)",
+      "--- SKIP: TestGCFinalCastFieldReadResolvesOnce (0.00s)",
+      "--- SKIP: TestGCConstructorGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCConstructorScalarReplacementSelection (0.00s)",
+      "--- SKIP: TestGCFreshStructLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCFreshArrayLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestCheckedDeadGCArrayConstructorsPreservePreflight (0.00s)",
+      "--- SKIP: TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors (0.00s)",
+      "--- SKIP: TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate (0.00s)",
+      "--- SKIP: TestDeadGCConstructorTreeElimination (0.00s)",
+      "--- SKIP: TestGCLifetimeReplay (0.00s)",
+      "--- SKIP: TestGCLifetimeReplayContextFallback (0.00s)",
+      "--- SKIP: TestGCOpenStructGetUsesNativeSubtypeResolver (0.00s)",
+      "--- SKIP: TestGCResolvedHandleReuseAndInvalidation (0.00s)",
+      "--- SKIP: TestModuleSharedGCResolverStubReducesDenseSites (0.00s)",
+      "--- SKIP: TestModuleMixedGCResolverDiagnostics (0.00s)",
+      "--- SKIP: TestGCStructReductionSelection (0.00s)",
+      "--- SKIP: TestGCStaticSiteTelemetrySmoke (0.00s)",
+      "--- SKIP: TestLocalSlotOrderSkipsGCFrameRootFunctions (0.00s)",
+      "--- SKIP: TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64 (0.00s)",
+      "--- SKIP: TestCodegenStatsGCNativeByteAttribution (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "final/wagodebug-collector.txt",
+    "top_level_passes": 495,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)",
+      "--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)",
+      "--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "final/wagodebug-guest.txt",
+    "top_level_passes": 404,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCNativeResolverTelemetryAttributesModuleStub (0.00s)",
+      "--- SKIP: TestGCDeadInductionEntry (0.00s)",
+      "--- SKIP: TestGCDeadInductionWrapperParity (0.00s)",
+      "--- SKIP: TestGCDeadInductionParallelDirectory (0.00s)",
+      "--- SKIP: TestGCDeadInductionInterruptedBeforeCharge (0.00s)",
+      "--- SKIP: TestGCDeadInductionWithoutCachedNativeContext (0.00s)",
+      "--- SKIP: TestGCDeadInductionPreparesOnlyOneIdentity (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "final/wagodebug-race.txt",
+    "top_level_passes": 20,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "ordinary-backend.txt",
+    "top_level_passes": 40,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCArrayCopyNativeSelection (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionLayouts (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionGlobals (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenEligibility (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenRespectsSharedStubSwitch (0.00s)",
+      "--- SKIP: TestGCVectorArrayAccessStaysNative (0.00s)",
+      "--- SKIP: TestGCFinalCastFieldReadResolvesOnce (0.00s)",
+      "--- SKIP: TestGCConstructorGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCConstructorScalarReplacementSelection (0.00s)",
+      "--- SKIP: TestGCFreshStructLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCFreshArrayLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestCheckedDeadGCArrayConstructorsPreservePreflight (0.00s)",
+      "--- SKIP: TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors (0.00s)",
+      "--- SKIP: TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate (0.00s)",
+      "--- SKIP: TestDeadGCConstructorTreeElimination (0.00s)",
+      "--- SKIP: TestGCOpenStructGetUsesNativeSubtypeResolver (0.00s)",
+      "--- SKIP: TestGCResolvedHandleReuseAndInvalidation (0.00s)",
+      "--- SKIP: TestModuleSharedGCResolverStubReducesDenseSites (0.00s)",
+      "--- SKIP: TestModuleMixedGCResolverDiagnostics (0.00s)",
+      "--- SKIP: TestGCStructReductionSelection (0.00s)",
+      "--- SKIP: TestGCStaticSiteTelemetrySmoke (0.00s)",
+      "--- SKIP: TestLocalSlotOrderSkipsGCFrameRootFunctions (0.00s)",
+      "--- SKIP: TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64 (0.00s)",
+      "--- SKIP: TestCodegenStatsGCNativeByteAttribution (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "ordinary-callback-final.txt",
+    "top_level_passes": 2,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "ordinary-collector.txt",
+    "top_level_passes": 447,
+    "failures": [
+      "--- FAIL: TestEdenRegionsAdmissionAndLayout (0.00s)"
+    ],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "ordinary-disabled-target.txt",
+    "top_level_passes": 1,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "ordinary-failure-final.txt",
+    "top_level_passes": 1,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "ordinary-guest.txt",
+    "top_level_passes": 410,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCNativeResolverTelemetryAttributesModuleStub (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "ordinary-portable-callbacks.txt",
+    "top_level_passes": 2,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "ordinary-race-portable-callbacks.txt",
+    "top_level_passes": 2,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "ordinary-race.txt",
+    "top_level_passes": 13,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "ordinary-slice.txt",
+    "top_level_passes": 28,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wago_regalloccheck-backend.txt",
+    "top_level_passes": 41,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCArrayCopyNativeSelection (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionLayouts (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionGlobals (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenEligibility (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenRespectsSharedStubSwitch (0.00s)",
+      "--- SKIP: TestGCVectorArrayAccessStaysNative (0.00s)",
+      "--- SKIP: TestGCFinalCastFieldReadResolvesOnce (0.00s)",
+      "--- SKIP: TestGCConstructorGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCConstructorScalarReplacementSelection (0.00s)",
+      "--- SKIP: TestGCFreshStructLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCFreshArrayLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestCheckedDeadGCArrayConstructorsPreservePreflight (0.00s)",
+      "--- SKIP: TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors (0.00s)",
+      "--- SKIP: TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate (0.00s)",
+      "--- SKIP: TestDeadGCConstructorTreeElimination (0.00s)",
+      "--- SKIP: TestGCOpenStructGetUsesNativeSubtypeResolver (0.00s)",
+      "--- SKIP: TestGCResolvedHandleReuseAndInvalidation (0.00s)",
+      "--- SKIP: TestModuleSharedGCResolverStubReducesDenseSites (0.00s)",
+      "--- SKIP: TestModuleMixedGCResolverDiagnostics (0.00s)",
+      "--- SKIP: TestGCStructReductionSelection (0.00s)",
+      "--- SKIP: TestGCStaticSiteTelemetrySmoke (0.00s)",
+      "--- SKIP: TestLocalSlotOrderSkipsGCFrameRootFunctions (0.00s)",
+      "--- SKIP: TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64 (0.00s)",
+      "--- SKIP: TestCodegenStatsGCNativeByteAttribution (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "wago_regalloccheck-callback-final.txt",
+    "top_level_passes": 2,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wago_regalloccheck-collector.txt",
+    "top_level_passes": 447,
+    "failures": [
+      "--- FAIL: TestEdenRegionsAdmissionAndLayout (0.00s)"
+    ],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wago_regalloccheck-disabled-target.txt",
+    "top_level_passes": 1,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wago_regalloccheck-failure-final.txt",
+    "top_level_passes": 1,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wago_regalloccheck-guest.txt",
+    "top_level_passes": 410,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCNativeResolverTelemetryAttributesModuleStub (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "wago_regalloccheck-portable-callbacks.txt",
+    "top_level_passes": 2,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wago_regalloccheck-race-portable-callbacks.txt",
+    "top_level_passes": 2,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wago_regalloccheck-race.txt",
+    "top_level_passes": 13,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wago_regalloccheck-slice.txt",
+    "top_level_passes": 28,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wagodebug-backend.txt",
+    "top_level_passes": 38,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCArrayCopyNativeSelection (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionLayouts (0.00s)",
+      "--- SKIP: TestGCArrayCopyNativeSelectionGlobals (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenEligibility (0.00s)",
+      "--- SKIP: TestGCGeneralArrayLenRespectsSharedStubSwitch (0.00s)",
+      "--- SKIP: TestGCVectorArrayAccessStaysNative (0.00s)",
+      "--- SKIP: TestGCFinalCastFieldReadResolvesOnce (0.00s)",
+      "--- SKIP: TestGCConstructorGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCConstructorScalarReplacementSelection (0.00s)",
+      "--- SKIP: TestGCFreshStructLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestGCFreshArrayLocalGetForwardSelection (0.00s)",
+      "--- SKIP: TestCheckedDeadGCArrayConstructorsPreservePreflight (0.00s)",
+      "--- SKIP: TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors (0.00s)",
+      "--- SKIP: TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate (0.00s)",
+      "--- SKIP: TestDeadGCConstructorTreeElimination (0.00s)",
+      "--- SKIP: TestGCLifetimeReplay (0.00s)",
+      "--- SKIP: TestGCLifetimeReplayContextFallback (0.00s)",
+      "--- SKIP: TestGCOpenStructGetUsesNativeSubtypeResolver (0.00s)",
+      "--- SKIP: TestGCResolvedHandleReuseAndInvalidation (0.00s)",
+      "--- SKIP: TestModuleSharedGCResolverStubReducesDenseSites (0.00s)",
+      "--- SKIP: TestModuleMixedGCResolverDiagnostics (0.00s)",
+      "--- SKIP: TestGCStructReductionSelection (0.00s)",
+      "--- SKIP: TestGCStaticSiteTelemetrySmoke (0.00s)",
+      "--- SKIP: TestLocalSlotOrderSkipsGCFrameRootFunctions (0.00s)",
+      "--- SKIP: TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64 (0.00s)",
+      "--- SKIP: TestCodegenStatsGCNativeByteAttribution (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "wagodebug-callback-final.txt",
+    "top_level_passes": 2,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wagodebug-collector.txt",
+    "top_level_passes": 480,
+    "failures": [
+      "--- FAIL: TestEdenRegionsAdmissionAndLayout (0.00s)"
+    ],
+    "skips": [
+      "--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)",
+      "--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)",
+      "--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "wagodebug-disabled-target.txt",
+    "top_level_passes": 1,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wagodebug-failure-final.txt",
+    "top_level_passes": 1,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wagodebug-guest.txt",
+    "top_level_passes": 404,
+    "failures": [],
+    "skips": [
+      "--- SKIP: TestGCNativeResolverTelemetryAttributesModuleStub (0.00s)",
+      "--- SKIP: TestGCDeadInductionEntry (0.00s)",
+      "--- SKIP: TestGCDeadInductionWrapperParity (0.00s)",
+      "--- SKIP: TestGCDeadInductionParallelDirectory (0.00s)",
+      "--- SKIP: TestGCDeadInductionInterruptedBeforeCharge (0.00s)",
+      "--- SKIP: TestGCDeadInductionWithoutCachedNativeContext (0.00s)",
+      "--- SKIP: TestGCDeadInductionPreparesOnlyOneIdentity (0.00s)"
+    ],
+    "race_warning": false
+  },
+  {
+    "log": "wagodebug-portable-callbacks.txt",
+    "top_level_passes": 2,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wagodebug-race-portable-callbacks.txt",
+    "top_level_passes": 2,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wagodebug-race.txt",
+    "top_level_passes": 14,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  },
+  {
+    "log": "wagodebug-slice.txt",
+    "top_level_passes": 29,
+    "failures": [],
+    "skips": [],
+    "race_warning": false
+  }
+]

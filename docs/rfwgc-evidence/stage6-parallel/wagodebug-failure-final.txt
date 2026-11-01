@@ -1,0 +1,22 @@
+=== RUN   TestParallelStage6FailureMatrix
+=== RUN   TestParallelStage6FailureMatrix/region0/phase0
+=== RUN   TestParallelStage6FailureMatrix/region0/phase1
+=== RUN   TestParallelStage6FailureMatrix/region0/phase2
+=== RUN   TestParallelStage6FailureMatrix/region6/phase0
+=== RUN   TestParallelStage6FailureMatrix/region6/phase1
+=== RUN   TestParallelStage6FailureMatrix/region6/phase2
+=== RUN   TestParallelStage6FailureMatrix/region12/phase0
+=== RUN   TestParallelStage6FailureMatrix/region12/phase1
+=== RUN   TestParallelStage6FailureMatrix/region12/phase2
+--- PASS: TestParallelStage6FailureMatrix (39.92s)
+    --- PASS: TestParallelStage6FailureMatrix/region0/phase0 (1.96s)
+    --- PASS: TestParallelStage6FailureMatrix/region0/phase1 (0.20s)
+    --- PASS: TestParallelStage6FailureMatrix/region0/phase2 (3.08s)
+    --- PASS: TestParallelStage6FailureMatrix/region6/phase0 (9.75s)
+    --- PASS: TestParallelStage6FailureMatrix/region6/phase1 (0.32s)
+    --- PASS: TestParallelStage6FailureMatrix/region6/phase2 (20.22s)
+    --- PASS: TestParallelStage6FailureMatrix/region12/phase0 (1.43s)
+    --- PASS: TestParallelStage6FailureMatrix/region12/phase1 (0.21s)
+    --- PASS: TestParallelStage6FailureMatrix/region12/phase2 (2.75s)
+PASS
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	40.935s

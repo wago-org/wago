@@ -1,0 +1,100 @@
+=== RUN   TestParallelStage6PortableOwnerCallbacks
+--- PASS: TestParallelStage6PortableOwnerCallbacks (16.24s)
+=== RUN   TestParallelPromotionFailuresRemainTransactional
+--- PASS: TestParallelPromotionFailuresRemainTransactional (8.38s)
+=== RUN   TestR9ProtocolConditionPublication
+--- PASS: TestR9ProtocolConditionPublication (0.00s)
+=== RUN   TestR9ProtocolStopBeforeWorkerReceive
+--- PASS: TestR9ProtocolStopBeforeWorkerReceive (0.00s)
+=== RUN   TestR9ProtocolPhaseBeforeWorkerReceive
+--- PASS: TestR9ProtocolPhaseBeforeWorkerReceive (0.00s)
+=== RUN   TestParallelStage6PolicyOracle
+=== RUN   TestParallelStage6PolicyOracle/region0/workers1
+=== RUN   TestParallelStage6PolicyOracle/region0/workers2
+=== RUN   TestParallelStage6PolicyOracle/region0/workers8
+=== RUN   TestParallelStage6PolicyOracle/region6/workers1
+=== RUN   TestParallelStage6PolicyOracle/region6/workers2
+=== RUN   TestParallelStage6PolicyOracle/region6/workers8
+=== RUN   TestParallelStage6PolicyOracle/region12/workers1
+=== RUN   TestParallelStage6PolicyOracle/region12/workers2
+=== RUN   TestParallelStage6PolicyOracle/region12/workers8
+--- PASS: TestParallelStage6PolicyOracle (66.36s)
+    --- PASS: TestParallelStage6PolicyOracle/region0/workers1 (3.85s)
+    --- PASS: TestParallelStage6PolicyOracle/region0/workers2 (3.77s)
+    --- PASS: TestParallelStage6PolicyOracle/region0/workers8 (2.79s)
+    --- PASS: TestParallelStage6PolicyOracle/region6/workers1 (16.95s)
+    --- PASS: TestParallelStage6PolicyOracle/region6/workers2 (17.43s)
+    --- PASS: TestParallelStage6PolicyOracle/region6/workers8 (14.82s)
+    --- PASS: TestParallelStage6PolicyOracle/region12/workers1 (1.73s)
+    --- PASS: TestParallelStage6PolicyOracle/region12/workers2 (1.81s)
+    --- PASS: TestParallelStage6PolicyOracle/region12/workers8 (3.21s)
+=== RUN   TestParallelStage6FailureMatrix
+=== RUN   TestParallelStage6FailureMatrix/region0/phase0
+=== RUN   TestParallelStage6FailureMatrix/region0/phase1
+=== RUN   TestParallelStage6FailureMatrix/region0/phase2
+=== RUN   TestParallelStage6FailureMatrix/region6/phase0
+=== RUN   TestParallelStage6FailureMatrix/region6/phase1
+=== RUN   TestParallelStage6FailureMatrix/region6/phase2
+=== RUN   TestParallelStage6FailureMatrix/region12/phase0
+=== RUN   TestParallelStage6FailureMatrix/region12/phase1
+=== RUN   TestParallelStage6FailureMatrix/region12/phase2
+--- PASS: TestParallelStage6FailureMatrix (28.12s)
+    --- PASS: TestParallelStage6FailureMatrix/region0/phase0 (0.46s)
+    --- PASS: TestParallelStage6FailureMatrix/region0/phase1 (0.46s)
+    --- PASS: TestParallelStage6FailureMatrix/region0/phase2 (3.86s)
+    --- PASS: TestParallelStage6FailureMatrix/region6/phase0 (0.34s)
+    --- PASS: TestParallelStage6FailureMatrix/region6/phase1 (0.33s)
+    --- PASS: TestParallelStage6FailureMatrix/region6/phase2 (19.65s)
+    --- PASS: TestParallelStage6FailureMatrix/region12/phase0 (0.20s)
+    --- PASS: TestParallelStage6FailureMatrix/region12/phase1 (0.21s)
+    --- PASS: TestParallelStage6FailureMatrix/region12/phase2 (2.61s)
+=== RUN   TestParallelStage6DelayedCompletionAndWrap
+--- PASS: TestParallelStage6DelayedCompletionAndWrap (0.00s)
+=== RUN   TestParallelStage6Poison
+--- PASS: TestParallelStage6Poison (0.07s)
+=== RUN   TestParallelStage6HelperExitDrainsPeers
+--- PASS: TestParallelStage6HelperExitDrainsPeers (0.07s)
+=== RUN   TestParallelStage6RootPanicBetweenPhases
+--- PASS: TestParallelStage6RootPanicBetweenPhases (0.21s)
+=== RUN   TestParallelStage6QueueOverflowRetained
+--- PASS: TestParallelStage6QueueOverflowRetained (0.00s)
+=== RUN   TestParallelStage6DuplicateCompletionPoisons
+--- PASS: TestParallelStage6DuplicateCompletionPoisons (0.00s)
+=== RUN   TestParallelStage6NativeCancelBeforeDispatch
+=== RUN   TestParallelStage6NativeCancelBeforeDispatch/0
+=== RUN   TestParallelStage6NativeCancelBeforeDispatch/6
+=== RUN   TestParallelStage6NativeCancelBeforeDispatch/12
+--- PASS: TestParallelStage6NativeCancelBeforeDispatch (0.74s)
+    --- PASS: TestParallelStage6NativeCancelBeforeDispatch/0 (0.21s)
+    --- PASS: TestParallelStage6NativeCancelBeforeDispatch/6 (0.30s)
+    --- PASS: TestParallelStage6NativeCancelBeforeDispatch/12 (0.23s)
+=== RUN   TestParallelCollectionGraphEquivalence
+=== RUN   TestParallelCollectionGraphEquivalence/workers=1/immediate=false
+=== RUN   TestParallelCollectionGraphEquivalence/workers=1/immediate=true
+=== RUN   TestParallelCollectionGraphEquivalence/workers=2/immediate=false
+=== RUN   TestParallelCollectionGraphEquivalence/workers=2/immediate=true
+=== RUN   TestParallelCollectionGraphEquivalence/workers=4/immediate=false
+=== RUN   TestParallelCollectionGraphEquivalence/workers=4/immediate=true
+=== RUN   TestParallelCollectionGraphEquivalence/workers=8/immediate=false
+=== RUN   TestParallelCollectionGraphEquivalence/workers=8/immediate=true
+--- PASS: TestParallelCollectionGraphEquivalence (25.87s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=1/immediate=false (2.38s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=1/immediate=true (2.83s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=2/immediate=false (2.45s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=2/immediate=true (3.23s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=4/immediate=false (2.87s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=4/immediate=true (3.51s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=8/immediate=false (3.85s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=8/immediate=true (4.75s)
+=== RUN   TestParallelMinorRememberedAndPersistentRoots
+--- PASS: TestParallelMinorRememberedAndPersistentRoots (2.29s)
+=== RUN   TestParallelSerialFallbackAndConfig
+--- PASS: TestParallelSerialFallbackAndConfig (0.11s)
+=== RUN   TestParallelEpochGrowthAndPrivateChain
+--- PASS: TestParallelEpochGrowthAndPrivateChain (0.28s)
+=== RUN   TestParallelLargeArrayChunks
+--- PASS: TestParallelLargeArrayChunks (0.67s)
+=== RUN   TestParallelCaptureDenseAndSparse
+--- PASS: TestParallelCaptureDenseAndSparse (0.04s)
+PASS
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	150.485s
