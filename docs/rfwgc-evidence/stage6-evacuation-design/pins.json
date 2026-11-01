@@ -1,0 +1,79 @@
+{
+  "wago": "45c83820fbc10ee31eaaa8437e12464955b2fb9d",
+  "slipstream": "82d546679bab4887acfab056f6ad773a969b1e03",
+  "starshine": "e075c47e61b01ab9e4fd0ae4a7ca47b755e3fca1",
+  "files": [
+    {
+      "repository": "slipstream",
+      "commit": "82d546679bab4887acfab056f6ad773a969b1e03",
+      "path": "gc/native.goose",
+      "blob": "76692367fbfef8d6b10f7eaaf1ba8bbf5b4ee039",
+      "sha256": "02f5caccd906ea9854e2ba9cd11dba152aaf93a1ed8bc6e58b500fd5ba89d5bf"
+    },
+    {
+      "repository": "wago",
+      "commit": "45c83820fbc10ee31eaaa8437e12464955b2fb9d",
+      "path": "src/core/runtime/gc/native/collect.go",
+      "blob": "793e01b705b3ebbb6291f76858da6a8bffe04a8f",
+      "sha256": "2a6d3c40c231634d8b82c993a9663fb82c053619194ee3a18aca9e657e2c05a0"
+    },
+    {
+      "repository": "wago",
+      "commit": "45c83820fbc10ee31eaaa8437e12464955b2fb9d",
+      "path": "src/core/runtime/gc/native/collector.go",
+      "blob": "01b7d8438b8fac185d18dfb8e22fa9d30fb52d9b",
+      "sha256": "c5c36a854a469a9c4995adea94aef02eaf13bce6f761862563a43f78c2332b9e"
+    },
+    {
+      "repository": "wago",
+      "commit": "45c83820fbc10ee31eaaa8437e12464955b2fb9d",
+      "path": "src/core/runtime/gc/native/mature_regions.go",
+      "blob": "c9106a5e67ac621c4de9f58f9bdd891237ed553b",
+      "sha256": "0ef2253f4ceb642016c792177f42dbacc9eeb4645581b8d414a97b9ae49f8f38"
+    },
+    {
+      "repository": "wago",
+      "commit": "45c83820fbc10ee31eaaa8437e12464955b2fb9d",
+      "path": "src/core/runtime/gc/native/throughput_alloc.go",
+      "blob": "fd2a86265800f07ffb55e68f808b5b5a574f39ef",
+      "sha256": "902a05eaa68b338d5b94cef0c57be19c686892b4caf3e2da247fd955c4956ac3"
+    },
+    {
+      "repository": "wago",
+      "commit": "45c83820fbc10ee31eaaa8437e12464955b2fb9d",
+      "path": "src/core/runtime/gc/native/barrier.go",
+      "blob": "371b3cbb70273add3dd1a0b70b4478b952b2a90b",
+      "sha256": "80601e2569ed345e7f55918bfb702c3de7c16273fb07ca3549423f9a7a224d42"
+    },
+    {
+      "repository": "wago",
+      "commit": "45c83820fbc10ee31eaaa8437e12464955b2fb9d",
+      "path": "src/core/runtime/gc/native/struct_payload.go",
+      "blob": "ad3e5fba9ac3f7266a773b9e3dac44cd9d31e924",
+      "sha256": "b99c02335b4450cbbac834b7c88f7c5a69c8ca0f250013927fd8b681e2de6a12"
+    },
+    {
+      "repository": "wago",
+      "commit": "45c83820fbc10ee31eaaa8437e12464955b2fb9d",
+      "path": "src/core/runtime/gc/native/native_view.go",
+      "blob": "e076ce1661f5fcc926aca03846f8d569ee0396fe",
+      "sha256": "ecadc84faa53fcd29db91b149a3140ff9382731f09c26aee5f8aa9249ba17850"
+    },
+    {
+      "repository": "starshine",
+      "commit": "e075c47e61b01ab9e4fd0ae4a7ca47b755e3fca1",
+      "path": "docs/wiki/wasm-gc-core-boundary.md",
+      "blob": "507f57b9452f607add18d77bc02c51530b96d3b3",
+      "sha256": "64dd3aa84eea16f5f52b402e6be6acf87b9b47cc8986a20753f99e628c73a340"
+    },
+    {
+      "repository": "starshine",
+      "commit": "e075c47e61b01ab9e4fd0ae4a7ca47b755e3fca1",
+      "path": "src/lib/types.mbt",
+      "blob": "ef0872c9aaa18c0b049b0c1fa70ea96040626098",
+      "sha256": "70b5a9e07e30c3141888cb76c221f90e4cedf15a87752beba29c9ad6239639da"
+    }
+  ],
+  "runtime_checks": "not run; design-only",
+  "live_1020_observation": "Uncommitted parallel.go and collect.go changes observed, not qualification input."
+}
