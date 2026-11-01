@@ -25,8 +25,8 @@ func normalizeConfig(cfg Config) (Config, error) {
 		return cfg, fmt.Errorf("gc: helpers require standard Go throughput collector")
 	}
 
-	if cfg.MatureEvacuation && (cfg.NurseryRegionShift == 0 || cfg.Profile != ProfileThroughput || cfg.DisableCollection || !parallelCollectionSupported) {
-		return cfg, fmt.Errorf("gc: mature evacuation requires standard Go collecting region throughput")
+	if cfg.MatureEvacuation && (cfg.NurseryRegionShift == 0 || cfg.Profile != ProfileThroughput || cfg.DisableCollection) {
+		return cfg, fmt.Errorf("gc: mature evacuation requires collecting region throughput")
 	}
 	if shift := cfg.NurseryRegionShift; shift != 0 {
 		n := uint32(1) << shift
