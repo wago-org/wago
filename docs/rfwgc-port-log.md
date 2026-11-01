@@ -673,3 +673,30 @@ also a mandatory design check for the forthcoming PR1020/Snap parallel adaptatio
 All included fixes join the same combined perfection/review gate. No separate PR
 or existing PR closure is authorized by this propagation work. Documentation-only
 recording cannot affect shipped performance; no measurement occurred.
+
+## Roll-up and R9 checkpoint — 2026-11-01
+
+Collector #1030 (9bfe98360) and #1019 (e23657e6a) passed their scoped three-mode
+and race gates. Descriptor #1003 plus Tiny prerequisite #1022 are integrated at
+a3f26602d, with three-mode collector suites green and expanded region extent
+fixtures green. #1003 uses verified published 9666ec48e; supplied 11bcf23fd is
+still unavailable. All integrated tabled PR dispositions remain pending final
+combined gates; no PR has been closed. Evidence: rollup-1003-1022/README.md
+reconciles the 32 R9 evidence files accidentally included in the 1019 commit.
+
+R9 H4-F1: PRESENT-OUT-OF-SCOPE. Core3 omits Threads on both main and port;
+explicit Threads succeeds. Validator feature policy is outside this GC port,
+recorded for Joshua, no separate PR. R9 H6-F1: ABSENT for the exact no-type
+null-global trigger on both tested pins; setup uses metadata, and null handling
+works without a type section. H1-F1: ABSENT on tested serial main/port and
+published/tuned #1020 protocol pins: channel/Cond predicates and joins do not
+wait on truncated tickets. Mandatory recheck after Snap parallel adaptation.
+See r9-features-protocol/README.md for pins, tests and file evidence.
+
+H6-F2 remains in scope and pending the rooting worker: bottom subtyping is
+correct but null-only immutable import domain admission needs a narrow repair.
+H2-F1 and H6-F3 remain unresolved pending bounded ownership-state qualification;
+no final ABSENT or INCLUDED-FIX claim. Rooting commits b46fefb2a, 866e6b5e7,
+4ad440e86 and 27690e182 await their final matrix and H6-F2 integration. Full
+parallel parity, optional evacuation, TinyGo final qualification, measurements,
+platform execution and final four-reviewer fan remain open.
