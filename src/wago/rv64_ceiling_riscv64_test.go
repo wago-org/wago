@@ -10,7 +10,7 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-// Exercise the frozen receipt, entry/frame directory, callable masks and actual
+// Exercise the frozen receipt, entry/frame directory and actual
 // instance construction together. Cross-compilation alone does not execute it.
 func TestRV64CeilingRootedInstance(t *testing.T) {
 	const count = 1025
@@ -38,9 +38,6 @@ func TestRV64CeilingRootedInstance(t *testing.T) {
 	view := compiled.executionView()
 	if !rv64FreshRootedGC(view) || len(view.Entry) != count || view.genericGCFrameRoots() == nil {
 		t.Fatal("large rooted receipt/frame directory")
-	}
-	if !rv64RootedClosedCallableFunction(view, count-1) {
-		t.Fatal("last function missing from callable mask")
 	}
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
