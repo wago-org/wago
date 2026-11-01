@@ -392,6 +392,10 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 			}
 		}
 	}
+	for _, move := range live {
+		n := h.handleAllocSize(move.destination)
+		clear(h.mem[move.destination.off+move.destination.size : move.destination.off+n])
+	}
 	// All source debt storage exists before the commit barrier.
 	h.pendingFree = slices.Grow(h.pendingFree, len(live))
 	if err = injectFailure(c, failEvacuationCopy); err != nil {
@@ -435,6 +439,9 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 	}
 	c.lastCardBounds = objectCardBounds{}
 	m.diagnostics.Evacuation = "moved"
+	if len(live) == 0 {
+		m.diagnostics.Evacuation = "no-live"
+	}
 	return nil
 }
 
@@ -462,9 +469,6 @@ func (c *Collector) promoteWithRuns(plans []plannedPromotion, toSpace uint8, toB
 			c.promotionScratch = plans[:0]
 		}
 	}()
-	if len(plans) > evacuationLimit {
-		return 0, 0, false, errors.New("gc: promotion plan limit")
-	}
 	if err = h.sweepAllPending(); err != nil {
 		return
 	}

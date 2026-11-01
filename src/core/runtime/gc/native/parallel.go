@@ -83,7 +83,7 @@ func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 	if nursery {
 		objects = len(c.nurseryHandles)
 	}
-	if objects < parallelMinObjects {
+	if objects < parallelMinObjects && !c.forceParallelPhase() {
 		// A single large reference array can dominate tracing despite a tiny
 		// handle table. Inspect only the already-admitted seeds in this case.
 		largeArray := false
@@ -348,8 +348,8 @@ func (w *traceWorker) runPhase() {
 // in handle order by the coordinator. Sparse indexed sweeps keep their existing
 // path rather than paying for a dense parallel discovery pass.
 func (c *Collector) sweepParallel() bool {
-	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(c.handles) < parallelMinObjects ||
-		nativeCollectorFastPaths && len(c.majorBlocks) != 0 && len(c.freeHandles) >= len(c.handles)/2 {
+	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || (len(c.handles) < parallelMinObjects ||
+		nativeCollectorFastPaths && len(c.majorBlocks) != 0 && len(c.freeHandles) >= len(c.handles)/2) && !c.forceParallelPhase() {
 		return false
 	}
 	p := c.parallelPool()
@@ -392,7 +392,7 @@ func (w *traceWorker) sweep() {
 // Contained helper failure leaves sources intact and aborts those reservations.
 // Destinations and sources are disjoint; handles remain unchanged until join.
 func (c *Collector) copyPromotionParallel(plans []plannedPromotion) bool {
-	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(plans) < parallelMinObjects {
+	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || (len(plans) < parallelMinObjects && !c.forceParallelPhase()) {
 		return false
 	}
 	var bytes uint64
@@ -406,7 +406,7 @@ func (c *Collector) copyPromotionParallel(plans []plannedPromotion) bool {
 			}
 		}
 	}
-	if bytes < 1<<20 {
+	if bytes < 1<<20 && !c.forceParallelPhase() {
 		return false
 	}
 	p := c.parallelPool()
@@ -423,7 +423,7 @@ func (c *Collector) copyPromotionParallel(plans []plannedPromotion) bool {
 func (c *Collector) copyMatureParallel(plans []plannedPromotion) bool {
 	m := c.throughput.mature
 	m.diagnostics.CopyWorkers = 1
-	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(plans) < parallelMinObjects {
+	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || (len(plans) < parallelMinObjects && !c.forceParallelPhase()) {
 		return false
 	}
 	p := c.parallelPool()
@@ -631,4 +631,12 @@ func (c *Collector) parallelActivity() ParallelActivity {
 		return ParallelActivity{}
 	}
 	return c.parallel.activity
+}
+
+func (c *Collector) forceParallelPhase() bool {
+	if p := c.parallel; p != nil && (p.hook != nil || p.taskHook != nil) {
+		return true
+	}
+	m := c.throughput.mature
+	return c.cfg.MatureEvacuation && m != nil && m.diagnostics.Kind == "major" && m.diagnostics.Pressure
 }
