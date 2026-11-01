@@ -153,3 +153,25 @@ then resumed reading at an obsolete byte offset. `driver-status.txt` records
 this orchestration failure separately. The driver is **not** called PASS. A
 clean replay runs an unchanged script copy in a fresh directory; no H2
 production progression is based on concealing this failure.
+
+### Clean immutable1059 verdict
+
+`attempt-1059-clean-driver/` is the authoritative clean replay. Its unchanged
+script copy exited0, all fifteen requested commands exited0, and `SHA256SUMS`
+covers the command files, logs, source/tool/corpus provenance, per-suite ledger
+and driver status. Earlier failed attempts remain preserved separately.
+
+| Suite at1059c88e8 | ordinary | wagodebug | wago_regalloccheck |
+| --- | --- | --- | --- |
+| Full `./src/wago` including pinned corpus | PASS | PASS | PASS |
+| Scoped ownership/lifecycle race command | PASS | PASS | PASS |
+| Full AMD64/ARM64 backend and Wasm compiler packages | PASS | PASS | PASS |
+| Linux ARM64 test-package cross-compile | PASS | PASS | PASS |
+| Linux RV64 test-package cross-compile | PASS | PASS | PASS |
+
+Cross-compiles use `-exec=true` and do not establish target execution. Race is
+scoped to the exact recorded regex, not the entire package. This qualification
+predates later Stage7 collector commits and the independent6a25 transaction
+repair. The contention-wakeup obligation described above remains unresolved;
+no final INCLUDED-FIX, combined H6/H2, joint TinyGo, or performance disposition
+is inferred from these fifteen passes.

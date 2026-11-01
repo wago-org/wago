@@ -1,0 +1,1 @@
+go test -race ./src/wago -run Test\(R9Ownership\|DynamicIndexedFunctionRefTestUsesBareProviderActualType\|ReferenceTokensWait\|FailedInstantiation\|RuntimeStartTrap\|GCDomainHostRoots\) -count=1 -timeout=3m 
