@@ -41,3 +41,5 @@ type regallocReadMask struct{}
 func checkProtectRead(*fn, Reg, bool, bool) regallocReadMask { return regallocReadMask{} }
 func checkRestoreRead(*fn, regallocReadMask)                 {}
 func checkGlobalCell(*fn)                                    {}
+func (*fn) checkProtectLocalPins() regallocReadMask          { return regallocReadMask{} }
+func (*fn) checkAllowLocalPinWrite(regallocReadMask, int)    {}
