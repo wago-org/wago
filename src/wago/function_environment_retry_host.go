@@ -4,6 +4,20 @@ package wago
 
 import "sync"
 
+// store.mu and a topology reader are held. Domain unlink is the retirement
+// claim; collector Close subsequently runs outside the writer lock and may
+// overlap the final physical instance rows. Never infer collector ownership
+// from such a row alone. Private domains remain tied to their live instance.
+func managedFunctionDomainRegisteredLocked(store *referenceStore, owner *Instance, domain *gcStoreDomain) bool {
+	if domain == nil {
+		return owner.gc == nil
+	}
+	if domain.private {
+		return true
+	}
+	return store.gcDomains != nil && store.gcDomains.domainForCollectorLocked(domain.collector) == domain
+}
+
 func tryManagedFunctionInvocation(g *invocationGate) bool {
 	return g.state.CompareAndSwap(0, invocationGateHeld) ||
 		g.state.CompareAndSwap(invocationGateRevoked, invocationGateRevoked|invocationGateHeld) ||

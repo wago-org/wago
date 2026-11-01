@@ -5,6 +5,10 @@ package wago
 // RV64 retains its existing receipt and invocation-return scheduling contract.
 type managedFunctionRetryState struct{}
 
+func managedFunctionDomainRegisteredLocked(*referenceStore, *Instance, *gcStoreDomain) bool {
+	return true
+}
+
 func (*managedFunctionGraph) queueHostRetry(managedFunctionRetryWait) {}
 
 func tryManagedFunctionInvocation(g *invocationGate) bool {

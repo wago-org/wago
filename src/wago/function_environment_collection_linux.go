@@ -73,6 +73,10 @@ func collectManagedFunctionGraph(in *Instance, public *gcPublicState, topologyLe
 		if entry == nil || entry.resourcesReleased {
 			continue
 		}
+		if !managedFunctionDomainRegisteredLocked(in.refStore, owner, entry.gcDomain) {
+			in.refStore.mu.Unlock()
+			return false, nil
+		}
 		owners = append(owners, owner)
 		domains.add(entry.gcDomain)
 	}
