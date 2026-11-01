@@ -10,15 +10,10 @@ import (
 
 // TestTinyGoBoundedRunStability exercises the TinyGo trampoline
 // (trampoline_tinygo_amd64.go) over many native enter/exit cycles, forcing a GC
-// between runs. This is the supported TinyGo pattern: native code allocates
-// nothing, so a collection can only occur between bounded runs — never while a
-// thread is switched onto the foreign stack. A botched foreign-stack switch or a
-// clobbered callee-saved register would corrupt results or crash here.
-//
-// (The standard-Go suite additionally storms runtime.GC() *concurrently* with
-// native execution; see stress_test.go. That is unsafe under TinyGo's
-// conservative collector with a threaded scheduler, which would scan a thread
-// stopped mid-run with RSP on the foreign stack — a documented limitation.)
+// between runs. Native code allocates nothing itself. With scheduler=threads,
+// scripts/patch-tinygo-042.sh also supports concurrent collection through
+// registered foreign mappings; TestTinyGoForeignStackConcurrentGC exercises
+// that boundary with a deterministic guest/collector handshake.
 func TestTinyGoBoundedRunStability(t *testing.T) {
 	eng, jm, ar := fixture(t)
 

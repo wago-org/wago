@@ -9,11 +9,35 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestTinyGoSupportsCooperativeInterruption(t *testing.T) {
+	testTinyGoInterruption(t, interruptionTinyGoRunnerSource, "wago_standalone")
+}
+
+// Keep the original cancellation runner unchanged above. This additional probe
+// explicitly collects during guest execution and after cancellation has unwound
+// the native stack. Guest tags are independent of the host go-test tags.
+func TestTinyGoForeignStackGCInterruption(t *testing.T) {
+	runner := strings.Replace(interruptionTinyGoRunnerSource, `"time"`, `"time"; "runtime"`, 1)
+	runner = strings.Replace(runner, "\tcancel()", "\truntime.GC()\n\tcancel()", 1)
+	runner = strings.Replace(runner, "case err = <-done:", "case err = <-done:\n runtime.GC()", 1)
+	for _, mode := range []string{"", "wagodebug", "wago_regalloccheck"} {
+		name, tags := mode, "wago_standalone"
+		if mode == "" {
+			name = "ordinary"
+		} else {
+			tags += "," + mode
+		}
+		t.Run(name, func(t *testing.T) { testTinyGoInterruption(t, runner, tags) })
+	}
+}
+
+func testTinyGoInterruption(t *testing.T, runnerSource, guestTags string) {
+	t.Helper()
 	if _, err := exec.LookPath("tinygo"); err != nil {
 		t.Skip("tinygo is not installed")
 	}
@@ -51,14 +75,14 @@ func TestTinyGoSupportsCooperativeInterruption(t *testing.T) {
 	if err := linkNativeModule(nativeRuntime, generated); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(interruptionTinyGoRunnerSource), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(runnerSource), 0644); err != nil {
 		t.Fatal(err)
 	}
 	executable := filepath.Join(dir, "runner")
 	// A distinct host thread publishes cancellation while the CPU-bound guest
 	// owns its execution thread. This isolates whether the native image contains the
 	// cooperative poll that the TinyGo runtime needs to consume that request.
-	if err := runTool("tinygo", dir, environment, false, "build", "-scheduler=threads", "-gc=conservative", "-tags=wago_standalone", "-o", executable, "."); err != nil {
+	if err := runTool("tinygo", dir, environment, false, "build", "-scheduler=threads", "-gc=conservative", "-tags="+guestTags, "-o", executable, "."); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

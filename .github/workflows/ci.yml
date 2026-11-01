@@ -1197,7 +1197,7 @@ jobs:
 
       - name: Test native standalone under TinyGo
         if: runner.os == 'Linux'
-        run: go test -count=1 -run '^(TestBuildTinyGoLinksMachineCodeWithoutCompiler|TestBuildTinyGoStripsByDefault|TestTinyGoSupportsCooperativeInterruption)$' ./cli/manager/internal/standalone
+        run: go test -count=1 -run '^(TestBuildTinyGoLinksMachineCodeWithoutCompiler|TestBuildTinyGoStripsByDefault|TestTinyGoSupportsCooperativeInterruption|TestTinyGoForeignStackGCInterruption)$' ./cli/manager/internal/standalone
 
       - name: Build CLI with TinyGo
         if: matrix.cli
@@ -1208,6 +1208,10 @@ jobs:
       - name: Test (runtime + public API) under TinyGo
         if: matrix.runtime
         run: just test tinygo
+
+      - name: Test concurrent TinyGo foreign-stack GC
+        if: runner.os == 'Linux' && runner.arch == 'X64'
+        run: tinygo test -scheduler=threads -gc=conservative -tags=wago_regalloccheck -run '^TestTinyGoForeignStack' ./src/core/runtime
 
       # TinyGo lacks the Darwin/amd64 JIT trampoline; ordinary Go supports it.
       # Keep ordinary portable coverage and exercise the checker model and
