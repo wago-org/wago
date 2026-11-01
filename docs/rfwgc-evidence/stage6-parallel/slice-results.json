@@ -1,0 +1,46 @@
+[
+  {
+    "mode": "ordinary",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "Parallel|R9Protocol|ObjectEdges|ObjectTrace|Conditional|CardMetadataFootprint|MajorBlocksFlag|EdenRegionsAdmissionAndLayout",
+      "-count=1",
+      "-v",
+      "-timeout=5m"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wagodebug",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "Parallel|R9Protocol|ObjectEdges|ObjectTrace|Conditional|CardMetadataFootprint|MajorBlocksFlag|EdenRegionsAdmissionAndLayout",
+      "-count=1",
+      "-v",
+      "-timeout=5m"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "Parallel|R9Protocol|ObjectEdges|ObjectTrace|Conditional|CardMetadataFootprint|MajorBlocksFlag|EdenRegionsAdmissionAndLayout",
+      "-count=1",
+      "-v",
+      "-timeout=5m"
+    ],
+    "exit": 0
+  }
+]

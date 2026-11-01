@@ -1,0 +1,98 @@
+=== RUN   TestParallelStage6PortableOwnerCallbacks
+--- PASS: TestParallelStage6PortableOwnerCallbacks (14.17s)
+=== RUN   TestR9ProtocolConditionPublication
+--- PASS: TestR9ProtocolConditionPublication (0.00s)
+=== RUN   TestR9ProtocolStopBeforeWorkerReceive
+--- PASS: TestR9ProtocolStopBeforeWorkerReceive (0.00s)
+=== RUN   TestR9ProtocolPhaseBeforeWorkerReceive
+--- PASS: TestR9ProtocolPhaseBeforeWorkerReceive (0.00s)
+=== RUN   TestParallelStage6PolicyOracle
+=== RUN   TestParallelStage6PolicyOracle/region0/workers1
+=== RUN   TestParallelStage6PolicyOracle/region0/workers2
+=== RUN   TestParallelStage6PolicyOracle/region0/workers8
+=== RUN   TestParallelStage6PolicyOracle/region6/workers1
+=== RUN   TestParallelStage6PolicyOracle/region6/workers2
+=== RUN   TestParallelStage6PolicyOracle/region6/workers8
+=== RUN   TestParallelStage6PolicyOracle/region12/workers1
+=== RUN   TestParallelStage6PolicyOracle/region12/workers2
+=== RUN   TestParallelStage6PolicyOracle/region12/workers8
+--- PASS: TestParallelStage6PolicyOracle (31.83s)
+    --- PASS: TestParallelStage6PolicyOracle/region0/workers1 (1.93s)
+    --- PASS: TestParallelStage6PolicyOracle/region0/workers2 (1.98s)
+    --- PASS: TestParallelStage6PolicyOracle/region0/workers8 (2.02s)
+    --- PASS: TestParallelStage6PolicyOracle/region6/workers1 (7.04s)
+    --- PASS: TestParallelStage6PolicyOracle/region6/workers2 (7.76s)
+    --- PASS: TestParallelStage6PolicyOracle/region6/workers8 (7.75s)
+    --- PASS: TestParallelStage6PolicyOracle/region12/workers1 (1.07s)
+    --- PASS: TestParallelStage6PolicyOracle/region12/workers2 (1.15s)
+    --- PASS: TestParallelStage6PolicyOracle/region12/workers8 (1.13s)
+=== RUN   TestParallelStage6FailureMatrix
+=== RUN   TestParallelStage6FailureMatrix/region0/phase0
+=== RUN   TestParallelStage6FailureMatrix/region0/phase1
+=== RUN   TestParallelStage6FailureMatrix/region0/phase2
+=== RUN   TestParallelStage6FailureMatrix/region6/phase0
+=== RUN   TestParallelStage6FailureMatrix/region6/phase1
+=== RUN   TestParallelStage6FailureMatrix/region6/phase2
+=== RUN   TestParallelStage6FailureMatrix/region12/phase0
+=== RUN   TestParallelStage6FailureMatrix/region12/phase1
+=== RUN   TestParallelStage6FailureMatrix/region12/phase2
+--- PASS: TestParallelStage6FailureMatrix (15.74s)
+    --- PASS: TestParallelStage6FailureMatrix/region0/phase0 (0.20s)
+    --- PASS: TestParallelStage6FailureMatrix/region0/phase1 (0.19s)
+    --- PASS: TestParallelStage6FailureMatrix/region0/phase2 (2.15s)
+    --- PASS: TestParallelStage6FailureMatrix/region6/phase0 (0.30s)
+    --- PASS: TestParallelStage6FailureMatrix/region6/phase1 (0.30s)
+    --- PASS: TestParallelStage6FailureMatrix/region6/phase2 (10.69s)
+    --- PASS: TestParallelStage6FailureMatrix/region12/phase0 (0.19s)
+    --- PASS: TestParallelStage6FailureMatrix/region12/phase1 (0.20s)
+    --- PASS: TestParallelStage6FailureMatrix/region12/phase2 (1.52s)
+=== RUN   TestParallelStage6DelayedCompletionAndWrap
+--- PASS: TestParallelStage6DelayedCompletionAndWrap (0.00s)
+=== RUN   TestParallelStage6Poison
+--- PASS: TestParallelStage6Poison (0.06s)
+=== RUN   TestParallelStage6HelperExitDrainsPeers
+--- PASS: TestParallelStage6HelperExitDrainsPeers (0.06s)
+=== RUN   TestParallelStage6RootPanicBetweenPhases
+--- PASS: TestParallelStage6RootPanicBetweenPhases (0.20s)
+=== RUN   TestParallelStage6QueueOverflowRetained
+--- PASS: TestParallelStage6QueueOverflowRetained (0.00s)
+=== RUN   TestParallelStage6DuplicateCompletionPoisons
+--- PASS: TestParallelStage6DuplicateCompletionPoisons (0.00s)
+=== RUN   TestParallelStage6NativeCancelBeforeDispatch
+=== RUN   TestParallelStage6NativeCancelBeforeDispatch/0
+=== RUN   TestParallelStage6NativeCancelBeforeDispatch/6
+=== RUN   TestParallelStage6NativeCancelBeforeDispatch/12
+--- PASS: TestParallelStage6NativeCancelBeforeDispatch (0.64s)
+    --- PASS: TestParallelStage6NativeCancelBeforeDispatch/0 (0.20s)
+    --- PASS: TestParallelStage6NativeCancelBeforeDispatch/6 (0.24s)
+    --- PASS: TestParallelStage6NativeCancelBeforeDispatch/12 (0.21s)
+=== RUN   TestParallelCollectionGraphEquivalence
+=== RUN   TestParallelCollectionGraphEquivalence/workers=1/immediate=false
+=== RUN   TestParallelCollectionGraphEquivalence/workers=1/immediate=true
+=== RUN   TestParallelCollectionGraphEquivalence/workers=2/immediate=false
+=== RUN   TestParallelCollectionGraphEquivalence/workers=2/immediate=true
+=== RUN   TestParallelCollectionGraphEquivalence/workers=4/immediate=false
+=== RUN   TestParallelCollectionGraphEquivalence/workers=4/immediate=true
+=== RUN   TestParallelCollectionGraphEquivalence/workers=8/immediate=false
+=== RUN   TestParallelCollectionGraphEquivalence/workers=8/immediate=true
+--- PASS: TestParallelCollectionGraphEquivalence (17.52s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=1/immediate=false (1.87s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=1/immediate=true (2.36s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=2/immediate=false (1.94s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=2/immediate=true (2.29s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=4/immediate=false (1.99s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=4/immediate=true (2.27s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=8/immediate=false (2.10s)
+    --- PASS: TestParallelCollectionGraphEquivalence/workers=8/immediate=true (2.69s)
+=== RUN   TestParallelMinorRememberedAndPersistentRoots
+--- PASS: TestParallelMinorRememberedAndPersistentRoots (1.55s)
+=== RUN   TestParallelSerialFallbackAndConfig
+--- PASS: TestParallelSerialFallbackAndConfig (0.10s)
+=== RUN   TestParallelEpochGrowthAndPrivateChain
+--- PASS: TestParallelEpochGrowthAndPrivateChain (0.25s)
+=== RUN   TestParallelLargeArrayChunks
+--- PASS: TestParallelLargeArrayChunks (0.72s)
+=== RUN   TestParallelCaptureDenseAndSparse
+--- PASS: TestParallelCaptureDenseAndSparse (0.03s)
+PASS
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	83.918s
