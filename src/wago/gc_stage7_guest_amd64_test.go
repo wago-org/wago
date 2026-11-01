@@ -1,0 +1,70 @@
+//go:build linux && amd64 && !tinygo && !wago_target_tinygo && !wago_guardpage
+
+package wago
+
+import (
+	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"runtime"
+	"testing"
+)
+
+func stage7GuestModule() []byte {
+	types := wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, []byte{0x5e, 0x63, 0, 1}, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))
+	// Global array of 60000 nullable struct references.
+	global := append([]byte{0x63, 1, 1, 0x41}, wasmtest.SLEB32(60000)...)
+	global = append(global, 0xfb, 7, 1, 0x0b)
+	body := []byte{1, 1, 0x7f, 0x03, 0x40, 0x23, 0, 0x20, 0, 0x41, 42, 0xfb, 0, 0, 0xfb, 0x0e, 1, 0x20, 0, 0x41, 1, 0x6a, 0x22, 0, 0x41}
+	body = append(body, wasmtest.SLEB32(60000)...)
+	body = append(body, 0x49, 0x0d, 0, 0x0b, 0x23, 0, 0x41)
+	body = append(body, wasmtest.SLEB32(59999)...)
+	body = append(body, 0xfb, 0x0b, 1, 0xfb, 2, 0, 0, 0x0b)
+	return wasmtest.Module(wasmtest.Section(1, types), wasmtest.Section(3, wasmtest.Vec([]byte{2})), wasmtest.Section(6, wasmtest.Vec(global)), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
+}
+func TestGCStage7GuestWorkers(t *testing.T) {
+	old := runtime.GOMAXPROCS(8)
+	defer runtime.GOMAXPROCS(old)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false), stage7GuestModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	for _, workers := range []int{0, 1, 2, 4, 8} {
+		for _, shift := range []uint8{0, 6, 12} {
+			t.Run(fmt.Sprintf("workers%d/region%d", workers, shift), func(t *testing.T) {
+				in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Workers: workers, NurseryBytes: 4 << 20, NurseryRegionShift: shift, MatureEvacuation: shift != 0, ThroughputHeapBytes: 32 << 20, VerifyAfterCollect: true}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				got, err := in.Invoke("run")
+				if err != nil || len(got) != 1 || got[0] != 42 {
+					t.Fatal(got, err)
+				}
+				if shift != 0 {
+					if err = in.gc.CollectMinor(nil); err != nil {
+						t.Fatal(err)
+					}
+					if err = in.gc.CollectMinor(nil); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err = in.CollectGC(); err != nil {
+					t.Fatal(err)
+				}
+				activity := in.gc.ParallelActivity()
+				var helpers uint64
+				for i := 1; i < workers; i++ {
+					helpers += activity.Sweep[i] + activity.Trace[i] + activity.Copy[i]
+				}
+				if workers > 1 && helpers == 0 {
+					t.Fatalf("guest did not use actual %d participants: %+v", workers, activity)
+				}
+				if in.gc.Stats().LiveObjects != 60001 {
+					t.Fatal("guest graph lost", in.gc.Stats())
+				}
+			})
+		}
+	}
+}
