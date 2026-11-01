@@ -1,4 +1,4 @@
-//go:build !wago_lean
+//go:build !wago_lean && !tinygo && !wago_target_tinygo
 
 package run
 
