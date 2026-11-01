@@ -808,3 +808,20 @@ All seven target INCLUDED but none has final INCLUDED status before combined
 gates/review. No SUPERSEDED or INCOMPATIBLE conclusion is currently established;
 no PR closed. H2/H6, final collector/full/corpus/conformance/platform/TinyGo
 joint qualification, measurement and consolidated review remain open.
+
+## Immutable1059 requested suite gate PASS
+
+Verified committed evidencec592d2dec at r9-nested-owner-fix/attempt-1059-clean-driver:
+source1059c88e8e97840c121b3e4bc4e9f44b4b0c9a0b, all15 requested commands exit0
+and unchanged driver exit0. Full src/wago with pinned corpus, scoped ownership/
+lifecycle race, full AMD64/ARM64/Wasm backend packages, ARM64 cross-build and
+RV64 cross-build each PASS ordinary/wagodebug/wago_regalloccheck. Cross checks
+are compile-only; race scope is the recorded regex, not whole-suite race.
+Historical failed attempts are retained; this clean replay supersedes neither
+their recorded failures nor the separate6a25f86e5 transaction qualification.
+
+H6 contention wakeup remains an open finding independent of these passes.
+Worker authorized narrow host retry driver and deterministic contention/Close/
+coalescing/no-lost-wake tests, then immutable qualification. H2 production remains
+paused until that gate closes. Seven roll-up PRs retain integrated/pending-final
+status; no final INCLUDED/INCLUDED-FIX or combined stage7/TinyGo/platform claim.
