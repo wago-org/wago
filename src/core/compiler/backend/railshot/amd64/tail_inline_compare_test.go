@@ -38,7 +38,7 @@ func TestInlineTailConstantLeftCompareLanesAndInversions(t *testing.T) {
 						sx = int64(int32(uint32(x)))
 						input = ux | 0xdeadbeef00000000
 					}
-					predicates := [10]bool{7 == ux, 7 != ux, 7 < sx, 7 < ux, 7 > sx, 7 > ux, 7 <= sx, 7 <= ux, 7 >= sx, 7 >= ux}
+					predicates := [10]bool{ux == 7, ux != 7, 7 < sx, 7 < ux, 7 > sx, 7 > ux, 7 <= sx, 7 <= ux, 7 >= sx, 7 >= ux}
 					predicate := predicates[index]
 					if invert {
 						predicate = !predicate

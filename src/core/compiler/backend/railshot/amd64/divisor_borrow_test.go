@@ -3,7 +3,6 @@
 package amd64
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -22,7 +21,7 @@ func TestDivisorBorrowPreservesPinnedLocal(t *testing.T) {
 				fold = func(v uint64) uint64 { return v }
 			}
 			for _, op := range divOps(wide) {
-				t.Run(fmt.Sprintf("%s", op.name), func(t *testing.T) {
+				t.Run(op.name, func(t *testing.T) {
 					// The divisor is used again after DIV/IDIV and may also be the result home.
 					for _, alias := range []bool{false, true} {
 						body := []byte{0, 0x20, 0, 0x20, 1, op.opcode, 0x20, 1, add}
