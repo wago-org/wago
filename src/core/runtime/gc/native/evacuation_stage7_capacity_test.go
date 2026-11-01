@@ -33,10 +33,10 @@ func TestEvacuationStage7Capacity256MiB(t *testing.T) {
 		fields = append(fields, StorageI64)
 	}
 	d, err := NewStructDesc(0, fields)
-	if err != nil || d.Size != 4096 {
+	if err != nil || d.Size+PayloadOffset != 4096 {
 		t.Fatal("capacity layout", d.Size, err)
 	}
-	c := newTestCollectorWithTypes(t, Config{Workers: 8, NurseryBytes: 64 << 20, NurseryRegionShift: 12, MatureEvacuation: true, ThroughputHeapBytes: 272 << 20, ThroughputPageBytes: 4096}, []TypeDesc{d})
+	c := newTestCollectorWithTypes(t, Config{Workers: 8, NurseryBytes: 8 << 20, NurseryRegionShift: 12, MatureEvacuation: true, ThroughputHeapBytes: 272 << 20, ThroughputPageBytes: 4096}, []TypeDesc{d})
 	head := Null()
 	roots := Slots{(*Root)(&head)}
 	for i := 0; i < 65536; i++ {
@@ -51,8 +51,10 @@ func TestEvacuationStage7Capacity256MiB(t *testing.T) {
 			t.Fatal(err)
 		}
 		head = r
-		if err = c.ForcePromote(r); err != nil {
-			t.Fatal(i, err)
+		if (i+1)%1024 == 0 {
+			if err = c.CollectMinor(roots); err != nil {
+				t.Fatal(i, err)
+			}
 		}
 	}
 	if c.throughput.bump != 256<<20 {
