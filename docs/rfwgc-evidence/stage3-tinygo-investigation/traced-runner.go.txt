@@ -1,0 +1,47 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/wago-org/wago"
+)
+
+
+func main() {
+	println("boundary: new-runtime")
+	rt := wago.NewRuntime()
+	println("boundary: adopt")
+	module, err := rt.AdoptModule(wago.StandaloneCompiled())
+	if err != nil {
+		panic(err)
+	}
+	println("boundary: instantiate")
+	instance, err := rt.Instantiate(context.Background(), module)
+	if err != nil {
+		panic(err)
+	}
+	println("boundary: context")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		println("boundary: invoke-enter")
+		_, invokeErr := instance.InvokeContext(ctx, "spin")
+		println("boundary: invoke-return", invokeErr == nil, errors.Is(invokeErr, context.Canceled))
+		done <- invokeErr
+	}()
+	time.Sleep(50 * time.Millisecond)
+	println("boundary: cancel-enter")
+	cancel()
+	println("boundary: cancel-return")
+	select {
+	case err = <-done:
+		println("boundary: receive", err == nil, errors.Is(err, context.Canceled))
+		if !errors.Is(err, context.Canceled) {
+			panic(err)
+		}
+	case <-time.After(2 * time.Second):
+		panic("infinite guest did not consume cancellation")
+	}
+}

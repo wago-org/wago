@@ -1,0 +1,73 @@
+[
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-baseline-ordinary/artifact-875963/runner",
+    "sha256": "51f9e6e4d231898362c9c598c7c7aad457c5006bcf50d45124a16879b16ffd3b",
+    "runner_source_sha256": "88d4b353f73acf7c05b02ce5a39dd21b70802787e3e93eed9e4546b8c7adf7d9"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-baseline-ordinary/artifact-875963-gc-during/runner",
+    "sha256": "04ee333ff7153255cd14be94b3895d622fb02373d7473fc89b31d47722daacd2",
+    "runner_source_sha256": "176d498af01ca952ecfe98e15e8b2b730d7dca1b683976da1e13bc51f8849ff4"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-baseline-wago_regalloccheck/artifact-935649/runner",
+    "sha256": "1a73a123055506971dcf694161270093fe4ae46296b0e148dcb8ce4d6af4dff1",
+    "runner_source_sha256": "88d4b353f73acf7c05b02ce5a39dd21b70802787e3e93eed9e4546b8c7adf7d9"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-baseline-wagodebug/artifact-881706/runner",
+    "sha256": "ae00bf9fff6872bb9c966725369f4ff7f0ab36bf8a1c960f0a068b3b9803f93c",
+    "runner_source_sha256": "88d4b353f73acf7c05b02ce5a39dd21b70802787e3e93eed9e4546b8c7adf7d9"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-current-ordinary/artifact-811967/runner",
+    "sha256": "a2d23b30c96160a533a0e74593cae4a9495e4f6c1f64174bb4603abf653f8040",
+    "runner_source_sha256": "88d4b353f73acf7c05b02ce5a39dd21b70802787e3e93eed9e4546b8c7adf7d9"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-current-ordinary/artifact-811967-gc-before/runner",
+    "sha256": "4f0610431f1ae1afbd5a6d7342542540ab2f679fa100db03927a4178c58aa392",
+    "runner_source_sha256": "abc03791002a6a783354f95cd575c4e7ea93bdeecba2377e208f6c7065bd47d0"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-current-ordinary/artifact-811967-gc-during/runner",
+    "sha256": "179421b14521846ba9b6e309c132a33cf3ac938376f02f8eaf38185c427a5aef",
+    "runner_source_sha256": "176d498af01ca952ecfe98e15e8b2b730d7dca1b683976da1e13bc51f8849ff4"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-current-ordinary/artifact-811967-gc-during/runner-isolated",
+    "sha256": "c1a08cf8eac1709476f1f6d3d141a347237bc9af54e016f86f8ee48af6de9f3f",
+    "runner_source_sha256": "176d498af01ca952ecfe98e15e8b2b730d7dca1b683976da1e13bc51f8849ff4"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-current-ordinary/artifact-811967-traced/runner",
+    "sha256": "19a7399664c0178860486fd470fcb7269bc719e462a961613b3f52ceeb0f1091",
+    "runner_source_sha256": "5602c4a356e19ba5f5c3440ca37f42d5af61c7b24764d14588ab4452f596e5aa"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-current-wago_regalloccheck/artifact-863787/runner",
+    "sha256": "05529c0dc92a2e86526b4834cc083cb16ad59b4672d4fcb9e7fd9098a04b567d",
+    "runner_source_sha256": "88d4b353f73acf7c05b02ce5a39dd21b70802787e3e93eed9e4546b8c7adf7d9"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-current-wagodebug/artifact-816157/runner",
+    "sha256": "84ee36712e62b9c9310bb2669648592c4864d7c5a552ad81c5de309fc8ab1aa8",
+    "runner_source_sha256": "88d4b353f73acf7c05b02ce5a39dd21b70802787e3e93eed9e4546b8c7adf7d9"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/043-baseline-wagodebug/artifact-882008/runner",
+    "sha256": "c799ac324bd3ef092019d15c1920c507db81e12d2bf7343b5c559f3d931faf4a",
+    "runner_source_sha256": "88d4b353f73acf7c05b02ce5a39dd21b70802787e3e93eed9e4546b8c7adf7d9"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/043-current-wagodebug/artifact-829998/runner",
+    "sha256": "44de9756e462bca80bf6c8b8023b681deadc7717453de13d90b5a0bfe43f915f",
+    "runner_source_sha256": "88d4b353f73acf7c05b02ce5a39dd21b70802787e3e93eed9e4546b8c7adf7d9"
+  },
+  {
+    "path": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-current-ordinary/artifact-811967-gc-during/runner-isolated",
+    "sha256": "c1a08cf8eac1709476f1f6d3d141a347237bc9af54e016f86f8ee48af6de9f3f",
+    "runner_source_sha256": "176d498af01ca952ecfe98e15e8b2b730d7dca1b683976da1e13bc51f8849ff4",
+    "XDG_CACHE_HOME": "/home/dev/.local/share/wago-tinygo-investigation/isolated-cache"
+  }
+]

@@ -1,0 +1,175 @@
+[New LWP 1009710]
+[New LWP 1009711]
+boundary: during-guest-gc-enter
+
+Thread 1 "runner" received signal SIGSEGV, Segmentation fault.
+runtime.scanConservative (addr=140355651502080, len=18446744072631545524) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_blocks.go:646
+646			root := *(*uintptr)(unsafe.Pointer(addr))
+
+Thread 3 (LWP 1009711 "runner"):
+#0  syscall (n=<optimized out>) at /home/dev/.local/share/mise/installs/tinygo/0.43.0/tinygo/lib/musl/src/misc/syscall.c:20
+#1  0x0000000000380d4e in tinygo_futex_wait (addr=0x80, cmp=2553875) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/futex/futex_linux.c:17
+#2  0x000000000027707c in (*internal/futex.Futex).Wait (cmp=1, f=<optimized out>) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/futex/futex.go:26
+#3  tinygo_task_gc_pause (sig=<optimized out>) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/task/task_threads.go:310
+#4  <signal handler called>
+#5  0x00007fa718c0a026 in ?? ()
+#6  0x00007fa718c0a009 in ?? ()
+#7  0x00007fa718c08080 in ?? ()
+#8  0x00007fa718c0904b in ?? ()
+#9  0x00007fa6d87ed408 in ?? ()
+#10 0x0000000000000008 in ?? ()
+#11 0x00007fa6d8c05400 in ?? ()
+#12 0x00007fa718c08088 in ?? ()
+#13 0x0000000000000008 in ?? ()
+#14 0x00007fa6d8c05400 in ?? ()
+#15 0x00007fa718c08078 in ?? ()
+#16 0x00001f8000001f80 in ?? ()
+#17 0x00007ffca5a8f808 in ?? ()
+#18 0x000000000000000a in ?? ()
+#19 0x00007ffca5a8f813 in ?? ()
+#20 0x000000000000001b in ?? ()
+#21 0x00007ffca5a8f82f in ?? ()
+#22 0x000000000000002a in ?? ()
+#23 0x00007ffca5a8f85a in ?? ()
+#24 0x0000000000000014 in ?? ()
+#25 0x00007ffca5a8f86f in ?? ()
+#26 0x000000000000000b in ?? ()
+#27 0x00007ffca5a8f87b in ?? ()
+#28 0x0000000000000014 in ?? ()
+#29 0x00007ffca5a8f890 in ?? ()
+#30 0x0000000000000020 in ?? ()
+#31 0x00007ffca5a8f8b1 in ?? ()
+#32 0x0000000000000007 in ?? ()
+#33 0x00007ffca5a8f8b9 in ?? ()
+#34 0x0000000000000062 in ?? ()
+#35 0x00007ffca5a8f91c in ?? ()
+#36 0x000000000000000e in ?? ()
+#37 0x00007ffca5a8f92b in ?? ()
+#38 0x000000000000029c in ?? ()
+#39 0x00007ffca5a8fbc8 in ?? ()
+#40 0x0000000000000009 in ?? ()
+#41 0x00007ffca5a8fbd2 in ?? ()
+#42 0x0000000000000010 in ?? ()
+#43 0x00007ffca5a8fbe3 in ?? ()
+#44 0x0000000000000035 in ?? ()
+#45 0x00007ffca5a8fc19 in ?? ()
+#46 0x000000000000000a in ?? ()
+#47 0x00007ffca5a8fc24 in ?? ()
+#48 0x000000000000000a in ?? ()
+#49 0x00007ffca5a8fc2f in ?? ()
+#50 0x0000000000000010 in ?? ()
+#51 0x00007ffca5a8fc40 in ?? ()
+#52 0x000000000000003c in ?? ()
+#53 0x00007ffca5a8fc7d in ?? ()
+#54 0x0000000000000012 in ?? ()
+#55 0x00007ffca5a8fc90 in ?? ()
+#56 0x0000000000000029 in ?? ()
+#57 0x00007ffca5a8fcba in ?? ()
+#58 0x0000000000000009 in ?? ()
+#59 0x00007ffca5a8fcc4 in ?? ()
+#60 0x000000000000000a in ?? ()
+#61 0x00007ffca5a8fccf in ?? ()
+#62 0x00000000000000c7 in ?? ()
+#63 0x00007ffca5a8fd97 in ?? ()
+#64 0x000000000000001d in ?? ()
+#65 0x00007ffca5a8fdb5 in ?? ()
+#66 0x0000000000000038 in ?? ()
+#67 0x00007ffca5a8fdee in ?? ()
+#68 0x0000000000000035 in ?? ()
+#69 0x00007ffca5a8fe24 in ?? ()
+#70 0x0000000000000024 in ?? ()
+#71 0x00007ffca5a8fe49 in ?? ()
+#72 0x000000000000000c in ?? ()
+#73 0x00007ffca5a8fe56 in ?? ()
+#74 0x000000000000000c in ?? ()
+#75 0x00007ffca5a8fe63 in ?? ()
+#76 0x0000000000000034 in ?? ()
+#77 0x00007ffca5a8fe98 in ?? ()
+#78 0x000000000000000d in ?? ()
+#79 0x00007ffca5a8fea6 in ?? ()
+#80 0x0000000000000036 in ?? ()
+#81 0x00007ffca5a8fedd in ?? ()
+#82 0x000000000000000d in ?? ()
+#83 0x00007ffca5a8feeb in ?? ()
+#84 0x000000000000000e in ?? ()
+#85 0x00007ffca5a8fefa in ?? ()
+#86 0x000000000000006b in ?? ()
+#87 0x00007ffca5a8ff66 in ?? ()
+#88 0x0000000000000008 in ?? ()
+#89 0x00007ffca5a8ff6f in ?? ()
+#90 0x0000000000000016 in ?? ()
+#91 0x0000000000000000 in ?? ()
+
+Thread 2 (LWP 1009710 "runner"):
+#0  syscall (n=<optimized out>) at /home/dev/.local/share/mise/installs/tinygo/0.43.0/tinygo/lib/musl/src/misc/syscall.c:20
+#1  0x0000000000380d4e in tinygo_futex_wait (addr=0x80, cmp=2553875) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/futex/futex_linux.c:17
+#2  0x000000000027707c in (*internal/futex.Futex).Wait (cmp=1, f=<optimized out>) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/futex/futex.go:26
+#3  tinygo_task_gc_pause (sig=<optimized out>) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/task/task_threads.go:310
+#4  <signal handler called>
+#5  __syscall6 (n=202, a1=3702256, a2=128, a3=0, a4=0, a5=0, a6=0) at /home/dev/.local/share/mise/installs/tinygo/0.43.0/tinygo/lib/musl/arch/x86_64/syscall_arch.h:59
+#6  syscall (n=202) at /home/dev/.local/share/mise/installs/tinygo/0.43.0/tinygo/lib/musl/src/misc/syscall.c:20
+#7  0x0000000000380d4e in tinygo_futex_wait (addr=0x80, cmp=2553875) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/futex/futex_linux.c:17
+#8  0x000000000027aaa8 in (*internal/futex.Futex).Wait (cmp=0, f=<optimized out>) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/futex/futex.go:26
+#9  runtime.finalizerRunner () at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_finalizer.go:442
+#10 0x000000000027aa28 in <goroutine wrapper> () at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_finalizer_sched_other.go:7
+#11 0x0000000000380f28 in start_wrapper (arg=<optimized out>) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/task/task_threads.c:95
+#12 0x0000000000270716 in start (p=0x7fa718c1def8) at /home/dev/.local/share/mise/installs/tinygo/0.43.0/tinygo/lib/musl/src/thread/pthread_create.c:203
+#13 0x00000000002708f7 in __clone () at /home/dev/.local/share/mise/installs/tinygo/0.43.0/tinygo/lib/musl/src/thread/x86_64/clone.s:22
+#14 0x0000000000000000 in ?? ()
+
+Thread 1 (LWP 1009706 "runner"):
+#0  runtime.scanConservative (addr=140355651502080, len=18446744072631545524) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_blocks.go:646
+#1  0x00000000002780bd in internal/task.GCStopWorldAndScan () at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/task/task_threads.go:260
+#2  runtime.gcMarkReachable () at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_stack_threads.go:8
+#3  runtime.runGC () at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_blocks.go:562
+#4  0x000000000027d7db in runtime.GC () at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_blocks.go:543
+#5  main.main () at /home/dev/.local/share/wago-tinygo-investigation/artifacts/042-baseline-ordinary/artifact-875963-gc-during/main.go:31
+#6  runtime.run () at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/scheduler_threads.go:28
+#7  runtime.runMain () at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_unix.go:136
+#8  0x000000000027b98c in main (argc=1, argv=0x7ffca5a8de58) at /home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_unix.go:98
+rax            0xffff805927400000  -140354577760256
+rbx            0xffffffffbfbeeeb4  -1078006092
+rcx            0x100               256
+rdx            0x0                 0
+rsi            0xffffffffffbefbf8  -4260872
+rdi            0x0                 0
+rbp            0x7fa6d8c1f9e0      0x7fa6d8c1f9e0
+rsp            0x7ffca5a8dc80      0x7ffca5a8dc80
+r8             0x0                 0
+r9             0x0                 0
+r10            0x0                 0
+r11            0x202               514
+r12            0x7fa6d8c07200      140354577789440
+r13            0x10                16
+r14            0x7fa718c00000      140355651502080
+r15            0xe8a7ffd37bc0      255808249232320
+rip            0x278667            0x278667 <runtime.scanConservative+16>
+eflags         0x10296             [ PF AF SF IF RF ]
+cs             0x33                51
+ss             0x2b                43
+ds             0x0                 0
+es             0x0                 0
+fs             0x0                 0
+gs             0x0                 0
+k0             0x0                 0
+k1             0x0                 0
+k2             0x0                 0
+k3             0x0                 0
+k4             0x0                 0
+k5             0x0                 0
+k6             0x0                 0
+k7             0x0                 0
+fs_base        0x387ac0            3701440
+gs_base        0x0                 0
+   0x278657 <runtime.scanConservative>:	push   %r14
+   0x278659 <runtime.scanConservative+2>:	push   %rbx
+   0x27865a <runtime.scanConservative+3>:	push   %rax
+   0x27865b <runtime.scanConservative+4>:	mov    %rsi,%rbx
+   0x27865e <runtime.scanConservative+7>:	mov    %rdi,%r14
+   0x278661 <runtime.scanConservative+10>:	cmp    $0x8,%rbx
+   0x278665 <runtime.scanConservative+14>:	jb     0x278679 <runtime.scanConservative+34>
+=> 0x278667 <runtime.scanConservative+16>:	mov    (%r14),%rdi
+   0x27866a <runtime.scanConservative+19>:	call   0x2784c5 <runtime.markRoot>
+   0x27866f <runtime.scanConservative+24>:	add    $0x8,%r14
+   0x278673 <runtime.scanConservative+28>:	add    $0xfffffffffffffff8,%rbx
+   0x278677 <runtime.scanConservative+32>:	jmp    0x278661 <runtime.scanConservative+10>
