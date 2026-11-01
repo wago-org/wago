@@ -1,0 +1,185 @@
+{
+  "baseline-interval-diagnostics.txt": {
+    "pass_top_level": 0,
+    "skip_top_level": 0,
+    "fail_top_level": [
+      "TestIntervalRegionDynamicReuse",
+      "TestIntervalRegionControlBoundaries"
+    ],
+    "pass_all": 1,
+    "skip_all": 0,
+    "package_pass": 0,
+    "package_fail": 3
+  },
+  "ordinary-backend-diagnostics.txt": {
+    "pass_top_level": 63,
+    "skip_top_level": 0,
+    "fail_top_level": [],
+    "pass_all": 202,
+    "skip_all": 2,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "ordinary-backend.txt": {
+    "pass_top_level": 48,
+    "skip_top_level": 31,
+    "fail_top_level": [],
+    "pass_all": 142,
+    "skip_all": 35,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "ordinary-broad-backend-diagnostics.txt": {
+    "pass_top_level": 77,
+    "skip_top_level": 0,
+    "fail_top_level": [
+      "TestIntervalRegionDynamicReuse",
+      "TestIntervalRegionControlBoundaries"
+    ],
+    "pass_all": 217,
+    "skip_all": 2,
+    "package_pass": 0,
+    "package_fail": 3
+  },
+  "ordinary-collector.txt": {
+    "pass_top_level": 414,
+    "skip_top_level": 0,
+    "fail_top_level": [],
+    "pass_all": 2055,
+    "skip_all": 0,
+    "package_pass": 2,
+    "package_fail": 0
+  },
+  "ordinary-guest.txt": {
+    "pass_top_level": 377,
+    "skip_top_level": 1,
+    "fail_top_level": [],
+    "pass_all": 1530,
+    "skip_all": 9,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "ordinary-native-guests.txt": {
+    "pass_top_level": 4,
+    "skip_top_level": 0,
+    "fail_top_level": [],
+    "pass_all": 9,
+    "skip_all": 0,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "wago_regalloccheck-backend-diagnostics.txt": {
+    "pass_top_level": 64,
+    "skip_top_level": 0,
+    "fail_top_level": [],
+    "pass_all": 212,
+    "skip_all": 2,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "wago_regalloccheck-backend.txt": {
+    "pass_top_level": 49,
+    "skip_top_level": 31,
+    "fail_top_level": [],
+    "pass_all": 152,
+    "skip_all": 35,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "wago_regalloccheck-broad-backend-diagnostics.txt": {
+    "pass_top_level": 78,
+    "skip_top_level": 0,
+    "fail_top_level": [
+      "TestIntervalRegionDynamicReuse",
+      "TestIntervalRegionControlBoundaries"
+    ],
+    "pass_all": 227,
+    "skip_all": 2,
+    "package_pass": 0,
+    "package_fail": 3
+  },
+  "wago_regalloccheck-collector.txt": {
+    "pass_top_level": 414,
+    "skip_top_level": 0,
+    "fail_top_level": [],
+    "pass_all": 2055,
+    "skip_all": 0,
+    "package_pass": 2,
+    "package_fail": 0
+  },
+  "wago_regalloccheck-guest.txt": {
+    "pass_top_level": 378,
+    "skip_top_level": 1,
+    "fail_top_level": [],
+    "pass_all": 1533,
+    "skip_all": 9,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "wago_regalloccheck-native-guests.txt": {
+    "pass_top_level": 4,
+    "skip_top_level": 0,
+    "fail_top_level": [],
+    "pass_all": 9,
+    "skip_all": 0,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "wagodebug-backend-diagnostics.txt": {
+    "pass_top_level": 61,
+    "skip_top_level": 2,
+    "fail_top_level": [],
+    "pass_all": 196,
+    "skip_all": 4,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "wagodebug-backend.txt": {
+    "pass_top_level": 46,
+    "skip_top_level": 33,
+    "fail_top_level": [],
+    "pass_all": 136,
+    "skip_all": 37,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "wagodebug-broad-backend-diagnostics.txt": {
+    "pass_top_level": 75,
+    "skip_top_level": 2,
+    "fail_top_level": [
+      "TestIntervalRegionDynamicReuse",
+      "TestIntervalRegionControlBoundaries"
+    ],
+    "pass_all": 211,
+    "skip_all": 4,
+    "package_pass": 0,
+    "package_fail": 3
+  },
+  "wagodebug-collector.txt": {
+    "pass_top_level": 437,
+    "skip_top_level": 3,
+    "fail_top_level": [],
+    "pass_all": 2097,
+    "skip_all": 3,
+    "package_pass": 2,
+    "package_fail": 0
+  },
+  "wagodebug-guest.txt": {
+    "pass_top_level": 371,
+    "skip_top_level": 7,
+    "fail_top_level": [],
+    "pass_all": 1521,
+    "skip_all": 15,
+    "package_pass": 1,
+    "package_fail": 0
+  },
+  "wagodebug-native-guests.txt": {
+    "pass_top_level": 4,
+    "skip_top_level": 0,
+    "fail_top_level": [],
+    "pass_all": 9,
+    "skip_all": 0,
+    "package_pass": 1,
+    "package_fail": 0
+  }
+}

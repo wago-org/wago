@@ -319,7 +319,8 @@ func (c *Collector) refreshNativeView() {
 		v.NurseryObjectMaxBytes = c.cfg.LargeObjectBytes
 		if c.cfg.NurseryRegionShift != 0 {
 			v.NurseryAllocBytes = 0
-			v.NurseryObjectMaxBytes = 0
+			// Direct-bump writers remain disabled; live constructors use a
+			// bounded reservation in StructAllocState instead.
 		}
 		v.LargeArrayAllocState = uintptr(unsafe.Pointer(&c.nativeLargeArrayAlloc))
 		v.LargeArrayAllocEpoch = uintptr(unsafe.Pointer(&c.nativeLargeArrayEpoch))

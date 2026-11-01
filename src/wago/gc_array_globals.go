@@ -348,5 +348,11 @@ func (in *Instance) reconcileGCGlobalRoots() error {
 // global cell is the only remaining owner of a reference stored before failure.
 // Keep the execution failure first when root maintenance also fails.
 func (in *Instance) reconcileGCGlobalRootsAfter(primary error) error {
+	if primary != nil && in.gc != nil && in.gc.NativeView().NurseryAllocBytes == 0 {
+		// Region reservations cannot survive an aborted native invocation.
+		// Published objects remain in the exact nursery ledger; only unused
+		// identities and the unconsumed region tail are returned.
+		in.gc.CancelNativeAllocationBatch()
+	}
 	return joinPrimary(primary, in.reconcileGCGlobalRoots())
 }
