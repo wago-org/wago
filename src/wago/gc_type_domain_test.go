@@ -96,33 +96,41 @@ func TestGCModuleDomainProbeCachesCanonicalPlan(t *testing.T) {
 }
 
 func TestPreferredGCCollectorIncludesScalarExceptionImports(t *testing.T) {
-	store := &referenceStore{}
-	collector := new(gc.Collector)
-	provider := &Instance{gc: collector, refStore: store}
-	imports := testImports("env.call", &InstanceExport{inst: provider})
-	consumer := &Compiled{
-		Imports:        []string{"env.call"},
-		importFuncSigs: []FuncSig{{}},
-	}
-	consumer.ensureCodeCache()
-	consumer.loadCodeCache().stagedFeatures = CoreFeatureExceptionHandling
-	got, err := preferredGCCollectorFromImports(consumer, imports.bindings, store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != collector {
-		t.Fatalf("scalar exception import selected collector %p; want %p", got, collector)
-	}
-	provider.refStore = &referenceStore{}
-	if _, err := preferredGCCollectorFromImports(consumer, imports.bindings, store); err == nil {
-		t.Fatal("scalar exception import accepted a foreign reference store")
-	}
-	provider.refStore = store
-	imports.Function("env", "other", &InstanceExport{inst: &Instance{gc: new(gc.Collector), refStore: store}})
-	consumer.Imports = append(consumer.Imports, "env.other")
-	consumer.importFuncSigs = append(consumer.importFuncSigs, FuncSig{})
-	if _, err := preferredGCCollectorFromImports(consumer, imports.bindings, store); err == nil {
-		t.Fatal("scalar exception imports accepted conflicting collectors")
+	for _, required := range []bool{false, true} {
+		t.Run(fmt.Sprintf("required=%t", required), func(t *testing.T) {
+			store := &referenceStore{}
+			collector := new(gc.Collector)
+			provider := &Instance{gc: collector, refStore: store}
+			imports := testImports("env.call", &InstanceExport{inst: provider})
+			consumer := &Compiled{
+				Imports:        []string{"env.call"},
+				importFuncSigs: []FuncSig{{}},
+			}
+			consumer.ensureCodeCache()
+			if required {
+				consumer.requiredFeatures = CoreFeatureExceptionHandling
+			} else {
+				consumer.loadCodeCache().stagedFeatures = CoreFeatureExceptionHandling
+			}
+			got, err := preferredGCCollectorFromImports(consumer, imports.bindings, store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != collector {
+				t.Fatalf("scalar exception import selected collector %p; want %p", got, collector)
+			}
+			provider.refStore = &referenceStore{}
+			if _, err := preferredGCCollectorFromImports(consumer, imports.bindings, store); err == nil {
+				t.Fatal("scalar exception import accepted a foreign reference store")
+			}
+			provider.refStore = store
+			imports.Function("env", "other", &InstanceExport{inst: &Instance{gc: new(gc.Collector), refStore: store}})
+			consumer.Imports = append(consumer.Imports, "env.other")
+			consumer.importFuncSigs = append(consumer.importFuncSigs, FuncSig{})
+			if _, err := preferredGCCollectorFromImports(consumer, imports.bindings, store); err == nil {
+				t.Fatal("scalar exception imports accepted conflicting collectors")
+			}
+		})
 	}
 }
 
