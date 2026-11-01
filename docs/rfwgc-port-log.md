@@ -757,3 +757,27 @@ Source-wave evidence records Slipstream084be3d4bf (merged1a4759e5c) installing
 imported container roots and early runtime registration. Actual H6 fixef06c3710
 conservatively retains failed ABI2 runtimes; Wago's exact cycle/eventual-release
 obligation remains. Source-specific representations require adaptation.
+
+## TinyGo prerequisite qualification gate — 2026-11-01
+
+Evidence462ada9235547b7242bfc6c1701832af01f270d1 closes the scoped foreign-stack
+prerequisite on production57a99d01df0ae2beb5afc7a947bc9e06621b2259. All34 final
+commands pass: host and actual TinyGo guest ordinary/debug/regalloccheck,
+unchanged cancellation, deterministic forced-GC transition/host-root boundaries,
+Close-failure cleanup, and fresh-cache Linux amd64 CI/tasks/CLI/release smoke.
+No suppression/retry waiver or new skip. Implementation5bfd18174, template
+placement5a173c801, cleanup correction57a99d01d. Evidence and reproduction:
+tinygo-foreign-stack-fix/README.md and qualify.sh. ARM64 cross-compiles only;
+ARM64/Darwin execution and combined final source remain unqualified. This closes
+the earlier prerequisite diagnosis gate, not aggregate final-head qualification.
+Independent measurement remains pending global lease and worker drain; complete
+registered-stack scans and idle-engine conservative retention are explicit costs.
+
+Stage6 parallel evidenceabcf7f58a qualifies productionbc05eef3e/tests779fb3f70:
+all12 final collector/race/backend/guest commands pass all3 modes, with additional
+callback/failure/target checks. Source callbacks serialize and reclamation occurs
+once after join. R9H1-F1 ABSENT on this pinned channel/fresh-phase/join protocol;
+recheck after stage7. Stage7 worker owns remaining public controls, bounded run
+reservation, pressure policy and optional mature evacuation. Final INCLUDED
+dispositions, H2/H6 repairs, full suites/corpus/conformance/platform execution,
+measurements and consolidated review remain open.
