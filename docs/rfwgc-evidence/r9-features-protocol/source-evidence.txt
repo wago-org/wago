@@ -13,11 +13,11 @@ main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/wago/config.go
 95: 		CoreFeatureMultiMemory |
 96: 		CoreFeatureMemory64 |
 97: 		CoreFeatureTable64
-98: 
+98:
 99: 	// coreFeaturesWago is the optional set wago's backend lowers and the ceiling
 100: 	// validated by WithCoreFeatures.
 101: 	coreFeaturesWago = CoreFeaturesV3 | CoreFeatureExtendedConst | CoreFeatureThreads | CoreFeatureCompactImports | CoreFeatureWideArithmetic
-102: 
+102:
 
 main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/wago/type_descriptor.go
 497: 	}
@@ -63,7 +63,7 @@ main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/wago/type_descriptor.go
 537: 	}
 538: 	return abstractHeapSubtype(actual.Heap.Abstract, required.Heap.Abstract)
 539: }
-540: 
+540:
 
 main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/wago/globals.go
 1715: 		actual, _ = valueTypeDescriptorFromValType(actualType)
@@ -228,7 +228,7 @@ main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/core/runtime/gc/native/collect
 35: 	}
 36: 	return nil
 37: }
-38: 
+38:
 39: func (c *Collector) CollectMinor(roots RootSet) error {
 40: 	if err := c.errIfClosed(); err != nil {
 41: 		return err
@@ -249,11 +249,11 @@ port ca30843801956bae67d5cd1219f66d191518c125 src/wago/config.go
 95: 		CoreFeatureMultiMemory |
 96: 		CoreFeatureMemory64 |
 97: 		CoreFeatureTable64
-98: 
+98:
 99: 	// coreFeaturesWago is the optional set wago's backend lowers and the ceiling
 100: 	// validated by WithCoreFeatures.
 101: 	coreFeaturesWago = CoreFeaturesV3 | CoreFeatureExtendedConst | CoreFeatureThreads | CoreFeatureCompactImports | CoreFeatureWideArithmetic
-102: 
+102:
 
 port ca30843801956bae67d5cd1219f66d191518c125 src/wago/type_descriptor.go
 497: 	}
@@ -299,7 +299,7 @@ port ca30843801956bae67d5cd1219f66d191518c125 src/wago/type_descriptor.go
 537: 	}
 538: 	return abstractHeapSubtype(actual.Heap.Abstract, required.Heap.Abstract)
 539: }
-540: 
+540:
 
 port ca30843801956bae67d5cd1219f66d191518c125 src/wago/globals.go
 1715: 		actual, _ = valueTypeDescriptorFromValType(actualType)
@@ -413,7 +413,7 @@ port ca30843801956bae67d5cd1219f66d191518c125 src/core/runtime/gc/native/collect
 251: 	c.initNativeView()
 252: 	return c, nil
 253: }
-254: 
+254:
 255: // Close releases heap backing storage and makes live heap operations return
 256: // errCollectorClosed. It is idempotent; Stats remains safe for post-close
 257: // counters, while unchecked root-slot reads return null after slots are released.
@@ -473,30 +473,30 @@ port ca30843801956bae67d5cd1219f66d191518c125 src/core/runtime/gc/native/collect
 
 pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/parallel.go (complete synchronization source)
 1: //go:build !tinygo && !wago_target_tinygo
-2: 
+2:
 3: package gc
-4: 
+4:
 5: import (
 6: 	"encoding/binary"
 7: 	"runtime"
 8: 	"sync"
 9: 	"sync/atomic"
 10: )
-11: 
+11:
 12: const parallelCollectionSupported = true
 13: const parallelMinObjects = 8192
 14: const parallelArrayChunk = 1024
 15: const parallelQueueLimit = 4096
-16: 
+16:
 17: const (
 18: 	parallelTrace uint8 = iota
 19: 	parallelSweep
 20: 	parallelCopy
 21: )
-22: 
+22:
 23: // Tasks with end == 0 scan an object; other tasks scan disjoint array ranges.
 24: type traceTask struct{ handle, first, end uint32 }
-25: 
+25:
 26: type traceWorker struct {
 27: 	pool    *parallelCollector
 28: 	wake    chan struct{}
@@ -506,7 +506,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 32: 	tasks   uint64
 33: 	index   int
 34: }
-35: 
+35:
 36: // The mutator is stopped by the caller. Helpers only read heap/descriptor data
 37: // and uniquely write claimed mark entries or admitted payload destinations.
 38: // Root callbacks, handle publication, allocator updates, and card maintenance
@@ -527,7 +527,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 53: 	phase            uint8
 54: 	plans            []plannedPromotion
 55: }
-56: 
+56:
 57: func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 58: 	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(c.markStack) == 0 || c.objectEdgeSource() != nil {
 59: 		return 0, false
@@ -598,7 +598,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 124: 	}
 125: 	return scanned, true
 126: }
-127: 
+127:
 128: func (c *Collector) parallelPool() *parallelCollector {
 129: 	p := c.parallel
 130: 	if p == nil {
@@ -619,7 +619,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 145: 	}
 146: 	return p
 147: }
-148: 
+148:
 149: func (p *parallelCollector) run() {
 150: 	p.joined.Add(len(p.workers) - 1)
 151: 	for i := 1; i < len(p.workers); i++ {
@@ -628,7 +628,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 154: 	p.workers[0].runPhase()
 155: 	p.joined.Wait()
 156: }
-157: 
+157:
 158: func (w *traceWorker) runPhase() {
 159: 	switch w.pool.phase {
 160: 	case parallelSweep:
@@ -639,7 +639,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 165: 		w.trace()
 166: 	}
 167: }
-168: 
+168:
 169: // Sweep discovery is disjoint; allocator/card/free-list mutations are committed
 170: // in handle order by the coordinator. Sparse indexed sweeps keep their existing
 171: // path rather than paying for a dense parallel discovery pass.
@@ -663,7 +663,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 189: 	c.compactNurseryHandles()
 190: 	return true
 191: }
-192: 
+192:
 193: func (w *traceWorker) sweep() {
 194: 	p := w.pool
 195: 	c := p.collector
@@ -676,7 +676,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 202: 		}
 203: 	}
 204: }
-205: 
+205:
 206: // Admission and all injected failure points have completed before copying.
 207: // Destinations and sources are disjoint; handles remain unchanged until join.
 208: func (c *Collector) copyPromotionParallel(plans []plannedPromotion) bool {
@@ -699,7 +699,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 225: 	p.plans = nil
 226: 	return true
 227: }
-228: 
+228:
 229: func (w *traceWorker) copyPromotions() {
 230: 	p := w.pool
 231: 	c := p.collector
@@ -723,7 +723,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 249: 		c.poisonYoungSource(src)
 250: 	}
 251: }
-252: 
+252:
 253: func (c *Collector) closeParallel() {
 254: 	if p := c.parallel; p != nil {
 255: 		for i := 1; i < len(p.workers); i++ {
@@ -733,7 +733,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 259: 		c.parallel = nil
 260: 	}
 261: }
-262: 
+262:
 263: func (w *traceWorker) loop() {
 264: 	defer w.pool.stopped.Done()
 265: 	for range w.wake {
@@ -741,7 +741,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 267: 		w.pool.joined.Done()
 268: 	}
 269: }
-270: 
+270:
 271: func (w *traceWorker) trace() {
 272: 	p := w.pool
 273: 	for {
@@ -776,7 +776,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 302: 		p.mu.Unlock()
 303: 	}
 304: }
-305: 
+305:
 306: func (w *traceWorker) share() {
 307: 	p := w.pool
 308: 	p.mu.Lock()
@@ -789,7 +789,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 315: 	}
 316: 	p.mu.Unlock()
 317: }
-318: 
+318:
 319: func (w *traceWorker) mark(r Ref) {
 320: 	if !r.IsObj() {
 321: 		return
@@ -812,7 +812,7 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 338: 	c.mark[h] = true
 339: 	w.local = append(w.local, traceTask{handle: h})
 340: }
-341: 
+341:
 342: func (w *traceWorker) scan(task traceTask) {
 343: 	c := w.pool.collector
 344: 	r := makeObjRef(task.handle)
@@ -868,30 +868,30 @@ pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/paral
 
 tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/parallel.go (complete synchronization source)
 1: //go:build !tinygo && !wago_target_tinygo
-2: 
+2:
 3: package gc
-4: 
+4:
 5: import (
 6: 	"encoding/binary"
 7: 	"runtime"
 8: 	"sync"
 9: 	"sync/atomic"
 10: )
-11: 
+11:
 12: const parallelCollectionSupported = true
 13: const parallelMinObjects = 8192
 14: const parallelArrayChunk = 1024
 15: const parallelQueueLimit = 4096
-16: 
+16:
 17: const (
 18: 	parallelTrace uint8 = iota
 19: 	parallelSweep
 20: 	parallelCopy
 21: )
-22: 
+22:
 23: // Tasks with end == 0 scan an object; other tasks scan disjoint array ranges.
 24: type traceTask struct{ handle, first, end uint32 }
-25: 
+25:
 26: type traceWorker struct {
 27: 	pool    *parallelCollector
 28: 	wake    chan struct{}
@@ -901,7 +901,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 32: 	tasks   uint64
 33: 	index   int
 34: }
-35: 
+35:
 36: // The mutator is stopped by the caller. Helpers only read heap/descriptor data
 37: // and uniquely write claimed mark entries or admitted payload destinations.
 38: // Root callbacks, handle publication, allocator updates, and card maintenance
@@ -922,7 +922,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 53: 	phase            uint8
 54: 	plans            []plannedPromotion
 55: }
-56: 
+56:
 57: func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 58: 	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(c.markStack) == 0 || c.objectEdgeSource() != nil {
 59: 		return 0, false
@@ -996,7 +996,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 127: 	}
 128: 	return scanned, true
 129: }
-130: 
+130:
 131: func (c *Collector) parallelPool() *parallelCollector {
 132: 	p := c.parallel
 133: 	if p == nil {
@@ -1017,7 +1017,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 148: 	}
 149: 	return p
 150: }
-151: 
+151:
 152: func (p *parallelCollector) run() {
 153: 	p.joined.Add(len(p.workers) - 1)
 154: 	for i := 1; i < len(p.workers); i++ {
@@ -1026,7 +1026,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 157: 	p.workers[0].runPhase()
 158: 	p.joined.Wait()
 159: }
-160: 
+160:
 161: func (w *traceWorker) runPhase() {
 162: 	switch w.pool.phase {
 163: 	case parallelSweep:
@@ -1037,7 +1037,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 168: 		w.trace()
 169: 	}
 170: }
-171: 
+171:
 172: // Sweep discovery is disjoint; allocator/card/free-list mutations are committed
 173: // in handle order by the coordinator. Sparse indexed sweeps keep their existing
 174: // path rather than paying for a dense parallel discovery pass.
@@ -1061,7 +1061,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 192: 	c.compactNurseryHandles()
 193: 	return true
 194: }
-195: 
+195:
 196: func (w *traceWorker) sweep() {
 197: 	p := w.pool
 198: 	c := p.collector
@@ -1074,7 +1074,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 205: 		}
 206: 	}
 207: }
-208: 
+208:
 209: // Admission and all injected failure points have completed before copying.
 210: // Destinations and sources are disjoint; handles remain unchanged until join.
 211: func (c *Collector) copyPromotionParallel(plans []plannedPromotion) bool {
@@ -1102,7 +1102,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 233: 	p.plans = nil
 234: 	return true
 235: }
-236: 
+236:
 237: func (w *traceWorker) copyPromotions() {
 238: 	p := w.pool
 239: 	c := p.collector
@@ -1126,7 +1126,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 257: 		c.poisonYoungSource(src)
 258: 	}
 259: }
-260: 
+260:
 261: func (c *Collector) closeParallel() {
 262: 	if p := c.parallel; p != nil {
 263: 		for i := 1; i < len(p.workers); i++ {
@@ -1136,7 +1136,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 267: 		c.parallel = nil
 268: 	}
 269: }
-270: 
+270:
 271: func (w *traceWorker) loop() {
 272: 	defer w.pool.stopped.Done()
 273: 	for range w.wake {
@@ -1144,7 +1144,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 275: 		w.pool.joined.Done()
 276: 	}
 277: }
-278: 
+278:
 279: func (w *traceWorker) trace() {
 280: 	p := w.pool
 281: 	for {
@@ -1179,7 +1179,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 310: 		p.mu.Unlock()
 311: 	}
 312: }
-313: 
+313:
 314: func (w *traceWorker) share() {
 315: 	p := w.pool
 316: 	p.mu.Lock()
@@ -1192,7 +1192,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 323: 	}
 324: 	p.mu.Unlock()
 325: }
-326: 
+326:
 327: func (w *traceWorker) mark(r Ref) {
 328: 	if !r.IsObj() {
 329: 		return
@@ -1215,7 +1215,7 @@ tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/paralle
 346: 	c.mark[h] = true
 347: 	w.local = append(w.local, traceTask{handle: h})
 348: }
-349: 
+349:
 350: func (w *traceWorker) scan(task traceTask) {
 351: 	c := w.pool.collector
 352: 	r := makeObjRef(task.handle)
