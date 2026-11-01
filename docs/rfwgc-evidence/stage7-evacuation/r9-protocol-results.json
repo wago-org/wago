@@ -1,0 +1,218 @@
+[
+  {
+    "mode": "ordinary",
+    "suite": "collector",
+    "test": "TestReserveDeadArrayAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "collector",
+    "test": "TestReserveDeadStructAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "collector",
+    "test": "TestR9ProtocolConditionPublication",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "collector",
+    "test": "TestR9ProtocolStopBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "collector",
+    "test": "TestR9ProtocolPhaseBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "collector",
+    "test": "TestThroughputAllocationTransactionRollsBackMixedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "race",
+    "test": "TestReserveDeadArrayAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "race",
+    "test": "TestReserveDeadStructAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "race",
+    "test": "TestR9ProtocolConditionPublication",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "race",
+    "test": "TestR9ProtocolStopBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "race",
+    "test": "TestR9ProtocolPhaseBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "ordinary",
+    "suite": "race",
+    "test": "TestThroughputAllocationTransactionRollsBackMixedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "collector",
+    "test": "TestReserveDeadArrayAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "collector",
+    "test": "TestReserveDeadStructAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "collector",
+    "test": "TestR9ProtocolConditionPublication",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "collector",
+    "test": "TestR9ProtocolStopBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "collector",
+    "test": "TestR9ProtocolPhaseBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "collector",
+    "test": "TestThroughputAllocationTransactionRollsBackMixedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "race",
+    "test": "TestReserveDeadArrayAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "race",
+    "test": "TestReserveDeadStructAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "race",
+    "test": "TestR9ProtocolConditionPublication",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "race",
+    "test": "TestR9ProtocolStopBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "race",
+    "test": "TestR9ProtocolPhaseBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "race",
+    "test": "TestThroughputAllocationTransactionRollsBackMixedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "collector",
+    "test": "TestReserveDeadArrayAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "collector",
+    "test": "TestReserveDeadStructAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "collector",
+    "test": "TestR9ProtocolConditionPublication",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "collector",
+    "test": "TestR9ProtocolStopBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "collector",
+    "test": "TestR9ProtocolPhaseBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "collector",
+    "test": "TestThroughputAllocationTransactionRollsBackMixedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "race",
+    "test": "TestReserveDeadArrayAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "race",
+    "test": "TestReserveDeadStructAllocationsMatchesBoundedSequence",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "race",
+    "test": "TestR9ProtocolConditionPublication",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "race",
+    "test": "TestR9ProtocolStopBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "race",
+    "test": "TestR9ProtocolPhaseBeforeWorkerReceive",
+    "result": "pass"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "race",
+    "test": "TestThroughputAllocationTransactionRollsBackMixedSequence",
+    "result": "pass"
+  }
+]
