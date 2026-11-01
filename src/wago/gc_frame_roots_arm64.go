@@ -60,7 +60,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
-			if !collectorBoundary && !collectorFrameRefType(m, global.Type) && !arm64FunctionFrameRefType(m, global.Type) {
+			if !collectorBoundary && !collectorFrameRefType(m, global.Type) && !arm64FunctionFrameRefType(m, global.Type) && global.Type != wasm.ExternRef {
 				return reject("global import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternTable:
