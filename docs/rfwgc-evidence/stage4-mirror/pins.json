@@ -1,0 +1,108 @@
+{
+  "wago_start": "94846b133a4c851ec5110d688453c3e9a2bf466f",
+  "wago_production": "5b31c81ec0c74695a90bc8d36754b92845b59f14",
+  "slipstream_base": "506b08d3d3fa3c8e8b1ce9ac0cb4f30a2463cdc3",
+  "slipstream_tip": "82d546679bab4887acfab056f6ad773a969b1e03",
+  "slipstream_tracking_ref": "82d546679bab4887acfab056f6ad773a969b1e03",
+  "starshine": "e075c47e61b01ab9e4fd0ae4a7ca47b755e3fca1",
+  "ancestry": [
+    {
+      "commit": "506b08d3d3fa3c8e8b1ce9ac0cb4f30a2463cdc3",
+      "ancestor_of_tip": true,
+      "parents": [
+        "3ac3a3fc52c4b74e7d4128fd1b3b5e40cbd9b460"
+      ]
+    },
+    {
+      "commit": "ccc6512de266916d2e6aabab09c50ba465019953",
+      "ancestor_of_tip": true,
+      "parents": [
+        "506b08d3d3fa3c8e8b1ce9ac0cb4f30a2463cdc3"
+      ]
+    },
+    {
+      "commit": "bb0900efa2d5db8d037f3990ce587a4127a8c9db",
+      "ancestor_of_tip": true,
+      "parents": [
+        "ccc6512de266916d2e6aabab09c50ba465019953"
+      ]
+    },
+    {
+      "commit": "7822fc8c42b0dcadd9605d990e6c060440fbe9ad",
+      "ancestor_of_tip": true,
+      "parents": [
+        "bb0900efa2d5db8d037f3990ce587a4127a8c9db"
+      ]
+    },
+    {
+      "commit": "0c9da13db44341709314a309d2a742b168ce4f2c",
+      "ancestor_of_tip": true,
+      "parents": [
+        "7822fc8c42b0dcadd9605d990e6c060440fbe9ad"
+      ]
+    },
+    {
+      "commit": "03cdd75bb2415efec2a69e4cadd668e61eafc4cb",
+      "ancestor_of_tip": true,
+      "parents": [
+        "0c9da13db44341709314a309d2a742b168ce4f2c"
+      ]
+    },
+    {
+      "commit": "95c7bace2b60602fc98cbaec3ef23d387e53892a",
+      "ancestor_of_tip": true,
+      "parents": [
+        "03cdd75bb2415efec2a69e4cadd668e61eafc4cb"
+      ]
+    },
+    {
+      "commit": "5cfc8f461c3a2a6535221c17a6210ea5af0ae229",
+      "ancestor_of_tip": true,
+      "parents": [
+        "95c7bace2b60602fc98cbaec3ef23d387e53892a"
+      ]
+    },
+    {
+      "commit": "2c688c20f8eee9543d16e45ea626748037aa1509",
+      "ancestor_of_tip": true,
+      "parents": [
+        "5cfc8f461c3a2a6535221c17a6210ea5af0ae229"
+      ]
+    },
+    {
+      "commit": "82d546679bab4887acfab056f6ad773a969b1e03",
+      "ancestor_of_tip": true,
+      "parents": [
+        "2c688c20f8eee9543d16e45ea626748037aa1509"
+      ]
+    },
+    {
+      "commit": "cc48b98eaa147966a2a9ca8ecbc7b48bb51fef6d",
+      "ancestor_of_tip": true,
+      "parents": [
+        "db6014de2316f13dd08ea8618d614c28132f2688"
+      ]
+    },
+    {
+      "commit": "cf05aaf8149c9b0f38a74b57454f98254e8f9fc6",
+      "ancestor_of_tip": true,
+      "parents": [
+        "cc48b98eaa147966a2a9ca8ecbc7b48bb51fef6d"
+      ]
+    },
+    {
+      "commit": "059d10f170c0a513cbcf65ab2956f3dff717a892",
+      "ancestor_of_tip": false,
+      "parents": [
+        "db6014de2316f13dd08ea8618d614c28132f2688"
+      ]
+    },
+    {
+      "commit": "01303964bf52d2f3c86f556480cb07cf5ec35165",
+      "ancestor_of_tip": false,
+      "parents": [
+        "059d10f170c0a513cbcf65ab2956f3dff717a892"
+      ]
+    }
+  ]
+}

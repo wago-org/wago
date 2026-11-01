@@ -1,0 +1,3346 @@
+diff --git a/Makefile b/Makefile
+index 19c74f76d..1a2fbf634 100644
+--- a/Makefile
++++ b/Makefile
+@@ -176,6 +176,7 @@ test: store-type-wrap-test function-facts-query-test valent-wasm2-test parallel-
+ 	python3 tests/test_cli.py build/starshine build/starshine-debug build/starshine-tiny
+ 	python3 tests/test_wasm2.py build/starshine build/starshine-debug build/starshine-tiny
+ 	python3 tests/test_host.py build/starshine build/starshine-debug build/starshine-tiny
++	python3 tests/test_moonbit_host.py build/starshine build/starshine-debug build/starshine-tiny
+ 	python3 tests/test_wasi.py build/starshine build/starshine-debug build/starshine-tiny
+ 	python3 tests/test_wasi_wago.py build/starshine build/starshine-debug build/starshine-tiny
+ 	python3 tests/test_jit_streaming.py build/starshine-rss
+diff --git a/native/host_linux_x86_64.S b/native/host_linux_x86_64.S
+index 3a3c439df..013e1a147 100644
+--- a/native/host_linux_x86_64.S
++++ b/native/host_linux_x86_64.S
+@@ -119,6 +119,31 @@ ss_host_rename_at:
+     mov $316,%eax
+     syscall
+     ret
++.globl ss_host_link_at
++ss_host_link_at:
++    /* oldfd, oldname slice, newfd, newname slice; do not follow source links */
++    mov %rcx,%rdx
++    mov %r8,%r10
++    xor %r8d,%r8d
++    mov $265,%eax
++    syscall
++    ret
++.globl ss_host_symlink_at
++ss_host_symlink_at:
++    /* target slice, newfd, newname slice */
++    mov %rdx,%rsi
++    mov %rcx,%rdx
++    mov $266,%eax
++    syscall
++    ret
++.globl ss_host_readlink_at
++ss_host_readlink_at:
++    /* dirfd, name slice, output slice */
++    mov %rcx,%rdx
++    mov %r8,%r10
++    mov $267,%eax
++    syscall
++    ret
+ .text
+ .globl ss_host_ignore_sigpipe
+ ss_host_ignore_sigpipe:
+diff --git a/native/jit_linux_x86_64.S b/native/jit_linux_x86_64.S
+index 1222432e4..36c019876 100644
+--- a/native/jit_linux_x86_64.S
++++ b/native/jit_linux_x86_64.S
+@@ -708,6 +708,16 @@ ss_gc_constant_op_pointer:
+     cmpq $2,(%rdi)
+     je ss_gc_constant_op_native
+     jmp ss_gc_constant_op
++.globl ss_host_gc_array_pointer
++ss_host_gc_array_pointer:
++    cmpq $2,(%rdi)
++    je ss_host_gc_array_native
++    jmp ss_host_gc_array
++.globl ss_host_gc_new_pointer
++ss_host_gc_new_pointer:
++    cmpq $2,(%rdi)
++    je ss_host_gc_new_native
++    jmp ss_host_gc_new
+ .globl ss_bind_refs
+ ss_bind_refs:
+     mov %rsi,200(%rdi)
+diff --git a/spec/facet.json b/spec/facet.json
+index 4faa1e678..6c2c249b5 100644
+--- a/spec/facet.json
++++ b/spec/facet.json
+@@ -233,7 +233,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 18,
+@@ -252,7 +252,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 19,
+@@ -271,7 +271,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 20,
+@@ -288,7 +288,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 21,
+@@ -305,7 +305,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 22,
+@@ -322,7 +322,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 23,
+@@ -496,7 +496,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 34,
+@@ -516,7 +516,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 35,
+@@ -536,7 +536,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 36,
+@@ -554,7 +554,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 37,
+@@ -572,7 +572,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 38,
+@@ -590,7 +590,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 39,
+@@ -698,7 +698,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 48,
+@@ -715,7 +715,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 49,
+@@ -732,7 +732,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 50,
+@@ -749,7 +749,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 51,
+@@ -766,7 +766,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 52,
+@@ -942,7 +942,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 64,
+@@ -961,7 +961,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 65,
+@@ -980,7 +980,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 66,
+@@ -997,7 +997,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 67,
+@@ -1014,7 +1014,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 68,
+@@ -1031,7 +1031,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 69,
+@@ -1135,7 +1135,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 76,
+@@ -1153,7 +1153,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 77,
+@@ -1171,7 +1171,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 78,
+@@ -1189,7 +1189,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 79,
+@@ -1207,7 +1207,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 80,
+@@ -1255,7 +1255,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 83,
+@@ -1273,7 +1273,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 84,
+@@ -1291,7 +1291,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 85,
+@@ -1309,7 +1309,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 86,
+@@ -1327,7 +1327,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 87,
+@@ -1378,7 +1378,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 90,
+@@ -1397,7 +1397,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 91,
+@@ -1416,7 +1416,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 92,
+@@ -1435,7 +1435,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 93,
+@@ -1454,7 +1454,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 94,
+@@ -1505,7 +1505,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 97,
+@@ -1524,7 +1524,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 98,
+@@ -1543,7 +1543,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 99,
+@@ -1562,7 +1562,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 100,
+@@ -1581,7 +1581,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 101,
+@@ -1659,7 +1659,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 106,
+@@ -1677,7 +1677,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 107,
+@@ -1695,7 +1695,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 108,
+@@ -1713,7 +1713,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 109,
+@@ -1731,7 +1731,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 110,
+@@ -1749,7 +1749,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 111,
+@@ -1767,7 +1767,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 112,
+@@ -1785,7 +1785,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 113,
+@@ -1803,7 +1803,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 114,
+@@ -1821,7 +1821,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 115,
+@@ -1938,7 +1938,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 123,
+@@ -2016,7 +2016,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 126,
+@@ -2064,7 +2064,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 129,
+@@ -2115,7 +2115,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 132,
+@@ -2184,7 +2184,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 135,
+@@ -2241,7 +2241,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 138,
+@@ -2319,7 +2319,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 141,
+@@ -2367,7 +2367,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 144,
+@@ -2418,7 +2418,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 147,
+@@ -2487,7 +2487,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 150,
+@@ -2544,7 +2544,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 153,
+@@ -2622,7 +2622,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 156,
+@@ -2670,7 +2670,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 159,
+@@ -2721,7 +2721,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 162,
+@@ -2790,7 +2790,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 165,
+@@ -2802,7 +2802,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 166,
+@@ -2818,7 +2818,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 167,
+@@ -2837,7 +2837,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 168,
+@@ -2856,7 +2856,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 169,
+@@ -2878,7 +2878,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 170,
+@@ -2898,7 +2898,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 171,
+@@ -2914,7 +2914,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 172,
+@@ -2933,7 +2933,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 173,
+@@ -2952,7 +2952,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 174,
+@@ -2974,7 +2974,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 175,
+@@ -2994,7 +2994,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 176,
+@@ -3010,7 +3010,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 177,
+@@ -3029,7 +3029,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 178,
+@@ -3048,7 +3048,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 179,
+@@ -3070,7 +3070,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 180,
+@@ -3090,7 +3090,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 181,
+@@ -3101,7 +3101,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 182,
+@@ -3122,7 +3122,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 183,
+@@ -3143,7 +3143,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 184,
+@@ -3170,7 +3170,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 185,
+@@ -3189,7 +3189,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 186,
+@@ -3208,7 +3208,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 187,
+@@ -3233,7 +3233,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 188,
+@@ -3250,7 +3250,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 189,
+@@ -3270,7 +3270,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 190,
+@@ -3287,7 +3287,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 191,
+@@ -3307,7 +3307,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 192,
+@@ -3327,7 +3327,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 193,
+@@ -3353,7 +3353,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 194,
+@@ -3377,7 +3377,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 195,
+@@ -3398,7 +3398,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 196,
+@@ -3419,7 +3419,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 197,
+@@ -3446,7 +3446,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 198,
+@@ -3465,7 +3465,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 199,
+@@ -3484,7 +3484,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 200,
+@@ -3509,7 +3509,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 201,
+@@ -3526,7 +3526,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 202,
+@@ -3546,7 +3546,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 203,
+@@ -3563,7 +3563,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 204,
+@@ -3583,7 +3583,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 205,
+@@ -3603,7 +3603,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 206,
+@@ -3629,7 +3629,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 207,
+@@ -3653,7 +3653,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 208,
+@@ -3674,7 +3674,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 209,
+@@ -3695,7 +3695,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 210,
+@@ -3722,7 +3722,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 211,
+@@ -3741,7 +3741,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 212,
+@@ -3760,7 +3760,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 213,
+@@ -3785,7 +3785,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 214,
+@@ -3802,7 +3802,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 215,
+@@ -3822,7 +3822,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 216,
+@@ -3839,7 +3839,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 217,
+@@ -3859,7 +3859,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 218,
+@@ -3879,7 +3879,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 219,
+@@ -3905,7 +3905,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 220,
+@@ -3929,7 +3929,7 @@
+         ],
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 221,
+@@ -3944,7 +3944,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 222,
+@@ -3960,7 +3960,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 223,
+@@ -3976,7 +3976,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 224,
+@@ -3988,7 +3988,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 225,
+@@ -4006,7 +4006,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 226,
+@@ -4022,7 +4022,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 227,
+@@ -4038,7 +4038,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 228,
+@@ -4050,7 +4050,7 @@
+       "results": [
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 229,
+@@ -4072,7 +4072,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 230,
+@@ -4094,7 +4094,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 231,
+@@ -4119,7 +4119,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 232,
+@@ -4144,7 +4144,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 233,
+@@ -4169,7 +4169,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 234,
+@@ -4194,7 +4194,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 235,
+@@ -4219,7 +4219,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 236,
+@@ -4240,7 +4240,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 237,
+@@ -4261,7 +4261,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 238,
+@@ -4285,7 +4285,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 239,
+@@ -4309,7 +4309,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 240,
+@@ -4333,7 +4333,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 241,
+@@ -4357,7 +4357,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 242,
+@@ -4381,7 +4381,7 @@
+         "i64",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 243,
+@@ -4398,7 +4398,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 244,
+@@ -4415,7 +4415,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 245,
+@@ -4435,7 +4435,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 246,
+@@ -4452,7 +4452,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 247,
+@@ -4469,7 +4469,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 248,
+@@ -4489,7 +4489,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 249,
+@@ -4506,7 +4506,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 250,
+@@ -4523,7 +4523,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 251,
+@@ -4543,7 +4543,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 252,
+@@ -4559,7 +4559,7 @@
+         "i32",
+         "i32"
+       ],
+-      "implemented": false
++      "implemented": true
+     },
+     {
+       "id": 253,
+diff --git a/src/cli.goose b/src/cli.goose
+index 95ab4d098..7da0210df 100644
+--- a/src/cli.goose
++++ b/src/cli.goose
+@@ -28,7 +28,7 @@ fn command_name(command: u8) -> const u8[:] {
+         2 => { return "optimize"; }, _ => { return "passes"; } }
+ }
+ fn cli_help() {
+-    print("usage: starshine [COMMAND] [OPTIONS] MODULE.wasm [VALUE ...]\n\nCommands:\n  run        Validate and execute (default); Wasm 2.0 AMD64 JIT\n  validate   Validate a WebAssembly 2.0 binary\n  optimize   Lift, optimize and write Wasm\n  passes     List passes, or select a transformation pipeline\n\nOptions:\n  -h, --help                   Show help\n  --invoke NAME                Invoke an exported function (run only)\n  --import NAME=MODULE.wasm    Instantiate and register a dependency\n  --guest-arg TEXT             Add a guest argument (Facet/WASI) (repeatable)\n  --env NAME=VALUE             Add a guest environment entry (repeatable)\n  --dir GUEST=HOST             Grant a directory capability (repeatable)\n  --raw-values                 Hexadecimal argument/result bit patterns\n  --region-classify           Analysis-only allocation-site JSONL report\n  --facts-build               Report compiled fact configuration and exit\n  --facts all|off              Collect compiled fact groups or disable collection\n  --facts-enable A..U          Enable selected analysis families\n  --facts-disable A..U         Disable selected analysis families\n  --facts-report[-details]     Bounded JSONL diagnostics on stderr\n  --facts-function N           Select one function for diagnostics\n  --facts-budget BYTES         Per-function ceiling (default 8388608)\n  --facts-process-budget BYTES Aggregate ceiling (default 67108864)\n  --facts-work N               Optional analysis work ceiling\n  --facts-timing               Opt-in analysis phase wall clocks\n  --parallel N                 Validation and JIT compilation workers\n  --gc-workers N               Collector workers, including coordinator (1..8)\n  --redline-analyze            Check and report function analyses\n  --redline-gc                 Enable GC reference typing for optimize/passes\n  --gc-stats                   Instrument and report collector diagnostics\n  -O, -O<N>, -O<N>z            Optimize level; z also sets shrink level\n  -Os, -Oz                     Levels 2/1 and 2/2\n  --optimize, --shrink          Presets 2/0 and 2/2\n  --optimize-level N           Optimize level (also accepts =N)\n  --shrink-level N             Shrink level, raising optimize level too\n  --jit-stack-forwarding       Accepted compatibility selection (baseline unchanged)\n  --no-jit-stack-forwarding    Accepted compatibility selection (baseline unchanged)\n  -o, --output, --out PATH     Transformed Wasm output\n  --list-passes, passes --list Show pass flags and implementation status\n  --dry-run                    Print resolved settings without file access\n  --                           End options; remaining tokens are literal\n\nOptimization flags apply to run, optimize and passes. Repeated levels use\nthe maximum; -O4z selects optimize=4, shrink=4. Run defaults to level 2.\nDefault native codegen uses region-first scalar candidates with baseline\nfallback, independent of all optimization levels and forwarding selections.\nLevels select Redline transformation passes. Reference pass flags are reserved\nuntil ported. Redline implements vacuum on its optimizer IR.");
++    print("usage: starshine [COMMAND] [OPTIONS] MODULE.wasm [VALUE ...]\n\nCommands:\n  run        Validate and execute (default); Wasm 2.0 AMD64 JIT\n  validate   Validate a WebAssembly 2.0 binary\n  optimize   Lift, optimize and write Wasm\n  passes     List passes, or select a transformation pipeline\n\nOptions:\n  -h, --help                   Show help\n  --invoke NAME                Invoke an exported function (run only)\n  --import NAME=MODULE.wasm    Instantiate and register a dependency\n  --guest-arg TEXT             Add a guest argument (Facet/WASI) (repeatable)\n  --env NAME=VALUE             Add a guest environment entry (repeatable)\n  --dir GUEST=HOST             Grant a directory capability (repeatable)\n  --guest-stack-bytes BYTES    Explicit bounded operand/local/native stack capacity\n  --raw-values                 Hexadecimal argument/result bit patterns\n  --region-classify           Analysis-only allocation-site JSONL report\n  --facts-build               Report compiled fact configuration and exit\n  --facts all|off              Collect compiled fact groups or disable collection\n  --facts-enable A..U          Enable selected analysis families\n  --facts-disable A..U         Disable selected analysis families\n  --facts-report[-details]     Bounded JSONL diagnostics on stderr\n  --facts-function N           Select one function for diagnostics\n  --facts-budget BYTES         Per-function ceiling (default 8388608)\n  --facts-process-budget BYTES Aggregate ceiling (default 67108864)\n  --facts-work N               Optional analysis work ceiling\n  --facts-timing               Opt-in analysis phase wall clocks\n  --parallel N                 Validation and JIT compilation workers\n  --gc-workers N               Collector workers, including coordinator (1..8)\n  --redline-analyze            Check and report function analyses\n  --redline-gc                 Enable GC reference typing for optimize/passes\n  --gc-stats                   Instrument and report collector diagnostics\n  -O, -O<N>, -O<N>z            Optimize level; z also sets shrink level\n  -Os, -Oz                     Levels 2/1 and 2/2\n  --optimize, --shrink          Presets 2/0 and 2/2\n  --optimize-level N           Optimize level (also accepts =N)\n  --shrink-level N             Shrink level, raising optimize level too\n  --jit-stack-forwarding       Accepted compatibility selection (baseline unchanged)\n  --no-jit-stack-forwarding    Accepted compatibility selection (baseline unchanged)\n  -o, --output, --out PATH     Transformed Wasm output\n  --list-passes, passes --list Show pass flags and implementation status\n  --dry-run                    Print resolved settings without file access\n  --                           End options; remaining tokens are literal\n\nOptimization flags apply to run, optimize and passes. Repeated levels use\nthe maximum; -O4z selects optimize=4, shrink=4. Run defaults to level 2.\nDefault native codegen uses region-first scalar candidates with baseline\nfallback, independent of all optimization levels and forwarding selections.\nLevels select Redline transformation passes. Reference pass flags are reserved\nuntil ported. Redline implements vacuum on its optimizer IR.");
+     print("\nCollector selection (region-first is the default; the earlier baseline remains an explicit oracle):\n  --region-scalar off|analyze|on  Select region-first compilation (default on; also accepts =VALUE)\n  --region-scalar-report         Report scalar decisions on stderr");
+ }
+ fn list_passes() {
+@@ -74,6 +74,17 @@ fn parse_option(c: Cli&, i: i64, token: const u8[:]) -> i64 {
+     var equals = token.len;
+     for j in token.len { if token[j] == 61 { equals = j; break; } }
+     let key = token[..equals];
++    if key == "--guest-stack-bytes" {
++        var value: u8[>..] = []; let next = option_value(i, token, equals, value);
++        var bytes: u64 = 0;
++        cli_check(value.len > 0, "missing guest stack size");
++        for digit in value {
++            cli_check(digit >= 48 && digit <= 57 && bytes <= 268435456 / 10, "invalid guest stack size");
++            bytes = bytes * 10 + (digit - 48) as u64;
++        }
++        cli_check(bytes >= 1048576 && bytes <= 268435456 && bytes % 4096 == 0, "guest stack size must be page aligned and between 1 and 256 MiB");
++        jit_guest_stack_bytes = bytes; return next;
++    }
+     if key == "--region-scalar" {
+         var value: u8[>..] = []; var next = i + 1;
+         if equals < token.len { value.append(token[equals + 1..]); }
+diff --git a/src/facet_imports.goose b/src/facet_imports.goose
+index 9e6ed566e..1cc36617b 100644
+--- a/src/facet_imports.goose
++++ b/src/facet_imports.goose
+@@ -18,12 +18,12 @@ let facet_imports: FacetImport[261] = [
+     FacetImport { "args_read_mem64_i8", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "args_read_mem64_i16", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "args_read_mem64_i32", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+-    FacetImport { "args_read_into_array_i8", "", "", false },
+-    FacetImport { "args_read_into_array_i16", "", "", false },
+-    FacetImport { "args_read_into_array_i32", "", "", false },
+-    FacetImport { "args_read_array_i8", "", "", false },
+-    FacetImport { "args_read_array_i16", "", "", false },
+-    FacetImport { "args_read_array_i32", "", "", false },
++    FacetImport { "args_read_into_array_i8", "\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "args_read_into_array_i16", "\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "args_read_into_array_i32", "\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "args_read_array_i8", "\x7f\x7f", "\x01\x7f", true },
++    FacetImport { "args_read_array_i16", "\x7f\x7f", "\x02\x7f", true },
++    FacetImport { "args_read_array_i32", "\x7f\x7f", "\x03\x7f", true },
+     FacetImport { "env_count", "", "\x7f\x7f", true },
+     FacetImport { "env_len_i8", "\x7f\x7f\x7f", "\x7e\x7f", true },
+     FacetImport { "env_len_i16", "\x7f\x7f\x7f", "\x7e\x7f", true },
+@@ -34,12 +34,12 @@ let facet_imports: FacetImport[261] = [
+     FacetImport { "env_read_mem64_i8", "\x7f\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "env_read_mem64_i16", "\x7f\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "env_read_mem64_i32", "\x7f\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+-    FacetImport { "env_read_into_array_i8", "", "", false },
+-    FacetImport { "env_read_into_array_i16", "", "", false },
+-    FacetImport { "env_read_into_array_i32", "", "", false },
+-    FacetImport { "env_read_array_i8", "", "", false },
+-    FacetImport { "env_read_array_i16", "", "", false },
+-    FacetImport { "env_read_array_i32", "", "", false },
++    FacetImport { "env_read_into_array_i8", "\x7f\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "env_read_into_array_i16", "\x7f\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "env_read_into_array_i32", "\x7f\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "env_read_array_i8", "\x7f\x7f\x7f", "\x01\x7f", true },
++    FacetImport { "env_read_array_i16", "\x7f\x7f\x7f", "\x02\x7f", true },
++    FacetImport { "env_read_array_i32", "\x7f\x7f\x7f", "\x03\x7f", true },
+     FacetImport { "clock_system_now", "", "\x7e\x7f\x7f", true },
+     FacetImport { "clock_monotonic_now", "", "\x7e\x7f", true },
+     FacetImport { "clock_monotonic_resolution", "", "\x7e\x7f", true },
+@@ -48,11 +48,11 @@ let facet_imports: FacetImport[261] = [
+     FacetImport { "random_u64", "", "\x7e\x7f", true },
+     FacetImport { "random_fill_mem32", "\x7f\x7f\x7f", "\x7e\x7f", true },
+     FacetImport { "random_fill_mem64", "\x7f\x7e\x7e", "\x7e\x7f", true },
+-    FacetImport { "random_fill_array_i8", "", "", false },
+-    FacetImport { "random_fill_array_i16", "", "", false },
+-    FacetImport { "random_fill_array_i32", "", "", false },
+-    FacetImport { "random_fill_array_i64", "", "", false },
+-    FacetImport { "random_fill_array_v128", "", "", false },
++    FacetImport { "random_fill_array_i8", "\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "random_fill_array_i16", "\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "random_fill_array_i32", "\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "random_fill_array_i64", "\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "random_fill_array_v128", "\x6a\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "fs_preopen_count", "", "\x7f\x7f", true },
+     FacetImport { "fs_preopen_get", "\x7f", "\x7f\x7f", true },
+     FacetImport { "fs_preopen_name_len_i8", "\x7f\x7f", "\x7e\x7f", true },
+@@ -64,58 +64,58 @@ let facet_imports: FacetImport[261] = [
+     FacetImport { "fs_preopen_name_read_mem64_i8", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "fs_preopen_name_read_mem64_i16", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "fs_preopen_name_read_mem64_i32", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+-    FacetImport { "fs_preopen_name_read_into_array_i8", "", "", false },
+-    FacetImport { "fs_preopen_name_read_into_array_i16", "", "", false },
+-    FacetImport { "fs_preopen_name_read_into_array_i32", "", "", false },
+-    FacetImport { "fs_preopen_name_read_array_i8", "", "", false },
+-    FacetImport { "fs_preopen_name_read_array_i16", "", "", false },
+-    FacetImport { "fs_preopen_name_read_array_i32", "", "", false },
++    FacetImport { "fs_preopen_name_read_into_array_i8", "\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fs_preopen_name_read_into_array_i16", "\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fs_preopen_name_read_into_array_i32", "\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fs_preopen_name_read_array_i8", "\x7f\x7f", "\x01\x7f", true },
++    FacetImport { "fs_preopen_name_read_array_i16", "\x7f\x7f", "\x02\x7f", true },
++    FacetImport { "fs_preopen_name_read_array_i32", "\x7f\x7f", "\x03\x7f", true },
+     FacetImport { "fd_rights", "\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_get_flags", "\x7f", "\x7f\x7f", true },
+     FacetImport { "fd_set_flags", "\x7f\x7f", "\x7f", true },
+     FacetImport { "fd_stat", "\x7f", "\x7f\x7f\x7e\x7e\x7f\x7e\x7f\x7e\x7f\x7f", true },
+     FacetImport { "fd_read_mem32", "\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_read_mem64", "\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+-    FacetImport { "fd_read_array_i8", "", "", false },
+-    FacetImport { "fd_read_array_i16", "", "", false },
+-    FacetImport { "fd_read_array_i32", "", "", false },
+-    FacetImport { "fd_read_array_i64", "", "", false },
+-    FacetImport { "fd_read_array_v128", "", "", false },
++    FacetImport { "fd_read_array_i8", "\x7f\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_read_array_i16", "\x7f\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_read_array_i32", "\x7f\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_read_array_i64", "\x7f\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_read_array_v128", "\x7f\x6a\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "fd_write_mem32", "\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_write_mem64", "\x7f\x7f\x7e\x7e", "\x7e\x7f", true },
+-    FacetImport { "fd_write_array_i8", "", "", false },
+-    FacetImport { "fd_write_array_i16", "", "", false },
+-    FacetImport { "fd_write_array_i32", "", "", false },
+-    FacetImport { "fd_write_array_i64", "", "", false },
+-    FacetImport { "fd_write_array_v128", "", "", false },
++    FacetImport { "fd_write_array_i8", "\x7f\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_write_array_i16", "\x7f\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_write_array_i32", "\x7f\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_write_array_i64", "\x7f\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_write_array_v128", "\x7f\x6a\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "fd_pread_mem32", "\x7f\x7e\x7f\x7f\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_pread_mem64", "\x7f\x7e\x7f\x7e\x7e", "\x7e\x7f", true },
+-    FacetImport { "fd_pread_array_i8", "", "", false },
+-    FacetImport { "fd_pread_array_i16", "", "", false },
+-    FacetImport { "fd_pread_array_i32", "", "", false },
+-    FacetImport { "fd_pread_array_i64", "", "", false },
+-    FacetImport { "fd_pread_array_v128", "", "", false },
++    FacetImport { "fd_pread_array_i8", "\x7f\x7e\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_pread_array_i16", "\x7f\x7e\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_pread_array_i32", "\x7f\x7e\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_pread_array_i64", "\x7f\x7e\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_pread_array_v128", "\x7f\x7e\x6a\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "fd_pwrite_mem32", "\x7f\x7e\x7f\x7f\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_pwrite_mem64", "\x7f\x7e\x7f\x7e\x7e", "\x7e\x7f", true },
+-    FacetImport { "fd_pwrite_array_i8", "", "", false },
+-    FacetImport { "fd_pwrite_array_i16", "", "", false },
+-    FacetImport { "fd_pwrite_array_i32", "", "", false },
+-    FacetImport { "fd_pwrite_array_i64", "", "", false },
+-    FacetImport { "fd_pwrite_array_v128", "", "", false },
++    FacetImport { "fd_pwrite_array_i8", "\x7f\x7e\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_pwrite_array_i16", "\x7f\x7e\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_pwrite_array_i32", "\x7f\x7e\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_pwrite_array_i64", "\x7f\x7e\x6a\x7e\x7e", "\x7e\x7f", true },
++    FacetImport { "fd_pwrite_array_v128", "\x7f\x7e\x6a\x7e\x7e", "\x7e\x7f", true },
+     FacetImport { "fd_readv_mem32", "\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_writev_mem32", "\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_readv_mem64", "\x7f\x7f\x7e\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_writev_mem64", "\x7f\x7f\x7e\x7f", "\x7e\x7f", true },
+-    FacetImport { "fd_readv_array_i8", "", "", false },
+-    FacetImport { "fd_readv_array_i16", "", "", false },
+-    FacetImport { "fd_readv_array_i32", "", "", false },
+-    FacetImport { "fd_readv_array_i64", "", "", false },
+-    FacetImport { "fd_readv_array_v128", "", "", false },
+-    FacetImport { "fd_writev_array_i8", "", "", false },
+-    FacetImport { "fd_writev_array_i16", "", "", false },
+-    FacetImport { "fd_writev_array_i32", "", "", false },
+-    FacetImport { "fd_writev_array_i64", "", "", false },
+-    FacetImport { "fd_writev_array_v128", "", "", false },
++    FacetImport { "fd_readv_array_i8", "\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fd_readv_array_i16", "\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fd_readv_array_i32", "\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fd_readv_array_i64", "\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fd_readv_array_v128", "\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fd_writev_array_i8", "\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fd_writev_array_i16", "\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fd_writev_array_i32", "\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fd_writev_array_i64", "\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "fd_writev_array_v128", "\x7f\x6a\x7f\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_seek", "\x7f\x7e\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_tell", "\x7f", "\x7e\x7f", true },
+     FacetImport { "fd_set_size", "\x7f\x7e", "\x7f", true },
+@@ -123,137 +123,137 @@ let facet_imports: FacetImport[261] = [
+     FacetImport { "fd_datasync", "\x7f", "\x7f", true },
+     FacetImport { "path_open_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f\x7e", "\x7f\x7f", true },
+     FacetImport { "path_open_mem64_i8", "\x7f\x7f\x7e\x7e\x7f\x7f\x7e", "\x7f\x7f", true },
+-    FacetImport { "path_open_array_i8", "", "", false },
++    FacetImport { "path_open_array_i8", "\x7f\x6a\x7f\x7f\x7f\x7f\x7e", "\x7f\x7f", true },
+     FacetImport { "path_stat_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7e\x7f\x7e\x7f\x7f", true },
+     FacetImport { "path_stat_mem64_i8", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7e\x7f\x7e\x7f\x7f", true },
+-    FacetImport { "path_stat_array_i8", "", "", false },
++    FacetImport { "path_stat_array_i8", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7e\x7f\x7e\x7f\x7f", true },
+     FacetImport { "path_create_dir_mem32_i8", "\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_create_dir_mem64_i8", "\x7f\x7f\x7e\x7e\x7f", "\x7f", true },
+-    FacetImport { "path_create_dir_array_i8", "", "", false },
++    FacetImport { "path_create_dir_array_i8", "\x7f\x6a\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_remove_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_remove_mem64_i8", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
+-    FacetImport { "path_remove_array_i8", "", "", false },
++    FacetImport { "path_remove_array_i8", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_rename_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_rename_mem64_i8", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
+-    FacetImport { "path_rename_array_i8", "", "", false },
++    FacetImport { "path_rename_array_i8", "\x7f\x6a\x7f\x7f\x7f\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_open_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f\x7e", "\x7f\x7f", true },
+     FacetImport { "path_open_mem64_i16", "\x7f\x7f\x7e\x7e\x7f\x7f\x7e", "\x7f\x7f", true },
+-    FacetImport { "path_open_array_i16", "", "", false },
++    FacetImport { "path_open_array_i16", "\x7f\x6a\x7f\x7f\x7f\x7f\x7e", "\x7f\x7f", true },
+     FacetImport { "path_stat_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7e\x7f\x7e\x7f\x7f", true },
+     FacetImport { "path_stat_mem64_i16", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7e\x7f\x7e\x7f\x7f", true },
+-    FacetImport { "path_stat_array_i16", "", "", false },
++    FacetImport { "path_stat_array_i16", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7e\x7f\x7e\x7f\x7f", true },
+     FacetImport { "path_create_dir_mem32_i16", "\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_create_dir_mem64_i16", "\x7f\x7f\x7e\x7e\x7f", "\x7f", true },
+-    FacetImport { "path_create_dir_array_i16", "", "", false },
++    FacetImport { "path_create_dir_array_i16", "\x7f\x6a\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_remove_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_remove_mem64_i16", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
+-    FacetImport { "path_remove_array_i16", "", "", false },
++    FacetImport { "path_remove_array_i16", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_rename_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_rename_mem64_i16", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
+-    FacetImport { "path_rename_array_i16", "", "", false },
++    FacetImport { "path_rename_array_i16", "\x7f\x6a\x7f\x7f\x7f\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_open_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f\x7e", "\x7f\x7f", true },
+     FacetImport { "path_open_mem64_i32", "\x7f\x7f\x7e\x7e\x7f\x7f\x7e", "\x7f\x7f", true },
+-    FacetImport { "path_open_array_i32", "", "", false },
++    FacetImport { "path_open_array_i32", "\x7f\x6a\x7f\x7f\x7f\x7f\x7e", "\x7f\x7f", true },
+     FacetImport { "path_stat_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7e\x7f\x7e\x7f\x7f", true },
+     FacetImport { "path_stat_mem64_i32", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7e\x7f\x7e\x7f\x7f", true },
+-    FacetImport { "path_stat_array_i32", "", "", false },
++    FacetImport { "path_stat_array_i32", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7e\x7f\x7e\x7f\x7f", true },
+     FacetImport { "path_create_dir_mem32_i32", "\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_create_dir_mem64_i32", "\x7f\x7f\x7e\x7e\x7f", "\x7f", true },
+-    FacetImport { "path_create_dir_array_i32", "", "", false },
++    FacetImport { "path_create_dir_array_i32", "\x7f\x6a\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_remove_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_remove_mem64_i32", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
+-    FacetImport { "path_remove_array_i32", "", "", false },
++    FacetImport { "path_remove_array_i32", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_rename_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
+     FacetImport { "path_rename_mem64_i32", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
+-    FacetImport { "path_rename_array_i32", "", "", false },
+-    FacetImport { "dir_iter_open", "\x7f", "\x7f\x7f", false },
+-    FacetImport { "dir_iter_next_len_i8", "\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", false },
+-    FacetImport { "dir_iter_next_mem32_i8", "\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", false },
+-    FacetImport { "dir_iter_next_mem64_i8", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f\x7e\x7f\x7f", false },
+-    FacetImport { "dir_iter_next_into_array_i8", "", "", false },
+-    FacetImport { "dir_iter_next_array_i8", "", "", false },
+-    FacetImport { "dir_iter_next_len_i16", "\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", false },
+-    FacetImport { "dir_iter_next_mem32_i16", "\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", false },
+-    FacetImport { "dir_iter_next_mem64_i16", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f\x7e\x7f\x7f", false },
+-    FacetImport { "dir_iter_next_into_array_i16", "", "", false },
+-    FacetImport { "dir_iter_next_array_i16", "", "", false },
+-    FacetImport { "dir_iter_next_len_i32", "\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", false },
+-    FacetImport { "dir_iter_next_mem32_i32", "\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", false },
+-    FacetImport { "dir_iter_next_mem64_i32", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f\x7e\x7f\x7f", false },
+-    FacetImport { "dir_iter_next_into_array_i32", "", "", false },
+-    FacetImport { "dir_iter_next_array_i32", "", "", false },
+-    FacetImport { "dir_iter_rewind", "\x7f", "\x7f", false },
+-    FacetImport { "path_link_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", false },
+-    FacetImport { "path_link_mem64_i8", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", false },
+-    FacetImport { "path_link_array_i8", "", "", false },
+-    FacetImport { "path_symlink_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", false },
+-    FacetImport { "path_symlink_mem64_i8", "\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f", "\x7f", false },
+-    FacetImport { "path_symlink_array_i8", "", "", false },
+-    FacetImport { "path_readlink_len_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_len_mem64_i8", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_mem64_i8", "\x7f\x7f\x7e\x7e\x7f\x7f\x7e\x7e\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_len_array_i8", "", "", false },
+-    FacetImport { "path_readlink_into_array_i8", "", "", false },
+-    FacetImport { "path_readlink_array_i8", "", "", false },
+-    FacetImport { "path_link_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", false },
+-    FacetImport { "path_link_mem64_i16", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", false },
+-    FacetImport { "path_link_array_i16", "", "", false },
+-    FacetImport { "path_symlink_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", false },
+-    FacetImport { "path_symlink_mem64_i16", "\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f", "\x7f", false },
+-    FacetImport { "path_symlink_array_i16", "", "", false },
+-    FacetImport { "path_readlink_len_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_len_mem64_i16", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_mem64_i16", "\x7f\x7f\x7e\x7e\x7f\x7f\x7e\x7e\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_len_array_i16", "", "", false },
+-    FacetImport { "path_readlink_into_array_i16", "", "", false },
+-    FacetImport { "path_readlink_array_i16", "", "", false },
+-    FacetImport { "path_link_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", false },
+-    FacetImport { "path_link_mem64_i32", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", false },
+-    FacetImport { "path_link_array_i32", "", "", false },
+-    FacetImport { "path_symlink_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", false },
+-    FacetImport { "path_symlink_mem64_i32", "\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f", "\x7f", false },
+-    FacetImport { "path_symlink_array_i32", "", "", false },
+-    FacetImport { "path_readlink_len_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_len_mem64_i32", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_mem64_i32", "\x7f\x7f\x7e\x7e\x7f\x7f\x7e\x7e\x7f", "\x7e\x7f", false },
+-    FacetImport { "path_readlink_len_array_i32", "", "", false },
+-    FacetImport { "path_readlink_into_array_i32", "", "", false },
+-    FacetImport { "path_readlink_array_i32", "", "", false },
+-    FacetImport { "socket_open", "\x7f\x7f\x7f\x7f", "\x7f\x7f", false },
+-    FacetImport { "socket_bind", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", false },
+-    FacetImport { "socket_connect", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", false },
+-    FacetImport { "socket_listen", "\x7f\x7f", "\x7f", false },
+-    FacetImport { "socket_accept", "\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f", false },
+-    FacetImport { "socket_local_address", "\x7f", "\x7f\x7e\x7e\x7f\x7f\x7f", false },
+-    FacetImport { "socket_peer_address", "\x7f", "\x7f\x7e\x7e\x7f\x7f\x7f", false },
+-    FacetImport { "socket_shutdown", "\x7f\x7f", "\x7f", false },
+-    FacetImport { "socket_recvfrom_mem32", "\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f\x7e\x7e\x7f\x7f\x7f\x7f", false },
+-    FacetImport { "socket_recvfrom_mem64", "\x7f\x7f\x7e\x7e\x7f", "\x7e\x7f\x7e\x7e\x7f\x7f\x7f\x7f", false },
+-    FacetImport { "socket_recvfrom_array_i8", "", "", false },
+-    FacetImport { "socket_recvfrom_array_i16", "", "", false },
+-    FacetImport { "socket_recvfrom_array_i32", "", "", false },
+-    FacetImport { "socket_recvfrom_array_i64", "", "", false },
+-    FacetImport { "socket_recvfrom_array_v128", "", "", false },
+-    FacetImport { "socket_sendto_mem32", "\x7f\x7f\x7f\x7f\x7f\x7e\x7e\x7f\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "socket_sendto_mem64", "\x7f\x7f\x7e\x7e\x7f\x7e\x7e\x7f\x7f\x7f", "\x7e\x7f", false },
+-    FacetImport { "socket_sendto_array_i8", "", "", false },
+-    FacetImport { "socket_sendto_array_i16", "", "", false },
+-    FacetImport { "socket_sendto_array_i32", "", "", false },
+-    FacetImport { "socket_sendto_array_i64", "", "", false },
+-    FacetImport { "socket_sendto_array_v128", "", "", false },
+-    FacetImport { "dns_resolve_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f", false },
+-    FacetImport { "dns_resolve_mem64_i8", "\x7f\x7e\x7e\x7f\x7f\x7f", "\x7f\x7f", false },
+-    FacetImport { "dns_resolve_array_i8", "", "", false },
+-    FacetImport { "dns_resolve_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f", false },
+-    FacetImport { "dns_resolve_mem64_i16", "\x7f\x7e\x7e\x7f\x7f\x7f", "\x7f\x7f", false },
+-    FacetImport { "dns_resolve_array_i16", "", "", false },
+-    FacetImport { "dns_resolve_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f", false },
+-    FacetImport { "dns_resolve_mem64_i32", "\x7f\x7e\x7e\x7f\x7f\x7f", "\x7f\x7f", false },
+-    FacetImport { "dns_resolve_array_i32", "", "", false },
+-    FacetImport { "dns_next", "\x7f", "\x7f\x7e\x7e\x7f\x7f\x7f", false },
++    FacetImport { "path_rename_array_i32", "\x7f\x6a\x7f\x7f\x7f\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "dir_iter_open", "\x7f", "\x7f\x7f", true },
++    FacetImport { "dir_iter_next_len_i8", "\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_mem32_i8", "\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_mem64_i8", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_into_array_i8", "\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_array_i8", "\x7f\x7f", "\x01\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_len_i16", "\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_mem32_i16", "\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_mem64_i16", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_into_array_i16", "\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_array_i16", "\x7f\x7f", "\x02\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_len_i32", "\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_mem32_i32", "\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_mem64_i32", "\x7f\x7f\x7f\x7e\x7e", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_into_array_i32", "\x7f\x7f\x6a\x7f\x7f", "\x7e\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_next_array_i32", "\x7f\x7f", "\x03\x7f\x7e\x7f\x7f", true },
++    FacetImport { "dir_iter_rewind", "\x7f", "\x7f", true },
++    FacetImport { "path_link_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_link_mem64_i8", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
++    FacetImport { "path_link_array_i8", "\x7f\x6a\x7f\x7f\x7f\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_symlink_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_symlink_mem64_i8", "\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f", "\x7f", true },
++    FacetImport { "path_symlink_array_i8", "\x6a\x7f\x7f\x7f\x7f\x6a\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_readlink_len_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_len_mem64_i8", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_mem64_i8", "\x7f\x7f\x7e\x7e\x7f\x7f\x7e\x7e\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_len_array_i8", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_into_array_i8", "\x7f\x6a\x7f\x7f\x7f\x6a\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_array_i8", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x01\x7f", true },
++    FacetImport { "path_link_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_link_mem64_i16", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
++    FacetImport { "path_link_array_i16", "\x7f\x6a\x7f\x7f\x7f\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_symlink_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_symlink_mem64_i16", "\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f", "\x7f", true },
++    FacetImport { "path_symlink_array_i16", "\x6a\x7f\x7f\x7f\x7f\x6a\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_readlink_len_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_len_mem64_i16", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_mem64_i16", "\x7f\x7f\x7e\x7e\x7f\x7f\x7e\x7e\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_len_array_i16", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_into_array_i16", "\x7f\x6a\x7f\x7f\x7f\x6a\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_array_i16", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x02\x7f", true },
++    FacetImport { "path_link_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_link_mem64_i32", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
++    FacetImport { "path_link_array_i32", "\x7f\x6a\x7f\x7f\x7f\x7f\x6a\x7f\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_symlink_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_symlink_mem64_i32", "\x7f\x7e\x7e\x7f\x7f\x7f\x7e\x7e\x7f", "\x7f", true },
++    FacetImport { "path_symlink_array_i32", "\x6a\x7f\x7f\x7f\x7f\x6a\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "path_readlink_len_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_len_mem64_i32", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_mem64_i32", "\x7f\x7f\x7e\x7e\x7f\x7f\x7e\x7e\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_len_array_i32", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_into_array_i32", "\x7f\x6a\x7f\x7f\x7f\x6a\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "path_readlink_array_i32", "\x7f\x6a\x7f\x7f\x7f\x7f", "\x03\x7f", true },
++    FacetImport { "socket_open", "\x7f\x7f\x7f\x7f", "\x7f\x7f", true },
++    FacetImport { "socket_bind", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
++    FacetImport { "socket_connect", "\x7f\x7f\x7e\x7e\x7f\x7f", "\x7f", true },
++    FacetImport { "socket_listen", "\x7f\x7f", "\x7f", true },
++    FacetImport { "socket_accept", "\x7f\x7f", "\x7f\x7f\x7e\x7e\x7f\x7f\x7f", true },
++    FacetImport { "socket_local_address", "\x7f", "\x7f\x7e\x7e\x7f\x7f\x7f", true },
++    FacetImport { "socket_peer_address", "\x7f", "\x7f\x7e\x7e\x7f\x7f\x7f", true },
++    FacetImport { "socket_shutdown", "\x7f\x7f", "\x7f", true },
++    FacetImport { "socket_recvfrom_mem32", "\x7f\x7f\x7f\x7f\x7f", "\x7e\x7f\x7e\x7e\x7f\x7f\x7f\x7f", true },
++    FacetImport { "socket_recvfrom_mem64", "\x7f\x7f\x7e\x7e\x7f", "\x7e\x7f\x7e\x7e\x7f\x7f\x7f\x7f", true },
++    FacetImport { "socket_recvfrom_array_i8", "\x7f\x6a\x7e\x7e\x7f", "\x7e\x7f\x7e\x7e\x7f\x7f\x7f\x7f", true },
++    FacetImport { "socket_recvfrom_array_i16", "\x7f\x6a\x7e\x7e\x7f", "\x7e\x7f\x7e\x7e\x7f\x7f\x7f\x7f", true },
++    FacetImport { "socket_recvfrom_array_i32", "\x7f\x6a\x7e\x7e\x7f", "\x7e\x7f\x7e\x7e\x7f\x7f\x7f\x7f", true },
++    FacetImport { "socket_recvfrom_array_i64", "\x7f\x6a\x7e\x7e\x7f", "\x7e\x7f\x7e\x7e\x7f\x7f\x7f\x7f", true },
++    FacetImport { "socket_recvfrom_array_v128", "\x7f\x6a\x7e\x7e\x7f", "\x7e\x7f\x7e\x7e\x7f\x7f\x7f\x7f", true },
++    FacetImport { "socket_sendto_mem32", "\x7f\x7f\x7f\x7f\x7f\x7e\x7e\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "socket_sendto_mem64", "\x7f\x7f\x7e\x7e\x7f\x7e\x7e\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "socket_sendto_array_i8", "\x7f\x6a\x7e\x7e\x7f\x7e\x7e\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "socket_sendto_array_i16", "\x7f\x6a\x7e\x7e\x7f\x7e\x7e\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "socket_sendto_array_i32", "\x7f\x6a\x7e\x7e\x7f\x7e\x7e\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "socket_sendto_array_i64", "\x7f\x6a\x7e\x7e\x7f\x7e\x7e\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "socket_sendto_array_v128", "\x7f\x6a\x7e\x7e\x7f\x7e\x7e\x7f\x7f\x7f", "\x7e\x7f", true },
++    FacetImport { "dns_resolve_mem32_i8", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f", true },
++    FacetImport { "dns_resolve_mem64_i8", "\x7f\x7e\x7e\x7f\x7f\x7f", "\x7f\x7f", true },
++    FacetImport { "dns_resolve_array_i8", "\x6a\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f", true },
++    FacetImport { "dns_resolve_mem32_i16", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f", true },
++    FacetImport { "dns_resolve_mem64_i16", "\x7f\x7e\x7e\x7f\x7f\x7f", "\x7f\x7f", true },
++    FacetImport { "dns_resolve_array_i16", "\x6a\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f", true },
++    FacetImport { "dns_resolve_mem32_i32", "\x7f\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f", true },
++    FacetImport { "dns_resolve_mem64_i32", "\x7f\x7e\x7e\x7f\x7f\x7f", "\x7f\x7f", true },
++    FacetImport { "dns_resolve_array_i32", "\x6a\x7f\x7f\x7f\x7f\x7f", "\x7f\x7f", true },
++    FacetImport { "dns_next", "\x7f", "\x7f\x7e\x7e\x7f\x7f\x7f", true },
+     FacetImport { "poll_create", "", "\x7f\x7f", true },
+     FacetImport { "poll_add_fd", "\x7f\x7f\x7f\x7e", "\x7f", true },
+     FacetImport { "poll_update_fd", "\x7f\x7f\x7f\x7e", "\x7f", true },
+diff --git a/src/host.goose b/src/host.goose
+index 8ad952181..1691b3696 100644
+--- a/src/host.goose
++++ b/src/host.goose
+@@ -2,10 +2,20 @@ import .host_common;
+ import .host_poll;
+ import .host_files;
+ import .host_paths;
++import .host_moonbit;
++import .host_dirs;
++import .host_links;
+ import .wasi;
+ 
+ export fn ss_host_dispatch(rt: Runtime&, binding: HostBinding&, values: u64) {
+-    if binding.operation >= 1024 {
++    if binding.operation & 4294967295 >= 3072 { moonbit_dispatch(rt, binding, values); return; }
++    if binding.operation & 4294967295 >= 2048 && binding.operation < 2053 {
++        // The disabled pool is the Dewdrop primary host default. Channel calls
++        // are invalid without a worker job; never silently consume a request.
++        if binding.operation != 2048 { rt.trap = 11; return; }
++        ss_store64(values, 0); ss_store64(values + 8, 0); return;
++    }
++    if binding.operation & 4294967295 >= 1024 {
+         let op = binding.operation - 1024;
+         var args: u64[16] = [0; 16];
+         for i in binding.params as i64 {
+@@ -19,18 +29,38 @@ export fn ss_host_dispatch(rt: Runtime&, binding: HostBinding&, values: u64) {
+     // All outputs start at zero, including high halves. Result bytes may alias
+     // argument homes, so read every parameter before committing results.
+     var args: u64[16] = [0; 16]; var out: u64[16] = [0; 16];
+-    for i in binding.params as i64 { args[i] = host_arg(values, i as u64); if facet_imports[binding.operation as i64].params[i] == 0x7f { args[i] &= 4294967295; } }
+-    let op = binding.operation; var error: u64 = 0;
+-    if op == 0 { out[0] = 1; }
++    for i in binding.params as i64 { args[i] = host_arg(values, i as u64); if facet_imports[(binding.operation & 4294967295) as i64].params[i] == 0x7f { args[i] &= 4294967295; } }
++    let op = binding.operation & 4294967295; var error: u64 = 0;
++    if op >= 17 && op <= 22 || op >= 33 && op <= 38 || op >= 63 && op <= 68 {
++        error = host_array_strings(rt, binding, op, args, out);
++    } else if op >= 75 && op <= 79 || op >= 82 && op <= 86 || op >= 89 && op <= 93 || op >= 96 && op <= 100 || op >= 105 && op <= 114 {
++        error = host_array_io(rt, op, args, out);
++    } else if op >= 47 && op <= 51 {
++        let pointer, failure = host_array_range(rt, args[0], (1 as u64) << (op - 47), true, args[1], args[2]); error = failure;
++        if error == 0 {
++            var count: u64 = 0;
++            while count < args[2] {
++                let n = ss_host_syscall(318, pointer + count, args[2] - count, 0, 0, 0, 0);
++                if n == -4 { continue; } if n <= 0 { error = if n == 0 { 3 as u64 } else { host_errno(n) }; break; } count += n as u64;
++            }
++            if error == 0 { out[0] = count; }
++        }
++    } else if op == 0 { out[0] = 1; }
+     else if op == 1 {
+         let resource = host_resource(rt, args[0]);
+         if resource == 0 { error = 4; }
+         else {
+             let kind = ss_load64(resource);
++            if kind != 1 && kind != 2 && kind != 12 {
++                // Opaque MoonBit externref slots are not Facet resources.
++                error = 4;
++            } else {
+             let result = if kind == 2 { ss_jit_free(ss_load64(resource + 32), 4194304) } else { ss_host_syscall(3, ss_load64(resource + 8), 0, 0, 0, 0, 0) };
++            if kind == 12 { ss_jit_free(ss_load64(resource + 32), 65536); }
+             if kind == 1 { host_poll_remove_closed(rt, args[0]); }
+             // Linux releases the descriptor even if close reports EINTR.
+             ss_store64(resource, 0); error = host_errno(result);
++            }
+         }
+     } else if op == 2 { rt.trap = 256 + (args[0] & 255); }
+     else if op == 3 { error = host_errno(ss_host_syscall(24, 0, 0, 0, 0, 0, 0)); }
+@@ -168,6 +198,16 @@ export fn ss_host_dispatch(rt: Runtime&, binding: HostBinding&, values: u64) {
+             else if op == 118 || op == 119 { error = host_errno(ss_host_syscall(if op == 118 { 74 as u64 } else { 75 as u64 }, descriptor, 0, 0, 0, 0, 0)); }
+         }
+     } else if op >= 120 && op <= 164 { error = host_path_operation(rt, op, args, out); }
++    else if op >= 165 && op <= 181 { error = host_directory(rt, binding, op, args, out); }
++    else if op >= 182 && op <= 220 { error = host_links(rt, binding, op, args, out); }
++    else if op >= 221 && op <= 252 {
++        // No network capability is granted by the existing host configuration.
++        // Defining the imports does not grant ambient socket or DNS authority.
++        if op == 221 {
++            error = if args[0] != 1 && args[0] != 2 || args[1] != 1 && args[1] != 2 || args[2] > 2 || args[3] > 1 { 12 as u64 } else { 37 as u64 };
++        } else if op >= 243 && op <= 251 { error = 37; }
++        else { error = 4; }
++    }
+     else if op >= 253 && op <= 260 { error = host_poll(rt, op, args, out); }
+     else { rt.trap = 13; }
+     if binding.results > 0 {
+diff --git a/src/host_arrays.goose b/src/host_arrays.goose
+new file mode 100644
+index 000000000..bcd4d5ffd
+--- /dev/null
++++ b/src/host_arrays.goose
+@@ -0,0 +1,79 @@
++import .host_files;
++extern fn ss_host_gc_array_pointer(owner: u64, rt: Runtime&, raw: u64, width: u64, writing: bool, out: u64[:]) -> u64;
++extern fn ss_host_gc_new_pointer(owner: u64, rt: Runtime&, index: u64, length: u64) -> u64;
++
++fn host_array_info(rt: Runtime&, raw: u64, width: u64, writing: bool, out: u64[:]) -> u64 {
++    if rt.gc_runtime == 0 { return 25; }
++    return ss_host_gc_array_pointer(rt.gc_runtime, rt, raw, width, writing, out);
++}
++fn host_array_range(rt: Runtime&, raw: u64, width: u64, writing: bool, offset: u64, length: u64) -> u64, u64 {
++    var info: u64[4] = [0; 4]; let error = host_array_info(rt, raw, width, writing, info);
++    if error != 0 { return 0, error; }
++    let size = info[1] * width;
++    if offset > size || length > size - offset { return 0, 24; }
++    return info[0] + offset, 0;
++}
++fn host_array_text(rt: Runtime&, binding: HostBinding&, source: u64, length: u64, width: u64, wtf: bool, out: u64[:]) -> u64 {
++    let units, error = host_text_length(source, length, width, wtf); if error != 0 { return error; }
++    if units > 4294967295 { return 22; }
++    let encoded = binding.operation >> 32; if encoded == 0 { rt.trap = 11; return 6; }
++    let raw = ss_host_gc_new_pointer(rt.gc_runtime, rt, encoded - 1, units);
++    if raw == 0 { return 6; }
++    // Fresh immutable arrays may be initialized by this host allocation only.
++    let pointer, failure = host_array_range(rt, raw, width, false, 0, units * width);
++    if failure != 0 { return failure; }
++    host_text_copy(source, length, pointer, width, wtf); out[0] = raw; return 0;
++}
++fn host_array_strings(rt: Runtime&, binding: HostBinding&, op: u64, args: const u64[:], out: u64[:]) -> u64 {
++    let env = op >= 33 && op <= 38; let preopen = op >= 63;
++    let base: u64 = if env { 33 } else if preopen { 63 } else { 17 };
++    let variant = op - base; let width = (1 as u64) << (variant % 3); let allocating = variant >= 3;
++    let field = if env { args[1] } else { 0 as u64 }; let wtf = args[if env { 2 } else { 1 }];
++    if field > 1 || wtf > 1 { return 12; }
++    let index: i64 = if env { 3 } else { 2 }; var pointer: u64 = 0;
++    if !allocating {
++        let address, failure = host_array_range(rt, args[index], width, true, args[index + 1] * width, args[index + 2] * width);
++        if failure != 0 { return failure; } pointer = address;
++    }
++    let count = ss_load64(rt.host + (if env { 48 as u64 } else if preopen { 64 as u64 } else { 32 as u64 }));
++    if args[0] >= count { return 17; }
++    let entries = ss_load64(rt.host + (if env { 40 as u64 } else if preopen { 56 as u64 } else { 24 as u64 }));
++    let entry = entries + args[0] * (if env || preopen { 32 as u64 } else { 16 as u64 }) + (if preopen { 8 as u64 } else { field * 16 });
++    let source = ss_load64(entry); let length = ss_load64(entry + 8);
++    if allocating { return host_array_text(rt, binding, source, length, width, wtf != 0, out); }
++    let units, error = host_text_length(source, length, width, wtf != 0); if error != 0 { return error; }
++    if units > args[index + 2] { return 17; }
++    host_text_copy(source, length, pointer, width, wtf != 0); out[0] = units; return 0;
++}
++fn host_array_io(rt: Runtime&, op: u64, args: const u64[:], out: u64[:]) -> u64 {
++    let resource = host_fd(rt, args[0]); if resource == 0 { return 4; }
++    let positioned = op >= 89 && op <= 100;
++    let writing = op >= 82 && op <= 86 || op >= 96 && op <= 100 || op >= 110;
++    let nested = op >= 105;
++    let base: u64 = if nested { if writing { 110 } else { 105 } } else if positioned { if writing { 96 } else { 89 } } else if writing { 82 } else { 75 };
++    let width = (1 as u64) << (op - base);
++    let right = (if writing { 2 as u64 } else { 1 as u64 }) | (if positioned { 4 as u64 } else { 0 as u64 });
++    if ss_load64(resource + 16) & right != right { return 37; }
++    let index: i64 = if positioned { 2 } else { 1 };
++    var result: i64 = -4;
++    if nested {
++        var outer: u64[4] = [0; 4]; let failure = host_array_info(rt, args[1], 255, false, outer); if failure != 0 { return failure; }
++        if args[2] > outer[1] || args[3] > outer[1] - args[2] { return 17; }
++        var vectors: u64[2048] = [0; 2048];
++        for i in args[3] as i64 {
++            let raw = host_guest_array_word(outer[0] + (args[2] + i as u64) * outer[2], outer[2]);
++            var child: u64[4] = [0; 4]; let error = host_array_info(rt, raw, width, !writing, child); if error != 0 { return error; }
++            if i < 1024 { vectors[i * 2] = child[0]; vectors[i * 2 + 1] = child[1] * width; }
++        }
++        if args[3] > 1024 { return 26; }
++        while result == -4 { result = ss_host_iov(ss_load64(resource + 8), vectors, args[3], writing); }
++    } else {
++        let pointer, error = host_array_range(rt, args[index], width, !writing, args[index + 1], args[index + 2]);
++        if error != 0 { return error; }
++        while result == -4 { result = ss_host_syscall(if positioned { if writing { 18 as u64 } else { 17 as u64 } } else if writing { 1 as u64 } else { 0 as u64 }, ss_load64(resource + 8), pointer, args[index + 2], if positioned { args[1] } else { 0 as u64 }, 0, 0); }
++    }
++    if result < 0 { return host_errno(result); } out[0] = result as u64; return 0;
++}
++fn host_guest_array_word(pointer: u64, stride: u64) -> u64 {
++    return if stride == 4 { ss_load32(pointer) } else { ss_load64(pointer) };
++}
+diff --git a/src/host_common.goose b/src/host_common.goose
+index d0a60332e..e7570e587 100644
+--- a/src/host_common.goose
++++ b/src/host_common.goose
+@@ -2,6 +2,8 @@
+ // No guest address survives a call. Resource tables are instance-owned mappings.
+ import .jit_platform;
+ import .facet_imports;
++import .worker_imports;
++import .moonbit_imports;
+ import .wasi_imports;
+ import .host_text;
+ 
+@@ -36,6 +38,8 @@ fn host_release(rt: Runtime&) {
+         let resource = base + (i as u64) * 64;
+         if ss_load64(resource) == 1 { ss_host_syscall(3, ss_load64(resource + 8), 0, 0, 0, 0, 0); ss_store64(resource, 0); }
+         else if ss_load64(resource) == 2 { ss_jit_free(ss_load64(resource + 32), 4194304); ss_store64(resource, 0); }
++        else if ss_load64(resource) == 12 { ss_host_syscall(3, ss_load64(resource + 8), 0, 0, 0, 0, 0); ss_jit_free(ss_load64(resource + 32), 65536); ss_store64(resource, 0); }
++        else if ss_load64(resource) >= 3 { if ss_load64(resource + 24) != 0 { ss_jit_free(ss_load64(resource + 8), ss_load64(resource + 24)); } ss_store64(resource, 0); }
+     }
+ }
+ fn host_errno(result: i64) -> u64 {
+diff --git a/src/host_dirs.goose b/src/host_dirs.goose
+new file mode 100644
+index 000000000..387cd9f91
+--- /dev/null
++++ b/src/host_dirs.goose
+@@ -0,0 +1,62 @@
++import .host_paths;
++
++fn host_directory(rt: Runtime&, binding: HostBinding&, op: u64, args: const u64[:], out: u64[:]) -> u64 {
++    if op == 165 {
++        let directory = host_fd(rt, args[0]); if directory == 0 { return 4; }
++        if ss_load64(directory + 40) == 0 { return 10; }
++        if ss_load64(directory + 16) & 8388608 == 0 { return 37; }
++        if ss_load64(rt.host + 8) >= 65536 { return 26; }
++        let descriptor = ss_host_open_beneath(ss_load64(directory + 8), ".\x00", 589824, 0);
++        if descriptor < 0 { return host_errno(descriptor); }
++        let buffer = ss_jit_alloc(65536);
++        if buffer == 0 { ss_host_syscall(3, descriptor as u64, 0, 0, 0, 0, 0); return 6; }
++        out[0] = host_new_fd(rt, descriptor as u64, 0); let iterator = host_resource(rt, out[0]);
++        ss_store64(iterator, 12); ss_store64(iterator + 32, buffer); ss_store64(iterator + 40, 0); return 0;
++    }
++    let variant = (op - 166) % 5; let width = (1 as u64) << ((op - 166) / 5);
++    if op != 181 && args[1] > 1 { return 12; }
++    let iterator = host_resource(rt, args[0]); if iterator == 0 || ss_load64(iterator) != 12 { return 4; }
++    if op == 181 {
++        let result = ss_host_syscall(8, ss_load64(iterator + 8), 0, 0, 0, 0, 0);
++        if result < 0 { return host_errno(result); }
++        ss_store64(iterator + 40, 0); ss_store64(iterator + 48, 0); return 0;
++    }
++    var target: u64 = 0;
++    if variant == 1 || variant == 2 {
++        if args[4] > 18446744073709551615 / width { return 24; }
++        let address, error = host_memory(rt, args[2], variant == 2, args[3], args[4] * width);
++        if error != 0 { return error; } target = address;
++    } else if variant == 3 {
++        let address, error = host_array_range(rt, args[2], width, true, args[3] * width, args[4] * width);
++        if error != 0 { return error; } target = address;
++    }
++    let buffer = ss_load64(iterator + 32); var position = ss_load64(iterator + 40);
++    while true {
++        if position == ss_load64(iterator + 48) {
++            let n = ss_host_syscall(217, ss_load64(iterator + 8), buffer, 65536, 0, 0, 0);
++            if n == -4 { continue; } if n < 0 { return host_errno(n); }
++            ss_store64(iterator + 48, n as u64); position = 0; ss_store64(iterator + 40, 0);
++            if n == 0 { out[3] = 1; return 0; }
++        }
++        let available = ss_load64(iterator + 48) - position; if available < 20 { return 3; }
++        let entry = buffer + position; let size = ss_load16(entry + 16);
++        if size < 20 || size > available { return 3; }
++        var length: u64 = 0;
++        while 19 + length < size && ss_load8(entry + 19 + length) != 0 { length += 1; }
++        if 19 + length == size { return 3; }
++        if length == 1 && ss_load8(entry + 19) == 46 || length == 2 && ss_load16(entry + 19) == 11822 {
++            position += size; ss_store64(iterator + 40, position); continue;
++        }
++        let units, error = host_text_length(entry + 19, length, width, args[1] != 0); if error != 0 { return error; }
++        if variant >= 1 && variant <= 3 && units > args[4] { return 17; }
++        if variant == 4 {
++            let failure = host_array_text(rt, binding, entry + 19, length, width, args[1] != 0, out);
++            if failure != 0 { return failure; }
++        } else { out[0] = units; if variant != 0 { host_text_copy(entry + 19, length, target, width, args[1] != 0); } }
++        out[1] = match ss_load8(entry + 18) { 8 => 1, 4 => 2, 10 => 3, 2 => 4, 6 => 5, 12 => 6, 1 => 7, _ => 0 };
++        out[2] = ss_load64(entry);
++        if variant != 0 { ss_store64(iterator + 40, position + size); }
++        return 0;
++    }
++    return 3;
++}
+diff --git a/src/host_links.goose b/src/host_links.goose
+new file mode 100644
+index 000000000..1ee2af935
+--- /dev/null
++++ b/src/host_links.goose
+@@ -0,0 +1,76 @@
++import .host_paths;
++extern fn ss_host_link_at(oldfd: u64, oldname: const u8[:], newfd: u64, newname: const u8[:]) -> i64;
++extern fn ss_host_symlink_at(target: const u8[:], newfd: u64, newname: const u8[:]) -> i64;
++extern fn ss_host_readlink_at(fd: u64, name: const u8[:], output: u8[:]) -> i64;
++
++fn host_links(rt: Runtime&, binding: HostBinding&, op: u64, args: const u64[:], out: u64[:]) -> u64 {
++    let variant = (op - 182) % 13; let width = (1 as u64) << ((op - 182) / 13);
++    let hard = variant < 3; let symlink = variant >= 3 && variant < 6;
++    let array = if hard { variant == 2 } else if symlink { variant == 5 } else { variant >= 10 };
++    let wide = variant == 1 || variant == 4 || variant == 8 || variant == 9;
++    let allocating = variant == 12;
++    let reading = variant == 7 || variant == 9 || variant == 11;
++    let index: i64 = if symlink { 0 } else { 1 };
++    let target_wtf = if reading { args[8] } else if !hard && !symlink { args[5] } else { 0 as u64 };
++    if args[index + 3] > 1 || target_wtf > 1 || hard && args[9] > 1 || symlink && args[8] > 1 { return 12; }
++    // Facet 0.1 does not define nonzero hard-link flags.
++    if hard && args[10] != 0 { return 21; }
++    let directory = host_fd(rt, args[if symlink { 4 } else { 0 }]); if directory == 0 { return 4; }
++    let right: u64 = if hard { 1048576 } else if symlink { 2097152 } else { 4194304 };
++    var destination: u64 = 0;
++    if hard { destination = host_fd(rt, args[5]); if destination == 0 { return 4; } }
++    if ss_load64(directory + 16) & right == 0 || hard && ss_load64(destination + 16) & right == 0 { return 37; }
++    if ss_load64(directory + 40) == 0 || hard && ss_load64(destination + 40) == 0 { return 10; }
++    let source, source_error = host_path_source(rt, args[index], wide, array, width, args[index + 1], args[index + 2]);
++    if source_error != 0 { return source_error; }
++    var second: u64 = 0; var target: u64 = 0;
++    if hard || symlink {
++        let address, failure = host_path_source(rt, args[6 - (if symlink { 1 as i64 } else { 0 as i64 })], wide, array, width, args[7 - (if symlink { 1 as i64 } else { 0 as i64 })], args[8 - (if symlink { 1 as i64 } else { 0 as i64 })]);
++        if failure != 0 { return failure; } second = address;
++    } else if reading {
++        if args[7] > 18446744073709551615 / width || array && args[6] > 18446744073709551615 / width { return if array { 17 } else { 24 }; }
++        if array {
++            let address, failure = host_array_range(rt, args[5], width, true, args[6] * width, args[7] * width); if failure != 0 { return failure; } target = address;
++        } else {
++            let address, failure = host_memory(rt, args[5], wide, args[6], args[7] * width); if failure != 0 { return failure; } target = address;
++        }
++    }
++    var path: u8[4096] = [0; 4096]; var other: u8[4096] = [0; 4096];
++    let length, text_error = host_path_text(source, args[index + 2], width, args[index + 3] != 0, path); if text_error != 0 { return text_error; }
++    if length >= 4096 { return 20; }
++    var other_length: u64 = 0;
++    if hard || symlink {
++        let count = args[if symlink { 7 } else { 8 }]; let wtf = args[if symlink { 8 } else { 9 }];
++        let size, error = host_path_text(second, count, width, wtf != 0, other); if error != 0 { return error; }
++        if size >= 4096 { return 20; } other_length = size;
++        if size != 0 && other[0] == 47 { return 1; }
++    }
++    if !symlink && length != 0 && path[0] == 47 { return 1; }
++    if hard || symlink {
++        let target_fd = if symlink { ss_load64(directory + 8) } else { ss_load64(destination + 8) };
++        let parent, leaf, error = host_parent(target_fd, other, other_length); if error != 0 { return error; }
++        if parent < 0 { return host_path_error(parent); }
++        var result: i64 = 0;
++        if symlink { result = ss_host_symlink_at(path[..length as i64 + 1], parent as u64, other[(leaf as i64)..other_length as i64 + 1]); }
++        else {
++            let old_parent, old_leaf, failure = host_parent(ss_load64(directory + 8), path, length);
++            if failure != 0 || old_parent < 0 {
++                ss_host_syscall(3, parent as u64, 0, 0, 0, 0, 0); return if failure != 0 { failure } else { host_path_error(old_parent) };
++            }
++            result = ss_host_link_at(old_parent as u64, path[(old_leaf as i64)..length as i64 + 1], parent as u64, other[(leaf as i64)..other_length as i64 + 1]);
++            ss_host_syscall(3, old_parent as u64, 0, 0, 0, 0, 0);
++        }
++        ss_host_syscall(3, parent as u64, 0, 0, 0, 0, 0); return host_errno(result);
++    }
++    let parent, leaf, error = host_parent(ss_load64(directory + 8), path, length); if error != 0 { return error; }
++    if parent < 0 { return host_path_error(parent); }
++    let size = ss_host_readlink_at(parent as u64, path[(leaf as i64)..length as i64 + 1], other);
++    ss_host_syscall(3, parent as u64, 0, 0, 0, 0, 0);
++    if size < 0 { return host_errno(size); } if size >= 4096 { return 20; }
++    let pointer = ss_slice_pointer(other);
++    if allocating { return host_array_text(rt, binding, pointer, size as u64, width, target_wtf != 0, out); }
++    let units, failure = host_text_length(pointer, size as u64, width, target_wtf != 0); if failure != 0 { return failure; }
++    if reading && units > args[7] { return 17; }
++    if reading { host_text_copy(pointer, size as u64, target, width, target_wtf != 0); }
++    out[0] = units; return 0;
++}
+diff --git a/src/host_moonbit.goose b/src/host_moonbit.goose
+new file mode 100644
+index 000000000..cdc5040c3
+--- /dev/null
++++ b/src/host_moonbit.goose
+@@ -0,0 +1,544 @@
++import .host_paths;
++
++// Instance-owned externrefs. These records share the existing resource table,
++// but carry bit 63 so they cannot be confused with GC references or Facet fds.
++// kind: 3 UTF-16 string, 4 bytes, 5 string list, 6/7 builder, 8/9/10 reader.
++// record: kind, backing, length(bytes), capacity, source token, position, reserved.
++let MB_LIMIT: u64 = 268435456;
++fn mb_new(rt: Runtime&, kind: u64) -> u64 {
++    let slot = ss_load64(rt.host + 8);
++    if slot >= 65536 { rt.trap = 11; return 0; }
++    ss_store64(rt.host + 8, slot + 1);
++    ss_store64(ss_load64(rt.host) + slot * 64, kind);
++    return GC_INTERNAL_EXTERN | (ss_load64(rt.host + 16) << 16) | slot;
++}
++fn mb_object(rt: Runtime&, token: u64, kind: u64) -> u64 {
++    if token & GC_REFERENCE_TAGS != GC_INTERNAL_EXTERN { rt.trap = 11; return 0; }
++    let resource = host_resource(rt, token & 4294967295);
++    if resource == 0 { rt.trap = 11; return 0; }
++    if ss_load64(resource) != kind { rt.trap = 11; return 0; }
++    return resource;
++}
++fn mb_reserve(rt: Runtime&, record: u64, required: u64) -> bool {
++    if required > MB_LIMIT { rt.trap = 11; return false; }
++    let old = ss_load64(record + 24); if required <= old { return true; }
++    let capacity = min(MB_LIMIT, max(required, max(4096, old * 2)));
++    let total = ss_load64(rt.host + 136);
++    if capacity - old > MB_LIMIT - total { rt.trap = 11; return false; }
++    let base = ss_jit_alloc(capacity); if base == 0 { rt.trap = 11; return false; }
++    if old != 0 {
++        ss_move_bytes(base, ss_load64(record + 8), ss_load64(record + 16));
++        ss_jit_free(ss_load64(record + 8), old);
++    }
++    ss_store64(record + 8, base); ss_store64(record + 24, capacity); ss_store64(rt.host + 136, total + capacity - old); return true;
++}
++fn mb_dispose(rt: Runtime&, record: u64) {
++    let capacity = ss_load64(record + 24);
++    if capacity != 0 { ss_jit_free(ss_load64(record + 8), capacity); ss_store64(rt.host + 136, ss_load64(rt.host + 136) - capacity); }
++    ss_fill_bytes(record, 0, 64);
++}
++fn mb_append(rt: Runtime&, record: u64, value: u64, width: u64) {
++    let used = ss_load64(record + 16);
++    if !mb_reserve(rt, record, used + width) { return; }
++    host_text_unit(ss_load64(record + 8) + used, value, width);
++    ss_store64(record + 16, used + width);
++}
++fn mb_text(rt: Runtime&, bytes: const u8[:]) -> u64 {
++    let token = mb_new(rt, 3); if token == 0 { return 0; }
++    let record = mb_object(rt, token, 3);
++    // The source is host-owned UTF-8; reject rather than inventing text.
++    var copy: u8[>..] = []; for b in bytes { copy.push(b); }
++    let source = ss_slice_pointer(copy); let units, error = host_text_length(source, copy.len as u64, 2, false);
++    if error != 0 { rt.trap = 11; return 0; }
++    if !mb_reserve(rt, record, units * 2) { return 0; }
++    host_text_copy(source, copy.len as u64, ss_load64(record + 8), 2, false);
++    ss_store64(record + 16, units * 2); return token;
++}
++fn mb_text_pointer(rt: Runtime&, source: u64, length: u64) -> u64 {
++    let token = mb_new(rt, 3); if token == 0 { return 0; }
++    let record = mb_object(rt, token, 3); let units, error = host_text_length(source, length, 2, false);
++    if error != 0 { rt.trap = 11; return 0; }
++    if !mb_reserve(rt, record, units * 2) { return 0; }
++    host_text_copy(source, length, ss_load64(record + 8), 2, false);
++    ss_store64(record + 16, units * 2); return token;
++}
++fn mb_list(rt: Runtime&, entries: u64, count: u64, stride: u64) -> u64 {
++    let token = mb_new(rt, 5); if token == 0 { return 0; }
++    let record = mb_object(rt, token, 5);
++    if count > MB_LIMIT / 8 || !mb_reserve(rt, record, count * 8) { return 0; }
++    for i in count as i64 {
++        let entry = entries + i as u64 * stride;
++        mb_append(rt, record, mb_text_pointer(rt, ss_load64(entry), ss_load64(entry + 8)), 8);
++        if rt.trap != 0 { return 0; }
++    }
++    return token;
++}
++fn mb_path(rt: Runtime&, token: u64, path: u8[:]) -> u64, u64 {
++    let record = mb_object(rt, token, 3); if record == 0 { return 0, 12; }
++    return host_path_text(ss_load64(record + 8), ss_load64(record + 16) / 2, 2, false, path);
++}
++fn mb_equal(rt: Runtime&, token: u64, source: u64, length: u64) -> bool {
++    let record = mb_object(rt, token, 3); if record == 0 { return false; }
++    let units, error = host_text_length(source, length, 2, false);
++    if error != 0 || units * 2 != ss_load64(record + 16) { return false; }
++    var position: u64 = 0; var index: u64 = 0;
++    while position < length {
++        let cp, next, failure = host_decode(source, length, position, false); position = next;
++        if cp >= 65536 {
++            if ss_load16(ss_load64(record + 8) + index * 2) != (55296 | ((cp - 65536) >> 10)) { return false; }
++            index += 1;
++            if ss_load16(ss_load64(record + 8) + index * 2) != (56320 | ((cp - 65536) & 1023)) { return false; }
++        } else if ss_load16(ss_load64(record + 8) + index * 2) != cp { return false; }
++        index += 1;
++    }
++    return true;
++}
++// Select the longest configured guest mount prefix. All OS operations remain
++// relative to its preopened descriptor; openat2 prevents symlink/.. escapes.
++fn mb_root(rt: Runtime&, path: u8[:], length: u64, right: u64) -> u64, u64, u64 {
++    var selected: u64 = 0; var prefix: u64 = 0; var found = false;
++    for i in ss_load64(rt.host + 64) as i64 {
++        let entry = ss_load64(rt.host + 56) + i as u64 * 32;
++        let name = ss_load64(entry + 8); let size = ss_load64(entry + 16);
++        var matches = size <= length;
++        if size == 1 && ss_load8(name) == 46 { matches = length == 0 || path[0] != 47; }
++        else if size == 1 && ss_load8(name) == 47 { matches = length > 0 && path[0] == 47; }
++        else {
++            for j in size as i64 { if j >= length as i64 || path[j] != ss_load8(name + j as u64) { matches = false; break; } }
++            if size < length && path[size as i64] != 47 { matches = false; }
++        }
++        if matches && (!found || size > prefix) { selected = entry; prefix = size; found = true; }
++    }
++    if !found { return 0, 0, 37; }
++    let resource = host_fd(rt, ss_load64(selected));
++    if resource == 0 { return 0, 0, 4; }
++    if ss_load64(resource + 16) & right != right { return 0, 0, 37; }
++    let name = ss_load64(selected + 8);
++    var offset = if prefix == 1 && ss_load8(name) == 46 { 0 as u64 } else { prefix };
++    if offset < length && path[offset as i64] == 47 { offset += 1; }
++    if offset == length { path[0] = 46; path[1] = 0; offset = 0; }
++    return ss_load64(resource + 8), offset, 0;
++}
++fn mb_error(rt: Runtime&, error: u64) -> u64 {
++    ss_store64(rt.host + 96, error); return 4294967295;
++}
++recursive fn mb_directory(rt: Runtime&, fd: u64, list: u64, removing: bool, depth: u64) -> u64 {
++    if depth > 128 { return 26; }
++    var buffer: u8[65536] = [0; 65536];
++    while true {
++        let n = ss_host_syscall(217, fd, ss_slice_pointer(buffer), 65536, 0, 0, 0);
++        if n == -4 { continue; }
++        if n < 0 { return host_errno(n); } if n == 0 { return 0; }
++        var position: u64 = 0;
++        while position < n as u64 {
++            if n as u64 - position < 20 { return 3; }
++            let entry = ss_slice_pointer(buffer) + position; let size = ss_load16(entry + 16);
++            if size < 20 || size > n as u64 - position { return 3; }
++            var length: u64 = 0;
++            while 19 + length < size && ss_load8(entry + 19 + length) != 0 { length += 1; }
++            if 19 + length == size { return 3; }
++            let start = position as i64 + 19; let name = buffer[start..(start + length as i64 + 1)];
++            position += size;
++            if name == ".\x00" || name == "..\x00" { continue; }
++            if !removing {
++                let record = mb_object(rt, list, 5);
++                mb_append(rt, record, mb_text_pointer(rt, entry + 19, length), 8);
++                if rt.trap != 0 { return 6; }
++            } else {
++                // O_NOFOLLOW: directory recursion never follows a symlink.
++                let child = ss_host_open_beneath(fd, name, 720896, 0);
++                if child >= 0 {
++                    let error = mb_directory(rt, child as u64, 0, true, depth + 1);
++                    ss_host_syscall(3, child as u64, 0, 0, 0, 0, 0);
++                    if error != 0 { return error; }
++                    let removed = ss_host_unlink_at(fd, name, 512); if removed < 0 { return host_errno(removed); }
++                } else {
++                    if child != -20 && child != -40 { return host_path_error(child); }
++                    let removed = ss_host_unlink_at(fd, name, 0); if removed < 0 { return host_errno(removed); }
++                }
++            }
++        }
++    }
++    return 0;
++}
++fn mb_mkdirs(fd: u64, path: u8[:]) -> u64 {
++    var length: u64 = 0; while length < path.len as u64 && path[length as i64] != 0 { length += 1; }
++    if length == 0 { return 0; }
++    for i in (length + 1) as i64 {
++        if i == 0 || i != length as i64 && path[i] != 47 { continue; }
++        let saved = path[i]; path[i] = 0;
++        let parent, leaf, error = host_parent(fd, path, i as u64);
++        if error != 0 { path[i] = saved; return error; }
++        if parent < 0 { path[i] = saved; return host_path_error(parent); }
++        let result = ss_host_mkdir_at(parent as u64, path[(leaf as i64)..i + 1], 511);
++        ss_host_syscall(3, parent as u64, 0, 0, 0, 0, 0);
++        if result < 0 && result != -17 { path[i] = saved; return host_errno(result); }
++        let directory = ss_host_open_beneath(fd, path[..i + 1], 589824, 0);
++        path[i] = saved;
++        if directory < 0 { return host_path_error(directory); }
++        ss_host_syscall(3, directory as u64, 0, 0, 0, 0, 0);
++    }
++    return 0;
++}
++fn mb_file(rt: Runtime&, op: u64, token: u64, content: u64) -> u64 {
++    var path: u8[4096] = [0; 4096]; let length, text_error = mb_path(rt, token, path);
++    if text_error != 0 { return mb_error(rt, text_error); }
++    if length >= 4095 { return mb_error(rt, 20); }
++    // MoonBit's legacy CLI uses these two names for the already-granted
++    // standard streams. Never open a device pathname with ambient authority.
++    if op == 13 && (path[..length as i64] == "/dev/stdout" || path[..length as i64] == "/dev/stderr") {
++        let descriptor: u64 = if path[..length as i64] == "/dev/stdout" { 1 } else { 2 };
++        if host_stdio_mask & ((1 as u64) << descriptor) == 0 { return mb_error(rt, 4); }
++        let record = mb_object(rt, content, 4); if record == 0 { return mb_error(rt, 12); }
++        var position: u64 = 0; let size = ss_load64(record + 16);
++        while position < size {
++            let n = ss_host_syscall(1, descriptor, ss_load64(record + 8) + position, size - position, 0, 0, 0);
++            if n == -4 { continue; }
++            if n <= 0 { return mb_error(rt, if n == 0 { 3 as u64 } else { host_errno(n) }); }
++            position += n as u64;
++        }
++        return 0;
++    }
++    let right: u64 = if op == 13 { 65536 | 131072 | 2 } else if op == 3 { 131072 } else if op == 8 { 262144 | 8388608 } else if op == 20 { 262144 } else if op == 21 { 8388608 | 65536 } else { 1 | 16 | 65536 };
++    let fd, offset, error = mb_root(rt, path, length, right);
++    if error != 0 { return if op == 30 { 0 as u64 } else { mb_error(rt, error) }; }
++    let leaf = path[(offset as i64)..];
++    if op == 12 || op == 13 || op == 6 || op == 15 || op == 30 {
++        let opened = ss_host_open_beneath(fd, leaf, if op == 13 { 524865 } else if op == 12 { 524288 } else { 2621440 }, if op == 13 { 438 } else { 0 });
++        if opened < 0 { return if op == 30 { 0 as u64 } else { mb_error(rt, host_path_error(opened)) }; }
++        var result: u64 = 0;
++        if op == 12 {
++            let bytes = mb_new(rt, 4); let record = mb_object(rt, bytes, 4);
++            var done = false;
++            while !done && rt.trap == 0 {
++                let used = ss_load64(record + 16);
++                if !mb_reserve(rt, record, used + 65536) { break; }
++                let n = ss_host_syscall(0, opened as u64, ss_load64(record + 8) + used, 65536, 0, 0, 0);
++                if n == -4 { continue; }
++                if n < 0 { result = mb_error(rt, host_errno(n)); break; }
++                if n == 0 { done = true; } else { ss_store64(record + 16, used + n as u64); }
++            }
++            if done { ss_store64(rt.host + 104, bytes); }
++        } else if op == 13 {
++            let record = mb_object(rt, content, 4);
++            if record != 0 {
++                var used: u64 = 0; let size = ss_load64(record + 16);
++                while used < size {
++                    let n = ss_host_syscall(1, opened as u64, ss_load64(record + 8) + used, size - used, 0, 0, 0);
++                    if n == -4 { continue; }
++                    if n <= 0 { result = mb_error(rt, if n == 0 { 3 as u64 } else { host_errno(n) }); break; }
++                    used += n as u64;
++                }
++            }
++        } else {
++            var status: u64[18] = [0; 18]; let failure = ss_host_fstat(opened as u64, status);
++            if failure < 0 { result = mb_error(rt, host_errno(failure)); }
++            else { result = if op == 30 || op == 6 && status[3] & 61440 == 32768 || op == 15 && status[3] & 61440 == 16384 { 1 as u64 } else { 0 as u64 }; }
++        }
++        ss_host_syscall(3, opened as u64, 0, 0, 0, 0, 0); return result;
++    }
++    var failure: u64 = 0;
++    if op == 3 { failure = mb_mkdirs(fd, leaf); }
++    else if op == 21 {
++        let directory = ss_host_open_beneath(fd, leaf, 589824, 0);
++        if directory < 0 { failure = host_path_error(directory); }
++        else {
++            let list = mb_new(rt, 5); failure = mb_directory(rt, directory as u64, list, false, 0);
++            ss_host_syscall(3, directory as u64, 0, 0, 0, 0, 0);
++            if failure == 0 { ss_store64(rt.host + 112, list); }
++        }
++    } else if op == 8 || op == 20 {
++        // Resolve the parent securely and unlink the leaf itself.
++        let parent, name, error = host_parent(fd, leaf, if offset == length { 1 } else { length - offset });
++        failure = error;
++        if failure == 0 && parent < 0 { failure = host_path_error(parent); }
++        if failure == 0 {
++            if op == 8 {
++                let directory = ss_host_open_beneath(parent as u64, leaf[(name as i64)..], 720896, 0);
++                if directory < 0 { failure = host_path_error(directory); }
++                else { failure = mb_directory(rt, directory as u64, 0, true, 0); ss_host_syscall(3, directory as u64, 0, 0, 0, 0, 0); }
++            }
++            if failure == 0 { failure = host_errno(ss_host_unlink_at(parent as u64, leaf[(name as i64)..], if op == 8 { 512 } else { 0 })); }
++            ss_host_syscall(3, parent as u64, 0, 0, 0, 0, 0);
++        }
++    } else { rt.trap = 11; }
++    return if failure != 0 { mb_error(rt, failure) } else { 0 as u64 };
++}
++fn moonbit_dispatch(rt: Runtime&, binding: HostBinding&, values: u64) {
++    if binding.operation >= 4096 { mb_extra(rt, binding, values); return; }
++    let op = binding.operation - 3072; let a = host_arg(values, 0); let b = host_arg(values, 1);
++    var result: u64 = 0;
++    if op == 17 || op == 10 { result = mb_new(rt, if op == 17 { 6 } else { 7 }); }
++    else if op == 7 || op == 26 {
++        let record = mb_object(rt, a, if op == 7 { 6 } else { 7 });
++        if record != 0 { mb_append(rt, record, b, if op == 7 { 2 } else { 1 }); }
++    } else if op == 19 || op == 16 {
++        let source = mb_object(rt, a, if op == 19 { 6 } else { 7 });
++        if source != 0 {
++            result = mb_new(rt, if op == 19 { 3 } else { 4 });
++            let target = mb_object(rt, result, if op == 19 { 3 } else { 4 });
++            let size = ss_load64(source + 16);
++            if target != 0 && mb_reserve(rt, target, size) { ss_move_bytes(ss_load64(target + 8), ss_load64(source + 8), size); ss_store64(target + 16, size); }
++        }
++    } else if op == 18 || op == 5 || op == 0 {
++        let kind: u64 = if op == 18 { 3 } else if op == 5 { 4 } else { 5 };
++        let source = mb_object(rt, a, kind);
++        if source != 0 { result = mb_new(rt, kind + 5); let reader = mb_object(rt, result, kind + 5); if reader != 0 { ss_store64(reader + 32, a); } }
++    } else if op == 14 || op == 4 || op == 11 {
++        let kind: u64 = if op == 14 { 3 } else if op == 4 { 4 } else { 5 };
++        let reader = mb_object(rt, a, kind + 5);
++        if reader != 0 {
++            let source = mb_object(rt, ss_load64(reader + 32), kind);
++            if source != 0 {
++                let width: u64 = if kind == 3 { 2 } else if kind == 4 { 1 } else { 8 };
++                let position = ss_load64(reader + 40);
++                if position >= ss_load64(source + 16) { result = if kind == 5 { mb_text(rt, "ffi_end_of_/string_array") } else { 4294967295 as u64 }; }
++                else { result = host_guest_uint(ss_load64(source + 8) + position, width); ss_store64(reader + 40, position + width); }
++            }
++        }
++    } else if op == 2 || op == 23 || op == 25 {
++        let ignored = mb_object(rt, a, if op == 2 { 8 } else if op == 23 { 9 } else { 10 });
++    } else if op == 24 { result = mb_list(rt, ss_load64(rt.host + 24), ss_load64(rt.host + 32), 16); }
++    else if op == 22 { result = ss_load64(rt.host + 104); if result == 0 { result = mb_new(rt, 4); } }
++    else if op == 9 { result = ss_load64(rt.host + 112); if result == 0 { result = mb_new(rt, 5); } }
++    else if op == 1 { result = mb_text(rt, str("MoonBit host filesystem error ", ss_load64(rt.host + 96))); }
++    else if op == 27 || op == 29 {
++        if op == 27 { result = mb_text(rt, ""); }
++        var overridden = false; let overrides = ss_load64(rt.host + 120);
++        if overrides != 0 {
++            let record = mb_object(rt, overrides, 5); var position = ss_load64(record + 16);
++            while position >= 16 {
++                position -= 16; let entry = ss_load64(record + 8) + position;
++                let key = mb_object(rt, ss_load64(entry), 3); let requested = mb_object(rt, a, 3);
++                if key == 0 || requested == 0 { return; }
++                let size = ss_load64(key + 16); var equal = size == ss_load64(requested + 16);
++                for j in size as i64 { if ss_load8(ss_load64(key + 8) + j as u64) != ss_load8(ss_load64(requested + 8) + j as u64) { equal = false; break; } }
++                if equal { result = if op == 29 { 1 as u64 } else { ss_load64(entry + 8) }; overridden = true; break; }
++            }
++        }
++        for i in ss_load64(rt.host + 48) as i64 {
++            if overridden { break; }
++            let entry = ss_load64(rt.host + 40) + i as u64 * 32;
++            if mb_equal(rt, a, ss_load64(entry), ss_load64(entry + 8)) {
++                result = if op == 29 { 1 as u64 } else { mb_text_pointer(rt, ss_load64(entry + 16), ss_load64(entry + 24)) }; break;
++            }
++        }
++    } else if op == 31 { result = mb_text(rt, if ss_load64(rt.host + 64) == 0 { "" } else { "." }); }
++    else if op == 28 {
++        let key = mb_object(rt, a, 3); let value = mb_object(rt, b, 3);
++        if key != 0 && value != 0 {
++            var list = ss_load64(rt.host + 120); if list == 0 { list = mb_new(rt, 5); ss_store64(rt.host + 120, list); }
++            let record = mb_object(rt, list, 5); if record != 0 { mb_append(rt, record, a, 8); mb_append(rt, record, b, 8); }
++        }
++    }
++    else { result = mb_file(rt, op, a, b); }
++    if binding.results != 0 { ss_store64(values, result); ss_store64(values + 8, 0); }
++}
++
++fn mb_json_string(rt: Runtime&, record: u64, source: u64, length: u64) {
++    mb_append(rt, record, 34, 1);
++    let hex = "0123456789abcdef";
++    for i in length as i64 {
++        let b = ss_load8(source + i as u64);
++        if b == 34 || b == 92 { mb_append(rt, record, 92, 1); mb_append(rt, record, b, 1); }
++        else if b < 32 {
++            mb_append(rt, record, 92, 1); mb_append(rt, record, 117, 1);
++            mb_append(rt, record, 48, 1); mb_append(rt, record, 48, 1);
++            mb_append(rt, record, hex[(b >> 4) as i64] as u64, 1); mb_append(rt, record, hex[(b & 15) as i64] as u64, 1);
++        } else { mb_append(rt, record, b, 1); }
++        if rt.trap != 0 { return; }
++    }
++    mb_append(rt, record, 34, 1);
++}
++fn mb_extra(rt: Runtime&, binding: HostBinding&, values: u64) {
++    let op = binding.operation - 4096; let a = host_arg(values, 0) & 4294967295; let b = host_arg(values, 1) & 4294967295;
++    var result: u64 = 0;
++    if op == 0 {
++        var buffer: u8[4] = [0; 4];
++        let cp = if a > 1114111 || a >= 55296 && a <= 57343 { 65533 as u64 } else { a };
++        let n: u64 = if cp < 128 { 1 } else if cp < 2048 { 2 } else if cp < 65536 { 3 } else { 4 };
++        let pointer = ss_slice_pointer(buffer);
++        if n == 1 { buffer[0] = cp as u8; }
++        else {
++            buffer[0] = ((if n == 2 { 192 as u64 } else if n == 3 { 224 as u64 } else { 240 as u64 }) | (cp >> ((n - 1) * 6))) as u8;
++            for i in (n - 1) as i64 { buffer[i + 1] = (128 | ((cp >> ((n - 2 - i as u64) * 6)) & 63)) as u8; }
++        }
++        if host_stdio_mask & 2 == 0 { rt.trap = 11; return; }
++        var written: u64 = 0;
++        while written < n {
++            let count = ss_host_syscall(1, 1, pointer + written, n - written, 0, 0, 0);
++            if count == -4 { continue; } if count <= 0 { rt.trap = 11; return; } written += count as u64;
++        }
++    } else if op == 1 || op == 5 { rt.trap = 256 + (a & 255); }
++    else if op == 2 {
++        var time: u64[2] = [0; 2];
++        if ss_host_clock(0, time) != 0 { rt.trap = 11; return; }
++        result = time[0] * 1000 + time[1] / 1000000;
++    } else if op == 4 {
++        let token = ss_load64(rt.host + 128); if token == 0 { rt.trap = 11; return; }
++        let record = mb_object(rt, token, 4); if record == 0 { return; }
++        let length = ss_load64(record + 16); if b < length { rt.trap = 11; return; }
++        let pointer, error = host_memory(rt, 0, false, a, length); if error != 0 { rt.trap = 11; return; }
++        ss_move_bytes(pointer, ss_load64(record + 8), length); result = length; ss_store64(rt.host + 128, 0); mb_dispose(rt, record);
++    } else if op == 3 {
++        if ss_load64(rt.host + 128) != 0 { rt.trap = 11; return; }
++        let length = host_arg(values, 2) & 4294967295;
++        let pointer, error = host_memory(rt, 0, false, b, length); if error != 0 { rt.trap = 11; return; }
++        let token = mb_new(rt, 4); let record = mb_object(rt, token, 4); if record == 0 { return; }
++        mb_append(rt, record, 0, 1); var status: u64 = 0;
++        if a == 1 {
++            mb_append(rt, record, 91, 1);
++            for i in ss_load64(rt.host + 32) as i64 {
++                if i != 0 { mb_append(rt, record, 44, 1); }
++                let entry = ss_load64(rt.host + 24) + i as u64 * 16;
++                mb_json_string(rt, record, ss_load64(entry), ss_load64(entry + 8));
++            }
++            mb_append(rt, record, 93, 1);
++        } else if a == 2 {
++            let key = mb_text_pointer(rt, pointer, length); var found = false;
++            for i in ss_load64(rt.host + 48) as i64 {
++                let entry = ss_load64(rt.host + 40) + i as u64 * 32;
++                if mb_equal(rt, key, ss_load64(entry), ss_load64(entry + 8)) {
++                    let size = ss_load64(entry + 24);
++                    if mb_reserve(rt, record, size + 1) { ss_move_bytes(ss_load64(record + 8) + 1, ss_load64(entry + 16), size); ss_store64(record + 16, size + 1); }
++                    found = true; break;
++                }
++            }
++            if !found { status = 2; }
++        } else if a == 3 || a == 4 || a == 5 {
++            var path_pointer = pointer; var path_length = length; var content: u64 = 0;
++            if a == 5 {
++                if length < 4 { rt.trap = 11; return; }
++                path_length = ss_load32(pointer); if path_length > length - 4 { rt.trap = 11; return; }
++                path_pointer += 4; content = mb_new(rt, 4); let bytes = mb_object(rt, content, 4);
++                let size = length - 4 - path_length;
++                if bytes != 0 && mb_reserve(rt, bytes, size) { ss_move_bytes(ss_load64(bytes + 8), path_pointer + path_length, size); ss_store64(bytes + 16, size); }
++            }
++            let path = mb_text_pointer(rt, path_pointer, path_length);
++            let response = mb_file(rt, if a == 3 { 6 } else if a == 4 { 12 } else { 13 }, path, content);
++            if response == 4294967295 { status = 1; }
++            else if a == 3 { mb_append(rt, record, response, 1); }
++            else if a == 4 {
++                let bytes = mb_object(rt, ss_load64(rt.host + 104), 4);
++                if bytes != 0 {
++                    let size = ss_load64(bytes + 16);
++                    if mb_reserve(rt, record, size + 1) { ss_move_bytes(ss_load64(record + 8) + 1, ss_load64(bytes + 8), size); ss_store64(record + 16, size + 1); }
++                }
++            }
++        } else if a == 6 {
++            var path: u8[4096] = [0; 4096]; path[0] = 46;
++            let fd, offset, error = mb_root(rt, path, 1, 65536 | 8388608 | 16);
++            if error != 0 { status = 1; }
++            else {
++                let directory = ss_host_open_beneath(fd, ".\x00", 589824, 0);
++                if directory < 0 { status = 1; }
++                else {
++                    let list = mb_new(rt, 5);
++                    let failure = mb_candidates(rt, directory as u64, list, path, 0, 0);
++                    ss_host_syscall(3, directory as u64, 0, 0, 0, 0, 0);
++                    if failure != 0 { status = 1; }
++                    else {
++                        let strings = mb_object(rt, list, 5); mb_sort_strings(rt, strings);
++                        mb_append(rt, record, 91, 1);
++                        for i in (ss_load64(strings + 16) / 8) as i64 {
++                            if i != 0 { mb_append(rt, record, 44, 1); }
++                            let name = ss_load64(ss_load64(strings + 8) + i as u64 * 8);
++                            let units = mb_object(rt, name, 3); var text: u8[4096] = [0; 4096];
++                            let length, error = host_path_text(ss_load64(units + 8), ss_load64(units + 16) / 2, 2, false, text);
++                            if error != 0 || length >= 4096 { status = 1; break; }
++                            mb_json_string(rt, record, ss_slice_pointer(text), length);
++                        }
++                        mb_append(rt, record, 93, 1);
++                    }
++                }
++            }
++        } else if a == 7 || a == 8 {
++            let descriptor = a - 6;
++            if host_stdio_mask & ((1 as u64) << descriptor) == 0 { status = 1; }
++            else {
++                var written: u64 = 0;
++                while written < length {
++                    let n = ss_host_syscall(1, descriptor, pointer + written, length - written, 0, 0, 0);
++                    if n == -4 { continue; } if n <= 0 { status = 1; break; } written += n as u64;
++                }
++            }
++        } else { rt.trap = 11; return; }
++        ss_store8(ss_load64(record + 8), status); result = ss_load64(record + 16); ss_store64(rt.host + 128, token);
++    } else { rt.trap = 11; }
++    if binding.results != 0 { ss_store64(values, result); ss_store64(values + 8, 0); }
++}
++
++recursive fn mb_candidates(rt: Runtime&, fd: u64, list: u64, path: u8[:], prefix: u64, depth: u64) -> u64 {
++    if depth > 128 { return 26; }
++    var buffer: u8[65536] = [0; 65536];
++    while true {
++        let size = ss_host_syscall(217, fd, ss_slice_pointer(buffer), 65536, 0, 0, 0);
++        if size == -4 { continue; } if size < 0 { return host_errno(size); } if size == 0 { return 0; }
++        var position: u64 = 0;
++        while position < size as u64 {
++            if size as u64 - position < 20 { return 3; }
++            let entry = ss_slice_pointer(buffer) + position; let stride = ss_load16(entry + 16);
++            if stride < 20 || stride > size as u64 - position { return 3; }
++            var length: u64 = 0;
++            while 19 + length < stride && ss_load8(entry + 19 + length) != 0 { length += 1; }
++            if 19 + length == stride { return 3; }
++            position += stride;
++            if length == 1 && ss_load8(entry + 19) == 46 || length == 2 && ss_load16(entry + 19) == 11822 { continue; }
++            if prefix + length >= path.len as u64 - 1 { return 20; }
++            for i in length as i64 { path[prefix as i64 + i] = ss_load8(entry + 19 + i as u64) as u8; }
++            path[(prefix + length) as i64] = 0;
++            // Keep symlinks opaque during recursive enumeration.
++            let start = position - stride + 19;
++            let name = buffer[(start as i64)..(start as i64 + length as i64 + 1)];
++            let child = ss_host_open_beneath(fd, name, 720896, 0);
++            if child >= 0 {
++                path[(prefix + length) as i64] = 47;
++                let error = mb_candidates(rt, child as u64, list, path, prefix + length + 1, depth + 1);
++                ss_host_syscall(3, child as u64, 0, 0, 0, 0, 0);
++                if error != 0 { return error; }
++            } else if child == -20 {
++                let file = ss_host_open_beneath(fd, name, 2752512, 0);
++                if file < 0 { return host_path_error(file); }
++                var status: u64[18] = [0; 18]; let error = ss_host_fstat(file as u64, status);
++                ss_host_syscall(3, file as u64, 0, 0, 0, 0, 0);
++                if error < 0 { return host_errno(error); }
++                if status[3] & 61440 == 32768 {
++                    let record = mb_object(rt, list, 5);
++                    mb_append(rt, record, mb_text_pointer(rt, ss_slice_pointer(path), prefix + length), 8);
++                }
++            } else if child != -40 { return host_path_error(child); }
++            if rt.trap != 0 { return 6; }
++        }
++    }
++    return 0;
++}
++fn mb_string_less(rt: Runtime&, left: u64, right: u64) -> bool {
++    let a = mb_object(rt, left, 3); let b = mb_object(rt, right, 3);
++    let alen = ss_load64(a + 16) / 2; let blen = ss_load64(b + 16) / 2;
++    var ai: u64 = 0; var bi: u64 = 0;
++    while ai < alen && bi < blen {
++        let ac, an, ae = host_guest_codepoint(ss_load64(a + 8), alen, ai, 2, false);
++        let bc, bn, be = host_guest_codepoint(ss_load64(b + 8), blen, bi, 2, false);
++        if ac != bc { return ac < bc; } ai = an; bi = bn;
++    }
++    return ai == alen && bi != blen;
++}
++fn mb_heap_strings(rt: Runtime&, base: u64, count: u64, start: u64) {
++    var root = start;
++    while root * 2 + 1 < count {
++        var child = root * 2 + 1;
++        if child + 1 < count && mb_string_less(rt, ss_load64(base + child * 8), ss_load64(base + (child + 1) * 8)) { child += 1; }
++        let value = ss_load64(base + root * 8); let other = ss_load64(base + child * 8);
++        if !mb_string_less(rt, value, other) { return; }
++        ss_store64(base + root * 8, other); ss_store64(base + child * 8, value); root = child;
++    }
++}
++fn mb_sort_strings(rt: Runtime&, record: u64) {
++    let base = ss_load64(record + 8); let count = ss_load64(record + 16) / 8; var start = count / 2;
++    while start > 0 { start -= 1; mb_heap_strings(rt, base, count, start); }
++    var end = count;
++    while end > 1 {
++        end -= 1; let value = ss_load64(base); ss_store64(base, ss_load64(base + end * 8)); ss_store64(base + end * 8, value);
++        mb_heap_strings(rt, base, end, 0);
++    }
++}
+diff --git a/src/host_paths.goose b/src/host_paths.goose
+index 2b8379ee1..6a22bf36d 100644
+--- a/src/host_paths.goose
++++ b/src/host_paths.goose
+@@ -1,4 +1,5 @@
+ import .host_files;
++import .host_arrays;
+ extern fn ss_host_open_beneath(directory: u64, path: const u8[:], flags: u64, mode: u64) -> i64;
+ extern fn ss_host_mkdir_at(directory: u64, name: const u8[:], mode: u64) -> i64;
+ extern fn ss_host_unlink_at(directory: u64, name: const u8[:], flags: u64) -> i64;
+@@ -84,12 +85,12 @@ fn host_path_operation(rt: Runtime&, op: u64, args: const u64[:], out: u64[:]) -
+         if requested & authority != requested || flags & 1 != 0 && authority & 131072 == 0 || flags & 36 != 0 && requested & 2 == 0 { return 37; }
+     }
+     // Resolve every representation and range before decoding either pathname.
+-    let pointer, representation_error = host_memory(rt, args[1], wide, 0, 0); if representation_error != 0 { return representation_error; }
+-    if rename { let ignored, failure = host_memory(rt, args[6], wide, 0, 0); if failure != 0 { return failure; } }
++    let pointer, representation_error = host_path_source(rt, args[1], wide, variant % 3 == 2, width, 0, 0); if representation_error != 0 { return representation_error; }
++    if rename { let ignored, failure = host_path_source(rt, args[6], wide, variant % 3 == 2, width, 0, 0); if failure != 0 { return failure; } }
+     if args[3] > 18446744073709551615 / width || rename && args[8] > 18446744073709551615 / width { return 24; }
+-    let source, range_error = host_memory(rt, args[1], wide, args[2], args[3] * width); if range_error != 0 { return range_error; }
++    let source, range_error = host_path_source(rt, args[1], wide, variant % 3 == 2, width, args[2], args[3]); if range_error != 0 { return range_error; }
+     var second: u64 = 0;
+-    if rename { let address, failure = host_memory(rt, args[6], wide, args[7], args[8] * width); if failure != 0 { return failure; } second = address; }
++    if rename { let address, failure = host_path_source(rt, args[6], wide, variant % 3 == 2, width, args[7], args[8]); if failure != 0 { return failure; } second = address; }
+     var path: u8[4096] = [0; 4096]; var destination: u8[4096] = [0; 4096];
+     let length, text_error = host_path_text(source, args[3], width, args[4] != 0, path); if text_error != 0 { return text_error; }
+     var destination_length: u64 = 0;
+@@ -127,3 +128,9 @@ fn host_path_operation(rt: Runtime&, op: u64, args: const u64[:], out: u64[:]) -
+     }
+     ss_host_syscall(3, parent as u64, 0, 0, 0, 0, 0); return host_errno(result);
+ }
++
++fn host_path_source(rt: Runtime&, storage: u64, wide: bool, array: bool, width: u64, offset: u64, length: u64) -> u64, u64 {
++    if length > 18446744073709551615 / width || array && offset > 18446744073709551615 / width { return 0, if array { 17 } else { 24 }; }
++    if array { return host_array_range(rt, storage, width, false, offset * width, length * width); }
++    return host_memory(rt, storage, wide, offset, length * width);
++}
+diff --git a/src/jit.goose b/src/jit.goose
+index d04182f33..8b9ee84f6 100644
+--- a/src/jit.goose
++++ b/src/jit.goose
+@@ -17,6 +17,7 @@ var measure_execution: bool = false;
+ var execution_checks: bool = false;
+ // Internal collection/poisoning stress driver, never a guest optimization flag.
+ var jit_gc_stress: bool = false;
++var jit_guest_stack_bytes: u64 = 0;
+ fn tag_payload_map(store: Store&, r: Reader&, m: Module&, sig: Signature) -> u64 {
+     var runs: RootRun[>..] = []; var start: i64 = -1; var kind: u8 = 0;
+     for i in sig.params.len as i64 {
+@@ -177,22 +178,40 @@ fn install_runtime_import(r: Reader&, store: Store&, m: Module&, rt: Runtime&,
+                           type_ids: u32[>..]&, refs: u64[>..]&, host_imports: u32[>..]&, global_refs: u64[>..]&,
+                           table_refs: u64[>..]&, global_regions: u64[>..]&, table_regions: u64[>..]&,
+                           memory_refs: u64[>..]&, tag_refs: u64[>..]&) -> i64 {
+-    if module_name == "facet" || module_name == "wasi_snapshot_preview1" {
++    if module_name == "facet" || module_name == "wasi_snapshot_preview1" || module_name == "dewdrop.transform.workers" || module_name == "__moonbit_fs_unstable" || module_name == "spectest" || module_name == "__moonbit_sys_unstable" || module_name == "__moonbit_time_unstable" || module_name == "__starshine_cli_v1" {
++        let extra = module_name == "spectest" || module_name == "__moonbit_sys_unstable" || module_name == "__moonbit_time_unstable" || module_name == "__starshine_cli_v1";
++        let moonbit = module_name == "__moonbit_fs_unstable";
++        let workers = module_name == "dewdrop.transform.workers";
+         let wasi = module_name == "wasi_snapshot_preview1";
+         if t.kind != 0 { return 129; }
+         let sig = signature(r, m, t.index); var operation: i64 = -1;
+-        let imports = if wasi { wasi_imports[..] } else { facet_imports[..] };
++        let imports = if extra { extra_imports[..] } else if moonbit { moonbit_imports[..] } else if workers { worker_imports[..] } else if wasi { wasi_imports[..] } else { facet_imports[..] };
+         for j in imports.len {
+-            if imports[j].name == field && imports[j].implemented { operation = j; break; }
++            if (!extra || extra_modules[j] == module_name) && imports[j].name == field && imports[j].implemented { operation = j; break; }
+         }
+         if operation < 0 { return 128; }
+         let abi = imports[operation];
+         if sig.params.len != abi.params.len || sig.results.len != abi.results.len { return 129; }
+-        for j in abi.params.len { if m.value_types[sig.params.pos + j] != abi.params[j] { return 129; } }
+-        for j in abi.results.len { if m.value_types[sig.results.pos + j] != abi.results[j] { return 129; } }
++        for j in abi.params.len {
++            let actual = m.value_types[sig.params.pos + j]; let expected = abi.params[j];
++            if workers && expected == 0x6d {
++                if !host_byte_array_type(m, actual) { return 129; }
++            } else if expected == 0x6a {
++                if actual != ref_type(HEAP_ARRAY, false) { return 129; }
++            } else if actual != (if expected == 0x6f { ref_type(HEAP_EXTERN, true) } else { expected as u32 }) { return 129; }
++        }
++        for j in abi.results.len {
++            let actual = m.value_types[sig.results.pos + j]; let expected = abi.results[j];
++            if expected >= 1 && expected <= 3 {
++                if !is_ref_type(actual) || !ref_nullable(actual) || !heap_defined(ref_heap(actual)) { return 129; }
++                let index = heap_type_index(ref_heap(actual)); if index >= m.types.len { return 129; }
++                let array = m.types[index as i64];
++                if array.kind != 2 || array.fields.len != 1 || m.field_types[array.fields.pos] != (if expected == 1 { 0x78 as u32 } else if expected == 2 { 0x77 as u32 } else { 0x7f as u32 }) { return 129; }
++            } else if actual != (if expected == 0x6f { ref_type(HEAP_EXTERN, true) } else { expected as u32 }) { return 129; }
++        }
+         if rt.host == 0 {
+             if next_host_owner > 65535 { return 128; }
+-            rt.host = store_region(store, r, 96);
++            rt.host = store_region(store, r, 160);
+             ss_store64(rt.host, store_region(store, r, 4194304));
+             ss_store64(rt.host + 8, 1); ss_store64(rt.host + 16, next_host_owner); next_host_owner += 1;
+             if store.host_config != 0 {
+@@ -231,7 +250,7 @@ fn install_runtime_import(r: Reader&, store: Store&, m: Module&, rt: Runtime&,
+             }
+         }
+         host_imports.push(refs.len as u32);
+-        host_imports.push(operation as u32 + (if wasi { 1024 as u32 } else { 0 as u32 }));
++        host_imports.push(operation as u32 + (if extra { 4096 as u32 } else if moonbit { 3072 as u32 } else if workers { 2048 as u32 } else if wasi { 1024 as u32 } else { 0 as u32 }));
+         refs.push(0); m.funcs.push(t.index); m.imported_funcs += 1; return 0;
+     }
+     let provider = registered_instance(store, module_name); if provider < 0 { return 128; }
+@@ -290,7 +309,14 @@ fn finalize_host_imports(r: Reader&, store: Store&, m: Module&, rt: Runtime&,
+         let reference = base + i as u64 * 48;
+         ss_store64(reference + 8, ss_runtime_pointer(rt));
+         ss_store64(reference + 16, type_ids[type_index as i64]);
+-        ss_store64(reference + 24, operation);
++        var encoded_operation = operation as u64;
++        if operation < 261 && sig.results.len != 0 {
++            let result = m.value_types[sig.results.pos];
++            if is_ref_type(result) && heap_defined(ref_heap(result)) {
++                encoded_operation |= ((heap_type_index(ref_heap(result)) as u64 + 1) << 32);
++            }
++        }
++        ss_store64(reference + 24, encoded_operation);
+         ss_store64(reference + 32, sig.params.len); ss_store64(reference + 40, sig.results.len);
+         refs[ref_index as i64] = reference;
+     }
+@@ -803,9 +829,11 @@ fn instantiate<Register>(store: Store&, path: const u8[:], id: u32, stack_forwar
+     let initialization_start = phase_clock(store); store.compilation_ns += initialization_start - compilation_start; store.native_bytes += used;
+     let initialization_cpu_start = phase_cpu_clock(store); store.compilation_cpu_ns += phase_cpu_elapsed(compilation_cpu_start, initialization_cpu_start);
+     rt.functions = store_words(store, r, functions);
+-    rt.values_base = store_region(store, r, 4194304); rt.values_end = rt.values_base + 4194304;
+-    rt.locals_base = store_region(store, r, 4194304); rt.locals_end = rt.locals_base + 4194304;
+-    rt.native_base = store_region(store, r, 1048576); rt.native_end = rt.native_base + 1048576;
++    let value_stack_bytes = if jit_guest_stack_bytes == 0 { 4194304 as u64 } else { jit_guest_stack_bytes };
++    let native_stack_bytes = if jit_guest_stack_bytes == 0 { 1048576 as u64 } else { jit_guest_stack_bytes };
++    rt.values_base = store_region(store, r, value_stack_bytes); rt.values_end = rt.values_base + value_stack_bytes;
++    rt.locals_base = store_region(store, r, value_stack_bytes); rt.locals_end = rt.locals_base + value_stack_bytes;
++    rt.native_base = store_region(store, r, native_stack_bytes); rt.native_end = rt.native_base + native_stack_bytes;
+     for init in initializers {
+         if init.memory {
+             let descriptor = ss_load64(rt.memory_refs + (init.table as u64) * 8);
+diff --git a/src/jit_gc.goose b/src/jit_gc.goose
+index 9099f4121..4228aa864 100644
+--- a/src/jit_gc.goose
++++ b/src/jit_gc.goose
+@@ -1568,6 +1568,53 @@ export fn ss_gc_constant_op_native(owner: NativeWasmGcRuntime&, rt: Runtime&, op
+     return gc_impl_constant_op(owner, rt, op, base, count, imm);
+ }
+ 
++// Synchronous numeric-only host views. The host never invokes a guest callback
++// or a collector safepoint while a returned view is live. Allocating host calls
++// allocate first and resolve afterward. No view is retained in instance state.
++fn host_gc_array<T>(owner: T&, rt: Runtime&, raw: u64, expected: u64, writing: bool, out: u64[:]) -> u64 {
++    let c, adapter = wasm_gc_runtime_open(owner);
++    if !wasm_gc_ready(c, adapter) || raw == 0 || raw > 0xffffffff || raw & 1 != 0 { return 25; }
++    var id: u32 = 0; var base: u64 = 0; var length: u64 = 0;
++    if owner.native_heap != 0 {
++        if !ng_valid(owner.native_heap, raw) { return 25; }
++        base = rt.gc_heap_base + raw; id = (ss_load32(base) as u32) & 0xffffff; length = ss_load32(base + 4);
++    } else {
++        let index = gc_api_object(c, GcRef { adapter.domain, raw as u32 }, 1);
++        if index == 0 { c.error = GC_OK; wasm_gc_runtime_commit(owner, c); return 25; }
++        let handle = c.handles[index as i64]; id = handle.type_id;
++        base = ss_slice_pointer(c.bytes) + handle.byte_offset; length = ss_load32(base + 4);
++    }
++    if id == 0 || id >= c.type_count { return 25; }
++    let t = c.types[id as i64]; if t.kind != 1 { return 25; }
++    let f = c.fields[t.first as i64];
++    let kind: u32 = if expected == 1 { 0 } else if expected == 2 { 1 } else if expected == 4 { 2 } else if expected == 8 { 3 } else { 6 };
++    if expected == 255 {
++        if f.kind != 7 && f.kind != GC_WASM_ANY { return 25; }
++    } else if f.kind != kind || writing && f.flags & 1 == 0 { return 25; }
++    out[0] = base + t.payload_offset; out[1] = length; out[2] = t.stride; out[3] = f.kind;
++    return 0;
++}
++export fn ss_host_gc_array(owner: WasmGcRuntime&, rt: Runtime&, raw: u64, expected: u64, writing: bool, out: u64[:]) -> u64 {
++    return host_gc_array(owner, rt, raw, expected, writing, out);
++}
++export fn ss_host_gc_array_native(owner: NativeWasmGcRuntime&, rt: Runtime&, raw: u64, expected: u64, writing: bool, out: u64[:]) -> u64 {
++    return host_gc_array(owner, rt, raw, expected, writing, out);
++}
++fn host_gc_new<T>(owner: T&, rt: Runtime&, index: u64, length: u64) -> u64 {
++    if length > 0xffffffff || index >= rt.gc_type_count { return 0; }
++    let c, adapter = wasm_gc_runtime_open(owner); var result: u64 = 0;
++    if owner.native_heap != 0 {
++        let id = ss_load64(rt.gc_types + index * 8); result = gc2_allocate(owner, rt, rt, id, length);
++    } else { result = runtime_new_array(c, adapter, rt, rt, index as u32, length as u32, 0, 0, true).word; }
++    wasm_gc_runtime_commit(owner, c); return result;
++}
++export fn ss_host_gc_new(owner: WasmGcRuntime&, rt: Runtime&, index: u64, length: u64) -> u64 {
++    return host_gc_new(owner, rt, index, length);
++}
++export fn ss_host_gc_new_native(owner: NativeWasmGcRuntime&, rt: Runtime&, index: u64, length: u64) -> u64 {
++    return host_gc_new(owner, rt, index, length);
++}
++
+ export fn ss_gc_engine_close(owner: WasmGcRuntime&) -> bool {
+     return gc_impl_engine_close(owner);
+ }
+diff --git a/src/moonbit_imports.goose b/src/moonbit_imports.goose
+new file mode 100644
+index 000000000..a3d61685f
+--- /dev/null
++++ b/src/moonbit_imports.goose
+@@ -0,0 +1,45 @@
++import .facet_imports;
++let moonbit_imports: FacetImport[32] = [
++    FacetImport { "begin_read_string_array", "\x6f", "\x6f", true },
++    FacetImport { "get_error_message", "", "\x6f", true },
++    FacetImport { "finish_read_string", "\x6f", "", true },
++    FacetImport { "create_dir_new", "\x6f", "\x7f", true },
++    FacetImport { "byte_array_read_byte", "\x6f", "\x7f", true },
++    FacetImport { "begin_read_byte_array", "\x6f", "\x6f", true },
++    FacetImport { "is_file_new", "\x6f", "\x7f", true },
++    FacetImport { "string_append_char", "\x6f\x7f", "", true },
++    FacetImport { "remove_dir_new", "\x6f", "\x7f", true },
++    FacetImport { "get_dir_files", "", "\x6f", true },
++    FacetImport { "begin_create_byte_array", "", "\x6f", true },
++    FacetImport { "string_array_read_string", "\x6f", "\x6f", true },
++    FacetImport { "read_file_to_bytes_new", "\x6f", "\x7f", true },
++    FacetImport { "write_bytes_to_file_new", "\x6f\x6f", "\x7f", true },
++    FacetImport { "string_read_char", "\x6f", "\x7f", true },
++    FacetImport { "is_dir_new", "\x6f", "\x7f", true },
++    FacetImport { "finish_create_byte_array", "\x6f", "\x6f", true },
++    FacetImport { "begin_create_string", "", "\x6f", true },
++    FacetImport { "begin_read_string", "\x6f", "\x6f", true },
++    FacetImport { "finish_create_string", "\x6f", "\x6f", true },
++    FacetImport { "remove_file_new", "\x6f", "\x7f", true },
++    FacetImport { "read_dir_new", "\x6f", "\x7f", true },
++    FacetImport { "get_file_content", "", "\x6f", true },
++    FacetImport { "finish_read_byte_array", "\x6f", "", true },
++    FacetImport { "args_get", "", "\x6f", true },
++    FacetImport { "finish_read_string_array", "\x6f", "", true },
++    FacetImport { "byte_array_append_byte", "\x6f\x7f", "", true },
++    FacetImport { "get_env_var", "\x6f", "\x6f", true },
++    FacetImport { "set_env_var", "\x6f\x6f", "", true },
++    FacetImport { "get_env_var_exists", "\x6f", "\x7f", true },
++    FacetImport { "path_exists", "\x6f", "\x7f", true },
++    FacetImport { "current_dir", "", "\x6f", true },
++];
++
++let extra_modules: const u8[:][6] = ["spectest", "__moonbit_sys_unstable", "__moonbit_time_unstable", "__starshine_cli_v1", "__starshine_cli_v1", "__starshine_cli_v1"];
++let extra_imports: FacetImport[6] = [
++    FacetImport { "print_char", "\x7f", "", true },
++    FacetImport { "exit", "\x7f", "", true },
++    FacetImport { "now", "", "\x7e", true },
++    FacetImport { "request", "\x7f\x7f\x7f", "\x7f", true },
++    FacetImport { "response", "\x7f\x7f", "\x7f", true },
++    FacetImport { "exit", "\x7f", "", true },
++];
+diff --git a/src/worker_imports.goose b/src/worker_imports.goose
+new file mode 100644
+index 000000000..87c1f28eb
+--- /dev/null
++++ b/src/worker_imports.goose
+@@ -0,0 +1,25 @@
++import .facet_imports;
++
++// Dewdrop tools/wago-transform-host/workers.go: disabled pools advertise zero
++// capacity. 0x6d below accepts the primary host eqref ABI or a concrete non-null packed-byte array, checked
++// structurally at registration rather than accepting an arbitrary reference.
++let worker_imports: FacetImport[5] = [
++    FacetImport { "capacity", "", "\x7f", true },
++    FacetImport { "run_batch", "\x6d\x6d", "\x7f", true },
++    FacetImport { "input_size", "", "\x7f", true },
++    FacetImport { "input", "\x6d", "", true },
++    FacetImport { "output", "\x6d", "", true },
++];
++
++fn host_byte_array_type(m: Module&, t: u32) -> bool {
++    // Dewdrop optimizer output widens these imports to nullable eqref.
++    // The primary worker host validates the dynamic byte array on channel use.
++    // Disabled channels trap before touching their arguments.
++    if t == ref_type(HEAP_EQ, true) { return true; }
++    if !is_ref_type(t) || ref_nullable(t) || !heap_defined(ref_heap(t)) { return false; }
++    let index = heap_type_index(ref_heap(t));
++    if index >= m.types.len { return false; }
++    let array = m.types[index as i64];
++    return array.kind == 2 && array.fields.len == 1 &&
++        m.field_types[array.fields.pos] == 0x78 && m.field_mut[array.fields.pos] != 0;
++}
+diff --git a/tests/test_host.py b/tests/test_host.py
+index 494098bf3..cfe2207dd 100644
+--- a/tests/test_host.py
++++ b/tests/test_host.py
+@@ -16,6 +16,10 @@ def encode(root, label, wat):
+     return binary
+ 
+ 
++def wat_type(t):
++    return t if isinstance(t,str) else '('+' '.join(t)+')'
++
++
+ def cases():
+     yield 'abi', '(module (import "facet" "abi_version" (func $f (result i32))) (export "f" (func $f)))', [], '1\n'
+     yield 'scalar-before-handle', '''(module (import "facet" "fd_set_flags" (func $f (param i32 i32) (result i32)))
+@@ -89,9 +93,10 @@ def main():
+         for entry in inventory['imports']:
+             if not entry['implemented']:continue
+             params, results = entry['params'],entry['results']
+-            types.update(params+results)
++            types.update(t for t in params+results if isinstance(t,str))
++            params = [wat_type(t) for t in params]; results = [wat_type(t) for t in results]
+             declarations.append(f'(import "facet" "{entry["name"]}" (func '+(' (param '+' '.join(params)+')' if params else '')+(' (result '+' '.join(results)+')' if results else '')+'))')
+-        catalog = encode(root,'all-imports','(module '+''.join(declarations)+'(func (export "f") (result i32) (i32.const 42)))')
++        catalog = encode(root,'all-imports','(module (type $facet_string_i8 (array (mut i8))) (type $facet_string_i16 (array (mut i16))) (type $facet_string_i32 (array (mut i32))) '+''.join(declarations)+'(func (export "f") (result i32) (i32.const 42)))')
+         provider = encode(root,'provider','''(module (import "facet" "handle_close" (func $f (param i32) (result i32))) (export "probe" (func $f)))''')
+         isolation = encode(root,'isolation','''(module
+           (import "env" "probe" (func $probe (param i32) (result i32)))
+diff --git a/tests/test_moonbit_host.py b/tests/test_moonbit_host.py
+new file mode 100644
+index 000000000..6c530790f
+--- /dev/null
++++ b/tests/test_moonbit_host.py
+@@ -0,0 +1,111 @@
++#!/usr/bin/env python3
++"""MoonBit legacy ABI, Facet GC buffers, and disabled worker regressions."""
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++
++
++def imp(name, params='', results='', module='__moonbit_fs_unstable', alias=None):
++    return f'(import "{module}" "{name}" (func ${alias or name} '+(
++        f'(param {params})' if params else '')+(f'(result {results})' if results else '')+'))'
++
++
++STRINGS = ''.join(imp(n, p, r) for n,p,r in [
++    ('begin_create_string','','externref'),('string_append_char','externref i32',''),
++    ('finish_create_string','externref','externref'),('begin_read_string','externref','externref'),
++    ('string_read_char','externref','i32')])
++
++
++def text(value):
++    units = value.encode('utf-16-le',errors='surrogatepass')
++    return '(local.set $s (call $begin_create_string))'+''.join(
++        f'(call $string_append_char (local.get $s) (i32.const {int.from_bytes(units[i:i+2],"little")}))'
++        for i in range(0,len(units),2))+'(call $finish_create_string (local.get $s))'
++
++
++def cases():
++    yield 'args-utf16', STRINGS+imp('args_get','','externref')+imp('begin_read_string_array','externref','externref')+imp('string_array_read_string','externref','externref')+'''
++      (func (export "f") (result i32 i32 i32) (local $s externref)
++       (local.set $s (call $begin_read_string (call $string_array_read_string (call $begin_read_string_array (call $args_get)))))
++       (call $string_read_char (local.get $s)) (call $string_read_char (local.get $s)) (call $string_read_char (local.get $s))))''', ['--guest-arg=😀'], '55357\n56832\n-1\n'
++    yield 'file-read', STRINGS+imp('read_file_to_bytes_new','externref','i32')+imp('get_file_content','','externref')+imp('begin_read_byte_array','externref','externref')+imp('byte_array_read_byte','externref','i32')+'''
++      (func (export "f") (result i32 i32 i32 i32) (local $s externref)
++      '''+text('input')+'''(call $read_file_to_bytes_new)
++      (local.set $s (call $begin_read_byte_array (call $get_file_content)))
++      (call $byte_array_read_byte (local.get $s)) (call $byte_array_read_byte (local.get $s)) (call $byte_array_read_byte (local.get $s))))''', ['--dir=.={root}'], '0\n65\n255\n-1\n'
++    for path in ('../outside', 'escape', '/etc/passwd'):
++        yield 'deny-'+path.replace('/','_'), STRINGS+imp('read_file_to_bytes_new','externref','i32')+'''
++         (func (export "f") (result i32) (local $s externref)'''+text(path)+'''(call $read_file_to_bytes_new)))''', ['--dir=.={root}'], '-1\n'
++    yield 'env-isolated', STRINGS+imp('get_env_var','externref','externref')+imp('set_env_var','externref externref')+'''
++      (func (export "f") (result i32) (local $s externref) (local $k externref)
++      '''+text('KEY')+'''(local.set $k) (local.get $k)'''+text('é')+'''(call $set_env_var)
++      (call $string_read_char (call $begin_read_string (call $get_env_var (local.get $k))))))''', [], '233\n'
++    yield 'worker-eqref', imp('run_batch','eqref eqref','i32','dewdrop.transform.workers')+imp('capacity','','i32','dewdrop.transform.workers')+'(export "f" (func $capacity)))', [], '0\n'
++    yield 'worker-disabled', imp('capacity','','i32','dewdrop.transform.workers')+'(export "f" (func $capacity)))', [], '0\n'
++    yield 'facet-allocate-concrete', '''(type $a (array (mut i16)))'''+imp('args_read_array_i16','i32 i32','(ref null $a) i32','facet')+'''
++      (func (export "f") (result i32 i32 i32) (local $a (ref null $a)) (local $e i32)
++        (call $args_read_array_i16 (i32.const 0) (i32.const 0)) (local.set $e) (local.set $a)
++        (local.get $e) (array.len (local.get $a)) (array.get_u $a (local.get $a) (i32.const 1))))''', ['--guest-arg=😀'], '0\n2\n56832\n'
++    yield 'facet-copy-partial', '''(type $a (array (mut i32)))'''+imp('args_read_into_array_i32','i32 i32 (ref array) i32 i32','i64 i32','facet')+'''
++      (func (export "f") (result i64 i32 i32 i32) (local $a (ref $a))
++        (local.set $a (array.new $a (i32.const 77) (i32.const 3)))
++        (call $args_read_into_array_i32 (i32.const 0) (i32.const 0) (local.get $a) (i32.const 1) (i32.const 1))
++        (array.get $a (local.get $a) (i32.const 0)) (array.get $a (local.get $a) (i32.const 1))))''', ['--guest-arg=Z'], '1\n0\n77\n90\n'
++    yield 'facet-type', '''(type $a (array (mut i32)))'''+imp('args_read_into_array_i16','i32 i32 (ref array) i32 i32','i64 i32','facet')+'''
++      (func (export "f") (result i64 i32)
++        (call $args_read_into_array_i16 (i32.const 0) (i32.const 0) (array.new_default $a (i32.const 1)) (i32.const 0) (i32.const 1))))''', ['--guest-arg=Z'], '0\n25\n'
++    yield 'opaque-is-not-fd', STRINGS+imp('args_get','','externref')+imp('handle_close','i32','i32','facet')+imp('begin_read_string_array','externref','externref')+imp('string_array_read_string','externref','externref')+'''
++      (func (export "f") (result i32 i32) (local $s externref)
++      (local.set $s (call $args_get)) (call $handle_close (i32.const 65537))
++      (call $string_read_char (call $begin_read_string (call $string_array_read_string (call $begin_read_string_array (local.get $s)))))))''', ['--guest-arg=X'], '4\n88\n'
++    yield 'bulk-args', imp('request','i32 i32 i32','i32','__starshine_cli_v1')+imp('response','i32 i32','i32','__starshine_cli_v1')+'''
++      (memory 1) (func (export "f") (result i32 i32 i32 i32)
++      (call $request (i32.const 1) (i32.const 0) (i32.const 0))
++      (call $response (i32.const 0) (i32.const 6))
++      (i32.load8_u (i32.const 0)) (i32.load8_u (i32.const 3))))''', ['--guest-arg=x'], '6\n6\n0\n120\n'
++    yield 'bulk-file', imp('request','i32 i32 i32','i32','__starshine_cli_v1')+imp('response','i32 i32','i32','__starshine_cli_v1')+'''
++      (memory 1) (data (i32.const 100) "input") (func (export "f") (result i32 i32 i32 i32)
++      (call $request (i32.const 4) (i32.const 100) (i32.const 5))
++      (call $response (i32.const 0) (i32.const 3))
++      (i32.load8_u (i32.const 1)) (i32.load8_u (i32.const 2))))''', ['--dir=.={root}'], '3\n3\n65\n255\n'
++    yield 'bulk-candidates', imp('request','i32 i32 i32','i32','__starshine_cli_v1')+imp('response','i32 i32','i32','__starshine_cli_v1')+'''
++      (memory 1) (func (export "f") (result i32 i32 i32 i32)
++      (call $request (i32.const 6) (i32.const 0) (i32.const 0))
++      (call $response (i32.const 0) (i32.const 100))
++      (i32.load8_u (i32.const 0)) (i32.load8_u (i32.const 1))))''', ['--dir=.={root}'], '10\n10\n0\n91\n'
++    yield 'facet-immutable', '''(type $a (array i16))'''+imp('args_read_into_array_i16','i32 i32 (ref array) i32 i32','i64 i32','facet')+'''
++      (func (export "f") (result i64 i32)
++        (call $args_read_into_array_i16 (i32.const 0) (i32.const 0) (array.new_default $a (i32.const 1)) (i32.const 0) (i32.const 1))))''', ['--guest-arg=Z'], '0\n25\n'
++    yield 'facet-immutable-allocation', '''(type $a (array i8))'''+imp('args_read_array_i8','i32 i32','(ref null $a) i32','facet')+'''
++      (func (export "f") (result i32 i32) (local $a (ref null $a)) (local $e i32)
++        (call $args_read_array_i8 (i32.const 0) (i32.const 0)) (local.set $e) (local.set $a)
++        (local.get $e) (array.get_u $a (local.get $a) (i32.const 0))))''', ['--guest-arg=Z'], '0\n90\n'
++    yield 'network-no-authority', imp('socket_open','i32 i32 i32 i32','i32 i32','facet')+'''
++      (func (export "f") (result i32 i32)
++      (call $socket_open (i32.const 1) (i32.const 1) (i32.const 0) (i32.const 0))))''', [], '0\n37\n'
++
++
++def main():
++    runners = [str(Path(p).resolve()) for p in sys.argv[1:]]
++    assert runners
++    with tempfile.TemporaryDirectory(prefix='slipstream-moonbit-') as temporary:
++        root = Path(temporary); cap = root/'cap'; cap.mkdir()
++        (cap/'input').write_bytes(b'A\xff'); (root/'outside').write_bytes(b'secret')
++        (cap/'escape').symlink_to('../outside')
++        fixtures = []
++        for label, body, options, expected in cases():
++            wat = root/(label+'.wat'); wasm = wat.with_suffix('.wasm')
++            wat.write_text('(module '+body)
++            subprocess.run(['wasm-tools','parse',str(wat),'-o',str(wasm)],check=True,capture_output=True)
++            fixtures.append((label,wasm,[p.format(root=cap) for p in options],expected))
++        for runner in runners:
++            for label, wasm, options, expected in fixtures:
++                for mode in ([],['--region-scalar=off']):
++                    result = subprocess.run([runner,str(wasm),'--invoke=f',*mode,*options],capture_output=True,text=True,timeout=45)
++                    assert result.returncode == 0 and result.stdout == expected, (label,mode,result.returncode,result.stdout,result.stderr)
++            print(f'PASS {Path(runner).name}: {len(fixtures)} MoonBit/Facet cases in both native modes')
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/tools/facet_conformance.py b/tools/facet_conformance.py
+index c94025c04..854b6a08d 100644
+--- a/tools/facet_conformance.py
++++ b/tools/facet_conformance.py
+@@ -40,7 +40,12 @@ def main():
+             setup = json.loads(manifest.read_text()) if manifest.exists() else None
+             configured = setup and len(setup['operations']) == 2 and setup['operations'][0]['type'] == 'run' and set(setup['operations'][0]) <= {'type','args','env','root','preopens'} and setup['operations'][1] == {'type':'wait','exit_code':0}
+             cli_case = bool(args.cli_runner) and test['id'] in ('core/proc-exit-nonzero','core/stdio-output')
+-            if missing or setup and not configured and not cli_case or test['kind'] == 'harness' and not configured and not cli_case or test['id'] == 'adversarial/instance-handle-isolation':
++            if test['id'].startswith('network/'):
++                # The Slipstream embedding API has no network grants. Import
++                # availability must not silently grant ambient socket/DNS access.
++                result = dict(id=test['id'], status='unavailable', missing_imports=missing,
++                              reason='network authority is not granted by this host configuration')
++            elif missing or setup and not configured and not cli_case or test['kind'] == 'harness' and not configured and not cli_case or test['id'] == 'adversarial/instance-handle-isolation':
+                 result = dict(id=test['id'],status='unavailable',missing_imports=missing,
+                               reason='imports' if missing else 'embedding manifest/harness')
+             else:
+diff --git a/tools/gen_host_catalog.py b/tools/gen_host_catalog.py
+index 7bfc5b5ba..9b675fd52 100644
+--- a/tools/gen_host_catalog.py
++++ b/tools/gen_host_catalog.py
+@@ -38,7 +38,7 @@ def main():
+     implemented = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,23,24,25,26,27,28,29,30,31,32,
+                    39,40,41,42,43,44,45,46,52,53,54,55,56,57,58,59,60,61,62,69,70,71,72,101,102,103,104,
+                    73,74,80,81,87,88,94,95,115,116,117,118,119,253,254,255,256,257,258,259,260}
+-    implemented.update(i for i in range(120,165) if (i-120)%3 != 2)
++    implemented.update(range(261))
+     lines = ['// Generated from the pinned Facet ABI. Unavailable imports are not registered.',
+              'struct FacetImport { name: const u8[:], params: const u8[:], results: const u8[:], implemented: bool }',
+              'let facet_imports: FacetImport[261] = [']
+@@ -52,9 +52,15 @@ def main():
+             if isinstance(field,list) and field[0] in ('param','result'):
+                 (params if field[0]=='param' else results).extend(t for t in field[1:] if not isinstance(t,str) or not t.startswith('$'))
+         index = len(entries)
+-        scalar = all(isinstance(t,str) and t in types for t in params+results)
+-        available = index in implemented and scalar
+-        encode = lambda values: '"'+''.join('\\x%02x'%types[t] for t in values)+'"' if scalar else '""'
++        def code(t):
++            if isinstance(t, str): return types[t]
++            if t == ['ref', 'array']: return 0x6a
++            if t[:2] == ['ref', 'null'] and t[2].startswith('$facet_string_'):
++                return {'i8':1,'i16':2,'i32':3}[t[2].removeprefix('$facet_string_')]
++            raise ValueError(t)
++        scalar = True
++        available = index in implemented
++        encode = lambda values: '"'+''.join('\\x%02x'%code(t) for t in values)+'"' if scalar else '""'
+         lines.append(f'    FacetImport {{ {json.dumps(name)}, {encode(params)}, {encode(results)}, {str(available).lower()} }},')
+         entries.append(dict(id=index,name=name,params=params,results=results,implemented=available))
+     assert len(entries)==261
+diff --git a/tools/moonbit_host_verify.py b/tools/moonbit_host_verify.py
+new file mode 100644
+index 000000000..6979d8af3
+--- /dev/null
++++ b/tools/moonbit_host_verify.py
+@@ -0,0 +1,74 @@
++#!/usr/bin/env python3
++"""Qualify exact real-program loads; reject process-success/link-failure records."""
++import argparse
++import hashlib
++import json
++from pathlib import Path
++import subprocess
++import tempfile
++
++from wasm_binary import name, uleb
++
++
++def loaded(record):
++    lines = record['stdout'].splitlines()
++    return (record['returncode'] == 0 and not record['stderr']
++            and lines.count('loaded 1') == 1
++            and not any(line.startswith(('link ', 'trap ')) for line in lines))
++
++
++def run(runner, action, options):
++    command = [str(runner), *options, str(action)]
++    p = subprocess.run(command, capture_output=True, text=True, timeout=180)
++    return dict(command=command, returncode=p.returncode, stdout=p.stdout, stderr=p.stderr)
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--runner', type=Path, required=True)
++    parser.add_argument('--inventory', type=Path, required=True)
++    parser.add_argument('--output', type=Path, required=True)
++    args = parser.parse_args()
++    runner = args.runner.resolve(); args.output.mkdir(parents=True, exist_ok=True)
++    inventory = json.loads(args.inventory.read_text())
++    entries = inventory['workloads'] if isinstance(inventory,dict) else inventory
++    with tempfile.TemporaryDirectory(prefix='moonbit-load-') as temporary:
++        root = Path(temporary)
++        empty = root/'empty.wasm'; empty.write_bytes(b'\0asm\1\0\0\0')
++        wat = root/'missing.wat'; wat.write_text('(module (import "absent" "required" (func)))')
++        missing = wat.with_suffix('.wasm')
++        subprocess.run(['wasm-tools','parse',str(wat),'-o',str(missing)],check=True)
++        controls = []
++        for module in (empty,missing):
++            action = root/'control.actions'; action.write_bytes(b'\x02'+uleb(1)+name(str(module)))
++            controls.append(run(runner,action,[]))
++        good,bad = controls
++        assert loaded(good), good
++        assert bad['returncode'] == 0 and 'link 128' in bad['stdout'] and not loaded(bad), bad
++        for mutation in (dict(good,stdout=good['stdout']+'link 128\n'),
++                         dict(good,stdout=good['stdout']+'loaded 1\n'),
++                         dict(good,stdout=''),dict(good,stderr='failure'),dict(good,returncode=1)):
++            assert not loaded(mutation)
++        (args.output/'producer-controls.json').write_text(json.dumps(dict(records=controls,corruptions_rejected=5),indent=2)+'\n')
++        records = []
++        for entry in entries:
++            module = Path(entry['module']['origin'])
++            digest = hashlib.file_digest(module.open('rb'),'sha256').hexdigest()
++            assert digest == entry['module']['sha256'], (module,digest)
++            action = root/'load.actions'
++            arguments = [str(module), '--help']
++            action.write_bytes(b'\x05'+uleb(len(arguments))+b''.join(name(a) for a in arguments)
++                               +uleb(0)+uleb(1)+name(str(root))+name('/')+uleb(16711807)
++                               +b'\x02'+uleb(1)+name(str(module)))
++            for mode in ('default','off'):
++                record = run(runner,action,[] if mode == 'default' else ['--region-scalar=off'])
++                record.update(workload=entry['workload'],module_sha256=digest,mode=mode)
++                records.append(record)
++                (args.output/'loads.json').write_text(json.dumps(records,indent=2)+'\n')
++                print(entry['workload'],mode,'PASS' if loaded(record) else 'FAIL',flush=True)
++                assert loaded(record), record
++        assert len(records) == 24
++
++
++if __name__ == '__main__':
++    main()

@@ -1,0 +1,123 @@
+commit 7822fc8c42b0dcadd9605d990e6c060440fbe9ad
+Author:     Joshua Tenner <tenner.joshua@gmail.com>
+AuthorDate: Fri Oct 30 20:22:05 2026 +0000
+Commit:     Joshua Tenner <tenner.joshua@gmail.com>
+CommitDate: Sun Nov 1 21:05:00 2026 +0000
+
+    fix(host): close collector before guest process exit
+
+diff --git a/src/jit.goose b/src/jit.goose
+index 2c190d23c..d04182f33 100644
+--- a/src/jit.goose
++++ b/src/jit.goose
+@@ -1062,14 +1062,17 @@ fn store_loop<Register>(store: Store&, r: Reader&) {
+         } else { store_action(store, r, kind); }
+     }
+ }
+-fn cli_invoke(store: Store&, target: const u8[:], explicit: bool, arguments: const i64[:], raw: bool) {
++fn proc_exit_status(code: i64) -> i64 {
++    return if code >= 256 && code <= 511 { code - 256 } else { -1 };
++}
++fn cli_invoke(store: Store&, target: const u8[:], explicit: bool, arguments: const i64[:], raw: bool) -> i64 {
+     let instance = store.instances.len - 1;
+     let found = export_index(store, instance, target);
+     if found < 0 {
+         if explicit || !store.instances[instance].has_start { write_stderr("run: unknown function export\n"); exit(1); }
+         // A start-only module is permitted; absence of both is checked below.
+         if arguments.len != 0 { write_stderr("run: start-only module takes no arguments\n"); exit(1); }
+-        return;
++        return -1;
+     }
+     let e = store.exports[found]; if e.kind != 0 { write_stderr("run: requested export is not a function\n"); exit(1); }
+     let sig = store.types[e.type_id as i64];
+@@ -1084,10 +1087,20 @@ fn cli_invoke(store: Store&, target: const u8[:], explicit: bool, arguments: con
+     }
+     let rt: Runtime& = store.runtimes[store.instances[instance].runtime as i64];
+     rt.entry = ss_load64(rt.functions + (e.index as u64) * 8); rt.arguments = sig.params.len; rt.results = sig.results.len;
+-    check_trap(ss_jit_invoke(rt, transfer));
++    let status = ss_jit_invoke(rt, transfer); let process_status = proc_exit_status(status);
++    if process_status >= 0 { return process_status; }
++    check_trap(status);
+     for i in sig.results.len as i64 {
+         print_value(Value { transfer[i * 2], transfer[i * 2 + 1] }, store.type_bytes[sig.results.pos + i], raw);
+     }
++    return -1;
++}
++fn finish_run_store(store: Store&, process_status: i64) {
++    release_store(store);
++    if store.gc_runtime != 0 && !ss_gc_close_pointer(store.gc_runtime) {
++        write_stderr("run: cannot close garbage collector\n"); exit(1);
++    }
++    if process_status >= 0 { exit(process_status); }
+ }
+ fn run_store_session<Register>(path: const u8[:], target: const u8[:], explicit: bool, arguments: const i64[:], stack_forwarding: bool,
+                      buffer: u8[:], raw: bool, import_text: const u8[:], imports: const ImportOption[:],
+@@ -1141,16 +1154,17 @@ fn run_store_session<Register>(path: const u8[:], target: const u8[:], explicit:
+             r, store, m, rt => Register(r, store, m, rt)
+         };
+         if status == 128 || status == 129 { write_stderr("link: unknown import or incompatible import type\n"); exit(1); }
++        let process_status = proc_exit_status(status);
++        if process_status >= 0 { finish_run_store(store, process_status); }
+         check_trap(status); register_instance(store, i as u32, imported_name);
+     }
+     let status = instantiate(store, path, imports.len as u32, stack_forwarding) {
+         r, store, m, rt => Register(r, store, m, rt)
+     };
+     if status == 128 || status == 129 { write_stderr("link: unknown import or incompatible import type\n"); exit(1); }
+-    check_trap(status); cli_invoke(store, target, explicit, arguments, raw); release_store(store);
+-    if store.gc_runtime != 0 && !ss_gc_close_pointer(store.gc_runtime) {
+-        write_stderr("run: cannot close garbage collector\n"); exit(1);
+-    }
++    let process_status = proc_exit_status(status);
++    if process_status >= 0 { finish_run_store(store, process_status); }
++    check_trap(status); finish_run_store(store, cli_invoke(store, target, explicit, arguments, raw));
+ }
+ fn run_file(path: const u8[:], target: const u8[:], explicit: bool, arguments: const i64[:], stack_forwarding: bool,
+             buffer: u8[:], raw: bool, import_text: const u8[:], imports: const ImportOption[:], host_options: const HostOption[:]) {
+diff --git a/tests/test_gc_stats.py b/tests/test_gc_stats.py
+index ca37358da..84253baae 100644
+--- a/tests/test_gc_stats.py
++++ b/tests/test_gc_stats.py
+@@ -12,11 +12,16 @@ def main():
+         wat = Path(directory) / 'stats.wat'
+         wasm = wat.with_suffix('.wasm')
+         wat.write_text('''(module (type $T (struct (field i32))) (type $A (array i32))
++          (import "facet" "proc_exit" (func $exit (param i32)))
+           (func (export "run") (result i32) (local $i i32)
+             (loop $l (drop (struct.new $T (local.get $i)))
+               (drop (array.new_fixed $A 3 (i32.const 1) (i32.const 2) (i32.const 3)))
+               (local.tee $i (i32.add (local.get $i) (i32.const 1))) i32.const 50000 i32.lt_u br_if $l)
+-            i32.const 42))''')
++            i32.const 42)
++          (func (export "too_large") (result i32)
++            (drop (array.new_default $A (i32.const -1))) i32.const 0)
++          (func (export "clean_exit") (result i32)
++            (drop (struct.new $T (i32.const 1))) (call $exit (i32.const 0)) i32.const 0))''')
+         subprocess.run(['wasm-tools', 'parse', str(wat), '-o', str(wasm)], check=True)
+         result = subprocess.run([runner, '--gc-stats', '--gc-workers', '1', '--invoke', 'run', str(wasm)],
+                                 capture_output=True, text=True, check=True, timeout=30)
+@@ -26,8 +31,8 @@ def main():
+                                                       if line.startswith('gcstats ')).split()[1:]))
+         assert stats['allocations'] == 100000 and stats['allocated_bytes'] == 2400000, stats
+         assert stats['collections'] >= 2 and stats['wall_ns'] >= stats['max_ns'] > 0 and stats['cpu_ns'] > 0, stats
+-        assert stats['heap_reserved'] > stats['heap_resident'] > 0, stats
+-        assert stats['metadata_reserved'] > stats['metadata_resident'] > 0, stats
++        assert stats['heap_reserved'] == 536870912 and stats['heap_reserved'] > stats['heap_resident'] > 0, stats
++        assert stats['metadata_reserved'] == 67108864 and stats['metadata_reserved'] > stats['metadata_resident'] > 0, stats
+         assert stats['helpers'] == stats['supervisors'] == 0, stats
+         assert stats['trace_active_1'] == stats['collections'], stats
+         assert sum(stats[f'trace_active_{workers}'] for workers in range(2, 9)) == 0, stats
+@@ -45,7 +50,12 @@ def main():
+         assert diagnostic['stage'] == '1' and diagnostic['reason'] == '8' and \
+                diagnostic['attempt'] == '3' and diagnostic['result'] == '2' and \
+                diagnostic['poisoned'] == '0', diagnostic
+-    print('PASS: generated/helper allocation counts, collector clocks, bounded workers, reservations and real failure diagnostics')
++        exited = subprocess.run([runner, '--gc-stats', '--gc-workers', '1', '--invoke', 'clean_exit', str(wasm)],
++                                capture_output=True, text=True, timeout=30)
++        assert exited.returncode == 0 and not exited.stderr, exited
++        exit_stats = [line for line in exited.stdout.splitlines() if line.startswith('gcstats ')]
++        assert len(exit_stats) == 1 and 'heap_reserved=536870912' in exit_stats[0], exited
++    print('PASS: allocation counters, collector clocks, bounded workers, reservations, failure diagnostics and clean guest exit')
+ 
+ 
+ if __name__ == '__main__': main()
