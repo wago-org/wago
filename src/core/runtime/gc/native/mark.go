@@ -1,7 +1,7 @@
 package gc
 
-// Every mark must remain covered by markStack or markHighWater. Future helper
-// drains must merge their exclusive bounds after joining, including failure
+// Every mark must remain covered by markStack or markHighWater. Helper
+// drains merge their exclusive bounds after joining, including failure
 // paths, before dropping private queues or allowing another reset.
 func (c *Collector) clearMarks() {
 	if len(c.mark) < len(c.handles) {
@@ -152,6 +152,11 @@ func (c *Collector) markRootForMode(r Ref, mode uint8) {
 }
 
 func (c *Collector) drainNurseryMarkStack() uint64 {
+	if c.cfg.Workers > 1 {
+		if scanned, ok := c.drainParallel(false, true); ok {
+			return scanned
+		}
+	}
 	var scanned uint64
 	for len(c.markStack) > 0 {
 		n := len(c.markStack) - 1
@@ -162,7 +167,7 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
 		scanned++
 		// The mark stack contains validated live handles. Scalar payloads carry
 		// this flag from construction, so they need no descriptor or ref walk.
-		if nativeCollectorFastPaths && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
+		if nativeCollectorFastPaths && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 && c.objectEdgeCount(makeObjRef(h)) == 0 {
 			continue
 		}
 		c.scanNurseryObject(h)
@@ -171,6 +176,11 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
 }
 
 func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
+	if c.cfg.Workers > 1 {
+		if scanned, ok := c.drainParallel(true, true); ok {
+			return scanned
+		}
+	}
 	// Keep this hot loop separate from the general drain. A capture-mode branch
 	// per live object costs more than the duplicated control flow on AMD64.
 	c.promotionScratch = c.promotionScratch[:0]
@@ -192,7 +202,7 @@ func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
 		// overwrites the complete entry before reading it, so publish only the
 		// handle into this already-zero scratch slot.
 		c.promotionScratch[plan].handle = h
-		if nativeCollectorFastPaths && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
+		if nativeCollectorFastPaths && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 && c.objectEdgeCount(makeObjRef(h)) == 0 {
 			continue
 		}
 		c.scanNurseryObject(h)
@@ -213,6 +223,11 @@ func (c *Collector) markNurseryRef(r Ref) {
 }
 
 func (c *Collector) drainMarkStack() {
+	if c.cfg.Workers > 1 {
+		if _, ok := c.drainParallel(false, false); ok {
+			return
+		}
+	}
 	for len(c.markStack) > 0 {
 		n := len(c.markStack) - 1
 		h := c.markStack[n]
@@ -236,7 +251,7 @@ func (c *Collector) markRef(r Ref) {
 	c.markStack = append(c.markStack, h)
 }
 func (c *Collector) scanObject(h uint32) {
-	if nativeCollectorFastPaths {
+	if nativeCollectorFastPaths && c.objectEdgeCount(makeObjRef(h)) == 0 {
 		c.scanObjectMark(h)
 		return
 	}
@@ -244,7 +259,7 @@ func (c *Collector) scanObject(h uint32) {
 }
 
 func (c *Collector) scanNurseryObject(h uint32) {
-	if nativeCollectorFastPaths {
+	if nativeCollectorFastPaths && c.objectEdgeCount(makeObjRef(h)) == 0 {
 		c.scanObjectNursery(h)
 		return
 	}

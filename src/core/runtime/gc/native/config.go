@@ -18,6 +18,13 @@ func ValidateConfig(cfg Config) error {
 }
 
 func normalizeConfig(cfg Config) (Config, error) {
+	if cfg.Workers < 0 || cfg.Workers > 8 {
+		return cfg, fmt.Errorf("gc: workers must be zero through eight")
+	}
+	if cfg.Workers > 1 && (!parallelCollectionSupported || cfg.Profile == ProfileTiny) {
+		return cfg, fmt.Errorf("gc: helpers require standard Go throughput collector")
+	}
+
 	if shift := cfg.NurseryRegionShift; shift != 0 {
 		n := uint32(1) << shift
 		if cfg.Profile != ProfileThroughput || cfg.DisableCollection || cfg.MinorPauseTargetMicros != 0 ||

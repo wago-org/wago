@@ -300,7 +300,7 @@ func (c *Collector) refreshNativeView() {
 	v.ObjectCardCount = uint32(len(c.objectCards))
 	v.SubtypeIntervals = sliceData(c.subtypeIntervals)
 	v.SubtypeIntervalCount = uint32(len(c.subtypeIntervals))
-	if c.closed {
+	if c.closed || c.parallelPoisonError() != nil {
 		v.NurseryAllocBytes = 0
 		v.StructAllocState = 0
 		v.StructAllocEpoch = 0
