@@ -597,3 +597,43 @@ Each full root run has the same 18 top-level staged failures as the pinned-WABT 
 Final orchestrator read-only fetch again returned Slipstream master **`db6014de2316f13dd08ea8618d614c28132f2688`**. Old/new cursor is unchanged; no new collector, lifetime-analysis or host-boundary change requires a mirror. B1/B7 adaptations and prior applicability decisions remain; ABI-specific host-boundary transplant stays deferred, and old-space ceiling/helper wake-join changes remain pending source work. No source percentage is adopted as a Wago measurement.
 
 All workers, owned benchmark runners and parent test processes have completed. Worker archives, fixtures, binaries and private caches were removed, and parent Go test temporary outputs were cleaned. Retained files are intentional code/tests/docs/evidence. No PR, push, rebase, upstream publication or maintainer-backlog change. The pre-existing spec-v1/spec-v2 submodule differences remain untouched. Final head is reported in the handoff rather than embedded self-referentially in this commit.
+
+
+## 2026-11-01 — Owner order: combined Snap port and tabled GC fixes
+
+Joshua supersedes the earlier prohibition on bundling tabled GC changes. The
+single ready port PR now includes every compatible fix from PRs 997, 1003, 1019,
+1020, 1026, 1027 and 1030, plus the in-flight TinyGo foreign-stack GC repair.
+No existing PR is to be closed now. Included PRs are closed as superseded only
+when the combined PR opens. The final combined diff still requires the same
+three-Daybreak-plus-Claude consolidated review, zero unresolved findings, and
+full green final-head gates.
+
+For each PR the final disposition will be exactly INCLUDED (integrated and
+required gates green), SUPERSEDED (port makes the change moot, with evidence), or
+INCOMPATIBLE (left tabled, with concrete reason). Assessment is in progress;
+no final bucket is asserted before its supporting evidence exists.
+
+Fresh GitHub PR heads verified and fetched into refs/port-assessment/prNUMBER:
+
+| PR | Verified published head | Final disposition |
+| --- | --- | --- |
+| 997 | e2736f0f37e614218ed7da7ff4040cf1697431c3 | Pending assessment/integration gates |
+| 1003 | 9666ec48e18cb2f7a77c188dc52f093770859f26 | Pending assessment/integration gates |
+| 1019 | b6cb0e829011ab08d98d64eaefbc0085c34a0284 | Pending assessment/integration gates |
+| 1020 | ce63d517a55f2981b7ccf6e150d1b9050fb5f953 | Pending assessment/integration gates |
+| 1026 | 4101e75a3b915ce8b0217cd356b9837339c54ee3 | Pending assessment/integration gates |
+| 1027 | 29e59c6413e502b000d00e40836350190db1f3c1 | Pending assessment/integration gates |
+| 1030 | fba8e2b50ea0cbc31089789dd27dde628c55fe9d | Pending assessment/integration gates |
+
+Owner-supplied newer local rebases 997=421119d1d and 1003=11bcf23fd must be
+located and verified before selecting those final inputs. Initial lookup of
+421119d1d in this repository failed; this is a provenance task, not grounds to
+silently prefer an older published head. Assessors will inspect local refs and
+recovery evidence and report the freshest verified source for every PR.
+
+Mature-region and foreign-stack workers retain current source ownership.
+Read-only roll-up assessment can proceed concurrently; conflicting integration
+will follow their coherent commits. Historical source/type-cap exclusions remain
+source facts, but the seven Wago PR exclusions no longer apply. This order/log
+entry changes documentation only and cannot affect runtime performance.

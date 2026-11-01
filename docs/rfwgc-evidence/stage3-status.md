@@ -46,7 +46,11 @@ policy with transactional admission; inspection of the eventual landed source
 old-space fix; region-enabled host/shared-domain, metadata, artifact and platform
 gates; and parallel behavioral parity remain to be implemented or qualified.
 Do not silently waive parallel parity on the basis that the first slice is serial.
-Preserve default-policy oracle and exclude the tabled GC PR implementations.
+Preserve default-policy oracle. Joshua's 2026-11-01 roll-up order supersedes the
+earlier tabled-PR exclusion: assess and integrate compatible PRs 997, 1003, 1019,
+1020, 1026, 1027 and 1030, plus the foreign-stack fix. Final INCLUDED/SUPERSEDED/
+INCOMPATIBLE dispositions and head provenance belong in the port log. Nothing
+is closed yet. Final review and qualification apply to the entire combined diff.
 
 The final owner-directed review fan remains three Daybreak reviewers and one
 Claude Opus 5.5 reviewer, consolidated with every finding resolved and every fix
