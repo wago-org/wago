@@ -128,6 +128,9 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 	// Reconcile before the local rollback checkpoint: trimming already-dead
 	// trailing capacity is valid and must not be undone into an unindexed gap.
 	if err := h.sweepAllPending(); err != nil {
+		if !h.mature.admission {
+			h.mature.pressure = true
+		}
 		h.matureRefusal(err)
 		return handleEntry{}, err
 	}
