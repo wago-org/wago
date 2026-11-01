@@ -442,8 +442,8 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(objectCard{}); got != 16 {
 		t.Fatalf("objectCard size=%d, want 16", got)
 	}
-	if got := unsafe.Sizeof(Config{}); got != 68 {
-		t.Fatalf("Config size=%d, want 68", got)
+	if got := unsafe.Sizeof(Config{}); got != 80 {
+		t.Fatalf("Config size=%d, want 80", got)
 	}
 	if got := unsafe.Sizeof(tinyScanCursor{}); got != 8 {
 		t.Fatalf("tinyScanCursor size=%d, want 8", got)
@@ -464,7 +464,7 @@ func TestCardMetadataFootprint(t *testing.T) {
 	// fixed descriptor costs. Region config adds 8 aligned bytes; the region
 	// ledger and cursor add 32; mature mode adds one lazy metadata pointer.
 	// NativeCollectorView remains unchanged.
-	wantCollector := uintptr(1168+40) + unsafe.Sizeof((*matureHeap)(nil)) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
+	wantCollector := uintptr(1168+40+16) + unsafe.Sizeof((*matureHeap)(nil)) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}

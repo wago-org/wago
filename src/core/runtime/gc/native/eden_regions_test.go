@@ -149,7 +149,7 @@ func TestEdenRegionsAdmissionAndLayout(t *testing.T) {
 			t.Fatalf("admitted %+v", cfg)
 		}
 	}
-	if unsafe.Sizeof(uintptr(0)) == 8 && unsafe.Sizeof(Config{}) != 68 {
+	if unsafe.Sizeof(uintptr(0)) == 8 && unsafe.Sizeof(Config{}) != 80 {
 		t.Fatal("unexpected config layout")
 	}
 	if unsafe.Offsetof(Collector{}.edenRegions) <= unsafe.Offsetof(Collector{}.nativeLargeArrayNurseryIndex) {

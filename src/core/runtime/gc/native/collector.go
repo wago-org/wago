@@ -94,6 +94,8 @@ type Config struct {
 	// Exhaustion first reclaims empty regions by exact tracing, then evacuates.
 	// Native allocation batches are disabled in this mode.
 	NurseryRegionShift uint8
+	// Workers includes the coordinator; zero selects one, maximum eight.
+	Workers int
 }
 
 type Stats struct {
@@ -185,6 +187,7 @@ type Collector struct {
 	nativeLargeArrayNurseryIndex int
 	edenRegions                  []edenRegion
 	edenRegionCursor             uint32
+	parallel                     *parallelCollector
 }
 
 const defaultNursery = 64 << 10
@@ -257,6 +260,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // errCollectorClosed. It is idempotent; Stats remains safe for post-close
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
+	c.closeParallel()
 	c.notifyCollectorClosed()
 	c.discardNativeStructHandles()
 	c.discardNativeLargeArrayAllocation()
@@ -370,7 +374,7 @@ func (c *Collector) errIfClosed() error {
 	if c.closed {
 		return errCollectorClosed
 	}
-	return nil
+	return c.parallelPoisonError()
 }
 
 // Stats returns collection/allocation counters. It remains safe after Close;
