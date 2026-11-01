@@ -1,0 +1,203 @@
+[
+  {
+    "mode": "ordinary",
+    "suite": "probes",
+    "exit": 0,
+    "top_level_pass": 2,
+    "top_level_skip": 0,
+    "top_level_fail": 0,
+    "skipped": []
+  },
+  {
+    "mode": "ordinary",
+    "suite": "collector",
+    "exit": 0,
+    "top_level_pass": 425,
+    "top_level_skip": 0,
+    "top_level_fail": 0,
+    "skipped": []
+  },
+  {
+    "mode": "ordinary",
+    "suite": "backend",
+    "exit": 0,
+    "top_level_pass": 39,
+    "top_level_skip": 24,
+    "top_level_fail": 0,
+    "skipped": [
+      "TestGCArrayCopyNativeSelection",
+      "TestGCArrayCopyNativeSelectionLayouts",
+      "TestGCArrayCopyNativeSelectionGlobals",
+      "TestGCGeneralArrayLenEligibility",
+      "TestGCGeneralArrayLenRespectsSharedStubSwitch",
+      "TestGCVectorArrayAccessStaysNative",
+      "TestGCFinalCastFieldReadResolvesOnce",
+      "TestGCConstructorGetForwardSelection",
+      "TestGCConstructorScalarReplacementSelection",
+      "TestGCFreshStructLocalGetForwardSelection",
+      "TestGCFreshArrayLocalGetForwardSelection",
+      "TestCheckedDeadGCArrayConstructorsPreservePreflight",
+      "TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors",
+      "TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate",
+      "TestDeadGCConstructorTreeElimination",
+      "TestGCOpenStructGetUsesNativeSubtypeResolver",
+      "TestGCResolvedHandleReuseAndInvalidation",
+      "TestModuleSharedGCResolverStubReducesDenseSites",
+      "TestModuleMixedGCResolverDiagnostics",
+      "TestGCStructReductionSelection",
+      "TestGCStaticSiteTelemetrySmoke",
+      "TestLocalSlotOrderSkipsGCFrameRootFunctions",
+      "TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64",
+      "TestCodegenStatsGCNativeByteAttribution"
+    ]
+  },
+  {
+    "mode": "ordinary",
+    "suite": "guest",
+    "exit": 0,
+    "top_level_pass": 378,
+    "top_level_skip": 1,
+    "top_level_fail": 0,
+    "skipped": [
+      "TestGCNativeResolverTelemetryAttributesModuleStub"
+    ]
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "probes",
+    "exit": 0,
+    "top_level_pass": 4,
+    "top_level_skip": 0,
+    "top_level_fail": 0,
+    "skipped": []
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "collector",
+    "exit": 0,
+    "top_level_pass": 455,
+    "top_level_skip": 3,
+    "top_level_fail": 0,
+    "skipped": [
+      "TestTryReserveDeadAllocationBatch",
+      "TestPreparedDeadAllocationBatchLiveState",
+      "TestPreparedDeadBatchEndBounds"
+    ]
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "backend",
+    "exit": 0,
+    "top_level_pass": 37,
+    "top_level_skip": 26,
+    "top_level_fail": 0,
+    "skipped": [
+      "TestGCArrayCopyNativeSelection",
+      "TestGCArrayCopyNativeSelectionLayouts",
+      "TestGCArrayCopyNativeSelectionGlobals",
+      "TestGCGeneralArrayLenEligibility",
+      "TestGCGeneralArrayLenRespectsSharedStubSwitch",
+      "TestGCVectorArrayAccessStaysNative",
+      "TestGCFinalCastFieldReadResolvesOnce",
+      "TestGCConstructorGetForwardSelection",
+      "TestGCConstructorScalarReplacementSelection",
+      "TestGCFreshStructLocalGetForwardSelection",
+      "TestGCFreshArrayLocalGetForwardSelection",
+      "TestCheckedDeadGCArrayConstructorsPreservePreflight",
+      "TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors",
+      "TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate",
+      "TestDeadGCConstructorTreeElimination",
+      "TestGCLifetimeReplay",
+      "TestGCLifetimeReplayContextFallback",
+      "TestGCOpenStructGetUsesNativeSubtypeResolver",
+      "TestGCResolvedHandleReuseAndInvalidation",
+      "TestModuleSharedGCResolverStubReducesDenseSites",
+      "TestModuleMixedGCResolverDiagnostics",
+      "TestGCStructReductionSelection",
+      "TestGCStaticSiteTelemetrySmoke",
+      "TestLocalSlotOrderSkipsGCFrameRootFunctions",
+      "TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64",
+      "TestCodegenStatsGCNativeByteAttribution"
+    ]
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "guest",
+    "exit": 0,
+    "top_level_pass": 372,
+    "top_level_skip": 7,
+    "top_level_fail": 0,
+    "skipped": [
+      "TestGCNativeResolverTelemetryAttributesModuleStub",
+      "TestGCDeadInductionEntry",
+      "TestGCDeadInductionWrapperParity",
+      "TestGCDeadInductionParallelDirectory",
+      "TestGCDeadInductionInterruptedBeforeCharge",
+      "TestGCDeadInductionWithoutCachedNativeContext",
+      "TestGCDeadInductionPreparesOnlyOneIdentity"
+    ]
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "probes",
+    "exit": 0,
+    "top_level_pass": 2,
+    "top_level_skip": 0,
+    "top_level_fail": 0,
+    "skipped": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "collector",
+    "exit": 0,
+    "top_level_pass": 425,
+    "top_level_skip": 0,
+    "top_level_fail": 0,
+    "skipped": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "backend",
+    "exit": 0,
+    "top_level_pass": 40,
+    "top_level_skip": 24,
+    "top_level_fail": 0,
+    "skipped": [
+      "TestGCArrayCopyNativeSelection",
+      "TestGCArrayCopyNativeSelectionLayouts",
+      "TestGCArrayCopyNativeSelectionGlobals",
+      "TestGCGeneralArrayLenEligibility",
+      "TestGCGeneralArrayLenRespectsSharedStubSwitch",
+      "TestGCVectorArrayAccessStaysNative",
+      "TestGCFinalCastFieldReadResolvesOnce",
+      "TestGCConstructorGetForwardSelection",
+      "TestGCConstructorScalarReplacementSelection",
+      "TestGCFreshStructLocalGetForwardSelection",
+      "TestGCFreshArrayLocalGetForwardSelection",
+      "TestCheckedDeadGCArrayConstructorsPreservePreflight",
+      "TestDeadGCReferenceUniformAndElementArraysRetainFullConstructors",
+      "TestDeadGCConstructorDeepTreeRetainsReferenceIntermediate",
+      "TestDeadGCConstructorTreeElimination",
+      "TestGCOpenStructGetUsesNativeSubtypeResolver",
+      "TestGCResolvedHandleReuseAndInvalidation",
+      "TestModuleSharedGCResolverStubReducesDenseSites",
+      "TestModuleMixedGCResolverDiagnostics",
+      "TestGCStructReductionSelection",
+      "TestGCStaticSiteTelemetrySmoke",
+      "TestLocalSlotOrderSkipsGCFrameRootFunctions",
+      "TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64",
+      "TestCodegenStatsGCNativeByteAttribution"
+    ]
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "guest",
+    "exit": 0,
+    "top_level_pass": 378,
+    "top_level_skip": 1,
+    "top_level_fail": 0,
+    "skipped": [
+      "TestGCNativeResolverTelemetryAttributesModuleStub"
+    ]
+  }
+]
