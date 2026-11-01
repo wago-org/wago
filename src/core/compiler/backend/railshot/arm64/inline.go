@@ -1036,7 +1036,11 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	f.inlineDepth++
 	var err error
 	if t.hasCtrl {
-		err = f.inlineBodyCtrl(t)
+		var selected bool
+		selected, err = f.inlineTupleSelectionBody(t)
+		if !selected && err == nil {
+			err = f.inlineBodyCtrl(t)
+		}
 	} else {
 		err = f.inlineBody(t.body)
 	}

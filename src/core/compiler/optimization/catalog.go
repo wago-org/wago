@@ -459,6 +459,7 @@ var catalog = []Definition{
 	both("straight-line-block", "Straight-line blocks", "retain operand residency through small blocks without branches or calls"),
 	arm64("loop-local-params", "Loop parameter locals", "transfer bounded integer loop parameters directly into pinned local homes"),
 	arm64("scalar-loop-unroll", "Scalar loop unrolling", "replicate bounded register-only integer loops while checking every iteration"),
+	arm64("tuple-if-select", "Integer pair selection", "select pinned integer pair operands without a structured merge"),
 	arm64("inline-integer-tuples", "Integer tuple inlining", "inline bounded numeric tuple leaves with structured control and private local homes"),
 	both("bulk-fill-vector", "Constant vector fills", "broadcast a byte into native vector stores for 16 to 64 byte constant fills"),
 	both("simd-store-load-address", "Adjacent SIMD memory addresses", "reuse an identical pure address expression for a vector store and following real load"),
