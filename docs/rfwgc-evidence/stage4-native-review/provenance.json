@@ -1,0 +1,17 @@
+{
+  "snapshot": "98939b4dd875efbcda6dd53ba769ad25dec2b4f1",
+  "baseline": "5b31c81ec0c74695a90bc8d36754b92845b59f14",
+  "snapshot_archive_sha256": "4be9b3e191e6fd8993d26ff383b6d53b5ea3263cc5d16b9ca1b66f2da00429a5",
+  "production_files": {
+    "src/core/compiler/backend/railshot/amd64/gc_direct.go": "dfeeec89582421d0474c7380edc429a761ecfe21dbfe692223fcba2ec12f13cf",
+    "src/core/runtime/gc/native/collector.go": "821bb64fd100a4885fdef3e1798b9fea4e8fd2c9dcf9093b5ecaf331ad7cf4d8",
+    "src/core/runtime/gc/native/native_alloc.go": "8cfdf80f4ed6a2eeeef532469bafe65b0a3e5bae8827a210d5b11ad6a947c471",
+    "src/core/runtime/gc/native/native_regions.go": "29a76ba4dbf632766e48714556059571bbc3342fe56bf2f331a03f67e67f0ebd",
+    "src/core/runtime/gc/native/native_view.go": "ecadc84faa53fcd29db91b149a3140ff9382731f09c26aee5f8aa9249ba17850",
+    "src/wago/gc_array_globals.go": "b6b4d76df4ba66356dc78ad6c96437f0f830748da436689f9cfd8740a407f7b7"
+  },
+  "go": "/home/dev/.local/share/mise/installs/go/1.27.1",
+  "execution": "Linux amd64",
+  "probe_preflight": "passed; no fixture corrections required",
+  "concurrent_shared_production": "not used"
+}
