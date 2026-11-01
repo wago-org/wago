@@ -1,0 +1,60 @@
+# internal/goarch
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/byteorder
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/unsafeheader
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/godebugs
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/coverage/rtcov
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/goexperiment
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/cpu
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/profilerecord
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/goos
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# math/bits
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/runtime/pprof/label
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/msan
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/asan
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# internal/trace/tracev2
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# unicode/utf8
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# cmp
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# unicode
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# crypto/internal/constanttime
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# encoding
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# crypto/internal/fips140/alias
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# sync/atomic
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# github.com/wago-org/wago/codegen
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# crypto/internal/fips140deps/time
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# unicode/utf16
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# crypto/internal/boring/sig
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# github.com/wago-org/wago/internal/regalloccheck
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# github.com/wago-org/wago/internal/runtimebridge
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# github.com/wago-org/wago/src/core/runtime/abi
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+# github.com/wago-org/wago/tests/support/summaryfixtures
+compile: version "go1.27.3" does not match go tool version "go1.27.1"
+FAIL	github.com/wago-org/wago/src/wago [build failed]
+FAIL
