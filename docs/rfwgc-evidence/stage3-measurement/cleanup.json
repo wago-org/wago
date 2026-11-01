@@ -1,0 +1,6 @@
+{
+  "removed": "owned .prepared exports and binaries; owned Python bytecode cache",
+  "preserved": "all other workers files, submodules, stage2 scripts, shared log, lease records and global lock",
+  "measurement": "not run",
+  "tests": "12 binaries; 81 fixture subtests; all PASS"
+}
