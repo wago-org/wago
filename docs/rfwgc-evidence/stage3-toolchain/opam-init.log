@@ -1,0 +1,9 @@
+No configuration file found, using built-in defaults.
+Checking for available remotes: git.
+  - you won't be able to use rsync and local repositories unless you install the rsync command on your system.
+  - you won't be able to use mercurial repositories unless you install the hg command on your system.
+  - you won't be able to use darcs repositories unless you install the darcs command on your system.
+
+
+<><> Fetching repository information ><><><><><><><><><><><><><><><><><><><><><>
+[default] Initialised

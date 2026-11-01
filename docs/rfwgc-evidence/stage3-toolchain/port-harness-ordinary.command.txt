@@ -1,0 +1,1 @@
+go test -count=1 -timeout=15m -run \^Test\(ResolveWast2JSONChecksPinnedVersion\|ResolveSpecInterpreterChecksPinnedRevisionAndIdentity\|ResolveSpecPlanRelease3UsesOfficialCoreLayout\|SpecInterpreterModuleDefinitionInstances\)\$ -v ./src/wago
