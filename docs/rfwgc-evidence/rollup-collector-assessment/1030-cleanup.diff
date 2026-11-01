@@ -1,0 +1,138 @@
+diff --git a/src/core/runtime/gc/native/alloc.go b/src/core/runtime/gc/native/alloc.go
+index 758d21d59..f65175592 100644
+--- a/src/core/runtime/gc/native/alloc.go
++++ b/src/core/runtime/gc/native/alloc.go
+@@ -285,7 +285,9 @@ func (c *Collector) validateStoredRef(r Ref, nullable bool) error {
+ 		return errors.New("gc: invalid object ref")
+ 	}
+ 	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
+-		if c.tinyGC.scan.handle == handleOf(r) {
++		// The shared cursor denotes pending reclamation only during sweep.
++		// When sweep yields to marking, it owns a live gray object instead.
++		if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle == handleOf(r) {
+ 			return errors.New("gc: Tiny object is pending bounded sweep reclamation")
+ 		}
+ 		if err := c.validateTinySweepRootPublication(r); err != nil {
+diff --git a/src/core/runtime/gc/native/native_alloc.go b/src/core/runtime/gc/native/native_alloc.go
+index c37a1d71e..c6bd479dd 100644
+--- a/src/core/runtime/gc/native/native_alloc.go
++++ b/src/core/runtime/gc/native/native_alloc.go
+@@ -456,20 +456,26 @@ func (c *Collector) discardNativeStructHandles() {
+ 			}
+ 		}
+ 		if !trimmed {
+-			// Unpublished large-array handles are also spaceFree, but remain
+-			// owned by their independent reservation. Keep that ledger entry.
+-			// Cancellation must not recompute nurseryBump from published handle
+-			// extents: they omit reserved array bytes and dead-struct charges.
+-			// The guarded chunk rewind above is the only safe reclamation here.
+ 			reserved := &c.nativeLargeArrayAlloc
+-			out := c.nurseryHandles[:0]
+-			for _, h := range c.nurseryHandles {
+-				if c.isYoungHandle(h) || (reserved.Count != 0 && h == reserved.Handle) {
+-					out = append(out, h)
++			if reserved.Cursor < reserved.Count {
++				// An unpublished array owns bytes and a free handle that ordinary
++				// nursery compaction cannot see. Preserve both until it commits.
++				out := c.nurseryHandles[:0]
++				for _, h := range c.nurseryHandles {
++					if c.isYoungHandle(h) || h == reserved.Handle {
++						out = append(out, h)
++					}
++				}
++				clear(c.nurseryHandles[len(out):])
++				c.nurseryHandles = out
++			} else {
++				chargedBump := c.nurseryBump
++				c.compactNurseryHandles()
++				if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
++					// Dead native structs have no handle extent to reconstruct.
++					c.nurseryBump = chargedBump
+ 				}
+ 			}
+-			clear(c.nurseryHandles[len(out):])
+-			c.nurseryHandles = out
+ 		}
+ 	}
+ 	clear(s.Handles[:end])
+diff --git a/src/core/runtime/gc/native/native_batch_cancel_overlap_test.go b/src/core/runtime/gc/native/native_batch_cancel_overlap_test.go
+index b2734efad..a8a066d97 100644
+--- a/src/core/runtime/gc/native/native_batch_cancel_overlap_test.go
++++ b/src/core/runtime/gc/native/native_batch_cancel_overlap_test.go
+@@ -67,3 +67,28 @@ func TestNativeBatchCancellationPreservesActiveArrayReservation(t *testing.T) {
+ 		}
+ 	}
+ }
++
++func TestNativeBatchCancellationReclaimsPromotedNurseryWithoutReservation(t *testing.T) {
++	c := batchTestCollector(t)
++	if !c.PrepareNativeStructHandles() {
++		t.Fatal("batch reservation unavailable")
++	}
++	publishBatchTestStructs(c, 1)
++	ref := makeObjRef(c.nativeStructAlloc.Handles[0])
++	if err := c.ForcePromote(ref); err != nil {
++		t.Fatal(err)
++	}
++	// Promotion removes the consumed identity from the nursery ledger, so the
++	// remaining reservation is no longer an exact tail batch. No array or dead
++	// allocation charge owns the now-empty nursery extent.
++	if c.hasPendingDeadNurseryObjects() {
++		t.Fatal("unexpected pending dead allocation charge")
++	}
++	c.CancelNativeAllocationBatch()
++	if c.nurseryBump != 0 || len(c.nurseryHandles) != 0 {
++		t.Fatalf("cancellation retained empty nursery: bump=%d handles=%v", c.nurseryBump, c.nurseryHandles)
++	}
++	if !c.validObjectRef(ref) {
++		t.Fatal("cancellation invalidated promoted object")
++	}
++}
+diff --git a/src/core/runtime/gc/native/tiny_barrier_queue_test.go b/src/core/runtime/gc/native/tiny_barrier_queue_test.go
+index 605080a32..042139db3 100644
+--- a/src/core/runtime/gc/native/tiny_barrier_queue_test.go
++++ b/src/core/runtime/gc/native/tiny_barrier_queue_test.go
+@@ -4,6 +4,43 @@ package gc
+ 
+ import "testing"
+ 
++func TestTinySweepBarrierPublishesPartiallyScannedArray(t *testing.T) {
++	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 1 << 16, TinyBlockBytes: 16, VerifyAfterCollect: true}, tinyScanTypes(t))
++	global := c.NewGlobalSlot(Null())
++	for steps := 0; c.tinyGC.state != tinySweep; steps++ {
++		if steps > 100 {
++			t.Fatal("did not reach sweep")
++		}
++		if err := c.Step(nil); err != nil {
++			t.Fatal(err)
++		}
++	}
++	array, err := c.NewArrayDefault(2, tinyStepScanEntries+1)
++	if err != nil {
++		t.Fatal(err)
++	}
++	root := Root(array)
++	roots := Slots{&root}
++	if err := c.Step(roots); err != nil {
++		t.Fatal(err)
++	}
++	if c.tinyGC.state != tinyMark || c.tinyGC.rootPhase != tinyRootsSweepBarrier ||
++		c.tinyGC.scan.handle != handleOf(array) || c.tinyGC.scan.scan.index == 0 || c.tinyColorOf(handleOf(array)) != tinyGray {
++		t.Fatalf("expected partial sweep-barrier mark: state=%d phase=%d scan=%+v color=%d", c.tinyGC.state, c.tinyGC.rootPhase, c.tinyGC.scan, c.tinyColorOf(handleOf(array)))
++	}
++	if err := c.SetGlobalSlot(global, array); err != nil {
++		t.Fatalf("publish live partially scanned array: %v", err)
++	}
++	root = Root(Null())
++	drainTinyWithWorkChecks(t, c, roots)
++	if err := c.CollectFull(nil); err != nil {
++		t.Fatal(err)
++	}
++	if !c.validObjectRef(array) {
++		t.Fatal("published array was reclaimed")
++	}
++}
++
+ func TestTinySweepBarrierQueuesBoundedMarkWork(t *testing.T) {
+ 	leaf, err := NewStructDesc(0, nil)
+ 	if err != nil {
