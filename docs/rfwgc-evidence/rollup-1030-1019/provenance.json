@@ -7,5 +7,6 @@
   "native": "98939b4dd875efbcda6dd53ba769ad25dec2b4f1",
   "mature": "14f1f7696344b7d24e9f968b02a0b6f2cf747651",
   "status": "integrated pending final gates",
-  "scope": "PR-specific collector hunks only; no unrelated main ancestry, 1003 or 1020"
+  "scope": "PR-specific collector hunks only; no unrelated main ancestry, 1003 or 1020",
+  "1030_integration_commit": "9bfe98360e6ff5e1ab2f6605efc216d2c441fb37"
 }

@@ -1,0 +1,16 @@
+{
+  "pin": "ca30843801956bae67d5cd1219f66d191518c125",
+  "command": [
+    "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+    "test",
+    "./src/wago",
+    "-run",
+    "^TestR9Features",
+    "-count=1",
+    "-timeout=60s",
+    "-v",
+    "-tags=wago_regalloccheck"
+  ],
+  "exit": 1,
+  "skipped": false
+}

@@ -1,0 +1,184 @@
+package wago
+
+import (
+	"context"
+	"encoding/hex"
+	"testing"
+
+	"github.com/wago-org/wago/tests/support/wasmtest"
+)
+
+// The exact round-9 standards trigger, plus malformed-limit controls. The
+// standards assertion intentionally stays red while the omission is out of scope.
+func TestR9FeaturesCore3SharedMemory(t *testing.T) {
+	for _, tc := range []struct {
+		name, hex     string
+		threads, want bool
+	}{
+		{"core3", "0061736d01000000050401030101", false, true},
+		{"explicit_threads", "0061736d01000000050401030101", true, true},
+		{"core3_missing_max", "0061736d010000000503010201", false, false},
+		{"explicit_threads_missing_max", "0061736d010000000503010201", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b, err := hex.DecodeString(tc.hex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+			if tc.threads {
+				cfg = cfg.WithFeature(CoreFeatureThreads, true)
+			}
+			c, err := Compile(cfg, b)
+			if c != nil {
+				defer c.Close()
+			}
+			if (err == nil) != tc.want {
+				t.Fatalf("compile success=%t, want %t: %v", err == nil, tc.want, err)
+			}
+		})
+	}
+}
+
+func r9FeaturesGlobalModule(withType, mutable bool) []byte {
+	var sections [][]byte
+	if withType {
+		sections = append(sections, wasmtest.Section(1, wasmtest.Vec([]byte{0x60, 0, 0})))
+	}
+	mut := byte(0)
+	if mutable {
+		mut = 1
+	}
+	sections = append(sections, wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x71, mut, 0xd0, 0x71, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g", 3, 0))))
+	return wasmtest.Module(sections...)
+}
+
+func TestR9FeaturesNoTypeManagedGlobal(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	c, err := Compile(cfg, r9FeaturesGlobalModule(false, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if len(c.Types) != 0 {
+		t.Fatal("fixture unexpectedly has types")
+	}
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if v, err := in.GlobalValue("g"); err != nil || v.Bits() != 0 {
+		t.Fatalf("null global = %v, err=%v", v, err)
+	}
+	t.Logf("no-type none global instantiated; collector present=%t", in.gc != nil)
+}
+
+func TestR9FeaturesNoneGlobalLink(t *testing.T) {
+	for _, shape := range []struct {
+		name string
+		typ  []byte
+	}{{"struct", []byte{0x5f, 0}}, {"array", []byte{0x5e, 0x7f, 0}}} {
+		for _, mutable := range []bool{false, true} {
+			name := shape.name + "/immutable"
+			if mutable {
+				name = shape.name + "/mutable"
+			}
+			t.Run(name, func(t *testing.T) {
+				cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+				rt := NewRuntime(WithRuntimeConfig(cfg))
+				defer rt.Close()
+				instantiate := func(b []byte, imports *Imports) (*Instance, error) {
+					c, err := Compile(cfg, b)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer c.Close()
+					m, err := rt.Module(c)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer m.Close()
+					return rt.Instantiate(context.Background(), m, WithImports(imports))
+				}
+				provider, err := instantiate(r9FeaturesGlobalModule(true, mutable), NewImports())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer provider.Close()
+				g, err := provider.ExportedGlobalObject("g")
+				if err != nil {
+					t.Fatal(err)
+				}
+				imports := NewImports()
+				imports.Global("env", "g", g)
+				mut := byte(0)
+				if mutable {
+					mut = 1
+				}
+				entry := append(wasmtest.Name("env"), wasmtest.Name("g")...)
+				entry = append(entry, 3, 0x63, 0, mut)
+				b := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(shape.typ)), wasmtest.Section(2, wasmtest.Vec(entry)), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g", 3, 0))))
+				consumer, err := instantiate(b, imports)
+				if mutable {
+					if err == nil {
+						consumer.Close()
+						t.Fatal("mutable covariance accepted")
+					}
+					t.Logf("mutable covariance rejected: %v", err)
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer consumer.Close()
+				if v, err := consumer.GlobalValue("g"); err != nil || v.Bits() != 0 {
+					t.Fatalf("imported null = %v, err=%v", v, err)
+				}
+			})
+		}
+	}
+}
+
+func TestR9FeaturesBottomMatcher(t *testing.T) {
+	actual := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapNone}}}
+	required := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Defined: true}}}
+	for _, kind := range []CompositeTypeKind{CompositeTypeStruct, CompositeTypeArray} {
+		types := []DefinedTypeDescriptor{{Kind: kind}}
+		if !valueTypeSubtype(actual, nil, required, types) {
+			t.Fatalf("none not below %v", kind)
+		}
+		if valueTypeEquivalent(actual, nil, required, types) {
+			t.Fatalf("mutable covariance for %v", kind)
+		}
+	}
+}
+
+func TestR9FeaturesCore3AtomicLoad(t *testing.T) {
+	b := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x60, 0, 1, 0x7f})),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{3, 1, 1})),
+		wasmtest.Section(10, wasmtest.Vec([]byte{8, 0, 0x41, 0, 0xfe, 0x10, 2, 0, 0x0b})),
+	)
+	for _, threads := range []bool{false, true} {
+		name := "core3"
+		if threads {
+			name = "explicit_threads"
+		}
+		t.Run(name, func(t *testing.T) {
+			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+			if threads {
+				cfg = cfg.WithFeature(CoreFeatureThreads, true)
+			}
+			c, err := Compile(cfg, b)
+			if c != nil {
+				defer c.Close()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

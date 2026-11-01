@@ -1,0 +1,16 @@
+{
+  "pin": "ce63d517a55f2981b7ccf6e150d1b9050fb5f953",
+  "command": [
+    "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+    "test",
+    "./src/core/runtime/gc/native",
+    "-run",
+    "^TestR9Protocol",
+    "-count=1",
+    "-timeout=60s",
+    "-v",
+    "-tags=wagodebug"
+  ],
+  "exit": 0,
+  "skipped": false
+}
