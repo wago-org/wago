@@ -6,6 +6,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	grt "runtime"
 	"testing"
 )
 
@@ -20,7 +21,7 @@ func stage8TinyGoGuestModule() []byte {
 	body = append(body, wasmtest.SLEB32(59999)...)
 	body = append(body, 0xfb, 0x0b, 1, 0xfb, 2, 0, 0, 0x0b)
 	read := []byte{0, 0x23, 0, 0x41, 0, 0xfb, 0x0b, 1, 0xfb, 2, 0, 0, 0x0b}
-	return wasmtest.Module(wasmtest.Section(1, types), wasmtest.Section(3, wasmtest.Vec([]byte{2}, []byte{2})), wasmtest.Section(6, wasmtest.Vec(global)), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read", 0, 1))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...), append(wasmtest.ULEB(uint32(len(read))), read...))))
+	return wasmtest.Module(wasmtest.Section(1, types), wasmtest.Section(3, wasmtest.Vec([]byte{2}, []byte{2}, []byte{2})), wasmtest.Section(6, wasmtest.Vec(global)), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read", 0, 1), wasmtest.ExportEntry("trap", 0, 2))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...), append(wasmtest.ULEB(uint32(len(read))), read...), []byte{3, 0, 0, 0x0b})))
 }
 func TestGCStage8TinyGoGuestRelocatedRead(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false), stage8TinyGoGuestModule())
@@ -67,7 +68,50 @@ func TestGCStage8TinyGoGuestRelocatedRead(t *testing.T) {
 	if in.gc.NativeView().RefreshGeneration <= generation {
 		t.Fatal("stale native view")
 	}
+	if _, err = in.Invoke("trap"); err == nil {
+		t.Fatal("missing post-move trap")
+	}
+	grt.GC()
 	if got, err := in.Invoke("read"); err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatal("guest relocation read", got, err)
+	}
+}
+
+func TestGCStage8TinyGoControls(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false), stage8TinyGoGuestModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	for _, cfg := range []GCConfig{
+		{},
+		{DisableCollection: true, NurseryBytes: 4 << 20, ThroughputHeapBytes: 32 << 20},
+		{NurseryBytes: 4 << 20, NurseryRegionShift: 6, ThroughputHeapBytes: 32 << 20},
+		{Workers: 0, NurseryBytes: 4 << 20, NurseryRegionShift: 12, MatureEvacuation: true, ThroughputHeapBytes: 32 << 20},
+	} {
+		in, err := Instantiate(compiled, InstantiateOptions{GC: cfg})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := in.Invoke("run")
+		if err != nil || len(got) != 1 || got[0] != 42 {
+			t.Fatal(got, err)
+		}
+		if !cfg.DisableCollection {
+			if err = in.CollectGC(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err = in.Invoke("trap"); err == nil {
+			t.Fatal("missing trap")
+		}
+		grt.GC()
+		got, err = in.Invoke("read")
+		if err != nil || len(got) != 1 || got[0] != 42 {
+			t.Fatal(got, err)
+		}
+		in.Close()
+		in.Close()
+		grt.GC()
 	}
 }
