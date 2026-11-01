@@ -1,1 +1,1 @@
-tinygo test -tags=wago_regalloccheck -scheduler=tasks ./src/core/runtime ./src/wago 
+tinygo test -tags=wago_regalloccheck -scheduler=tasks ./src/core/runtime ./src/wago
