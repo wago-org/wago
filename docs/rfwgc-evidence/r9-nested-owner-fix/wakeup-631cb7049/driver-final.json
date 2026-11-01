@@ -1,0 +1,9 @@
+{
+  "source": "631cb70499e3fa61357171a0e3d1a60e7a0883fa",
+  "driver_exit": 0,
+  "commands_passed": 18,
+  "driver_path": "/tmp/wago-h6-wakeup-qualify.dVk3AH.sh",
+  "driver_sha256": "35961ef71a6c2bebc253b8c152f110f792912e33f86ee3c4fec2d8a1937689d6",
+  "tracked_driver_matches": true,
+  "target_results": "cross-compile only; no target execution"
+}
