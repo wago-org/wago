@@ -1,0 +1,1 @@
+go test -count=1 -timeout=25m -tags=wago_runtime -run \^\(TestBuildTinyGoLinksMachineCodeWithoutCompiler\|TestBuildTinyGoStripsByDefault\|TestTinyGoSupportsCooperativeInterruption\|TestTinyGoForeignStackGCInterruption\)\$ ./cli/manager/internal/standalone 

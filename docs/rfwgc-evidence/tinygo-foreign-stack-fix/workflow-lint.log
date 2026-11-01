@@ -1,0 +1,7 @@
+mise ERROR No version is set for shim: actionlint
+Set a global default version with one of the following:
+mise use -g actionlint@1.7.7
+mise use -g github:rhysd/actionlint@1.7.7
+mise ERROR Version: 2026.10.4 linux-x64 (2026-10-07)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+exit=1

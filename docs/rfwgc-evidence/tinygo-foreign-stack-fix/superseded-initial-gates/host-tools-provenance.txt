@@ -1,0 +1,4 @@
+1.0.41
+wasm-tools 1.251.0 (a1a178a02 2026-05-28)
+f8eb5fbb32f191062a3c97e1f9acdafd3f83dca48991dd0ec1683429b64773a0  /home/dev/.t3/worktrees/wago/experiment-rfwgc-port/.tools/stage3-full-suite/current/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm
+5a1201dca94d1901369005930f3081b67ad97493e4ce1cc017faf415c4dc09c8  /home/dev/Projects/wago/.tools/wabt-1.0.41-linux-x64/bin/wast2json
