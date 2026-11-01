@@ -55,6 +55,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Return bounded ARM64 straight-line integer pairs directly in result registers.
 - Inline bounded ARM64 integer-pair helpers in loops, keeping pure tuple results
   deferred and forwarding read-only parameter locals.
+- Keep bounded ARM64 integer loop parameters in pinned local homes and align
+  functions called from loops to preserve hot entry placement.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.

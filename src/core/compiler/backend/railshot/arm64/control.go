@@ -1398,6 +1398,9 @@ func (f *fn) inCallFreeLoop() bool {
 
 func (f *fn) popCtrl() {
 	last := len(f.ctrl) - 1
+	if f.loopLocalParams.depth == uint32(last+1) {
+		f.loopLocalParams = loopLocalParamHomes{}
+	}
 	fr := f.ctrl[last]
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:last]
@@ -1764,6 +1767,22 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 		f.captureGCFrameShape(&fr)
 		if kind == cfLoop {
+			if homes, afterBindings, ok := f.planLoopLocalParams(r, &fr, signature); ok {
+				f.materializePendingTraps()
+				f.bindLoopLocalParams(homes, pN)
+				f.flush()
+				if err := r.JumpTo(afterBindings); err != nil {
+					return err
+				}
+				f.alignLoopHeader()
+				fr.controlSite = f.a.Len()
+				fr.set(ctrlLoopCallFree, true)
+				f.pushCtrl(&fr)
+				homes.depth = uint32(len(f.ctrl))
+				f.loopLocalParams = homes
+				f.stats.peep("loop-local-params")
+				return nil
+			}
 			if fr.has(ctrlLoopCallFree) && callFreeLoopEntryEnabled {
 				// Keep live pins in registers and reload only memory-resident ones.
 				// With no call in the body, every backedge preserves that state.
@@ -2838,6 +2857,14 @@ func (f *fn) restoreBranchHandlers(fi int) {
 // path and opReturn's inlined-callee routing. The caller sets f.unreachable.
 func (f *fn) branchToFrame(fi int) {
 	fr := &f.ctrl[fi]
+	if f.loopLocalParams.depth == uint32(fi+1) {
+		f.materializePendingTraps()
+		f.bindLoopLocalParams(f.loopLocalParams, fr.paramN)
+		f.flush()
+		f.branchJump(fr)
+		f.stats.peep("loop-local-params-edge")
+		return
+	}
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchArity(), f.depth()
 	f.flush()

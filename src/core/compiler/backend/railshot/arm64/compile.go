@@ -417,8 +417,9 @@ type fn struct {
 	// Read-only pair splices can read an original caller local directly. The
 	// emitted stack references retain its original index, so setLocal preserves
 	// their get-time values before any subsequent caller mutation.
-	inlineForward  [4]uint32
-	inlineForwardN uint32
+	inlineForward   [4]uint32
+	inlineForwardN  uint32
+	loopLocalParams loopLocalParamHomes
 	// inlineRetFrame is the f.ctrl index of the synthetic block frame standing in
 	// for an inlined control-flow callee's function boundary: `return` inside the
 	// callee branches to it (not the real function frame). 0 when not inside such a
@@ -599,10 +600,20 @@ func alignmentPadding(off int, log2 uint8) int {
 
 // functionStartPadding makes optional entry alignment a policy-owned, costed
 // choice. Ordinary code keeps addressable entries aligned and admits statically hot
-// or large bodies only when their Wasm size can amortize the exact padding.
+// or large bodies when their Wasm size or loop call sites amortize the padding.
 func functionStartPadding(off, bodyBytes int, hostAdapter bool, hints funcHints, policy CodegenPolicy) int {
 	flags := boolFlag(hostAdapter, layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) | boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf)
-	return functionStartPaddingFlags(off, bodyBytes, flags, scopedFloatFunctionLayout(hints, policy), policy)
+	return functionStartPaddingFlags(off, bodyBytes, flags, functionExtraLayout(hints, policy), policy)
+}
+
+const (
+	entryScopedFloat uint8 = 1 << iota
+	entryLoopCallTarget
+)
+
+func functionExtraLayout(hints funcHints, policy CodegenPolicy) uint8 {
+	return boolFlag(scopedFloatFunctionLayout(hints, policy), entryScopedFloat) |
+		boolFlag(hints.flags.has(hintHasInlineLoopCall), entryLoopCallTarget)
 }
 
 func scopedFloatFunctionLayout(hints funcHints, policy CodegenPolicy) bool {
@@ -619,9 +630,9 @@ func boolFlag(on bool, flag uint8) uint8 {
 	return 0
 }
 
-func functionStartPaddingFlags(off, bodyBytes int, flags uint8, scopedFloat bool, policy CodegenPolicy) int {
+func functionStartPaddingFlags(off, bodyBytes int, flags, extra uint8, policy CodegenPolicy) int {
 	mandatory := alignmentPadding(off, 2)
-	if scopedFloat {
+	if extra&entryScopedFloat != 0 {
 		return alignmentPadding(off, 5)
 	}
 	optional := alignmentPadding(off, policy.FunctionAlignLog2)
@@ -629,6 +640,11 @@ func functionStartPaddingFlags(off, bodyBytes int, flags uint8, scopedFloat bool
 		return mandatory
 	}
 	if flags&layoutHostAdapter != 0 {
+		return optional
+	}
+	// A direct call inside a loop amortizes up to 12 bytes of padding even for a
+	// tiny leaf. Its entry must not depend on the preceding function's size.
+	if extra&entryLoopCallTarget != 0 && optional <= 12 {
 		return optional
 	}
 	if flags&(layoutHasLoop|layoutHasCall|layoutCallsSelf) == 0 && bodyBytes < 256 {
@@ -1135,7 +1151,7 @@ type funcResult struct {
 	trapBody         sharedTrapBodyInfo
 	requiresLSE      bool
 	layoutFlags      uint8
-	scopedFloat      bool
+	extraLayout      uint8
 	gcReducedBounded bool
 }
 
@@ -2156,7 +2172,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 				ws.gcDeadBatchLayouts[i] = layout
 			}
-			result := funcResult{gcReducedBounded: ws.scratch.fnState.gcReducedBounded, requiresLSE: ws.scratch.fnState.requiresLSE, worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, bodyBytes: bodyBytes, layoutFlags: layoutFlags, internalOff: compactInternalOff, scopedFloat: scopedFloatFunctionLayout(allHints[i], policy)}
+			result := funcResult{gcReducedBounded: ws.scratch.fnState.gcReducedBounded, requiresLSE: ws.scratch.fnState.requiresLSE, worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, bodyBytes: bodyBytes, layoutFlags: layoutFlags, internalOff: compactInternalOff, extraLayout: functionExtraLayout(allHints[i], policy)}
 			if policy.CompactNative {
 				if policy.EnabledOption(optSharedAdapters) {
 					info := ws.scratch.fnState.sharedAdapterInfo()
@@ -2216,7 +2232,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		if r.layoutFlags&layoutOmitted != 0 {
 			continue
 		}
-		if pad := functionStartPaddingFlags(len(code), int(r.bodyBytes), r.layoutFlags, r.scopedFloat, policy); pad != 0 {
+		if pad := functionStartPaddingFlags(len(code), int(r.bodyBytes), r.layoutFlags, r.extraLayout, policy); pad != 0 {
 			code = append(code, alignPad[:pad]...)
 		}
 		entry[i] = len(code)

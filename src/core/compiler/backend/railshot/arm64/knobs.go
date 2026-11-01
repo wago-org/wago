@@ -22,6 +22,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("simd-store-load-address", &simdStoreLoadAddressEnabled),
 	optimization.Bind("bulk-fill-vector", &bulkFillVectorEnabled),
 	optimization.Bind("straight-line-block", &straightLineBlockEnabled),
+	optimization.Bind("loop-local-params", &loopLocalParamsEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
 	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
 	optimization.Bind("regional-memory-read", &regionalMemoryReadEnabled),
@@ -122,6 +123,7 @@ var (
 	optAtomicLSE            = optimizationBindings.Option("atomic-lse")
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
 	optStraightLineBlock    = optimizationBindings.Option("straight-line-block")
+	optLoopLocalParams      = optimizationBindings.Option("loop-local-params")
 	optBulkFillVector       = optimizationBindings.Option("bulk-fill-vector")
 	optSIMDStoreLoadAddress = optimizationBindings.Option("simd-store-load-address")
 	optSIMDLoadExtract      = optimizationBindings.Option("simd-load-extract")
