@@ -17,6 +17,11 @@ func (*Collector) beginParallelCollection() error { return nil }
 
 func (*Collector) parallelPoisonError() error { return nil }
 
-func (*Collector) copyMatureParallel([]plannedPromotion) bool { return false }
+// The coordinator executes the serial copy loop on TinyGo. Record the actual
+// participant just as the standard-Go serial fallback does.
+func (c *Collector) copyMatureParallel([]plannedPromotion) bool {
+	c.throughput.mature.diagnostics.CopyWorkers = 1
+	return false
+}
 
 func (*Collector) parallelActivity() ParallelActivity { return ParallelActivity{} }

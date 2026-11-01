@@ -4,8 +4,11 @@ package gc
 
 import "testing"
 
-func TestEvacuationStage7DisabledTarget(t *testing.T) {
-	if err := ValidateConfig(Config{NurseryBytes: 4096, NurseryRegionShift: 6, MatureEvacuation: true}); err == nil {
-		t.Fatal("unqualified evacuation target accepted")
+func TestEvacuationTinyGoPolicy(t *testing.T) {
+	for _, workers := range []int{0, 1, 2, 4, 8} {
+		err := ValidateConfig(Config{Workers: workers, NurseryBytes: 4096, NurseryRegionShift: 6, MatureEvacuation: true})
+		if (err != nil) != (workers > 1) {
+			t.Fatalf("workers %d: %v", workers, err)
+		}
 	}
 }
