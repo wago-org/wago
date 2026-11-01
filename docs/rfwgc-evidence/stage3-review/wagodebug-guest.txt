@@ -1,0 +1,5 @@
+$ go test -tags=wagodebug ./src/wago -run ^TestGC -count=1 -timeout=5m
+# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
+src/wago/gc_eden_region_integration_amd64_test.go:6:2: "context" imported and not used
+FAIL	github.com/wago-org/wago/src/wago [build failed]
+FAIL

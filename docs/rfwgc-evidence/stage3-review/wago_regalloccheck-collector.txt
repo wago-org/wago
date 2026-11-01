@@ -1,0 +1,3 @@
+$ go test -tags=wago_regalloccheck ./src/core/runtime/gc/... -count=1 -timeout=5m
+ok  	github.com/wago-org/wago/src/core/runtime/gc	0.002s
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	1.283s
