@@ -1,0 +1,8 @@
+driver exit=1
+Focused ordinary PASS; full ordinary PASS; scoped race ordinary FAIL.
+Stopped at the first failed command. No subsequent modes or target checks ran.
+Store retirement unlinked domains before collector Close outside the writer
+lease; the new retry incorrectly inferred live collector ownership from a
+remaining instance row. Race detector and closed-collector guard stopped the
+run. No rerun of this source was used to pursue a crash.
+Correction is631cb7049: validate current domain registration before heap access.
