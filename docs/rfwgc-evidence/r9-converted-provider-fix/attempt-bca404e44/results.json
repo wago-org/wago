@@ -1,0 +1,80 @@
+[
+  {
+    "mode": "ordinary",
+    "exit": 1,
+    "verdict": "FAIL",
+    "fail_lines": [
+      "--- FAIL: TestR9ConvertedProviderState (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=false/type=false (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=false/type=true (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=true/type=false (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=true/type=true (0.00s)",
+      "--- FAIL: TestR9H2ConvertedAggregateAdmission (0.00s)"
+    ],
+    "skip_lines": [
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=false/type=false (0.00s)",
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=false/type=true (0.00s)",
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=true/type=false (0.00s)",
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=true/type=true (0.00s)"
+    ],
+    "stop_lines": [
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_h2_converted_aggregate_admission_test.go:27: STOP converted function aggregate is outside H6 managed ownership admission; no instantiation/publication/access follows"
+    ]
+  },
+  {
+    "mode": "wagodebug",
+    "exit": 1,
+    "verdict": "FAIL",
+    "fail_lines": [
+      "--- FAIL: TestR9ConvertedProviderState (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=false/type=false (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=false/type=true (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=true/type=false (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=true/type=true (0.00s)",
+      "--- FAIL: TestR9H2ConvertedAggregateAdmission (0.00s)"
+    ],
+    "skip_lines": [
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=false/type=false (0.00s)",
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=false/type=true (0.00s)",
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=true/type=false (0.00s)",
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=true/type=true (0.00s)"
+    ],
+    "stop_lines": [
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_h2_converted_aggregate_admission_test.go:27: STOP converted function aggregate is outside H6 managed ownership admission; no instantiation/publication/access follows"
+    ]
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "exit": 1,
+    "verdict": "FAIL",
+    "fail_lines": [
+      "--- FAIL: TestR9ConvertedProviderState (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=false/type=false (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=false/type=true (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=true/type=false (0.00s)",
+      "--- FAIL: TestR9ConvertedProviderState/region=false/table=true/type=true (0.00s)",
+      "--- FAIL: TestR9H2ConvertedAggregateAdmission (0.00s)"
+    ],
+    "skip_lines": [
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=false/type=false (0.00s)",
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=false/type=true (0.00s)",
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=true/type=false (0.00s)",
+      "--- SKIP: TestR9ConvertedProviderState/region=true/table=true/type=true (0.00s)"
+    ],
+    "stop_lines": [
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_converted_provider_state_test.go:158: STOP published converted value lost its root lease; no collection, container access or teardown follows",
+      "r9_h2_converted_aggregate_admission_test.go:27: STOP converted function aggregate is outside H6 managed ownership admission; no instantiation/publication/access follows"
+    ]
+  }
+]
