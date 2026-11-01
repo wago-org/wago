@@ -3394,7 +3394,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.canonicalI32Params = canonicalI32ParamMask(hints, f.localType, f.nParams, f.opt(optValueFacts))
 	hasCall := hints.flags.has(hintHasCall)
-	selfTailLeaf := hasCall && f.onlyDirectSelfTailCalls(c.BodyBytes)
+	selfTailLeaf := hasCall && f.onlySelfTailTransfers(c.BodyBytes)
 	if selfTailLeaf {
 		hasCall = false
 		f.hasLoop = true // logical recursion remains unbounded work

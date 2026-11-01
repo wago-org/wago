@@ -72,7 +72,7 @@ func TestTailSelfLeafProofRejectsPhysicalCallsAndHelpers(t *testing.T) {
 		{"no-tail", []byte{0x20, 0, 0x0b}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := f.onlyDirectSelfTailCalls(tc.body); got != (tc.want && !profileEnabled) {
+			if got := f.onlySelfTailTransfers(tc.body); got != (tc.want && !profileEnabled) {
 				t.Fatalf("proof=%t want=%t", got, tc.want && !profileEnabled)
 			}
 		})

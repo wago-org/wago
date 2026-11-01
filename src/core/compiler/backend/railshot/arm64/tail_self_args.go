@@ -118,11 +118,11 @@ func (f *fn) emitTailSelfRegisterJump(ft *wasm.CompType, jump func()) {
 	jump()
 }
 
-// A body whose only transfers are direct self tails makes no native calls.
+// A body whose only transfers resolve to itself makes no native calls.
 // Classifying it as a physical leaf enables argument-register homes. Preserve
 // its logical loop identity so it can never acquire bounded scheduler entry.
 // Helpers and indirect transfers retain ordinary call/frame planning.
-func (f *fn) onlyDirectSelfTailCalls(body []byte) bool {
+func (f *fn) onlySelfTailTransfers(body []byte) bool {
 	if !f.opt(optTailSelfLoop) || !f.opt(optRegABI) || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || !sigFitsRegABI(f.ft) || !sigIsIntOnly(f.ft) {
 		return false
 	}
@@ -134,6 +134,21 @@ func (f *fn) onlyDirectSelfTailCalls(body []byte) bool {
 			return false
 		}
 		switch op {
+		case 0x13:
+			typ, err := r.U32()
+			if err != nil {
+				return false
+			}
+			table, err := r.U32()
+			if err != nil {
+				return false
+			}
+			target, ok := f.privateMonomorphicTailTarget(typ, table)
+			if !ok || target != int(f.traceFuncIdx) {
+				return false
+			}
+			found = true
+			continue
 		case 0x23, 0x24:
 			index, err := r.U32()
 			if err != nil {
