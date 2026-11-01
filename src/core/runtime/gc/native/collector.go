@@ -341,6 +341,9 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 			return err
 		}
 	}
+	if c.cfg.NurseryRegionShift != 0 {
+		c.discardNativeStructHandles()
+	}
 	c.refreshNativeView()
 	return nil
 }

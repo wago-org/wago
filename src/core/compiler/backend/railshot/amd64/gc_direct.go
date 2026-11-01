@@ -1332,6 +1332,14 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	for _, branch := range useChunk {
 		a.PatchRel32(branch, a.Len())
 	}
+	// A region chunk is nursery-only even when another, smaller type filled
+	// it. Preserve the large-object policy before using its byte reservation.
+	a.CmpImm32Mem(R8, gc.NativeViewNurseryAllocBytesOffset, 0)
+	baselineChunk := a.JccPlaceholder(condNE)
+	a.Load32(RAX, R8, gc.NativeViewNurseryObjectMaxBytesOffset)
+	a.Cmp32(sizeReg, RAX)
+	addFallback(a.JccPlaceholder(condAE))
+	a.PatchRel32(baselineChunk, a.Len())
 	a.Load32(R15, R10, gc.NativeStructAllocChunkCursorOffset)
 	alignCursor()
 	a.Load32(RAX, R10, gc.NativeStructAllocChunkEndOffset)
@@ -1763,15 +1771,28 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
 
+	// Region mode advertises no direct-bump capacity. Its live structs share
+	// the explicitly bounded chunk with arrays; baseline keeps its direct bump.
+	a.Load32(RAX, R8, gc.NativeViewNurseryAllocBytesOffset)
+	a.TestSelf(RAX, false)
+	regionCursor := a.JccPlaceholder(condE)
 	a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
 	a.TestSelf(RAX, true)
 	addFallback(a.JccPlaceholder(condE))
 	a.Load32(RCX, RAX, 0)
+	cursorReady := a.JmpPlaceholder()
+	a.PatchRel32(regionCursor, a.Len())
+	a.Load32(RCX, R10, gc.NativeStructAllocChunkCursorOffset)
+	a.PatchRel32(cursorReady, a.Len())
 	if objectAlign > 1 {
 		a.AluRI(0, RCX, int32(objectAlign-1), false)
 		a.AluRI(4, RCX, -int32(objectAlign), false)
 	}
 	a.Load32(RAX, R8, gc.NativeViewNurseryAllocBytesOffset)
+	a.TestSelf(RAX, false)
+	directLimit := a.JccPlaceholder(condNE)
+	a.Load32(RAX, R10, gc.NativeStructAllocChunkEndOffset)
+	a.PatchRel32(directLimit, a.Len())
 	a.Cmp32(RCX, RAX)
 	addFallback(a.JccPlaceholder(condA))
 	a.Sub32(RAX, RCX)
@@ -1923,6 +1944,10 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.StoreImm32Mem(R9, gc.NativeHandleSizeOffset, int32(objectSize))
 	a.StoreImm32Mem(R9, gc.NativeHandleCardSlotOffset, 0)
 	a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
+	a.CmpImm32Mem(R8, gc.NativeViewNurseryAllocBytesOffset, 0)
+	directCommit := a.JccPlaceholder(condNE)
+	a.LeaDisp(RAX, R10, gc.NativeStructAllocChunkCursorOffset)
+	a.PatchRel32(directCommit, a.Len())
 	a.MovRegReg32(R10, RCX)
 	a.AluRI(0, R10, int32(objectSize), false)
 	a.Store32(RAX, 0, R10)
