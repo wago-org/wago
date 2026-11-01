@@ -1,0 +1,1 @@
+["tinygo", "test", "-scheduler=threads", "-gc=conservative", "-tags=wago_regalloccheck", "-v", "-run", "GCStage8TinyGo|TinyGoForeignStack", "./src/core/runtime", "./src/wago"]

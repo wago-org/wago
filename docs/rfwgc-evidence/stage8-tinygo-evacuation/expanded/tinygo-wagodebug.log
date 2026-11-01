@@ -1,0 +1,62 @@
+=== RUN   TestEdenRegionsFailedEvacuationPreservesRegions
+--- PASS: TestEdenRegionsFailedEvacuationPreservesRegions (0.00s)
+=== RUN   TestEdenRegionsCrossRegionEdgeAndEvacuation
+--- PASS: TestEdenRegionsCrossRegionEdgeAndEvacuation (0.00s)
+=== RUN   TestEvacuationStage7AdmissionFaults
+=== RUN   TestEvacuationStage7AdmissionFaults/k
+    --- PASS: TestEvacuationStage7AdmissionFaults/k (0.00s)
+=== RUN   TestEvacuationStage7AdmissionFaults/j
+    --- PASS: TestEvacuationStage7AdmissionFaults/j (0.00s)
+=== RUN   TestEvacuationStage7AdmissionFaults/c
+    --- PASS: TestEvacuationStage7AdmissionFaults/c (0.00s)
+=== RUN   TestEvacuationStage7AdmissionFaults/d
+    --- PASS: TestEvacuationStage7AdmissionFaults/d (0.00s)
+--- PASS: TestEvacuationStage7AdmissionFaults (0.00s)
+=== RUN   TestEvacuationStage7CommittedMaintenance
+--- PASS: TestEvacuationStage7CommittedMaintenance (0.00s)
+=== RUN   TestEvacuationStage7SerialPartialCopyRollback
+--- PASS: TestEvacuationStage7SerialPartialCopyRollback (0.00s)
+=== RUN   TestEvacuationStage7RunCredit
+--- PASS: TestEvacuationStage7RunCredit (0.00s)
+=== RUN   TestEvacuationStage7PolicyAndOptionalRefusal
+--- PASS: TestEvacuationStage7PolicyAndOptionalRefusal (0.00s)
+=== RUN   TestEvacuationStage7Selection
+--- PASS: TestEvacuationStage7Selection (0.00s)
+=== RUN   TestEvacuationStage7CrossingPhysicalMove
+--- PASS: TestEvacuationStage7CrossingPhysicalMove (0.00s)
+=== RUN   TestEvacuationStage7AbsorbedTail
+--- PASS: TestEvacuationStage7AbsorbedTail (0.00s)
+=== RUN   TestEvacuationStage7LargeYoungPlan
+--- PASS: TestEvacuationStage7LargeYoungPlan (1.18s)
+=== RUN   TestEvacuationTinyGoPolicy
+--- PASS: TestEvacuationTinyGoPolicy (0.00s)
+=== RUN   TestEvacuationTinyGoExactAdmissionEdges
+--- PASS: TestEvacuationTinyGoExactAdmissionEdges (0.00s)
+=== RUN   TestEvacuationTinyGoCheckedGeneration
+--- PASS: TestEvacuationTinyGoCheckedGeneration (0.00s)
+=== RUN   TestEvacuationTinyGoCardsLOSAndYoung
+--- PASS: TestEvacuationTinyGoCardsLOSAndYoung (0.00s)
+=== RUN   TestEvacuationTinyGoRequiredPressure
+--- PASS: TestEvacuationTinyGoRequiredPressure (0.00s)
+=== RUN   TestCollectMinorRunsRememberedShadowBeforeEvacuation
+--- PASS: TestCollectMinorRunsRememberedShadowBeforeEvacuation (0.00s)
+=== RUN   TestRollupEvacuationFailureKeepsCards
+=== RUN   TestRollupEvacuationFailureKeepsCards/shift=0/point=4
+    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=0/point=4 (0.00s)
+=== RUN   TestRollupEvacuationFailureKeepsCards/shift=0/point=5
+    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=0/point=5 (0.00s)
+=== RUN   TestRollupEvacuationFailureKeepsCards/shift=6/point=4
+    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=6/point=4 (0.00s)
+=== RUN   TestRollupEvacuationFailureKeepsCards/shift=6/point=5
+    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=6/point=5 (0.00s)
+=== RUN   TestRollupEvacuationFailureKeepsCards/shift=12/point=4
+    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=12/point=4 (0.00s)
+=== RUN   TestRollupEvacuationFailureKeepsCards/shift=12/point=5
+    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=12/point=5 (0.00s)
+--- PASS: TestRollupEvacuationFailureKeepsCards (0.01s)
+=== RUN   TestDenseMinorEvacuationFinishesDuringCommit
+--- PASS: TestDenseMinorEvacuationFinishesDuringCommit (0.00s)
+=== RUN   TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects
+--- PASS: TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	1.200s

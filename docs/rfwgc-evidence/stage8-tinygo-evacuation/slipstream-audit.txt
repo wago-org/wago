@@ -1,0 +1,37 @@
+57: // The collector census showed that helper coordination dominates below this
+126: let N_TRACE_ACTIVE: u64 = 1600; // eight owner-only participant counters
+160: let NG_REFUSAL_INTERNAL_TRACE: u64 = 8;
+272:     if ng_get(h, N_REFUSAL_REASON) == 0 { ng_put(h, N_REFUSAL_REASON, NG_REFUSAL_INTERNAL_TRACE); ss_ng_add(h + N_REFUSALS, 1); }
+293: // ng_collect_owned after a successful trace. This replaces the per-cycle
+552: fn ng_trace(h: u64, worker: u64) {
+681:             else if ng_get(h, N_MODE) == 3 { ng_sweep_blocks(h); } else { ng_trace(h, worker); }
+818: let N_PRESSURE: u64 = 416;
+837: // Majors trace the entire live graph, so they only consume the old card set.
+978: fn ng_admit(h: u64, bytes: u64, workers: u64, largest: u64, required: bool = true) -> bool {
+1055: // This is a bounded, read-only predicate, not an alternate trace. It matches
+1085: fn ng_trace_workers(h: u64, major: bool, total: u64, old_work: u64,
+1086:                     local_major: bool, pressure: u64) -> u64 {
+1091:     if major && pressure != 0 { return available; }
+1146: fn ng_evacuation(h: u64, workers: u64) {
+1147:     if ng_get(h, N_PRESSURE) == 0 { return; }
+1163:     if bytes == 0 || !ng_admit(h, bytes, workers, maximum, false) {
+1166:     ng_put(h, N_PRESSURE, 0);
+1191:     if ng_fault(h) { ng_refuse(h, NG_REFUSAL_INTERNAL_TRACE); return false; }
+1198:     // Reservation retains the baseline policy even when fewer phase workers
+1201:     let reservation = if total < NG_PARALLEL_BYTES && !major { 1 as u64 } else { ng_get(h, N_HELPERS) + 1 };
+1202:     let promote_all = copying * 2 + reservation * NG_BLOCK > ng_get(h, N_SURV_CAP);
+1206:     if !major && !ng_admit(h, promoting, reservation, ng_get(h, N_YOUNG_MAX)) ||
+1208:         if ng_get(h, N_REFUSAL_REASON) == 0 { ng_refuse(h, NG_REFUSAL_INTERNAL_TRACE); }
+1210:         ng_put(h, N_PRESSURE, 1); ng_put(h, N_ROOTS, saved); return false;
+1212:     let pressure = ng_get(h, N_PRESSURE);
+1213:     let local_major = major && pressure == 0 && ng_local_major_roots(h);
+1222:         ng_evacuation(h, reservation);
+1245:     let workers = ng_trace_workers(h, major, total, old_work, local_major, pressure);
+1246:     ng_put(h, N_ACTIVE, workers); ng_note_active(h, N_TRACE_ACTIVE, workers);
+1250:     if dispatched { ng_trace(h, 0); }
+1308:     if size == 0 { ng_refuse(h, NG_REFUSAL_INTERNAL_TRACE); return 0; }
+1312:         if size > ng_get(h, N_EDEN_LIMIT) - top { ng_refuse(h, NG_REFUSAL_INTERNAL_TRACE); return 0; }
+1484:         " trace_active_1=", ng_get(h, N_TRACE_ACTIVE), " trace_active_2=", ng_get(h, N_TRACE_ACTIVE + 8),
+1485:         " trace_active_3=", ng_get(h, N_TRACE_ACTIVE + 16), " trace_active_4=", ng_get(h, N_TRACE_ACTIVE + 24),
+1486:         " trace_active_5=", ng_get(h, N_TRACE_ACTIVE + 32), " trace_active_6=", ng_get(h, N_TRACE_ACTIVE + 40),
+1487:         " trace_active_7=", ng_get(h, N_TRACE_ACTIVE + 48), " trace_active_8=", ng_get(h, N_TRACE_ACTIVE + 56),

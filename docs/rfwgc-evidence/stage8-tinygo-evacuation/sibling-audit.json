@@ -1,0 +1,14 @@
+[
+  {
+    "repository": "/home/dev/Projects/slipstream",
+    "pin": "82d546679bab4887acfab056f6ad773a969b1e03",
+    "path": "gc/native.goose",
+    "sha256": "02f5caccd906ea9854e2ba9cd11dba152aaf93a1ed8bc6e58b500fd5ba89d5bf"
+  },
+  {
+    "repository": "/home/dev/Projects/starshine-master-base",
+    "pin": "e075c47e61b01ab9e4fd0ae4a7ca47b755e3fca1",
+    "path": "docs/wiki/wasm-gc-core-boundary.md",
+    "sha256": "64dd3aa84eea16f5f52b402e6be6acf87b9b47cc8986a20753f99e628c73a340"
+  }
+]

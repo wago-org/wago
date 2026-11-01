@@ -1,0 +1,17 @@
+{
+  "head": "cff52eaa6af8ba6effd68764fa0c747cf1939a2a",
+  "source": "/tmp/wago-stage8-source-k84v_3p9",
+  "cache": "/tmp/wago-stage8-cache-65lp5upr",
+  "driver_sha256": "f560fa6828cde7a2ed5415a29617f70e66c9f215a8a037f0854a14fa2575f8e3",
+  "archive_sha256": "22e9d19d87e06b4c47b99bd932acb1969cd7967ffbdd1d82c429b77c5acd6141",
+  "env": {
+    "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+    "PATH": "/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin",
+    "GOTOOLCHAIN": "local",
+    "GOWORK": "off",
+    "GOMAXPROCS": "2",
+    "GOFLAGS": "-p=2",
+    "XDG_CACHE_HOME": "/tmp/wago-stage8-cache-65lp5upr",
+    "GOCACHE": "/tmp/wago-stage8-cache-65lp5upr/go-build"
+  }
+}
