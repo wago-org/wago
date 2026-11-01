@@ -431,6 +431,8 @@ type fn struct {
 	frameElided             bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
 	threadedMemory0         bool   // route shared memory zero through the private instance directory
 	hasLoop                 bool   // retain loop alignment until it becomes a relaxable fragment
+	selfTailLoop            bool   // helper-free integer self tails retain this activation
+	selfTailEntry           int    // re-entry after parameters, before declared-local initialization
 	compactLoopAlign32      bool   // small bodies use a full 32-byte loop fetch block
 	bmi2Rorx                bool   // use non-destructive rotates below the dense-code crossover
 	linearSumLoop           uint32 // packed +1 address/accumulator locals for one exact active loop
@@ -3818,6 +3820,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.nLocalSlots = (localBytes + 7) / 8
 	hasCall := hints.flags.has(hintHasCall)
 	touchesMemory := hints.flags.has(hintTouchesMemory)
+	if hasCall && !touchesMemory && hints.globalCount == 0 && nLocals <= 8 && len(c.BodyBytes) <= 256 && f.onlySelfTailTransfers(c.BodyBytes) {
+		f.selfTailLoop, f.hasLoop, hasCall = true, true, false
+		f.stats.peep("tail-self-leaf")
+	}
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
 	// runs its linear-memory ops in THIS caller's frame, so fold it into
@@ -3882,7 +3888,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if f.compactFrameHeader {
 		f.stats.peep("frame-header-elide")
 	}
-	f.scalarSummary = f.admitScalar(c)
+	if !f.selfTailLoop {
+		f.scalarSummary = f.admitScalar(c)
+	}
 	if f.scalarSummary.Eligible {
 		pinLocals = false
 	} else {
@@ -4020,7 +4028,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.noteResidencyEvents(hints)
 	intervalControl := f.opt(optIntervalControl) && !f.moduleHasSIMD && len(f.customInstructions) == 0 &&
 		(hasCall || hints.flags.has(hintHasControlFlow|hintUsesBulkMem))
-	intervalEligible := pinLocals && regABI && len(inlinedCallees) == 0 &&
+	intervalEligible := pinLocals && regABI && !f.selfTailLoop && len(inlinedCallees) == 0 &&
 		((!hasCall && !hints.flags.has(hintHasControlFlow|hintUsesBulkMem)) || intervalControl)
 	f.intervalControl = intervalControl
 	if f.bmi2Rorx && intervalEligible && denseRotateRegionalBody(c.BodyBytes, hints, f.localType, sc.classifier) {
@@ -4056,7 +4064,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if f.pinnedLocalMask.has(mergeReg) || f.fpinnedLocalMask.has(mergeFReg) {
 		f.regMerge = false // A merge register already holds a pinned local/global.
 	}
-	if f.regMerge && hints.flags.has(hintCallsSelf) && len(c.BodyBytes) <= 64 &&
+	if f.regMerge && !f.selfTailLoop && hints.flags.has(hintCallsSelf) && len(c.BodyBytes) <= 64 &&
 		!touchesMemory && hints.globalCount == 0 && !hints.flags.has(hintHasLoop) &&
 		len(ft.Results) == 1 && isIntValType(ft.Results[0]) {
 		// In small, pure integer recursion the callee also uses the canonical
@@ -5070,6 +5078,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 			gp++
 		}
 	}
+	f.selfTailEntry = f.a.Len()
 	f.zeroDeclaredLocals(localScores)
 	if hasFloatConst {
 		f.preloadFloatConsts(c.BodyBytes)

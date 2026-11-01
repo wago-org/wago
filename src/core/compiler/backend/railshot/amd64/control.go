@@ -2311,6 +2311,15 @@ func (f *fn) opElse() error {
 		f.frameAddEnd(fr, f.a.JmpPlaceholder())
 		fr.set(ctrlEndReachable, true)
 	}
+	// A self-tail entry condition's false arm is also a native loop header.
+	// Give it the same fetch alignment as an explicit compact Wasm loop.
+	if f.selfTailLoop && f.compactLoopAlign32 && f.nLocals == f.nParams {
+		size, _, _, ok := selfTailEntryCompare(f.a.B[f.selfTailEntry:])
+		if ok && fr.controlSite == f.selfTailEntry+size+2 {
+			f.a.AlignLoop32()
+			f.stats.peep("tail-self-loop-align32")
+		}
+	}
 	f.a.PatchRel32(fr.controlSite, f.a.Len())
 	fr.controlSite = -1
 	fr.set(ctrlHasElse, true)

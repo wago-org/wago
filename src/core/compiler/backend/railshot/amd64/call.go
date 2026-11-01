@@ -621,12 +621,20 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	return f.returnCallIndex(idx)
+}
+
+func (f *fn) returnCallIndex(idx uint32) error {
 	ft, ok := f.functionSignature(idx)
 	if !ok {
 		return fmt.Errorf("return_call: unknown function %d", idx)
 	}
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call: target %d result shape differs from caller", idx)
+	}
+	if f.selfTailLoop && idx == f.traceFuncIdx {
+		f.emitSelfTailLoop()
+		return nil
 	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported {
@@ -3345,6 +3353,13 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	}
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
+	}
+	if index := f.s.back(); index != nil && index.isValue() && index.st.kind == stConst && index.st.typ == mtI32 {
+		if target, ok := f.constantPrivateTailTarget(typeIdx, tableIdx, uint64(uint32(index.st.cval))); ok {
+			f.erase(index)
+			f.stats.peep("tail-constant-private-table")
+			return f.returnCallIndex(uint32(target))
+		}
 	}
 	callerRegisterTail := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
 	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
