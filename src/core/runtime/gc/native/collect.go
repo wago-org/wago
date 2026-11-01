@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func (c *Collector) CollectFull(roots RootSet) error {
+func (c *Collector) CollectFull(roots RootSet) (result error) {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
@@ -27,10 +27,19 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	if err := c.beginParallelCollection(); err != nil {
 		return err
 	}
+	c.beginAttempt("major")
+	defer func() { c.endAttempt(result) }()
+	selection, selectionErr := c.selectMatureEvacuation()
+	if selectionErr != nil {
+		return selectionErr
+	}
 	c.stats.FullCollections++
 	c.clearMarks()
 	c.markRoots(roots)
 	if err := c.parallelError(); err != nil {
+		return err
+	}
+	if err := c.evacuateMature(selection); err != nil {
 		return err
 	}
 	c.sweepAll()
@@ -51,7 +60,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	return nil
 }
 
-func (c *Collector) CollectMinor(roots RootSet) error {
+func (c *Collector) CollectMinor(roots RootSet) (result error) {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
@@ -62,6 +71,8 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if err := c.beginParallelCollection(); err != nil {
 		return err
 	}
+	c.beginAttempt("minor")
+	defer func() { c.endAttempt(result) }()
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {
@@ -362,7 +373,7 @@ func (c *Collector) promoteCapturedNursery() (copiedBytes, promotedBytes uint64,
 }
 
 func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
-	if c.survivorBytes == 0 && c.tenuringThreshold == 1 {
+	if c.survivorBytes == 0 && c.tenuringThreshold == 1 && !c.cfg.MatureEvacuation {
 		copiedBytes, promotedBytes, err = c.promoteMarkedNurseryImmediate()
 		return copiedBytes, promotedBytes, false, err
 	}
@@ -477,6 +488,9 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 			return 0, 0, false, err
 		}
 		return c.commitPromotionPlans(plans, toSpace, toBump, parallelCopied)
+	}
+	if c.promotionRunEligible(plans) {
+		return c.promoteWithRuns(plans, toSpace, toBump)
 	}
 	if err = c.throughput.sweepAllPending(); err != nil {
 		finish()

@@ -16,3 +16,7 @@ func (*Collector) parallelError() error           { return nil }
 func (*Collector) beginParallelCollection() error { return nil }
 
 func (*Collector) parallelPoisonError() error { return nil }
+
+func (*Collector) copyMatureParallel([]plannedPromotion) bool { return false }
+
+func (*Collector) parallelActivity() ParallelActivity { return ParallelActivity{} }

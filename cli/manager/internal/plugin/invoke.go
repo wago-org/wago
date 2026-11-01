@@ -91,7 +91,7 @@ func applyRunScope(args []string, environment Environment) error {
 			local = true
 		case "--bare":
 			bare = true
-		case "--invoke", "-e", "--core", "--watch-interval", "--native-stack", "--gc-heap", "--gc-nursery":
+		case "--invoke", "-e", "--core", "--watch-interval", "--native-stack", "--gc-heap", "--gc-nursery", "--gc-workers", "--gc-region-shift":
 			if !inline && index+1 < len(args) {
 				index++
 			}

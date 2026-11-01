@@ -47,12 +47,14 @@ type parallelPhase struct {
 }
 
 type parallelCollector struct {
-	participants int
-	sequence     uint64
-	current      *parallelPhase
-	failed       atomic.Bool
-	err          error // protected by mu until join
-	poison       error // sticky for unexpected panics; close is the only teardown
+	lastTraceWork uint64
+	activity      ParallelActivity
+	participants  int
+	sequence      uint64
+	current       *parallelPhase
+	failed        atomic.Bool
+	err           error // protected by mu until join
+	poison        error // sticky for unexpected panics; close is the only teardown
 	// Tests install hooks while the collector is stopped. Hooks must not mutate heap.
 	hook     func(phase uint8, worker int)
 	taskHook func(phase uint8, worker int)
@@ -176,6 +178,53 @@ func (c *Collector) parallelPool() *parallelCollector {
 // are reserved by the coordinator before copy dispatch, even when only two run.
 func (p *parallelCollector) selectParticipants(work int) {
 	p.participants = min(len(p.workers), max(2, 1+(work-1)/parallelMinObjects))
+	c := p.collector
+	if !c.cfg.MatureEvacuation {
+		return
+	}
+	// Source byte quanta are policy only. Reservation workers and run credit
+	// remain fixed independently, including when history selects owner-only.
+	available := len(p.workers)
+	if p.hook != nil || p.taskHook != nil {
+		p.participants = available
+		return
+	}
+	m := c.throughput.mature
+	if p.phase == parallelSweep {
+		bytes := uint64(c.throughput.bump)
+		p.participants = 1
+		if bytes > 65536 {
+			p.participants = min(available, 1+int(bytes/2097152))
+		}
+		return
+	}
+	if m.diagnostics.Kind == "major" && m.diagnostics.Pressure {
+		p.participants = available
+		return
+	}
+	var young, old uint64
+	for _, e := range c.handles {
+		if e.space == spaceFree {
+			continue
+		}
+		if e.young() {
+			young += uint64(e.size)
+		} else {
+			old += uint64(e.size)
+		}
+	}
+	if m.diagnostics.Kind == "minor" && young < 65536 {
+		p.participants = 1
+		return
+	}
+	estimate := min(young, p.lastTraceWork)
+	if m.diagnostics.Kind == "major" {
+		estimate += old
+	}
+	p.participants = min(available, 1+int(estimate/262144))
+	if m.diagnostics.Kind == "major" {
+		p.participants = max(p.participants, min(available, 2))
+	}
 }
 
 func (p *parallelCollector) fail(err error, poison bool) {
@@ -216,6 +265,22 @@ func (p *parallelCollector) run() {
 		if !phase.done[i] {
 			p.fail(fmt.Errorf("gc: missing helper completion"), true)
 		}
+	}
+	if p.phase == parallelTrace {
+		p.lastTraceWork = 0
+		for i, e := range p.collector.handles {
+			if i < len(p.collector.mark) && p.collector.mark[i] {
+				p.lastTraceWork += uint64(e.size)
+			}
+		}
+	}
+	switch p.phase {
+	case parallelTrace:
+		p.activity.Trace[p.participants-1]++
+	case parallelSweep:
+		p.activity.Sweep[p.participants-1]++
+	case parallelCopy:
+		p.activity.Copy[p.participants-1]++
 	}
 	p.queue = p.queue[:0]
 	p.active = 0
@@ -347,6 +412,27 @@ func (c *Collector) copyPromotionParallel(plans []plannedPromotion) bool {
 	p := c.parallelPool()
 	p.phase = parallelCopy
 	p.selectParticipants(len(plans))
+	p.plans = plans
+	p.run()
+	p.plans = nil
+	return true
+}
+
+// Old-to-old uses the same immutable, disjoint prepared destinations. Sources
+// resolve through unchanged handles until the join, with no nursery assumption.
+func (c *Collector) copyMatureParallel(plans []plannedPromotion) bool {
+	m := c.throughput.mature
+	m.diagnostics.CopyWorkers = 1
+	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(plans) < parallelMinObjects {
+		return false
+	}
+	p := c.parallelPool()
+	p.phase = parallelCopy
+	p.selectParticipants(len(plans))
+	if m.diagnostics.Pressure {
+		p.participants = len(p.workers)
+	}
+	m.diagnostics.CopyWorkers = p.participants
 	p.plans = plans
 	p.run()
 	p.plans = nil
@@ -538,4 +624,11 @@ func (c *Collector) parallelPoisonError() error {
 		return c.parallel.poison
 	}
 	return nil
+}
+
+func (c *Collector) parallelActivity() ParallelActivity {
+	if c.parallel == nil {
+		return ParallelActivity{}
+	}
+	return c.parallel.activity
 }

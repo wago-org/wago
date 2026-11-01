@@ -94,6 +94,8 @@ type Config struct {
 	// Exhaustion first reclaims empty regions by exact tracing, then evacuates.
 	// Native allocation batches are disabled in this mode.
 	NurseryRegionShift uint8
+	// MatureEvacuation opts into pressure-triggered sparse old-space relocation.
+	MatureEvacuation bool
 	// Workers includes the coordinator; zero selects one, maximum eight.
 	Workers int
 }
@@ -373,6 +375,9 @@ func (c *Collector) Profile() Profile {
 func (c *Collector) errIfClosed() error {
 	if c.closed {
 		return errCollectorClosed
+	}
+	if c.throughput.mature != nil && c.throughput.mature.poison != nil {
+		return c.throughput.mature.poison
 	}
 	return c.parallelPoisonError()
 }
