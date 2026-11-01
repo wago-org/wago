@@ -1,0 +1,136 @@
+=== RUN   TestRV64CompactExternPlainReentryPrivate
+=== RUN   TestRV64CompactExternPlainReentryPrivate/vectorfalse/artifactfalse/profile0
+=== RUN   TestRV64CompactExternPlainReentryPrivate/vectorfalse/artifactfalse/profile1
+=== RUN   TestRV64CompactExternPlainReentryPrivate/vectortrue/artifactfalse/profile0
+=== RUN   TestRV64CompactExternPlainReentryPrivate/vectortrue/artifactfalse/profile1
+--- PASS: TestRV64CompactExternPlainReentryPrivate (0.38s)
+    --- PASS: TestRV64CompactExternPlainReentryPrivate/vectorfalse/artifactfalse/profile0 (0.09s)
+    --- PASS: TestRV64CompactExternPlainReentryPrivate/vectorfalse/artifactfalse/profile1 (0.05s)
+    --- PASS: TestRV64CompactExternPlainReentryPrivate/vectortrue/artifactfalse/profile0 (0.05s)
+    --- PASS: TestRV64CompactExternPlainReentryPrivate/vectortrue/artifactfalse/profile1 (0.08s)
+=== RUN   TestGCConstClassifiedRootsHonorDirectSinkStop
+--- PASS: TestGCConstClassifiedRootsHonorDirectSinkStop (0.00s)
+=== RUN   TestGCConstExprRootsStackAndEarlierGlobals
+=== RUN   TestGCConstExprRootsStackAndEarlierGlobals/artifactfalse/profile0
+=== RUN   TestGCConstExprRootsStackAndEarlierGlobals/artifactfalse/profile1
+--- PASS: TestGCConstExprRootsStackAndEarlierGlobals (0.03s)
+    --- PASS: TestGCConstExprRootsStackAndEarlierGlobals/artifactfalse/profile0 (0.01s)
+    --- PASS: TestGCConstExprRootsStackAndEarlierGlobals/artifactfalse/profile1 (0.00s)
+=== RUN   TestGCConstExprRootsEarlierElementEntries
+--- PASS: TestGCConstExprRootsEarlierElementEntries (0.02s)
+=== RUN   TestGCCrossInstanceCallsWithSharedPersistentRoots
+=== RUN   TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled
+=== RUN   TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled/tiny
+=== RUN   TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled/throughput
+=== RUN   TestGCCrossInstanceCallsWithSharedPersistentRoots/codec
+=== RUN   TestGCCrossInstanceCallsWithSharedPersistentRoots/codec/tiny
+=== RUN   TestGCCrossInstanceCallsWithSharedPersistentRoots/codec/throughput
+--- PASS: TestGCCrossInstanceCallsWithSharedPersistentRoots (1.60s)
+    --- PASS: TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled (0.83s)
+        --- PASS: TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled/tiny (0.43s)
+        --- PASS: TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled/throughput (0.40s)
+    --- PASS: TestGCCrossInstanceCallsWithSharedPersistentRoots/codec (0.75s)
+        --- PASS: TestGCCrossInstanceCallsWithSharedPersistentRoots/codec/tiny (0.33s)
+        --- PASS: TestGCCrossInstanceCallsWithSharedPersistentRoots/codec/throughput (0.42s)
+=== RUN   TestGCDomainHostRootsAcrossReentry
+=== RUN   TestGCDomainHostRootsAcrossReentry/region=0
+=== RUN   TestGCDomainHostRootsAcrossReentry/region=6
+--- PASS: TestGCDomainHostRootsAcrossReentry (0.02s)
+    --- PASS: TestGCDomainHostRootsAcrossReentry/region=0 (0.01s)
+    --- PASS: TestGCDomainHostRootsAcrossReentry/region=6 (0.01s)
+=== RUN   TestGCExternConversionRejectedReplacementPreservesRoot
+--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)
+=== RUN   TestGCFrameLocalLivenessCompactsDeadDeclaredRoots
+--- PASS: TestGCFrameLocalLivenessCompactsDeadDeclaredRoots (0.00s)
+=== RUN   TestGCFrameLocalLivenessStoresOnlyReferencedRoots
+--- PASS: TestGCFrameLocalLivenessStoresOnlyReferencedRoots (0.00s)
+=== RUN   TestGCFrameLocalLivenessCompactsDisjointWideRoots
+--- PASS: TestGCFrameLocalLivenessCompactsDisjointWideRoots (0.02s)
+=== RUN   TestGCFrameLocalLivenessCompactionAcceptsMoreThan1024LiveRoots
+--- PASS: TestGCFrameLocalLivenessCompactionAcceptsMoreThan1024LiveRoots (0.00s)
+=== RUN   TestGCFrameConservativeLivenessAcceptsMoreThan1024Roots
+--- PASS: TestGCFrameConservativeLivenessAcceptsMoreThan1024Roots (0.00s)
+=== RUN   TestGCNativeFrameRootsDeepMappedStack
+--- PASS: TestGCNativeFrameRootsDeepMappedStack (0.00s)
+=== RUN   TestGCNativeFrameRootsMappedStackBounds
+=== RUN   TestGCNativeFrameRootsMappedStackBounds/frame
+=== RUN   TestGCNativeFrameRootsMappedStackBounds/return_word
+--- PASS: TestGCNativeFrameRootsMappedStackBounds (0.00s)
+    --- PASS: TestGCNativeFrameRootsMappedStackBounds/frame (0.00s)
+    --- PASS: TestGCNativeFrameRootsMappedStackBounds/return_word (0.00s)
+=== RUN   TestGCNativeFrameRootsParkedActivationUsesPhysicalStack
+--- PASS: TestGCNativeFrameRootsParkedActivationUsesPhysicalStack (0.00s)
+=== RUN   TestGCNativeFrameRootsDirectHelperUsesPhysicalStack
+--- PASS: TestGCNativeFrameRootsDirectHelperUsesPhysicalStack (0.00s)
+=== RUN   TestGCCollectFrameRootsPreservesArchitectureBoundary
+--- PASS: TestGCCollectFrameRootsPreservesArchitectureBoundary (0.00s)
+=== RUN   TestGCCollectFrameRootsUsesCurrentArchitecture
+--- PASS: TestGCCollectFrameRootsUsesCurrentArchitecture (0.00s)
+=== RUN   TestGCNativeFrameRootsRISCV64SavedRAWalk
+--- PASS: TestGCNativeFrameRootsRISCV64SavedRAWalk (0.00s)
+=== RUN   TestGCNativeFrameRootsRISCV64ForeignBridgeStackAdjustment
+--- PASS: TestGCNativeFrameRootsRISCV64ForeignBridgeStackAdjustment (0.00s)
+=== RUN   TestGCNativeFrameRootsCallsiteFreeForeignTargetReturnsToCallerOwner
+--- PASS: TestGCNativeFrameRootsCallsiteFreeForeignTargetReturnsToCallerOwner (0.00s)
+=== RUN   TestGCNativeFrameRootsARM64FrameRecordWalk
+--- PASS: TestGCNativeFrameRootsARM64FrameRecordWalk (0.00s)
+=== RUN   TestGCNativeFrameRootsDeepInBoundsChain
+--- PASS: TestGCNativeFrameRootsDeepInBoundsChain (0.00s)
+=== RUN   TestGCNativeFrameRootsARM64ForeignWrapperStackAdjustment
+--- PASS: TestGCNativeFrameRootsARM64ForeignWrapperStackAdjustment (0.00s)
+=== RUN   TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall
+--- PASS: TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall (0.00s)
+=== RUN   TestGCModuleFrameRootPlanRejectsPendingFunction
+--- PASS: TestGCModuleFrameRootPlanRejectsPendingFunction (0.00s)
+=== RUN   TestGCModuleFrameRootPlanDerivesDenseSafepointIDs
+--- PASS: TestGCModuleFrameRootPlanDerivesDenseSafepointIDs (0.00s)
+=== RUN   TestGCNativeFrameRootsARM64ExternalReturnTerminates
+--- PASS: TestGCNativeFrameRootsARM64ExternalReturnTerminates (0.00s)
+=== RUN   TestGCNativeFrameRootWideEnumerationIsAllocationFree
+--- PASS: TestGCNativeFrameRootWideEnumerationIsAllocationFree (0.01s)
+=== RUN   TestGCNativeFrameRootsScalarAdapterContinuation
+=== RUN   TestGCNativeFrameRootsScalarAdapterContinuation/0
+=== RUN   TestGCNativeFrameRootsScalarAdapterContinuation/1
+--- PASS: TestGCNativeFrameRootsScalarAdapterContinuation (0.00s)
+    --- PASS: TestGCNativeFrameRootsScalarAdapterContinuation/0 (0.00s)
+    --- PASS: TestGCNativeFrameRootsScalarAdapterContinuation/1 (0.00s)
+=== RUN   TestGCHostReentryFullDepth
+=== RUN   TestGCHostReentryFullDepth/throughput/caller=false
+=== RUN   TestGCHostReentryFullDepth/throughput/caller=true
+=== RUN   TestGCHostReentryFullDepth/tiny/caller=false
+=== RUN   TestGCHostReentryFullDepth/tiny/caller=true
+--- PASS: TestGCHostReentryFullDepth (0.15s)
+    --- PASS: TestGCHostReentryFullDepth/throughput/caller=false (0.04s)
+    --- PASS: TestGCHostReentryFullDepth/throughput/caller=true (0.04s)
+    --- PASS: TestGCHostReentryFullDepth/tiny/caller=false (0.03s)
+    --- PASS: TestGCHostReentryFullDepth/tiny/caller=true (0.03s)
+=== RUN   TestGCSharedMutableGlobalAliasesPublishRootsAndBarriers
+--- PASS: TestGCSharedMutableGlobalAliasesPublishRootsAndBarriers (0.01s)
+=== RUN   TestPlatformExecutionArchitecture
+    platform_arch_test.go:3: EXECUTED linux/riscv64
+--- PASS: TestPlatformExecutionArchitecture (0.00s)
+=== RUN   TestGCStage7GuestWorkers
+    platform_stage7_test.go:33: compile: rv64: unsupported experimental integer shape: control declaration function type
+--- FAIL: TestGCStage7GuestWorkers (0.01s)
+=== RUN   TestGCStage7GuestRelocatedRead
+    platform_stage7_test.go:78: compile: rv64: unsupported experimental integer shape: control declaration function type
+--- FAIL: TestGCStage7GuestRelocatedRead (0.00s)
+=== RUN   TestRV64PublicNativeInvocationSurvivesForeignHostReentry
+=== RUN   TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tablefalse-sharedfalse-artifactfalse
+=== RUN   TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tablefalse-sharedfalse-artifacttrue
+=== RUN   TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tablefalse-sharedtrue-artifactfalse
+=== RUN   TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tablefalse-sharedtrue-artifacttrue
+=== RUN   TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tabletrue-sharedfalse-artifactfalse
+=== RUN   TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tabletrue-sharedfalse-artifacttrue
+=== RUN   TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tabletrue-sharedtrue-artifactfalse
+=== RUN   TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tabletrue-sharedtrue-artifacttrue
+--- PASS: TestRV64PublicNativeInvocationSurvivesForeignHostReentry (0.19s)
+    --- PASS: TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tablefalse-sharedfalse-artifactfalse (0.03s)
+    --- PASS: TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tablefalse-sharedfalse-artifacttrue (0.02s)
+    --- PASS: TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tablefalse-sharedtrue-artifactfalse (0.02s)
+    --- PASS: TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tablefalse-sharedtrue-artifacttrue (0.02s)
+    --- PASS: TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tabletrue-sharedfalse-artifactfalse (0.05s)
+    --- PASS: TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tabletrue-sharedfalse-artifacttrue (0.02s)
+    --- PASS: TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tabletrue-sharedtrue-artifactfalse (0.02s)
+    --- PASS: TestRV64PublicNativeInvocationSurvivesForeignHostReentry/tabletrue-sharedtrue-artifacttrue (0.02s)
+FAIL

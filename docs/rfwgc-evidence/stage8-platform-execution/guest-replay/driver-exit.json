@@ -1,0 +1,4 @@
+{
+  "exit": 0,
+  "meaning": "driver completed; ARM64 guest commands pass; RV64 guest commands fail admission, not execution"
+}

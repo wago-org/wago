@@ -1,0 +1,4 @@
+{
+  "exit": 0,
+  "meaning": "driver completed; individual guest command failures remain failures in results.json; collector commands all exit0"
+}
