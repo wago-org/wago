@@ -27,6 +27,41 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 		return regNone, false
 	}
 
+	// A 32-bit unsigned quotient without an add correction needs only the
+	// full UMULL product followed by one 64-bit shift. Read the dividend
+	// directly and write the requested destination, avoiding two copies and
+	// separate high-half/post-shift instructions. UMULL ignores carrier bits.
+	left := f.s.arg0(node)
+	if left.elemKind() == ekValue && left.st.kind == stLocalReg && !w && !signed && !wantRem && uint32(c) > 1 && uint32(c)&(uint32(c)-1) != 0 {
+		magic, shift, add := railshot.MagicU(uint64(uint32(c)), 32)
+		if !add {
+			previousPins := f.pinned
+			dividend, _ := f.materializeRead(f.s.arg0(node))
+			f.pinned = f.pinned.add(dividend)
+			result := dest
+			if result == regNone {
+				result = f.allocReg(maskOf(dividend))
+			}
+			f.pinned = f.pinned.add(result)
+			constant := result
+			if result == dividend {
+				constant = f.allocReg(maskOf(dividend, result))
+			}
+			f.a.MovImm32(constant, int32(uint32(magic)))
+			f.a.Umull(result, dividend, constant)
+			f.shiftImm(shLSR, result, byte(32+shift), true)
+			if constant != result {
+				f.release(constant)
+			}
+			f.pinned = previousPins
+			f.consumeBlockBelow(node)
+			f.occupy(node, result)
+			f.stats.peep("div-by-const")
+			f.stats.peep("magic-quotient-direct")
+			return result, true
+		}
+	}
+
 	// Compute the dividend into an owned result register. Unlike x86 (which had to
 	// keep it clear of RAX/RDX for the one-operand MUL), AArch64's multiply-high is
 	// orthogonal, so no register needs to be avoided here.
