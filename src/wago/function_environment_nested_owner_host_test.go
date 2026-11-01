@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && amd64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -276,6 +276,12 @@ func TestR9OwnershipStateH6CallbackQuiescence(t *testing.T) {
 						return
 					}
 					checkpoint = producer.hasPhysicalResources() && released == 0
+					if value, ok := managedFunctionGraphs.Load(store); ok {
+						graph := value.(*managedFunctionGraph)
+						graph.hostRetry.mu.Lock()
+						checkpoint = checkpoint && !graph.hostRetry.running
+						graph.hostRetry.mu.Unlock()
+					}
 				}))
 				_, startErr := instantiateCore(c, opts)
 				if !checkpoint {

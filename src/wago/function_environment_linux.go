@@ -85,7 +85,8 @@ type managedFunctionGraph struct {
 	pendingMetadata   atomic.Bool
 	pendingFinalizers atomic.Uint64
 	pendingCollection atomic.Bool
-	collecting        atomic.Bool
+	collecting        sync.Mutex
+	hostRetry         managedFunctionRetryState
 	drainingReclaims  bool
 }
 
