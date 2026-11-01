@@ -19,7 +19,7 @@ index 72c5dc24e..4a6201324 100644
 @@ -1,13 +1,13 @@
  import validation from "../validation";
  import .module;
- 
+
 -// Standards-only WebAssembly Core 3.0 validator. Threads and Wago's compact
 -// import encoding are deliberately excluded from this conformance profile.
 +// Standards-only WebAssembly Core 3.0 validator. Standardized proposals,
