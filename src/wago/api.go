@@ -2313,7 +2313,7 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports resolvedImports, s
 			}
 		}
 		if ehNativeCalls {
-			if !ex.inst.c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) {
+			if !(ex.inst.c.stagedFeatures() | ex.inst.c.requiredFeatures).IsEnabled(CoreFeatureExceptionHandling) {
 				return fmt.Errorf("exception-handler transfer import %q requires an exception-enabled producer", key)
 			}
 			if len(sig.Params) != 0 || len(sig.Results) != 0 {

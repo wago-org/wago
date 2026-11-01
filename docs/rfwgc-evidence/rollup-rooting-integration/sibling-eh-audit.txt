@@ -1,0 +1,121 @@
+/home/dev/Projects/slipstream dcb45b56386327a1f71fb039ed02e13562e1e2d7
+src/jit_gc.goose
+fn publish_exception_roots(c: Collector&, adapter: WasmGcAdapter&, registry: u64,
+                           exception_count: u32&, at: u32&) -> bool {
+    while at < exception_count {
+        let reference = exception_scratch(c, at); at += 1;
+        let owner = exception_arena(c, registry, reference);
+        if owner == 0 { return false; }
+        let top = ss_load64(owner + 24);
+        if reference & 15 != 0 || reference > top || top - reference < 32 {
+            c.error = GC_CORRUPT; return false;
+        }
+        let arity = ss_load64(reference + 8); let available = top - reference - 32;
+        if arity > available / 16 || ss_load64(reference + 24) != 6004234345566393669 ||
+           ss_load64(reference) == 0 || ss_load64(reference + 16) == 0 {
+            c.error = GC_CORRUPT; return false;
+        }
+        let end = reference + 32 + arity * 16;
+        if !publish_root_map(c, adapter, reference + 32, end, ss_load64(reference + 16),
+                             registry, exception_count) { return false; }
+    }
+    return true;
+}
+
+fn publish_runtime_roots(c: Collector&, adapter: WasmGcAdapter&, rt: Runtime&) -> bool {
+    // The collector handle bound also bounds simultaneously distinct live
+    // exception roots. Reuse its fixed move scratch outside collection,
+    // splitting full native pointers into two u32 words. gc_trace resets this
+    // storage before consuming it. Duplicate exnrefs are coalesced.
+    var exception_count: u32 = 0;
+    // Persistent exception slots from every instantiated runtime are Store
+    // roots, not merely roots of the runtime that happens to allocate. Scan
+    // each defining runtime's owned range once; imported storage aliases one
+    // of these slots and must not require a second owner.
+    let registry = rt.exception_registry;
+    if registry == 0 { c.error = GC_CORRUPT; return false; }
+    let arena_count = ss_load64(registry + 8);
+    if arena_count == 0 || arena_count > 1048576 { c.error = GC_CORRUPT; return false; }
+    var arena = ss_load64(registry); var arenas_seen: u64 = 0;
+    while arenas_seen < arena_count {
+        if arena == 0 || arena & 15 != 0 || ss_load64(arena + 8) != arena + 96 ||
+           ss_load64(arena + 16) != arena + 4194304 ||
+           ss_load64(arena + 24) < arena + 96 || ss_load64(arena + 24) > arena + 4194304 {
+            c.error = GC_CORRUPT; return false;
+        }
+        let global_refs = ss_load64(arena + 32); let global_kinds = ss_load64(arena + 40);
+        let global_count = ss_load64(arena + 48); let global_first = ss_load64(arena + 56);
+        if global_first > global_count { c.error = GC_CORRUPT; return false; }
+        for i in global_first..global_count {
+            if ss_load64(global_kinds + i * 8) == 2 &&
+               !enqueue_exception(c, registry, exception_count,
+                                  ss_load64(ss_load64(global_refs + i * 8))) { return false; }
+        }
+        let table_refs = ss_load64(arena + 64); let table_kinds = ss_load64(arena + 72);
+        let table_count = ss_load64(arena + 80); let table_first = ss_load64(arena + 88);
+        if table_first > table_count { c.error = GC_CORRUPT; return false; }
+        for i in table_first..table_count {
+            if ss_load64(table_kinds + i * 8) != 2 { continue; }
+            let descriptor = ss_load64(table_refs + i * 8);
+            let base = ss_load64(descriptor); let size = ss_load64(descriptor + 8);
+            for slot in size as i64 {
+                if !enqueue_exception(c, registry, exception_count,
+                                      ss_load64(base + (slot as u64) * 8)) { return false; }
+            }
+        }
+        arena = ss_load64(arena); arenas_seen += 1;
+    }
+    if arena != 0 { c.error = GC_CORRUPT; return false; }
+    var frame = rt.gc_shadow; var remaining = (rt.native_end - rt.native_base) / 48 + 1;
+/home/dev/Projects/starshine-mb b28144a7c50f1dc360825f7f68220022101b9921
+docs/wiki/wasm-gc-core-boundary.md
+---
+kind: concept
+status: supported
+last_reviewed: 2026-07-14
+sources:
+  - validate/constant-expressions.md
+  - wasm-shared-everything-threads-boundary.md
+  - wasm-more-array-constructors-boundary.md
+  - validate/type-section-and-subtyping.md
+  - https://raw.githubusercontent.com/WebAssembly/custom-descriptors/main/proposals/custom-descriptors/Overview.md
+  - ../../src/lib/types.mbt
+  - ../../src/wast/parser.mbt
+  - ../../src/wast/lower_to_lib.mbt
+  - ../../src/binary/decode.mbt
+  - ../../src/binary/encode.mbt
+  - ../../src/validate/validate.mbt
+  - ../../src/validate/typecheck.mbt
+  - ../../src/validate/gen_valid.mbt
+related:
+  - wasm-feature-status-and-proposal-boundaries.md
+  - wasm-typed-function-references-boundary.md
+  - wast/gc-type-authoring.md
+  - wast/gc-aggregate-instruction-authoring.md
+  - wasm-more-array-constructors-boundary.md
+  - wast/reference-instruction-authoring.md
+  - wast/text-surface-gap-ledger.md
+  - validate/type-section-and-subtyping.md
+  - validate/constant-expressions.md
+  - binary/type-table-memory-global-tag-sections.md
+  - binary/instruction-and-expression-encoding.md
+  - custom-descriptors/descriptor-instruction-surface.md
+  - fuzzing/generator-coverage-ledger.md
+---
+
+# WebAssembly GC Core Boundary
+
+## Overview
+
+Use this page when a claim mentions “WebAssembly GC” and you need to know which layer is meant. The ordinary GC feature is now a finished/Core-3.0 WebAssembly surface: it covers recursive `func` / `struct` / `array` types, abstract heap types such as `any`, `eq`, `struct`, `array`, and `i31`, typed references, ordinary cast/test/branch/call reference instructions, and struct/array aggregate instructions. The `call_ref` / `return_call_ref` slice is cross-linked to the focused typed-function-reference boundary at [`wasm-typed-function-references-boundary.md`](wasm-typed-function-references-boundary.md). The active More Array Constructors proposal is separate: `array.new_array`, `array.new_memory`, and `array.new_table` route through [`wasm-more-array-constructors-boundary.md`](wasm-more-array-constructors-boundary.md), while current Core `array.new*` support remains part of this GC layer. That does **not** mean every Starshine layer exposes every Core syntax spelling today.
+
+The official Core 3.0 type/instruction/text/binary/validation pages and the Starshine owner files in the layer map establish this GC boundary. The current [`constant-expression guide`](validate/constant-expressions.md), grounded in Core validation and local tests, records one narrow but important local status: Starshine now admits Core `array.new`, `array.new_default`, and `array.new_fixed` in constant expressions after array-type resolution. The five Core array constructors also have WAST text support. This does not add the separate More Array Constructors proposal. The important routing rule is:
+
+```text
+Core WebAssembly GC
+  -> Starshine core model + binary codec + validator + generator surface
+  -> narrower Starshine WAST text authoring surface
+  -> narrower Starshine constant-expression initializer allow-list
+  -> separate active-proposal/local custom-descriptor surface
+```
+

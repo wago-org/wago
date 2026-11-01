@@ -2029,6 +2029,22 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
 			f.ensureFrameEH(&f.ctrl[frame]).refResults |= 1 << (clause.payloadN - 1)
 		}
+		// Exception dispatch bypasses ordinary branch-result tracking. Its
+		// collector payloads must remain roots at the catch target, including
+		// when an operand survives a subsequent allocating/host call.
+		for j := 0; j < int(clause.scalarN); j++ {
+			if clause.gcParams&(1<<j) == 0 {
+				continue
+			}
+			target := &f.ctrl[frame]
+			if target.kind == cfLoop {
+				flags := f.ensureFrameGCRootFlags(target)
+				flags[target.height+j] = true
+				target.set(ctrlHasParamGCRoots, true)
+			} else {
+				f.setFrameResultGCRoot(target, j)
+			}
+		}
 		// The exception edge can arrive with only the conservative local-fact state
 		// established before try_table. Intersect it at registration time just like
 		// an ordinary branch; the out-of-line route restores physical locals only.
