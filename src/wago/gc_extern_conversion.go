@@ -324,15 +324,17 @@ func (s *gcExternConversionState) replaceExtern(oldWord, newWord uint64) error {
 	if oldEntry != nil && oldEntry.uses == 0 {
 		return fmt.Errorf("GC extern conversion ownership underflow")
 	}
+	// All fallible ownership validation precedes releasing the old root. A
+	// rejected replacement must leave the visible slot and its lease intact.
+	if newEntry != nil && newEntry.uses == ^uint32(0) {
+		return fmt.Errorf("GC extern conversion ownership overflow")
+	}
 	if oldEntry != nil && oldEntry.uses == 1 && oldEntry.hasRoot {
 		if err := s.collector.SetTableSlot(oldEntry.rootSlot, gc.Null()); err != nil {
 			return err
 		}
 	}
 	if newEntry != nil {
-		if newEntry.uses == ^uint32(0) {
-			return fmt.Errorf("GC extern conversion ownership overflow")
-		}
 		newEntry.uses++
 	}
 	if oldEntry != nil {

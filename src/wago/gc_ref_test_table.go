@@ -183,6 +183,9 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 	if index >= size {
 		return fmt.Errorf("GC ref.test table %d index %d out of bounds", table, index)
 	}
+	if s.entryBytes[table] != 8 {
+		return fmt.Errorf("GC ref.test funcref table mutation must use native descriptor copying")
+	}
 	switch s.kinds[table] {
 	case gcRefTableRoot:
 		root := gc.Null()
@@ -216,9 +219,6 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 		if err := s.Conversion.replaceExtern(old, word); err != nil {
 			return err
 		}
-	}
-	if s.entryBytes[table] != 8 {
-		return fmt.Errorf("GC ref.test funcref table mutation must use native descriptor copying")
 	}
 	off := 8 + int(index)*8
 	binary.LittleEndian.PutUint64(descriptor[off:off+8], word)
