@@ -193,3 +193,25 @@ func TestTinyGoForeignStackGCPreparedEntry(t *testing.T) {
 	}
 	grt.GC()
 }
+
+func TestTinyGoForeignStackGCCloseThunkFailure(t *testing.T) {
+	eng, err := NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapping := eng.preparedInt.mem
+	// An unaligned mmap address makes munmap fail without releasing the mapping.
+	eng.preparedInt.mem = mapping[1:]
+	if err := eng.Close(); err == nil {
+		t.Fatal("unaligned thunk unmap succeeded")
+	}
+	if eng.preparedInt.foreignStack != nil || eng.stack != nil {
+		t.Fatal("failed thunk cleanup retained a registration for the released stack")
+	}
+	grt.GC() // must not scan the unmapped foreign stack
+	eng.preparedInt.mem = mapping
+	if err := eng.Close(); err != nil {
+		t.Fatal(err)
+	}
+	grt.GC()
+}
