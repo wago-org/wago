@@ -1,0 +1,1270 @@
+
+main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/wago/config.go
+85: 	// CoreFeaturesV3 is the mandatory WebAssembly Core 3.0 release feature set.
+86: 	// CoreFeatureSIMD represents both core and relaxed SIMD in wago's existing
+87: 	// admission model. The set describes release scope, not current executability;
+88: 	// intersect it with SupportedFeatures before configuring a runtime.
+89: 	CoreFeaturesV3 = CoreFeaturesV2 |
+90: 		CoreFeatureTailCall |
+91: 		CoreFeatureExtendedConstExpressions |
+92: 		CoreFeatureTypedFunctionReferences |
+93: 		CoreFeatureGC |
+94: 		CoreFeatureExceptionHandling |
+95: 		CoreFeatureMultiMemory |
+96: 		CoreFeatureMemory64 |
+97: 		CoreFeatureTable64
+98: 
+99: 	// coreFeaturesWago is the optional set wago's backend lowers and the ceiling
+100: 	// validated by WithCoreFeatures.
+101: 	coreFeaturesWago = CoreFeaturesV3 | CoreFeatureExtendedConst | CoreFeatureThreads | CoreFeatureCompactImports | CoreFeatureWideArithmetic
+102: 
+
+main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/wago/type_descriptor.go
+497: 	}
+498: 	if heapTypeEquivalent(actual.Heap, actualTypes, required.Heap, requiredTypes) {
+499: 		return !required.Exact || actual.Exact
+500: 	}
+501: 	if required.Exact {
+502: 		return false
+503: 	}
+504: 	if actual.Heap.Defined {
+505: 		if required.Heap.Defined {
+506: 			return definedTypeHasSuper(actual.Heap.TypeIndex, actualTypes, required.Heap.TypeIndex, requiredTypes)
+507: 		}
+508: 		if int(actual.Heap.TypeIndex) >= len(actualTypes) {
+509: 			return false
+510: 		}
+511: 		var family AbstractHeapType
+512: 		switch actualTypes[actual.Heap.TypeIndex].Kind {
+513: 		case CompositeTypeFunction:
+514: 			family = AbstractHeapFunc
+515: 		case CompositeTypeStruct:
+516: 			family = AbstractHeapStruct
+517: 		case CompositeTypeArray:
+518: 			family = AbstractHeapArray
+519: 		default:
+520: 			return false
+521: 		}
+522: 		return abstractHeapSubtype(family, required.Heap.Abstract)
+523: 	}
+524: 	if required.Heap.Defined {
+525: 		if int(required.Heap.TypeIndex) >= len(requiredTypes) {
+526: 			return false
+527: 		}
+528: 		switch actual.Heap.Abstract {
+529: 		case AbstractHeapNoFunc:
+530: 			return requiredTypes[required.Heap.TypeIndex].Kind == CompositeTypeFunction
+531: 		case AbstractHeapNone:
+532: 			kind := requiredTypes[required.Heap.TypeIndex].Kind
+533: 			return kind == CompositeTypeStruct || kind == CompositeTypeArray
+534: 		default:
+535: 			return false
+536: 		}
+537: 	}
+538: 	return abstractHeapSubtype(actual.Heap.Abstract, required.Heap.Abstract)
+539: }
+540: 
+
+main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/wago/globals.go
+1715: 		actual, _ = valueTypeDescriptorFromValType(actualType)
+1716: 	}
+1717: 	compatible := valueTypeSubtype(actual, actualTypes, required, c.Types)
+1718: 	if imp.Mutable {
+1719: 		compatible = compatible && valueTypeSubtype(required, c.Types, actual, actualTypes)
+1720: 	}
+1721: 	if !compatible {
+1722: 		return fmt.Errorf("imported global %q exact type is incompatible with required structural type", key)
+1723: 	}
+1724: 	return nil
+1725: }
+
+main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/wago/globals.go
+1808: 		return fmt.Errorf("reference global owner instance is closed")
+1809: 	}
+1810: 	if isGCRefValType(typ) {
+1811: 		if source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
+1812: 			return fmt.Errorf("collector-reference global requires producer and importer in the same Runtime GC domain")
+1813: 		}
+1814: 		ref := gc.Ref(uint32(bits))
+1815: 		if bits != uint64(ref) {
+1816: 			return fmt.Errorf("collector-reference global contains non-compact reference %#x", bits)
+1817: 		}
+1818: 		if !ref.IsNull() && !ref.IsI31() && !ref.IsObj() {
+1819: 			return fmt.Errorf("collector-reference global contains invalid reference %#x", bits)
+1820: 		}
+1821: 		if ref.IsObj() {
+1822: 			if _, err := collector.ObjectType(ref); err != nil {
+1823: 				return fmt.Errorf("collector-reference global contains stale or foreign object: %w", err)
+1824: 			}
+1825: 		}
+1826: 		if !source.gcRefMatchesValueType(ref, actual) {
+1827: 			return fmt.Errorf("collector-reference global contains a reference with an incompatible exact structural type")
+1828: 		}
+1829: 		return nil
+1830: 	}
+1831: 	if bits == 0 {
+1832: 		return nil
+1833: 	}
+1834: 	if typ == ValExternRef {
+1835: 		if railshotValidCompactExternHostGlobalWord(g, store, collector, bits) {
+
+main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/wago/instantiate.go
+287: func (b *instanceBuilder) prepareCollector() error {
+288: 	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()
+289: 	needsHelpers := b.c.usesGCStructHelpers() || b.c.usesGCArrayHelpers()
+290: 	needsRuntimeDomain := b.c.needsRuntimeGCCollectorDomain()
+291: 	if b.c.hasOpaqueExternFrames() && !needsRuntimeDomain {
+292: 		preferred, err := preferredGCCollectorFromImports(b.c, b.imports, b.opts.store)
+293: 		if err != nil {
+294: 			return err
+295: 		}
+296: 		needsRuntimeDomain = preferred != nil
+297: 	}
+298: 	if !needsRuntimeDomain && !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.stagedGCI31Product() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
+299: 		return nil
+300: 	}
+301: 	gcConfig := b.opts.GC
+
+main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/wago/constexpr.go
+158: 	case 0xd0: // ref.null
+159: 		exact, heap, err := r.RefHeapType()
+160: 		if err != nil {
+161: 			return constExprResult{}, err
+162: 		}
+163: 		switch heap {
+164: 		case -16: // func (0x70): null funcref
+165: 			got.vtype = wasm.FuncRef
+166: 		case -13: // nofunc (0x73): bottom null funcref
+167: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNoFunc))
+168: 		case -17: // extern (0x6f): null externref
+169: 			got.vtype = wasm.ExternRef
+170: 		case -14: // noextern (0x72): bottom null externref
+171: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNoExtern))
+172: 		case -18: // any (0x6e): null GC-category reference
+173: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapAny))
+174: 		case -19: // eq (0x6d): null equality reference
+175: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapEq))
+176: 		case -20: // i31 (0x6c): null i31 reference
+177: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapI31))
+178: 		case -21: // struct (0x6b): null struct reference
+179: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapStruct))
+180: 		case -22: // array (0x6a): null array reference
+181: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapArray))
+182: 		case -15: // none (0x71): bottom null GC-category reference
+183: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNone))
+184: 		case -23: // exn (0x69): null exception reference
+185: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapExn))
+186: 		case -12: // noexn (0x74): bottom null exception reference
+187: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNoExn))
+188: 		default:
+189: 			if heap < 0 || m == nil {
+190: 				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
+191: 			}
+192: 			typeCount := 0
+193: 			for i := range m.Types {
+194: 				typeCount += len(m.Types[i].SubTypes)
+195: 			}
+196: 			if uint64(heap) >= uint64(typeCount) {
+197: 				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
+198: 			}
+199: 			got.vtype = wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), exact))
+200: 		}
+201: 		got.bits = 0
+202: 	case 0xd2: // ref.func
+
+main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/core/runtime/gc/native/collector.go
+250: 	c.nursery = nil
+251: 	c.tiny.Close()
+252: 	c.throughput.Close()
+253: 	c.handles = nil
+254: 	c.checkedHandles = nil
+255: 	c.freeHandles = nil
+256: 	c.nurseryHandles = nil
+257: 	c.mark = nil
+258: 	c.majorBlocks = nil
+259: 	c.majorYoungDirty = false
+260: 	c.markStack = nil
+261: 	c.subtypeIntervals = nil
+262: 	c.promotionScratch = nil
+263: 	c.remembered = nil
+264: 	c.lastCardBounds = objectCardBounds{}
+265: 	c.objectCards = nil
+266: 	c.freeObjectCardSlot = 0
+267: 	c.slotCards = nil
+268: 	c.globalCardBits = nil
+269: 	c.tableCardBits = nil
+270: 	c.globalSlots = nil
+271: 	c.tableSlots = nil
+272: 	c.refreshNativeView()
+273: 	c.tinyGC.color = nil
+274: 	c.tinyGC.grayStack = nil
+275: }
+
+main 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e src/core/runtime/gc/native/collect.go
+11: func (c *Collector) CollectFull(roots RootSet) error {
+12: 	if err := c.errIfClosed(); err != nil {
+13: 		return err
+14: 	}
+15: 	c.discardNativeStructHandles()
+16: 	c.discardNativeLargeArrayAllocation()
+17: 	defer c.refreshNativeView()
+18: 	if c.cfg.Profile == ProfileTiny {
+19: 		if err := c.tinyCollectFull(roots); err != nil {
+20: 			return err
+21: 		}
+22: 		if c.cfg.VerifyAfterCollect {
+23: 			return c.Verify(roots)
+24: 		}
+25: 		return nil
+26: 	}
+27: 	c.stats.FullCollections++
+28: 	c.clearMarks()
+29: 	c.markRoots(roots)
+30: 	c.sweepAll()
+31: 	c.pruneRemembered()
+32: 	c.finishFullCardMetadata()
+33: 	if c.cfg.VerifyAfterCollect {
+34: 		return c.Verify(roots)
+35: 	}
+36: 	return nil
+37: }
+38: 
+39: func (c *Collector) CollectMinor(roots RootSet) error {
+40: 	if err := c.errIfClosed(); err != nil {
+41: 		return err
+42: 	}
+43: 	youngObjects := uint32(min(uint64(len(c.nurseryHandles)), uint64(^uint32(0))))
+
+port ca30843801956bae67d5cd1219f66d191518c125 src/wago/config.go
+85: 	// CoreFeaturesV3 is the mandatory WebAssembly Core 3.0 release feature set.
+86: 	// CoreFeatureSIMD represents both core and relaxed SIMD in wago's existing
+87: 	// admission model. The set describes release scope, not current executability;
+88: 	// intersect it with SupportedFeatures before configuring a runtime.
+89: 	CoreFeaturesV3 = CoreFeaturesV2 |
+90: 		CoreFeatureTailCall |
+91: 		CoreFeatureExtendedConstExpressions |
+92: 		CoreFeatureTypedFunctionReferences |
+93: 		CoreFeatureGC |
+94: 		CoreFeatureExceptionHandling |
+95: 		CoreFeatureMultiMemory |
+96: 		CoreFeatureMemory64 |
+97: 		CoreFeatureTable64
+98: 
+99: 	// coreFeaturesWago is the optional set wago's backend lowers and the ceiling
+100: 	// validated by WithCoreFeatures.
+101: 	coreFeaturesWago = CoreFeaturesV3 | CoreFeatureExtendedConst | CoreFeatureThreads | CoreFeatureCompactImports | CoreFeatureWideArithmetic
+102: 
+
+port ca30843801956bae67d5cd1219f66d191518c125 src/wago/type_descriptor.go
+497: 	}
+498: 	if heapTypeEquivalent(actual.Heap, actualTypes, required.Heap, requiredTypes) {
+499: 		return !required.Exact || actual.Exact
+500: 	}
+501: 	if required.Exact {
+502: 		return false
+503: 	}
+504: 	if actual.Heap.Defined {
+505: 		if required.Heap.Defined {
+506: 			return definedTypeHasSuper(actual.Heap.TypeIndex, actualTypes, required.Heap.TypeIndex, requiredTypes)
+507: 		}
+508: 		if int(actual.Heap.TypeIndex) >= len(actualTypes) {
+509: 			return false
+510: 		}
+511: 		var family AbstractHeapType
+512: 		switch actualTypes[actual.Heap.TypeIndex].Kind {
+513: 		case CompositeTypeFunction:
+514: 			family = AbstractHeapFunc
+515: 		case CompositeTypeStruct:
+516: 			family = AbstractHeapStruct
+517: 		case CompositeTypeArray:
+518: 			family = AbstractHeapArray
+519: 		default:
+520: 			return false
+521: 		}
+522: 		return abstractHeapSubtype(family, required.Heap.Abstract)
+523: 	}
+524: 	if required.Heap.Defined {
+525: 		if int(required.Heap.TypeIndex) >= len(requiredTypes) {
+526: 			return false
+527: 		}
+528: 		switch actual.Heap.Abstract {
+529: 		case AbstractHeapNoFunc:
+530: 			return requiredTypes[required.Heap.TypeIndex].Kind == CompositeTypeFunction
+531: 		case AbstractHeapNone:
+532: 			kind := requiredTypes[required.Heap.TypeIndex].Kind
+533: 			return kind == CompositeTypeStruct || kind == CompositeTypeArray
+534: 		default:
+535: 			return false
+536: 		}
+537: 	}
+538: 	return abstractHeapSubtype(actual.Heap.Abstract, required.Heap.Abstract)
+539: }
+540: 
+
+port ca30843801956bae67d5cd1219f66d191518c125 src/wago/globals.go
+1715: 		actual, _ = valueTypeDescriptorFromValType(actualType)
+1716: 	}
+1717: 	compatible := valueTypeSubtype(actual, actualTypes, required, c.Types)
+1718: 	if imp.Mutable {
+1719: 		compatible = compatible && valueTypeSubtype(required, c.Types, actual, actualTypes)
+1720: 	}
+1721: 	if !compatible {
+1722: 		return fmt.Errorf("imported global %q exact type is incompatible with required structural type", key)
+1723: 	}
+1724: 	return nil
+1725: }
+
+port ca30843801956bae67d5cd1219f66d191518c125 src/wago/globals.go
+1808: 		return fmt.Errorf("reference global owner instance is closed")
+1809: 	}
+1810: 	if isGCRefValType(typ) {
+1811: 		if source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
+1812: 			return fmt.Errorf("collector-reference global requires producer and importer in the same Runtime GC domain")
+1813: 		}
+1814: 		ref := gc.Ref(uint32(bits))
+1815: 		if bits != uint64(ref) {
+1816: 			return fmt.Errorf("collector-reference global contains non-compact reference %#x", bits)
+1817: 		}
+1818: 		if !ref.IsNull() && !ref.IsI31() && !ref.IsObj() {
+1819: 			return fmt.Errorf("collector-reference global contains invalid reference %#x", bits)
+1820: 		}
+1821: 		if ref.IsObj() {
+1822: 			if _, err := collector.ObjectType(ref); err != nil {
+1823: 				return fmt.Errorf("collector-reference global contains stale or foreign object: %w", err)
+1824: 			}
+1825: 		}
+1826: 		if !source.gcRefMatchesValueType(ref, actual) {
+1827: 			return fmt.Errorf("collector-reference global contains a reference with an incompatible exact structural type")
+1828: 		}
+1829: 		return nil
+1830: 	}
+1831: 	if bits == 0 {
+1832: 		return nil
+1833: 	}
+1834: 	if typ == ValExternRef {
+1835: 		if railshotValidCompactExternHostGlobalWord(g, store, collector, bits) {
+
+port ca30843801956bae67d5cd1219f66d191518c125 src/wago/instantiate.go
+287: func (b *instanceBuilder) prepareCollector() error {
+288: 	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()
+289: 	needsHelpers := b.c.usesGCStructHelpers() || b.c.usesGCArrayHelpers()
+290: 	needsRuntimeDomain := b.c.needsRuntimeGCCollectorDomain()
+291: 	if b.c.hasOpaqueExternFrames() && !needsRuntimeDomain {
+292: 		preferred, err := preferredGCCollectorFromImports(b.c, b.imports, b.opts.store)
+293: 		if err != nil {
+294: 			return err
+295: 		}
+296: 		needsRuntimeDomain = preferred != nil
+297: 	}
+298: 	if !needsRuntimeDomain && !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.stagedGCI31Product() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
+299: 		return nil
+300: 	}
+301: 	gcConfig := b.opts.GC
+
+port ca30843801956bae67d5cd1219f66d191518c125 src/wago/constexpr.go
+158: 	case 0xd0: // ref.null
+159: 		heap, err := r.S33()
+160: 		if err != nil {
+161: 			return constExprResult{}, err
+162: 		}
+163: 		switch heap {
+164: 		case -16: // func (0x70): null funcref
+165: 			got.vtype = wasm.FuncRef
+166: 		case -13: // nofunc (0x73): bottom null funcref
+167: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNoFunc))
+168: 		case -17: // extern (0x6f): null externref
+169: 			got.vtype = wasm.ExternRef
+170: 		case -14: // noextern (0x72): bottom null externref
+171: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNoExtern))
+172: 		case -18: // any (0x6e): null GC-category reference
+173: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapAny))
+174: 		case -19: // eq (0x6d): null equality reference
+175: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapEq))
+176: 		case -20: // i31 (0x6c): null i31 reference
+177: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapI31))
+178: 		case -21: // struct (0x6b): null struct reference
+179: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapStruct))
+180: 		case -22: // array (0x6a): null array reference
+181: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapArray))
+182: 		case -15: // none (0x71): bottom null GC-category reference
+183: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNone))
+184: 		case -23: // exn (0x69): null exception reference
+185: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapExn))
+186: 		case -12: // noexn (0x74): bottom null exception reference
+187: 			got.vtype = wasm.RefVal(wasm.AbsRef(wasm.HeapNoExn))
+188: 		default:
+189: 			if heap < 0 || m == nil {
+190: 				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
+191: 			}
+192: 			typeCount := 0
+193: 			for i := range m.Types {
+194: 				typeCount += len(m.Types[i].SubTypes)
+195: 			}
+196: 			if uint64(heap) >= uint64(typeCount) {
+197: 				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
+198: 			}
+199: 			got.vtype = wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false))
+200: 		}
+201: 		got.bits = 0
+202: 	case 0xd2: // ref.func
+
+port ca30843801956bae67d5cd1219f66d191518c125 src/core/runtime/gc/native/collector.go
+250: 	}
+251: 	c.initNativeView()
+252: 	return c, nil
+253: }
+254: 
+255: // Close releases heap backing storage and makes live heap operations return
+256: // errCollectorClosed. It is idempotent; Stats remains safe for post-close
+257: // counters, while unchecked root-slot reads return null after slots are released.
+258: func (c *Collector) Close() {
+259: 	c.notifyCollectorClosed()
+260: 	c.discardNativeStructHandles()
+261: 	c.discardNativeLargeArrayAllocation()
+262: 	c.stats.LiveObjects = 0
+263: 	c.closed = true
+264: 	c.nursery = nil
+265: 	c.edenRegions = nil
+266: 	c.tiny.Close()
+267: 	c.throughput.Close()
+268: 	c.handles = nil
+269: 	c.checkedHandles = nil
+270: 	c.freeHandles = nil
+271: 	c.nurseryHandles = nil
+272: 	c.mark = nil
+273: 	c.majorBlocks = nil
+274: 	c.majorYoungDirty = false
+275: 	c.markStack = nil
+
+port ca30843801956bae67d5cd1219f66d191518c125 src/core/runtime/gc/native/collect.go
+11: func (c *Collector) CollectFull(roots RootSet) error {
+12: 	if err := c.errIfClosed(); err != nil {
+13: 		return err
+14: 	}
+15: 	c.discardNativeStructHandles()
+16: 	c.discardNativeLargeArrayAllocation()
+17: 	defer c.refreshNativeView()
+18: 	if c.cfg.Profile == ProfileTiny {
+19: 		if err := c.tinyCollectFull(roots); err != nil {
+20: 			return err
+21: 		}
+22: 		if c.cfg.VerifyAfterCollect {
+23: 			return c.Verify(roots)
+24: 		}
+25: 		return nil
+26: 	}
+27: 	c.stats.FullCollections++
+28: 	c.clearMarks()
+29: 	c.markRoots(roots)
+30: 	c.sweepAll()
+31: 	if len(c.edenRegions) != 0 {
+32: 		c.reclaimEmptyEdenRegions()
+33: 	}
+34: 	c.pruneRemembered()
+35: 	c.finishFullCardMetadata()
+36: 	if err := c.throughput.reclaimEmptyMature(); err != nil {
+37: 		return err
+38: 	}
+39: 	if c.cfg.VerifyAfterCollect {
+40: 		return c.Verify(roots)
+41: 	}
+42: 	return nil
+43: }
+
+pr1020 ce63d517a55f2981b7ccf6e150d1b9050fb5f953 src/core/runtime/gc/native/parallel.go (complete synchronization source)
+1: //go:build !tinygo && !wago_target_tinygo
+2: 
+3: package gc
+4: 
+5: import (
+6: 	"encoding/binary"
+7: 	"runtime"
+8: 	"sync"
+9: 	"sync/atomic"
+10: )
+11: 
+12: const parallelCollectionSupported = true
+13: const parallelMinObjects = 8192
+14: const parallelArrayChunk = 1024
+15: const parallelQueueLimit = 4096
+16: 
+17: const (
+18: 	parallelTrace uint8 = iota
+19: 	parallelSweep
+20: 	parallelCopy
+21: )
+22: 
+23: // Tasks with end == 0 scan an object; other tasks scan disjoint array ranges.
+24: type traceTask struct{ handle, first, end uint32 }
+25: 
+26: type traceWorker struct {
+27: 	pool    *parallelCollector
+28: 	wake    chan struct{}
+29: 	local   []traceTask
+30: 	live    []uint32
+31: 	scanned uint64
+32: 	tasks   uint64
+33: 	index   int
+34: }
+35: 
+36: // The mutator is stopped by the caller. Helpers only read heap/descriptor data
+37: // and uniquely write claimed mark entries or admitted payload destinations.
+38: // Root callbacks, handle publication, allocator updates, and card maintenance
+39: // remain on the caller after the join barrier.
+40: type parallelCollector struct {
+41: 	collector        *Collector
+42: 	workers          []traceWorker
+43: 	joined           sync.WaitGroup
+44: 	stopped          sync.WaitGroup
+45: 	mu               sync.Mutex
+46: 	ready            *sync.Cond
+47: 	queue            []traceTask
+48: 	active           int // workers that can still publish work, including private stacks
+49: 	idle             atomic.Int32
+50: 	claims           []uint32 // per-handle epoch; separate from the serial mark representation
+51: 	epoch            uint32
+52: 	nursery, capture bool
+53: 	phase            uint8
+54: 	plans            []plannedPromotion
+55: }
+56: 
+57: func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
+58: 	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(c.markStack) == 0 || c.objectEdgeSource() != nil {
+59: 		return 0, false
+60: 	}
+61: 	objects := len(c.handles)
+62: 	if nursery {
+63: 		objects = len(c.nurseryHandles)
+64: 	}
+65: 	if objects < parallelMinObjects {
+66: 		// A single large reference array can dominate tracing despite a tiny
+67: 		// handle table. Inspect only the already-admitted seeds in this case.
+68: 		largeArray := false
+69: 		for _, h := range c.markStack {
+70: 			r := makeObjRef(h)
+71: 			d, err := c.refDesc(r)
+72: 			if err == nil && d.ArrayElementsAreRefs() && c.header(r).Aux >= parallelMinObjects {
+73: 				largeArray = true
+74: 				break
+75: 			}
+76: 		}
+77: 		if !largeArray {
+78: 			return 0, false
+79: 		}
+80: 	}
+81: 	p := c.parallelPool()
+82: 	if len(p.claims) < len(c.handles) {
+83: 		p.claims = make([]uint32, len(c.handles))
+84: 	}
+85: 	p.epoch++
+86: 	if p.epoch == 0 {
+87: 		clear(p.claims)
+88: 		p.epoch = 1
+89: 	}
+90: 	p.nursery, p.capture = nursery, capture
+91: 	p.phase = parallelTrace
+92: 	for i := range p.workers {
+93: 		w := &p.workers[i]
+94: 		w.local = w.local[:0]
+95: 		w.live = w.live[:0]
+96: 		w.scanned = 0
+97: 		w.tasks = 0
+98: 	}
+99: 	// Seeds were marked by the serial root/remembered scan. Claim all of them
+100: 	// before dispatch, so an edge back to a seed cannot scan it a second time.
+101: 	for i, h := range c.markStack {
+102: 		p.claims[h] = p.epoch
+103: 		w := &p.workers[i%len(p.workers)]
+104: 		w.local = append(w.local, traceTask{handle: h})
+105: 	}
+106: 	c.markStack = c.markStack[:0]
+107: 	p.active = len(p.workers)
+108: 	p.run()
+109: 	var scanned uint64
+110: 	if capture {
+111: 		c.promotionScratch = c.promotionScratch[:0]
+112: 	}
+113: 	for i := range p.workers {
+114: 		w := &p.workers[i]
+115: 		scanned += w.scanned
+116: 		if capture {
+117: 			for _, h := range w.live {
+118: 				c.promotionScratch = append(c.promotionScratch, plannedPromotion{handle: h})
+119: 			}
+120: 		}
+121: 	}
+122: 	if nursery {
+123: 		c.stats.MinorObjectsScanned += scanned
+124: 	}
+125: 	return scanned, true
+126: }
+127: 
+128: func (c *Collector) parallelPool() *parallelCollector {
+129: 	p := c.parallel
+130: 	if p == nil {
+131: 		p = &parallelCollector{collector: c, queue: make([]traceTask, 0, parallelQueueLimit)}
+132: 		p.ready = sync.NewCond(&p.mu)
+133: 		p.workers = make([]traceWorker, min(c.cfg.Workers, runtime.GOMAXPROCS(0)))
+134: 		for i := range p.workers {
+135: 			w := &p.workers[i]
+136: 			w.pool = p
+137: 			w.index = i
+138: 			if i != 0 {
+139: 				w.wake = make(chan struct{})
+140: 				p.stopped.Add(1)
+141: 				go w.loop()
+142: 			}
+143: 		}
+144: 		c.parallel = p
+145: 	}
+146: 	return p
+147: }
+148: 
+149: func (p *parallelCollector) run() {
+150: 	p.joined.Add(len(p.workers) - 1)
+151: 	for i := 1; i < len(p.workers); i++ {
+152: 		p.workers[i].wake <- struct{}{}
+153: 	}
+154: 	p.workers[0].runPhase()
+155: 	p.joined.Wait()
+156: }
+157: 
+158: func (w *traceWorker) runPhase() {
+159: 	switch w.pool.phase {
+160: 	case parallelSweep:
+161: 		w.sweep()
+162: 	case parallelCopy:
+163: 		w.copyPromotions()
+164: 	default:
+165: 		w.trace()
+166: 	}
+167: }
+168: 
+169: // Sweep discovery is disjoint; allocator/card/free-list mutations are committed
+170: // in handle order by the coordinator. Sparse indexed sweeps keep their existing
+171: // path rather than paying for a dense parallel discovery pass.
+172: func (c *Collector) sweepParallel() bool {
+173: 	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(c.handles) < parallelMinObjects ||
+174: 		nativeCollectorFastPaths && len(c.majorBlocks) != 0 && len(c.freeHandles) >= len(c.handles)/2 {
+175: 		return false
+176: 	}
+177: 	p := c.parallelPool()
+178: 	p.phase = parallelSweep
+179: 	p.run()
+180: 	for i := range p.workers {
+181: 		for _, h := range p.workers[i].live {
+182: 			if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
+183: 				c.deferThroughputFree(h)
+184: 			} else {
+185: 				c.free(h)
+186: 			}
+187: 		}
+188: 	}
+189: 	c.compactNurseryHandles()
+190: 	return true
+191: }
+192: 
+193: func (w *traceWorker) sweep() {
+194: 	p := w.pool
+195: 	c := p.collector
+196: 	start := len(c.handles) * w.index / len(p.workers)
+197: 	end := len(c.handles) * (w.index + 1) / len(p.workers)
+198: 	w.live = w.live[:0]
+199: 	for h := max(1, start); h < end; h++ {
+200: 		if c.handles[h].space != spaceFree && !c.mark[h] {
+201: 			w.live = append(w.live, uint32(h))
+202: 		}
+203: 	}
+204: }
+205: 
+206: // Admission and all injected failure points have completed before copying.
+207: // Destinations and sources are disjoint; handles remain unchanged until join.
+208: func (c *Collector) copyPromotionParallel(plans []plannedPromotion) bool {
+209: 	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(plans) < parallelMinObjects {
+210: 		return false
+211: 	}
+212: 	var bytes uint64
+213: 	for _, plan := range plans {
+214: 		if plan.entry.space != spaceLarge {
+215: 			bytes += uint64(plan.entry.size)
+216: 		}
+217: 	}
+218: 	if bytes < 1<<20 {
+219: 		return false
+220: 	}
+221: 	p := c.parallelPool()
+222: 	p.phase = parallelCopy
+223: 	p.plans = plans
+224: 	p.run()
+225: 	p.plans = nil
+226: 	return true
+227: }
+228: 
+229: func (w *traceWorker) copyPromotions() {
+230: 	p := w.pool
+231: 	c := p.collector
+232: 	start := len(p.plans) * w.index / len(p.workers)
+233: 	end := len(p.plans) * (w.index + 1) / len(p.workers)
+234: 	for _, plan := range p.plans[start:end] {
+235: 		if plan.entry.space == spaceLarge {
+236: 			continue
+237: 		}
+238: 		src := c.handles[plan.handle]
+239: 		var dst []byte
+240: 		if plan.entry.space == spaceNursery {
+241: 			dst = c.nursery[plan.entry.off : plan.entry.off+plan.entry.size]
+242: 		} else {
+243: 			dst = c.throughput.bytes(plan.entry)
+244: 		}
+245: 		copy(dst, c.bytes(makeObjRef(plan.handle)))
+246: 		if plan.entry.space == spaceOld {
+247: 			binary.LittleEndian.PutUint32(dst[12:16], binary.LittleEndian.Uint32(dst[12:16])|FlagOld)
+248: 		}
+249: 		c.poisonYoungSource(src)
+250: 	}
+251: }
+252: 
+253: func (c *Collector) closeParallel() {
+254: 	if p := c.parallel; p != nil {
+255: 		for i := 1; i < len(p.workers); i++ {
+256: 			close(p.workers[i].wake)
+257: 		}
+258: 		p.stopped.Wait()
+259: 		c.parallel = nil
+260: 	}
+261: }
+262: 
+263: func (w *traceWorker) loop() {
+264: 	defer w.pool.stopped.Done()
+265: 	for range w.wake {
+266: 		w.runPhase()
+267: 		w.pool.joined.Done()
+268: 	}
+269: }
+270: 
+271: func (w *traceWorker) trace() {
+272: 	p := w.pool
+273: 	for {
+274: 		for len(w.local) != 0 {
+275: 			last := len(w.local) - 1
+276: 			task := w.local[last]
+277: 			w.local = w.local[:last]
+278: 			w.tasks++
+279: 			w.scan(task)
+280: 			// Publication is batched. Private chains do no queue locking or waking.
+281: 			if len(w.local) >= 32 && p.idle.Load() != 0 {
+282: 				w.share()
+283: 			}
+284: 		}
+285: 		p.mu.Lock()
+286: 		p.active--
+287: 		for len(p.queue) == 0 && p.active != 0 {
+288: 			p.idle.Add(1)
+289: 			p.ready.Wait()
+290: 			p.idle.Add(-1)
+291: 		}
+292: 		if len(p.queue) == 0 {
+293: 			p.ready.Broadcast()
+294: 			p.mu.Unlock()
+295: 			return
+296: 		}
+297: 		n := min(32, len(p.queue))
+298: 		start := len(p.queue) - n
+299: 		w.local = append(w.local, p.queue[start:]...)
+300: 		p.queue = p.queue[:start]
+301: 		p.active++
+302: 		p.mu.Unlock()
+303: 	}
+304: }
+305: 
+306: func (w *traceWorker) share() {
+307: 	p := w.pool
+308: 	p.mu.Lock()
+309: 	n := min(len(w.local)/2, parallelQueueLimit-len(p.queue))
+310: 	if n != 0 {
+311: 		start := len(w.local) - n
+312: 		p.queue = append(p.queue, w.local[start:]...)
+313: 		w.local = w.local[:start]
+314: 		p.ready.Broadcast()
+315: 	}
+316: 	p.mu.Unlock()
+317: }
+318: 
+319: func (w *traceWorker) mark(r Ref) {
+320: 	if !r.IsObj() {
+321: 		return
+322: 	}
+323: 	p := w.pool
+324: 	c := p.collector
+325: 	h := handleOf(r)
+326: 	if h == 0 || int(h) >= len(c.handles) {
+327: 		return
+328: 	}
+329: 	e := c.handles[h]
+330: 	if e.space == spaceFree || p.nursery && !e.young() {
+331: 		return
+332: 	}
+333: 	claim := &p.claims[h]
+334: 	previous := atomic.LoadUint32(claim)
+335: 	if previous == p.epoch || !atomic.CompareAndSwapUint32(claim, previous, p.epoch) {
+336: 		return
+337: 	}
+338: 	c.mark[h] = true
+339: 	w.local = append(w.local, traceTask{handle: h})
+340: }
+341: 
+342: func (w *traceWorker) scan(task traceTask) {
+343: 	c := w.pool.collector
+344: 	r := makeObjRef(task.handle)
+345: 	b := c.bytes(r)
+346: 	if task.end != 0 {
+347: 		for i := task.first; i < task.end; i++ {
+348: 			w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+i*4:])))
+349: 		}
+350: 		return
+351: 	}
+352: 	w.scanned++
+353: 	if w.pool.capture {
+354: 		w.live = append(w.live, task.handle)
+355: 	}
+356: 	typeID := binary.LittleEndian.Uint32(b)
+357: 	if int(typeID) >= len(c.types) {
+358: 		return
+359: 	}
+360: 	d := c.types[typeID]
+361: 	if !d.HasRefs {
+362: 		return
+363: 	}
+364: 	if d.Kind == KindStruct {
+365: 		if nativeCollectorFastPaths && d.firstRef != 0 {
+366: 			for index := uint32(d.firstRef); index != 0; {
+367: 				field := d.Fields[index-1]
+368: 				w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+field.Offset:])))
+369: 				index = uint32(field.nextRef)
+370: 			}
+371: 		} else {
+372: 			for _, field := range d.Fields {
+373: 				if isCollectorRefKind(field.Kind) {
+374: 					w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+field.Offset:])))
+375: 				}
+376: 			}
+377: 		}
+378: 	} else if d.ArrayElementsAreRefs() {
+379: 		count := binary.LittleEndian.Uint32(b[8:])
+380: 		// Reference payloads have a four-byte physical stride, for collector-managed refs.
+381: 		for first := uint32(parallelArrayChunk); first < count; {
+382: 			end := first + min(uint32(parallelArrayChunk), count-first)
+383: 			w.local = append(w.local, traceTask{handle: task.handle, first: first, end: end})
+384: 			first = end
+385: 		}
+386: 		if len(w.local) != 0 {
+387: 			w.share()
+388: 		}
+389: 		for i := uint32(0); i < min(count, uint32(parallelArrayChunk)); i++ {
+390: 			w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+i*d.ElemSize:])))
+391: 		}
+392: 	}
+393: }
+
+tune 504dcae5a626403407158e5aade6442de1563787 src/core/runtime/gc/native/parallel.go (complete synchronization source)
+1: //go:build !tinygo && !wago_target_tinygo
+2: 
+3: package gc
+4: 
+5: import (
+6: 	"encoding/binary"
+7: 	"runtime"
+8: 	"sync"
+9: 	"sync/atomic"
+10: )
+11: 
+12: const parallelCollectionSupported = true
+13: const parallelMinObjects = 8192
+14: const parallelArrayChunk = 1024
+15: const parallelQueueLimit = 4096
+16: 
+17: const (
+18: 	parallelTrace uint8 = iota
+19: 	parallelSweep
+20: 	parallelCopy
+21: )
+22: 
+23: // Tasks with end == 0 scan an object; other tasks scan disjoint array ranges.
+24: type traceTask struct{ handle, first, end uint32 }
+25: 
+26: type traceWorker struct {
+27: 	pool    *parallelCollector
+28: 	wake    chan struct{}
+29: 	local   []traceTask
+30: 	live    []uint32
+31: 	scanned uint64
+32: 	tasks   uint64
+33: 	index   int
+34: }
+35: 
+36: // The mutator is stopped by the caller. Helpers only read heap/descriptor data
+37: // and uniquely write claimed mark entries or admitted payload destinations.
+38: // Root callbacks, handle publication, allocator updates, and card maintenance
+39: // remain on the caller after the join barrier.
+40: type parallelCollector struct {
+41: 	collector        *Collector
+42: 	workers          []traceWorker
+43: 	joined           sync.WaitGroup
+44: 	stopped          sync.WaitGroup
+45: 	mu               sync.Mutex
+46: 	ready            *sync.Cond
+47: 	queue            []traceTask
+48: 	active           int // workers that can still publish work, including private stacks
+49: 	idle             atomic.Int32
+50: 	claims           []uint32 // per-handle epoch; separate from the serial mark representation
+51: 	epoch            uint32
+52: 	nursery, capture bool
+53: 	phase            uint8
+54: 	plans            []plannedPromotion
+55: }
+56: 
+57: func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
+58: 	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(c.markStack) == 0 || c.objectEdgeSource() != nil {
+59: 		return 0, false
+60: 	}
+61: 	objects := len(c.handles)
+62: 	if nursery {
+63: 		objects = len(c.nurseryHandles)
+64: 	}
+65: 	if objects < parallelMinObjects {
+66: 		// A single large reference array can dominate tracing despite a tiny
+67: 		// handle table. Inspect only the already-admitted seeds in this case.
+68: 		largeArray := false
+69: 		for _, h := range c.markStack {
+70: 			r := makeObjRef(h)
+71: 			d, err := c.refDesc(r)
+72: 			if err == nil && d.ArrayElementsAreRefs() && c.header(r).Aux >= parallelMinObjects {
+73: 				largeArray = true
+74: 				break
+75: 			}
+76: 		}
+77: 		if !largeArray {
+78: 			return 0, false
+79: 		}
+80: 	}
+81: 	p := c.parallelPool()
+82: 	if len(p.claims) < len(c.handles) {
+83: 		p.claims = make([]uint32, len(c.handles))
+84: 	}
+85: 	p.epoch++
+86: 	if p.epoch == 0 {
+87: 		clear(p.claims)
+88: 		p.epoch = 1
+89: 	}
+90: 	p.nursery, p.capture = nursery, capture
+91: 	p.phase = parallelTrace
+92: 	for i := range p.workers {
+93: 		w := &p.workers[i]
+94: 		w.local = w.local[:0]
+95: 		w.live = w.live[:0]
+96: 		w.scanned = 0
+97: 		w.tasks = 0
+98: 	}
+99: 	// Seeds were marked by the serial root/remembered scan. Claim all of them
+100: 	// before dispatch, so an edge back to a seed cannot scan it a second time.
+101: 	for i, h := range c.markStack {
+102: 		p.claims[h] = p.epoch
+103: 		w := &p.workers[i%len(p.workers)]
+104: 		w.local = append(w.local, traceTask{handle: h})
+105: 	}
+106: 	c.markStack = c.markStack[:0]
+107: 	p.active = len(p.workers)
+108: 	p.run()
+109: 	var scanned uint64
+110: 	for i := range p.workers {
+111: 		scanned += p.workers[i].scanned
+112: 	}
+113: 	if capture {
+114: 		c.promotionScratch = c.promotionScratch[:0]
+115: 		// CollectMinor uses the nursery ledger when every young object survives.
+116: 		// Do not materialize a captured list that the planner will discard.
+117: 		if scanned < uint64(len(c.nurseryHandles)) {
+118: 			for i := range p.workers {
+119: 				for _, h := range p.workers[i].live {
+120: 					c.promotionScratch = append(c.promotionScratch, plannedPromotion{handle: h})
+121: 				}
+122: 			}
+123: 		}
+124: 	}
+125: 	if nursery {
+126: 		c.stats.MinorObjectsScanned += scanned
+127: 	}
+128: 	return scanned, true
+129: }
+130: 
+131: func (c *Collector) parallelPool() *parallelCollector {
+132: 	p := c.parallel
+133: 	if p == nil {
+134: 		p = &parallelCollector{collector: c, queue: make([]traceTask, 0, parallelQueueLimit)}
+135: 		p.ready = sync.NewCond(&p.mu)
+136: 		p.workers = make([]traceWorker, min(c.cfg.Workers, runtime.GOMAXPROCS(0)))
+137: 		for i := range p.workers {
+138: 			w := &p.workers[i]
+139: 			w.pool = p
+140: 			w.index = i
+141: 			if i != 0 {
+142: 				w.wake = make(chan struct{})
+143: 				p.stopped.Add(1)
+144: 				go w.loop()
+145: 			}
+146: 		}
+147: 		c.parallel = p
+148: 	}
+149: 	return p
+150: }
+151: 
+152: func (p *parallelCollector) run() {
+153: 	p.joined.Add(len(p.workers) - 1)
+154: 	for i := 1; i < len(p.workers); i++ {
+155: 		p.workers[i].wake <- struct{}{}
+156: 	}
+157: 	p.workers[0].runPhase()
+158: 	p.joined.Wait()
+159: }
+160: 
+161: func (w *traceWorker) runPhase() {
+162: 	switch w.pool.phase {
+163: 	case parallelSweep:
+164: 		w.sweep()
+165: 	case parallelCopy:
+166: 		w.copyPromotions()
+167: 	default:
+168: 		w.trace()
+169: 	}
+170: }
+171: 
+172: // Sweep discovery is disjoint; allocator/card/free-list mutations are committed
+173: // in handle order by the coordinator. Sparse indexed sweeps keep their existing
+174: // path rather than paying for a dense parallel discovery pass.
+175: func (c *Collector) sweepParallel() bool {
+176: 	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(c.handles) < parallelMinObjects ||
+177: 		nativeCollectorFastPaths && len(c.majorBlocks) != 0 && len(c.freeHandles) >= len(c.handles)/2 {
+178: 		return false
+179: 	}
+180: 	p := c.parallelPool()
+181: 	p.phase = parallelSweep
+182: 	p.run()
+183: 	for i := range p.workers {
+184: 		for _, h := range p.workers[i].live {
+185: 			if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
+186: 				c.deferThroughputFree(h)
+187: 			} else {
+188: 				c.free(h)
+189: 			}
+190: 		}
+191: 	}
+192: 	c.compactNurseryHandles()
+193: 	return true
+194: }
+195: 
+196: func (w *traceWorker) sweep() {
+197: 	p := w.pool
+198: 	c := p.collector
+199: 	start := len(c.handles) * w.index / len(p.workers)
+200: 	end := len(c.handles) * (w.index + 1) / len(p.workers)
+201: 	w.live = w.live[:0]
+202: 	for h := max(1, start); h < end; h++ {
+203: 		if c.handles[h].space != spaceFree && !c.mark[h] {
+204: 			w.live = append(w.live, uint32(h))
+205: 		}
+206: 	}
+207: }
+208: 
+209: // Admission and all injected failure points have completed before copying.
+210: // Destinations and sources are disjoint; handles remain unchanged until join.
+211: func (c *Collector) copyPromotionParallel(plans []plannedPromotion) bool {
+212: 	if c.cfg.Workers <= 1 || runtime.GOMAXPROCS(0) <= 1 || len(plans) < parallelMinObjects {
+213: 		return false
+214: 	}
+215: 	var bytes uint64
+216: 	for _, plan := range plans {
+217: 		if plan.entry.space != spaceLarge {
+218: 			bytes += uint64(plan.entry.size)
+219: 			// Admission only needs a lower bound. Avoid walking the rest of a
+220: 			// large survivor plan before the copy and publication passes.
+221: 			if bytes >= 1<<20 {
+222: 				break
+223: 			}
+224: 		}
+225: 	}
+226: 	if bytes < 1<<20 {
+227: 		return false
+228: 	}
+229: 	p := c.parallelPool()
+230: 	p.phase = parallelCopy
+231: 	p.plans = plans
+232: 	p.run()
+233: 	p.plans = nil
+234: 	return true
+235: }
+236: 
+237: func (w *traceWorker) copyPromotions() {
+238: 	p := w.pool
+239: 	c := p.collector
+240: 	start := len(p.plans) * w.index / len(p.workers)
+241: 	end := len(p.plans) * (w.index + 1) / len(p.workers)
+242: 	for _, plan := range p.plans[start:end] {
+243: 		if plan.entry.space == spaceLarge {
+244: 			continue
+245: 		}
+246: 		src := c.handles[plan.handle]
+247: 		var dst []byte
+248: 		if plan.entry.space == spaceNursery {
+249: 			dst = c.nursery[plan.entry.off : plan.entry.off+plan.entry.size]
+250: 		} else {
+251: 			dst = c.throughput.bytes(plan.entry)
+252: 		}
+253: 		copy(dst, c.bytes(makeObjRef(plan.handle)))
+254: 		if plan.entry.space == spaceOld {
+255: 			binary.LittleEndian.PutUint32(dst[12:16], binary.LittleEndian.Uint32(dst[12:16])|FlagOld)
+256: 		}
+257: 		c.poisonYoungSource(src)
+258: 	}
+259: }
+260: 
+261: func (c *Collector) closeParallel() {
+262: 	if p := c.parallel; p != nil {
+263: 		for i := 1; i < len(p.workers); i++ {
+264: 			close(p.workers[i].wake)
+265: 		}
+266: 		p.stopped.Wait()
+267: 		c.parallel = nil
+268: 	}
+269: }
+270: 
+271: func (w *traceWorker) loop() {
+272: 	defer w.pool.stopped.Done()
+273: 	for range w.wake {
+274: 		w.runPhase()
+275: 		w.pool.joined.Done()
+276: 	}
+277: }
+278: 
+279: func (w *traceWorker) trace() {
+280: 	p := w.pool
+281: 	for {
+282: 		for len(w.local) != 0 {
+283: 			last := len(w.local) - 1
+284: 			task := w.local[last]
+285: 			w.local = w.local[:last]
+286: 			w.tasks++
+287: 			w.scan(task)
+288: 			// Publication is batched. Private chains do no queue locking or waking.
+289: 			if len(w.local) >= 32 && p.idle.Load() != 0 {
+290: 				w.share()
+291: 			}
+292: 		}
+293: 		p.mu.Lock()
+294: 		p.active--
+295: 		for len(p.queue) == 0 && p.active != 0 {
+296: 			p.idle.Add(1)
+297: 			p.ready.Wait()
+298: 			p.idle.Add(-1)
+299: 		}
+300: 		if len(p.queue) == 0 {
+301: 			p.ready.Broadcast()
+302: 			p.mu.Unlock()
+303: 			return
+304: 		}
+305: 		n := min(32, len(p.queue))
+306: 		start := len(p.queue) - n
+307: 		w.local = append(w.local, p.queue[start:]...)
+308: 		p.queue = p.queue[:start]
+309: 		p.active++
+310: 		p.mu.Unlock()
+311: 	}
+312: }
+313: 
+314: func (w *traceWorker) share() {
+315: 	p := w.pool
+316: 	p.mu.Lock()
+317: 	n := min(len(w.local)/2, parallelQueueLimit-len(p.queue))
+318: 	if n != 0 {
+319: 		start := len(w.local) - n
+320: 		p.queue = append(p.queue, w.local[start:]...)
+321: 		w.local = w.local[:start]
+322: 		p.ready.Broadcast()
+323: 	}
+324: 	p.mu.Unlock()
+325: }
+326: 
+327: func (w *traceWorker) mark(r Ref) {
+328: 	if !r.IsObj() {
+329: 		return
+330: 	}
+331: 	p := w.pool
+332: 	c := p.collector
+333: 	h := handleOf(r)
+334: 	if h == 0 || int(h) >= len(c.handles) {
+335: 		return
+336: 	}
+337: 	e := c.handles[h]
+338: 	if e.space == spaceFree || p.nursery && !e.young() {
+339: 		return
+340: 	}
+341: 	claim := &p.claims[h]
+342: 	previous := atomic.LoadUint32(claim)
+343: 	if previous == p.epoch || !atomic.CompareAndSwapUint32(claim, previous, p.epoch) {
+344: 		return
+345: 	}
+346: 	c.mark[h] = true
+347: 	w.local = append(w.local, traceTask{handle: h})
+348: }
+349: 
+350: func (w *traceWorker) scan(task traceTask) {
+351: 	c := w.pool.collector
+352: 	r := makeObjRef(task.handle)
+353: 	b := c.bytes(r)
+354: 	if task.end != 0 {
+355: 		for i := task.first; i < task.end; i++ {
+356: 			w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+i*4:])))
+357: 		}
+358: 		return
+359: 	}
+360: 	w.scanned++
+361: 	if w.pool.capture {
+362: 		w.live = append(w.live, task.handle)
+363: 	}
+364: 	typeID := binary.LittleEndian.Uint32(b)
+365: 	if int(typeID) >= len(c.types) {
+366: 		return
+367: 	}
+368: 	d := c.types[typeID]
+369: 	if !d.HasRefs {
+370: 		return
+371: 	}
+372: 	if d.Kind == KindStruct {
+373: 		if nativeCollectorFastPaths && d.firstRef != 0 {
+374: 			for index := uint32(d.firstRef); index != 0; {
+375: 				field := d.Fields[index-1]
+376: 				w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+field.Offset:])))
+377: 				index = uint32(field.nextRef)
+378: 			}
+379: 		} else {
+380: 			for _, field := range d.Fields {
+381: 				if isCollectorRefKind(field.Kind) {
+382: 					w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+field.Offset:])))
+383: 				}
+384: 			}
+385: 		}
+386: 	} else if d.ArrayElementsAreRefs() {
+387: 		count := binary.LittleEndian.Uint32(b[8:])
+388: 		// Reference payloads have a four-byte physical stride, for collector-managed refs.
+389: 		for first := uint32(parallelArrayChunk); first < count; {
+390: 			end := first + min(uint32(parallelArrayChunk), count-first)
+391: 			w.local = append(w.local, traceTask{handle: task.handle, first: first, end: end})
+392: 			first = end
+393: 		}
+394: 		if len(w.local) != 0 {
+395: 			w.share()
+396: 		}
+397: 		for i := uint32(0); i < min(count, uint32(parallelArrayChunk)); i++ {
+398: 			w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+i*d.ElemSize:])))
+399: 		}
+400: 	}
+401: }

@@ -103,7 +103,6 @@ func (c *Collector) currentYoungBytes() uint64 {
 func (c *Collector) finishMinorCardMetadata() {
 	if len(c.nurseryHandles) == 0 {
 		c.clearRememberedMetadata()
-		c.clearCardMetadata()
 		return
 	}
 	out := c.remembered[:0]

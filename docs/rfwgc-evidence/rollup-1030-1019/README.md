@@ -1,6 +1,6 @@
 # Collector rollup: 1030 then 1019
 
-Status: integration in progress; final combined gates belong to the parent.
+Status: integrated pending final gates; final combined gates belong to the parent.
 No INCLUDED disposition, PR closure, publication or performance claim is made.
 
 The latest owner order supersedes the two launch briefs' historical exclusion
@@ -56,7 +56,8 @@ handle; join/failure/drain paths must all preserve this bound before reset.
 Serial queued, full, nursery and captured nursery paths are required controls.
 No helpers are implemented by this cluster.
 
-Owner R9 design requirement for 1020: low-32-bit futex aliases can lose a 64-bit
+Owner R9 design requirement for 1020 (reported from Slipstream
+`dcb45b563:hunt-findings.md`, H1-F1; independent audit belongs to parent): low-32-bit futex aliases can lose a 64-bit
 ticket or STOP wake between full-width recheck and wait. Repeated full-width
 checks alone are insufficient. The future protocol must close that window and
 test preemption before syscall with publication/wake before wait, including STOP.
@@ -106,3 +107,59 @@ skips. Backend and guest profile/diagnostic skips remain listed in summary.json;
 they are not green coverage claims. All three race runs passed. The archive base
 and collector hashes in 1030/source.json identify the tested snapshot; subsequent
 shared-branch rooting/TinyGo commits are not implied by these results.
+
+## 1019
+
+Source b6cb0e829011ab08d98d64eaefbc0085c34a0284, including published queued-mark
+repair 4cbaa605ab5084b0a24070709ae6baf8fdf46bff. Applied only the actual PR's
+collector hunks; upstream ARCHITECTURE/CHANGELOG cleanup is not imported.
+markHighWater covers drained full, nursery and captured nursery marks; reset
+also accounts for undrained queues, including old handles discarded by a nursery
+reset after root enumeration panic. Close resets the bound. The field occupies
+existing padding; native view/handle ABI is unchanged.
+
+Complete evacuation clears remembered owners' cardSlot heads once, then resets
+shared scalar card lists, slot bitmap bits, fallback/cache state and native card
+view. General clearCardMetadata still walks owners. finishMinorCardMetadata
+uses this fast cleanup only when no young handle remains; no cleanup was moved
+across promotion failure or descriptor admission. CollectFull, mature retirement,
+transactional publication and region chunk cancellation are unchanged.
+
+All four published tests remain, parameterized across policy 0/6/12. Additional
+slot/direct panic-root variants come from verified local
+0bef34b13d51a2d941ed4b2167fb5a8b58e47dff, also parameterized across all three
+policies. They assert queued parent/unmarked child before the intervening minor
+reset, then retain the graph through full collection. The high-identity reuse
+and all serial/captured drain cases remain, as do repeated global/table card
+reuse across 63/64 and 4096 boundaries.
+
+New wagodebug controls cover destination/precommit refusal across policy 0/6/12:
+exact source handles/bytes/remembered owners survive refusal, cards and persistent
+roots remain usable, successful retry promotes children and clears cards. Region
+6/12 large admission tests inject metadata, backing and handle-publication
+failure with an outstanding small reservation, require zero descriptor debt and
+restored backing, then retry into the original extent. Existing stage5 full
+collector tests still cover late multiple-destination rollback, high LOS cards,
+metadata-growth failure, retirement failure/retry and zero-promotion credit.
+
+The #1022 recommendation above is source inspection, not an executed reproduction
+or an instruction to expand this cluster. Its one-condition production guard and
+original test should be integrated only under the parent's separate assignment.
+No #1003 extent guard, #1020 helper machinery, R9 fix, unrelated main commit,
+foreign-stack edit or rooting-worker source is part of these collector commits.
+
+Concurrent commits may appear in their ancestry. 1030 validation exported
+ca30843801956bae67d5cd1219f66d191518c125; 1019 validation exported
+9bfe98360e6ff5e1ab2f6605efc216d2c441fb37, each with only its recorded collector
+overlay. Thus the latter includes committed rooting prerequisites in its archive,
+but neither run claims to validate later dirty or committed integration work.
+
+1019 result: all twelve commands passed. Ordinary/regalloccheck collector runs
+passed 433 top-level tests; wagodebug passed 465 with the same three existing
+dead-charge skips. All three race runs passed. Backend/guest existing skips are
+listed in 1019/summary.json. The increased backend/guest counts versus 1030 also
+reflect committed rooting prerequisites in the later archive; they are not
+attributed to collector changes. Collector source hashes were rechecked after
+execution with no changes. No new production defect was found during these
+bounded integration gates. Combined final gates and final dispositions remain
+pending with the parent.
