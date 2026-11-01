@@ -1,0 +1,71 @@
+ 1:  5e821f7ef =  1:  cb3f2fce1 test: expose lost Wasm locals during extern conversions
+ 2:  500bbc2f6 =  2:  18fb487b1 test: cover conversion frame identities and checked table roots
+ 3:  41d969d30 !  3:  94c76fb3d test: cover foreign root ownership and conversion entry costs
+    @@ src/wago/gc_extern_local_roots_test.go: func TestGCExternConversionArtifactRootA
+     +		}
+     +	}
+     +}
+    -
+    - ## src/wago/gc_extern_product_amd64_test.go ##
+    -@@ src/wago/gc_extern_product_amd64_test.go: func TestStagedGCExternProductBoundaryLifecycle(t *testing.T) {
+    - 	}
+    - 
+    - 	var loaded Compiled
+    --	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+    --		t.Fatal(err)
+    --	}
+    -+	err = unmarshalCompiled(&loaded, blob[5:])
+    - 	defer loaded.Close()
+    --	if loaded.stagedGCStructProduct() != 0 || loaded.usesGCStructHelpers() || loaded.usesGCArrayHelpers() {
+    --		t.Fatal("codec inherited gc/extern admission")
+    --	}
+    --	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
+    --		t.Fatalf("codec-loaded gc/extern instantiate = %v", err)
+    -+	if c.genericGCFrameRoots() != nil {
+    -+		// Extern bridge admission is deliberately not persisted. Exact roots
+    -+		// must not let the decoded code bypass that ownership requirement.
+    -+		if err == nil || !strings.Contains(err.Error(), "GC frame-root metadata requires exact native GC roots") {
+    -+			t.Fatalf("codec admitted roots without the extern bridge: %v", err)
+    -+		}
+    -+	} else {
+    -+		if err != nil {
+    -+			t.Fatal(err)
+    -+		}
+    -+		if loaded.stagedGCStructProduct() != 0 || loaded.usesGCStructHelpers() || loaded.usesGCArrayHelpers() {
+    -+			t.Fatal("codec inherited gc/extern admission")
+    -+		}
+    -+		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
+    -+			t.Fatalf("codec-loaded gc/extern instantiate = %v", err)
+    -+		}
+    - 	}
+    - 
+    - 	t.Logf("gc/extern product: wasm=%d code=%d codec=%d tableState=%d conversionState=%d entry=%d plugin=%d", len(data), len(c.code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(gcExternConversionEntry{}), unsafe.Sizeof(instancePluginState{}))
+ 4:  433c1559f =  4:  75ad94720 fix: retain native GC roots in extern conversion modules
+ 5:  cb8fd4454 =  5:  70d340726 test(wago): cover shared-code foreign caller roots
+ 6:  e72d6e068 =  6:  6c380d7db test(wago): check exact native caller context and retained owners
+ 7:  97febb970 =  7:  7e68d4dc2 test(wago): cover public native root boundary and reentry limits
+ 8:  92919a5f8 =  8:  ff8417433 fix(wago): preserve exact caller ownership during GC root walks
+ 9:  eb15008a5 =  9:  ae3db0bb9 test(wago): keep compact caller locals across native adapters
+10:  e3efe1cc4 = 10:  418352c39 fix: retain caller roots across native register adapters
+11:  6924f511e = 11:  bb1724697 fix(wago): retain scalar GC domain boundaries at native adapters
+12:  97177a72f ! 12:  2fef3894a fix(gc): retain caller roots across foreign native relays
+    @@ src/wago/gc_host_activation_other.go: type gcHostActivationToken struct {
+      }
+      
+     
+    - ## src/wago/gc_type_subtyping_product_amd64_test.go ##
+    -@@ src/wago/gc_type_subtyping_product_amd64_test.go: func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
+    - 		t.Fatalf("compiledCodeCache non-profiling size = %d, want 64 bytes", got)
+    - 	}
+    - 	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 377, 362, 26, 26, 26, 26, 156, 156, 66, 66, 66, 66, 93, 259, 335, 66, 66, 6216, 1096, 1453, 31, 0, 31, 0}
+    --	wantCodecBytes := []int{354, 390, 352, 224, 243, 391, 769, 903, 453, 611, 374, 709, 506, 760, 533, 691, 533, 454, 798, 597, 871, 355, 435, 6715, 1398, 1816, 273, 242, 363, 242}
+    -+	wantCodecBytes := []int{354, 390, 352, 224, 243, 391, 769, 903, 453, 611, 374, 709, 506, 760, 533, 691, 533, 454, 798, 597, 871, 355, 435, 6968, 1435, 1922, 273, 242, 363, 242}
+    - 	for i, pin := range stagedGCTypeSubtypingProductPins {
+    - 		t.Run(pin.Filename, func(t *testing.T) {
+    - 			data := stagedGCTypeSubtypingProductData(t, pin)
+    -
+      ## src/wago/host_execution.go ##
+     @@ src/wago/host_execution.go: func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
+      		// even though the parked control frame and callsite map belong to active.
+13:  c7cc340a3 = 13:  011e1a8fe Remove docs changes from this PR
+ -:  --------- > 14:  e2736f0f3 test(wago): keep extern roots coverage on source engine

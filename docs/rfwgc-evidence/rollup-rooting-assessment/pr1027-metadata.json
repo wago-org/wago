@@ -1,0 +1,1 @@
+{"base":"90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e","branch":"verify/hunt-r2-scalar-exn-collector","head":"29e59c6413e502b000d00e40836350190db1f3c1","number":1027,"repository":"wago-org/wago","title":"fix(gc): retain collector identity for scalar exception imports"}

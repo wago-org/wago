@@ -1,0 +1,2859 @@
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index dd666748f..d499c122d 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -272,7 +272,15 @@ globals use direct domain-wide alias-cell roots plus checked barrier slots. Mult
+ heterogeneous imported/exported collector-reference tables use the same domain-wide
+ descriptor-root scan across growth, attachment rollback, and producer-first close.
+ Exact cross-instance GC-reference calls coexist with those shared persistent roots and
+-retain the same foreign-frame ownership across compiled-code codec reload. Generic
++retain the same foreign-frame ownership across independent source compilations.
++On AMD64 and ARM64, a scalar native relay does not end a root walk. The walker
++uses exact return maps and saved instance contexts to cross foreign frames, skips
++their collector-local slots, and resumes older frames of the collecting domain.
++Collector-free relays retain zero-root return maps without selecting a collector
++execution product. Immutable imports retain cross-store code and context owners
++until physical resource release. Parked foreign host activations retain the same
++chain while the public caller releases its collector lease for Go.
++Generic
+ struct/array results may leave the domain as up to 64 opaque retained `GCRef` tokens
+ per producer. Partial multi-result issuance rolls back atomically; exact store/producer
+ ownership survives producer close, and non-null tokens may re-enter the same collector
+@@ -320,7 +328,7 @@ helper-bound. Arm64 builds lower struct/array/i31 and dynamic cast/test helpers
+ through the synchronous ABI. The
+ bounded arm64 native-root product publishes liveness-exact locals and hidden
+ spills from parked SP, then follows saved-LR callsites through direct/recursive
+-calls, suspended direct-host activations, and same-domain foreign frames. Mutable
++calls, suspended host activations, and retained foreign native frames. Mutable
+ local/shared GC globals, local/shared collector tables, indirect/reference calls,
+ discarded-frame direct/indirect/reference tails, and fixed EH payload records are
+ exact. ARM64 `try_table`, `throw`, `throw_ref`, function subtype identity, indexed
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 1b7eafb88..b8f770621 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -16,6 +16,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
+ 
+ ### Fixed
+ 
++- Preserve live Wasm GC locals across allocations in modules with extern/any
++  conversions, including modules with no host imports. Keep older caller roots
++  across scalar native relays, foreign collector frames, and host callbacks,
++  including retained imports through another Runtime.
++- Preserve deferred load addresses derived from pinned mutable globals on
++  ARM64, including loads kept live across guest stack-pointer updates.
+ - Preserve deferred load addresses derived from pinned mutable globals on
+   ARM64, including loads kept live across guest stack-pointer updates.
+ - Compile ARM64 memory operations at large valid directory indexes by forming
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index b5a5e5bae..64d6e6384 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -1814,7 +1814,7 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
+ // The instance's tagged dispatch word proves this is not a same-context Wasm
+ // target. Both alternatives join with canonical operands and homed locals.
+ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) error {
+-	if !b.Dynamic || !f.dynamicHostFast || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate || funcTypeSlots(ft.Params) > maxSyncHostSlots || funcTypeSlots(ft.Results) > maxSyncHostSlots {
++	if !b.Dynamic || !f.dynamicHostFast || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && !f.gcFrameRoots.UnwindOnly || funcTypeSlots(ft.Params) > maxSyncHostSlots || funcTypeSlots(ft.Results) > maxSyncHostSlots {
+ 		return f.emitCrossInstanceCall(b, ft)
+ 	}
+ 	for _, typ := range ft.Params {
+@@ -1840,6 +1840,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType)
+ 	f.a.Load64(RDX, RAX, disp+runtime.ImportDispatchCallerContextOffset)
+ 	f.a.TestImm(RDX, uint32(runtime.ImportDispatchCallerGoHostTag), true)
+ 	slow := f.a.JccPlaceholder(condE)
++	callsiteIndex := f.gcCallsiteIndex
+ 	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
+ 		return err
+ 	}
+@@ -1851,6 +1852,8 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType)
+ 	f.a.PatchRel32(slow, f.a.Len())
+ 	copy(f.locals, locals)
+ 	f.setDepthTypesWithGCRoots(types, rootFlags)
++	// These exclusive machine branches implement one logical Wasm call.
++	f.gcCallsiteIndex = callsiteIndex
+ 	if err := f.emitCrossInstanceCall(b, ft); err != nil {
+ 		return err
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index bd2d80042..db1e6a9bf 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -3854,7 +3854,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 	// the direct-entry proof without changing the guest body.
+ 	nativeHostDirect := coreruntime.NativeScalarLeafSupported && f.opt(optNativeLeafHost) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1)
+ 	directPrepared := f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall() || nativeHostDirect) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && (!hints.hasUnsupportedDynamicCall() || nativeHostDirect) &&
+-		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && gcFrameRoots == nil) &&
++		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && (gcFrameRoots == nil || gcFrameRoots.UnwindOnly)) &&
+ 		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) || nativeHostDirect) && len(c.BodyBytes) <= 96 && nLocals <= 8
+ 	if directPrepared {
+ 		for _, r := range [...]Reg{RBP, R12, R13, R14, R15} {
+diff --git a/src/core/compiler/backend/railshot/arm64/call.go b/src/core/compiler/backend/railshot/arm64/call.go
+index 2e168049b..0b1e34db6 100644
+--- a/src/core/compiler/backend/railshot/arm64/call.go
++++ b/src/core/compiler/backend/railshot/arm64/call.go
+@@ -1802,7 +1802,7 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
+ // The instance's tagged dispatch word proves this is not a same-context Wasm
+ // target. Both alternatives join with canonical operands and homed locals.
+ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) error {
+-	if !b.Dynamic || !f.dynamicHostFast || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate || funcTypeSlots(ft.Params) > maxSyncHostSlots || funcTypeSlots(ft.Results) > maxSyncHostSlots {
++	if !b.Dynamic || !f.dynamicHostFast || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && !f.gcFrameRoots.UnwindOnly || funcTypeSlots(ft.Params) > maxSyncHostSlots || funcTypeSlots(ft.Results) > maxSyncHostSlots {
+ 		return f.emitCrossInstanceCall(b, ft)
+ 	}
+ 	for _, typ := range ft.Params {
+@@ -1818,7 +1818,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType)
+ 	roots := f.rootsBottomToTop()
+ 	types := append([]machineType(nil), f.logicalTypes(roots)...)
+ 	rootFlags := gcRootFlags(roots)
+-	if f.emitGuardedNativeImportCall(ft, roots, types) {
++	if f.gcFrameRoots == nil && f.emitGuardedNativeImportCall(ft, roots, types) {
+ 		f.stats.call(callKindImportDispatch)
+ 		return nil
+ 	}
+@@ -1839,6 +1839,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType)
+ 	}
+ 	f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerGoHostTag)
+ 	slow := f.a.Cbz64(X12)
++	callsiteIndex := f.gcCallsiteIndex
+ 	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
+ 		return err
+ 	}
+@@ -1857,6 +1858,8 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType)
+ 	f.patchBranch19(slow, f.a.Len())
+ 	copy(f.locals, locals)
+ 	f.setDepthTypesWithGCRoots(types, rootFlags)
++	// These exclusive machine branches implement one logical Wasm call.
++	f.gcCallsiteIndex = callsiteIndex
+ 	if err := f.emitCrossInstanceCall(b, ft); err != nil {
+ 		return err
+ 	}
+diff --git a/src/core/compiler/backend/railshot/shared/gc_frame_roots.go b/src/core/compiler/backend/railshot/shared/gc_frame_roots.go
+index 1f9541202..f3697ab68 100644
+--- a/src/core/compiler/backend/railshot/shared/gc_frame_roots.go
++++ b/src/core/compiler/backend/railshot/shared/gc_frame_roots.go
+@@ -72,6 +72,7 @@ type GCFrameRootPlan struct {
+ 	Candidate    bool
+ 	Exact        bool
+ 	Conservative bool // local masks retain every tracked local at each site
++	UnwindOnly   bool // zero-root return maps; retain ordinary numeric host lowering
+ 	FrameBytes   uint32
+ 	Locals       []GCFrameLocal
+ 	// AllReferenceLocals retains the source types for local.get after exact
+diff --git a/src/core/runtime/basedata.go b/src/core/runtime/basedata.go
+index 1acb341f6..e5f30f54e 100644
+--- a/src/core/runtime/basedata.go
++++ b/src/core/runtime/basedata.go
+@@ -305,6 +305,15 @@ func (j *JobMemory) LinMemBase() uintptr {
+ // guard ([linMem - 72]).
+ func (j *JobMemory) SetStackFence(v uintptr) { j.putU64(offStackFence, uint64(v)) }
+ 
++// TrapStackReentry returns the active entry's trap landing stack address.
++// The caller must hold the native execution lease while reading this word.
++func (j *JobMemory) TrapStackReentry() uintptr {
++	if j == nil {
++		return 0
++	}
++	return uintptr(j.getU64(offTrapStackReentry))
++}
++
+ // StackFence returns the currently bound native stack's low address.
+ func (j *JobMemory) StackFence() uintptr { return uintptr(j.getU64(offStackFence)) }
+ 
+diff --git a/src/wago/api.go b/src/wago/api.go
+index 5c3fd5471..10697aa78 100644
+--- a/src/wago/api.go
++++ b/src/wago/api.go
+@@ -1412,10 +1412,22 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
+ 	ownedExceptionReferences := railshotManagedExceptionReferences(m)
+ 	opaqueExternFrames := compiledArchitecture == 4 && len(m.Code) > 0 && (requiredByModule.IsEnabled(CoreFeatureGC) || moduleHasOpaqueExternTable(m)) && exactGCRootedScalarSource && moduleHasOpaqueExternSignatures(m) && !genericGCExecution && !boundedPersistentGCRoots && !ownedExceptionReferences && !collectorReferenceCallBoundary && !moduleHasInternalCollectorReferenceFunctions(m)
+ 	rootedReferenceDeclarations := opaqueExternFrames || compiledArchitecture == 4 && exactGCRootedScalarSource && (!metadataOnlyTypes || opaqueExternFrames) && gcStructProduct == 0 && gcArrayProduct == 0 && !gcAllocationSites && (opaqueExternFrames || moduleHasInternalCollectorReferenceFunctions(m) || collectorReferenceCallBoundary)
+-	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary && !boundedPersistentGCRoots || ownedExceptionReferences || rootedReferenceDeclarations
++	// AMD64 and ARM64 extern bridges also retain live locals across allocation.
++	exactNativeGCRoots := genericGCExecution || compiledArchitecture != 4 && gcStructProduct == stagedGCStructExtern || collectorReferenceCallBoundary && !boundedPersistentGCRoots || ownedExceptionReferences || rootedReferenceDeclarations
+ 	functionEnvironmentFrames := compiledArchitecture == 4 && exactNativeGCRoots && !ownedExceptionReferences && !wasm.ModuleFunctionReferenceStorage(m) && wasm.ModuleFunctionReferenceCarriers(m)
+ 	var gcFrameRootDiagnostic string
+-	gcFrameRoots := newGCFrameRootPlanWithInstructions(m, exactNativeGCRoots, genericGCExecution, &gcFrameRootDiagnostic, &validationAnalysis, customInstructions)
++	// Collector-free callers still need return maps when a scalar native call
++	// can reenter a collecting domain. These maps never grant a GC execution
++	// product or describe compact object slots.
++	nativeUnwind := !exactNativeGCRoots && (goruntime.GOARCH == "amd64" && goruntime.GOOS == "linux" || goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin")) && len(customInstructions) == 0 && !gc.HasHeapObjectTypes(gcDescs) && (importedFuncs != 0 || m.TableCount() != 0)
++	gcFrameRoots := newGCFrameRootPlanWithInstructions(m, exactNativeGCRoots || nativeUnwind, genericGCExecution, &gcFrameRootDiagnostic, &validationAnalysis, customInstructions)
++	if nativeUnwind {
++		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
++			if plan := gcFrameRoots.Function(function); plan != nil {
++				plan.UnwindOnly = true
++			}
++		}
++	}
+ 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
+ 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
+ 	foreignFunctionSubtypeHelpers := railshotFunctionSubtypeHelpers(m)
+@@ -1658,6 +1670,18 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
+ 	if (ownedExceptionReferences || compiledArchitecture == 4 && (genericGCExecution || collectorReferenceCallBoundary)) && len(m.Code) == 0 && gcFrameRoots != nil && gcFrameRoots.FunctionCount() == 0 {
+ 		validGCFrameRoots = true // State-only owned values have no native frame or return PC.
+ 	}
++	// A complete RootNone graph needs no parked frame slots. Keep an exact
++	// empty plan for non-allocating extern modules rather than changing their
++	// collector profile merely because no safepoint vector was needed.
++	if !validGCFrameRoots && compiledArchitecture != 4 && gcStructProduct == stagedGCStructExtern && !gcAllocationSites && importedFuncs == 0 && gcFrameRoots != nil && len(m.Code) != 0 && gcFrameRoots.FunctionCount() == len(m.Code) {
++		validGCFrameRoots = true
++		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
++			if gcFrameRoots.FunctionPending(function) || gcFrameRoots.Function(function) != nil {
++				validGCFrameRoots = false
++				break
++			}
++		}
++	}
+ 	if validGCFrameRoots && len(m.Code) != 0 && (gcAllocationSites || compiledArchitecture != 4 && genericGCExecution && !collectorReferenceCallBoundary) {
+ 		hasAllocationSafepoint := false
+ 		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+@@ -2733,6 +2757,12 @@ func (c *Compiled) validateMetadata() error {
+ 		staged |= required & CoreFeatureExceptionHandling
+ 	}
+ 	staged |= c.stagedFeatures()
++	// Collector-free return maps can retain inert collector type declarations
++	// without selecting a collector execution product. Exact frame validation
++	// still rejects allocation sites, object slots, and collector-bearing calls.
++	if c.collectorFreeNativeUnwind(c.genericGCFrameRoots()) && validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()) == nil {
++		staged |= required & CoreFeatureGC
++	}
+ 	if required&(CoreFeatureGC|CoreFeatureTypedFunctionReferences) != 0 && (compiledFunctionOnlyTypeGraph(c) || compiledArchitecture == 4 && railshotPrimitiveReferenceDeclarations(c)) {
+ 		staged |= required & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
+ 	}
+diff --git a/src/wago/code_mapping.go b/src/wago/code_mapping.go
+index e19800196..808dc2095 100644
+--- a/src/wago/code_mapping.go
++++ b/src/wago/code_mapping.go
+@@ -394,11 +394,11 @@ func (c *Compiled) hasCollectorDeclarationRoots() bool {
+ 		c.nativeGCABIRequirement() != 0 && c.genericGCFrameRoots() != nil && (c.hasFunctionEnvironmentFrames() || c.hasOpaqueExternFrames() || c.hasInternalCollectorReferenceFunctions() || c.hasCollectorReferenceCallBoundary())
+ }
+ 
+-// needsExactNativeGCRoots is the compile/artifact predicate. Allocating generic
+-// GC instructions and collector-reference host/cross-instance boundaries can
+-// both collect while native Wasm frames remain live.
++// needsExactNativeGCRoots is the compiled-module predicate. Allocating generic
++// GC and extern-conversion products can collect with native Wasm frames live,
++// as can collector-reference host/cross-instance boundaries.
+ func (c *Compiled) needsExactNativeGCRoots() bool {
+-	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.hasCollectorDeclarationRoots())
++	return c != nil && (c.usesGenericGCExecution() || compiledArchitecture != 4 && c.stagedGCStructProduct() == stagedGCStructExtern || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.hasCollectorDeclarationRoots())
+ }
+ 
+ // needsRuntimeGCCollectorDomain is the instantiated-module predicate. A module
+diff --git a/src/wago/gc_collect.go b/src/wago/gc_collect.go
+index de51164bb..df7f75a56 100644
+--- a/src/wago/gc_collect.go
++++ b/src/wago/gc_collect.go
+@@ -10,6 +10,7 @@ func gcCollectFrameRoots(in *Instance, public *gcPublicState, frameLayout uint8,
+ 		owner:               in,
+ 		frameLayout:         frameLayout,
+ 		allowExternalReturn: allowExternalReturn,
++		domainHostRoots:     compiledArchitecture != 4,
+ 		suspended:           public,
+ 	}
+ }
+diff --git a/src/wago/gc_extern_frame_owner_test.go b/src/wago/gc_extern_frame_owner_test.go
+new file mode 100644
+index 000000000..5da232774
+--- /dev/null
++++ b/src/wago/gc_extern_frame_owner_test.go
+@@ -0,0 +1,480 @@
++//go:build ((linux && amd64) || ((linux || darwin) && arm64)) && !tinygo
++
++package wago
++
++import (
++	"context"
++	"encoding/binary"
++	"fmt"
++	"runtime"
++	"strings"
++	"testing"
++	"unsafe"
++
++	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/src/core/runtime/gc/native"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func TestGCExternLocalSharedCodeCallerOwner(t *testing.T) {
++	for _, kind := range []string{"direct", "ref", "indirect", "wide", "compact"} {
++		for _, differentImage := range []bool{false, true} {
++			for _, closedProducer := range []bool{false, true} {
++				name := fmt.Sprintf("%s/differentImage=%t/closedProducer=%t", kind, differentImage, closedProducer)
++				t.Run(name, func(t *testing.T) { gcExternSharedCodeCallerOwner(t, kind, differentImage, closedProducer, nil) })
++			}
++		}
++	}
++}
++
++func gcExternSharedCodeCallerOwner(t *testing.T, kind string, differentImage, closedProducer bool, inspect func(a, b *Instance)) {
++	// The stack ABI exposes the caller frame below the callee wrapper. Both
++	// instances share code, so a return PC alone cannot identify its owner.
++	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
++	if kind != "wide" && kind != "compact" {
++		cfg = cfg.WithOptimization("reg-abi", false)
++	}
++	rt := NewRuntime(WithRuntimeConfig(cfg))
++	defer rt.Close()
++	settings := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
++	var callParams []wasm.ValType
++	if kind == "wide" {
++		callParams = make([]wasm.ValType, 17)
++		for i := range callParams {
++			callParams[i] = wasm.I32
++		}
++	}
++	noopData := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType(callParams, nil), wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.AnyRef}))), wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("noop", 0, 0), wasmtest.ExportEntry("marker", 0, 1))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x0b}))),
++	)
++	nc, err := Compile(cfg, noopData)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer nc.Close()
++	nm, err := rt.Module(nc)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer nm.Close()
++	ni, err := rt.Instantiate(context.Background(), nm, WithGC(settings))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ni.Close()
++	noop, err := ni.ExportedFunc("noop")
++	if err != nil {
++		t.Fatal(err)
++	}
++	marker, err := ni.ExportedFunc("marker")
++	if err != nil {
++		t.Fatal(err)
++	}
++	run := []byte{1, 1, 0x6e, 0x20, 0, 0xfb, 26, 0x21, 1}
++	if kind == "compact" {
++		run = []byte{2, 1, 0x6e, 1, 0x63, 0, 0x20, 0, 0xfb, 26, 0x21, 1, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 2}
++	}
++	if kind == "wide" {
++		for i := 0; i < 17; i++ {
++			run = append(run, 0x41, byte(i))
++		}
++	}
++	switch kind {
++	case "direct", "wide", "compact":
++		run = append(run, 0x10, 0)
++	case "ref":
++		run = append(run, 0xd2, 0, 0x14, 2)
++	case "indirect":
++		run = append(run, 0x41, 0, 0x11, 2, 0)
++	default:
++		t.Fatalf("unknown call kind %q", kind)
++	}
++	if kind == "compact" {
++		run = append(run, 0x20, 2, 0xfb, 2, 0, 0, 0x41, 0xc9, 0, 0x47, 0x04, 0x40, 0x00, 0x0b)
++	}
++	run = append(run, 0x20, 1, 0xfb, 27, 0x0b)
++	run = append(wasmtest.ULEB(uint32(len(run))), run...)
++	tick := []byte{0xfb, 1, 0, 0x24, 0, 0xfb, 1, 0, 0x24, 0, 0xfb, 1, 0, 0x24, 0, 0x0b}
++	data := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}), wasmtest.FuncType(callParams, nil), wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.AnyRef}))),
++		wasmtest.Section(2, wasmtest.Vec(instructionFuncImport("env", "tick", 2), instructionFuncImport("env", "marker", 3))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2}, []byte{3})),
++		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0, 1})),
++		wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2), wasmtest.ExportEntry("tick", 0, 3), wasmtest.ExportEntry("identity", 0, 4))),
++		wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 1, 0})),
++		wasmtest.Section(10, wasmtest.Vec(run, wasmtest.Code(tick), wasmtest.Code([]byte{0x20, 0, 0x0b}))),
++	)
++	c, err := Compile(cfg, data)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	mod, err := rt.Module(c)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer mod.Close()
++	a, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.tick", noop, "env.marker", marker)), WithGC(settings))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	target, err := a.ExportedFunc("tick")
++	if err != nil {
++		t.Fatal(err)
++	}
++	callerModule := mod
++	if differentImage {
++		callerCode, compileErr := Compile(cfg, data)
++		if compileErr != nil {
++			t.Fatal(compileErr)
++		}
++		defer callerCode.Close()
++		callerModule, err = rt.Module(callerCode)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer callerModule.Close()
++	}
++	b, err := rt.Instantiate(context.Background(), callerModule, WithImports(testImports("env.tick", target, "env.marker", marker)), WithGC(settings))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer b.Close()
++	if a.gc != b.gc || (a.base != b.base) != differentImage {
++		t.Fatal("fixture does not have the requested collector/code identity")
++	}
++	if closedProducer {
++		a.Close()
++	}
++	if inspect != nil {
++		inspect(a, b)
++		return
++	}
++	foreign, err := b.NewExternRef("B-local-across-A-allocation")
++	if err != nil {
++		t.Fatal(err)
++	}
++	word := ValueExternRef(foreign).Bits()
++	before := a.gc.Stats().FullCollections
++	out, err := b.Invoke("run", word)
++	if err != nil || len(out) != 1 || out[0] != word {
++		t.Fatalf("valid B-local across A allocation: %x,%v; want%x", out, err, word)
++	}
++	if a.gc.Stats().FullCollections <= before {
++		t.Fatal("callee did not collect")
++	}
++}
++
++func TestGCExternFrameCallerContext(t *testing.T) {
++	gcExternSharedCodeCallerOwner(t, "direct", false, false, func(a, b *Instance) {
++		foreign, err := b.NewExternRef("caller-frame")
++		if err != nil {
++			t.Fatal(err)
++		}
++		word, err := b.existingGCRefTestTableState().Conversion.anyFromExtern(ValueExternRef(foreign).Bits())
++		if err != nil {
++			t.Fatal(err)
++		}
++		var otherImage uintptr
++		a.refStore.mu.Lock()
++		for candidate := range a.refStore.instances {
++			if candidate.gc == a.gc && candidate.base != a.base {
++				otherImage = candidate.nativeContext
++				break
++			}
++		}
++		a.refStore.mu.Unlock()
++		if otherImage == 0 {
++			t.Fatal("fixture lacks another code image")
++		}
++		// Exercise both persisted native frame layouts on the current host.
++		for _, layout := range []uint8{gcNativeFrameLayoutAMD64, gcNativeFrameLayoutARM64} {
++			for _, tc := range []struct {
++				name    string
++				context uintptr
++				root    uint64
++				reject  bool
++			}{
++				{"caller", b.nativeContext, word, false},
++				{"callee", a.nativeContext, word, true},
++				{"unknown", b.nativeContext | 1, word, true},
++				{"other-image", otherImage, word, true},
++				{"zero", 0, uint64(gc.I31New(9)), layout != gcNativeFrameLayoutARM64},
++				{"compact", b.nativeContext, uint64(gc.I31New(9)), false},
++				{"forged-root", b.nativeContext, 1<<32 | 1, true},
++			} {
++				t.Run(fmt.Sprintf("layout=%d/%s", layout, tc.name), func(t *testing.T) {
++					frame := make([]byte, 256)
++					base := uintptr(unsafe.Pointer(&frame[0]))
++					recordBytes, returnBias, contextBias := 8, 0, 8
++					if layout == gcNativeFrameLayoutARM64 {
++						recordBytes, returnBias, contextBias = shared.ARM64FrameRecordBytes, shared.ARM64SavedLROffset, 0
++					}
++					callerBase := 32 + recordBytes + 64
++					binary.LittleEndian.PutUint64(frame[16:], uint64(gc.I31New(3)))
++					binary.LittleEndian.PutUint64(frame[32+returnBias:], uint64(a.base+80))
++					binary.LittleEndian.PutUint64(frame[32+recordBytes+contextBias:], uint64(tc.context))
++					binary.LittleEndian.PutUint64(frame[callerBase+16:], tc.root)
++					// End this synthetic chain outside native code; adapter spans have
++					// separate tests with an actual bounded Engine stack.
++					binary.LittleEndian.PutUint64(frame[callerBase+32+returnBias:], 0)
++					roots := gcNativeFrameRoots{owner: a, allowExternalReturn: true, base: base, offsets: []uint32{16}, frameBytes: 32, frameLayout: layout, codeBase: a.base, codeBytes: uintptr(len(a.c.code)), adapterReturnOffsets: []uint32{200}, callsites: []compiledGCFrameCallsite{{returnOffset: 80, frameBytes: 32, stackAdjust: 64, offsets: []uint32{16}}}}
++					seen := 0
++					var failure any
++					func() {
++						defer func() { failure = recover() }()
++						roots.rangeChain(func(slot gc.RootSlot) bool { seen++; return true }, nil, nil)
++					}()
++					if (failure != nil) != tc.reject {
++						t.Fatalf("failure=%v, want reject=%t", failure, tc.reject)
++					}
++					if !tc.reject {
++						want := 1
++						if tc.root == uint64(gc.I31New(9)) {
++							want = 2
++						}
++						if seen != want {
++							t.Fatalf("visited %d roots, want %d", seen, want)
++						}
++					}
++					runtime.KeepAlive(frame)
++				})
++			}
++		}
++	})
++}
++
++func TestGCExternFrameExternalReturnSlot(t *testing.T) {
++	gcExternSharedCodeCallerOwner(t, "direct", false, false, func(a, b *Instance) {
++		// AMD64's basedata trap landing word is part of the existing native
++		// entry ABI. Change only this test-owned inactive instance's control.
++		control := unsafe.Slice((*byte)(offHeapPtr(b.jm.LinMemBase()-24)), 8)
++		old := binary.LittleEndian.Uint64(control)
++		defer binary.LittleEndian.PutUint64(control, old)
++		base := b.eng.StackTop() - 256
++		frame := unsafe.Slice((*byte)(offHeapPtr(base)), 64)
++		binary.LittleEndian.PutUint64(frame[16:], uint64(gc.I31New(3)))
++		binary.LittleEndian.PutUint64(frame[32:], 1) // no Runtime-owned code
++		for _, tc := range []struct {
++			name    string
++			landing uintptr
++			reject  bool
++		}{
++			{"public-return", base + 32, false},
++			{"zero", 0, true},
++			{"other-slot", base + 40, true},
++			{"unaligned", base + 33, true},
++			{"outside-stack", b.eng.StackTop() + 8, true},
++		} {
++			t.Run(tc.name, func(t *testing.T) {
++				binary.LittleEndian.PutUint64(control, uint64(tc.landing))
++				roots := gcNativeFrameRoots{owner: b, entryReturnSlot: tc.landing, base: base, offsets: []uint32{16}, frameBytes: 32, frameLayout: gcNativeFrameLayoutAMD64, codeBase: b.base, codeBytes: uintptr(len(b.c.code)), callsites: []compiledGCFrameCallsite{{returnOffset: 80, frameBytes: 32}}}
++				var failure any
++				func() {
++					defer func() { failure = recover() }()
++					roots.rangeChain(func(gc.RootSlot) bool { return true }, nil, b.eng)
++				}()
++				if (failure != nil) != tc.reject {
++					t.Fatalf("failure=%v, want reject=%t", failure, tc.reject)
++				}
++			})
++		}
++	})
++}
++
++func gcExternTailFrameModule(kind string) []byte {
++	forward := []byte{0x12, 1, 0x0b} // known-local allocation target
++	if kind == "ref" {
++		forward = []byte{0xd2, 1, 0x15, 2, 0x0b}
++	}
++	if kind == "indirect" {
++		forward = []byte{0x41, 0, 0x13, 2, 0, 0x0b}
++	}
++	run := []byte{1, 1, 0x6e, 0x20, 0, 0xfb, 26, 0x21, 1, 0x10, 2, 0x20, 1, 0xfb, 27, 0x0b}
++	run = append(wasmtest.ULEB(uint32(len(run))), run...)
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}), wasmtest.FuncType(nil, nil))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2}, []byte{2})),
++		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0, 1})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
++		wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 1, 1})),
++		wasmtest.Section(10, wasmtest.Vec(run, wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x0b}), wasmtest.Code(forward))),
++	)
++}
++
++func TestGCExternForeignTailUsesBoundedFallback(t *testing.T) {
++	for _, kind := range []string{"ref", "indirect", "local"} {
++		t.Run(kind, func(t *testing.T) {
++			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", kind == "indirect"), gcExternTailFrameModule(kind))
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer c.Close()
++			admission := c.GCNativeRootAdmission()
++			if !admission.Required || admission.Exact != (kind == "local") {
++				t.Fatalf("root admission=%+v", admission)
++			}
++			if kind != "local" && !strings.Contains(admission.Reason, "unsupported native call or frame shape") {
++				t.Fatalf("missing fail-closed reason:%+v", admission)
++			}
++			in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, NurseryBytes: 4096}})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer in.Close()
++			if in.gc.CollectsOnAllocation() != (kind == "local") {
++				t.Fatal("collector does not match root admission")
++			}
++			foreign, err := in.NewExternRef("tail-local")
++			if err != nil {
++				t.Fatal(err)
++			}
++			word := ValueExternRef(foreign).Bits()
++			for i := 0; i < 8; i++ {
++				got, err := in.Invoke("run", word)
++				if err != nil || len(got) != 1 || got[0] != word {
++					t.Fatalf("identity at%d:%x,%v", i, got, err)
++				}
++			}
++			if kind == "local" {
++				if in.gc.Stats().FullCollections == 0 {
++					t.Fatal("known local tail did not collect")
++				}
++				return
++			}
++			if stats := in.gc.Stats(); stats.MinorCollections != 0 || stats.FullCollections != 0 || stats.Allocations != 8 {
++				t.Fatalf("fallback stats=%+v", stats)
++			}
++			// Collection-disabled execution retains objects until its configured
++			// heap is full. This bounded capacity cost is deliberate and visible.
++			exhausted := false
++			for i := 8; i < 4096; i++ {
++				_, err := in.Invoke("run", word)
++				if err != nil {
++					if !strings.Contains(err.Error(), "heap exhausted") {
++						t.Fatal(err)
++					}
++					exhausted = true
++					break
++				}
++			}
++			if !exhausted {
++				t.Fatal("fallback exceeded its bounded heap capacity")
++			}
++			conversion := in.existingGCExternConversionState()
++			in.Close()
++			if conversion != nil && !conversion.closed {
++				t.Fatal("conversion owner survived final close")
++			}
++		})
++	}
++}
++
++func TestGCExternNativeAdapterRecordBounds(t *testing.T) {
++	gcExternSharedCodeCallerOwner(t, "direct", false, false, func(a, b *Instance) {
++		for _, layout := range []uint8{gcNativeFrameLayoutAMD64, gcNativeFrameLayoutARM64} {
++			for _, kind := range []string{"caller", "short", "unknown", "nested", "unaligned", "unbounded"} {
++				t.Run(fmt.Sprintf("layout=%d/%s", layout, kind), func(t *testing.T) {
++					returnBias, callerBias, outerReturnOffset, contextOffset := 0, 8, 8, 8
++					if layout == gcNativeFrameLayoutARM64 {
++						returnBias, callerBias, outerReturnOffset, contextOffset = 8, 16, 0, 0
++					}
++					top := b.eng.StackTop()
++					base := top - 256
++					if kind == "unaligned" {
++						base--
++					}
++					if kind == "short" {
++						base = top - uintptr(32+callerBias+8)
++					}
++					frame := unsafe.Slice((*byte)(offHeapPtr(base)), int(top-base))
++					clear(frame)
++					binary.LittleEndian.PutUint64(frame[16:], uint64(gc.I31New(3)))
++					binary.LittleEndian.PutUint64(frame[32+returnBias:], uint64(a.base+200))
++					if kind != "short" {
++						outerPC := a.base + 80
++						if kind == "unknown" {
++							outerPC = 1
++						}
++						if kind == "nested" {
++							outerPC = a.base + 200
++						}
++						binary.LittleEndian.PutUint64(frame[32+callerBias+outerReturnOffset:], uint64(outerPC))
++						wrapperBase := 32 + callerBias + 16
++						binary.LittleEndian.PutUint64(frame[wrapperBase+contextOffset:], uint64(b.nativeContext))
++						binary.LittleEndian.PutUint64(frame[wrapperBase+64+16:], uint64(gc.I31New(9)))
++					}
++					roots := gcNativeFrameRoots{owner: a, physicalStack: b.eng, base: base, offsets: []uint32{16}, frameBytes: 32, frameLayout: layout, codeBase: a.base, codeBytes: uintptr(len(a.c.code)), adapterReturnOffsets: []uint32{200}, callsites: []compiledGCFrameCallsite{{returnOffset: 80, frameBytes: 32, stackAdjust: 64, offsets: []uint32{16}}}}
++					physicalStack := b.eng
++					if kind == "unbounded" {
++						roots.owner = &Instance{c: a.c}
++						physicalStack = nil
++					}
++					seen := 0
++					var failure any
++					func() {
++						defer func() { failure = recover() }()
++						roots.rangeChain(func(gc.RootSlot) bool { seen++; return seen < 2 }, nil, physicalStack)
++					}()
++					if kind == "caller" {
++						if failure != nil || seen != 2 {
++							t.Fatalf("caller roots=%d,%v; want2", seen, failure)
++						}
++					} else if failure == nil {
++						t.Fatal("accepted invalid adapter record")
++					}
++				})
++			}
++		}
++	})
++}
++
++func TestGCNativeFrameOwnerAcrossDomains(t *testing.T) {
++	collecting := new(gc.Collector)
++	for _, tc := range []struct {
++		name    string
++		pc      uintptr
++		context uintptr
++		change  func(*Instance, *referenceStoreInstance)
++		want    bool
++	}{
++		{"scalar", 0x10040, 0x20000, nil, true},
++		// Image lookup identifies a plan, not a stopping point or a root slot.
++		// The walker must still match an exact return map before using it.
++		{"interior-pc", 0x10001, 0x20000, nil, true},
++		{"other-collector", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.gc = new(gc.Collector) }, true},
++		{"same-collector", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.gc = collecting }, true},
++		{"unknown-pc", 0x30040, 0x20000, nil, false},
++		{"end-pc", 0x10080, 0x20000, nil, false},
++		{"wrong-context", 0x10040, 0x20001, nil, false},
++		{"plan-only-lookup", 0x10040, 0, nil, true},
++		{"released", 0x10040, 0x20000, func(_ *Instance, state *referenceStoreInstance) { state.resourcesReleased = true }, false},
++		{"other-store", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.refStore = new(referenceStore) }, false},
++		{"dynamic-global", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
++			in.c.Globals = []GlobalDef{{Type: ValFuncRef}}
++		}, true},
++		{"collector-argument", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
++			in.c.importFuncSigs = []FuncSig{{Params: []ValType{ValAnyRef}}}
++		}, true},
++		{"collector-result", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
++			in.c.importFuncSigs = []FuncSig{{Results: []ValType{ValAnyRef}}}
++		}, true},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			store := new(referenceStore)
++			caller := &Instance{refStore: store, c: &Compiled{code: make([]byte, 128)}, base: 0x10000, nativeContext: 0x20000}
++			state := new(referenceStoreInstance)
++			store.instances = map[*Instance]*referenceStoreInstance{caller: state}
++			if tc.change != nil {
++				tc.change(caller, state)
++			}
++			if got := store.gcAnyFrameOwner(tc.pc, tc.context) != nil; got != tc.want {
++				t.Fatalf("boundary = %t, want %t", got, tc.want)
++			}
++		})
++	}
++}
+diff --git a/src/wago/gc_extern_local_roots_test.go b/src/wago/gc_extern_local_roots_test.go
+new file mode 100644
+index 000000000..5960f6473
+--- /dev/null
++++ b/src/wago/gc_extern_local_roots_test.go
+@@ -0,0 +1,569 @@
++//go:build linux && (amd64 || arm64) && !tinygo
++
++package wago
++
++import (
++	"context"
++	"encoding/binary"
++	"fmt"
++	"github.com/wago-org/wago/src/core/runtime/gc/native"
++	goruntime "runtime"
++	"slices"
++	"testing"
++	"unsafe"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++// No imports or callbacks are needed to collect while these Wasm locals are live.
++func gcExternLocalRootsModule(op byte) []byte {
++	typ := wasm.ExternRef
++	if op == 27 {
++		typ = wasm.AnyRef
++	}
++	body := []byte{1, 1, 0x63, 0, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 1, 0x20, 0, 0xfb, op, 0xd1, 0x1a}
++	for i := 0; i < 3; i++ {
++		body = append(body, 0xfb, 1, 0, 0x24, 0)
++	}
++	body = append(body, 0x20, 1, 0xfb, 2, 0, 0, 0x0b)
++	body = append(wasmtest.ULEB(uint32(len(body))), body...)
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{typ}, []wasm.ValType{wasm.I32}))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
++		wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(body)),
++	)
++}
++
++func TestGCExternConversionKeepsLocalRoots(t *testing.T) {
++	for _, op := range []byte{26, 27} {
++		for _, profile := range []struct {
++			name string
++			gc   GCConfig
++		}{
++			{"throughput", GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}},
++			{"tiny", GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}},
++		} {
++			t.Run(fmt.Sprintf("op%d/%s", op, profile.name), func(t *testing.T) {
++				c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcExternLocalRootsModule(op))
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer c.Close()
++				in, err := Instantiate(c, InstantiateOptions{GC: profile.gc})
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer in.Close()
++				for i := 0; i < 3; i++ {
++					got, err := in.Invoke("run", 0)
++					if err != nil || len(got) != 1 || got[0] != 73 {
++						t.Fatalf("live local after collection: %v,%v; want73", got, err)
++					}
++				}
++				admission := c.GCNativeRootAdmission()
++				if !admission.Required || !admission.Exact || admission.Safepoints == 0 || admission.MaximumRoots == 0 {
++					t.Fatalf("missing allocation roots: %+v", admission)
++				}
++			})
++		}
++	}
++}
++
++func TestGCExternConversionKeepsVectorAndLocalRoots(t *testing.T) {
++	payload := []byte{1, 0x82, 3, 0xf4, 5, 0xa6, 7, 0xe8, 9, 0xba, 11, 0xdc, 13, 0xfe, 15, 0x90}
++	for _, op := range []byte{26, 27} {
++		typ := wasm.ExternRef
++		if op == 27 {
++			typ = wasm.AnyRef
++		}
++		body := []byte{2, 1, 0x63, 0, 1, 0x7b, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 1, 0xfd, 0x0c}
++		body = append(body, payload...)
++		body = append(body, 0x20, 0, 0xfb, op, 0xd1, 0x1a, 0x21, 2)
++		for i := 0; i < 3; i++ {
++			body = append(body, 0xfb, 1, 0, 0x24, 0)
++		}
++		body = append(body, 0x20, 2, 0xfd, 0x1d, 0, 0x20, 2, 0xfd, 0x1d, 1, 0x20, 1, 0xfb, 2, 0, 0, 0x0b)
++		body = append(wasmtest.ULEB(uint32(len(body))), body...)
++		data := wasmtest.Module(
++			wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{typ}, []wasm.ValType{wasm.I64, wasm.I64, wasm.I32}))),
++			wasmtest.Section(3, wasmtest.Vec([]byte{1})),
++			wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
++			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
++			wasmtest.Section(10, wasmtest.Vec(body)),
++		)
++		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
++		if err != nil {
++			t.Fatal(err)
++		}
++		in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
++		if err != nil {
++			t.Fatal(err)
++		}
++		for i := 0; i < 3; i++ {
++			got, err := in.Invoke("run", 0)
++			if err != nil || len(got) != 3 || got[0] != binary.LittleEndian.Uint64(payload) || got[1] != binary.LittleEndian.Uint64(payload[8:]) || got[2] != 73 {
++				t.Fatalf("op%d vector and local: %x,%v", op, got, err)
++			}
++		}
++		in.Close()
++		c.Close()
++	}
++}
++
++func BenchmarkGCExternLocalRootsCompile(b *testing.B) {
++	for _, op := range []byte{26, 27} {
++		b.Run(fmt.Sprintf("op%d", op), func(b *testing.B) {
++			data := gcExternLocalRootsModule(op)
++			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
++			b.ReportAllocs()
++			b.ResetTimer()
++			for i := 0; i < b.N; i++ {
++				c, err := Compile(cfg, data)
++				if err != nil {
++					b.Fatal(err)
++				}
++				b.ReportMetric(float64(c.CodeSize()), "native-B")
++				b.ReportMetric(float64(c.GCNativeRootAdmission().MetadataBytes), "root-B")
++				c.Close()
++			}
++		})
++	}
++}
++
++// Baseline execution is incorrect. wrong/op makes that limit visible in raw
++// cost samples; its timing is not evidence for a correct alternative.
++func BenchmarkGCExternLocalRoots(b *testing.B) {
++	for _, op := range []byte{26, 27} {
++		b.Run(fmt.Sprintf("op%d", op), func(b *testing.B) {
++			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcExternLocalRootsModule(op))
++			if err != nil {
++				b.Fatal(err)
++			}
++			defer c.Close()
++			in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
++			if err != nil {
++				b.Fatal(err)
++			}
++			defer in.Close()
++			wrong := 0
++			b.ReportAllocs()
++			b.ResetTimer()
++			for i := 0; i < b.N; i++ {
++				got, err := in.Invoke("run", 0)
++				if err != nil || len(got) != 1 {
++					b.Fatalf("run:%v,%v", got, err)
++				}
++				if got[0] != 73 {
++					wrong++
++				}
++			}
++			b.ReportMetric(float64(wrong)/float64(b.N), "wrong/op")
++		})
++	}
++}
++
++func TestGCExternConversionForeignLocalRoots(t *testing.T) {
++	body := []byte{1, 1, 0x6e, 0x20, 0, 0xfb, 26, 0x21, 1}
++	for i := 0; i < 3; i++ {
++		body = append(body, 0xfb, 1, 0, 0x24, 0)
++	}
++	body = append(body, 0x20, 1, 0xfb, 27, 0x0b)
++	body = append(wasmtest.ULEB(uint32(len(body))), body...)
++	data := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
++		wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(body)),
++	)
++	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer in.Close()
++	foreign, err := in.NewExternRef("foreign-local")
++	if err != nil {
++		t.Fatal(err)
++	}
++	word := ValueExternRef(foreign).Bits()
++	for i := 0; i < 3; i++ {
++		got, err := in.Invoke("run", word)
++		if err != nil || len(got) != 1 || got[0] != word {
++			t.Fatalf("foreign local: %x,%v; want%x", got, err, word)
++		}
++		if err := in.CollectGC(); err != nil {
++			t.Fatal(err)
++		}
++	}
++}
++
++func TestGCExternConversionCheckedTableRoots(t *testing.T) {
++	body := []byte{1, 1, 0x63, 0, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 1, 0x41, 0, 0x20, 1, 0x26, 0, 0x41, 1, 0x20, 0, 0xfb, 26, 0x26, 0}
++	for i := 0; i < 3; i++ {
++		body = append(body, 0xfb, 1, 0, 0x24, 0)
++	}
++	body = append(body, 0x41, 0, 0x25, 0, 0xfb, 22, 0, 0xfb, 2, 0, 0, 0x41, 1, 0x25, 0, 0xfb, 27, 0x0b)
++	body = append(wasmtest.ULEB(uint32(len(body))), body...)
++	data := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.I32, wasm.ExternRef}))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
++		wasmtest.Section(4, wasmtest.Vec([]byte{0x6e, 0, 2})),
++		wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(body)),
++	)
++	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer in.Close()
++	foreign, err := in.NewExternRef("foreign-table")
++	if err != nil {
++		t.Fatal(err)
++	}
++	word := ValueExternRef(foreign).Bits()
++	for i := 0; i < 3; i++ {
++		got, err := in.Invoke("run", word)
++		if err != nil || len(got) != 2 || got[0] != 73 || got[1] != word {
++			t.Fatalf("table roots: %x,%v", got, err)
++		}
++		state := in.existingGCRefTestTableState()
++		if state == nil || state.Count != 2 || state.Conversion == nil {
++			t.Fatal("missing checked table owner")
++		}
++		object, err := in.gc.CheckedTableSlot(state.Slots[0])
++		if err != nil || !object.IsObj() {
++			t.Fatalf("object root:%x,%v", object, err)
++		}
++		nonObject, err := in.gc.CheckedTableSlot(state.Slots[1])
++		if err != nil || !nonObject.IsNull() {
++			t.Fatalf("foreign collector root:%x,%v", nonObject, err)
++		}
++		anyWord := binary.LittleEndian.Uint64(state.Descriptor[16:24])
++		known, err := state.Conversion.isForeignAny(anyWord)
++		if err != nil || !known {
++			t.Fatalf("foreign identity owner:%v,%v", known, err)
++		}
++		if err := in.CollectGC(); err != nil {
++			t.Fatal(err)
++		}
++		field, err := in.gc.StructGet(object, 0)
++		if err != nil || field.I32() != 73 {
++			t.Fatalf("checked object lost:%v,%v", field, err)
++		}
++		known, err = state.Conversion.isForeignAny(anyWord)
++		if err != nil || !known {
++			t.Fatalf("foreign identity lost:%v,%v", known, err)
++		}
++	}
++}
++
++func TestGCExternConversionMissingRootsDisableCollection(t *testing.T) {
++	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcExternLocalRootsModule(26))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	if !c.GCNativeRootAdmission().Exact {
++		t.Fatal("fixture has no exact roots")
++	}
++	c.validateMemo.gcFrameRoots = nil
++	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer in.Close()
++	if in.gc.CollectsOnAllocation() {
++		t.Fatal("missing required roots still allow native allocation to collect")
++	}
++	got, err := in.Invoke("run", 0)
++	if err != nil || len(got) != 1 || got[0] != 73 {
++		t.Fatalf("stable fallback:%v,%v", got, err)
++	}
++	if err := in.CollectGC(); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestGCExternConversionWithoutHeapKeepsTinyProfile(t *testing.T) {
++	data := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xfb, 26, 0xfb, 27, 0x0b}))),
++	)
++	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer in.Close()
++	if in.gc.Profile() != GCProfileTiny {
++		t.Fatalf("object-free bridge changed collector profile:%v", in.gc.Profile())
++	}
++	if roots := c.GCNativeRootAdmission(); !roots.Required || !roots.Exact || roots.Safepoints != 0 || roots.Callsites != 0 || roots.MaximumRoots != 0 {
++		t.Fatalf("noncollecting bridge lacks an exact empty graph: %+v", roots)
++	}
++	for i := 0; i < 3; i++ {
++		got, err := in.Invoke("run", 0)
++		if err != nil || len(got) != 1 || got[0] != 0 {
++			t.Fatalf("null bridge:%v,%v", got, err)
++		}
++	}
++}
++
++func TestGCExternConversionRejectsForgedFrameWords(t *testing.T) {
++	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcExternLocalRootsModule(26))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	in, err := Instantiate(c, InstantiateOptions{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer in.Close()
++	other, err := Instantiate(c, InstantiateOptions{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer other.Close()
++	foreign, err := in.NewExternRef("owned-frame")
++	if err != nil {
++		t.Fatal(err)
++	}
++	public := ValueExternRef(foreign).Bits()
++	known, err := in.existingGCRefTestTableState().Conversion.anyFromExtern(public)
++	if err != nil {
++		t.Fatal(err)
++	}
++	visit := func(owner *Instance, word uint64) (refs []gc.Ref, panicValue any) {
++		frame := []uint64{word}
++		roots := gcNativeFrameRoots{owner: owner, base: uintptr(unsafe.Pointer(&frame[0])), offsets: []uint32{0}, frameBytes: 8}
++		defer func() { panicValue = recover(); goruntime.KeepAlive(frame) }()
++		roots.RangeRoots(func(slot gc.RootSlot) bool { refs = append(refs, slot.GetRef()); return true })
++		return
++	}
++	if refs, p := visit(in, known); p != nil || len(refs) != 0 {
++		t.Fatalf("owned foreign value exposed to collector:%x,%v", refs, p)
++	}
++	if refs, p := visit(in, uint64(gc.I31New(7))); p != nil || len(refs) != 1 || refs[0] != gc.I31New(7) {
++		t.Fatalf("compact root:%x,%v", refs, p)
++	}
++	for _, word := range []uint64{1 << 32, 1<<32 | 1, ^uint64(0), public} {
++		if _, p := visit(in, word); p == nil {
++			t.Fatalf("accepted unknown frame word:%x", word)
++		}
++	}
++	if _, p := visit(other, known); p == nil {
++		t.Fatal("accepted another instance's foreign frame identity")
++	}
++}
++
++func gcExternForeignRootModule(localsN int, dataRoundtrip bool) []byte {
++	params := make([]wasm.ValType, localsN)
++	for i := range params {
++		params[i] = wasm.ExternRef
++	}
++	body := append([]byte{1}, wasmtest.ULEB(uint32(localsN))...)
++	body = append(body, 0x6e)
++	for i := 0; i < localsN; i++ {
++		body = append(body, 0x20)
++		body = append(body, wasmtest.ULEB(uint32(i))...)
++		body = append(body, 0xfb, 26, 0x21)
++		body = append(body, wasmtest.ULEB(uint32(localsN+i))...)
++	}
++	if dataRoundtrip {
++		body = append(body, 0xfb, 1, 0, 0xfb, 27, 0xfb, 26, 0x1a)
++	}
++	for i := 0; i < 3; i++ {
++		body = append(body, 0xfb, 1, 0, 0x24, 0)
++	}
++	for i := 0; i < localsN; i++ {
++		body = append(body, 0x20)
++		body = append(body, wasmtest.ULEB(uint32(localsN+i))...)
++		body = append(body, 0xfb, 27)
++	}
++	body = append(body, 0x0b)
++	body = append(wasmtest.ULEB(uint32(len(body))), body...)
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType(params, params), wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
++		wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("bridge", 0, 1))),
++		wasmtest.Section(10, wasmtest.Vec(body, wasmtest.Code([]byte{0x20, 0, 0xfb, 26, 0xfb, 27, 0x0b}))),
++	)
++}
++
++func gcExternForeignRootInputs(t testing.TB, in *Instance, entries, localsN int) []uint64 {
++	t.Helper()
++	words := make([]uint64, entries)
++	for i := range words {
++		ref, err := in.NewExternRef(i)
++		if err != nil {
++			t.Fatal(err)
++		}
++		words[i] = ValueExternRef(ref).Bits()
++		got, err := in.Invoke("bridge", words[i])
++		if err != nil || len(got) != 1 || got[0] != words[i] {
++			t.Fatalf("bridge:%x,%v", got, err)
++		}
++	}
++	return words[entries-localsN:]
++}
++
++func TestGCExternConversionManyForeignLocals(t *testing.T) {
++	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcExternForeignRootModule(8, true))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer in.Close()
++	args := gcExternForeignRootInputs(t, in, 32, 8)
++	if roots := c.GCNativeRootAdmission(); !roots.Exact || roots.MaximumRoots < 8 {
++		t.Fatalf("multiple live roots not admitted:%+v", roots)
++	}
++	for i := 0; i < 3; i++ {
++		got, err := in.Invoke("run", args...)
++		if err != nil || !slices.Equal(got, args) {
++			t.Fatalf("foreign locals:%x,%v; want%x", got, err, args)
++		}
++		if err := in.CollectGC(); err != nil {
++			t.Fatal(err)
++		}
++	}
++}
++
++func BenchmarkGCExternForeignRoots(b *testing.B) {
++	for _, localsN := range []int{1, 8} {
++		for _, entries := range []int{8, 256} {
++			b.Run(fmt.Sprintf("locals=%d/entries=%d", localsN, entries), func(b *testing.B) {
++				c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcExternForeignRootModule(localsN, false))
++				if err != nil {
++					b.Fatal(err)
++				}
++				defer c.Close()
++				in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
++				if err != nil {
++					b.Fatal(err)
++				}
++				defer in.Close()
++				args := gcExternForeignRootInputs(b, in, entries, localsN)
++				b.ReportAllocs()
++				b.ResetTimer()
++				for i := 0; i < b.N; i++ {
++					got, err := in.Invoke("run", args...)
++					if err != nil || !slices.Equal(got, args) {
++						b.Fatalf("run:%x,%v", got, err)
++					}
++				}
++				b.StopTimer()
++				if count := in.existingGCRefTestTableState().Conversion.count; count != uint32(entries) {
++					b.Fatalf("entry count changed:%d", count)
++				}
++			})
++		}
++	}
++}
++
++func TestGCExternConversionVoidImportCannotUseEmptyRoots(t *testing.T) {
++	producerData := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 2, 0x7f, 1, 0x7e, 1}, wasmtest.FuncType(nil, nil))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
++		wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("tick", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 1, 0, 0x24, 0, 0xfb, 1, 0, 0x24, 0, 0xfb, 1, 0, 0x24, 0, 0x0b}))),
++	)
++	receiverBody := []byte{1, 1, 0x6e, 0x20, 0, 0xfb, 26, 0x21, 1, 0x10, 0, 0x20, 1, 0xfb, 27, 0x0b}
++	receiverBody = append(wasmtest.ULEB(uint32(len(receiverBody))), receiverBody...)
++	receiverData := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}), wasmtest.FuncType(nil, nil))),
++		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("tick")...), 0, 1))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
++		wasmtest.Section(10, wasmtest.Vec(receiverBody)),
++	)
++	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
++	rt := NewRuntime(WithRuntimeConfig(cfg))
++	defer rt.Close()
++	pc, err := Compile(cfg, producerData)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer pc.Close()
++	pm, err := rt.Module(pc)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer pm.Close()
++	producer, err := rt.Instantiate(context.Background(), pm, WithGC(GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer producer.Close()
++	tick, err := producer.ExportedFunc("tick")
++	if err != nil {
++		t.Fatal(err)
++	}
++	rc, err := Compile(cfg, receiverData)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer rc.Close()
++	rm, err := rt.Module(rc)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer rm.Close()
++	receiver, err := rt.Instantiate(context.Background(), rm, WithImports(testImports("env.tick", tick)), WithGC(GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16}))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer receiver.Close()
++	admission := rc.GCNativeRootAdmission()
++	if !admission.Required {
++		t.Fatal("void import removed the broad extern root requirement")
++	}
++	if admission.Exact && admission.Callsites == 0 {
++		t.Fatalf("collecting imported function received an empty graph:%+v", admission)
++	}
++	if !admission.Exact && receiver.gc.CollectsOnAllocation() {
++		t.Fatal("unproven imported call permits native collection")
++	}
++	foreign, err := receiver.NewExternRef("live across void GC call")
++	if err != nil {
++		t.Fatal(err)
++	}
++	word := ValueExternRef(foreign).Bits()
++	before := producer.gc.Stats().FullCollections
++	for i := 0; i < 3; i++ {
++		got, err := receiver.Invoke("run", word)
++		if err != nil || len(got) != 1 || got[0] != word {
++			t.Fatalf("foreign local across collecting import:%x,%v", got, err)
++		}
++	}
++	if producer.gc.Stats().FullCollections <= before {
++		t.Fatal("void import did not collect")
++	}
++}
+diff --git a/src/wago/gc_extern_reentry_roots_test.go b/src/wago/gc_extern_reentry_roots_test.go
+new file mode 100644
+index 000000000..3b4bfdd60
+--- /dev/null
++++ b/src/wago/gc_extern_reentry_roots_test.go
+@@ -0,0 +1,61 @@
++//go:build linux && (amd64 || arm64) && !tinygo && !wago_guardpage
++
++package wago
++
++import (
++	"context"
++	"errors"
++	"testing"
++)
++
++func TestGCSharedRuntimeStackABIReentryRoots(t *testing.T) {
++	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", false)
++	rt := NewRuntime(WithRuntimeConfig(cfg))
++	defer rt.Close()
++	c, err := Compile(cfg, gcHostReentryFrameRootModule())
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	m, err := rt.Module(c)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer m.Close()
++	var in *Instance
++	abort := false
++	unwind := errors.New("reentry unwind")
++	host := slotHostFunc(func(caller HostModule, _, results []uint64) {
++		got, err := in.InvokeFromHost(context.Background(), caller, "inner")
++		if err != nil || len(got) != 1 || got[0] != 0 {
++			panic(HostTrap{Err: err})
++		}
++		if abort {
++			panic(HostTrap{Err: unwind})
++		}
++		results[0] = 0
++	})
++	in, err = rt.Instantiate(context.Background(), m, WithImports(testImports("env.reenter", host)), WithGC(GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer in.Close()
++	if !in.refStore.ownsGCCollector(in.gc) {
++		t.Fatal("fixture does not have shared Runtime collector")
++	}
++	for _, failure := range []bool{false, true, false} {
++		abort = failure
++		got, err := in.Invoke("outer", 91)
++		if failure {
++			if !errors.Is(err, unwind) {
++				t.Fatalf("unwind:%v", err)
++			}
++		} else if err != nil || len(got) != 1 || got[0] != 91 {
++			t.Fatalf("outer:%v,%v; want91", got, err)
++		}
++		if count := in.publicGCState().hostActivationCount; count != 0 {
++			t.Fatalf("retained %d parked activations", count)
++		}
++		assertHostReentryDepthsEmpty(t)
++	}
++}
+diff --git a/src/wago/gc_foreign_frame_roots_test.go b/src/wago/gc_foreign_frame_roots_test.go
+new file mode 100644
+index 000000000..c11c8e267
+--- /dev/null
++++ b/src/wago/gc_foreign_frame_roots_test.go
+@@ -0,0 +1,472 @@
++//go:build linux && (amd64 || arm64) && !tinygo
++
++package wago
++
++import (
++	"context"
++	"fmt"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func gcScalarAdapterCallerModule(call string, ownObject, unusedCollectorSignature bool) []byte {
++	types := [][]byte{}
++	functionType := byte(0)
++	if ownObject {
++		types = append(types, []byte{0x5f, 1, 0x7f, 1})
++		functionType++
++	}
++	types = append(types, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))
++	if unusedCollectorSignature {
++		types = append(types, wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.AnyRef}))
++	}
++	importEntry := append(wasmtest.Name("env"), wasmtest.Name("call")...)
++	importEntry = append(importEntry, 0, functionType)
++	sections := [][]byte{
++		wasmtest.Section(1, wasmtest.Vec(types...)),
++		wasmtest.Section(2, wasmtest.Vec(importEntry)),
++		wasmtest.Section(3, wasmtest.Vec([]byte{functionType})),
++	}
++	if call != "direct" {
++		sections = append(sections, wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0, 1})))
++	}
++	sections = append(sections, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))))
++	if call == "indirect" || call == "ref" {
++		sections = append(sections, wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 1, 0})))
++	}
++	body := []byte{0}
++	if ownObject {
++		body = []byte{1, 1, 0x63, 0, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 0}
++	}
++	switch call {
++	case "direct", "unused-table":
++		body = append(body, 0x10, 0)
++	case "indirect":
++		body = append(body, 0x41, 0, 0x11, functionType, 0)
++	case "ref":
++		body = append(body, 0xd2, 0, 0x14, functionType)
++	default:
++		panic("unknown scalar adapter call")
++	}
++	if ownObject {
++		body = append(body, 0x1a, 0x20, 0, 0xfb, 2, 0, 0)
++	}
++	body = append(body, 0x0b)
++	body = append(wasmtest.ULEB(uint32(len(body))), body...)
++	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(body)))
++	return wasmtest.Module(sections...)
++}
++
++// An unrelated table or declared collector signature cannot change the scalar
++// call's ownership contract. The producer's host call keeps its adapter/root
++// callsite live; its earlier allocation therefore walks that adapter too.
++func TestGCScalarAdapterCallerOwnership(t *testing.T) {
++	for _, engine := range []string{"source"} {
++		t.Run(engine, func(t *testing.T) {
++			for _, registerABI := range []bool{false, true} {
++				for _, call := range []string{"direct", "unused-table", "indirect", "ref"} {
++					for _, ownObject := range []bool{false, true} {
++						for _, unusedSignature := range []bool{false, true} {
++							t.Run(fmt.Sprintf("register=%t/%s/object=%t/unusedSignature=%t", registerABI, call, ownObject, unusedSignature), func(t *testing.T) {
++								cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
++								rt := NewRuntime(WithRuntimeConfig(cfg))
++								defer rt.Close()
++								producerCode, err := rt.Compile(gcAllocatingHostScalarProducerModule())
++								if err != nil {
++									t.Fatal(err)
++								}
++								defer producerCode.Close()
++								settings := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
++								producer, err := rt.Instantiate(context.Background(), producerCode, WithGC(settings), WithImports(testImports("env.host", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) { results[0] = 7 }))))
++								if err != nil {
++									t.Fatal(err)
++								}
++								defer producer.Close()
++								target, err := producer.ExportedFunc("call")
++								if err != nil {
++									t.Fatal(err)
++								}
++								callerCode, err := rt.Compile(gcScalarAdapterCallerModule(call, ownObject, unusedSignature))
++								if err != nil {
++									t.Fatal(err)
++								}
++								defer callerCode.Close()
++								caller, err := rt.Instantiate(context.Background(), callerCode, WithGC(settings), WithImports(testImports("env.call", target)))
++								if err != nil {
++									t.Fatal(err)
++								}
++								defer caller.Close()
++								if caller.gc == producer.gc || (caller.gc != nil) != ownObject {
++									t.Fatal("fixture must have separate collector domains and the requested caller roots")
++								}
++								want := uint64(7)
++								if ownObject {
++									want = 73
++								}
++								beforeCollections := producer.gc.Stats().FullCollections
++								for i := 0; i < 3; i++ {
++									got, err := caller.Invoke("run")
++									if err != nil || len(got) != 1 || got[0] != want {
++										t.Fatalf("scalar boundary = %v, %v; want [%d], nil", got, err, want)
++									}
++								}
++								if producer.gc.Stats().FullCollections <= beforeCollections {
++									t.Fatal("producer did not perform the forced full collection")
++								}
++							})
++						}
++					}
++				}
++			}
++		})
++	}
++}
++
++func TestGCScalarAdapterAllocOnlyCallee(t *testing.T) {
++	for _, engine := range []string{"source"} {
++		t.Run(engine, func(t *testing.T) {
++			for _, registerABI := range []bool{false, true} {
++				t.Run(fmt.Sprintf("register=%t", registerABI), func(t *testing.T) {
++					cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
++					rt := NewRuntime(WithRuntimeConfig(cfg))
++					defer rt.Close()
++					producerCode, err := rt.Compile(gcAllocatingScalarProducerModule())
++					if err != nil {
++						t.Fatal(err)
++					}
++					defer producerCode.Close()
++					settings := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
++					producer, err := rt.Instantiate(context.Background(), producerCode, WithGC(settings))
++					if err != nil {
++						t.Fatal(err)
++					}
++					defer producer.Close()
++					if roots := producer.c.genericGCFrameRoots(); roots == nil || len(roots.callsites) != 0 {
++						t.Fatal("fixture must allocate without any module-local callsites")
++					}
++					target, err := producer.ExportedFunc("allocate")
++					if err != nil {
++						t.Fatal(err)
++					}
++					callerCode, err := rt.Compile(gcScalarAdapterCallerModule("direct", true, false))
++					if err != nil {
++						t.Fatal(err)
++					}
++					defer callerCode.Close()
++					caller, err := rt.Instantiate(context.Background(), callerCode, WithGC(settings), WithImports(testImports("env.call", target)))
++					if err != nil {
++						t.Fatal(err)
++					}
++					defer caller.Close()
++					if caller.gc == nil || caller.gc != producer.gc {
++						t.Fatal("fixture must retain caller objects in the collecting domain")
++					}
++					for i := 0; i < 3; i++ {
++						got, err := caller.Invoke("run")
++						if err != nil || len(got) != 1 || got[0] != 73 {
++							t.Fatalf("caller root across alloc-only callee = %v, %v; want [73], nil", got, err)
++						}
++					}
++				})
++			}
++		})
++	}
++}
++
++// Scalar edges can revisit the collecting domain through a mutable funcref
++// table. The outer frame still owns a root even though the intervening relay
++// transfers no objects and has an incompatible private collector.
++func TestGCScalarAdapterRevisitedDomain(t *testing.T) {
++	for _, tiny := range []bool{false, true} {
++		t.Run(fmt.Sprintf("tiny=%t", tiny), func(t *testing.T) {
++			for _, relayObject := range []bool{false, true} {
++				t.Run(fmt.Sprintf("relayObject=%t", relayObject), func(t *testing.T) {
++					for _, engine := range []string{"source"} {
++						t.Run(engine, func(t *testing.T) {
++							for _, registerABI := range []bool{false, true} {
++								t.Run(fmt.Sprintf("register=%t", registerABI), func(t *testing.T) {
++									cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
++									rt := NewRuntime(WithRuntimeConfig(cfg))
++									defer rt.Close()
++									settings := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
++									if tiny {
++										settings = GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
++									}
++									table, err := NewTable(1, 1)
++									if err != nil {
++										t.Fatal(err)
++									}
++									defer table.Close()
++									tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 1, 1, 1)
++									wantRelay := byte(7)
++									if relayObject {
++										wantRelay = 47
++									}
++									outer := []byte{1, 1, 0x63, 0, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 0, 0x41, 0, 0x11, 1, 0, 0x41, wantRelay, 0x47, 0x04, 0x40, 0x00, 0x0b, 0x20, 0, 0xfb, 2, 0, 0, 0x0b}
++									outer = append(wasmtest.ULEB(uint32(len(outer))), outer...)
++									aCode, err := rt.Compile(wasmtest.Module(
++										wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
++										wasmtest.Section(2, wasmtest.Vec(tableImport)),
++										wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{1})),
++										wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("outer", 0, 0), wasmtest.ExportEntry("inner", 0, 1))),
++										wasmtest.Section(10, wasmtest.Vec(
++											outer,
++											wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x41, 7, 0x0b}),
++										)),
++									))
++									if err != nil {
++										t.Fatal(err)
++									}
++									defer aCode.Close()
++									a, err := rt.Instantiate(context.Background(), aCode, WithGC(settings), WithImports(testImports("env.table", table)))
++									if err != nil {
++										t.Fatal(err)
++									}
++									defer a.Close()
++									inner, err := a.ExportedFunc("inner")
++									if err != nil {
++										t.Fatal(err)
++									}
++									relayTypes := [][]byte{wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})}
++									relaySignature := byte(0)
++									relayBody := []byte{0, 0x10, 0, 0x0b}
++									var relayGlobals [][]byte
++									if relayObject {
++										relayTypes = append([][]byte{{0x5f, 1, 0x7e, 1}}, relayTypes...)
++										relaySignature = 1
++										// Keep handle one in a foreign global, and handle two in
++										// the relay frame. Scanning this word in A would admit the
++										// wrong handle rather than A.outer's handle-one root.
++										relayGlobals = [][]byte{wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b}))}
++										relayBody = []byte{1, 1, 0x63, 0, 0x42, 0, 0xfb, 0, 0, 0x24, 0, 0x42, 47, 0xfb, 0, 0, 0x21, 0, 0x10, 0, 0x1a, 0x20, 0, 0xfb, 2, 0, 0, 0xa7, 0x0b}
++									}
++									relayBody = append(wasmtest.ULEB(uint32(len(relayBody))), relayBody...)
++									innerImport := append(append(wasmtest.Name("env"), wasmtest.Name("inner")...), 0, relaySignature)
++									sections := [][]byte{
++										wasmtest.Section(1, wasmtest.Vec(relayTypes...)),
++										wasmtest.Section(2, wasmtest.Vec(innerImport, tableImport)),
++										wasmtest.Section(3, wasmtest.Vec([]byte{relaySignature})),
++									}
++									sections = append(sections, relayGlobals...)
++									sections = append(sections,
++										wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 1, 1})),
++										wasmtest.Section(10, wasmtest.Vec(relayBody)),
++									)
++									bCode, err := rt.Compile(wasmtest.Module(sections...))
++									if err != nil {
++										t.Fatal(err)
++									}
++									defer bCode.Close()
++									b, err := rt.Instantiate(context.Background(), bCode, WithGC(settings), WithImports(testImports("env.inner", inner, "env.table", table)))
++									if err != nil {
++										t.Fatal(err)
++									}
++									defer b.Close()
++									if a.gc == nil || (b.gc != nil) != relayObject || a.gc == b.gc {
++										t.Fatal("fixture requires different live collectors")
++									}
++									beforeCollections := a.gc.Stats().FullCollections
++									for i := 0; i < 3; i++ {
++										got, err := a.Invoke("outer")
++										if err != nil || len(got) != 1 || got[0] != 73 {
++											t.Fatalf("revisited collecting domain = %v, %v; want [73], nil", got, err)
++										}
++									}
++									if a.gc.Stats().FullCollections <= beforeCollections {
++										t.Fatal("revisited domain did not perform the forced full collection")
++									}
++
++								})
++							}
++						})
++					}
++				})
++			}
++		})
++	}
++}
++
++func TestGCCollectorFreeReturnMapsCannotPublishObjectRoots(t *testing.T) {
++	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcScalarAdapterCallerModule("unused-table", false, true))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	plan := c.genericGCFrameRoots()
++	if !c.collectorFreeNativeUnwind(plan) || c.GCNativeRootAdmission().Required || c.nativeGCABIRequirement() != 0 {
++		t.Fatal("collector-free caller did not retain only its physical return maps")
++	}
++	if err := validateCompiledGCFrameRoots(c, plan); err != nil {
++		t.Fatal(err)
++	}
++	for _, kind := range []string{"root", "safepoint"} {
++		t.Run(kind, func(t *testing.T) {
++			forged := *plan
++			forged.callsites = append([]compiledGCFrameCallsite(nil), plan.callsites...)
++			if kind == "root" {
++				forged.callsites[0].offsets = []uint32{0}
++			} else {
++				forged.safepoints = []compiledGCFrameSafepoint{{id: 1, frameBytes: forged.callsites[0].frameBytes}}
++			}
++			if err := validateCompiledGCFrameRoots(c, &forged); err == nil {
++				t.Fatalf("collector-free %s metadata granted object traversal", kind)
++			} else {
++				t.Logf("rejected invalid %s metadata: %v", kind, err)
++			}
++		})
++	}
++}
++
++// An immutable scalar import path can leave and reenter a collector through
++// another Runtime without a mutable cross-store funcref container.
++func TestGCScalarAdapterRevisitedDomainAcrossStores(t *testing.T) {
++	for _, depth := range []int{1, 40} {
++		t.Run(fmt.Sprintf("depth=%d", depth), func(t *testing.T) {
++			for _, registerABI := range []bool{false, true} {
++				for _, engine := range []string{"source"} {
++					for _, retired := range []bool{false, true} {
++						t.Run(fmt.Sprintf("register=%t/%s/retired=%t", registerABI, engine, retired), func(t *testing.T) {
++							cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
++							aRuntime, bRuntime := NewRuntime(WithRuntimeConfig(cfg)), NewRuntime(WithRuntimeConfig(cfg))
++							defer aRuntime.Close()
++							defer bRuntime.Close()
++							settings := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
++							innerModule, err := aRuntime.Compile(gcAllocatingScalarProducerModule())
++							if err != nil {
++								t.Fatal(err)
++							}
++							defer innerModule.Close()
++							inner, err := aRuntime.Instantiate(context.Background(), innerModule, WithGC(settings))
++							if err != nil {
++								t.Fatal(err)
++							}
++							defer inner.Close()
++							target, err := inner.ExportedFunc("allocate")
++							if err != nil {
++								t.Fatal(err)
++							}
++							relaySource := wasmtest.Module(
++								wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
++								wasmtest.Section(2, wasmtest.Vec(instructionFuncImport("env", "inner", 0))),
++								wasmtest.Section(3, wasmtest.Vec([]byte{0})),
++								wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("relay", 0, 1))),
++								wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x41, 1, 0x6a, 0x0b}))),
++							)
++							relayModule, err := bRuntime.Compile(relaySource)
++							if err != nil {
++								t.Fatal(err)
++							}
++							defer relayModule.Close()
++							var relays []*Instance
++							for range depth {
++								relay, err := bRuntime.Instantiate(context.Background(), relayModule, WithImports(testImports("env.inner", target)))
++								if err != nil {
++									t.Fatal(err)
++								}
++								defer relay.Close()
++								relays = append(relays, relay)
++								target, err = relay.ExportedFunc("relay")
++								if err != nil {
++									t.Fatal(err)
++								}
++							}
++							relay := relays[len(relays)-1]
++							outerModule, err := aRuntime.Compile(gcScalarAdapterCallerModule("direct", true, false))
++							if err != nil {
++								t.Fatal(err)
++							}
++							defer outerModule.Close()
++							outer, err := aRuntime.Instantiate(context.Background(), outerModule, WithGC(settings), WithImports(testImports("env.call", target)))
++							if err != nil {
++								t.Fatal(err)
++							}
++							defer outer.Close()
++							if outer.gc == nil || outer.gc != inner.gc || relay.gc != nil || outer.refStore == relay.refStore {
++								t.Fatal("fixture did not return to the same collector through a foreign-store numeric relay")
++							}
++							if retired {
++								for _, relay := range relays {
++									if err := relay.Close(); err != nil {
++										t.Fatal(err)
++									}
++								}
++								if err := inner.Close(); err != nil {
++									t.Fatal(err)
++								}
++							}
++							before := outer.gc.Stats().FullCollections
++							for range 3 {
++								got, err := outer.Invoke("run")
++								if err != nil || len(got) != 1 || got[0] != 73 {
++									t.Fatalf("root across foreign-store relay = %v, %v; want [73], nil", got, err)
++								}
++							}
++							if outer.gc.Stats().FullCollections <= before {
++								t.Fatal("foreign-store relay did not perform forced collection")
++							}
++						})
++					}
++				}
++			}
++		})
++	}
++}
++
++// A collector-free native relay can park the older collecting frame in Go.
++// The parked chain still belongs to the collector of that older caller.
++func TestGCScalarAdapterForeignHostCollection(t *testing.T) {
++	for _, foreignStore := range []bool{false, true} {
++		for _, registerABI := range []bool{false, true} {
++			t.Run(fmt.Sprintf("foreignStore=%t/register=%t", foreignStore, registerABI), func(t *testing.T) {
++				cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
++				rt := NewRuntime(WithRuntimeConfig(cfg))
++				defer rt.Close()
++				relayRuntime := rt
++				if foreignStore {
++					relayRuntime = NewRuntime(WithRuntimeConfig(cfg))
++					defer relayRuntime.Close()
++				}
++				relayCode, err := relayRuntime.Compile(gcScalarAdapterCallerModule("direct", false, false))
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer relayCode.Close()
++				var outer *Instance
++				relay, err := relayRuntime.Instantiate(context.Background(), relayCode, WithImports(testImports("env.call", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
++					if err := outer.CollectGC(); err != nil {
++						panic(err)
++					}
++					results[0] = 7
++				}))))
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer relay.Close()
++				target, err := relay.ExportedFunc("run")
++				if err != nil {
++					t.Fatal(err)
++				}
++				outerCode, err := rt.Compile(gcScalarAdapterCallerModule("direct", true, false))
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer outerCode.Close()
++				outer, err = rt.Instantiate(context.Background(), outerCode, WithGC(GCConfig{VerifyAfterCollect: true}), WithImports(testImports("env.call", target)))
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer outer.Close()
++				before := outer.gc.Stats().FullCollections
++				got, err := outer.Invoke("run")
++				if err != nil || len(got) != 1 || got[0] != 73 {
++					t.Fatalf("root across numeric host relay = %v, %v; want [73], nil", got, err)
++				}
++				if outer.gc.Stats().FullCollections <= before {
++					t.Fatal("host did not collect")
++				}
++			})
++		}
++	}
++}
+diff --git a/src/wago/gc_frame_roots.go b/src/wago/gc_frame_roots.go
+index 57e70aa81..d89ffffa7 100644
+--- a/src/wago/gc_frame_roots.go
++++ b/src/wago/gc_frame_roots.go
+@@ -434,12 +434,29 @@ func validGCModuleFrameRootPlanKinds(module *shared.GCModuleFrameRootPlan, allow
+ 	return totalSafepoints != 0 || totalCallsites != 0 || compiledArchitecture == 4 && noCollectingBodies
+ }
+ 
++// collectorFreeNativeUnwind grants physical traversal only. It cannot admit
++// allocation safepoints, compact object slots, or collector-bearing calls.
++func (c *Compiled) collectorFreeNativeUnwind(plan *compiledGCFrameRoots) bool {
++	if compiledArchitecture == 4 || c == nil || plan == nil || c.nativeGCABIRequirement() != 0 || c.needsExactNativeGCRoots() || gc.HasHeapObjectTypes(c.GCTypeDescs) || len(plan.safepoints) != 0 || c.hasInternalCollectorReferenceFunctions() {
++		return false
++	}
++	for _, site := range plan.callsites {
++		if len(site.offsets) != 0 {
++			return false
++		}
++	}
++	return len(plan.callsites) != 0
++}
++
+ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) error {
+ 	if rootMap == nil {
+ 		return nil
+ 	}
+-	if c == nil || !c.needsExactNativeGCRoots() {
+-		return fmt.Errorf("GC frame-root metadata requires exact native GC roots")
++	if c == nil {
++		return fmt.Errorf("GC frame-root metadata requires a compiled module")
++	}
++	if !c.needsExactNativeGCRoots() && !c.collectorFreeNativeUnwind(rootMap) {
++		return fmt.Errorf("GC frame-root metadata requires exact native GC roots or collector-free return maps")
+ 	}
+ 	ownedState := (c.hasNoFunctionCode() || compiledArchitecture == 4 && len(c.Funcs) == 0 && len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary()) && (c.needsOwnedExceptionReferences() || compiledArchitecture == 4 && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary()) && c.requiredFeatures.IsEnabled(CoreFeatureGC) && c.nativeGCABIRequirement() == gc.NativeABIVersion)
+ 	// Import-only plugin calls execute through the public Go boundary. Their
+@@ -484,6 +501,11 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
+ 		if compiledArchitecture == 4 && memo != nil && memo.rv64FreshRootedGC && memo.rv64RootedNoCollectingBodies && sha256.Sum256(c.code) == memo.rv64FreshRootedGCDigest && len(rootMap.adapterReturnOffsets) == 0 {
+ 			return nil
+ 		}
++		// The source-only extern bridge can prove an empty RootNone graph.
++		// This bridge admission is established only during source compilation.
++		if compiledArchitecture != 4 && c.stagedGCStructProduct() == stagedGCStructExtern {
++			return nil
++		}
+ 		return fmt.Errorf("GC frame-root metadata has no safepoints or callsites")
+ 	}
+ 	if len(rootMap.safepoints) == 0 && c.usesGenericGCExecution() && !c.hasCollectorReferenceCallBoundary() {
+@@ -521,6 +543,8 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
+ 	}
+ 	totalFuncs := c.NumImports + len(c.Funcs)
+ 	opaqueExtern := c.compactExternFrameRoots()
++	sourceExtern := compiledArchitecture != 4 && c.stagedGCStructProduct() == stagedGCStructExtern
++	allowExternTables := opaqueExtern || sourceExtern
+ 	validValues := func(refType ValType, values []RefInit) bool {
+ 		refType = normalizedElemRefType(refType)
+ 		for k, value := range values {
+@@ -564,7 +588,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
+ 				}
+ 				continue
+ 			}
+-			if !isGCRefValType(refType) && (!opaqueExtern || refType != ValExternRef) || !value.Null {
++			if !isGCRefValType(refType) && (!allowExternTables || refType != ValExternRef) || !value.Null {
+ 				return false
+ 			}
+ 		}
+@@ -572,7 +596,16 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
+ 	}
+ 	for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
+ 		typ := c.tableElementType(tableIndex)
+-		if typ != ValFuncRef && !isGCRefValType(typ) && (!opaqueExtern || typ != ValExternRef) {
++		if typ == ValExternRef && sourceExtern {
++			if _, imported := c.tableImportAt(tableIndex); imported {
++				return false
++			}
++			for _, exported := range c.tableExports {
++				if exported == tableIndex {
++					return false
++				}
++			}
++		} else if typ != ValFuncRef && !isGCRefValType(typ) && (!opaqueExtern || typ != ValExternRef) {
+ 			return false
+ 		}
+ 		if tableIndex == 0 {
+diff --git a/src/wago/gc_frame_roots_arm64.go b/src/wago/gc_frame_roots_arm64.go
+index eeb9d4570..145afbd63 100644
+--- a/src/wago/gc_frame_roots_arm64.go
++++ b/src/wago/gc_frame_roots_arm64.go
+@@ -40,6 +40,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string,
+ 		return reject("table or element ownership is outside the exact native-root model")
+ 	}
+ 	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
++	externBridge := false
++	if !analysis.ValidFor(m) || analysis.Flags()&wasm.ValidatedFuncHasTailCall != 0 {
++		externBridge = moduleUsesGCExternConversion(m)
++	}
+ 	funcImport := uint32(0)
+ 	for i := range m.Imports {
+ 		switch m.Imports[i].Type.Kind {
+@@ -134,7 +138,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string,
+ 				}
+ 			}
+ 		}
+-		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier, collectorBoundary) {
++		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier, collectorBoundary, externBridge) {
+ 			return reject("function %d contains an unsupported native call or frame shape", function)
+ 		}
+ 		var liveMasks gcFrameLiveMasks
+@@ -175,6 +179,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
+ 	}
+ 	totalFuncs := m.ImportedFuncCount() + len(m.Code)
+ 	functionIndexOK := func(index uint32) bool { return int(index) < totalFuncs }
++	externBridge := m.TableCount() != 0 && moduleUsesGCExternConversion(m)
+ 	tableKinds := make([]uint8, m.TableCount())
+ 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
+ 		tableType, ok := m.TableType(uint32(tableIndex))
+@@ -187,6 +192,15 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
+ 			tableKinds[tableIndex] = 1
+ 		case collectorFrameRefType(m, typ):
+ 			tableKinds[tableIndex] = 2
++		case typ == wasm.ExternRef && externBridge && tableIndex >= m.ImportedTableCount():
++			// The local conversion owner retains object identities in checked
++			// collector slots. External table aliases need a separate proof.
++			for _, export := range m.Exports {
++				if export.Index.Kind == wasm.ExternTable && export.Index.Index == uint32(tableIndex) {
++					return false
++				}
++			}
++			tableKinds[tableIndex] = 3
+ 		default:
+ 			return false
+ 		}
+@@ -256,7 +270,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
+ 	return true
+ }
+ 
+-func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier, collectorBoundary bool) bool {
++func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier, collectorBoundary, externBridge bool) bool {
+ 	r := wasm.NewReader(body)
+ 	var imm wasm.InstructionImmediate
+ 	for r.HasNext() {
+@@ -267,6 +281,12 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
+ 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+ 			return false
+ 		}
++		// A foreign proper tail can insert an unmapped context-restoration
++		// trampoline. Keep the extern bridge collection-disabled for those
++		// shapes; a direct known-local tail retains the ordinary caller record.
++		if externBridge && (op == 0x13 || op == 0x15 || op == 0x12 && int(imm.Index) < m.ImportedFuncCount()) {
++			return false
++		}
+ 		switch op {
+ 		case 0x10:
+ 			if int(imm.Index) >= m.ImportedFuncCount()+len(m.Code) {
+diff --git a/src/wago/gc_frame_roots_linux_amd64.go b/src/wago/gc_frame_roots_linux_amd64.go
+index 4753a8da1..c97b758b3 100644
+--- a/src/wago/gc_frame_roots_linux_amd64.go
++++ b/src/wago/gc_frame_roots_linux_amd64.go
+@@ -40,6 +40,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string,
+ 		return reject("table or element ownership is outside the exact native-root model")
+ 	}
+ 	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
++	externBridge := false
++	if !analysis.ValidFor(m) || analysis.Flags()&wasm.ValidatedFuncHasTailCall != 0 {
++		externBridge = moduleUsesGCExternConversion(m)
++	}
+ 	funcImport := uint32(0)
+ 	for i := range m.Imports {
+ 		switch m.Imports[i].Type.Kind {
+@@ -99,7 +103,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string,
+ 		if hasFixedRoots {
+ 			fixedOffsets = gcFrameFixedOffsets(&ehMaps[ehMapIndex-1])
+ 		}
+-		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier) {
++		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier, externBridge) {
+ 			return reject("function %d contains an unsupported native call or frame shape", function)
+ 		}
+ 		ft, ok := m.LocalFuncType(function)
+@@ -182,7 +186,8 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
+ 	}
+ 	totalFuncs := m.ImportedFuncCount() + len(m.Code)
+ 	functionIndexOK := func(index uint32) bool { return int(index) < totalFuncs }
+-	tableKinds := make([]uint8, m.TableCount()) // 1=funcref, 2=collector ref
++	externBridge := m.TableCount() != 0 && moduleUsesGCExternConversion(m)
++	tableKinds := make([]uint8, m.TableCount()) // 1=funcref, 2=collector ref, 3=private externref
+ 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
+ 		tableType, ok := m.TableType(uint32(tableIndex))
+ 		if !ok {
+@@ -194,6 +199,15 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
+ 			tableKinds[tableIndex] = 1
+ 		case collectorFrameRefType(m, typ):
+ 			tableKinds[tableIndex] = 2
++		case typ == wasm.ExternRef && externBridge && tableIndex >= m.ImportedTableCount():
++			// The local conversion owner retains object identities in checked
++			// collector slots. External table aliases need a separate proof.
++			for _, export := range m.Exports {
++				if export.Index.Kind == wasm.ExternTable && export.Index.Index == uint32(tableIndex) {
++					return false
++				}
++			}
++			tableKinds[tableIndex] = 3
+ 		default:
+ 			return false
+ 		}
+@@ -264,7 +278,7 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
+ }
+ 
+ //go:noinline
+-func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctions, localFunctions int, classifier *wasm.ModuleInstructionClassifier) bool {
++func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctions, localFunctions int, classifier *wasm.ModuleInstructionClassifier, externBridge bool) bool {
+ 	r := wasm.NewReader(body)
+ 	var imm wasm.InstructionImmediate
+ 	for r.HasNext() {
+@@ -275,6 +289,12 @@ func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctio
+ 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+ 			return true
+ 		}
++		// A foreign proper tail can insert an unmapped context-restoration
++		// trampoline. Keep the extern bridge collection-disabled for those
++		// shapes; a direct known-local tail retains the ordinary caller record.
++		if externBridge && (op == 0x13 || op == 0x15 || op == 0x12 && int(imm.Index) < m.ImportedFuncCount()) {
++			return true
++		}
+ 		if (op == 0x10 || op == 0x12) && int(imm.Index) >= importedFunctions+localFunctions {
+ 			return true
+ 		}
+diff --git a/src/wago/gc_frame_roots_runtime_arm64.go b/src/wago/gc_frame_roots_runtime_arm64.go
+index 0f2b8df6f..e92085e15 100644
+--- a/src/wago/gc_frame_roots_runtime_arm64.go
++++ b/src/wago/gc_frame_roots_runtime_arm64.go
+@@ -48,7 +48,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
+ 		word := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(off))), 8)
+ 		bits := binary.LittleEndian.Uint64(word)
+ 		ref := gc.Ref(uint32(bits))
+-		if bits != uint64(ref) {
++		if bits != uint64(ref) && !in.isForeignAnyref(bits) {
+ 			panic(gcHelperFailuref("generic GC frame-root offset %d contains non-compact reference %#x", off, bits))
+ 		}
+ 	}
+@@ -64,5 +64,6 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
+ 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
+ 	state.frameRoots.callsites = plan.callsites
+ 	state.frameRoots.suspended = state
++	state.frameRoots.domainHostRoots = true
+ 	return &state.frameRoots
+ }
+diff --git a/src/wago/gc_frame_roots_runtime_linux_amd64.go b/src/wago/gc_frame_roots_runtime_linux_amd64.go
+index 2f84c358c..5a2d1e8fd 100644
+--- a/src/wago/gc_frame_roots_runtime_linux_amd64.go
++++ b/src/wago/gc_frame_roots_runtime_linux_amd64.go
+@@ -52,12 +52,13 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
+ 		word := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(off))), 8)
+ 		bits := binary.LittleEndian.Uint64(word)
+ 		ref := gc.Ref(uint32(bits))
+-		if bits != uint64(ref) {
++		if bits != uint64(ref) && !in.isForeignAnyref(bits) {
+ 			panic(gcHelperFailuref("generic GC frame-root offset %d contains non-compact reference %#x", off, bits))
+ 		}
+ 	}
+ 	state.frameRoots.owner = in
+ 	state.frameRoots.physicalStack = stack
++	state.frameRoots.entryReturnSlot = in.jm.TrapStackReentry()
+ 	state.frameRoots.base = base
+ 	state.frameRoots.offsets = offsets
+ 	state.frameRoots.frameBytes = frameBytes
+@@ -68,5 +69,6 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
+ 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
+ 	state.frameRoots.callsites = plan.callsites
+ 	state.frameRoots.suspended = state
++	state.frameRoots.domainHostRoots = true
+ 	return &state.frameRoots
+ }
+diff --git a/src/wago/gc_host_activation_arm64.go b/src/wago/gc_host_activation_arm64.go
+index e5a289bf2..29abbae52 100644
+--- a/src/wago/gc_host_activation_arm64.go
++++ b/src/wago/gc_host_activation_arm64.go
+@@ -17,8 +17,8 @@ type gcHostActivationToken struct {
+ 	index uint8
+ }
+ 
+-func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine) gcHostActivationToken {
+-	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
++func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine, root *Instance) gcHostActivationToken {
++	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 || in.gc == nil && (root == nil || !root.hostCallNeedsGCSuspension()) {
+ 		return gcHostActivationToken{}
+ 	}
+ 	plan := in.c.genericGCFrameRoots()
+@@ -100,6 +100,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
+ 	state.hostRootPlan = plan
+ 	state.hostCodeBase = in.base
+ 	state.hostCodeBytes = uintptr(len(in.c.code))
++	gcNativeHostActivations.Add(1)
+ 	return gcHostActivationToken{state: state, index: index}
+ }
+ 
+@@ -119,6 +120,7 @@ func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
+ 		binary.LittleEndian.PutUint64(control[i*8:], value)
+ 	}
+ 	*activation = gcHostActivation{}
++	gcNativeHostActivations.Add(-1)
+ 	// Concurrent foreign roots need not resume in suspension order. Preserve
+ 	// occupied slots and trim only the empty suffix; new activations reuse holes.
+ 	for state.hostActivationCount > 0 && state.hostActivations[state.hostActivationCount-1].stack == nil {
+diff --git a/src/wago/gc_host_activation_linux_amd64.go b/src/wago/gc_host_activation_linux_amd64.go
+index 639cbd028..4ed709230 100644
+--- a/src/wago/gc_host_activation_linux_amd64.go
++++ b/src/wago/gc_host_activation_linux_amd64.go
+@@ -17,8 +17,8 @@ type gcHostActivationToken struct {
+ 	index uint8
+ }
+ 
+-func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine) gcHostActivationToken {
+-	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
++func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine, root *Instance) gcHostActivationToken {
++	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 || in.gc == nil && (root == nil || !root.hostCallNeedsGCSuspension()) {
+ 		return gcHostActivationToken{}
+ 	}
+ 	plan := in.c.genericGCFrameRoots()
+@@ -99,6 +99,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
+ 	activation := &state.hostActivations[index]
+ 	activation.ctrl = ctrl
+ 	activation.stack = stack
++	activation.entryReturnSlot = in.jm.TrapStackReentry()
+ 	activation.noFrame = callsite < 0
+ 	activation.base = base
+ 	if callsite >= 0 {
+@@ -110,6 +111,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
+ 	state.hostRootPlan = plan
+ 	state.hostCodeBase = in.base
+ 	state.hostCodeBytes = uintptr(len(in.c.code))
++	gcNativeHostActivations.Add(1)
+ 	return gcHostActivationToken{state: state, index: index}
+ }
+ 
+@@ -129,6 +131,7 @@ func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
+ 		binary.LittleEndian.PutUint64(control[i*8:], value)
+ 	}
+ 	*activation = gcHostActivation{}
++	gcNativeHostActivations.Add(-1)
+ 	// Concurrent foreign roots need not resume in suspension order. Preserve
+ 	// occupied slots and trim only the empty suffix; new activations reuse holes.
+ 	for state.hostActivationCount > 0 && state.hostActivations[state.hostActivationCount-1].stack == nil {
+diff --git a/src/wago/gc_host_activation_linux_riscv64.go b/src/wago/gc_host_activation_linux_riscv64.go
+index cf49ecf2e..84470df10 100644
+--- a/src/wago/gc_host_activation_linux_riscv64.go
++++ b/src/wago/gc_host_activation_linux_riscv64.go
+@@ -24,7 +24,7 @@ type gcHostActivationToken struct {
+ // the thunk SP; every qualified RV64 wrapper saves its incoming RA in word zero
+ // of a fixed call-frame header, so the Wasm caller begins immediately after the
+ // matching record.
+-func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine) gcHostActivationToken {
++func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine, _ *Instance) gcHostActivationToken {
+ 	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
+ 		return gcHostActivationToken{}
+ 	}
+diff --git a/src/wago/gc_host_activation_other.go b/src/wago/gc_host_activation_other.go
+index 1687aa87c..346c96f77 100644
+--- a/src/wago/gc_host_activation_other.go
++++ b/src/wago/gc_host_activation_other.go
+@@ -13,7 +13,7 @@ type gcHostActivationToken struct {
+ 	index uint8
+ }
+ 
+-func (*Instance) pushGCHostActivation(uintptr, uint32, *coreruntime.Engine) gcHostActivationToken {
++func (*Instance) pushGCHostActivation(uintptr, uint32, *coreruntime.Engine, *Instance) gcHostActivationToken {
+ 	return gcHostActivationToken{}
+ }
+ 
+diff --git a/src/wago/gc_scalar_domain_adapter_test.go b/src/wago/gc_scalar_domain_adapter_test.go
+new file mode 100644
+index 000000000..b4b7ae77d
+--- /dev/null
++++ b/src/wago/gc_scalar_domain_adapter_test.go
+@@ -0,0 +1,78 @@
++//go:build ((linux && amd64) || ((linux || darwin) && arm64)) && !tinygo
++
++package wago
++
++import (
++	"context"
++	"strings"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func TestGCSharedCodeScalarDomainAdmission(t *testing.T) {
++	for _, registerABI := range []bool{false, true} {
++		name := "stack"
++		if registerABI {
++			name = "register"
++		}
++		t.Run(name, func(t *testing.T) {
++			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
++			rt := NewRuntime(WithRuntimeConfig(cfg))
++			defer rt.Close()
++			im := append(wasmtest.Name("env"), wasmtest.Name("next")...)
++			im = append(im, 0, 1)
++			run := []byte{1, 1, 0x63, 0, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 0, 0x10, 0, 0x20, 0, 0xfb, 2, 0, 0, 0x0b}
++			run = append(wasmtest.ULEB(uint32(len(run))), run...)
++			data := wasmtest.Module(
++				wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
++				wasmtest.Section(2, wasmtest.Vec(im)),
++				wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
++				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("allocate", 0, 1), wasmtest.ExportEntry("run", 0, 2))),
++				wasmtest.Section(10, wasmtest.Vec(
++					wasmtest.Code([]byte{0x41, 1, 0xfb, 0, 0, 0x1a, 0x0b}),
++					run,
++				)),
++			)
++			code, err := rt.Compile(data)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer code.Close()
++			settings := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
++			first, err := rt.Instantiate(context.Background(), code, WithGC(settings), WithImports(testImports("env.next", slotHostFunc(func(HostModule, []uint64, []uint64) {}))))
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer first.Close()
++			next, err := first.ExportedFunc("allocate")
++			if err != nil {
++				t.Fatal(err)
++			}
++			secondSettings := settings
++			secondSettings.StressNurseryBytes = 128
++			incompatible, err := rt.Instantiate(context.Background(), code, WithGC(secondSettings), WithImports(testImports("env.next", next)))
++			if incompatible != nil {
++				incompatible.Close()
++			}
++			if err == nil || !strings.Contains(err.Error(), "incompatible") {
++				t.Fatalf("same-code incompatible collector configuration = %v, want rejection", err)
++			}
++			second, err := rt.Instantiate(context.Background(), code, WithGC(settings), WithImports(testImports("env.next", next)))
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer second.Close()
++			if first.base != second.base || first.gc == nil || first.gc != second.gc {
++				t.Fatal("compatible same-code instances must share the collector domain")
++			}
++			for i := 0; i < 3; i++ {
++				out, err := second.Invoke("run")
++				if err != nil || len(out) != 1 || AsI32(out[0]) != 73 {
++					t.Fatalf("same-code scalar relay = %v, %v; want [73], nil", out, err)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/wago/gc_struct_helper_amd64_test.go b/src/wago/gc_struct_helper_amd64_test.go
+index 405825212..5ea9d6ea6 100644
+--- a/src/wago/gc_struct_helper_amd64_test.go
++++ b/src/wago/gc_struct_helper_amd64_test.go
+@@ -197,7 +197,8 @@ func TestStagedGCStructHelperFootprint(t *testing.T) {
+ 	// Raising the activation bound from 8 to 33 adds 25 records (96 bytes
+ 	// each), two 64-entry root-slot arrays and four tracking bytes per level,
+ 	// plus four bytes of final alignment: 7864 + 25*(96+512+4) + 4.
+-	const wantGCState = 23168
++	// The entry landing snapshot adds one pointer plus 33 activation pointers.
++	const wantGCState = 23168 + 34*8
+ 	if got := unsafe.Sizeof(gcPublicState{}); got != wantGCState {
+ 		t.Fatalf("gcPublicState size = %d, want %d with RV64 roots and full-depth host activation storage", got, wantGCState)
+ 	}
+diff --git a/src/wago/host_execution.go b/src/wago/host_execution.go
+index e9cf8fb9e..eeeda07c8 100644
+--- a/src/wago/host_execution.go
++++ b/src/wago/host_execution.go
+@@ -373,7 +373,7 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
+ 		// even though the parked control frame and callsite map belong to active.
+ 		physicalStack = root.eng
+ 	}
+-	activation := active.pushGCHostActivation(ctrl, importIdx, physicalStack)
++	activation := active.pushGCHostActivation(ctrl, importIdx, physicalStack, root)
+ 	if err := active.rootGCHostArguments(activation, importIdx, args); err != nil {
+ 		active.clearGCHostResultRoots(activation)
+ 		active.popGCHostActivation(activation)
+@@ -394,7 +394,7 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
+ 	// while arbitrary host code runs. A non-GC relay may have pre-acquired more
+ 	// imported GC domains than the active producer whose frame parked here.
+ 	leaseOwner := active
+-	if root != nil && root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
++	if root != nil && root.hostCallNeedsGCSuspension() {
+ 		leaseOwner = root
+ 	}
+ 	id := invocation.id
+@@ -586,10 +586,10 @@ func (a *hostLoopActivation) dispatchSharedAtomicWait(active *Instance, ctrl uin
+ 	if a.root != nil {
+ 		physicalStack = a.root.eng
+ 	}
+-	activation := active.pushGCHostActivation(ctrl, helper|shared.AtomicWaitDispatchBit, physicalStack)
++	activation := active.pushGCHostActivation(ctrl, helper|shared.AtomicWaitDispatchBit, physicalStack, a.root)
+ 	defer active.popGCHostActivation(activation)
+ 	leaseOwner := active
+-	if a.root != nil && a.root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
++	if a.root != nil && a.root.hostCallNeedsGCSuspension() {
+ 		leaseOwner = a.root
+ 	}
+ 	var gcSuspension *gcInvocationSuspension
+diff --git a/src/wago/instantiate.go b/src/wago/instantiate.go
+index c376988b3..2c01420b5 100644
+--- a/src/wago/instantiate.go
++++ b/src/wago/instantiate.go
+@@ -299,8 +299,12 @@ func (b *instanceBuilder) prepareCollector() error {
+ 		return nil
+ 	}
+ 	gcConfig := b.opts.GC
+-	if b.c.usesGenericGCExecution() && b.c.genericGCFrameRoots() == nil && !rv64OfficialGCRefEq(b.c) && !rv64GCRefTestTable(b.c) && !rv64GCRefTestConcrete(b.c) && !rv64GCRefCastConcrete(b.c) && !rv64GCBrOnCastConcrete(b.c) && !rv64GCBrOnCastFailConcrete(b.c) && !rv64GCBrOnCastNullability(b.c) && !rv64GCBrOnCastFailNullability(b.c) && !rv64GCRefTestAbstract(b.c) && !rv64GCExtern(b.c) && !rv64GCRefCastAbstract(b.c) && !rv64GCBrOnCastAbstract(b.c) && !rv64GCBrOnCastFailAbstract(b.c) && !rv64GCStructGet(b.c) && !rv64GCStructMutation(b.c) && !rv64GCStructNull(b.c) && !rv64GCStructPacked(b.c) && !rv64GCStructBasic(b.c) && !rv64GCArrayLocal(b.c) && !rv64GCArrayUniform(b.c) && !rv64GCArrayFixedLocal(b.c) && !rv64GCArrayFixedOfficial(b.c) && !rv64GCArrayDefaultOfficial(b.c) && !rv64GCArrayPackedData(b.c) && !rv64GCArrayReference(b.c) && !rv64GCArrayInitElem(b.c) && !rv64GCArrayInitData(b.c) && !rv64GCArrayFill(b.c) && !rv64GCArrayCopy(b.c) {
+-		// Generic products outside the validated native root-map slice still do
++	needsFrameRoots := b.c.usesGenericGCExecution()
++	if compiledArchitecture != 4 {
++		needsFrameRoots = b.c.needsExactNativeGCRoots()
++	}
++	if needsFrameRoots && b.c.genericGCFrameRoots() == nil && !rv64OfficialGCRefEq(b.c) && !rv64GCRefTestTable(b.c) && !rv64GCRefTestConcrete(b.c) && !rv64GCRefCastConcrete(b.c) && !rv64GCBrOnCastConcrete(b.c) && !rv64GCBrOnCastFailConcrete(b.c) && !rv64GCBrOnCastNullability(b.c) && !rv64GCBrOnCastFailNullability(b.c) && !rv64GCRefTestAbstract(b.c) && !rv64GCExtern(b.c) && !rv64GCRefCastAbstract(b.c) && !rv64GCBrOnCastAbstract(b.c) && !rv64GCBrOnCastFailAbstract(b.c) && !rv64GCStructGet(b.c) && !rv64GCStructMutation(b.c) && !rv64GCStructNull(b.c) && !rv64GCStructPacked(b.c) && !rv64GCStructBasic(b.c) && !rv64GCArrayLocal(b.c) && !rv64GCArrayUniform(b.c) && !rv64GCArrayFixedLocal(b.c) && !rv64GCArrayFixedOfficial(b.c) && !rv64GCArrayDefaultOfficial(b.c) && !rv64GCArrayPackedData(b.c) && !rv64GCArrayReference(b.c) && !rv64GCArrayInitElem(b.c) && !rv64GCArrayInitData(b.c) && !rv64GCArrayFill(b.c) && !rv64GCArrayCopy(b.c) {
++		// Products outside the validated native root-map slice still do
+ 		// not publish every native reference at allocating helper safepoints. Keep
+ 		// them stable and bounded rather than scanning an incomplete frame. The
+ 		// exact RV64 allocating products have no live native reference across an
+diff --git a/src/wago/plugin_gc_host_import_test.go b/src/wago/plugin_gc_host_import_test.go
+index b2ce91f19..d049932e8 100644
+--- a/src/wago/plugin_gc_host_import_test.go
++++ b/src/wago/plugin_gc_host_import_test.go
+@@ -627,8 +627,8 @@ func TestPluginScalarHostImportStaysOrdinary(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	defer mod.Close()
+-	if mod.c.needsExactNativeGCRoots() || mod.c.genericGCFrameRoots() != nil {
+-		t.Fatalf("scalar plugin import acquired GC root metadata: required=%v roots=%v", mod.c.needsExactNativeGCRoots(), mod.c.genericGCFrameRoots())
++	if roots := mod.c.genericGCFrameRoots(); mod.c.needsExactNativeGCRoots() || mod.c.nativeGCABIRequirement() != 0 || roots != nil && !mod.c.collectorFreeNativeUnwind(roots) {
++		t.Fatalf("scalar plugin import acquired collector metadata: required=%v roots=%v", mod.c.needsExactNativeGCRoots(), roots)
+ 	}
+ 	in, err := rt.Instantiate(context.Background(), mod)
+ 	if err != nil {
+diff --git a/src/wago/reference_store.go b/src/wago/reference_store.go
+index e9fcdd583..3e675492b 100644
+--- a/src/wago/reference_store.go
++++ b/src/wago/reference_store.go
+@@ -684,6 +684,7 @@ const (
+ type gcNativeFrameRoots struct {
+ 	owner                *Instance
+ 	physicalStack        *coreruntime.Engine
++	entryReturnSlot      uintptr
+ 	base                 uintptr
+ 	offsets              []uint32
+ 	frameBytes           uint32
+@@ -698,18 +699,22 @@ type gcNativeFrameRoots struct {
+ }
+ 
+ type gcHostActivation struct {
+-	base         uintptr
+-	ctrl         uintptr
+-	stack        *coreruntime.Engine
+-	callsite     uint32
+-	noFrame      bool
+-	savedControl gcHostSavedControl
++	base            uintptr
++	ctrl            uintptr
++	stack           *coreruntime.Engine
++	entryReturnSlot uintptr
++	callsite        uint32
++	noFrame         bool
++	savedControl    gcHostSavedControl
+ }
+ 
+ // Include the outer callback as well as every permitted nested host reentry.
+ // Preserve the existing capacity for builds with a lower reentry limit.
+ const gcHostActivationLimit = max(8, maxHostReentryDepth+1)
+ 
++// Skip foreign parked-chain discovery when AMD64/ARM64 have no parked GC host call.
++var gcNativeHostActivations atomic.Int64
++
+ func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
+ 	r.walk(fn, nil)
+ }
+@@ -745,7 +750,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
+ 	if !r.rangeSuspendedRoots(r.owner, r.suspended, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
+ 		return false
+ 	}
+-	if r.domainHostRoots && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
++	if r.domainHostRoots && (compiledArchitecture == 4 || gcNativeHostActivations.Load() != 0) && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
+ 		return false
+ 	}
+ 	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
+@@ -769,7 +774,8 @@ func (r *gcNativeFrameRoots) rangeSuspendedRoots(owner *Instance, state *gcPubli
+ 			}
+ 			callsite := &state.hostRootPlan.callsites[activation.callsite]
+ 			chain := gcNativeFrameRoots{
+-				owner:                owner,
++				owner:                r.owner,
++				entryReturnSlot:      activation.entryReturnSlot,
+ 				base:                 activation.base,
+ 				offsets:              callsite.offsets,
+ 				frameBytes:           callsite.frameBytes,
+@@ -780,7 +786,7 @@ func (r *gcNativeFrameRoots) rangeSuspendedRoots(owner *Instance, state *gcPubli
+ 				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
+ 				callsites:            state.hostRootPlan.callsites,
+ 			}
+-			if !chain.rangeChain(fn, sink, activation.stack) {
++			if !chain.rangeChainFrom(owner, fn, sink, activation.stack) {
+ 				return false
+ 			}
+ 		}
+@@ -805,7 +811,7 @@ func (r *gcNativeFrameRoots) rangeTransientRoots(fn func(gc.RootSlot) bool, sink
+ 	if !r.rangeSuspendedRoots(r.owner, r.suspended, fn, sink) {
+ 		return false
+ 	}
+-	if r.domainHostRoots && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, fn, sink) {
++	if r.domainHostRoots && (compiledArchitecture == 4 || gcNativeHostActivations.Load() != 0) && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, fn, sink) {
+ 		return false
+ 	}
+ 
+@@ -874,6 +880,7 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
+ 	if in == nil || in.c == nil {
+ 		return true
+ 	}
++	mirrored := in.existingGCRefTestTableState()
+ 	if !rangeLocalCompactExternRoots(in, fn, sink) {
+ 		return false
+ 	}
+@@ -888,6 +895,10 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
+ 			if !isGCRefValType(in.c.tableElementType(tableIndex)) {
+ 				continue
+ 			}
++			// Staged mirrors retain checked collector roots and filter foreign identities.
++			if compiledArchitecture != 4 && mirrored != nil && tableIndex < len(mirrored.kinds) && mirrored.kinds[tableIndex] == gcRefTableRoot {
++				continue
++			}
+ 			desc := in.tableDescriptor(tableIndex)
+ 			if len(desc) < 8 {
+ 				panic(gcHelperFailuref("generic GC table %d descriptor is unavailable", tableIndex))
+@@ -941,7 +952,10 @@ func gcNativeFrameFitsStack(base uintptr, frameBytes uint32, stack *coreruntime.
+ }
+ 
+ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink, stack *coreruntime.Engine) bool {
+-	owner := r.owner
++	return r.rangeChainFrom(r.owner, fn, sink, stack)
++}
++
++func (r *gcNativeFrameRoots) rangeChainFrom(owner *Instance, fn func(gc.RootSlot) bool, sink gc.RootRefSink, stack *coreruntime.Engine) bool {
+ 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
+ 	codeBase, codeBytes := r.codeBase, r.codeBytes
+ 	adapterReturnOffsets, callsites := r.adapterReturnOffsets, r.callsites
+@@ -973,7 +987,13 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
+ 		if r.owner != nil && !visitManagedFunctionOwnerFrameRoot(owner, r.owner.gc, fn, sink) {
+ 			return false
+ 		}
+-		for _, off := range offsets {
++		frameOffsets := offsets
++		if owner != r.owner && r.owner != nil && owner != nil && owner.gc != r.owner.gc {
++			// Compact handles are local to a collector. Traverse a foreign
++			// frame's physical return map, never feed its words to this heap.
++			frameOffsets = nil
++		}
++		for _, off := range frameOffsets {
+ 			encoded := off
+ 			off = shared.GCFrameRootOffset(encoded)
+ 			if encoded&shared.GCFrameExternRefRootFlag != 0 {
+@@ -990,6 +1010,15 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
+ 				}
+ 				continue
+ 			}
++			if r.frameLayout&gcNativeFrameLayoutMask != gcNativeFrameLayoutRISCV64 {
++				bits := nativeGCFrameWord(base + uintptr(off))
++				if bits != uint64(gc.Ref(uint32(bits))) {
++					if owner == nil || !owner.isForeignAnyref(bits) {
++						panic(gcHelperFailuref("generic GC frame-root offset %d contains non-compact reference %#x", off, bits))
++					}
++					continue
++				}
++			}
+ 			// gc.Ref is the low 32 bits of the validated little-endian native qword.
+ 			// Expose the actual off-heap word so a moving/reference-rewriting policy
+ 			// updates the parked frame rather than a copied scratch value.
+@@ -1032,38 +1061,84 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
+ 			panic(gcHelperFailuref("generic GC native return address exceeds stack bounds"))
+ 		}
+ 		retPC := uintptr(nativeGCFrameWord(retAddr))
+-		if retPC < codeBase || retPC-codeBase >= codeBytes {
+-			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
+-				return true
+-			}
+-			foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
+-			if foreign == nil {
+-				if r.allowExternalReturn {
++		calleeOwner := owner
++		if base > ^uintptr(0)-uintptr(frameBytes)-callerFrameBias {
++			panic(gcHelperFailuref("generic GC caller frame address overflows"))
++		}
++		returnBase := base + uintptr(frameBytes) + callerFrameBias
++		adapterRead := false
++		for {
++			if retPC < codeBase || retPC-codeBase >= codeBytes {
++				// A stack-ABI public entry has no register adapter. Its top return
++				// word is exactly the entry's existing trap landing slot. An unknown
++				// PC elsewhere in the stack must still fail ownership validation.
++				if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutAMD64 && stack != nil && owner != nil && owner.jm != nil {
++					landing := r.entryReturnSlot
++					if landing%8 == 0 && landing == retAddr && stackTop >= uintptr(stack.StackBytes()) && landing >= stackTop-uintptr(stack.StackBytes()) && landing < stackTop && stackTop-landing >= 8 {
++						return true
++					}
++				}
++				if r.owner == nil || r.owner.refStore == nil || !r.owner.refStore.ownsGCCollector(r.owner.gc) {
+ 					return true
+ 				}
+-				panic(gcHelperFailuref("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC))
++				foreign := r.owner.refStore.gcFrameOwner(retPC, owner.gc)
++				if foreign == nil && r.frameLayout&gcNativeFrameLayoutMask != gcNativeFrameLayoutRISCV64 {
++					foreign = r.owner.refStore.gcAnyFrameOwner(retPC, 0)
++				}
++				if foreign == nil {
++					if r.allowExternalReturn {
++						return true
++					}
++					panic(gcHelperFailuref("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC))
++				}
++				if foreign.c.genericGCFrameRoots() == nil {
++					panic(gcHelperFailuref("generic GC foreign return PC %#x has no native unwind map; recompile the caller", retPC))
++				}
++				owner = foreign
++				plan := foreign.c.genericGCFrameRoots()
++				codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.code))
++				adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
+ 			}
+-			owner = foreign
+-			plan := foreign.c.genericGCFrameRoots()
+-			codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.code))
+-			adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
+-		}
+-		rel := uint32(retPC - codeBase)
+-		adapterIndex := 0
+-		if len(adapterReturnOffsets) <= 8 {
+-			for adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] < rel {
+-				adapterIndex++
++			rel := uint32(retPC - codeBase)
++			adapterIndex := 0
++			if len(adapterReturnOffsets) <= 8 {
++				for adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] < rel {
++					adapterIndex++
++				}
++			} else {
++				adapterIndex = sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
+ 			}
+-		} else {
+-			adapterIndex = sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
+-		}
+-		if adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] == rel {
+-			return true
+-		}
+-		if base > ^uintptr(0)-uintptr(frameBytes)-callerFrameBias {
+-			panic(gcHelperFailuref("generic GC caller frame address overflows"))
++			if adapterIndex == len(adapterReturnOffsets) || adapterReturnOffsets[adapterIndex] != rel {
++				break
++			}
++			// RV64 keeps its validated adapter boundary. The physical record
++			// traversal below is specific to AMD64 and ARM64.
++			if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutRISCV64 {
++				return true
++			}
++			if owner == nil || owner.c == nil {
++				return true // This chain has no retained compiled wrapper.
++			}
++			if adapterRead {
++				panic(gcHelperFailuref("generic GC native return crosses nested adapters"))
++			}
++			// The validated register adapter saves one results-pointer word on
++			// AMD64, or an LR/results pair on ARM64. Neither is the end of a
++			// native cross-instance call: its caller can still own live roots.
++			// Include AMD64's outer CALL return word in the same 16-byte span.
++			if returnBase%8 != 0 || returnBase > ^uintptr(0)-16 || stackTop == 0 || returnBase > stackTop || stackTop-returnBase < 16 {
++				panic(gcHelperFailuref("generic GC native adapter record exceeds stack bounds"))
++			}
++			outerReturnOffset := uintptr(8)
++			if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64 {
++				outerReturnOffset = 0
++			}
++			retAddr = returnBase + outerReturnOffset
++			retPC = uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(retAddr)), 8)))
++			returnBase += 16
++			adapterRead = true
+ 		}
+-		returnBase := base + uintptr(frameBytes) + callerFrameBias
++		rel := uint32(retPC - codeBase)
+ 		// Tiny sorted tables beat binary-search setup; larger tables retain
+ 		// logarithmic lookup. The measured crossover is between 8 and 16.
+ 		callsiteIndex := 0
+@@ -1081,9 +1156,43 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
+ 		offsets = callsite.offsets
+ 		frameBytes = callsite.frameBytes
+ 		stackAdjust := callsite.stackAdjust
++		if owner != calleeOwner && stackAdjust != 64 && r.frameLayout&gcNativeFrameLayoutMask != gcNativeFrameLayoutRISCV64 && owner != nil && calleeOwner != nil && owner.gc != calleeOwner.gc {
++			panic(gcHelperFailuref("generic GC cross-domain return lacks its saved caller context"))
++		}
+ 		if returnBase > ^uintptr(0)-uintptr(stackAdjust) {
+ 			panic(gcHelperFailuref("generic GC caller stack adjustment overflows"))
+ 		}
++		// Every production 64-byte wrapper is a dynamic import or a
++		// home-aware indirect/ref call. Both preserve the caller's immutable
++		// native-context pointer: AMD64 at record+8, ARM64 at record+0.
++		// Code can be shared by instances, so its representative owner only
++		// selects the immutable plan; this saved identity selects the roots.
++		if r.frameLayout&gcNativeFrameLayoutMask != gcNativeFrameLayoutRISCV64 && stackAdjust == 64 && owner != nil && owner.refStore != nil {
++			if returnBase > ^uintptr(0)-64 || stackTop != 0 && (returnBase > stackTop || stackTop-returnBase < 64) {
++				panic(gcHelperFailuref("generic GC caller context record exceeds stack bounds"))
++			}
++			contextOffset := uintptr(8)
++			arm64 := r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64
++			if arm64 {
++				contextOffset = 0
++			}
++			context := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnBase+contextOffset)), 8)))
++			// ARM64 writes zero only when no context switch occurred.
++			if context == 0 && arm64 && owner == calleeOwner {
++				// Keep the current exact instance identity.
++			} else if context == 0 {
++				panic(gcHelperFailuref("generic GC caller context is unavailable"))
++			} else if context != owner.nativeContext {
++				caller := r.owner.refStore.gcFrameContextOwner(retPC, owner.gc, context)
++				if caller == nil {
++					caller = r.owner.refStore.gcAnyFrameOwner(retPC, context)
++				}
++				if caller == nil {
++					panic(gcHelperFailuref("generic GC caller context %#x has no Runtime GC-domain code owner", context))
++				}
++				owner = caller
++			}
++		}
+ 		base = returnBase + uintptr(stackAdjust)
+ 	}
+ }
+@@ -1631,13 +1740,13 @@ func (s *referenceStore) rangeGCDomainSuspendedRoots(collector *gc.Collector, ex
+ 	}
+ 	n := 0
+ 	s.mu.Lock()
+-	for owner, registration := range s.instances {
+-		if registration == nil || registration.resourcesReleased || owner == nil || owner.gc != collector {
+-			continue
++	appendOwner := func(owner *Instance) bool {
++		if compiledArchitecture == 4 && owner.gc != collector {
++			return true
+ 		}
+ 		state := owner.existingPublicGCState()
+ 		if state == nil || state == exclude || state.hostActivationCount == 0 {
+-			continue
++			return true
+ 		}
+ 		if n < len(owners) {
+ 			owners[n] = gcSuspendedRootOwner{owner, state}
+@@ -1645,6 +1754,16 @@ func (s *referenceStore) rangeGCDomainSuspendedRoots(collector *gc.Collector, ex
+ 			extra = append(extra, gcSuspendedRootOwner{owner, state})
+ 		}
+ 		n++
++		return true
++	}
++	if compiledArchitecture == 4 {
++		for owner, registration := range s.instances {
++			if registration != nil && !registration.resourcesReleased && owner != nil {
++				appendOwner(owner)
++			}
++		}
++	} else {
++		s.rangeRetainedFrameOwnersLocked(appendOwner)
+ 	}
+ 	s.mu.Unlock()
+ 	if roots.suspended != nil {
+@@ -1695,6 +1814,98 @@ func (s *referenceStore) rangeGCDomainPersistentRootsClassified(collector *gc.Co
+ }
+ 
+ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Instance {
++	return s.gcFrameContextOwner(pc, collector, 0)
++}
++
++// gcAnyFrameOwner selects an immutable return plan across collector domains.
++// Shared code alone is not instance identity: the caller's saved context is
++// authenticated below before any frame slots are visited.
++func (s *referenceStore) gcAnyFrameOwner(pc, context uintptr) *Instance {
++	if s == nil {
++		return nil
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	matches := func(candidate *Instance) bool {
++		return candidate != nil && candidate.c != nil && (context == 0 || candidate.nativeContext == context) && pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code))
++	}
++	for candidate, state := range s.instances {
++		if state != nil && !state.resourcesReleased && candidate != nil && candidate.refStore == s && matches(candidate) {
++			return candidate
++		}
++	}
++	var found *Instance
++	s.rangeRetainedFrameOwnersLocked(func(candidate *Instance) bool {
++		if matches(candidate) {
++			found = candidate
++			return false
++		}
++		return true
++	})
++	return found
++}
++
++// rangeRetainedFrameOwnersLocked visits each retained local/import owner once.
++// Callers hold s.mu and must not take a foreign store lock in visit.
++func (s *referenceStore) rangeRetainedFrameOwnersLocked(visit func(*Instance) bool) bool {
++	// Scalar imports may leave and reenter a store through an immutable native
++	// relay. The local registration announces ResourcesReleased under s.mu
++	// BEFORE detaching imports. Holding s.mu therefore retains its entire
++	// transitive imported-code/context graph; no foreign store lock is needed.
++	// Owner lookup uses this graph only after its fast local scan fails.
++	// Parked-host discovery also uses it when a GC-capable callback is active.
++	var inlinePending, inlineSeen [32]*Instance
++	pending, seen := inlinePending[:0], inlineSeen[:0]
++	var wideSeen map[*Instance]struct{}
++	add := func(candidate *Instance) {
++		if candidate == nil {
++			return
++		}
++		if wideSeen != nil {
++			if _, exists := wideSeen[candidate]; exists {
++				return
++			}
++			wideSeen[candidate] = struct{}{}
++		} else {
++			for _, previous := range seen {
++				if previous == candidate {
++					return
++				}
++			}
++			if len(seen) < len(inlineSeen) {
++				seen = append(seen, candidate)
++			} else {
++				wideSeen = make(map[*Instance]struct{}, 64)
++				for _, previous := range seen {
++					wideSeen[previous] = struct{}{}
++				}
++				wideSeen[candidate] = struct{}{}
++			}
++		}
++		pending = append(pending, candidate)
++	}
++	for candidate, state := range s.instances {
++		if state != nil && !state.resourcesReleased && candidate != nil && candidate.refStore == s {
++			add(candidate)
++		}
++	}
++	for len(pending) != 0 {
++		last := len(pending) - 1
++		candidate := pending[last]
++		pending = pending[:last]
++		if !visit(candidate) {
++			return false
++		}
++		for _, binding := range candidate.imports {
++			if imported, ok := binding.(*InstanceExport); ok && imported != nil {
++				add(imported.inst)
++			}
++		}
++	}
++	return true
++}
++
++func (s *referenceStore) gcFrameContextOwner(pc uintptr, collector *gc.Collector, context uintptr) *Instance {
+ 	if s == nil || collector == nil {
+ 		return nil
+ 	}
+@@ -1702,7 +1913,7 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
+ 	defer s.mu.Unlock()
+ 	if topology := s.gcDomains; topology != nil && topology.singleCodeOwner != nil {
+ 		owner := topology.singleCodeOwner
+-		if owner.gc == collector && pc >= owner.base && pc-owner.base < uintptr(len(owner.c.code)) {
++		if owner.gc == collector && (context == 0 || owner.nativeContext == context) && pc >= owner.base && pc-owner.base < uintptr(len(owner.c.code)) {
+ 			return owner
+ 		}
+ 		return nil
+@@ -1711,7 +1922,14 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
+ 		if ranges := topology.codeRanges.byCollector[collector]; ranges != nil {
+ 			for _, image := range ranges.byPage[pc>>gcFrameCodeRangePageShift] {
+ 				if pc >= image.key.base && pc-image.key.base < image.bytes {
+-					return image.owner
++					if context == 0 {
++						return image.owner
++					}
++					for link := image.owners; link != nil; link = link.next {
++						if candidate := link.instance; candidate.nativeContext == context {
++							return candidate
++						}
++					}
+ 				}
+ 			}
+ 		}
+@@ -1721,7 +1939,7 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
+ 		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil || candidate.c.genericGCFrameRoots() == nil {
+ 			continue
+ 		}
+-		if pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
++		if (context == 0 || candidate.nativeContext == context) && pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
+ 			return candidate
+ 		}
+ 	}

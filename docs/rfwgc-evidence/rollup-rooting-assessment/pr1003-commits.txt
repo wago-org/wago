@@ -1,0 +1,1 @@
+9666ec48e18cb2f7a77c188dc52f093770859f26 fix(gc): validate ref descriptor object extents
