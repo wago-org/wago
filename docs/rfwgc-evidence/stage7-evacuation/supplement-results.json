@@ -1,0 +1,173 @@
+[
+  {
+    "mode": "ordinary",
+    "suite": "capacity-ordinary",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=10m",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "^TestEvacuationStage7(SingleProcessor|Capacity256MiB)$"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "ordinary",
+    "suite": "capacity-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=10m",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "^TestEvacuationStage7(SingleProcessor|Capacity256MiB)$",
+      "-race"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "ordinary",
+    "suite": "disabled-ordinary",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=3m",
+      "-tags=wago_target_tinygo",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "TestEvacuationStage7DisabledTarget|TestParallelDisabled"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "capacity-wagodebug",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=10m",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "^TestEvacuationStage7(SingleProcessor|Capacity256MiB)$",
+      "-tags=wagodebug"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "capacity-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=10m",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "^TestEvacuationStage7(SingleProcessor|Capacity256MiB)$",
+      "-tags=wagodebug",
+      "-race"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wagodebug",
+    "suite": "disabled-wagodebug",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=3m",
+      "-tags=wago_target_tinygo,wagodebug",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "TestEvacuationStage7DisabledTarget|TestParallelDisabled"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "capacity-wago_regalloccheck",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=10m",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "^TestEvacuationStage7(SingleProcessor|Capacity256MiB)$",
+      "-tags=wago_regalloccheck"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "capacity-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=10m",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "^TestEvacuationStage7(SingleProcessor|Capacity256MiB)$",
+      "-tags=wago_regalloccheck",
+      "-race"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "suite": "disabled-wago_regalloccheck",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=3m",
+      "-tags=wago_target_tinygo,wago_regalloccheck",
+      "./src/core/runtime/gc/native",
+      "-run",
+      "TestEvacuationStage7DisabledTarget|TestParallelDisabled"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "ordinary",
+    "suite": "cross-arm64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/tmp/wago-stage7-capacity-ty3ebens/native-arm64.test",
+      "./src/core/runtime/gc/native"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "ordinary",
+    "suite": "cross-riscv64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/tmp/wago-stage7-capacity-ty3ebens/native-riscv64.test",
+      "./src/core/runtime/gc/native"
+    ],
+    "exit": 0
+  }
+]

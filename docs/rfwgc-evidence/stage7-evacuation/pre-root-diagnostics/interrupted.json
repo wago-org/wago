@@ -1,0 +1,3 @@
+{
+  "reason": "Superseded by root-panic diagnostic fix and expanded rollback/large-young tests. Completed results retain only this pin; unfinished commands are not passes."
+}
