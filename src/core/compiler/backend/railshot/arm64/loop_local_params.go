@@ -16,9 +16,9 @@ type loopLocalParamHomes struct {
 func (f *fn) planLoopLocalParams(r *wasm.Reader, fr *ctrlFrame, signature wasm.Reader) (loopLocalParamHomes, int, bool) {
 	var homes loopLocalParamHomes
 	if !f.opt(optLoopLocalParams) || profileEnabled || f.interruptible || f.makesCalls || f.usesCalls ||
-		f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.localBase != 0 ||
-		f.inlineDepth != 0 || len(f.intervalLast) != 0 || f.loopLocalParams.depth != 0 ||
-		f.policy.CompactNative || fr.kind != cfLoop || fr.paramN < 1 || fr.paramN > len(homes.local) || f.depth() != fr.paramN ||
+		f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 ||
+		len(f.intervalLast) != 0 || f.loopLocalParams.depth != 0 ||
+		f.policy.CompactNative || fr.kind != cfLoop || fr.paramN < 1 || fr.paramN > len(homes.local) || f.depth() < fr.paramN ||
 		f.stats != nil && f.stats.RecordSources {
 		return homes, 0, false
 	}
@@ -37,19 +37,20 @@ func (f *fn) planLoopLocalParams(r *wasm.Reader, fr *ctrlFrame, signature wasm.R
 			return homes, 0, false
 		}
 		x, err := peek.U32()
-		if err != nil || x > 65535 || int(x) >= f.nLocals || f.localType[x] != mtOf(ft.Params[fr.paramN-1-i]) {
+		absolute := uint64(x) + uint64(f.localBase)
+		if err != nil || absolute > 65535 || absolute >= uint64(len(f.localType)) || f.localType[absolute] != mtOf(ft.Params[fr.paramN-1-i]) {
 			return homes, 0, false
 		}
-		_, isFloat, pinned := f.pinReg(int(x))
+		_, isFloat, pinned := f.pinReg(int(absolute))
 		if !pinned || isFloat {
 			return homes, 0, false
 		}
 		for _, previous := range homes.local[:i] {
-			if previous == uint16(x) {
+			if previous == uint16(absolute) {
 				return homes, 0, false
 			}
 		}
-		homes.local[i] = uint16(x)
+		homes.local[i] = uint16(absolute)
 	}
 	afterBindings := peek.Offset()
 	depth := 0

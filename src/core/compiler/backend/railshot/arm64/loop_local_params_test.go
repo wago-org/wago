@@ -172,7 +172,7 @@ func TestLoopIntegerParametersTransferToLocals(t *testing.T) {
 								if err != nil || got != want {
 									t.Fatalf("wide=%t workers=%d count=%d input=%x result=%d got=%x err=%v want=%x", wide, workers, count, input, which, got, err, want)
 								}
-								if diagnosticsEnabled && (stats.Funcs[1].Peephole["loop-local-params"] != 0) != (enabled && !profileEnabled && (variant == "direct" || variant == "declared-locals")) {
+								if diagnosticsEnabled && (stats.Funcs[1].Peephole["loop-local-params"] != 0) != (enabled && !profileEnabled && (variant == "direct" || variant == "declared-locals" || variant == "prefix")) {
 									t.Fatal("loop parameter path selection mismatch: " + variant)
 								}
 							}

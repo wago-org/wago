@@ -1688,6 +1688,16 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			collect = &uses
 		}
 		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals, collect)
+		if f.localBase != 0 && setLocals != nil {
+			for i := base; i < len(setLocals); i++ {
+				absolute := uint64(setLocals[i]) + uint64(f.localBase)
+				if absolute > uint64(^uint16(0)) {
+					setLocals, hasCall = nil, true
+					break
+				}
+				setLocals[i] = uint16(absolute)
+			}
+		}
 		if collectConsts && !hasCall {
 			fr.flags |= ctrlFlags(uses.mask) << 12
 		}

@@ -110,6 +110,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
+	optimization.Bind("inline-integer-tuples", &inlineIntegerTuplesEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
 	optimization.BindInverted("stack-reg", &noStackReg),
 )
@@ -215,6 +216,7 @@ var (
 	optV128Pins             = optimizationBindings.Option("v128-pins")
 	optRegABI               = optimizationBindings.Option("reg-abi")
 	optInline               = optimizationBindings.Option("inline")
+	optInlineIntegerTuples  = optimizationBindings.Option("inline-integer-tuples")
 	optStackFence           = optimizationBindings.Option("stack-fence")
 	optStackReg             = optimizationBindings.Option("stack-reg")
 )

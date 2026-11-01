@@ -57,6 +57,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   deferred and forwarding read-only parameter locals.
 - Keep bounded ARM64 integer loop parameters in pinned local homes and align
   functions called from loops to preserve hot entry placement.
+- Inline bounded ARM64 integer tuple leaves with structured control when the
+  caller can eliminate all calls, preserving private-local initialization.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.

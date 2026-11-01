@@ -3437,17 +3437,31 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if hasCall {
 		inlinedCallees = collectInlinedCallees(c, inlineTargets)
 	}
+	// Expanded tuple leaves depend on a call-free private register frame. Retain
+	// their calls if another source call or runtime helper remains in this caller.
+	allCallsInlined := policy.EnabledOption(optInlineCallFree) && hasCall && !hints.flags.has(hintHasNonDirectCall) && allCallsWillInline(c, inlineTargets, policy)
+	if !allCallsInlined {
+		kept := inlinedCallees[:0]
+		for _, callee := range inlinedCallees {
+			if !callee.tupleControl {
+				kept = append(kept, callee)
+			}
+		}
+		inlinedCallees = kept
+	}
 	// Inlined helpers execute in the caller's register frame. Reuse the existing
 	// callee hints before constructing any pin pool; the module's original hints
 	// remain unchanged, and no retained inline-target state is needed.
 	planningHints := *hints
 	for _, callee := range inlinedCallees {
-		planningHints.flags |= calleeHints[callee.globalIdx-m.ImportedFuncCount()].flags & hintUsesBulkMem
+		planningHints.flags |= calleeHints[callee.globalIdx-m.ImportedFuncCount()].flags & (hintUsesBulkMem | hintHasLoop | hintHasControlFlow)
 	}
 	hints = &planningHints
+	f.hasLoop = hints.flags.has(hintHasLoop)
+	f.localFactsEnabled = f.localFactsEnabled && !hints.flags.has(hintHasControlFlow)
 	f.streamingReduction = f.opt(optStreamReduce) && hints.hasStreamingReduction()
 	// Inlining direct Wasm calls cannot remove GC/table/atomic runtime helpers.
-	if policy.EnabledOption(optInlineCallFree) && hasCall && !hints.flags.has(hintHasNonDirectCall) && allCallsWillInline(c, inlineTargets, policy) {
+	if allCallsInlined {
 		hasCall = false
 		f.stats.peep("all-calls-inlined")
 	}
