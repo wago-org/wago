@@ -175,3 +175,76 @@ predates later Stage7 collector commits and the independent6a25 transaction
 repair. The contention-wakeup obligation described above remains unresolved;
 no final INCLUDED-FIX, combined H6/H2, joint TinyGo, or performance disposition
 is inferred from these fifteen passes.
+
+## Host contention wakeup repair
+
+Production/tests `86cacffeb` addresses the1059 scheduling gap. The synchronous
+path still tries locks without waiting. Active or constructing graph members
+leave work to their mandatory outer boundary. Otherwise, a failed collection,
+topology, invocation-domain or native lock acquisition queues one host driver.
+The driver waits for only that blocker, holding **no other lock**, then restarts
+the original topology -> ordered domains -> native protocol and rechecks all
+members for quiescence. Physical callbacks run through the existing post-unlock
+journal. RV64 has a no-op queue and keeps its receipt/return scheduling behavior.
+
+A retry mutex protects both the coalesced pending waiter and the empty-queue
+worker-exit transition. A new request either reaches the running worker or
+starts its successor. One idle notification closes after callbacks and before
+return; completed requests leave no pending waiter. Host invocation-gate probes
+also recognize an idle revoked gate or a handoff, avoiding a repeated failed
+zero-state CAS after the waiter has already observed availability.
+
+The deterministic tests exercise four repetitions for each default/actual-region
+native, topology, domain, revoked-domain, collection-driver and other-Runtime
+native blocker, with eight coalesced requests each. They assert checked ownership
+before Close, release without a later invocation, callbacks outside collection
+locks, driver idle, and graph retirement. Additional tests cover active lifetime
+deferral, real in-callback collections with no premature worker, requests while
+a physical callback is suspended and after worker exit, failed-start producer /
+provider cycles racing store Close, and sixteen rounds of eight concurrent
+requests crossing worker completion. The latter checks the pending flag and
+idle state after all request goroutines join; it does not benchmark or time work.
+
+Two development harness mistakes were corrected before the source commit: the
+first topology fixture held a topology writer across Close's own required writer
+publication and timed out; the initial store-close fixture incorrectly required
+roots to survive terminal store retirement. The final topology fixture closes
+under native contention before transferring the blocker to topology. The final
+store-close fixture proves retention before retirement, releases its blocker,
+then races store retirement with the queued driver and inspects only callback
+counts / Go lifetime metadata afterward. Neither failed probe accessed released
+code or inspected an object after a failed ownership check.
+
+`qualify-wakeup.sh` runs an unchanged temporary script copy against an immutable
+archive with exact pinned corpus/tools. The `wakeup-86cacffeb/` attempt is in
+progress until its complete ledger and driver status are recorded. Its scope is
+focused R9 ownership, full src/wago, scoped race, full backend/compiler packages,
+and ARM64/RV64 compile-only, all three modes (eighteen commands). H2 production
+remains paused until the parent accepts this checkpoint and explicitly resumes
+its conditional receipt integration. No later Stage7 or joint TinyGo combined
+qualification is implied.
+
+### Wakeup race gate and retirement correction
+
+Immutable86cacffeb is **FAIL**, not a qualified wakeup repair. Its focused and
+full ordinary commands passed; its scoped ordinary race command failed in the
+new provider/store-close case. Store retirement had unlinked collector domains
+under its writer lease, then closed them outside that lease while physical
+instance rows remained. The retry incorrectly inferred live collector ownership
+from those rows. The race detector reported access concurrent with Close and the
+checked closed-collector guard terminated that command. The driver stopped;
+no other modes/target checks ran and this failed source was not rerun to pursue
+a crash. Raw artifacts and the failure disposition remain in `wakeup-86cacffeb/`.
+
+Correction `631cb7049` rejects an unregistered shared domain under the store lock
+and topology reader **before** acquiring or accessing its collector. The reader
+prevents retirement after a successful proof; an already-unlinked domain has no
+heap authority even if an instance row still exists. The same admission check
+protects the joint collection entrypoint. Private domains retain their existing
+instance lifetime proof; RV64's scheduling/receipt behavior is unchanged. This
+fix touches no native collector or Stage7-owned file.
+
+The corrected focused provider/store-close race test passes. A separate unit
+checks the unlink/admission transition with Go identity metadata and performs
+no collector operation. Full immutable three-mode qualification of631cb7049 is
+recorded separately;86cacffeb's failure is not overwritten.
