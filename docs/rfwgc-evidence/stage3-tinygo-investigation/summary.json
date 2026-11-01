@@ -1,0 +1,145 @@
+{
+  "042-baseline-ordinary.jsonl": {
+    "test_pass": 1,
+    "test_fail": 0,
+    "test_skip": 0,
+    "package_pass": true
+  },
+  "042-baseline-wago_regalloccheck.jsonl": {
+    "test_pass": 1,
+    "test_fail": 0,
+    "test_skip": 0,
+    "package_pass": true
+  },
+  "042-baseline-wagodebug.jsonl": {
+    "test_pass": 1,
+    "test_fail": 0,
+    "test_skip": 0,
+    "package_pass": true
+  },
+  "042-current-ordinary.jsonl": {
+    "test_pass": 1,
+    "test_fail": 0,
+    "test_skip": 0,
+    "package_pass": true
+  },
+  "042-current-wago_regalloccheck.jsonl": {
+    "test_pass": 1,
+    "test_fail": 0,
+    "test_skip": 0,
+    "package_pass": true
+  },
+  "042-current-wagodebug.jsonl": {
+    "test_pass": 1,
+    "test_fail": 0,
+    "test_skip": 0,
+    "package_pass": true
+  },
+  "043-baseline-wagodebug.jsonl": {
+    "test_pass": 1,
+    "test_fail": 0,
+    "test_skip": 0,
+    "package_pass": true
+  },
+  "043-current-wagodebug.jsonl": {
+    "test_pass": 1,
+    "test_fail": 0,
+    "test_skip": 0,
+    "package_pass": true
+  },
+  "before-042-current.jsonl": {
+    "passes": 10,
+    "failures": [],
+    "gc_signal_stop_only": false
+  },
+  "debug-replay-042-current.jsonl": {
+    "passes": 200,
+    "failures": [],
+    "gc_signal_stop_only": false
+  },
+  "debug-replay-043-baseline.jsonl": {
+    "passes": 9,
+    "failures": [
+      9
+    ],
+    "gc_signal_stop_only": false
+  },
+  "debug-replay-043-current-fault.jsonl": {
+    "passes": 0,
+    "failures": [
+      0
+    ],
+    "gc_signal_stop_only": false
+  },
+  "debug-replay-043-current.jsonl": {
+    "passes": 0,
+    "failures": [],
+    "gc_signal_stop_only": true
+  },
+  "forced-042-baseline.jsonl": {
+    "passes": 0,
+    "failures": [
+      0
+    ],
+    "gc_signal_stop_only": false
+  },
+  "forced-042-current.jsonl": {
+    "passes": 0,
+    "failures": [
+      0
+    ],
+    "gc_signal_stop_only": false
+  },
+  "forced-debug-042-baseline.jsonl": {
+    "passes": 0,
+    "failures": [
+      0
+    ],
+    "gc_signal_stop_only": false
+  },
+  "forced-debug-042-current.jsonl": {
+    "passes": 0,
+    "failures": [
+      0
+    ],
+    "gc_signal_stop_only": false
+  },
+  "isolated-debug-042-current.jsonl": {
+    "passes": 0,
+    "failures": [
+      0
+    ],
+    "gc_signal_stop_only": false
+  },
+  "isolated-forced-042-current.jsonl": {
+    "passes": 0,
+    "failures": [
+      0
+    ],
+    "gc_signal_stop_only": false
+  },
+  "replay-042-current.jsonl": {
+    "passes": 500,
+    "failures": [],
+    "gc_signal_stop_only": false
+  },
+  "replay-043-baseline.jsonl": {
+    "passes": 39,
+    "failures": [
+      39
+    ],
+    "gc_signal_stop_only": false
+  },
+  "replay-043-current.jsonl": {
+    "passes": 23,
+    "failures": [
+      23
+    ],
+    "gc_signal_stop_only": false
+  },
+  "traced-042-current.jsonl": {
+    "passes": 3,
+    "failures": [],
+    "gc_signal_stop_only": false
+  }
+}

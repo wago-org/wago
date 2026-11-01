@@ -30,8 +30,11 @@ Pinned TinyGo 0.42.0, verified release archive plus CI task-exit patch, also
 faults in `runtime.scanConservative` (gc_blocks.go:646) when `runtime.GC()` is
 inserted immediately before cancel, after the original guest-start delay.
 That intervention diagnoses the boundary; it is not a replacement test that
-waives the original failure. Baseline comparison and before-entry control
-are recorded separately as they complete.
+waives the original failure. Baseline 9713878ab fails the same forced-GC probe immediately under 0.42.0.
+Its unchanged 0.43.0 runner also aborts in process replay (iteration 39), and
+GDB confirms the same scanner fault. The before-entry GC control passes ten
+executions. These controls localize the unsafe boundary; they are not a claim
+that a finite number of passes proves safety.
 
 Wago's existing `src/core/runtime/stress_tinygo_test.go:11-21` explicitly
 documents this unsafe concurrent-GC/foreign-stack configuration. The
@@ -62,8 +65,9 @@ and the full pinned lane. No proposed fix is applied or claimed verified here.
 
 `relevant-source-delta.diff` is empty: baseline 9713878ab and current d546a1af
 have identical interruption runner, TinyGo trampoline, Engine, cancellation
-watch and native-call wrapper sources. A baseline executable comparison is
-still required to establish reproduction independently of this source fact.
+watch and native-call wrapper sources. Baseline executables independently reproduce both the unchanged 0.43.0
+failure and the controlled 0.42.0 scanner fault. This establishes a pre-existing
+defect, not a Snap introduction. It does not waive the port qualification gate.
 
 Read-only sibling audit is in `sibling-audit.txt`: Slipstream's manifest marks
 this TinyGo artifact case not applicable; Starshine has no matching TinyGo

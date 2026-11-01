@@ -1,0 +1,13 @@
+[New LWP 819395]
+[New LWP 819396]
+[New LWP 819402]
+[New LWP 819403]
+[LWP 819403 exited]
+[LWP 819402 exited]
+[LWP 819396 exited]
+[LWP 819392 exited]
+[LWP 819395 exited]
+[New process 819392]
+[Inferior 1 (process 819392) exited normally]
+docs/rfwgc-evidence/stage3-tinygo-investigation/catch.gdb:8: Error in sourced command file:
+The program has no registers now.
