@@ -2,6 +2,8 @@
 
 package wago
 
+func managedFunctionPrivateProxyOwner(*Instance, uint64) *Instance { return nil }
+
 func compiledManagedFunctionReachability(c *Compiled) bool { return c.usesManagedFunctionStorage() }
 func (in *Instance) managedFunctionEnsureStore(domain *gcStoreDomain) error {
 	_, err := in.compactExternCollector(domain)

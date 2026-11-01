@@ -337,8 +337,24 @@ func TestR9OwnershipStateH6CollectingMutations(t *testing.T) {
 				if !in.hasPhysicalResources() {
 					t.Fatal("STOP missing producer")
 				}
-				if _, err = in.Invoke("run"); err != nil {
-					t.Fatal(err)
+				var slotBound uint32
+				for round := 0; round < 8; round++ {
+					if !in.hasPhysicalResources() {
+						t.Fatal("STOP owner lost before collecting mutation")
+					}
+					if _, err = in.Invoke("run"); err != nil {
+						t.Fatal(err)
+					}
+					state, ok := managedFunctionCollectors.Load(in.gc)
+					if !ok || len(state.(*managedFunctionCollector).envs) != 0 || len(state.(*managedFunctionCollector).hostEnvSlots) != 0 {
+						t.Fatal("quiescent live owner retained a dropped function environment")
+					}
+					slots := in.gc.PersistentSlotCount(gc.SlotGlobal)
+					if round == 0 {
+						slotBound = slots
+					} else if slots != slotBound {
+						t.Fatal("repeated live-owner drops grew floating root slots")
+					}
 				}
 				if got := reflect.ValueOf(in.gc).Elem().FieldByName("edenRegions").Len() != 0; got != (shift != 0) {
 					t.Fatal("wrong actual region")

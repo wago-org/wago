@@ -217,7 +217,7 @@ func (m *managedFunctionMark) step(budget uint32) (uint32, bool, error) {
 			if kind == gc.SlotTable {
 				owners = d.state.tableOwners
 			}
-			if owners[*index] == nil && (kind != gc.SlotGlobal || compactExternHostRootIsStrong(d.state.collector, *index)) {
+			if owners[*index] == nil && (kind != gc.SlotGlobal || d.state.hostEnvSlots[*index] == gc.Null() && compactExternHostRootIsStrong(d.state.collector, *index)) {
 				ref, err := d.state.collector.PersistentSlotRef(kind, *index)
 				if err != nil {
 					return used, false, err
@@ -374,6 +374,21 @@ func (m *managedFunctionMark) collect() error {
 		}
 	}
 	for _, d := range m.domains {
+		// Floating host roots protect raw native function words only until full
+		// store quiescence. They must not seed themselves through a live producer.
+		// Reuse cleared slots so repeated publication/drop has bounded metadata.
+		for slot, ref := range d.state.hostEnvSlots {
+			index := uint32(ref) >> 1
+			word, bit := int(index>>6), uint64(1)<<(index&63)
+			if word < len(d.seen) && d.seen[word]&bit != 0 {
+				continue
+			}
+			if err := d.state.collector.SetGlobalSlot(slot, gc.Null()); err != nil {
+				return err
+			}
+			delete(d.state.hostEnvSlots, slot)
+			d.state.hostFreeSlots = append(d.state.hostFreeSlots, slot)
+		}
 		if err := d.clearUnreachableHostExternRoots(); err != nil {
 			return err
 		}
