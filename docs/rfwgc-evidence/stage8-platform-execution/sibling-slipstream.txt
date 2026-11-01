@@ -1,0 +1,100 @@
+            free_pages += pages;
+        } else {
+            if free_pages != 0 { ng_los_record_extent(h, free_start, free_pages); free_pages = 0; }
+            live_high = page + pages;
+        }
+        page += pages;
+    }
+    ng_put(h, N_LOS_HIGH, NG_LOS + live_high * 4096); ng_los_build_index(h);
+    return true;
+}
+fn ng_evacuation(h: u64, workers: u64) {
+    if ng_get(h, N_PRESSURE) == 0 { return; }
+    var bytes: u64 = 0; var maximum: u64 = 16;
+    let heap = ng_get(h, N_HEAP);
+    for b in (NG_OLD / NG_BLOCK)..(ng_get(h, N_OLD_HIGH) / NG_BLOCK) {
+        let record = h + N_BLOCKS + b * 64;
+        let occupied = popcount(ng_get(record, 8)) + popcount(ng_get(record, 16));
+        if occupied == 0 || occupied > 32 { continue; }
+        ng_put(record, 24, 1);
+        for granule in (b * NG_BLOCK / 16)..((b + 1) * NG_BLOCK / 16) {
+            let i = granule * 16;
+            if ng_test(h, N_STARTS, i) {
+                let size = ng_size(h, ss_ng_load32(heap + i) & 0xffffff, ss_ng_load32(heap + i + 4));
+                bytes += size; maximum = max(maximum, size);
+            }
+        }
+    }
+    if bytes == 0 || !ng_admit(h, bytes, workers, maximum, false) {
+        for b in (NG_OLD / NG_BLOCK)..(ng_get(h, N_OLD_HIGH) / NG_BLOCK) { ng_put(h + N_BLOCKS + b * 64, 24, 0); }
+    }
+    ng_put(h, N_PRESSURE, 0);
+}
+fn ng_collect(h: u64, major: bool) -> bool {
+    ss_ng_enter(h);
+    let measuring = ng_get(h, N_MEASURE) != 0;
+    let wall = if measuring { ss_ng_clock(1) } else { 0 as u64 };
+    let cpu = if measuring { ss_ng_clock(3) } else { 0 as u64 };
+    let okay = ng_collect_owned(h, major);
+    if measuring {
+        let elapsed = ss_ng_clock(1) - wall; ss_ng_add(h + N_GC_WALL, elapsed);
+        ss_ng_add(h + N_GC_CPU, ss_ng_clock(3) - cpu);
+        ng_put(h, N_PAUSE_MAX, max(ng_get(h, N_PAUSE_MAX), elapsed));
+        ss_ng_add(h + N_PAUSE_COUNT, 1);
+        var bucket: u64 = 0; var value = elapsed;
+        while value > 1 { value >>= 1; bucket += 1; }
+        ss_ng_add(h + N_PAUSE_BUCKETS + bucket * 8, 1);
+    }
+    ss_ng_leave(h); return okay;
+}
+fn ng_collect_owned(h: u64, major: bool) -> bool {
+    ng_attempt_begin(h, if major { NG_ATTEMPT_MAJOR } else { NG_ATTEMPT_MINOR });
+    if ng_get(h, N_BORROW) != 0 || ng_get(h, N_MODE) != 0 {
+        ng_refuse(h, NG_REFUSAL_BORROW_MODE); return false;
+    }
+    if ng_get(h, N_POISON) != 0 { ng_refuse(h, NG_REFUSAL_POISON); return false; }
+    if ng_fault(h) { ng_refuse(h, NG_REFUSAL_INTERNAL_TRACE); return false; }
+    ng_put(h, N_ERROR, 0); let saved = ng_get(h, N_ROOTS);
+    var total: u64 = 0; var copying: u64 = 0;
+    for a in 8 {
+        let bytes = ng_get(h, N_YOUNG_AGE + a as u64 * 8); total += bytes;
+        if a as u64 + 1 < ng_get(h, N_AGE) { copying += bytes; }
+    }
+    // Reservation retains the baseline policy even when fewer phase workers
+    // participate. Admission, promotion slack and evacuation therefore cannot
+    // masquerade as a synchronization gain.
+    let reservation = if total < NG_PARALLEL_BYTES && !major { 1 as u64 } else { ng_get(h, N_HELPERS) + 1 };
+    let promote_all = copying * 2 + reservation * NG_BLOCK > ng_get(h, N_SURV_CAP);
+    // The per-age census includes every young object. Only ages reaching the
+    // promotion threshold can request old destinations, unless all promote.
+    let promoting = if promote_all { total } else { total - copying };
+    if !major && !ng_admit(h, promoting, reservation, ng_get(h, N_YOUNG_MAX)) ||
+       !ng_persistent_roots(h, major) || !ng_remembered(h, major) {
+        if ng_get(h, N_REFUSAL_REASON) == 0 { ng_refuse(h, NG_REFUSAL_INTERNAL_TRACE); }
+        if !major { ng_restore_root_cards(h, saved); }
+        ng_put(h, N_PRESSURE, 1); ng_put(h, N_ROOTS, saved); return false;
+    }
+    let pressure = ng_get(h, N_PRESSURE);
+    let local_major = major && pressure == 0 && ng_local_major_roots(h);
+    if major {
+        // No root-admission failure remains. Failed majors leave region cards
+        // untouched; successful majors clear them before workers reinsert young
+        // edges. The remembered-set clear above cannot fail in major mode.
+        for i in ng_get(h, N_REGION_COUNT) {
+            let r = h + N_REGIONS + i * 96;
+            if ng_get(r, 48) != 0 && ng_get(r, 88) != 0 { ss_ng_zero(ng_get(r, 32), ng_get(r, 40)); }
+        }
+        ng_evacuation(h, reservation);
+    }
+    let nursery = ng_get(h, N_NURSERY); let cap = ng_get(h, N_SURV_CAP);
+    let from = ng_get(h, N_SURV_FROM);
+    let to = if from == NG_GUARD + nursery { from + cap } else { NG_GUARD + nursery };
+    ng_put(h, N_TO_BASE, to); ng_put(h, N_TO_TOP, to);
+    ng_put(h, N_PROMOTE_ALL, if promote_all { 1 as u64 } else { 0 as u64 });
+    ng_put(h, N_ROOT_CLAIM, 0); ng_put(h, N_QUEUE_HEAD, 0); ng_put(h, N_QUEUE_TAIL, 0);
+    ng_put(h, N_OUTSTANDING, ng_get(h, N_ROOTS));
+    for i in NG_WORKERS { ss_ng_zero(h + N_WORK + i * 256, 256); }
+    var old_work: u64 = 0;
+    if major {
+        ss_ng_zero(h + N_MARKS, NG_OLD / 128);
+        for b in (NG_OLD / NG_BLOCK)..(ng_get(h, N_OLD_HIGH) / NG_BLOCK) {
