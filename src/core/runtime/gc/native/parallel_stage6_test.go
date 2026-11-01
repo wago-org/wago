@@ -114,7 +114,7 @@ func TestParallelStage6FailureMatrix(t *testing.T) {
 					t.Fatal(err)
 				}
 				p.taskHook = nil
-				if phase == parallelCopy {
+				if phase == parallelCopy || phase == parallelTrace {
 					err = c.CollectMinor(roots)
 				} else {
 					err = c.CollectFull(roots)
@@ -187,6 +187,9 @@ func TestParallelStage6Poison(t *testing.T) {
 	}
 	if p.poison == nil {
 		t.Fatal("missing sticky poison")
+	}
+	if c.nativeView.NurseryAllocBytes != 0 || c.nativeView.StructAllocState != 0 || c.nativeView.LargeArrayAllocState != 0 {
+		t.Fatal("poison retained native admission")
 	}
 	p.hook = nil
 	if err := c.CollectFull(nil); err == nil {
