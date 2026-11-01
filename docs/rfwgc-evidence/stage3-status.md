@@ -32,7 +32,14 @@ plus six debug rollback cases, all passing without skips on frozen `94846b133`.
 These include 20,001 promotions, fragmentation, zero-credit survivor copies,
 refusal/retry and high LOS cards. They establish existing allocator controls,
 not implemented mature regions. Mature descriptor/transaction/reclamation work
-is now active under one collector production owner.
+committed at `14f1f7696`: opt-in mature/LOS descriptors, exact physical occupancy,
+transactional destination admission/cancel/commit, and descriptor-driven
+reclamation. Scoped validation passed all three modes. Independent review
+`8b079dd09` found no verified defects on that source pin; twelve commands passed,
+including independent extent, mixed-destination rollback, partial retirement
+retry and mixed allocation probes. Optional mature evacuation remains absent;
+parallel reservation/drain and whole-attempt diagnostic parity are still open.
+This does not qualify upcoming tabled-PR rollups or foreign-stack changes.
 
 TinyGo investigation `b6a36dec` identified a pre-existing foreign-stack scanning
 defect on both baseline and current, including pinned TinyGo 0.42.0. GC scans
