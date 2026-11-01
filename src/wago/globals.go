@@ -1796,6 +1796,9 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 	if !o.hasValueType {
 		actual, _ = valueTypeDescriptorFromValType(typ)
 	}
+	// Only an immutable exact nullable-none slot is permanently object-free.
+	// A mutable null slot may later contain objects and still requires a domain.
+	immutableNone := !o.mutable && o.hasValueType && actual.Kind == ValueTypeReference && actual.Ref.Nullable && !actual.Ref.Heap.Defined && actual.Ref.Heap.Abstract == AbstractHeapNone
 	bits := readGlobalObject(g, typ)
 	retained := make([]retainedSnapshot, 0, len(o.retained))
 	for root, state := range o.retained {
@@ -1808,6 +1811,11 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 		return fmt.Errorf("reference global owner instance is closed")
 	}
 	if isGCRefValType(typ) {
+		// Store identity, exact owner metadata and physical liveness were checked
+		// above. An immutable none/null provider needs no collector registration.
+		if immutableNone && bits == 0 && source != nil && source.gc == nil && source.refStore == store {
+			return nil
+		}
 		if source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
 			return fmt.Errorf("collector-reference global requires producer and importer in the same Runtime GC domain")
 		}
