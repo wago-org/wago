@@ -1,0 +1,5 @@
+qualified-full-ordinary exit=0
+qualified-race-ordinary exit=0
+qualified-backends-ordinary exit=0
+qualified-cross-arm64-ordinary exit=0
+qualified-cross-riscv64-ordinary exit=0

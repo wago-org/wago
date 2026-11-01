@@ -1,0 +1,1 @@
+go test -tags wago_regalloccheck ./src/wago -run \^TestGCExternConversionRejectedReplacementPreservesRoot\$ -count=1 -timeout=60s 

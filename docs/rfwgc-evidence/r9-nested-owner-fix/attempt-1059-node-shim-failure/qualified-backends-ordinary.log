@@ -1,0 +1,13 @@
+--- FAIL: TestSharedEstablishedPathPairs (0.01s)
+    --- FAIL: TestSharedEstablishedPathPairs/independent-v8 (0.00s)
+        runner.go:303: independent V8: exit status 1; output: mise ERROR error parsing config file: /tmp/wago-nested-owner-source.W1H72u/mise.toml
+            mise ERROR Config files in /tmp/wago-nested-owner-source.W1H72u/mise.toml are not trusted.
+            Trust them with `mise trust`. See https://mise.jdx.dev/cli/trust.html for more information.
+            mise ERROR Version: 2026.10.4 linux-x64 (2026-10-07)
+            mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+            
+FAIL
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	5.166s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.048s
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	1.029s
+FAIL
