@@ -31,7 +31,14 @@ func managedFunctionAfterLifetimeBoundary(in *Instance) {
 	}
 }
 func compiledManagedFunctionReachability(c *Compiled) bool {
-	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !c.usesGenericGCExecution() {
+	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureGC) {
+		return false
+	}
+	// Conversion is a distinct execution product, but its aggregate helpers
+	// need the same typed function-owner edges as generic GC execution. An
+	// unused type declaration or nonallocating bridge does not activate them.
+	convertedAggregate := c.stagedGCStructProduct().requiresExternConversion() && c.genericGCFrameRoots() != nil && len(c.genericGCFrameRoots().safepoints) != 0
+	if !c.usesGenericGCExecution() && !convertedAggregate {
 		return false
 	}
 	for _, d := range c.GCTypeDescs {
