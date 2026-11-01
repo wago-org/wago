@@ -16,7 +16,9 @@ cd "$source_root"
 failed=0
 run() {
  local name=$1 dir=$2 status=0; shift 2
- printf '%q ' "$@" > "$out/$name.command.txt"; printf '\nworking-directory=%s\n' "$dir" >> "$out/$name.command.txt"
+ local command_text
+ printf -v command_text '%q ' "$@"
+ printf '%s\nworking-directory=%s\n' "${command_text% }" "$dir" > "$out/$name.command.txt"
  (cd "$source_root/$dir" && "$@") > "$out/$name.jsonl" 2> "$out/$name.stderr.log" || status=$?
  printf '%s exit=%s\n' "$name" "$status" | tee -a "$out/results.txt"
  if [ "$status" != 0 ]; then failed=1; fi

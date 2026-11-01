@@ -1,2 +1,2 @@
-go test -json -race -count=1 -timeout=30m ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency 
+go test -json -race -count=1 -timeout=30m ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency
 working-directory=.
