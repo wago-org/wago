@@ -1,0 +1,13 @@
+root-ordinary-retry exit=0
+root-wagodebug-retry exit=0
+root-wago_regalloccheck-retry exit=0
+race exit=0
+gc-hardening-wagodebug exit=0
+gc-host-wagodebug exit=0
+gc-hardening-wagodebug,wago_guardpage exit=0
+gc-host-wagodebug,wago_guardpage exit=0
+guard exit=0
+corpus-all exit=0
+spec-v1 exit=0
+spec-v3 exit=0
+spec-v3-signals exit=0

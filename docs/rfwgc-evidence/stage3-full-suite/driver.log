@@ -1,0 +1,12 @@
+root-ordinary exit=1
+cli-ordinary exit=0
+installer-ordinary exit=0
+nested-ordinary exit=0
+root-wagodebug exit=1
+cli-wagodebug exit=1
+installer-wagodebug exit=0
+nested-wagodebug exit=0
+root-wago_regalloccheck exit=1
+cli-wago_regalloccheck exit=0
+installer-wago_regalloccheck exit=0
+nested-wago_regalloccheck exit=0
