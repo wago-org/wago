@@ -700,3 +700,20 @@ no final ABSENT or INCLUDED-FIX claim. Rooting commits b46fefb2a, 866e6b5e7,
 4ad440e86 and 27690e182 await their final matrix and H6-F2 integration. Full
 parallel parity, optional evacuation, TinyGo final qualification, measurements,
 platform execution and final four-reviewer fan remain open.
+
+## R9 priority ownership gate — 2026-11-01
+
+Evidence d7e6f5dfc confirms H6-F3 on main90f2b57da and updated port45c83820f
+in ordinary, wagodebug and wago_regalloccheck: a struct/array nested function
+edge survives failed initialization but its producer physical owner is released.
+The bounded assertion stops at the ownership failure; no escaped call, memory
+inspection or crash reproduction was performed. This collector-integration
+finding is IN SCOPE under Joshua's priority directive, despite the auditor's
+conditional out-of-scope recommendation. Repair and INCLUDED-FIX disposition
+remain pending implementation and green final gates. Final qualification blocks.
+
+H2-F1 remains unresolved: ordinary extern-token retention passes; compact-anyref
+imports reject before publication. Neither settles converted managed externref
+root ownership. A separate bounded conversion/root-lease assessment is needed.
+See r9-lifecycle-ownership-tests/README.md for exact pins, failed assertions,
+sibling cross-check, repair proposal and unverified RV64 coverage.
