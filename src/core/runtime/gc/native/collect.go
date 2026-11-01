@@ -33,6 +33,9 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	}
 	c.pruneRemembered()
 	c.finishFullCardMetadata()
+	if err := c.throughput.reclaimEmptyMature(); err != nil {
+		return err
+	}
 	if c.cfg.VerifyAfterCollect {
 		return c.Verify(roots)
 	}
@@ -453,6 +456,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 	}
 	tx := c.throughput.beginAllocTransaction()
 	rollback := func(current *handleEntry) {
+		c.throughput.matureRefusal(err)
 		if current != nil {
 			c.throughput.rollbackSuccessfulAlloc(*current, tx.bump)
 		}
@@ -516,6 +520,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 			return 0, 0, false, err
 		}
 	}
+	c.throughput.commitMatureAdmission()
 	return c.commitPromotionPlans(plans, toSpace, toBump)
 }
 
@@ -634,6 +639,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 	}
 	tx := c.throughput.beginAllocTransaction()
 	rollback := func(current *handleEntry) {
+		c.throughput.matureRefusal(err)
 		if current != nil {
 			c.throughput.rollbackSuccessfulAlloc(*current, tx.bump)
 		}
@@ -697,6 +703,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			return 0, 0, err
 		}
 	}
+	c.throughput.commitMatureAdmission()
 	for _, p := range plans {
 		size := c.handles[p.handle].size
 		if p.entry.space == spaceLarge {
@@ -780,6 +787,7 @@ func (c *Collector) promoteHandle(h uint32) error {
 		c.throughput.restoreAllocTransaction(tx)
 		return err
 	}
+	c.throughput.commitMatureAdmission()
 	c.promoteHandleTo(h, oldEntry)
 	c.removeYoungHandle(h)
 	return nil

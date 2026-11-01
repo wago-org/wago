@@ -594,8 +594,8 @@ func TestThroughputFreeSpanFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(throughputSpanNode{}); got != 28 {
 		t.Fatalf("throughputSpanNode size = %d, want 28", got)
 	}
-	if got := unsafe.Sizeof(throughputHeap{}); got != 120 {
-		t.Fatalf("throughputHeap size = %d, want 120", got)
+	if got := unsafe.Sizeof(throughputHeap{}); got != 128 {
+		t.Fatalf("throughputHeap size = %d, want 128 (one lazy mature metadata pointer)", got)
 	}
 }
 

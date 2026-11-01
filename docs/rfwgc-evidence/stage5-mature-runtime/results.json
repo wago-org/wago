@@ -1,0 +1,110 @@
+{
+  "go": "go version go1.27.1 linux/amd64",
+  "results": {
+    "ordinary-collector": {
+      "failed": false,
+      "top_level_passes": 423,
+      "passes_including_subtests": 2064,
+      "skips_including_subtests": 0,
+      "log": "ordinary-collector.txt"
+    },
+    "ordinary-backend": {
+      "failed": false,
+      "top_level_passes": 39,
+      "passes_including_subtests": 133,
+      "skips_including_subtests": 26,
+      "log": "ordinary-backend.txt"
+    },
+    "ordinary-guest": {
+      "failed": false,
+      "top_level_passes": 378,
+      "passes_including_subtests": 1533,
+      "skips_including_subtests": 9,
+      "log": "ordinary-guest.txt"
+    },
+    "ordinary-stage5": {
+      "failed": false,
+      "top_level_passes": 8,
+      "passes_including_subtests": 8,
+      "skips_including_subtests": 0,
+      "log": "ordinary-stage5.txt"
+    },
+    "wagodebug-collector": {
+      "failed": false,
+      "top_level_passes": 451,
+      "passes_including_subtests": 2111,
+      "skips_including_subtests": 3,
+      "log": "wagodebug-collector.txt"
+    },
+    "wagodebug-backend": {
+      "failed": false,
+      "top_level_passes": 37,
+      "passes_including_subtests": 127,
+      "skips_including_subtests": 28,
+      "log": "wagodebug-backend.txt"
+    },
+    "wagodebug-guest": {
+      "failed": false,
+      "top_level_passes": 372,
+      "passes_including_subtests": 1524,
+      "skips_including_subtests": 15,
+      "log": "wagodebug-guest.txt"
+    },
+    "wagodebug-stage5": {
+      "failed": false,
+      "top_level_passes": 13,
+      "passes_including_subtests": 13,
+      "skips_including_subtests": 0,
+      "log": "wagodebug-stage5.txt"
+    },
+    "wago_regalloccheck-collector": {
+      "failed": false,
+      "top_level_passes": 423,
+      "passes_including_subtests": 2064,
+      "skips_including_subtests": 0,
+      "log": "wago_regalloccheck-collector.txt"
+    },
+    "wago_regalloccheck-backend": {
+      "failed": false,
+      "top_level_passes": 40,
+      "passes_including_subtests": 143,
+      "skips_including_subtests": 26,
+      "log": "wago_regalloccheck-backend.txt"
+    },
+    "wago_regalloccheck-guest": {
+      "failed": false,
+      "top_level_passes": 378,
+      "passes_including_subtests": 1533,
+      "skips_including_subtests": 9,
+      "log": "wago_regalloccheck-guest.txt"
+    },
+    "wago_regalloccheck-stage5": {
+      "failed": false,
+      "top_level_passes": 8,
+      "passes_including_subtests": 8,
+      "skips_including_subtests": 0,
+      "log": "wago_regalloccheck-stage5.txt"
+    },
+    "ordinary-backend-diagnostics": {
+      "failed": false,
+      "top_level_passes": 63,
+      "passes_including_subtests": 202,
+      "skips_including_subtests": 2,
+      "log": "ordinary-backend-diagnostics.txt"
+    },
+    "wagodebug-backend-diagnostics": {
+      "failed": false,
+      "top_level_passes": 61,
+      "passes_including_subtests": 196,
+      "skips_including_subtests": 4,
+      "log": "wagodebug-backend-diagnostics.txt"
+    },
+    "wago_regalloccheck-backend-diagnostics": {
+      "failed": false,
+      "top_level_passes": 64,
+      "passes_including_subtests": 212,
+      "skips_including_subtests": 2,
+      "log": "wago_regalloccheck-backend-diagnostics.txt"
+    }
+  }
+}

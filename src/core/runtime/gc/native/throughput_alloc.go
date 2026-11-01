@@ -52,6 +52,8 @@ type throughputAllocRun struct {
 }
 
 type throughputHeap struct {
+	mature *matureHeap
+
 	mem        []byte
 	limit      uint32
 	pageBytes  uint32
@@ -80,6 +82,10 @@ func (h *throughputHeap) Init(cfg Config) error {
 	if !supportedThroughputClassLimit(cfg.ThroughputClassLimit) {
 		return fmt.Errorf("gc: throughput class limit %d is not a supported size class", cfg.ThroughputClassLimit)
 	}
+	h.mature = nil
+	if cfg.NurseryRegionShift != 0 {
+		h.mature = &matureHeap{}
+	}
 	h.limit = cfg.ThroughputHeapBytes
 	h.pageBytes = cfg.ThroughputPageBytes
 	h.classLimit = cfg.ThroughputClassLimit
@@ -96,6 +102,7 @@ func (h *throughputHeap) Init(cfg Config) error {
 }
 
 func (h *throughputHeap) Close() {
+	h.mature = nil
 	h.mem = nil
 	h.spanNodes = nil
 	h.pendingFree = nil
@@ -109,7 +116,7 @@ func (h *throughputHeap) Close() {
 
 func (h *throughputHeap) bytes(e handleEntry) []byte { return h.mem[e.off : e.off+e.size] }
 
-func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
+func (h *throughputHeap) allocRaw(size uint32, sp spaceKind) (handleEntry, error) {
 	if size > ^uint32(0)-15 {
 		return handleEntry{}, ErrAllocationTooLarge
 	}
@@ -182,12 +189,16 @@ func (h *throughputHeap) handleAllocSize(e handleEntry) uint32 {
 }
 
 func (h *throughputHeap) beginAllocTransaction() throughputAllocTransaction {
+	if h.mature != nil {
+		h.beginMatureAdmission(true)
+	}
 	return throughputAllocTransaction{mem: h.mem, bump: h.bump}
 }
 
 func (h *throughputHeap) restoreAllocTransaction(tx throughputAllocTransaction) {
 	h.mem = tx.mem
 	h.bump = tx.bump
+	h.cancelMatureAdmission()
 }
 
 // rollbackSuccessfulAlloc reverses one successful allocation while a larger
@@ -197,6 +208,7 @@ func (h *throughputHeap) restoreAllocTransaction(tx throughputAllocTransaction) 
 // restores the bump and backing slice after all indexed allocations are freed.
 func (h *throughputHeap) rollbackSuccessfulAlloc(e handleEntry, initialBump uint32) {
 	if e.off >= initialBump {
+		h.releaseMature(e)
 		return
 	}
 	if err := h.free(e); err != nil {
@@ -209,7 +221,11 @@ func (h *throughputHeap) free(e handleEntry) error {
 	if allocSize == 0 || e.off%16 != 0 || e.off+allocSize < e.off || e.off+allocSize > h.bump {
 		return errors.New("gc: invalid throughput free span")
 	}
-	return h.insertFreeSpan(throughputFreeSpan{off: e.off, size: allocSize})
+	if err := h.insertFreeSpan(throughputFreeSpan{off: e.off, size: allocSize}); err != nil {
+		return err
+	}
+	h.releaseMature(e)
+	return nil
 }
 
 func (h *throughputHeap) deferFree(e handleEntry) error {
@@ -219,6 +235,7 @@ func (h *throughputHeap) deferFree(e handleEntry) error {
 	}
 	h.pendingFree = append(h.pendingFree, throughputFreeSpan{off: e.off, size: allocSize})
 	h.pendingBytes += uint64(allocSize)
+	h.releaseMature(e)
 	return nil
 }
 
@@ -784,6 +801,9 @@ func (h *throughputHeap) freeSpans() []throughputFreeSpan {
 }
 
 func (h *throughputHeap) verify(handles []handleEntry) error {
+	if err := h.verifyMature(handles); err != nil {
+		return err
+	}
 	if h.limit == 0 {
 		return errors.New("gc: throughput heap is not initialized")
 	}
@@ -915,7 +935,7 @@ func spansOverlap(aOff, aSize, bOff, bSize uint32) bool {
 // injection points, while warmed promotion batches can remove one AVL span or
 // advance the bump once for the complete equal-sized run.
 func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (throughputAllocRun, bool, error) {
-	if count < 2 || size > ^uint32(0)-15 {
+	if h.mature != nil || count < 2 || size > ^uint32(0)-15 {
 		return throughputAllocRun{}, false, nil
 	}
 	allocSize := Align16(size)

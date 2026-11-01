@@ -10,5 +10,6 @@ const (
 	failObjectCardGrowth
 	failSlotCardGrowth
 	failBackingGrowth
+	failMatureMetadata
 	failThroughputReconciliation
 )

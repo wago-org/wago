@@ -85,7 +85,10 @@ type Config struct {
 	DisableCollection     bool
 	TinyCollectEveryAlloc bool
 	TinyStepEveryAlloc    bool
-	// NurseryRegionShift opts into experimental region-first Eden allocation.
+	// NurseryRegionShift opts into experimental region-first Eden allocation
+	// and page-sized mature/LOS descriptors over the shared ThroughputHeapBytes
+	// budget. Zero disables both policies. Mature metadata grows lazily; large
+	// objects remain contiguous and nonmoving across descriptor boundaries.
 	// Zero preserves the default; 6..30 selects 1<<shift bytes per region.
 	// Requires fixed divisible NurseryBytes and at most 65536 regions.
 	// Exhaustion first reclaims empty regions by exact tracing, then evacuates.

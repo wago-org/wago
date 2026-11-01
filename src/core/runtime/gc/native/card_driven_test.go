@@ -462,8 +462,9 @@ func TestCardMetadataFootprint(t *testing.T) {
 	}
 	// Bounds, lazy major-block state, and one large-array list-index hint have
 	// fixed descriptor costs. Region config adds 8 aligned bytes; the region
-	// ledger and cursor add 32. NativeCollectorView remains unchanged.
-	wantCollector := uintptr(1168+40) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
+	// ledger and cursor add 32; mature mode adds one lazy metadata pointer.
+	// NativeCollectorView remains unchanged.
+	wantCollector := uintptr(1168+40) + unsafe.Sizeof((*matureHeap)(nil)) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}
