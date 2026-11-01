@@ -11,7 +11,7 @@ import (
 )
 
 func TestSharedGrowLargeMemoryIndexHelperEntries(t *testing.T) {
-	for _, path := range []string{sharedGrowLargeIndexConstant, sharedGrowLargeIndexDynamic} {
+	for _, path := range []string{sharedGrowLargeIndexConstant, sharedGrowLargeIndexZero} {
 		for _, index := range []uint32{1365, 1366, 4095} {
 			for _, wide := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/index%d/wide%t", path, index, wide), func(t *testing.T) {
@@ -41,7 +41,7 @@ func TestSharedGrowLargeMemoryIndexHelperEntries(t *testing.T) {
 						before := count()
 						sharedGrowLargeIndexInvoke(t, in, wide, delta, path)
 						want := 0
-						if runtime.GOARCH == "arm64" && index > 1365 || path == sharedGrowLargeIndexDynamic && delta != 0 {
+						if runtime.GOARCH == "arm64" && index > 1365 || path == sharedGrowLargeIndexZero && delta != 0 {
 							want = 1
 						}
 						if got := count() - before; got != want {

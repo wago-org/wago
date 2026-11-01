@@ -12,7 +12,7 @@ import (
 
 const (
 	sharedGrowLargeIndexConstant = "constant"
-	sharedGrowLargeIndexDynamic  = "dynamic"
+	sharedGrowLargeIndexZero     = "zero"
 )
 
 func sharedGrowLargeIndexConfig(t testing.TB, wide bool) *RuntimeConfig {
@@ -111,7 +111,7 @@ func sharedGrowLargeIndexInvoke(t *testing.T, in *Instance, wide bool, delta uin
 }
 
 func TestSharedGrowLargeMemoryIndexCompile(t *testing.T) {
-	for _, path := range []string{sharedGrowLargeIndexConstant, sharedGrowLargeIndexDynamic} {
+	for _, path := range []string{sharedGrowLargeIndexConstant, sharedGrowLargeIndexZero} {
 		for _, index := range []uint32{1365, 1366, 4095} {
 			for _, wide := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/index%d/wide%t", path, index, wide), func(t *testing.T) {
@@ -127,7 +127,7 @@ func TestSharedGrowLargeMemoryIndexCompile(t *testing.T) {
 }
 
 func TestSharedGrowLargeMemoryIndexImportedResults(t *testing.T) {
-	for _, path := range []string{sharedGrowLargeIndexConstant, sharedGrowLargeIndexDynamic} {
+	for _, path := range []string{sharedGrowLargeIndexConstant, sharedGrowLargeIndexZero} {
 		for _, index := range []uint32{1365, 1366, 4095} {
 			for _, wide := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/index%d/wide%t", path, index, wide), func(t *testing.T) {

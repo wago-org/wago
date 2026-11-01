@@ -4,6 +4,7 @@ package wago
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"runtime"
@@ -130,6 +131,21 @@ func TestSharedGrowDynamicZeroWidthsAndLiveValues(t *testing.T) {
 					})
 				}
 			}
+		}
+	}
+}
+
+func TestSharedGrowSmallIndexGeneratedCodeImages(t *testing.T) {
+	for _, address64 := range []bool{false, true} {
+		for _, index := range []byte{0, 1} {
+			t.Run(fmt.Sprintf("i64=%t/index=%d", address64, index), func(t *testing.T) {
+				c, err := sharedGrowZeroConfig().Compile(sharedGrowZeroModule(address64, index, 3))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				t.Logf("arch=%s bytes=%d sha256=%x", runtime.GOARCH, len(c.code), sha256.Sum256(c.code))
+			})
 		}
 	}
 }
