@@ -1,0 +1,3 @@
+1fa2002efddb3161d10b77ad4ffeb4e368338459
+HEAD:tests/wago/manifests/ecosystem.json:4724:    {"source":"cli/manager/internal/standalone/build_linux_test.go","source_sha256":"d17203d7bf73b9db2da54a2dd505eb8a8cff882b5ca785955ea0638d2315ef87","status":"not-applicable","reason":"Wago standalone TinyGo build interruption and binary stripping process behavior; Starshine neither drives TinyGo nor owns these artifacts.","test_ids":["TestTinyGoArtifactSupportsCooperativeInterruption"],"mapped_test_ids":["TestTinyGoArtifactSupportsCooperativeInterruption"]},
+1d6c0af47140299d8f3c01ed03060d279c43ee03
