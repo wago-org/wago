@@ -1,0 +1,20 @@
+The following actions will be performed:
+=== install 6 packages
+  ∗ dune      3.22.1
+  ∗ menhir    20260209
+  ∗ menhirCST 20260209 [required by menhir]
+  ∗ menhirGLR 20260209 [required by menhir]
+  ∗ menhirLib 20260209 [required by menhir]
+  ∗ menhirSdk 20260209 [required by menhir]
+
+<><> Processing actions <><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+⬇ retrieved menhir.20260209, menhirCST.20260209, menhirGLR.20260209, menhirLib.20260209, menhirSdk.20260209  (https://opam.ocaml.org/cache)
+⬇ retrieved dune.3.22.1  (https://opam.ocaml.org/cache)
+∗ installed dune.3.22.1
+∗ installed menhirCST.20260209
+∗ installed menhirLib.20260209
+∗ installed menhirGLR.20260209
+∗ installed menhirSdk.20260209
+∗ installed menhir.20260209
+Done.
+# To update the current shell environment, run: eval $(opam env)

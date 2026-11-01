@@ -1,0 +1,3 @@
++63908677d00585fdab4c4eccbf01f781d3a454d5 tests/conformance/spec-v1 (heads/main)
++6057acdb1a213f85369c64454c078a15f11ac4b1 tests/conformance/spec-v2 (opam-2.0.0-5585-g6057acdb1)
+-9d36019973201a19f9c9ebb0f10828b2fe2374aa tests/conformance/spec-v3
