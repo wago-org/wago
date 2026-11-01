@@ -1217,7 +1217,7 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget, constants *inlineTailConstants) err
 			f.setLocalsState(f.frameBranchState(loop))
 			f.unreachable = false
 			if f.compactLoopAlign32 {
-				f.a.AlignLoop32()
+				f.a.AlignLoop64()
 			} else {
 				f.a.AlignLoop()
 			}

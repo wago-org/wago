@@ -191,7 +191,7 @@ func TestFunctionStartPaddingPolicyAMD64(t *testing.T) {
 	hot := funcHints{flags: hintHasLoop}
 	hotWithin, hotOver := 4, 0
 	if ordinary.EnabledOption(optCompactLoopAlign32) {
-		hotWithin, hotOver = 20, 29
+		hotWithin, hotOver = 52, 61
 	}
 	for _, test := range []struct {
 		name      string

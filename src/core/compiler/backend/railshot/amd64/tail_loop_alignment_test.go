@@ -18,11 +18,11 @@ func TestCompactLoopFunctionStartAlignment(t *testing.T) {
 	}
 	ordinary, disabled, compact := shared.DefaultCodegenPolicy(on), shared.DefaultCodegenPolicy(off), shared.CompactCodegenPolicy(on)
 	for _, kind := range []uint8{layoutHasLoop, layoutHasTailCall} {
-		for offset := 0; offset < 64; offset++ {
+		for offset := 0; offset < 128; offset++ {
 			// Asm.AlignLoop32 is relative to the function, so the function must also
-			// start on that fetch boundary for its loop target to be globally aligned.
+			// start on a cache-line boundary so peeled headers have stable placement.
 			pad := functionStartPaddingFlags(offset, 48, layoutHostAdapter|kind, ordinary)
-			if (offset+pad)%32 != 0 || pad < 0 || pad > 31 {
+			if (offset+pad)%64 != 0 || pad < 0 || pad > 63 {
 				t.Fatalf("offset=%d pad=%d leaves loop misaligned", offset, pad)
 			}
 			for _, tc := range []struct {

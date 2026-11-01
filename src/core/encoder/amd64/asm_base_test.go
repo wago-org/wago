@@ -588,3 +588,26 @@ func TestIndexAndPlaceholderCompatibilityHelpers(t *testing.T) {
 		t.Fatalf("Align16 length = %d", a.Len())
 	}
 }
+
+func TestAlignLoop64PreservesPrefixAndRelocations(t *testing.T) {
+	for offset := 0; offset < 128; offset++ {
+		a := Asm{B: bytes.Repeat([]byte{0xcc}, offset)}
+		site := a.JmpPlaceholder()
+		a.AlignLoop64()
+		target := a.Len()
+		a.PatchRel32(site, target)
+		if got := site + 4 + int(int32(binary.LittleEndian.Uint32(a.B[site:site+4]))); got != target {
+			t.Fatalf("branch target=%d want=%d", got, target)
+		}
+		if target%64 != 0 || target-(offset+5) > 63 {
+			t.Fatalf("offset=%d target=%d", offset, target)
+		}
+		if !bytes.Equal(a.B[:offset], bytes.Repeat([]byte{0xcc}, offset)) {
+			t.Fatal("alignment overwrote prefix")
+		}
+		a.AlignLoop64()
+		if a.Len() != target {
+			t.Fatal("alignment is not idempotent")
+		}
+	}
+}

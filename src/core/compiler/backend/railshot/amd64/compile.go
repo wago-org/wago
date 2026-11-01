@@ -711,7 +711,7 @@ type deferredMixedArg struct {
 
 // alignPad is a shared zero source for inter-function alignment padding,
 // appended via alignPad[:pad] to avoid allocating a temporary per function.
-var alignPad [32]byte
+var alignPad [64]byte
 
 func align16(n int) int { return (n + 15) &^ 15 }
 
@@ -741,9 +741,9 @@ func functionStartPadding(off, bodyBytes int, hostAdapter bool, hints funcHints,
 
 func functionStartPaddingFlags(off, bodyBytes int, flags uint8, policy CodegenPolicy) int {
 	// Compact loop alignment is function-relative. Match the function's base
-	// alignment so its 32-byte loop targets also align in the module image.
+	// alignment so peeled entries retain their cache-line placement in the module image.
 	if !policy.CompactNative && policy.FunctionAlignLog2 >= 4 && policy.EnabledOption(optCompactLoopAlign32) && flags&(layoutHasLoop|layoutHasTailCall) != 0 && bodyBytes <= 64 {
-		return (-off) & 31
+		return (-off) & 63
 	}
 	optional := (-off) & 15
 	if optional == 0 || policy.FunctionAlignLog2 < 4 {
