@@ -1,0 +1,6 @@
+=== RUN   TestTinyGoForeignStackConcurrentGC
+--- PASS: TestTinyGoForeignStackConcurrentGC (0.00s)
+=== RUN   TestTinyGoForeignStackGCHostReentry
+--- PASS: TestTinyGoForeignStackGCHostReentry (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/runtime	0.008s

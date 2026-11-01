@@ -1,0 +1,2 @@
+patch-tinygo-042: expected TinyGo 0.42.0
+exit=1
