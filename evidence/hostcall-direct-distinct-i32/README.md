@@ -67,3 +67,7 @@ The standard ordinary root result remains red and is not described as an all-gre
 The ordinary root command excluding only `TestTinyGoSupportsCooperativeInterruption` **passed**. The full checked root, both CLI runtime modes, checked installer/bench modules, full ordinary/debug/checked native packages, profile fallback, focused tests in all modes, both exact race runs, and all 12 cross-compilation builds passed. `qualification.json` is the machine-readable disposition. No measurements were run; no full-unit all-green status is claimed.
 
 Temporary tooling paths in manifests are historical execution paths, now removed. Re-provision the recorded URL/checksum and pinned interpreter/package versions before replaying gate scripts. Only this candidate's temporary files were removed.
+
+## Orchestrator safety review
+
+An independent sol review found no implementation correctness issue, and confirmed the staging-marker differential assertion proves actual direct execution. It found that both replay scripts recorded failed command statuses but returned zero themselves. The orchestrator corrected both aggregate exit statuses. `test-gate-runners.py` executes the real runners with controlled subprocess outcomes: all-success and every command position failing normally or by signal (50 scenarios). Each failure remains in the complete manifest and makes the runner return nonzero. The contract check passed; `gate-runner-contract.log` retains its output. These evidence-tool changes do not change the qualified runtime source tree.

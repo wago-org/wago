@@ -48,3 +48,5 @@ for name, cwd, command in commands:
         print('END', name, result.returncode, flush=True)
     finally:
         shutil.rmtree(tmp)
+
+raise SystemExit(1 if any(result['exit_code'] != 0 for result in results) else 0)

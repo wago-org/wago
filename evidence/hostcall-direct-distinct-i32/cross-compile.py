@@ -20,3 +20,5 @@ for goos,goarch in [('linux','arm64'),('linux','riscv64'),('darwin','amd64'),('d
             print('END',name,result.returncode,flush=True)
         finally:
             shutil.rmtree(tmp)
+
+raise SystemExit(1 if any(result['exit_code'] != 0 for result in results) else 0)
