@@ -181,7 +181,7 @@
       "suite": "baseline-corpus-wago_regalloccheck",
       "receipt_suite": "baseline-corpus-wago_regalloccheck",
       "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "catalog-ordinary",
@@ -325,7 +325,7 @@
       "suite": "guard-corpus-wago_regalloccheck",
       "receipt_suite": "guard-corpus-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "backend-ordinary",
@@ -943,13 +943,13 @@
       "suite": "tinygo-34/guest-threads-wagodebug",
       "receipt_suite": "tinygo-34/guest-threads-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-34/host-wago_regalloccheck",
       "receipt_suite": "tinygo-34/host-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/standalone-wago_regalloccheck",
@@ -1117,19 +1117,19 @@
       "suite": "fuzz-FuzzStructCardDifferential",
       "receipt_suite": "fuzz-FuzzStructCardDifferential",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
       "receipt_suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "INTERRUPTED"
     },
     {
       "suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
       "receipt_suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
@@ -1325,10 +1325,11 @@
     }
   ],
   "counts": {
-    "PASS": 91,
-    "RUNNING": 3,
-    "NOT_RUN": 125,
-    "FAIL": 1
+    "PASS": 95,
+    "NOT_RUN": 121,
+    "FAIL": 1,
+    "RUNNING": 2,
+    "INTERRUPTED": 1
   },
   "attempts": [
     {
@@ -1350,10 +1351,10 @@
     {
       "suite": "baseline-corpus-wago_regalloccheck",
       "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "baseline-corpus-wagodebug",
@@ -1564,6 +1565,30 @@
       "verdict": "PASS"
     },
     {
+      "suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": false,
+      "driver": "run.py",
+      "exit": null,
+      "verdict": "RUNNING"
+    },
+    {
+      "suite": "fuzz-FuzzStructCardDifferential",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "guard-corpus-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
@@ -1574,10 +1599,10 @@
     {
       "suite": "guard-corpus-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "guard-corpus-wagodebug",
@@ -1842,6 +1867,14 @@
       "driver": "run.py",
       "exit": 0,
       "verdict": "PASS"
+    },
+    {
+      "suite": "target-family-collector",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": false,
+      "driver": "run.py",
+      "exit": null,
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-complete-0",

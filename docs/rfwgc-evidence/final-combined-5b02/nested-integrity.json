@@ -13,7 +13,14 @@
     "tinygo-34/host-wagodebug.command": "46fed8ee1449068960ddd316efdbfb8841173cf5d4ae20d54c93289f091db766",
     "tinygo-34/host-wagodebug.log": "f3a20db72c6307c670c03218b7e7dadffb3734c3a9c35acb17abd554637da1e4",
     "tinygo-34/standalone-wagodebug.command": "9350deb7772b23c4322c20c235b4fa66182bcdd15c5926ddcfc84ca31799527a",
-    "tinygo-34/standalone-wagodebug.log": "81014caf62b586a850ed39595880e63b4d8c26b3705784bef888544f9915bfcc"
+    "tinygo-34/standalone-wagodebug.log": "81014caf62b586a850ed39595880e63b4d8c26b3705784bef888544f9915bfcc",
+    "tinygo-34/guest-threads-wagodebug.command": "dd9426ebe57eb9af78051974253c30337054f59bb903cb4297d5ced8c3c6e6ea",
+    "tinygo-34/guest-threads-wagodebug.log": "f2814845e4ad93393ecdcb422ec49a7bf87cac6c80feae9317b088377ca2fba3",
+    "qemu-collector/source.json": "1b0cff10901b677f4eff91030502d7020f43b83544ce013898dde50bf4152ac0",
+    "qemu-collector.py": "0cd2bfe72826bec2f0b33cf7bf9d0f9fcdbda127cb54c9e1580a7e8342378485",
+    "qemu-collector/arm64-version.log": "1dd52d45967d042bf0bc462082f77a1c26e08ac5cfa44279c3c2eb21c7a614e6",
+    "qemu-collector/arm64-ordinary-collector-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qemu-collector/arm64-ordinary-collector-binary.sha256": "4427ffc3fdaf771eb126db42aee58860be19e06a45ca0e475a76071769ea2adf"
   },
   "receipts": [
     {
@@ -50,6 +57,38 @@
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "command_sha256": "9350deb7772b23c4322c20c235b4fa66182bcdd15c5926ddcfc84ca31799527a",
       "raw_sha256": "81014caf62b586a850ed39595880e63b4d8c26b3705784bef888544f9915bfcc"
+    },
+    {
+      "suite": "tinygo-34/guest-threads-wagodebug",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "dd9426ebe57eb9af78051974253c30337054f59bb903cb4297d5ced8c3c6e6ea",
+      "raw_sha256": "f2814845e4ad93393ecdcb422ec49a7bf87cac6c80feae9317b088377ca2fba3"
+    },
+    {
+      "suite": "qemu-collector/arm64-version",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-collector/qemu/usr/bin/qemu-aarch64",
+        "--version"
+      ],
+      "raw_sha256": "1dd52d45967d042bf0bc462082f77a1c26e08ac5cfa44279c3c2eb21c7a614e6"
+    },
+    {
+      "suite": "qemu-collector/arm64-ordinary-collector-build",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-collector/arm64-ordinary-collector.test",
+        "./src/core/runtime/gc/native"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
   ],
   "previous_seals_verified": true

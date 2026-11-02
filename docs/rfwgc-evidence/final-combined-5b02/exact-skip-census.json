@@ -168,6 +168,174 @@
     }
   },
   {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:17:25.763068997Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/clang-c-kernels/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/clang-c-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-c-kernels/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:17:32.408128777Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/clang-cpp-kernels/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/clang-cpp-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-cpp-kernels/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:18:07.131399799Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/fasttree-phylogeny/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/fasttree-phylogeny/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/fasttree-phylogeny/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:18:07.149408197Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/gnu-seq-range/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/gnu-seq-range/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/gnu-seq-range/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:18:07.164109901Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/gnu-tr-uppercase/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/gnu-tr-uppercase/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/gnu-tr-uppercase/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:18:11.513734445Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/lcs-substrings/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/lcs-substrings/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lcs-substrings/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:18:11.868689443Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/lua-cli-buckets/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/lua-cli-buckets/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lua-cli-buckets/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:18:12.552686811Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/micropython-squares/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/micropython-squares/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/micropython-squares/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:18:12.572506512Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/needleman-wunsch-dna/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/needleman-wunsch-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/needleman-wunsch-dna/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:18:25.142193852Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/sed-records/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/sed-records/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/sed-records/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:18:25.169465305Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:18:25.248327446Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/smith-waterman-dna/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/smith-waterman-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/smith-waterman-dna/wazero (0.00s)\n"
+    }
+  },
+  {
     "suite": "baseline-corpus-wagodebug",
     "kind": "go-json",
     "detail": {
@@ -37112,6 +37280,20 @@
     }
   },
   {
+    "suite": "guard-corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:22:15.759237897Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestJsonAsGuardCorrect",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestJsonAsGuardCorrect\n    jsonas_test.go:29: json-as module not present (set WAGO_JSON_MODULE): open corpus/json-as.wasm: no such file or directory\n--- SKIP: TestJsonAsGuardCorrect (0.00s)\n"
+    }
+  },
+  {
     "suite": "guard-corpus-wagodebug",
     "kind": "go-json",
     "detail": {
@@ -42276,6 +42458,262 @@
   },
   {
     "suite": "tinygo-34/guest-threads-ordinary",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestResolveTypeFuncCorpusAllocationReduction",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestResolveTypeFuncCorpusAllocationReduction\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestResolveTypeFuncCorpusAllocationReduction (0.00s)\n=== RUN   TestTypeDescriptorsPreserveRecursiveReferenceStructure",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestCompilerCompiledStateUsesOneFixedOwnerAllocation",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestCompilerCompiledStateUsesOneFixedOwnerAllocation\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestCompilerCompiledStateUsesOneFixedOwnerAllocation (0.00s)\n=== RUN   TestPublicCompileFixedMetadataPreservesCodeIdentity",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestEngineBehaviorFixtures/unreachable_host_panic",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestEngineBehaviorFixtures/unreachable_host_panic\n        test depends on standard Go testing control flow or struct layout\n    --- PASS: TestEngineBehaviorFixtures/unreachable_host_panic (0.00s)\n=== RUN   TestEngineBehaviorFixtures/reftype_imports",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestRelease2ExternrefGlobalSourceGuard",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestRelease2ExternrefGlobalSourceGuard\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestRelease2ExternrefGlobalSourceGuard (0.00s)\n=== RUN   TestExternrefParamsResultsLocalsAndControlFlow",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestExternrefFeatureGateAndOfficialSourceSites",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestExternrefFeatureGateAndOfficialSourceSites\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestExternrefFeatureGateAndOfficialSourceSites (0.00s)\n=== RUN   TestFailedInstantiationTransfersImportedGlobalRoots",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestFailedInstantiationTransfersTableProducerToImportedGlobal",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestFailedInstantiationTransfersTableProducerToImportedGlobal\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestFailedInstantiationTransfersTableProducerToImportedGlobal (0.00s)\n=== RUN   TestFailedImportedStartKeepsActiveTableFuncref",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestFailedImportedStartKeepsActiveTableFuncref",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestFailedImportedStartKeepsActiveTableFuncref\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestFailedImportedStartKeepsActiveTableFuncref (0.00s)\n=== RUN   TestAnalyzeModuleRequirementsFusesModuleFacts",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestFuncrefReferenceStoreStructFootprint",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestFuncrefReferenceStoreStructFootprint\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestFuncrefReferenceStoreStructFootprint (0.00s)\n=== RUN   TestRuntimeFuncrefTokenRejectsForgedAndCrossRuntimeBeforeExecution",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestRelease2NullableFuncrefGlobalSourceGuard",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestRelease2NullableFuncrefGlobalSourceGuard\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestRelease2NullableFuncrefGlobalSourceGuard (0.00s)\n=== RUN   TestFuzzRegressionFixtureManifest",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestReferenceGlobalPersistenceAndFootprintsStayBounded",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestReferenceGlobalPersistenceAndFootprintsStayBounded\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestReferenceGlobalPersistenceAndFootprintsStayBounded (0.00s)\n=== RUN   TestRelease2ImportedReferenceGlobalSourceGuard",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestRelease2ImportedReferenceGlobalSourceGuard",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestRelease2ImportedReferenceGlobalSourceGuard\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestRelease2ImportedReferenceGlobalSourceGuard (0.00s)\n=== RUN   TestImportedStartCanInvokeAnotherInstance",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestInstantiateCloseAllocationBudget",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestInstantiateCloseAllocationBudget\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestInstantiateCloseAllocationBudget (0.00s)\n=== RUN   TestInstantiateHostImportAllocationBudget",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestInstantiateHostImportAllocationBudget",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestInstantiateHostImportAllocationBudget\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestInstantiateHostImportAllocationBudget (0.00s)\n=== RUN   TestFailedInstantiationReleasesCodeAndImportState",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestManagedTableReentryCleanup/host-panic",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestManagedTableReentryCleanup/host-panic\n        test depends on standard Go testing control flow or struct layout\n    --- PASS: TestManagedTableReentryCleanup/host-panic (0.00s)\n--- PASS: TestManagedTableReentryCleanup (0.00s)",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestManagedInvokeVoidTableContextInterruptsNativeLoop",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestManagedInvokeVoidTableContextInterruptsNativeLoop\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestManagedInvokeVoidTableContextInterruptsNativeLoop (0.00s)\n=== RUN   TestManagedCapabilityGuardHelpers",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestMemoryOwnershipSidecarPreservesScalarHandleFootprint",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestMemoryOwnershipSidecarPreservesScalarHandleFootprint\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestMemoryOwnershipSidecarPreservesScalarHandleFootprint (0.00s)\n=== RUN   TestSharedHostMemoryPreservesStateAndCloseOrdering",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestCallArityAndPreparedStack",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestCallArityAndPreparedStack\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestCallArityAndPreparedStack (0.00s)\n=== RUN   TestImportedMutableGlobalUpdate",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestImportedMutableGlobalUpdate",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestImportedMutableGlobalUpdate\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestImportedMutableGlobalUpdate (0.00s)\n=== RUN   TestCallImportedHostFunctionIndirectly",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestCallImportedHostFunctionIndirectly",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestCallImportedHostFunctionIndirectly\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestCallImportedHostFunctionIndirectly (0.00s)\n=== RUN   TestMemoryGrowThroughHostReentry",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestNestedHostPanicDoesNotCorruptRuntime",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestNestedHostPanicDoesNotCorruptRuntime\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestNestedHostPanicDoesNotCorruptRuntime (0.00s)\n=== RUN   TestCloseTableOwnerOrWriterKeepsEntriesCallable",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestCloseTableOwnerOrWriterKeepsEntriesCallable",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestCloseTableOwnerOrWriterKeepsEntriesCallable\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestCloseTableOwnerOrWriterKeepsEntriesCallable (0.00s)\n=== RUN   TestCloseInterruptsInfiniteInvocation",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestCloseInterruptsInfiniteInvocation",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestCloseInterruptsInfiniteInvocation\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestCloseInterruptsInfiniteInvocation (0.00s)\n=== RUN   TestHostCallbackClosesCallingModules",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestRuntimeFailedRetainedInstanceKeepsAggregateReservation",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestRuntimeFailedRetainedInstanceKeepsAggregateReservation\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestRuntimeFailedRetainedInstanceKeepsAggregateReservation (0.00s)\n=== RUN   TestRuntimeCountOnlyInstanceLimitSkipsMemoryAccounting",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestImportedThenLocalFuncrefTablesExecuteAndExportExactly",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestImportedThenLocalFuncrefTablesExecuteAndExportExactly\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestImportedThenLocalFuncrefTablesExecuteAndExportExactly (0.00s)\n=== RUN   TestMultipleImportedFuncrefTablesExecuteAndExportExactly",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestMultipleImportedFuncrefTablesExecuteAndExportExactly",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestMultipleImportedFuncrefTablesExecuteAndExportExactly\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestMultipleImportedFuncrefTablesExecuteAndExportExactly (0.00s)\n=== RUN   TestMultipleImportedFuncrefTablesMayAliasOneHandle",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestMultipleImportedFuncrefTablesMayAliasOneHandle",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestMultipleImportedFuncrefTablesMayAliasOneHandle\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestMultipleImportedFuncrefTablesMayAliasOneHandle (0.00s)\n=== RUN   TestMultipleImportedTablesCheckEveryLimit",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestMultipleImportedTablesCheckEveryLimit",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestMultipleImportedTablesCheckEveryLimit\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestMultipleImportedTablesCheckEveryLimit (0.00s)\n=== RUN   TestImportedThenLocalTablesRebindSharedMemoryContext",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestImportedThenLocalTablesRebindSharedMemoryContext",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestImportedThenLocalTablesRebindSharedMemoryContext\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestImportedThenLocalTablesRebindSharedMemoryContext (0.00s)\n=== RUN   TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites (0.00s)\n=== RUN   TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle (0.00s)\n=== RUN   TestMinOnlyTableExportCapacityIsPerTable",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestSharedTableFailedInstanceRootsStayCapacityBounded",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestSharedTableFailedInstanceRootsStayCapacityBounded\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestSharedTableFailedInstanceRootsStayCapacityBounded (0.00s)\n=== RUN   TestImportedTableActiveElementOOBDoesNotMutateHostTable",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestTypeDescriptorCorpusAllocations",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestTypeDescriptorCorpusAllocations\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestTypeDescriptorCorpusAllocations (0.00s)\n=== RUN   TestResolveTypeFuncCorpusAllocationReduction",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wagodebug",
     "kind": "excluded-body-despite-terminal-PASS",
     "test": "TestResolveTypeFuncCorpusAllocationReduction",
     "reason": "test depends on standard Go testing control flow or struct layout",

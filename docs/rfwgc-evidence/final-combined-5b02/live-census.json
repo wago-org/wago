@@ -2,20 +2,21 @@
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
   "matches": [
     {
-      "suite": "tinygo-34/guest-threads-wagodebug",
-      "pid": 1356156,
+      "suite": "tinygo-34/host-wago_regalloccheck",
+      "pid": 1378933,
       "cwd": "/home/dev/.cache/_wago_final_5b02_n61wfxab/tinygo-source",
       "argv": [
-        "tinygo",
+        "go",
         "test",
         "-v",
-        "-scheduler=threads",
-        "-gc=conservative",
-        "-tags=wago_runtime,wagodebug",
+        "-failfast",
+        "-count=1",
+        "-timeout=25m",
+        "-tags=wago_runtime,wago_regalloccheck",
         "./src/core/runtime",
         "./src/wago"
       ],
-      "start_ticks": "31481107"
+      "start_ticks": "31497283"
     }
   ]
 }
