@@ -1,0 +1,827 @@
+{
+  "source": "08f511fac41a77f4c0f9046f88ebc78ad05a5da6",
+  "harness": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
+  "review": "57c04aa09c53321e86a8358ae7fc53688af82b2b",
+  "run": 41466556039,
+  "qualified": true,
+  "modes": {
+    "wago_regalloccheck": {
+      "artifact_sha256": "625c1c9a32f62e6abc7ba827d7f6a002b003b73681323928b8df4084bf3e3fdf",
+      "artifact_bytes": 65119260,
+      "setup": "PASS",
+      "native_execution": "RUN",
+      "qualified": true,
+      "driver_exit": 0,
+      "integrity": {
+        "source": {
+          "before_after_equal": true,
+          "git_tree_matches_pin": true,
+          "every_blob_sha256_matches_pin": true,
+          "tracked_blob_count": 21322
+        },
+        "harness": {
+          "before_after_equal": true,
+          "git_tree_matches_pin": true,
+          "every_blob_sha256_matches_pin": true,
+          "tracked_blob_count": 21421
+        }
+      },
+      "gates": {
+        "wago-focused": {
+          "expected": 85,
+          "started": 85,
+          "passed": 85,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 206,
+          "skipped_names": []
+        },
+        "wago-guard": {
+          "expected": 1,
+          "started": 1,
+          "passed": 1,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 1,
+          "skipped_names": []
+        },
+        "wago-race-focused": {
+          "expected": 85,
+          "started": 85,
+          "passed": 85,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 206,
+          "skipped_names": []
+        },
+        "wago-race-guard": {
+          "expected": 1,
+          "started": 1,
+          "passed": 1,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 1,
+          "skipped_names": []
+        },
+        "runtime-runtime": {
+          "expected": 11,
+          "started": 11,
+          "passed": 11,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 11,
+          "skipped_names": []
+        },
+        "backend-backend": {
+          "expected": 9,
+          "started": 9,
+          "passed": 9,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 111,
+          "skipped_names": []
+        }
+      },
+      "original_probe_outcomes": {
+        "wago-focused": {
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader": "PASS",
+          "TestRRRecheckCanceledAdmissionBehindDynamicReader": "PASS",
+          "TestRRRecheckSharedMemoryHandoff": "PASS",
+          "TestRRRetirementLastPinAndRevival/none": "PASS",
+          "TestRRRetirementLastPinAndRevival/claim": "PASS",
+          "TestRRRetirementLastPinAndRevival/registration": "PASS",
+          "TestRRRetirementLastPinAndRevival/store-close": "PASS",
+          "TestRRRetirementLastPinAndRevival": "PASS",
+          "TestRRRetirementCallbackAndExitWakeups": "PASS",
+          "TestRRRetirementBorrowedRootLatePublisher": "PASS",
+          "TestRRRetirementCanceledPartialLastPins": "PASS",
+          "TestRRRetirementCallbackRefreshBehindReader": "PASS"
+        },
+        "wago-guard": {
+          "TestSharedEntryGuardCancellationAndGC": "PASS"
+        },
+        "wago-race-focused": {
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader": "PASS",
+          "TestRRRecheckCanceledAdmissionBehindDynamicReader": "PASS",
+          "TestRRRecheckSharedMemoryHandoff": "PASS",
+          "TestRRRetirementLastPinAndRevival/none": "PASS",
+          "TestRRRetirementLastPinAndRevival/claim": "PASS",
+          "TestRRRetirementLastPinAndRevival/registration": "PASS",
+          "TestRRRetirementLastPinAndRevival/store-close": "PASS",
+          "TestRRRetirementLastPinAndRevival": "PASS",
+          "TestRRRetirementCallbackAndExitWakeups": "PASS",
+          "TestRRRetirementBorrowedRootLatePublisher": "PASS",
+          "TestRRRetirementCanceledPartialLastPins": "PASS",
+          "TestRRRetirementCallbackRefreshBehindReader": "PASS"
+        },
+        "wago-race-guard": {
+          "TestSharedEntryGuardCancellationAndGC": "PASS"
+        },
+        "runtime-runtime": {},
+        "backend-backend": {}
+      },
+      "probe_sha256": {
+        "src/wago/rr_recheck_adversary_test.go": "0a7136ca75fc22c93f09868a0587a88760c93134c300dcba302294a14dcfda13",
+        "src/wago/rr_recheck_handoff_test.go": "77ef2c94d7f12dedf63aca1471e7e5befea61637105578f75e7d2f888f54141f",
+        "src/wago/design_recheck_adversary_test.go": "bff4fda592f19a525301193c73e6d32d3e03c8c5bde5e75e4f4d0a40d0b98b3c",
+        "src/wago/rr_retirement_test.go": "9ae3784be58274f4223f63f94c82319173c87de548f1501b6fb3626607e780c2",
+        "src/wago/shared_entry_guard_arm64_test.go": "a7a719c91e0afe10dab1440814b572a77815b5b219928fe4ef80d80225c445ac",
+        "src/wago/rr_recheck_flags_current_test.go": "cab1e55afc73d062bc090d2893e3b5e3ac9a796b423b0264b1a2e61445b6db7b"
+      },
+      "timer_control_sha256": "f6e350bdf4efd8e2da007a81b9e98f9ce2bad2a8a535ed89245c8e497d470b4f",
+      "timer_control_rows": [
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "1",
+          "signo": "35",
+          "tid": "3348",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "1",
+          "signo": "64",
+          "tid": "3348",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "0",
+          "signo": "35",
+          "tid": "3348",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "0",
+          "signo": "64",
+          "tid": "3348",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "4",
+          "signo": "35",
+          "tid": "3348",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "4",
+          "signo": "64",
+          "tid": "3348",
+          "size": "64",
+          "errno": "0"
+        }
+      ],
+      "binaries": {
+        "wago": {
+          "sha256": "24c4de2eebd71a95d90240b4e1eea875b92eecd67c05e7b5fb304205b20333fe",
+          "elf_machine": 183
+        },
+        "wago-race": {
+          "sha256": "09cf612258cf6982fa349e8dc924a24c6c0f083534dd94a84ce859545f9b2fad",
+          "elf_machine": 183
+        },
+        "runtime": {
+          "sha256": "7feb57025571c7e8346079444ce7e0847038ef76aa625dd1d3079913d79f25d9",
+          "elf_machine": 183
+        },
+        "backend": {
+          "sha256": "c0b408a40c05070933b4a873bfa76ffd18071f4c4ebe3bbaf6196ff1250d5dda",
+          "elf_machine": 183
+        }
+      },
+      "go_executable": {
+        "path": "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+        "sha256": "1675694ef690db0f18fbe7046a886170904bede1d9db6ec96ae27945c1705c64",
+        "elf_machine": 183
+      },
+      "wabt_executable": {
+        "path": "/home/runner/work/wago/wago/harness/.tools/wabt-1.0.41-linux-arm64/bin/wast2json",
+        "sha256": "26e6fe02eeed144d0c91d8fcdf257d994b33d7e6885aa93e92a54d45027d5cee",
+        "elf_machine": 183
+      },
+      "command_count": 35,
+      "nonzero_or_pending_commands": [],
+      "phase": "all receipt gates pass",
+      "build_commands": {
+        "wago": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-tags=wago_regalloccheck",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-wago_regalloccheck/wago.test",
+          "./src/wago"
+        ],
+        "wago-race": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-tags=wago_regalloccheck",
+          "-race",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-wago_regalloccheck/wago-race.test",
+          "./src/wago"
+        ],
+        "runtime": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-tags=wago_regalloccheck",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-wago_regalloccheck/runtime.test",
+          "./src/core/runtime"
+        ],
+        "backend": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-tags=wago_regalloccheck,wago_codegenstats",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-wago_regalloccheck/backend.test",
+          "./src/core/compiler/backend/railshot/arm64"
+        ]
+      }
+    },
+    "ordinary": {
+      "artifact_sha256": "38c1f8fc67c00fb23b78f4aa6754a6b9faa019993bb6ff9dc09c2ab2eefbe8ea",
+      "artifact_bytes": 64769239,
+      "setup": "PASS",
+      "native_execution": "RUN",
+      "qualified": true,
+      "driver_exit": 0,
+      "integrity": {
+        "source": {
+          "before_after_equal": true,
+          "git_tree_matches_pin": true,
+          "every_blob_sha256_matches_pin": true,
+          "tracked_blob_count": 21322
+        },
+        "harness": {
+          "before_after_equal": true,
+          "git_tree_matches_pin": true,
+          "every_blob_sha256_matches_pin": true,
+          "tracked_blob_count": 21421
+        }
+      },
+      "gates": {
+        "wago-focused": {
+          "expected": 85,
+          "started": 85,
+          "passed": 85,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 206,
+          "skipped_names": []
+        },
+        "wago-guard": {
+          "expected": 1,
+          "started": 1,
+          "passed": 1,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 1,
+          "skipped_names": []
+        },
+        "wago-race-focused": {
+          "expected": 85,
+          "started": 85,
+          "passed": 85,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 206,
+          "skipped_names": []
+        },
+        "wago-race-guard": {
+          "expected": 1,
+          "started": 1,
+          "passed": 1,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 1,
+          "skipped_names": []
+        },
+        "runtime-runtime": {
+          "expected": 11,
+          "started": 11,
+          "passed": 11,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 11,
+          "skipped_names": []
+        },
+        "backend-backend": {
+          "expected": 9,
+          "started": 9,
+          "passed": 9,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 111,
+          "skipped_names": []
+        }
+      },
+      "original_probe_outcomes": {
+        "wago-focused": {
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader": "PASS",
+          "TestRRRecheckCanceledAdmissionBehindDynamicReader": "PASS",
+          "TestRRRecheckSharedMemoryHandoff": "PASS",
+          "TestRRRetirementLastPinAndRevival/none": "PASS",
+          "TestRRRetirementLastPinAndRevival/claim": "PASS",
+          "TestRRRetirementLastPinAndRevival/registration": "PASS",
+          "TestRRRetirementLastPinAndRevival/store-close": "PASS",
+          "TestRRRetirementLastPinAndRevival": "PASS",
+          "TestRRRetirementCallbackAndExitWakeups": "PASS",
+          "TestRRRetirementBorrowedRootLatePublisher": "PASS",
+          "TestRRRetirementCanceledPartialLastPins": "PASS",
+          "TestRRRetirementCallbackRefreshBehindReader": "PASS"
+        },
+        "wago-guard": {
+          "TestSharedEntryGuardCancellationAndGC": "PASS"
+        },
+        "wago-race-focused": {
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader": "PASS",
+          "TestRRRecheckCanceledAdmissionBehindDynamicReader": "PASS",
+          "TestRRRecheckSharedMemoryHandoff": "PASS",
+          "TestRRRetirementLastPinAndRevival/none": "PASS",
+          "TestRRRetirementLastPinAndRevival/claim": "PASS",
+          "TestRRRetirementLastPinAndRevival/registration": "PASS",
+          "TestRRRetirementLastPinAndRevival/store-close": "PASS",
+          "TestRRRetirementLastPinAndRevival": "PASS",
+          "TestRRRetirementCallbackAndExitWakeups": "PASS",
+          "TestRRRetirementBorrowedRootLatePublisher": "PASS",
+          "TestRRRetirementCanceledPartialLastPins": "PASS",
+          "TestRRRetirementCallbackRefreshBehindReader": "PASS"
+        },
+        "wago-race-guard": {
+          "TestSharedEntryGuardCancellationAndGC": "PASS"
+        },
+        "runtime-runtime": {},
+        "backend-backend": {}
+      },
+      "probe_sha256": {
+        "src/wago/rr_recheck_adversary_test.go": "0a7136ca75fc22c93f09868a0587a88760c93134c300dcba302294a14dcfda13",
+        "src/wago/rr_recheck_handoff_test.go": "77ef2c94d7f12dedf63aca1471e7e5befea61637105578f75e7d2f888f54141f",
+        "src/wago/design_recheck_adversary_test.go": "bff4fda592f19a525301193c73e6d32d3e03c8c5bde5e75e4f4d0a40d0b98b3c",
+        "src/wago/rr_retirement_test.go": "9ae3784be58274f4223f63f94c82319173c87de548f1501b6fb3626607e780c2",
+        "src/wago/shared_entry_guard_arm64_test.go": "a7a719c91e0afe10dab1440814b572a77815b5b219928fe4ef80d80225c445ac",
+        "src/wago/rr_recheck_flags_current_test.go": "cab1e55afc73d062bc090d2893e3b5e3ac9a796b423b0264b1a2e61445b6db7b"
+      },
+      "timer_control_sha256": "f6e350bdf4efd8e2da007a81b9e98f9ce2bad2a8a535ed89245c8e497d470b4f",
+      "timer_control_rows": [
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "1",
+          "signo": "35",
+          "tid": "3379",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "1",
+          "signo": "64",
+          "tid": "3379",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "0",
+          "signo": "35",
+          "tid": "3379",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "0",
+          "signo": "64",
+          "tid": "3379",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "4",
+          "signo": "35",
+          "tid": "3379",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "4",
+          "signo": "64",
+          "tid": "3379",
+          "size": "64",
+          "errno": "0"
+        }
+      ],
+      "binaries": {
+        "wago": {
+          "sha256": "1fd6acde82e1bb8856f79f9fd843b837ca0147d312e2d7bdb82130500beae678",
+          "elf_machine": 183
+        },
+        "wago-race": {
+          "sha256": "e57246ebf7f82d159ac84b56b80ef8b382639fee69a600f960824312eec85cc1",
+          "elf_machine": 183
+        },
+        "runtime": {
+          "sha256": "fe7349152506eff2abf53054675f3d799d2bada54756e21d05321aff28498066",
+          "elf_machine": 183
+        },
+        "backend": {
+          "sha256": "1f57ba2b2a83480158f5ad305ef39d9688ba3b5e072737908dad6e4819ed445f",
+          "elf_machine": 183
+        }
+      },
+      "go_executable": {
+        "path": "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+        "sha256": "1675694ef690db0f18fbe7046a886170904bede1d9db6ec96ae27945c1705c64",
+        "elf_machine": 183
+      },
+      "wabt_executable": {
+        "path": "/home/runner/work/wago/wago/harness/.tools/wabt-1.0.41-linux-arm64/bin/wast2json",
+        "sha256": "26e6fe02eeed144d0c91d8fcdf257d994b33d7e6885aa93e92a54d45027d5cee",
+        "elf_machine": 183
+      },
+      "command_count": 35,
+      "nonzero_or_pending_commands": [],
+      "phase": "all receipt gates pass",
+      "build_commands": {
+        "wago": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-ordinary/wago.test",
+          "./src/wago"
+        ],
+        "wago-race": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-race",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-ordinary/wago-race.test",
+          "./src/wago"
+        ],
+        "runtime": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-ordinary/runtime.test",
+          "./src/core/runtime"
+        ],
+        "backend": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-tags=wago_codegenstats",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-ordinary/backend.test",
+          "./src/core/compiler/backend/railshot/arm64"
+        ]
+      }
+    },
+    "wagodebug": {
+      "artifact_sha256": "a6a7f544b36de4fb00b01caeaa479653faafa54c359512a9d2d3b283a666808c",
+      "artifact_bytes": 64772262,
+      "setup": "PASS",
+      "native_execution": "RUN",
+      "qualified": true,
+      "driver_exit": 0,
+      "integrity": {
+        "source": {
+          "before_after_equal": true,
+          "git_tree_matches_pin": true,
+          "every_blob_sha256_matches_pin": true,
+          "tracked_blob_count": 21322
+        },
+        "harness": {
+          "before_after_equal": true,
+          "git_tree_matches_pin": true,
+          "every_blob_sha256_matches_pin": true,
+          "tracked_blob_count": 21421
+        }
+      },
+      "gates": {
+        "wago-focused": {
+          "expected": 85,
+          "started": 85,
+          "passed": 85,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 206,
+          "skipped_names": []
+        },
+        "wago-guard": {
+          "expected": 1,
+          "started": 1,
+          "passed": 1,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 1,
+          "skipped_names": []
+        },
+        "wago-race-focused": {
+          "expected": 85,
+          "started": 85,
+          "passed": 85,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 206,
+          "skipped_names": []
+        },
+        "wago-race-guard": {
+          "expected": 1,
+          "started": 1,
+          "passed": 1,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 1,
+          "skipped_names": []
+        },
+        "runtime-runtime": {
+          "expected": 11,
+          "started": 11,
+          "passed": 11,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 11,
+          "skipped_names": []
+        },
+        "backend-backend": {
+          "expected": 9,
+          "started": 9,
+          "passed": 9,
+          "fail": 0,
+          "skip": 0,
+          "not_run": [],
+          "exit": 0,
+          "census_ok": true,
+          "all_pass_events": 111,
+          "skipped_names": []
+        }
+      },
+      "original_probe_outcomes": {
+        "wago-focused": {
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader": "PASS",
+          "TestRRRecheckCanceledAdmissionBehindDynamicReader": "PASS",
+          "TestRRRecheckSharedMemoryHandoff": "PASS",
+          "TestRRRetirementLastPinAndRevival/none": "PASS",
+          "TestRRRetirementLastPinAndRevival/claim": "PASS",
+          "TestRRRetirementLastPinAndRevival/registration": "PASS",
+          "TestRRRetirementLastPinAndRevival/store-close": "PASS",
+          "TestRRRetirementLastPinAndRevival": "PASS",
+          "TestRRRetirementCallbackAndExitWakeups": "PASS",
+          "TestRRRetirementBorrowedRootLatePublisher": "PASS",
+          "TestRRRetirementCanceledPartialLastPins": "PASS",
+          "TestRRRetirementCallbackRefreshBehindReader": "PASS"
+        },
+        "wago-guard": {
+          "TestSharedEntryGuardCancellationAndGC": "PASS"
+        },
+        "wago-race-focused": {
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": "PASS",
+          "TestRRRecheckStorageOnlyReturnBehindDynamicReader": "PASS",
+          "TestRRRecheckCanceledAdmissionBehindDynamicReader": "PASS",
+          "TestRRRecheckSharedMemoryHandoff": "PASS",
+          "TestRRRetirementLastPinAndRevival/none": "PASS",
+          "TestRRRetirementLastPinAndRevival/claim": "PASS",
+          "TestRRRetirementLastPinAndRevival/registration": "PASS",
+          "TestRRRetirementLastPinAndRevival/store-close": "PASS",
+          "TestRRRetirementLastPinAndRevival": "PASS",
+          "TestRRRetirementCallbackAndExitWakeups": "PASS",
+          "TestRRRetirementBorrowedRootLatePublisher": "PASS",
+          "TestRRRetirementCanceledPartialLastPins": "PASS",
+          "TestRRRetirementCallbackRefreshBehindReader": "PASS"
+        },
+        "wago-race-guard": {
+          "TestSharedEntryGuardCancellationAndGC": "PASS"
+        },
+        "runtime-runtime": {},
+        "backend-backend": {}
+      },
+      "probe_sha256": {
+        "src/wago/rr_recheck_adversary_test.go": "0a7136ca75fc22c93f09868a0587a88760c93134c300dcba302294a14dcfda13",
+        "src/wago/rr_recheck_handoff_test.go": "77ef2c94d7f12dedf63aca1471e7e5befea61637105578f75e7d2f888f54141f",
+        "src/wago/design_recheck_adversary_test.go": "bff4fda592f19a525301193c73e6d32d3e03c8c5bde5e75e4f4d0a40d0b98b3c",
+        "src/wago/rr_retirement_test.go": "9ae3784be58274f4223f63f94c82319173c87de548f1501b6fb3626607e780c2",
+        "src/wago/shared_entry_guard_arm64_test.go": "a7a719c91e0afe10dab1440814b572a77815b5b219928fe4ef80d80225c445ac",
+        "src/wago/rr_recheck_flags_current_test.go": "cab1e55afc73d062bc090d2893e3b5e3ac9a796b423b0264b1a2e61445b6db7b"
+      },
+      "timer_control_sha256": "f6e350bdf4efd8e2da007a81b9e98f9ce2bad2a8a535ed89245c8e497d470b4f",
+      "timer_control_rows": [
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "1",
+          "signo": "35",
+          "tid": "3329",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "1",
+          "signo": "64",
+          "tid": "3329",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "0",
+          "signo": "35",
+          "tid": "3329",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "0",
+          "signo": "64",
+          "tid": "3329",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "4",
+          "signo": "35",
+          "tid": "3329",
+          "size": "64",
+          "errno": "0"
+        },
+        {
+          "arch": "arm64",
+          "clock": "1",
+          "notify": "4",
+          "signo": "64",
+          "tid": "3329",
+          "size": "64",
+          "errno": "0"
+        }
+      ],
+      "binaries": {
+        "wago": {
+          "sha256": "ebf9ced887ee7b6388cac744456cf1f6558b2baaf0ba95b3916e3a39b15863d2",
+          "elf_machine": 183
+        },
+        "wago-race": {
+          "sha256": "fe741e55253badc19286c133e98bf2b794dad8ccf4b8fddb305185bbab211b01",
+          "elf_machine": 183
+        },
+        "runtime": {
+          "sha256": "97052a1572481740039191b0eace99bb83947f8ca294478ff4c2ddcd25b97688",
+          "elf_machine": 183
+        },
+        "backend": {
+          "sha256": "fd8243180eaa0d4fa303b8e105b049f37a4339084ef900fc982ee24ae8f74666",
+          "elf_machine": 183
+        }
+      },
+      "go_executable": {
+        "path": "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+        "sha256": "1675694ef690db0f18fbe7046a886170904bede1d9db6ec96ae27945c1705c64",
+        "elf_machine": 183
+      },
+      "wabt_executable": {
+        "path": "/home/runner/work/wago/wago/harness/.tools/wabt-1.0.41-linux-arm64/bin/wast2json",
+        "sha256": "26e6fe02eeed144d0c91d8fcdf257d994b33d7e6885aa93e92a54d45027d5cee",
+        "elf_machine": 183
+      },
+      "command_count": 35,
+      "nonzero_or_pending_commands": [],
+      "phase": "all receipt gates pass",
+      "build_commands": {
+        "wago": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-tags=wagodebug",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-wagodebug/wago.test",
+          "./src/wago"
+        ],
+        "wago-race": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-tags=wagodebug",
+          "-race",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-wagodebug/wago-race.test",
+          "./src/wago"
+        ],
+        "runtime": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-tags=wagodebug",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-wagodebug/runtime.test",
+          "./src/core/runtime"
+        ],
+        "backend": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "test",
+          "-c",
+          "-tags=wagodebug,wago_codegenstats",
+          "-o",
+          "/home/runner/work/wago/wago/receipts-wagodebug/backend.test",
+          "./src/core/compiler/backend/railshot/arm64"
+        ]
+      }
+    }
+  },
+  "prior_failed_evidence_unchanged": true,
+  "dispatch_unchanged": true
+}

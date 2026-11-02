@@ -1,0 +1,61 @@
+{
+  "artifacts": [
+    {
+      "id": 13153815159,
+      "name": "native-arm64-rr3-08f511fac-wago_regalloccheck-1",
+      "size_in_bytes": 65119260,
+      "url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13153815159",
+      "archive_download_url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13153815159/zip",
+      "expired": false,
+      "created_at": "2026-11-02T14:58:31Z",
+      "expires_at": "2026-11-16T14:58:27Z",
+      "updated_at": "2026-11-02T14:58:31Z",
+      "digest": "sha256:625c1c9a32f62e6abc7ba827d7f6a002b003b73681323928b8df4084bf3e3fdf",
+      "workflow_run": {
+        "id": 41466556039,
+        "repository_id": 1277210043,
+        "head_repository_id": 1277210043,
+        "head_branch": "experiment/rfwgc-port",
+        "head_sha": "041f7ed4c376e2a33ce21b22075cd617ddca6597"
+      }
+    },
+    {
+      "id": 13153236748,
+      "name": "native-arm64-rr3-08f511fac-ordinary-1",
+      "size_in_bytes": 64769239,
+      "url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13153236748",
+      "archive_download_url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13153236748/zip",
+      "expired": false,
+      "created_at": "2026-11-02T14:58:38Z",
+      "expires_at": "2026-11-16T14:58:34Z",
+      "updated_at": "2026-11-02T14:58:38Z",
+      "digest": "sha256:38c1f8fc67c00fb23b78f4aa6754a6b9faa019993bb6ff9dc09c2ab2eefbe8ea",
+      "workflow_run": {
+        "id": 41466556039,
+        "repository_id": 1277210043,
+        "head_repository_id": 1277210043,
+        "head_branch": "experiment/rfwgc-port",
+        "head_sha": "041f7ed4c376e2a33ce21b22075cd617ddca6597"
+      }
+    },
+    {
+      "id": 13152011216,
+      "name": "native-arm64-rr3-08f511fac-wagodebug-1",
+      "size_in_bytes": 64772262,
+      "url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13152011216",
+      "archive_download_url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13152011216/zip",
+      "expired": false,
+      "created_at": "2026-11-02T14:58:35Z",
+      "expires_at": "2026-11-16T14:58:31Z",
+      "updated_at": "2026-11-02T14:58:35Z",
+      "digest": "sha256:a6a7f544b36de4fb00b01caeaa479653faafa54c359512a9d2d3b283a666808c",
+      "workflow_run": {
+        "id": 41466556039,
+        "repository_id": 1277210043,
+        "head_repository_id": 1277210043,
+        "head_branch": "experiment/rfwgc-port",
+        "head_sha": "041f7ed4c376e2a33ce21b22075cd617ddca6597"
+      }
+    }
+  ]
+}

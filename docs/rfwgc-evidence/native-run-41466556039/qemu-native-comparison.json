@@ -1,0 +1,595 @@
+{
+  "ordinary": {
+    "qemu_status": "FAIL",
+    "qemu_raw_sha256": "42713d74c57512dab50356613d3dd018f7b06aedbee864926f99fd533b97bee0",
+    "qemu_command": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/arm64-ordinary-guest.test",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=12m",
+      "-test.run=^(TestPlatformExecutionArchitecture|TestRR.*|TestSharedEntryGuardCancellationAndGC|TestDesign.*|TestR9H2.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+    ],
+    "qemu_exit": 1,
+    "qemu_build": {
+      "label": "arm64-ordinary-guest-build",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/arm64-ordinary-guest.test",
+        "./src/wago"
+      ],
+      "exit": 0,
+      "pass": [],
+      "skip": [],
+      "fail": []
+    },
+    "qemu_top_level_started": 76,
+    "qemu_event_census": {
+      "run": 181,
+      "pass": 177,
+      "fail": 4,
+      "skip": 0
+    },
+    "qemu_failures": [
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader",
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none",
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table",
+      "TestSharedEntryGuardCancellationAndGC"
+    ],
+    "qemu_failure_output": [
+      "    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=create native deadline timer: invalid argument",
+      "    rr_recheck_adversary_test.go:180: second storage-only call stalled: create native deadline timer: invalid argument",
+      "    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=create native deadline timer: invalid argument",
+      "    rr_recheck_adversary_test.go:180: second storage-only call stalled: create native deadline timer: invalid argument",
+      "    shared_entry_guard_arm64_test.go:196: native loop did not cancel"
+    ],
+    "native_failed_assertion_mapping": {
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      },
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      },
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      },
+      "TestSharedEntryGuardCancellationAndGC": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      }
+    },
+    "native_storage_output": {
+      "wago-focused": [
+        "    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=<nil>",
+        "    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=<nil>"
+      ],
+      "wago-race-focused": [
+        "    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=<nil>",
+        "    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=<nil>"
+      ]
+    },
+    "qemu_tests_absent_from_native": [
+      "TestPlatformExecutionArchitecture"
+    ],
+    "qemu_subtests_absent_from_native": [
+      "TestPlatformExecutionArchitecture"
+    ],
+    "native_tests_absent_from_qemu": [
+      "TestGCAdmissionInstantiationCancellation",
+      "TestGCAdmissionOrderedCancellation",
+      "TestGCAdmissionPublicCancellation",
+      "TestGCAdmissionPublicDeadline",
+      "TestGCAdmissionSameOwnerBorrowing",
+      "TestGCAdmissionUncontendedAllocations",
+      "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease",
+      "TestGCInvocationDomainSetInlineSortDoesNotAllocate",
+      "TestGCInvocationDomainSetSortMatchesOrderedIDs",
+      "TestGCInvocationDomainUsesRegisteredAssociation",
+      "TestGCInvocationNoDomainFastPathPreservesDynamicTopology"
+    ],
+    "native_gate_commands": {
+      "wago-focused": {
+        "label": "wago-focused",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-ordinary/wago.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestDesignInvocationSnapshotAuthenticatedDispatch|TestDesignInvocationSnapshotCallbackTrap|TestDesignInvocationSnapshotCancellation|TestDesignInvocationSnapshotLatePublisher|TestDesignInvocationSnapshotRetirement|TestDesignRecheckCallbackChangesPublisherAuthority|TestDesignRecheckForeignRelayAfterLatePublisher|TestDesignRecheckNestedPublish|TestDesignRecheckNestedSameRuntimeClear|TestDesignRecheckStorageOnlyCallTopologyWriter|TestDesignRepairConcurrentPublicationRetirement|TestDesignRepairConversionAdmissionLifecycle|TestDesignRepairPublicGlobalTokenClassification|TestDesignRepairPublicTableOrdinary|TestDesignRepairScalarRelayOrdinaryStorageWithConversion|TestDesignRepairWaitNotifier|TestDesignReviewExternStorageImportsPrivateGCProducer|TestDesignReviewExternStorageProducerCrossRuntimeImport|TestGCAdmissionInstantiationCancellation|TestGCAdmissionOrderedCancellation|TestGCAdmissionPublicCancellation|TestGCAdmissionPublicDeadline|TestGCAdmissionSameOwnerBorrowing|TestGCAdmissionUncontendedAllocations|TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease|TestGCExternConversionAcrossReferenceTables|TestGCExternConversionCheckedTableRoots|TestGCExternConversionCollectorFirstCloseFailsClosed|TestGCExternConversionForeignLocalRoots|TestGCExternConversionKeepsLocalRoots|TestGCExternConversionKeepsVectorAndLocalRoots|TestGCExternConversionManyForeignLocals|TestGCExternConversionMissingRootsDisableCollection|TestGCExternConversionPublicationOrderingAndRollback|TestGCExternConversionRejectedReplacementPreservesRoot|TestGCExternConversionRejectsForeignForgedAndClosed|TestGCExternConversionRejectsForgedFrameWords|TestGCExternConversionStableIdentityAndOwnership|TestGCExternConversionVoidImportCannotUseEmptyRoots|TestGCExternConversionWithFunctionTable|TestGCExternConversionWithoutHeapKeepsTinyProfile|TestGCInvocationDomainSetInlineSortDoesNotAllocate|TestGCInvocationDomainSetSortMatchesOrderedIDs|TestGCInvocationDomainUsesRegisteredAssociation|TestGCInvocationNoDomainFastPathPreservesDynamicTopology|TestR9H2ConditionalSlotExplicitDomain|TestR9H2ConvertedAggregateAdmission|TestR9H2ConvertedAggregateAdmissionControls|TestR9H2ConvertedAggregateCollectingLocalOwner|TestR9H2HostContainerAuthority|TestR9H2HostContainerClose|TestR9H2HostContainerCycle|TestR9H2HostContainerMigration|TestR9H2HostContainerPublicGlobal|TestR9H2HostContainerPublicTable|TestR9H2HostImportAuthority|TestR9H2HostImportBulk|TestR9H2HostImportCycle|TestR9H2HostImportGlobal|TestR9H2HostImportGlobalOrdinaryAndGuards|TestR9H2HostImportInitialization|TestR9H2HostImportTable|TestR9H2HostImportTableIndependentPhysical|TestR9H2HostImportTableOrdinaryAndGuards|TestR9H2ReceiptCloseOrders|TestR9H2ReceiptConvertedProducerCycle|TestR9H2ReceiptDomainKeepsPrivateTypeAdmission|TestR9H2ReceiptFinalJournalRemainsCollectionAuthority|TestR9H2ReceiptIndependentContainersAndRollback|TestR9H2ReceiptOnlyContention|TestR9H2ReceiptPublisherRetirement|TestR9H2RetiredCollectorPreservesDeferredFinalizer|TestR9H2StoreHooksActiveInitialization|TestR9H2StoreHooksBulk|TestR9H2StoreHooksDescriptorMigration|TestR9H2StoreHooksIndependentPhysicalTables|TestR9H2StoreHooksOriginalProvider|TestRRRecheckCanceledAdmissionBehindDynamicReader|TestRRRecheckSharedMemoryHandoff|TestRRRecheckStorageOnlyReturnBehindDynamicReader|TestRRRetirementBorrowedRootLatePublisher|TestRRRetirementCallbackAndExitWakeups|TestRRRetirementCallbackRefreshBehindReader|TestRRRetirementCanceledPartialLastPins|TestRRRetirementLastPinAndRevival)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      },
+      "wago-guard": {
+        "label": "wago-guard",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-ordinary/wago.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestSharedEntryGuardCancellationAndGC)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      },
+      "wago-race-focused": {
+        "label": "wago-race-focused",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-ordinary/wago-race.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestDesignInvocationSnapshotAuthenticatedDispatch|TestDesignInvocationSnapshotCallbackTrap|TestDesignInvocationSnapshotCancellation|TestDesignInvocationSnapshotLatePublisher|TestDesignInvocationSnapshotRetirement|TestDesignRecheckCallbackChangesPublisherAuthority|TestDesignRecheckForeignRelayAfterLatePublisher|TestDesignRecheckNestedPublish|TestDesignRecheckNestedSameRuntimeClear|TestDesignRecheckStorageOnlyCallTopologyWriter|TestDesignRepairConcurrentPublicationRetirement|TestDesignRepairConversionAdmissionLifecycle|TestDesignRepairPublicGlobalTokenClassification|TestDesignRepairPublicTableOrdinary|TestDesignRepairScalarRelayOrdinaryStorageWithConversion|TestDesignRepairWaitNotifier|TestDesignReviewExternStorageImportsPrivateGCProducer|TestDesignReviewExternStorageProducerCrossRuntimeImport|TestGCAdmissionInstantiationCancellation|TestGCAdmissionOrderedCancellation|TestGCAdmissionPublicCancellation|TestGCAdmissionPublicDeadline|TestGCAdmissionSameOwnerBorrowing|TestGCAdmissionUncontendedAllocations|TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease|TestGCExternConversionAcrossReferenceTables|TestGCExternConversionCheckedTableRoots|TestGCExternConversionCollectorFirstCloseFailsClosed|TestGCExternConversionForeignLocalRoots|TestGCExternConversionKeepsLocalRoots|TestGCExternConversionKeepsVectorAndLocalRoots|TestGCExternConversionManyForeignLocals|TestGCExternConversionMissingRootsDisableCollection|TestGCExternConversionPublicationOrderingAndRollback|TestGCExternConversionRejectedReplacementPreservesRoot|TestGCExternConversionRejectsForeignForgedAndClosed|TestGCExternConversionRejectsForgedFrameWords|TestGCExternConversionStableIdentityAndOwnership|TestGCExternConversionVoidImportCannotUseEmptyRoots|TestGCExternConversionWithFunctionTable|TestGCExternConversionWithoutHeapKeepsTinyProfile|TestGCInvocationDomainSetInlineSortDoesNotAllocate|TestGCInvocationDomainSetSortMatchesOrderedIDs|TestGCInvocationDomainUsesRegisteredAssociation|TestGCInvocationNoDomainFastPathPreservesDynamicTopology|TestR9H2ConditionalSlotExplicitDomain|TestR9H2ConvertedAggregateAdmission|TestR9H2ConvertedAggregateAdmissionControls|TestR9H2ConvertedAggregateCollectingLocalOwner|TestR9H2HostContainerAuthority|TestR9H2HostContainerClose|TestR9H2HostContainerCycle|TestR9H2HostContainerMigration|TestR9H2HostContainerPublicGlobal|TestR9H2HostContainerPublicTable|TestR9H2HostImportAuthority|TestR9H2HostImportBulk|TestR9H2HostImportCycle|TestR9H2HostImportGlobal|TestR9H2HostImportGlobalOrdinaryAndGuards|TestR9H2HostImportInitialization|TestR9H2HostImportTable|TestR9H2HostImportTableIndependentPhysical|TestR9H2HostImportTableOrdinaryAndGuards|TestR9H2ReceiptCloseOrders|TestR9H2ReceiptConvertedProducerCycle|TestR9H2ReceiptDomainKeepsPrivateTypeAdmission|TestR9H2ReceiptFinalJournalRemainsCollectionAuthority|TestR9H2ReceiptIndependentContainersAndRollback|TestR9H2ReceiptOnlyContention|TestR9H2ReceiptPublisherRetirement|TestR9H2RetiredCollectorPreservesDeferredFinalizer|TestR9H2StoreHooksActiveInitialization|TestR9H2StoreHooksBulk|TestR9H2StoreHooksDescriptorMigration|TestR9H2StoreHooksIndependentPhysicalTables|TestR9H2StoreHooksOriginalProvider|TestRRRecheckCanceledAdmissionBehindDynamicReader|TestRRRecheckSharedMemoryHandoff|TestRRRecheckStorageOnlyReturnBehindDynamicReader|TestRRRetirementBorrowedRootLatePublisher|TestRRRetirementCallbackAndExitWakeups|TestRRRetirementCallbackRefreshBehindReader|TestRRRetirementCanceledPartialLastPins|TestRRRetirementLastPinAndRevival)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      },
+      "wago-race-guard": {
+        "label": "wago-race-guard",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-ordinary/wago-race.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestSharedEntryGuardCancellationAndGC)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      }
+    },
+    "full_qemu_gate_equivalent": false
+  },
+  "wagodebug": {
+    "qemu_status": "FAIL",
+    "qemu_raw_sha256": "1d3d7ae6b34e501108aba247da976fd2fd87b1a357dc51e84f00a83389dafb72",
+    "qemu_command": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/arm64-wagodebug-guest.test",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=12m",
+      "-test.run=^(TestPlatformExecutionArchitecture|TestRR.*|TestSharedEntryGuardCancellationAndGC|TestDesign.*|TestR9H2.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+    ],
+    "qemu_exit": 1,
+    "qemu_build": {
+      "label": "arm64-wagodebug-guest-build",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-tags=wagodebug",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/arm64-wagodebug-guest.test",
+        "./src/wago"
+      ],
+      "exit": 0,
+      "pass": [],
+      "skip": [],
+      "fail": [],
+      "environment": {
+        "HOME": "/home/dev",
+        "LANG": "C.UTF-8",
+        "TERM": "dumb",
+        "PATH": "/home/dev/.local/share/mise/installs/powershell/7.6.8:/home/dev/.local/share/mise/installs/just/1.58.0:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/home/dev/.local/share/mise/installs/node/24.22.2/bin:/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin:/home/dev/.cache/_wago_final_5b02_n61wfxab/source/.tools/wabt-1.0.41-linux-x64/bin:/home/dev/.local/share/wago-rfwgc-opam/rfwgc/bin:/usr/bin:/bin",
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.3",
+        "GOTOOLCHAIN": "local",
+        "GOENV": "off",
+        "GOMAXPROCS": "4",
+        "GOFLAGS": "-p=2",
+        "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1",
+        "WAGO_SPEC_INTERPRETER": "/home/dev/.cache/_wago_final_5b02_n61wfxab/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+        "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+        "WAGO_WAST2JSON": "/home/dev/.cache/_wago_final_5b02_n61wfxab/source/.tools/wabt-1.0.41-linux-x64/bin/wast2json",
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "GOCACHE": "/home/dev/.cache/_wago_final_5b02_n61wfxab/cache/go-build",
+        "XDG_CACHE_HOME": "/home/dev/.cache/_wago_final_5b02_n61wfxab/cache",
+        "TMPDIR": "/home/dev/.cache/_wago_final_5b02_n61wfxab/cache/tmp",
+        "GOOS": "linux",
+        "GOARCH": "arm64",
+        "CGO_ENABLED": "0",
+        "GOWORK": "off",
+        "WAGO_EXPECT_ARCH": "arm64",
+        "WAGO_RV64_TEST_RUNNER": "qemu"
+      },
+      "cwd": "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/source",
+      "continuation_driver_sha256": "3a6e084c6985c5c7cd008a2d41300ad6a54f43f2ab3d9738b276cce945f2ae56",
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "qemu_top_level_started": 76,
+    "qemu_event_census": {
+      "run": 181,
+      "pass": 177,
+      "fail": 4,
+      "skip": 0
+    },
+    "qemu_failures": [
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader",
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none",
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table",
+      "TestSharedEntryGuardCancellationAndGC"
+    ],
+    "qemu_failure_output": [
+      "    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=create native deadline timer: invalid argument",
+      "    rr_recheck_adversary_test.go:180: second storage-only call stalled: create native deadline timer: invalid argument",
+      "    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=create native deadline timer: invalid argument",
+      "    rr_recheck_adversary_test.go:180: second storage-only call stalled: create native deadline timer: invalid argument",
+      "    shared_entry_guard_arm64_test.go:196: native loop did not cancel"
+    ],
+    "native_failed_assertion_mapping": {
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      },
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      },
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      },
+      "TestSharedEntryGuardCancellationAndGC": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      }
+    },
+    "native_storage_output": {
+      "wago-focused": [
+        "    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=<nil>",
+        "    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=<nil>"
+      ],
+      "wago-race-focused": [
+        "    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=<nil>",
+        "    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=<nil>"
+      ]
+    },
+    "qemu_tests_absent_from_native": [
+      "TestPlatformExecutionArchitecture"
+    ],
+    "qemu_subtests_absent_from_native": [
+      "TestPlatformExecutionArchitecture"
+    ],
+    "native_tests_absent_from_qemu": [
+      "TestGCAdmissionInstantiationCancellation",
+      "TestGCAdmissionOrderedCancellation",
+      "TestGCAdmissionPublicCancellation",
+      "TestGCAdmissionPublicDeadline",
+      "TestGCAdmissionSameOwnerBorrowing",
+      "TestGCAdmissionUncontendedAllocations",
+      "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease",
+      "TestGCInvocationDomainSetInlineSortDoesNotAllocate",
+      "TestGCInvocationDomainSetSortMatchesOrderedIDs",
+      "TestGCInvocationDomainUsesRegisteredAssociation",
+      "TestGCInvocationNoDomainFastPathPreservesDynamicTopology"
+    ],
+    "native_gate_commands": {
+      "wago-focused": {
+        "label": "wago-focused",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-wagodebug/wago.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestDesignInvocationSnapshotAuthenticatedDispatch|TestDesignInvocationSnapshotCallbackTrap|TestDesignInvocationSnapshotCancellation|TestDesignInvocationSnapshotLatePublisher|TestDesignInvocationSnapshotRetirement|TestDesignRecheckCallbackChangesPublisherAuthority|TestDesignRecheckForeignRelayAfterLatePublisher|TestDesignRecheckNestedPublish|TestDesignRecheckNestedSameRuntimeClear|TestDesignRecheckStorageOnlyCallTopologyWriter|TestDesignRepairConcurrentPublicationRetirement|TestDesignRepairConversionAdmissionLifecycle|TestDesignRepairPublicGlobalTokenClassification|TestDesignRepairPublicTableOrdinary|TestDesignRepairScalarRelayOrdinaryStorageWithConversion|TestDesignRepairWaitNotifier|TestDesignReviewExternStorageImportsPrivateGCProducer|TestDesignReviewExternStorageProducerCrossRuntimeImport|TestGCAdmissionInstantiationCancellation|TestGCAdmissionOrderedCancellation|TestGCAdmissionPublicCancellation|TestGCAdmissionPublicDeadline|TestGCAdmissionSameOwnerBorrowing|TestGCAdmissionUncontendedAllocations|TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease|TestGCExternConversionAcrossReferenceTables|TestGCExternConversionCheckedTableRoots|TestGCExternConversionCollectorFirstCloseFailsClosed|TestGCExternConversionForeignLocalRoots|TestGCExternConversionKeepsLocalRoots|TestGCExternConversionKeepsVectorAndLocalRoots|TestGCExternConversionManyForeignLocals|TestGCExternConversionMissingRootsDisableCollection|TestGCExternConversionPublicationOrderingAndRollback|TestGCExternConversionRejectedReplacementPreservesRoot|TestGCExternConversionRejectsForeignForgedAndClosed|TestGCExternConversionRejectsForgedFrameWords|TestGCExternConversionStableIdentityAndOwnership|TestGCExternConversionVoidImportCannotUseEmptyRoots|TestGCExternConversionWithFunctionTable|TestGCExternConversionWithoutHeapKeepsTinyProfile|TestGCInvocationDomainSetInlineSortDoesNotAllocate|TestGCInvocationDomainSetSortMatchesOrderedIDs|TestGCInvocationDomainUsesRegisteredAssociation|TestGCInvocationNoDomainFastPathPreservesDynamicTopology|TestR9H2ConditionalSlotExplicitDomain|TestR9H2ConvertedAggregateAdmission|TestR9H2ConvertedAggregateAdmissionControls|TestR9H2ConvertedAggregateCollectingLocalOwner|TestR9H2HostContainerAuthority|TestR9H2HostContainerClose|TestR9H2HostContainerCycle|TestR9H2HostContainerMigration|TestR9H2HostContainerPublicGlobal|TestR9H2HostContainerPublicTable|TestR9H2HostImportAuthority|TestR9H2HostImportBulk|TestR9H2HostImportCycle|TestR9H2HostImportGlobal|TestR9H2HostImportGlobalOrdinaryAndGuards|TestR9H2HostImportInitialization|TestR9H2HostImportTable|TestR9H2HostImportTableIndependentPhysical|TestR9H2HostImportTableOrdinaryAndGuards|TestR9H2ReceiptCloseOrders|TestR9H2ReceiptConvertedProducerCycle|TestR9H2ReceiptDomainKeepsPrivateTypeAdmission|TestR9H2ReceiptFinalJournalRemainsCollectionAuthority|TestR9H2ReceiptIndependentContainersAndRollback|TestR9H2ReceiptOnlyContention|TestR9H2ReceiptPublisherRetirement|TestR9H2RetiredCollectorPreservesDeferredFinalizer|TestR9H2StoreHooksActiveInitialization|TestR9H2StoreHooksBulk|TestR9H2StoreHooksDescriptorMigration|TestR9H2StoreHooksIndependentPhysicalTables|TestR9H2StoreHooksOriginalProvider|TestRRRecheckCanceledAdmissionBehindDynamicReader|TestRRRecheckSharedMemoryHandoff|TestRRRecheckStorageOnlyReturnBehindDynamicReader|TestRRRetirementBorrowedRootLatePublisher|TestRRRetirementCallbackAndExitWakeups|TestRRRetirementCallbackRefreshBehindReader|TestRRRetirementCanceledPartialLastPins|TestRRRetirementLastPinAndRevival)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      },
+      "wago-guard": {
+        "label": "wago-guard",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-wagodebug/wago.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestSharedEntryGuardCancellationAndGC)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      },
+      "wago-race-focused": {
+        "label": "wago-race-focused",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-wagodebug/wago-race.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestDesignInvocationSnapshotAuthenticatedDispatch|TestDesignInvocationSnapshotCallbackTrap|TestDesignInvocationSnapshotCancellation|TestDesignInvocationSnapshotLatePublisher|TestDesignInvocationSnapshotRetirement|TestDesignRecheckCallbackChangesPublisherAuthority|TestDesignRecheckForeignRelayAfterLatePublisher|TestDesignRecheckNestedPublish|TestDesignRecheckNestedSameRuntimeClear|TestDesignRecheckStorageOnlyCallTopologyWriter|TestDesignRepairConcurrentPublicationRetirement|TestDesignRepairConversionAdmissionLifecycle|TestDesignRepairPublicGlobalTokenClassification|TestDesignRepairPublicTableOrdinary|TestDesignRepairScalarRelayOrdinaryStorageWithConversion|TestDesignRepairWaitNotifier|TestDesignReviewExternStorageImportsPrivateGCProducer|TestDesignReviewExternStorageProducerCrossRuntimeImport|TestGCAdmissionInstantiationCancellation|TestGCAdmissionOrderedCancellation|TestGCAdmissionPublicCancellation|TestGCAdmissionPublicDeadline|TestGCAdmissionSameOwnerBorrowing|TestGCAdmissionUncontendedAllocations|TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease|TestGCExternConversionAcrossReferenceTables|TestGCExternConversionCheckedTableRoots|TestGCExternConversionCollectorFirstCloseFailsClosed|TestGCExternConversionForeignLocalRoots|TestGCExternConversionKeepsLocalRoots|TestGCExternConversionKeepsVectorAndLocalRoots|TestGCExternConversionManyForeignLocals|TestGCExternConversionMissingRootsDisableCollection|TestGCExternConversionPublicationOrderingAndRollback|TestGCExternConversionRejectedReplacementPreservesRoot|TestGCExternConversionRejectsForeignForgedAndClosed|TestGCExternConversionRejectsForgedFrameWords|TestGCExternConversionStableIdentityAndOwnership|TestGCExternConversionVoidImportCannotUseEmptyRoots|TestGCExternConversionWithFunctionTable|TestGCExternConversionWithoutHeapKeepsTinyProfile|TestGCInvocationDomainSetInlineSortDoesNotAllocate|TestGCInvocationDomainSetSortMatchesOrderedIDs|TestGCInvocationDomainUsesRegisteredAssociation|TestGCInvocationNoDomainFastPathPreservesDynamicTopology|TestR9H2ConditionalSlotExplicitDomain|TestR9H2ConvertedAggregateAdmission|TestR9H2ConvertedAggregateAdmissionControls|TestR9H2ConvertedAggregateCollectingLocalOwner|TestR9H2HostContainerAuthority|TestR9H2HostContainerClose|TestR9H2HostContainerCycle|TestR9H2HostContainerMigration|TestR9H2HostContainerPublicGlobal|TestR9H2HostContainerPublicTable|TestR9H2HostImportAuthority|TestR9H2HostImportBulk|TestR9H2HostImportCycle|TestR9H2HostImportGlobal|TestR9H2HostImportGlobalOrdinaryAndGuards|TestR9H2HostImportInitialization|TestR9H2HostImportTable|TestR9H2HostImportTableIndependentPhysical|TestR9H2HostImportTableOrdinaryAndGuards|TestR9H2ReceiptCloseOrders|TestR9H2ReceiptConvertedProducerCycle|TestR9H2ReceiptDomainKeepsPrivateTypeAdmission|TestR9H2ReceiptFinalJournalRemainsCollectionAuthority|TestR9H2ReceiptIndependentContainersAndRollback|TestR9H2ReceiptOnlyContention|TestR9H2ReceiptPublisherRetirement|TestR9H2RetiredCollectorPreservesDeferredFinalizer|TestR9H2StoreHooksActiveInitialization|TestR9H2StoreHooksBulk|TestR9H2StoreHooksDescriptorMigration|TestR9H2StoreHooksIndependentPhysicalTables|TestR9H2StoreHooksOriginalProvider|TestRRRecheckCanceledAdmissionBehindDynamicReader|TestRRRecheckSharedMemoryHandoff|TestRRRecheckStorageOnlyReturnBehindDynamicReader|TestRRRetirementBorrowedRootLatePublisher|TestRRRetirementCallbackAndExitWakeups|TestRRRetirementCallbackRefreshBehindReader|TestRRRetirementCanceledPartialLastPins|TestRRRetirementLastPinAndRevival)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      },
+      "wago-race-guard": {
+        "label": "wago-race-guard",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-wagodebug/wago-race.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestSharedEntryGuardCancellationAndGC)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      }
+    },
+    "full_qemu_gate_equivalent": false
+  },
+  "wago_regalloccheck": {
+    "qemu_status": "FAIL",
+    "qemu_raw_sha256": "e6e51ba509643bcd67066b8f19a700dcb7a10958eb295c57faa4288b65c468d8",
+    "qemu_command": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/arm64-wago_regalloccheck-guest.test",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=12m",
+      "-test.run=^(TestPlatformExecutionArchitecture|TestRR.*|TestSharedEntryGuardCancellationAndGC|TestDesign.*|TestR9H2.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+    ],
+    "qemu_exit": 1,
+    "qemu_build": {
+      "label": "arm64-wago_regalloccheck-guest-build",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-tags=wago_regalloccheck",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/arm64-wago_regalloccheck-guest.test",
+        "./src/wago"
+      ],
+      "exit": 0,
+      "pass": [],
+      "skip": [],
+      "fail": [],
+      "environment": {
+        "HOME": "/home/dev",
+        "LANG": "C.UTF-8",
+        "TERM": "dumb",
+        "PATH": "/home/dev/.local/share/mise/installs/powershell/7.6.8:/home/dev/.local/share/mise/installs/just/1.58.0:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/home/dev/.local/share/mise/installs/node/24.22.2/bin:/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin:/home/dev/.cache/_wago_final_5b02_n61wfxab/source/.tools/wabt-1.0.41-linux-x64/bin:/home/dev/.local/share/wago-rfwgc-opam/rfwgc/bin:/usr/bin:/bin",
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.3",
+        "GOTOOLCHAIN": "local",
+        "GOENV": "off",
+        "GOMAXPROCS": "4",
+        "GOFLAGS": "-p=2",
+        "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1",
+        "WAGO_SPEC_INTERPRETER": "/home/dev/.cache/_wago_final_5b02_n61wfxab/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+        "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+        "WAGO_WAST2JSON": "/home/dev/.cache/_wago_final_5b02_n61wfxab/source/.tools/wabt-1.0.41-linux-x64/bin/wast2json",
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "GOCACHE": "/home/dev/.cache/_wago_final_5b02_n61wfxab/cache/go-build",
+        "XDG_CACHE_HOME": "/home/dev/.cache/_wago_final_5b02_n61wfxab/cache",
+        "TMPDIR": "/home/dev/.cache/_wago_final_5b02_n61wfxab/cache/tmp",
+        "GOOS": "linux",
+        "GOARCH": "arm64",
+        "CGO_ENABLED": "0",
+        "GOWORK": "off",
+        "WAGO_EXPECT_ARCH": "arm64",
+        "WAGO_RV64_TEST_RUNNER": "qemu"
+      },
+      "cwd": "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/source",
+      "continuation_driver_sha256": "3a6e084c6985c5c7cd008a2d41300ad6a54f43f2ab3d9738b276cce945f2ae56",
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "qemu_top_level_started": 76,
+    "qemu_event_census": {
+      "run": 181,
+      "pass": 177,
+      "fail": 4,
+      "skip": 0
+    },
+    "qemu_failures": [
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader",
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none",
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table",
+      "TestSharedEntryGuardCancellationAndGC"
+    ],
+    "qemu_failure_output": [
+      "    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=create native deadline timer: invalid argument",
+      "    rr_recheck_adversary_test.go:180: second storage-only call stalled: create native deadline timer: invalid argument",
+      "    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=create native deadline timer: invalid argument",
+      "    rr_recheck_adversary_test.go:180: second storage-only call stalled: create native deadline timer: invalid argument",
+      "    shared_entry_guard_arm64_test.go:196: native loop did not cancel"
+    ],
+    "native_failed_assertion_mapping": {
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      },
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      },
+      "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      },
+      "TestSharedEntryGuardCancellationAndGC": {
+        "qemu": "FAIL",
+        "native": "PASS",
+        "native_race": "PASS"
+      }
+    },
+    "native_storage_output": {
+      "wago-focused": [
+        "    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=<nil>",
+        "    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=<nil>"
+      ],
+      "wago-race-focused": [
+        "    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=<nil>",
+        "    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=<nil>"
+      ]
+    },
+    "qemu_tests_absent_from_native": [
+      "TestPlatformExecutionArchitecture"
+    ],
+    "qemu_subtests_absent_from_native": [
+      "TestPlatformExecutionArchitecture"
+    ],
+    "native_tests_absent_from_qemu": [
+      "TestGCAdmissionInstantiationCancellation",
+      "TestGCAdmissionOrderedCancellation",
+      "TestGCAdmissionPublicCancellation",
+      "TestGCAdmissionPublicDeadline",
+      "TestGCAdmissionSameOwnerBorrowing",
+      "TestGCAdmissionUncontendedAllocations",
+      "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease",
+      "TestGCInvocationDomainSetInlineSortDoesNotAllocate",
+      "TestGCInvocationDomainSetSortMatchesOrderedIDs",
+      "TestGCInvocationDomainUsesRegisteredAssociation",
+      "TestGCInvocationNoDomainFastPathPreservesDynamicTopology"
+    ],
+    "native_gate_commands": {
+      "wago-focused": {
+        "label": "wago-focused",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-wago_regalloccheck/wago.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestDesignInvocationSnapshotAuthenticatedDispatch|TestDesignInvocationSnapshotCallbackTrap|TestDesignInvocationSnapshotCancellation|TestDesignInvocationSnapshotLatePublisher|TestDesignInvocationSnapshotRetirement|TestDesignRecheckCallbackChangesPublisherAuthority|TestDesignRecheckForeignRelayAfterLatePublisher|TestDesignRecheckNestedPublish|TestDesignRecheckNestedSameRuntimeClear|TestDesignRecheckStorageOnlyCallTopologyWriter|TestDesignRepairConcurrentPublicationRetirement|TestDesignRepairConversionAdmissionLifecycle|TestDesignRepairPublicGlobalTokenClassification|TestDesignRepairPublicTableOrdinary|TestDesignRepairScalarRelayOrdinaryStorageWithConversion|TestDesignRepairWaitNotifier|TestDesignReviewExternStorageImportsPrivateGCProducer|TestDesignReviewExternStorageProducerCrossRuntimeImport|TestGCAdmissionInstantiationCancellation|TestGCAdmissionOrderedCancellation|TestGCAdmissionPublicCancellation|TestGCAdmissionPublicDeadline|TestGCAdmissionSameOwnerBorrowing|TestGCAdmissionUncontendedAllocations|TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease|TestGCExternConversionAcrossReferenceTables|TestGCExternConversionCheckedTableRoots|TestGCExternConversionCollectorFirstCloseFailsClosed|TestGCExternConversionForeignLocalRoots|TestGCExternConversionKeepsLocalRoots|TestGCExternConversionKeepsVectorAndLocalRoots|TestGCExternConversionManyForeignLocals|TestGCExternConversionMissingRootsDisableCollection|TestGCExternConversionPublicationOrderingAndRollback|TestGCExternConversionRejectedReplacementPreservesRoot|TestGCExternConversionRejectsForeignForgedAndClosed|TestGCExternConversionRejectsForgedFrameWords|TestGCExternConversionStableIdentityAndOwnership|TestGCExternConversionVoidImportCannotUseEmptyRoots|TestGCExternConversionWithFunctionTable|TestGCExternConversionWithoutHeapKeepsTinyProfile|TestGCInvocationDomainSetInlineSortDoesNotAllocate|TestGCInvocationDomainSetSortMatchesOrderedIDs|TestGCInvocationDomainUsesRegisteredAssociation|TestGCInvocationNoDomainFastPathPreservesDynamicTopology|TestR9H2ConditionalSlotExplicitDomain|TestR9H2ConvertedAggregateAdmission|TestR9H2ConvertedAggregateAdmissionControls|TestR9H2ConvertedAggregateCollectingLocalOwner|TestR9H2HostContainerAuthority|TestR9H2HostContainerClose|TestR9H2HostContainerCycle|TestR9H2HostContainerMigration|TestR9H2HostContainerPublicGlobal|TestR9H2HostContainerPublicTable|TestR9H2HostImportAuthority|TestR9H2HostImportBulk|TestR9H2HostImportCycle|TestR9H2HostImportGlobal|TestR9H2HostImportGlobalOrdinaryAndGuards|TestR9H2HostImportInitialization|TestR9H2HostImportTable|TestR9H2HostImportTableIndependentPhysical|TestR9H2HostImportTableOrdinaryAndGuards|TestR9H2ReceiptCloseOrders|TestR9H2ReceiptConvertedProducerCycle|TestR9H2ReceiptDomainKeepsPrivateTypeAdmission|TestR9H2ReceiptFinalJournalRemainsCollectionAuthority|TestR9H2ReceiptIndependentContainersAndRollback|TestR9H2ReceiptOnlyContention|TestR9H2ReceiptPublisherRetirement|TestR9H2RetiredCollectorPreservesDeferredFinalizer|TestR9H2StoreHooksActiveInitialization|TestR9H2StoreHooksBulk|TestR9H2StoreHooksDescriptorMigration|TestR9H2StoreHooksIndependentPhysicalTables|TestR9H2StoreHooksOriginalProvider|TestRRRecheckCanceledAdmissionBehindDynamicReader|TestRRRecheckSharedMemoryHandoff|TestRRRecheckStorageOnlyReturnBehindDynamicReader|TestRRRetirementBorrowedRootLatePublisher|TestRRRetirementCallbackAndExitWakeups|TestRRRetirementCallbackRefreshBehindReader|TestRRRetirementCanceledPartialLastPins|TestRRRetirementLastPinAndRevival)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      },
+      "wago-guard": {
+        "label": "wago-guard",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-wago_regalloccheck/wago.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestSharedEntryGuardCancellationAndGC)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      },
+      "wago-race-focused": {
+        "label": "wago-race-focused",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-wago_regalloccheck/wago-race.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestDesignInvocationSnapshotAuthenticatedDispatch|TestDesignInvocationSnapshotCallbackTrap|TestDesignInvocationSnapshotCancellation|TestDesignInvocationSnapshotLatePublisher|TestDesignInvocationSnapshotRetirement|TestDesignRecheckCallbackChangesPublisherAuthority|TestDesignRecheckForeignRelayAfterLatePublisher|TestDesignRecheckNestedPublish|TestDesignRecheckNestedSameRuntimeClear|TestDesignRecheckStorageOnlyCallTopologyWriter|TestDesignRepairConcurrentPublicationRetirement|TestDesignRepairConversionAdmissionLifecycle|TestDesignRepairPublicGlobalTokenClassification|TestDesignRepairPublicTableOrdinary|TestDesignRepairScalarRelayOrdinaryStorageWithConversion|TestDesignRepairWaitNotifier|TestDesignReviewExternStorageImportsPrivateGCProducer|TestDesignReviewExternStorageProducerCrossRuntimeImport|TestGCAdmissionInstantiationCancellation|TestGCAdmissionOrderedCancellation|TestGCAdmissionPublicCancellation|TestGCAdmissionPublicDeadline|TestGCAdmissionSameOwnerBorrowing|TestGCAdmissionUncontendedAllocations|TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease|TestGCExternConversionAcrossReferenceTables|TestGCExternConversionCheckedTableRoots|TestGCExternConversionCollectorFirstCloseFailsClosed|TestGCExternConversionForeignLocalRoots|TestGCExternConversionKeepsLocalRoots|TestGCExternConversionKeepsVectorAndLocalRoots|TestGCExternConversionManyForeignLocals|TestGCExternConversionMissingRootsDisableCollection|TestGCExternConversionPublicationOrderingAndRollback|TestGCExternConversionRejectedReplacementPreservesRoot|TestGCExternConversionRejectsForeignForgedAndClosed|TestGCExternConversionRejectsForgedFrameWords|TestGCExternConversionStableIdentityAndOwnership|TestGCExternConversionVoidImportCannotUseEmptyRoots|TestGCExternConversionWithFunctionTable|TestGCExternConversionWithoutHeapKeepsTinyProfile|TestGCInvocationDomainSetInlineSortDoesNotAllocate|TestGCInvocationDomainSetSortMatchesOrderedIDs|TestGCInvocationDomainUsesRegisteredAssociation|TestGCInvocationNoDomainFastPathPreservesDynamicTopology|TestR9H2ConditionalSlotExplicitDomain|TestR9H2ConvertedAggregateAdmission|TestR9H2ConvertedAggregateAdmissionControls|TestR9H2ConvertedAggregateCollectingLocalOwner|TestR9H2HostContainerAuthority|TestR9H2HostContainerClose|TestR9H2HostContainerCycle|TestR9H2HostContainerMigration|TestR9H2HostContainerPublicGlobal|TestR9H2HostContainerPublicTable|TestR9H2HostImportAuthority|TestR9H2HostImportBulk|TestR9H2HostImportCycle|TestR9H2HostImportGlobal|TestR9H2HostImportGlobalOrdinaryAndGuards|TestR9H2HostImportInitialization|TestR9H2HostImportTable|TestR9H2HostImportTableIndependentPhysical|TestR9H2HostImportTableOrdinaryAndGuards|TestR9H2ReceiptCloseOrders|TestR9H2ReceiptConvertedProducerCycle|TestR9H2ReceiptDomainKeepsPrivateTypeAdmission|TestR9H2ReceiptFinalJournalRemainsCollectionAuthority|TestR9H2ReceiptIndependentContainersAndRollback|TestR9H2ReceiptOnlyContention|TestR9H2ReceiptPublisherRetirement|TestR9H2RetiredCollectorPreservesDeferredFinalizer|TestR9H2StoreHooksActiveInitialization|TestR9H2StoreHooksBulk|TestR9H2StoreHooksDescriptorMigration|TestR9H2StoreHooksIndependentPhysicalTables|TestR9H2StoreHooksOriginalProvider|TestRRRecheckCanceledAdmissionBehindDynamicReader|TestRRRecheckSharedMemoryHandoff|TestRRRecheckStorageOnlyReturnBehindDynamicReader|TestRRRetirementBorrowedRootLatePublisher|TestRRRetirementCallbackAndExitWakeups|TestRRRetirementCallbackRefreshBehindReader|TestRRRetirementCanceledPartialLastPins|TestRRRetirementLastPinAndRevival)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      },
+      "wago-race-guard": {
+        "label": "wago-race-guard",
+        "command": [
+          "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+          "tool",
+          "test2json",
+          "-p",
+          "./src/wago",
+          "/home/runner/work/wago/wago/receipts-wago_regalloccheck/wago-race.test",
+          "-test.v=test2json",
+          "-test.count=1",
+          "-test.timeout=3m",
+          "-test.run=^(TestSharedEntryGuardCancellationAndGC)$"
+        ],
+        "cwd": "/home/runner/work/wago/wago/source/src/wago",
+        "timeout_seconds": 240,
+        "exit": 0
+      }
+    },
+    "full_qemu_gate_equivalent": false
+  }
+}
