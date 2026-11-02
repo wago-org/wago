@@ -13,7 +13,7 @@ func word(a *a64.Asm, at int) uint32 { return binary.LittleEndian.Uint32(a.B[at:
 
 func clearImmediate(a *a64.Asm, at int) uint32 {
 	before := word(a, at)
-	a.PatchU32(at, before &^ imm19Mask)
+	a.PatchU32(at, before&^imm19Mask)
 	return before
 }
 
