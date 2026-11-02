@@ -9,6 +9,8 @@ import platform
 import subprocess
 import sys
 
+from identity import validate
+
 HERE = Path(__file__).resolve().parent
 PLAN = json.loads((HERE / "plan.json").read_text())
 
@@ -22,7 +24,7 @@ def write(path, value):
 
 
 def manifest(root):
-    names = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).decode().split("\0")
+    names = subprocess.check_output(["git", "ls-files", "--recurse-submodules", "-z"], cwd=root).decode().split("\0")
     return {name: hashlib.sha256((root / name).read_bytes()).hexdigest()
             for name in names if name and (root / name).is_file()}
 
@@ -36,13 +38,23 @@ def main():
     # This precedes all test/build execution and output creation.
     if platform.system() != "Darwin" or platform.machine() != "arm64":
         parser.error("requires actual Darwin arm64; cross compilation and Linux QEMU do not qualify")
+    identity = validate(os.environ.get("QUALIFICATION_SOURCE", ""),
+                        os.environ.get("QUALIFICATION_DRIVER", ""))
     root, out = args.source.resolve(), args.output.resolve()
+    harness = Path(capture(["git", "rev-parse", "--show-toplevel"], HERE)).resolve()
+    if root == harness or root in harness.parents or harness in root.parents:
+        parser.error("source and harness must be independent checkouts")
+    if subprocess.run(["sysctl", "-in", "sysctl.proc_translated"], capture_output=True, text=True).stdout.strip() == "1":
+        parser.error("Rosetta translation is not native ARM64")
     if root == out or root in out.parents:
         parser.error("output must be outside the immutable source checkout")
     if capture(["git", "rev-parse", "HEAD"], root) != PLAN["source"]:
         parser.error("source HEAD does not match the pinned source")
-    if capture(["git", "status", "--porcelain", "--untracked-files=no"], root):
+    if capture(["git", "status", "--porcelain", "--untracked-files=all"], root):
         parser.error("tracked source or submodules are dirty")
+    submodules = capture(["git", "submodule", "status", "--recursive"], root)
+    if not submodules or any(line.startswith(("-", "+", "U")) for line in submodules.splitlines()):
+        parser.error("pinned submodules must be initialized and unchanged")
     if json.loads(capture(["go", "env", "-json", "GOOS", "GOARCH"], root)) != {"GOOS": "darwin", "GOARCH": "arm64"}:
         parser.error("Go target is not native Darwin ARM64")
     if capture(["go", "version"], root) != "go version go1.27.1 darwin/arm64":
@@ -50,30 +62,43 @@ def main():
     if any(os.environ.get(k) for k in ["GOFLAGS", "WAGO_BOUNDS", "WAGO_SHARED_SCALAR"]):
         parser.error("clear inherited GOFLAGS/WAGO_BOUNDS/WAGO_SHARED_SCALAR")
     out.mkdir(parents=True, exist_ok=False)
+    driver_before = manifest(harness)
+    lanes = [x for x in PLAN["lanes"] if x["mode"] == args.mode]
+    if not lanes:
+        parser.error("no planned lanes")
+    write(out / "execution-plan.json", {"lanes": lanes, "unmet_gaps": PLAN["unmet_gaps"]})
+    catalog = json.loads((root / "corpus/catalog.json").read_text())
+    write(out / "catalog-platform-census.json", [
+        {"id": entry["id"], "platforms": (entry.get("command") or {}).get("platforms", []),
+         "command_platform_excluded": bool((entry.get("command") or {}).get("platforms")) and
+             "darwin/arm64" not in entry["command"]["platforms"],
+         "captured_reference": (entry.get("command") or {}).get("reference_runtime", "")}
+        for entry in catalog["benchmarks"]])
     before = manifest(root)
     write(out / "source-before.json", before)
-    write(out / "host.json", {"source": PLAN["source"], "uname": capture(["uname", "-a"], root),
+    write(out / "host.json", {**identity, "submodules": submodules, "uname": capture(["uname", "-a"], root),
           "sw_vers": capture(["sw_vers"], root), "go": capture(["go", "version"], root),
           "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
           "plan_sha256": hashlib.sha256((HERE / "plan.json").read_bytes()).hexdigest()})
     results = []
-    for lane in [x for x in PLAN["lanes"] if x["mode"] == args.mode]:
+    for lane in lanes:
         dest = out / lane["id"]
         dest.mkdir()
+        write(out / "progress.json", {"active_lane": lane["id"], "completed": len(results), "planned": len(lanes)})
         env = os.environ.copy()
-        env.update(lane["environment"])
+        env.update({k: v.replace("{source}", str(root)) for k, v in lane["environment"].items()})
         env.update(GOTOOLCHAIN="local", GOMAXPROCS="2")
         cwd = root / lane["cwd"]
-        write(dest / "command.json", lane)
+        write(dest / "command.json", {**lane, "effective_environment": {k: v for k, v in env.items() if k.startswith("WAGO_") or k in ("GOTOOLCHAIN", "GOMAXPROCS")}})
         # Record included/excluded source files for each tag configuration.
         argv = lane["argv"]
         stop = argv.index("-args") if "-args" in argv else len(argv)
         packages = [x for x in argv[:stop] if x.startswith("./")]
-        tags = [x for x in argv if x.startswith("-tags=")]
+        tags = [x for x in argv if x.startswith("-tags=") or x == "-race"]
         with (dest / "package-census.jsonl").open("w") as stream:
             census = subprocess.run(["go", "list", "-json", "-test"] + tags + packages,
                                     cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT)
-        events, details, passes, failures = [], {}, 0, 0
+        events, failed, details, passes, failures = [], [], {}, 0, 0
         with (dest / "raw.jsonl").open("w") as stream:
             proc = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True)
@@ -93,9 +118,10 @@ def main():
                     passes += 1
                 if event.get("Action") == "fail":
                     failures += 1
+                    failed.append({"package": key[0], "test": key[1], "detail": "".join(details.get(key, []))})
             code = proc.wait()
         result = {"id": lane["id"], "exit_code": code, "census_exit_code": census.returncode,
-                  "passing_test_events": passes, "failure_events": failures, "skips": events,
+                  "passing_test_events": passes, "failure_events": failures, "failures": failed, "skips": events,
                   "status": "PASS_WITH_SKIPS" if code == 0 and passes and not failures and census.returncode == 0 and events else
                             "PASS" if code == 0 and passes and not failures and census.returncode == 0 else "FAIL"}
         write(dest / "result.json", result)
@@ -104,11 +130,13 @@ def main():
         print(lane["id"], result["status"], flush=True)
     after = manifest(root)
     unchanged = before == after and not capture(["git", "status", "--porcelain", "--untracked-files=no"], root)
+    driver_unchanged = driver_before == manifest(harness)
+    write(out / "driver-manifest.json", driver_before)
     write(out / "source-after.json", after)
     write(out / "summary.json", {"source": PLAN["source"], "source_unchanged": bool(unchanged),
-          "native_execution": True, "skip_review_required": any(x["skips"] for x in results),
+          "native_execution": True, "driver_unchanged": driver_unchanged, "unmet_gaps": PLAN["unmet_gaps"], "skip_review_required": any(x["skips"] for x in results),
           "qualification": "REQUIRES_REVIEW", "results": results})
-    return 0 if unchanged and all(x["status"] != "FAIL" for x in results) else 1
+    return 0 if unchanged and driver_unchanged and len(results) == len(lanes) and all(x["status"] != "FAIL" for x in results) else 1
 
 
 if __name__ == "__main__":

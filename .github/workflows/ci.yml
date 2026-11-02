@@ -16,13 +16,22 @@ on:
     types: [checks_requested]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      darwin_qualification:
+        description: 'Run only reviewed pinned RFWGC Darwin correctness (not full CI)'
+        type: boolean
+        default: false
+      source_sha:
+        description: 'Exact reviewed source SHA; used only for Darwin qualification'
+        type: string
+        default: '5345bd365c13963f1bf60e26bb80789ab9ead4cc'
 
 permissions:
   contents: read
 
 # Cancel superseded runs on the same ref (e.g. new pushes to a PR).
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && '-darwin-qualification' || '' }}
   cancel-in-progress: true
 
 env:
@@ -36,7 +45,7 @@ jobs:
   # a failed preflight, so it cannot turn an empty selection into a green check.
   changes:
     name: Plan CI profile
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: (github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification) && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     outputs:
       profile: ${{ steps.plan.outputs.profile }}
@@ -1330,15 +1339,83 @@ jobs:
             ci-card/size-symbols.tsv
           if-no-files-found: error
 
+  darwin-qualification:
+    name: Pinned Darwin correctness / ${{ matrix.mode }}
+    if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification
+    runs-on: macos-15
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [ordinary, wagodebug, wago_regalloccheck]
+    env:
+      GOTOOLCHAIN: local
+      PYTHONDONTWRITEBYTECODE: '1'
+      QUALIFICATION_SOURCE: ${{ inputs.source_sha }}
+      QUALIFICATION_DRIVER: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+          persist-credentials: false
+      - name: Validate exact input before source checkout
+        run: |
+          mkdir -p setup-receipts
+          python3 harness/docs/rfwgc-evidence/final-darwin/identity.py > setup-receipts/identity.json
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: source
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3
+        with:
+          just-version: '1.58.0'
+      - name: Provision native tools and official interpreter
+        shell: bash
+        run: |
+          mkdir -p setup-receipts
+          set -o pipefail
+          bash harness/docs/rfwgc-evidence/final-darwin/setup.sh source setup-receipts 2>&1 | tee setup-receipts/setup.log
+      - name: Execute correctness and retain census
+        run: >-
+          python3 harness/docs/rfwgc-evidence/final-darwin/run.py
+          source receipts-${{ matrix.mode }} --mode '${{ matrix.mode }}'
+      - name: Retain setup, failures and partial results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: darwin-5345-${{ matrix.mode }}-${{ github.run_attempt }}
+          path: |
+            setup-receipts
+            receipts-${{ matrix.mode }}
+          if-no-files-found: error
+          retention-days: 7
+
   # This is the sole required status check. It validates the selected plan, so
   # skipped jobs are accepted only when the profile did not expect them.
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size]
+    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification]
     runs-on: ubuntu-latest
     steps:
+      - name: Verify special Darwin matrix (does not qualify full CI)
+        if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification
+        env:
+          DARWIN_RESULT: ${{ needs.darwin-qualification.result }}
+          NORMAL_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          test "$DARWIN_RESULT" = success
+          python3 -c 'import json, os; n=json.loads(os.environ["NORMAL_RESULTS"]); assert all(v["result"] == "skipped" for k,v in n.items() if k != "darwin-qualification"), n'
+          echo 'Pinned Darwin command execution succeeded; gaps and skips still require review.' >> "$GITHUB_STEP_SUMMARY"
       - name: Identify qualification profile
+        if: github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification
         env:
           CI_PROFILE: ${{ needs.changes.outputs.profile || needs.smoke.outputs.profile }}
           CI_EXPECTED_JOBS: ${{ needs.changes.outputs.expected_jobs || needs.smoke.outputs.expected_jobs }}
@@ -1346,9 +1423,11 @@ jobs:
           echo "::notice title=CI profile::$CI_PROFILE"
           echo "Expected jobs: $CI_EXPECTED_JOBS"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification
         with:
           ref: ${{ github.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        if: github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -1360,6 +1439,7 @@ jobs:
             bench/go.sum
             cli/wago-installer/go.mod
       - name: Verify every expected CI result
+        if: github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification
         env:
           CI_PROFILE: ${{ needs.changes.outputs.profile || needs.smoke.outputs.profile }}
           CI_CODE: ${{ needs.changes.outputs.code || needs.smoke.outputs.code }}
