@@ -1,0 +1,20 @@
+# label=nested-5847df30f-ordinary src=5847df30f-overlay tags=- race=0
+# go version go1.27.1 linux/amd64 GOROOT=/home/dev/.local/share/mise/installs/go/1.27.1
+# overlay: 6c61b21ce9cddf50a1448063624e8b035c688d149e7ceac2d8e20585b3a7a2bc  src/wago/rr3x_nested_late_publisher_test.go 
+# go test -count=1 -timeout 90s -v -run ^TestRR3XNestedCallAfterLatePublisher$ ./src/wago
+=== RUN   TestRR3XNestedCallAfterLatePublisher
+=== RUN   TestRR3XNestedCallAfterLatePublisher/none
+    rr3x_nested_late_publisher_test.go:175: mode=none root(dynamic=true conversionOnly=true) provider(dynamic=true conversionOnly=true) publisherWaitedForRoot=false out=[7] err=<nil>
+=== RUN   TestRR3XNestedCallAfterLatePublisher/before
+    rr3x_nested_late_publisher_test.go:175: mode=before root(dynamic=true conversionOnly=true) provider(dynamic=true conversionOnly=true) publisherWaitedForRoot=false out=[7] err=<nil>
+=== RUN   TestRR3XNestedCallAfterLatePublisher/during
+    rr3x_nested_late_publisher_test.go:175: mode=during root(dynamic=true conversionOnly=true) provider(dynamic=true conversionOnly=true) publisherWaitedForRoot=true out=[7] err=<nil>
+=== RUN   TestRR3XNestedCallAfterLatePublisher/during-pub
+    rr3x_nested_late_publisher_test.go:175: mode=during-pub root(dynamic=true conversionOnly=true) provider(dynamic=true conversionOnly=true) publisherWaitedForRoot=true out=[7] err=<nil>
+--- PASS: TestRR3XNestedCallAfterLatePublisher (4.02s)
+    --- PASS: TestRR3XNestedCallAfterLatePublisher/none (0.00s)
+    --- PASS: TestRR3XNestedCallAfterLatePublisher/before (0.00s)
+    --- PASS: TestRR3XNestedCallAfterLatePublisher/during (2.00s)
+    --- PASS: TestRR3XNestedCallAfterLatePublisher/during-pub (2.01s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	4.024s
