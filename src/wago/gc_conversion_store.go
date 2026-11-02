@@ -206,3 +206,32 @@ func compiledExternStoreHelperSlots(c *Compiled) int {
 	}
 	return 0
 }
+
+type conversionInitialTable struct {
+	original, staged []byte
+	touched          []bool
+	owner            *Instance
+}
+
+func stageConversionInitialTable(rows *[]conversionInitialTable, t *Table, start uint64, count int) []byte {
+	for _, row := range *rows {
+		if &row.original[0] == &t.desc[0] {
+			for j := 0; j < count; j++ {
+				row.touched[int(start)+j] = true
+			}
+			return row.staged
+		}
+	}
+	row := conversionInitialTable{original: t.desc, staged: append([]byte(nil), t.desc...), owner: t.instanceOwner(), touched: make([]bool, binary.LittleEndian.Uint32(t.desc))}
+	for j := 0; j < count; j++ {
+		row.touched[int(start)+j] = true
+	}
+	*rows = append(*rows, row)
+	return row.staged
+}
+
+// SetValue replaces one externref entry. A null ValueExternRef clears its exact
+// physical receipt. The table's canonical instance owner supplies authority.
+func (t *Table) SetValue(index uint64, value Value) error {
+	return setConversionTablePublic(t, index, value)
+}

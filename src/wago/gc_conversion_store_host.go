@@ -2,7 +2,10 @@
 
 package wago
 
-import "fmt"
+import (
+	"encoding/binary"
+	"fmt"
+)
 
 func compiledConversionStoreHooks(c *Compiled) bool {
 	if c == nil {
@@ -130,11 +133,33 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 		}
 	}
 	word := value.bits
+	if word == 0 {
+		for i, cell := range owner.globalCells {
+			if len(cell.cell) > 0 && &cell.cell[0] == &g.cell[0] {
+				exact, e := owner.c.globalExactType(i)
+				if e != nil {
+					return true, e
+				}
+				if !exact.Ref.Nullable {
+					return true, fmt.Errorf("global requires a non-null reference value")
+				}
+				break
+			}
+		}
+	}
 	if word != 0 {
 		if internal, ok := conversionBoundaryWord(owner, word, true); ok {
 			word = internal
-		} else if _, ok := owner.refStore.resolveExternref(word); !ok {
-			return true, fmt.Errorf("invalid or foreign externref token")
+		} else {
+			internal, handled, e := owner.internalExternForGlobal(word)
+			if e != nil {
+				return true, fmt.Errorf("invalid externref token: %w", e)
+			}
+			if handled {
+				word = internal
+			} else if _, ok := owner.refStore.resolveExternref(word); !ok {
+				return true, fmt.Errorf("invalid externref token")
+			}
 		}
 	}
 	container, err := newGCConversionContainer(owner, g.cell)
@@ -149,7 +174,7 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 			lease.domains.at(i).mu.Unlock()
 		}
 	}()
-	tx, err := container.prepare(0, word, nil)
+	tx, err := container.prepare(0, word, owner.existingGCExternConversionState())
 	if err != nil {
 		return true, err
 	}
@@ -212,4 +237,157 @@ func (in *Instance) publishConversionRange(owner *Instance, storage []byte, star
 		}
 	}
 	return nil
+}
+
+const conversionInitializationEnabled = true
+
+// Imported active extern segments are evaluated in private staging storage.
+// Construction has released its old partial leases before this complete lease.
+func (in *Instance) initializeConversionReceipts(staged []conversionInitialTable) error {
+	if in.refStore == nil {
+		return nil
+	}
+	source := in.existingGCExternConversionState()
+	store := in.refStore
+	store.mu.Lock()
+	needed := store.gcDomains != nil && (len(store.gcDomains.conversions) != 0 || len(store.gcDomains.conversionContainers) != 0) || source != nil && source.core != nil
+	store.mu.Unlock()
+	if !needed && len(staged) == 0 {
+		return nil
+	}
+	lease := in.lockGCInvocation(newInvocationID())
+	defer func() { lease.unlock(); drainManagedFunctionStoreReclaims(store) }()
+	unlock := in.lockInstanceNativeStateForHostAccess()
+	defer unlock()
+	for i := 0; i < lease.domains.len(); i++ {
+		lease.domains.at(i).mu.Lock()
+	}
+	defer func() {
+		for i := lease.domains.len() - 1; i >= 0; i-- {
+			lease.domains.at(i).mu.Unlock()
+		}
+	}()
+	transactions := []*gcConversionTransaction{}
+	defer func() {
+		for _, tx := range transactions {
+			tx.rollback()
+		}
+	}()
+	prepare := func(owner *Instance, storage []byte, index, word uint64) error {
+		if word == 0 {
+			store.mu.Lock()
+			c := store.gcDomains.conversionContainers[&storage[0]]
+			store.mu.Unlock()
+			if c == nil || c.slots[index] == nil {
+				return nil
+			}
+		}
+		c, e := newGCConversionContainer(owner, storage)
+		if e != nil {
+			return e
+		}
+		tx, e := c.prepare(index, word, source)
+		if e != nil {
+			return e
+		}
+		transactions = append(transactions, tx)
+		return nil
+	}
+	for i, g := range in.globalCells {
+		if i < len(in.c.GlobalImports) || in.c.Globals[i].Type != ValExternRef {
+			continue
+		}
+		if e := prepare(in, g.cell, 0, readGlobalObject(g, ValExternRef)); e != nil {
+			return e
+		}
+	}
+	for i := in.c.tableImportCount(); i < in.c.tableCount(); i++ {
+		if in.c.tableElementType(i) != ValExternRef {
+			continue
+		}
+		storage := in.tableDescriptor(i)
+		n := binary.LittleEndian.Uint32(storage)
+		for j := uint64(0); j < uint64(n); j++ {
+			if e := prepare(in, storage, j, binary.LittleEndian.Uint64(storage[8+j*8:])); e != nil {
+				return e
+			}
+		}
+	}
+	for _, row := range staged {
+		n := binary.LittleEndian.Uint32(row.staged)
+		for j := uint64(0); j < uint64(n); j++ {
+			if !row.touched[j] {
+				continue
+			}
+			if e := prepare(row.owner, row.original, j, binary.LittleEndian.Uint64(row.staged[8+j*8:])); e != nil {
+				return e
+			}
+		}
+	}
+	for _, row := range staged {
+		for j, touched := range row.touched {
+			if touched {
+				copy(row.original[8+j*8:16+j*8], row.staged[8+j*8:16+j*8])
+			}
+		}
+	}
+	for _, tx := range transactions {
+		if e := tx.commit(func() error { return nil }); e != nil {
+			panic(e)
+		}
+	}
+	return nil
+}
+
+func setConversionTablePublic(t *Table, index uint64, value Value) error {
+	if t == nil || t.owner == nil || value.typ != ValExternRef {
+		return fmt.Errorf("invalid extern table value")
+	}
+	owner := t.instanceOwner()
+	if owner == nil {
+		return fmt.Errorf("extern table mutation requires an instance-owned table")
+	}
+	if err := owner.beginInvocation(); err != nil {
+		return err
+	}
+	defer owner.endInvocation()
+	lease := owner.lockGCInvocation(newInvocationID())
+	defer func() { lease.unlock(); drainManagedFunctionStoreReclaims(owner.refStore) }()
+	unlock := owner.lockInstanceNativeStateForHostAccess()
+	defer unlock()
+	t.owner.mu.Lock()
+	valid := !t.owner.closed && t.owner.elementType == ValExternRef && t.owner.store == owner.refStore
+	t.owner.mu.Unlock()
+	if !valid || len(t.desc) < 8 || index >= uint64(binary.LittleEndian.Uint32(t.desc)) {
+		return fmt.Errorf("extern table metadata or index is invalid")
+	}
+	word := value.bits
+	if word != 0 {
+		internal, handled, err := owner.internalExternForGlobal(word)
+		if err != nil {
+			return err
+		}
+		if handled {
+			word = internal
+		} else if _, ok := owner.refStore.resolveExternref(word); !ok {
+			return fmt.Errorf("invalid externref token")
+		}
+	}
+	for i := 0; i < lease.domains.len(); i++ {
+		lease.domains.at(i).mu.Lock()
+	}
+	defer func() {
+		for i := lease.domains.len() - 1; i >= 0; i-- {
+			lease.domains.at(i).mu.Unlock()
+		}
+	}()
+	c, err := newGCConversionContainer(owner, t.desc)
+	if err != nil {
+		return err
+	}
+	tx, err := c.prepare(index, word, owner.existingGCExternConversionState())
+	if err != nil {
+		return err
+	}
+	return tx.commit(func() error { binary.LittleEndian.PutUint64(t.desc[8+index*8:], word); return nil })
 }
