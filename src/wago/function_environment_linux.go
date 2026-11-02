@@ -253,8 +253,8 @@ func (g *managedFunctionGraph) removeMemberLocked(member *managedFunctionMember)
 		g.pendingFinalizers.Add(^uint64(0))
 	}
 
-	if state := g.collectors[member.owner.gc]; state != nil {
-		for _, slot := range member.slots {
+	for _, slot := range member.slots {
+		if state := g.collectors[slot.collector]; state != nil {
 			if slot.kind == gc.SlotGlobal {
 				delete(state.globalOwners, slot.index)
 			} else {
@@ -565,6 +565,18 @@ func drainManagedFunctionReclaims(collector *gc.Collector) {
 		managedFunctionRegistryMu.Lock()
 		s.graph.mu.Lock()
 		delete(s.graph.collectors, collector)
+		// A collector-free container can own slots in several domains. Drop
+		// only the retired domain's metadata, without reading its closed heap.
+		for _, member := range s.graph.members {
+			kept := member.slots[:0]
+			for _, slot := range member.slots {
+				if slot.collector != collector {
+					kept = append(kept, slot)
+				}
+			}
+			clear(member.slots[len(kept):])
+			member.slots = kept
+		}
 		if len(s.graph.collectors) == 0 {
 			s.graph.retired = true
 			for _, member := range s.graph.members {
