@@ -600,6 +600,56 @@
     }
   },
   {
+    "id": "sed-records",
+    "mode": "wago_regalloccheck",
+    "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "reference": {
+      "status": "skip",
+      "pinned_external_runtime": "v8",
+      "detail": "=== RUN   TestApplicationCorpusRuns/sed-records/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/sed-records/wazero (0.00s)\n"
+    }
+  },
+  {
+    "id": "seqtk-fastq-to-fasta",
+    "mode": "wago_regalloccheck",
+    "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "reference": {
+      "status": "skip",
+      "pinned_external_runtime": "v8",
+      "detail": "=== RUN   TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero (0.00s)\n"
+    }
+  },
+  {
+    "id": "lcs-substrings",
+    "mode": "wago_regalloccheck",
+    "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "reference": {
+      "status": "skip",
+      "pinned_external_runtime": "v8",
+      "detail": "=== RUN   TestApplicationCorpusRuns/lcs-substrings/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lcs-substrings/wazero (0.00s)\n"
+    }
+  },
+  {
+    "id": "needleman-wunsch-dna",
+    "mode": "wago_regalloccheck",
+    "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "reference": {
+      "status": "skip",
+      "pinned_external_runtime": "v8",
+      "detail": "=== RUN   TestApplicationCorpusRuns/needleman-wunsch-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/needleman-wunsch-dna/wazero (0.00s)\n"
+    }
+  },
+  {
+    "id": "smith-waterman-dna",
+    "mode": "wago_regalloccheck",
+    "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "reference": {
+      "status": "skip",
+      "pinned_external_runtime": "v8",
+      "detail": "=== RUN   TestApplicationCorpusRuns/smith-waterman-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/smith-waterman-dna/wazero (0.00s)\n"
+    }
+  },
+  {
     "id": "fasttree-phylogeny",
     "mode": "wago_regalloccheck",
     "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
@@ -647,6 +697,26 @@
       "status": "skip",
       "pinned_external_runtime": "wasmtime",
       "detail": "=== RUN   TestApplicationCorpusRuns/clang-c-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-c-kernels/wazero (0.00s)\n"
+    }
+  },
+  {
+    "id": "lua-cli-buckets",
+    "mode": "wago_regalloccheck",
+    "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "reference": {
+      "status": "skip",
+      "pinned_external_runtime": "wasmtime",
+      "detail": "=== RUN   TestApplicationCorpusRuns/lua-cli-buckets/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lua-cli-buckets/wazero (0.00s)\n"
+    }
+  },
+  {
+    "id": "micropython-squares",
+    "mode": "wago_regalloccheck",
+    "revision": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "reference": {
+      "status": "skip",
+      "pinned_external_runtime": "wasmtime",
+      "detail": "=== RUN   TestApplicationCorpusRuns/micropython-squares/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/micropython-squares/wazero (0.00s)\n"
     }
   }
 ]

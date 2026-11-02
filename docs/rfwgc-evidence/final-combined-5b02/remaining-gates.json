@@ -1,13 +1,7 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 129,
+  "remaining_count": 125,
   "remaining": [
-    {
-      "suite": "baseline-corpus-wago_regalloccheck",
-      "receipt_suite": "baseline-corpus-wago_regalloccheck",
-      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-      "verdict": "RUNNING"
-    },
     {
       "suite": "graphs-port-ordinary",
       "receipt_suite": "graphs-port-ordinary",
@@ -43,12 +37,6 @@
       "receipt_suite": "graphs-baseline-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "guard-corpus-wago_regalloccheck",
-      "receipt_suite": "guard-corpus-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
     },
     {
       "suite": "backend-ordinary",
@@ -489,16 +477,10 @@
       "verdict": "FAIL"
     },
     {
-      "suite": "tinygo-34/guest-threads-wagodebug",
-      "receipt_suite": "tinygo-34/guest-threads-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
       "suite": "tinygo-34/host-wago_regalloccheck",
       "receipt_suite": "tinygo-34/host-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/standalone-wago_regalloccheck",
@@ -663,22 +645,16 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "fuzz-FuzzStructCardDifferential",
-      "receipt_suite": "fuzz-FuzzStructCardDifferential",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
       "receipt_suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "INTERRUPTED"
     },
     {
       "suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
       "receipt_suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
@@ -807,6 +783,7 @@
     "corpus-wago_regalloccheck",
     "baseline-corpus-ordinary",
     "baseline-corpus-wagodebug",
+    "baseline-corpus-wago_regalloccheck",
     "catalog-ordinary",
     "catalog-wagodebug",
     "catalog-wago_regalloccheck",
@@ -824,6 +801,7 @@
     "spec-v3-signals-wago_regalloccheck",
     "guard-corpus-ordinary",
     "guard-corpus-wagodebug",
+    "guard-corpus-wago_regalloccheck",
     "tooling-build-ordinary",
     "tooling-build-wagodebug",
     "tooling-build-wago_regalloccheck",
@@ -853,6 +831,8 @@
     "tinygo-34/guest-threads-ordinary",
     "tinygo-34/host-wagodebug",
     "tinygo-34/standalone-wagodebug",
+    "tinygo-34/guest-threads-wagodebug",
+    "fuzz-FuzzStructCardDifferential",
     "early-replay-discovery-ordinary",
     "early-replay-compile-ordinary",
     "early-replay-cipolicy-ordinary",
