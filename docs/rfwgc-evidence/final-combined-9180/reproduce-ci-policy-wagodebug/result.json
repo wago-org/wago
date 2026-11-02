@@ -1,0 +1,7 @@
+{
+  "mode": "wagodebug",
+  "gate": "ci-policy",
+  "exit": 1,
+  "verdict": "FAIL",
+  "raw_sha256": "bf6f1ce99080c2179c6c46b4b7f012077826518a7bfab32d3f9ea55f2c35d0fa"
+}

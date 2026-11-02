@@ -1,0 +1,14 @@
+{
+  "source": "9180f09f7590d029bc90df2fa20c0decc590505a",
+  "argv": [
+    "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+    "test",
+    "-json",
+    "-count=1",
+    "-run",
+    "^$",
+    "./docs/rfwgc-evidence/final-review-design/probes"
+  ],
+  "cwd": "/tmp/wago-final-9180-mfc7qkg_/source",
+  "purpose": "non-runtime deterministic defect reproduction after stop"
+}

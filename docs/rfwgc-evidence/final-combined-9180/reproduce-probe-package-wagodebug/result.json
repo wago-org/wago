@@ -1,0 +1,7 @@
+{
+  "mode": "wagodebug",
+  "gate": "probe-package",
+  "exit": 1,
+  "verdict": "FAIL",
+  "raw_sha256": "d54a3d14ddc315cb3af2db54a1732057a1f6fa882b9b56638454c3324a8c86d6"
+}

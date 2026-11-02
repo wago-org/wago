@@ -1,0 +1,33 @@
+{
+  "source": "9180f09f7590d029bc90df2fa20c0decc590505a",
+  "cwd": "/tmp/wago-final-9180-mfc7qkg_/source",
+  "argv": [
+    "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+    "test",
+    "-json",
+    "-count=1",
+    "-timeout=60m",
+    "-failfast",
+    "-run",
+    "^Test(Design|R9(H2|Ownership)|GCExternConversion|HostCallNeedsGCSuspension)",
+    "./src/wago"
+  ],
+  "environment": {
+    "HOME": "/home/dev",
+    "LANG": "C.UTF-8",
+    "TERM": "dumb",
+    "PATH": "/home/dev/.local/share/mise/installs/powershell/7.6.8:/home/dev/.local/share/mise/installs/just/1.58.0:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/home/dev/.local/share/mise/installs/node/24.22.2/bin:/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin:/tmp/wago-final-9180-mfc7qkg_/source/.tools/wabt-1.0.41-linux-x64/bin:/home/dev/.local/share/wago-rfwgc-opam/rfwgc/bin:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin",
+    "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+    "GOTOOLCHAIN": "local",
+    "GOMAXPROCS": "2",
+    "GOFLAGS": "-p=2",
+    "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1",
+    "WAGO_SPEC_INTERPRETER": "/tmp/wago-final-9180-mfc7qkg_/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+    "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+    "WAGO_WAST2JSON": "/tmp/wago-final-9180-mfc7qkg_/source/.tools/wabt-1.0.41-linux-x64/bin/wast2json",
+    "WAGO_WABT_VERSION": "1.0.41",
+    "WAGO_APP_CORPUS_REFERENCE": "all",
+    "WAGO_CORPUS_TIMEOUT": "1m"
+  },
+  "driver_sha256": "798fe53884d9040b28bb1a4904c959d36f65fe715a77f7bbceb0790f83c6285d"
+}

@@ -1,0 +1,7 @@
+{
+  "mode": "wago_regalloccheck",
+  "gate": "ci-policy",
+  "exit": 1,
+  "verdict": "FAIL",
+  "raw_sha256": "b29d68d361d476939534894766760727f3664499c49e6bd0467ee55b7b42225b"
+}

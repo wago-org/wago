@@ -1,0 +1,12 @@
+[
+  {
+    "gate": "tooling-vet-ordinary",
+    "pid": 4048694,
+    "signal": "SIGTERM"
+  },
+  {
+    "gate": "full-root-replay-ordinary",
+    "pid": 3971587,
+    "signal": "SIGTERM"
+  }
+]
