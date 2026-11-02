@@ -1013,6 +1013,10 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	f.stats.call(callKindInline)
 	start := f.a.Len()
+	storeLocals := tupleStoreHint{locals: [2]int{-1, -1}}
+	if t.tupleControl {
+		storeLocals = f.inlineTupleStoreLocals(caller)
+	}
 	base := f.inlineBase[t.globalIdx]
 	if t.integerPairLeaf() || t.tupleControl {
 		// Preserve trap order and the caller's source context before entering
@@ -1035,9 +1039,10 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	oldInlineDepth := f.inlineDepth
 	f.inlineDepth++
 	var err error
+	storesAssigned := false
 	if t.hasCtrl {
 		var selected bool
-		selected, err = f.inlineTupleSelectionBody(t)
+		selected, storesAssigned, err = f.inlineTupleSelectionBody(t, storeLocals, caller)
 		if !selected && err == nil {
 			err = f.inlineBodyCtrl(t)
 		}
@@ -1055,8 +1060,10 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if err := f.consumeInlineTupleStores(t, caller); err != nil {
-		return err
+	if !storesAssigned {
+		if err := f.consumeInlineTupleStores(t, caller); err != nil {
+			return err
+		}
 	}
 
 	// The callee's results sit on the operand stack; a bare `local.get` result is a

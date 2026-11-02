@@ -11,6 +11,64 @@ type tupleIfSelectPlan struct {
 	sources [2][2]Reg
 	types   [2]machineType
 	end     int
+	stores  [2]int
+	direct  bool
+}
+
+type tupleStoreHint struct {
+	locals [2]int
+	end    int
+}
+
+// Source assignments are high result first, then low result. Restrict hints to
+// original caller locals; nested splices and regional leases retain temporaries.
+func (f *fn) inlineTupleStoreLocals(r *wasm.Reader) tupleStoreHint {
+	invalid := tupleStoreHint{locals: [2]int{-1, -1}}
+	if f.localBase != 0 || f.inlineDepth != 0 || f.inlineForwardN != 0 || len(f.intervalLast) != 0 || f.intervalControl || f.selectGroupEnd != 0 || f.streamingReduction || f.policy.CompactNative || profileEnabled || f.stats != nil && f.stats.RecordSources {
+		return invalid
+	}
+	rr := *r
+	var locals [2]int
+	for i := 1; i >= 0; i-- {
+		op, err := rr.Byte()
+		if err != nil || op != 0x21 {
+			return invalid
+		}
+		x, err := rr.U32()
+		if err != nil || uint64(x) >= uint64(f.nLocals) {
+			return invalid
+		}
+		locals[i] = int(x)
+	}
+	if locals[0] == locals[1] {
+		return invalid
+	}
+	return tupleStoreHint{locals: locals, end: rr.Offset()}
+}
+
+func (f *fn) planTupleSelectStores(plan *tupleIfSelectPlan, locals [2]int) {
+	var registers regMask
+	for i, local := range locals {
+		if local < 0 || local >= len(f.localType) || f.localType[local] != plan.types[i] {
+			return
+		}
+		reg, floating, pinned := f.pinReg(local)
+		if !pinned || floating {
+			return
+		}
+		if registers.has(reg) {
+			return
+		}
+		registers = registers.add(reg)
+		for _, arm := range plan.sources {
+			for _, source := range arm {
+				if source == reg {
+					return
+				}
+			}
+		}
+	}
+	plan.stores, plan.direct = locals, true
 }
 
 // scanTupleIfSelect proves both arms before touching compiler state. Dedicated
@@ -76,6 +134,13 @@ func (f *fn) scanTupleIfSelect(r wasm.Reader, signature wasm.Reader, types []mac
 
 func (f *fn) emitTupleIfSelect(plan tupleIfSelectPlan) {
 	f.materializePendingTraps()
+	if plan.direct {
+		// Snapshot old caller values before either destination is overwritten.
+		// This may allocate or materialize, so it must precede the condition flags.
+		for _, local := range plan.stores {
+			f.realizeLocalRefs(local, nil)
+		}
+	}
 	for _, arm := range plan.locals {
 		for _, local := range arm {
 			f.recoverLocal(local)
@@ -89,7 +154,11 @@ func (f *fn) emitTupleIfSelect(plan tupleIfSelectPlan) {
 	}
 	var destinations [2]Reg
 	for i := range destinations {
-		destinations[i] = f.allocReg(0)
+		if plan.direct {
+			destinations[i], _, _ = f.pinReg(plan.stores[i])
+		} else {
+			destinations[i] = f.allocReg(0)
+		}
 		f.pinned = f.pinned.add(destinations[i])
 	}
 	cond := f.s.back()
@@ -111,10 +180,29 @@ func (f *fn) emitTupleIfSelect(plan tupleIfSelectPlan) {
 	}
 	f.pinned = saved
 	for i, dest := range destinations {
-		value := f.pushReg(dest, plan.types[i])
+		var value *elem
+		if plan.direct {
+			local := plan.stores[i]
+			f.invalidateBoundsCertFor(1, uint32(local))
+			if local < 64 {
+				f.localWritten |= 1 << local
+			}
+			f.markLocalDirty(local)
+			f.setFactsForLocal(local, 0)
+			if plan.types[i] == mtI32 {
+				f.setFactsForLocal(local, factUpper32Zero)
+			}
+			continue
+		} else {
+			value = f.pushReg(dest, plan.types[i])
+		}
 		if plan.types[i] == mtI32 {
 			value.st.setValueFacts(factUpper32Zero)
 		}
+	}
+	if plan.direct {
+		f.prepareStoreForward(0x21)
+		f.stats.peep("tuple-if-select-local-stores")
 	}
 	f.stats.peep("tuple-if-select")
 }
@@ -182,25 +270,31 @@ func (f *fn) planInlineTupleSelection(t *inlineTarget, localBase int) (tupleIfSe
 	return plan, conditionEnd, true
 }
 
-func (f *fn) inlineTupleSelectionBody(t *inlineTarget) (bool, error) {
+func (f *fn) inlineTupleSelectionBody(t *inlineTarget, stores tupleStoreHint, caller *wasm.Reader) (bool, bool, error) {
 	plan, conditionEnd, ok := f.planInlineTupleSelection(t, f.localBase)
 	if !ok {
-		return false, nil
+		return false, false, nil
 	}
+	f.planTupleSelectStores(&plan, stores.locals)
 
 	reader := wasm.NewReader(t.body)
 	for reader.Offset() < conditionEnd {
 		f.wasmPC = f.tracePCBase + uint32(reader.Offset())
 		op, err := reader.Byte()
 		if err != nil {
-			return true, err
+			return true, false, err
 		}
 		if err := f.emitPlain(reader, op); err != nil {
-			return true, err
+			return true, false, err
 		}
 	}
 	f.wasmPC = f.tracePCBase + uint32(reader.Offset())
 	f.emitTupleIfSelect(plan)
+	if plan.direct {
+		if err := caller.JumpTo(stores.end); err != nil {
+			return true, false, err
+		}
+	}
 	f.stats.peep("inline-tuple-if-select")
-	return true, nil
+	return true, plan.direct, nil
 }

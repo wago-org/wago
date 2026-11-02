@@ -80,6 +80,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   boundary, and assign immediate caller locals before copying private results
   into temporary registers. Preserve ordinary merges for returns and branches
   to the helper boundary.
+- Select pure inlined ARM64 integer pairs directly into two distinct caller
+  locals when their dedicated registers cannot overwrite either arm's sources.
+  Preserve pending reads of the caller's old values before the selections.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.

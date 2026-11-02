@@ -9,6 +9,34 @@ import (
 	"testing"
 )
 
+func TestTupleIfSelectStoreProofRejectsOverlappingHomes(t *testing.T) {
+	for _, variant := range []string{"valid", "source-overlap", "destination-overlap", "float", "unpinned", "wrong-type", "missing-local"} {
+		f := gpClassEmitter()
+		f.localType = []machineType{mtI32, mtI64}
+		f.locals = []localDef{{reg: X0}, {reg: X1}}
+		locals := [2]int{0, 1}
+		plan := tupleIfSelectPlan{sources: [2][2]Reg{{X2, X3}, {X3, X2}}, types: [2]machineType{mtI32, mtI64}}
+		switch variant {
+		case "source-overlap":
+			f.locals[0].reg = X2
+		case "destination-overlap":
+			f.locals[1].reg = X0
+		case "float":
+			f.locals[1].isFloat = true
+		case "unpinned":
+			f.locals[1].reg = regNone
+		case "wrong-type":
+			f.localType[1] = mtI32
+		case "missing-local":
+			locals[1] = 2
+		}
+		f.planTupleSelectStores(&plan, locals)
+		if plan.direct != (variant == "valid") {
+			t.Fatalf("variant=%s direct=%t", variant, plan.direct)
+		}
+	}
+}
+
 func TestTupleIfSelectPreservesPairAndPrefix(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		typ, bt, k, add, mul, le := wasm.I32, byte(0x7f), byte(0x41), byte(0x6a), byte(0x6c), byte(0x4d)
@@ -52,6 +80,9 @@ func TestTupleIfSelectPreservesPairAndPrefix(t *testing.T) {
 									if (stats.Funcs[0].Peephole["inline-tuple-if-select"] != 0) != (enabled && inline && !withLoop && !profileEnabled) {
 										t.Fatalf("inline path mismatch enabled=%t inline=%t loop=%t stats=%v", enabled, inline, withLoop, stats.Funcs[0].Peephole)
 									}
+									if (stats.Funcs[0].Peephole["tuple-if-select-local-stores"] != 0) != (enabled && inline && !withLoop && !profileEnabled) {
+										t.Fatalf("direct pair store path mismatch enabled=%t inline=%t loop=%t stats=%v", enabled, inline, withLoop, stats.Funcs[0].Peephole)
+									}
 									if hit != (enabled && inline && !withLoop && !profileEnabled) {
 										t.Fatalf("path mismatch wide=%t enabled=%t inline=%t stats=%v", wide, enabled, inline, stats.Funcs)
 									}
@@ -91,6 +122,66 @@ func TestTupleIfSelectBooleanAndMixedWidths(t *testing.T) {
 				}
 				if diagnosticsEnabled && (stats.Funcs[0].Peephole["inline-tuple-if-select"] != 0) != (enabled && !profileEnabled) {
 					t.Fatalf("path mismatch enabled=%t stats=%v", enabled, stats.Funcs[0].Peephole)
+				}
+				if diagnosticsEnabled && (stats.Funcs[0].Peephole["tuple-if-select-local-stores"] != 0) != (enabled && !profileEnabled) {
+					t.Fatalf("mixed pair store path enabled=%t stats=%v", enabled, stats.Funcs[0].Peephole)
+				}
+			}
+		}
+	}
+}
+
+func TestTupleIfSelectLocalStoresPreserveOldCallerValues(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		typ, bt, k, add, mul, le := wasm.I32, byte(0x7f), byte(0x41), byte(0x6a), byte(0x6c), byte(0x4d)
+		fold := func(x uint64) uint64 { return uint64(uint32(x)) }
+		if wide {
+			typ, bt, k, add, mul, le = wasm.I64, 0x7e, 0x42, 0x7c, 0x7e, 0x58
+			fold = func(x uint64) uint64 { return x }
+		}
+		for _, variant := range []string{"declared", "parameters", "same-destination", "one-store", "compact"} {
+			low, high := byte(2), byte(3)
+			if variant == "parameters" {
+				low, high = 0, 1
+			} else if variant == "same-destination" {
+				high = low
+			}
+			// Keep a deferred read of the old first parameter below the call.
+			caller := []byte{1, 2, bt, 0x20, 0, k, 13, mul, 0x20, 0, 0x20, 1, 0x10, 1,
+				0x21, high, 0x21, low, 0x20, low, k, 3, mul, 0x20, high, k, 5, mul, add, add, 0x0b}
+			if variant == "one-store" {
+				caller = []byte{1, 2, bt, 0x20, 0, k, 13, mul, 0x20, 0, 0x20, 1, 0x10, 1,
+					0x21, high, k, 3, mul, 0x20, high, k, 5, mul, add, add, 0x0b}
+			}
+			helper := []byte{0, 0x20, 0, 0x20, 1, le, 0x04, 2, 0x20, 0, 0x20, 1, 0x05, 0x20, 1, 0x20, 0, 0x0b, 0x0b}
+			params, pair := []wasm.ValType{typ, typ}, []wasm.ValType{typ, typ}
+			m := modFuncs(t, funcDef{params, []wasm.ValType{typ}, caller}, funcDef{params, pair, helper}, funcDef{nil, pair, []byte{0, k, 0, k, 0, 0x0b}})
+			for _, enabled := range []bool{false, true} {
+				for _, workers := range []int{1, 4} {
+					for _, a := range []uint64{0, 1, 0xdeadbeef80000000, ^uint64(0)} {
+						for _, b := range []uint64{0, 7, 0x8000000000000001, ^uint64(0)} {
+							lo, hi := fold(a), fold(b)
+							if lo > hi {
+								lo, hi = hi, lo
+							}
+							if variant == "same-destination" {
+								hi = lo
+							}
+							var stats ModuleStats
+							opts := CompileOptions{Workers: workers, CompactNative: variant == "compact", Optimizations: map[string]bool{"tuple-if-select": enabled}}
+							if diagnosticsEnabled {
+								opts.Stats = &stats
+							}
+							got, err := runArm64WrapperWithOptions(t, m, opts, a, b)
+							if want := fold(13*fold(a) + 3*lo + 5*hi); err != nil || fold(got) != want {
+								t.Fatalf("wide=%t variant=%s enabled=%t a=%x b=%x got=%x err=%v want=%x", wide, variant, enabled, a, b, got, err, want)
+							}
+							positive := variant == "declared" || variant == "parameters"
+							if diagnosticsEnabled && (stats.Funcs[0].Peephole["tuple-if-select-local-stores"] != 0) != (enabled && positive && !profileEnabled) {
+								t.Fatalf("variant=%s enabled=%t stats=%v", variant, enabled, stats.Funcs[0].Peephole)
+							}
+						}
+					}
 				}
 			}
 		}
