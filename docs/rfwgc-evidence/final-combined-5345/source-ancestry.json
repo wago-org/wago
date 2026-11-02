@@ -1,0 +1,32 @@
+[
+  {
+    "role": "A",
+    "commit": "4bf395915fa2532b99bfec8f3a8d565cb6e4b217",
+    "ancestor": true
+  },
+  {
+    "role": "B",
+    "commit": "7b14d483a9d4774b9e87ea3f3f14b4190eb3c9e8",
+    "ancestor": true
+  },
+  {
+    "role": "parent-race",
+    "commit": "3b04e68376024c689ec651adf1817955ea75d707",
+    "ancestor": true
+  },
+  {
+    "role": "compiler",
+    "commit": "5c0309145c49cf95560d86c0102f0d0faa9b660b",
+    "ancestor": true
+  },
+  {
+    "role": "diagnostics",
+    "commit": "bbe9ae5201e9d43907146e6af9262e8a2a0216d4",
+    "ancestor": true
+  },
+  {
+    "role": "lint",
+    "commit": "6e706159a0eb71b939bc0e9c9e0e32d5e03d5f4f",
+    "ancestor": true
+  }
+]

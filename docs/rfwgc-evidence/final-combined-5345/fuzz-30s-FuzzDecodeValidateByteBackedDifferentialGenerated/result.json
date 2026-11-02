@@ -1,0 +1,22 @@
+{
+  "source": "5345bd365c13963f1bf60e26bb80789ab9ead4cc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T03:33:43.729596594Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/wasm",
+      "Test": "FuzzDecodeValidateByteBackedDifferentialGenerated",
+      "Elapsed": 30.03
+    },
+    {
+      "Time": "2026-11-02T03:33:43.730055987Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/wasm",
+      "Elapsed": 30.035
+    }
+  ],
+  "raw_sha256": "5c4a9f21602724f92eb4ddffa00f9423a24c5f84cfd8564ca43f0573dce9c827",
+  "driver_unchanged": true
+}

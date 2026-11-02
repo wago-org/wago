@@ -1,0 +1,789 @@
+{
+  "source": "5345bd365c13963f1bf60e26bb80789ab9ead4cc",
+  "rows": [
+    {
+      "suite": "full-root-replay-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "full-root-replay-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "full-root-replay-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "cli-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "cli-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "cli-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "installer-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "installer-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "installer-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "nested-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "nested-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "nested-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "collector-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "collector-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "collector-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "race-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "race-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "race-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "parent-race-reduced-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "parent-race-reduced-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "parent-race-reduced-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "guard-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "guard-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "guard-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "corpus-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "corpus-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "corpus-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "baseline-corpus-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "baseline-corpus-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "baseline-corpus-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "catalog-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "catalog-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "catalog-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-port-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-port-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-port-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-baseline-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-baseline-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-baseline-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v1-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v1-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v1-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v2-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v2-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v2-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-signals-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-signals-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-signals-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "guard-corpus-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "guard-corpus-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "guard-corpus-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "backend-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "backend-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "backend-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-default-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-default-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-default-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-established-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-established-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-established-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-build-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-build-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-build-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-vet-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-vet-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-vet-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "runtime-cli-build-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "runtime-cli-build-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "runtime-cli-build-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "profile-metadata-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "profile-metadata-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "profile-metadata-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "profile-runtime-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "profile-runtime-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "profile-runtime-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "shared-scalar-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "shared-scalar-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "shared-scalar-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "native-join-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "native-join-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "native-join-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "seeded-concurrency-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "seeded-concurrency-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "seeded-concurrency-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-evacuation-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-evacuation-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-evacuation-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-joint-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-joint-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-joint-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-conversion-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-conversion-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-conversion-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "hardening-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "hardening-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "hardening-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "hardening-wago_guardpage",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "hardening-wagodebug,wago_guardpage",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "hardening-wago_regalloccheck,wago_guardpage",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "host-transition-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "host-transition-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "host-transition-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "host-transition-wago_guardpage",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "host-transition-wagodebug,wago_guardpage",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "host-transition-wago_regalloccheck,wago_guardpage",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-collector/arm64-ordinary-collector",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-collector/arm64-wagodebug-collector",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-collector/arm64-wago_regalloccheck-collector",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-facade/arm64-ordinary-facade",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-facade/arm64-wagodebug-facade",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-facade/arm64-wago_regalloccheck-facade",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-guest/arm64-ordinary-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-guest/arm64-wagodebug-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-guest/arm64-wago_regalloccheck-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-collector/riscv64-ordinary-collector",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-collector/riscv64-wagodebug-collector",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-collector/riscv64-wago_regalloccheck-collector",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-facade/riscv64-ordinary-facade",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-facade/riscv64-wagodebug-facade",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-facade/riscv64-wago_regalloccheck-facade",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-guest/riscv64-ordinary-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-guest/riscv64-wagodebug-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-guest/riscv64-wago_regalloccheck-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-h6/arm64-ordinary-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-h6/arm64-wagodebug-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-h6/arm64-wago_regalloccheck-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-ordinary-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wagodebug-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wago_regalloccheck-guest",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-generate",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "replay-generated-diff",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "replay-format",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "replay-docs",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "replay-actionlint",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "replay-staticcheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "replay-native-compare",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-portable-386",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-ci-riscv64",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-node-update-website-bench",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-node-update-website-startup",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-node-engine-state-oracle",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-node-fuzz-engine-state",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "replay-build-release-assets.sh",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "replay-release-qualification.sh",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "replay-ci-download-go-modules.sh",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-check-diagnostic-dce.sh",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-check-riscv64-diagnostics.sh",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-check-regalloc-code.sh",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/host-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/standalone-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/guest-threads-ordinary",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/host-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/standalone-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/guest-threads-wagodebug",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/host-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/standalone-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-checkers",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-runtime",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-cli",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-cli-smoke",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-1",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-1",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-2",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-2",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-3",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-3",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-4",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-4",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-5",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-5",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-6",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-6",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-7",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-7",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-8",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-8",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-9",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-9",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-10",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-10",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-FuzzStructCardDifferential",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-30s-FuzzStructCardDifferential",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-30s-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic",
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-30s-FuzzDecodeValidateByteBackedDifferentialGenerated",
+      "verdict": "PASS"
+    }
+  ],
+  "counts": {
+    "PASS": 195
+  },
+  "Darwin": "NOT_RUN"
+}

@@ -1,0 +1,161 @@
+{
+  "source": "5345bd365c13963f1bf60e26bb80789ab9ead4cc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T03:34:37.274608468Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/noGC/false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.274623776Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/noGC/true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.274638815Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/scalar/false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.274649505Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/scalar/true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.274661958Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/graph/false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.274671376Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/graph/true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.274674802Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.274721199Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 0.008
+    },
+    {
+      "Time": "2026-11-02T03:34:37.276891799Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/Off/scalar",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.276905865Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/Off/graph",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.27691888Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/Off/low",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.276931584Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/Off/high",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.276946462Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/Off/promotion",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.276959316Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/Off/large",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T03:34:37.27697755Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/On/scalar",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.276996195Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/On/graph",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.27700932Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/On/low",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.277022735Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/On/high",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.27703572Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/On/promotion",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:37.294715079Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative/On/large",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T03:34:37.294723715Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "TestRFWStage3MeasurementNative",
+      "Elapsed": 0.03
+    },
+    {
+      "Time": "2026-11-02T03:34:37.298087146Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Elapsed": 0.031
+    }
+  ],
+  "raw_sha256": "e849850183cdd6a0f9e723c12bb65f16f5b5ab61a8527229cc0168e3a21e2980",
+  "driver_unchanged": true
+}

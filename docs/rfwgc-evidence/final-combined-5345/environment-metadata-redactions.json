@@ -1,0 +1,3254 @@
+{
+  "reason": "Inherited orchestration metadata and opaque mise environment-diff payload omitted from committed receipts; actual test/toolchain variables and command arguments retained. No command was rerun or changed.",
+  "records": [
+    {
+      "command": "corpus-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "25fea9c88875a7d6d106b9cd24cfb68775ed78b47531ef96f3521593e8d9e580",
+      "after_sha256": "9ea5f788ba2bbd6909e2f62166de42205bdcd1bf692c711b1ff3ce20d1771b82"
+    },
+    {
+      "command": "batch-tooling-1/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "04565f6d13c12ca458f2acf41da29b855fd9075d3e05c12a7300ec0fba23ce07",
+      "after_sha256": "2426d0eb8c25df6bbdbe50a8d19ea61a679d7f8cf945261604afa505efd7caa7"
+    },
+    {
+      "command": "parent-race-reduced-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "0c1f1d774363c613a62ffe14549652bfadc025d53cd7cdeebf4302dc38553bd2",
+      "after_sha256": "a9cc67392155e6c2248e4edfd4e116bf6706dbf3943fe756ea91dec779944ce4"
+    },
+    {
+      "command": "fuzz-30s-FuzzValidateRelativePathAndRustScannerDoNotPanic/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "9138ab7e71980689bd46d57f51c436e2b447ca056a1bd471ea358e5c9a707e18",
+      "after_sha256": "fbc3dbdc3f47031d2465a8bb2aca972cae5bd741866698b6fcbc0eee3ef38a6f"
+    },
+    {
+      "command": "race-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "0eeb91ef734f3d364a7a2997b87d8beb03099a0d7a6fdff1ed45dcdc11d6a776",
+      "after_sha256": "dfab9a488237f4b4f0b79cf83dceccd8f9086d81ed3ad311a9bdb37d8ec9ad06"
+    },
+    {
+      "command": "hardening-wago_regalloccheck,wago_guardpage/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "51cf8b477ce3abfc65746876bcd15a852bfda140c7a427be15a928e2f911957f",
+      "after_sha256": "239231df963d8875dee45df210c501b2fcbe316c4e90eb4a6243e9a5811a6f03"
+    },
+    {
+      "command": "replay-actionlint/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "a375a9dadb8fb9e515c95ff70dec1a0dd7e10fb01c516e2848a1b98806d61e90",
+      "after_sha256": "72c4c09aa0971b7f618c848db7f24776209eeff9df6df9a4146cf8636bc27840"
+    },
+    {
+      "command": "version-wabt/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "b324d72f9b85abb1402fe225d3fca66bb02132d224df4a825da7c57c9e6f1c0a",
+      "after_sha256": "cfb99bc4622d05b2a25a511b27f0551e79281b58a1bdee8881104b134f67518d"
+    },
+    {
+      "command": "native-join-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "ea04e648f61897be8fe1794fc779d624f62db024ae30fd4365b0b4af358839a2",
+      "after_sha256": "46f069de8ea2c2f44adbe6ed383c79e1645e2afa9f8f67b9e608727730b0bd70"
+    },
+    {
+      "command": "tinygo-conversion-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "bac7998655f53d1f380feb3cdbecf3e13da7f2896509fefdec7d14bca1eeb235",
+      "after_sha256": "3b3601b306e8339c10382ce850f086814e64f3fa07af6b94a096ad73bc7dc1f0"
+    },
+    {
+      "command": "guard-corpus-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "3c5e9f8f443de9c094c78576c34a7cd4290697babf8789e6ec9d81e23132225d",
+      "after_sha256": "10e90cfa48f0a2755084f3aad02d913866494af70594db53ee1963becb7bc168"
+    },
+    {
+      "command": "replay-docs/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "4aa20e599c0820ca3dbcc2acb4f3087c994a6a746aaab0ecbcd1f02df3c902a5",
+      "after_sha256": "735c233444c5658df278a9e6d49928073fe4dc50ab38a38f7fbec96fbe224f65"
+    },
+    {
+      "command": "shared-scalar-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "e25d7f261c091118b24f417d24ecf05aa7e6725cda4aeeb2d5838c8e7484711c",
+      "after_sha256": "dfc4bb8e869bc4b356fb532aa52cb68b69ef102a951806756ba4707c45cc1097"
+    },
+    {
+      "command": "spec-v3-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "172a45348b1adc6d48cc479d6f84a097b897bef7574f4fe2f329bd66320f1a51",
+      "after_sha256": "465a19175bfc0eb57e6d78e156f30da0817115ff52bb02118c01c83f704ee43b"
+    },
+    {
+      "command": "profile-metadata-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "985fe0b6b0cfcfbf331ba00d3c4d14739b7a6b3b643d81482b5024b65e5b026c",
+      "after_sha256": "14d099fcdc1d5974f9344c8926a9ebad3e2c6fcff1f0e1e2d692d4c898e7e750"
+    },
+    {
+      "command": "tooling-build-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f8d743f04cae7dbda0f0a8300dd29978d5bc3ab6f05810271080a6e0911cce40",
+      "after_sha256": "dad7941acb302341e0ceceeda0be1168e9c9a0cf4beadb08b8e1d48e5f134e19"
+    },
+    {
+      "command": "batch-corpus-1/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "29ff16c801ee9d2f8e4cdeb387545e889930a80d28bb57e3e11c84b7c160bdf0",
+      "after_sha256": "129c7cefd1eadcc71744b67345a49719b4ef3a59b50b86273437b2309f0fc317"
+    },
+    {
+      "command": "qemu-h6-driver/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "3f27038413c44b66adaa7e5f4951470886b0a43fecd40d403ca692ce2f59f504",
+      "after_sha256": "3235e9cdfef283e82d24cc71f948782e99bd9c687fa1d9e66011a0fffbd6e8c9"
+    },
+    {
+      "command": "profile-runtime-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "0d32495a556be080f312d9847e752f0dc4c3e625b45fba1ceff8b9409a94dc20",
+      "after_sha256": "313bc878c5b2e19bedc7f642ab43908b49d82787b5d96d8a93db8ce3a3ed0134"
+    },
+    {
+      "command": "fuzz-FuzzStructCardDifferential/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "2966c1f01bc024d237e3b3bb5231335503c9db58fce2be9ef1939f8ca01a2dca",
+      "after_sha256": "882eaba48ae4b947f4ecdf2ad9dfacb77c9eb6a61ae10b52366c7915033183bd"
+    },
+    {
+      "command": "shared-scalar-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "afaf1be263b6772e6daead61840c58ba7d25318d64d6832068aadb7e140f65b2",
+      "after_sha256": "34a4397ad248bb16a4163396ab9f7e2dd932b35536e11ca8533af4cfa1748efb"
+    },
+    {
+      "command": "tooling-script-ci-download-go-modules.sh/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "c8d6f2dc685902d66b053cd68875bd85a217eecc6485f62907bfdd134b37489c",
+      "after_sha256": "44d45095be928b81cbe2c650de8e3b5d958cec49bd8627246628ab1f7f75d016"
+    },
+    {
+      "command": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "88ee5a7a9f718fc1b8a7b900a3edf5290204d70ccfe74a9ae935e0a20370ca12",
+      "after_sha256": "3be755d5966ca74f8aca4c56c0745c8c1e9a588d5fc97a6c16449e5297665d7f"
+    },
+    {
+      "command": "guard-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "9f42cd6f6bd7b11ff1015d1456b778aac1b699addec5005f82b1eb2dff387b50",
+      "after_sha256": "6d87c142c9e32e2f16a79c89d9e26c7f06efc8796386e69fdab22a8556ee1a0b"
+    },
+    {
+      "command": "tooling-script-check-regalloc-code.sh/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "fddc98e4f8c589a90f03464119e29b14c183bb614794ad41ed3dcd689e689ac2",
+      "after_sha256": "75c44a6e2836275e0b10851b9cf69f88bd674d34a4de57fd363e9f9ff6b1b9c6"
+    },
+    {
+      "command": "nested-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "3d13be2bfdbab5f29c3b8c6b63f8e4bc9885f893ba518bf5c2a309b776e07caf",
+      "after_sha256": "567b5609939c56cfd5c6f35b981d9af920e31198ed3286e706af6adc024702eb"
+    },
+    {
+      "command": "replay-build-release-assets.sh/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "351d826436fe7282a86dfe6b658f81a8a915e411127dbc7911c07eb610c0ec34",
+      "after_sha256": "2af345a9b2ec3b270a24e34f77f2d57bb2d2b12be23bc1cddee28318be09bb9c"
+    },
+    {
+      "command": "collector-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "ab236e75720f8eb8c19444df3c0b6c00ff5c83023d00256b3ac8e82fd4e6cd34",
+      "after_sha256": "de5f414bd02547ffeb9427e3d36ea62462cf239e2414a1c31a3bd0840ca339bb"
+    },
+    {
+      "command": "tinygo-evacuation-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "6b27f06fee9046d927e21ef9858e4bf3944adeb13cadeef25600050ae1e3854a",
+      "after_sha256": "89cb5625095a9838e098e2033b061e36110f7124743e05ff82b0e36420e556d1"
+    },
+    {
+      "command": "spec-v3-signals-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "e5ef692a5a75fee8ea346ff64dcd8fb4ae9eb35f3df6f757663ebeda5dc1150f",
+      "after_sha256": "03f4a6d4b150070f7f5aa0b1883f952728efebb192253519bca6d014d0f14578"
+    },
+    {
+      "command": "installer-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f2e2902777c56a40ad04cf7e84c525969ff7a4948c736b0d11624b09b749ce33",
+      "after_sha256": "efd8f23f149db7caa34d13fcf24630f53bce7e49eb1e1610d82f605000a0d1f4"
+    },
+    {
+      "command": "graphs-baseline-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f832c8658136e85bfa8a3d6a0501960a2ea967769a23381fcc2a1011945c03e8",
+      "after_sha256": "dda7d2615a768f10a8cca79a7d63431e16d65334565b2a139208541256964073"
+    },
+    {
+      "command": "cli-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "e0ae15b3ba0f979761df545173d8db21b2892bc039234d9d9f6a446570f90002",
+      "after_sha256": "bbe9b8d6882f2f047f7c0b5f3e9c2071cc6e47c5a5f88a7bc62f140352df5c4b"
+    },
+    {
+      "command": "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "61d166db9f2596ab7a22e41913f9cfa5bce5633fb5b6e2800899f208527566d5",
+      "after_sha256": "d39580faffbed922bcb266c8eb9804c470f8239bc31389f2118c316cfbd1cac6"
+    },
+    {
+      "command": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "87b9c956c2a398feea1af456b126e9f14c7a5d275cd676208c045f90726bfbe7",
+      "after_sha256": "8d15ccb2107f4d0fc54defe9a893674b71808262ca296ed8577c22506f587608"
+    },
+    {
+      "command": "host-transition-wago_guardpage/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "012e6a6984b59e7333c1f0110efb45843cf2e74583da910f7987cc36c2ba164e",
+      "after_sha256": "75efd4e94ac5e79a710a8001f95f1523bd311ab78748a397ff9ec14047dbbefd"
+    },
+    {
+      "command": "fuzz-FuzzSpecTrapMatchingDoesNotPanic/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "5df9a2f9e022f611bf03fa40416ec689526ad2dde12601fca3c521b6d56250c3",
+      "after_sha256": "49205f2e4a9dd361cf6910091d78ee3003c097eb7ca408473bff129738bda405"
+    },
+    {
+      "command": "race-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "7cfd3a0b5fe14816b7fa3225c8e68aadb7c961a4e7d1250b3bdd2a39718d0833",
+      "after_sha256": "19294e9c50a77c795d1687b72202e3696be9cab50b4fabf56d52c2264be32c59"
+    },
+    {
+      "command": "hardening-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "2dbe9399ed5d0141ab0fe35da4c75ef0cb7e399ba47bbfd6149b38fec1683f57",
+      "after_sha256": "d8deb57e632ef0d359e01ce5a312b7747d710a98154e9bc60baebb3479c7c863"
+    },
+    {
+      "command": "replay-ci-download-go-modules.sh/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "b98ff0587e49791238dbbe17508f7aa6c269372ca7b921eeb89cb1e4453ff294",
+      "after_sha256": "3386b068e384fc5ec4bf5b7b5fd8f458f5c8a8864ff10584f2e24ba486c4b9b8"
+    },
+    {
+      "command": "collector-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "4b4a12e571c98d39b5812382a45ae02cedaaeed562a9ba7787bdc21dd1474b85",
+      "after_sha256": "f104b727f9f0b4ea937ff61780b6d96a781f7b0af606a83932a29adede5211dd"
+    },
+    {
+      "command": "qemu-facade-driver/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "36f23bfb783ba6bb1590260aa7f816dec5484e92936f8fdd917514871bbe0918",
+      "after_sha256": "b19be1849cfa2eecb39a4c9cda31f65309d39093982d2a3c276793d7b9c1ca78"
+    },
+    {
+      "command": "spec-v3-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "025edd9e769d7be45df1482a0b741db02d4ee409739f148e631be67cd5a57c53",
+      "after_sha256": "2e8ea90e332e76fec78a09044c1d8dcd65b9e6341f8705ef26d0069fd235d001"
+    },
+    {
+      "command": "host-transition-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f607bbb8ac5bc9d4fdf166ceeb641fd645192b76599e6a1f8e326cca52773a6f",
+      "after_sha256": "409ca56e8347fdc76353bd679464abce6dcbc86655fe6c8997f3ad158757473b"
+    },
+    {
+      "command": "batch-spec-2/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "8b517de5716f87f681528385cf0df41b9e64650f8abc22e7e589e2d3b5a5c77b",
+      "after_sha256": "0a5aac76d9a425f408215f8adf62d753293d2182d1c8bb61fe617563bee6d967"
+    },
+    {
+      "command": "graphs-port-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "dcff81874720a6b3c18c8f0b45298c7e30658b54e861bd1571f394d09c137f87",
+      "after_sha256": "936540ab597a668d6af50d2bae527cde9b2b16db4a84ac0b7ccb3f95f0ab0041"
+    },
+    {
+      "command": "tinygo-joint-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "ae75aa499fa1ce7ef86bd2b08a8f1df470ccdc490e5a6fab9ca9c50fd489e295",
+      "after_sha256": "16d8596c8b6e583b68eb23c70aeb72baf3978e0aef1587ae13271561d9bb41ae"
+    },
+    {
+      "command": "fuzz-30s-FuzzDecodeValidateByteBackedDifferentialGenerated/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "76036b58adbab372a45fc54fc199a2f3f57e25084e479837a853a09c9cd14e5c",
+      "after_sha256": "a6e2c1d9abc1116c914e34015cec9dec81219d309dcc4906129d933006c0795f"
+    },
+    {
+      "command": "spec-v2-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "bd09b47f4f2c5aee792cf1f97d1a5dc86d289e6a110afcf3daebf3463273c59f",
+      "after_sha256": "823914fdc7f16b686c6b2a587ac6c0a586ce1f002141f5982e91fb4e31fa936b"
+    },
+    {
+      "command": "spec-v2-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "5ca6908c319b1c673afd5213bf4bf47792235e6e4f77f1c39ef3ec3bd955d661",
+      "after_sha256": "b3755f135dbe48e460469447f76b2558339bb1173a225440c14a9e6a1b440e8b"
+    },
+    {
+      "command": "catalog-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "50830adb4849d2f31be83cbeaa29766979d9a75c53c69e9468abfbdd28d0df10",
+      "after_sha256": "d9141df996f947299785778b84c584bbc6ae27f6a55cbe1faad27d7e2683c794"
+    },
+    {
+      "command": "seeded-concurrency-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "63740b6758735c0be45a951e2e59dcd8e0e25a5bf8db8ddedea1cdae62dc34ec",
+      "after_sha256": "8d57c227395368590a4797679533a2d94488e8220762b6b1c6fc11ab4c9cac7d"
+    },
+    {
+      "command": "version-tinygo/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "57c346141c752c897e3cebad43712db39df396f986e858c31dd538e09253feb3",
+      "after_sha256": "504f30b5ee8a879c3464ec17bf7a359c71148412f60b0250d17940cd164c593d"
+    },
+    {
+      "command": "tinygo-joint-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f2f3f48b5a962c001efaa6664f25b319c6d8accc244c774f3f352876268001d4",
+      "after_sha256": "f0e6bfb76b4fa1db82faff02f1c9deb94b9c578a8ce583b541f6708767e4695f"
+    },
+    {
+      "command": "catalog-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "1f41b042ea3a17e1b4b46d51bdad3bee8d2120a082d09912f3eae80d8c5876a5",
+      "after_sha256": "a9414febded81e5e99d88860dfbe0f2087e4fbb0985805733c07ee39fd26abd2"
+    },
+    {
+      "command": "baseline-corpus-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "154eea8aea495655e8540cdd658bcb5d0bc687535eba308c2a6b1b4dae9d54ba",
+      "after_sha256": "684367a3fd74a0d91a672ee6ed78c03f46d8a1dd62aeee2b274ad35cc9bd5614"
+    },
+    {
+      "command": "runtime-cli-build-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "bae186cf91ed021a9439783a0bbc753941b70b7daefb1836b624e800be609a21",
+      "after_sha256": "465123b04452d053c36a4b321313adcfb7647e3539e6beeb5530cf9551845781"
+    },
+    {
+      "command": "version-ocaml/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "b7e822e2414d780ff6b134167a054149b60dc5791347f879b0c5501393e6015b",
+      "after_sha256": "6e3247dd1bc163bdabf72a892b1801996521a8e2c8599db3113e20d69427c1e2"
+    },
+    {
+      "command": "backend-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "84063b41ba61cc2da6cb489a1ed4890d840d328fa4b6c504426b3beb2834acc5",
+      "after_sha256": "7e7002a4f40e354df865465d0a6b01e23616a00b55590a917e392a46e075d8fe"
+    },
+    {
+      "command": "backend-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "5d65d5e5925edec41fe6e0b44fabb9e88b75d97817b4dc9f73dac92a5d012933",
+      "after_sha256": "66ef43f8204c5911dbbbde8ce282f1660711908da7ae5ff0a4554c74c9262663"
+    },
+    {
+      "command": "tinygo-conversion-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "c81f8d16f133919cc249f983975f66b1a948d980444a04c7e069d896af7d364a",
+      "after_sha256": "670cbad15cb7f52c637368703ee6596c17fc6dcb3a981c5f7d62c0921d18f213"
+    },
+    {
+      "command": "installer-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "d91ef69b71289b047701d623dd6d7033e8441a7f69a9c8d152e59419092837a6",
+      "after_sha256": "50705f0f9b4a73a97b7809755c30d28f8a2039ca5e573b20ef28fea17e75e9b5"
+    },
+    {
+      "command": "spec-v2-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "31c76de5e4503d9f243889b56b8ef1da916463157ac3c0b8dc01359bae5639a3",
+      "after_sha256": "ea78c5602125a412f0c9480d75880a8de1faa90e1790305455e928904fc35127"
+    },
+    {
+      "command": "baseline-corpus-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "837b7b2dff7ed782f51a3e46d5c7285823b3ca28af5703dcb3908097612e64e6",
+      "after_sha256": "5d8642f5f07a578b4b727d497820b3545c009622d20f244f97e24c4319cbbf6c"
+    },
+    {
+      "command": "graphs-baseline-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "a4254d402de77e3909b29cbc6fa03a7ff4bf8112a5bfb84dccc1419fbade9e68",
+      "after_sha256": "7805244abfb4000f663f872c6e053e50a23b9075cb1f13a0f8636da20bb74261"
+    },
+    {
+      "command": "seeded-concurrency-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "18096c763801fb135316e64f6522154d8a8a226f0df4e8bea513c679389e00ae",
+      "after_sha256": "4ae195ad3b53a4051f5adc60d7ad184af7b8ab6718af23d62c6e15a44ab0b1b4"
+    },
+    {
+      "command": "runtime-cli-build-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "af571c13391a449b36a85edafe3bb8c485209cc51b4ae0f176d44e0fb4bfff3a",
+      "after_sha256": "980574f5db85718bc2141b9456ce5b1fee1848cde8287ef06409202f119b6449"
+    },
+    {
+      "command": "tooling-vet-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "9285106ca0013c7f4447a9e4bd64cd0c5397101eacbba3e2d5aaa6905751f3c5",
+      "after_sha256": "65164ea432143145e108cfd104ba112b6aeeb0e7d937fda96e855e0938d8fd2e"
+    },
+    {
+      "command": "race-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "133793443dd92360588fe41cfb264a8cc4a8b771f28340ef861b0deb85304354",
+      "after_sha256": "0b388cc419ace8a61cece63dbb29e8da0caaac708872341bb39950a85f08ca69"
+    },
+    {
+      "command": "graphs-port-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "4be402cb97c422ef2687aba8d35d4858cf4868cd7cff264b4525dd4cf8f357be",
+      "after_sha256": "6b63156f249ffc38b72007e7bf121668a4e152cdee2a67bd0f2bf30c068f225c"
+    },
+    {
+      "command": "corpus-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "611fba57b3c4e039956cf1c74888d9634ae1899a638c6cd37dd87148ee2c2fa0",
+      "after_sha256": "0a37dc5b3e0e286448f491255c9df0193f74d68705f5efcda31fd7471315e219"
+    },
+    {
+      "command": "diagnostics-default-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "2545c7391114b4929092bf38dd196730b5f18eeb18c032cf6b518d50a1748d3c",
+      "after_sha256": "48da1af0eb5a7baae1b27afd6d931006d28049ea3be657aff5e429cc24b3d919"
+    },
+    {
+      "command": "batch-corpus-0/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "9bd8d247dc4e00937049711f0c1cd7b429ead1fb736c9a94e62ee96c99735aa6",
+      "after_sha256": "3d2343e6108191a49b50b0597802f4a6354b04d2a8ecad53950b1724c661f14b"
+    },
+    {
+      "command": "diagnostics-default-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "ba84a304953259aed5a61967bcfabb2e2cd82d6f579cd191c583cf8e42f07dfb",
+      "after_sha256": "7460f2e43a5c9979d807d99e0aca4031b31ab20bebbe5831083564189c18a9f3"
+    },
+    {
+      "command": "full-root-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "377692958cc74cb3ea22268e319486e141d34d1ebca2fd49a9d0f5ef79c073d5",
+      "after_sha256": "0d6d35ad02ef5ce9f545239eca8bec741b3b73365a703cdb971d55a263eec56a"
+    },
+    {
+      "command": "spec-v3-signals-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "1029cf2322d4087e5e040a8fdfb94c6f79cc6f1f3585a1c4507396c8944bb639",
+      "after_sha256": "a841733892c88311cd17658bdf00df822d6a597723289cd1f85cb792b2f3d540"
+    },
+    {
+      "command": "batch-tinygo-1/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "febb51911cd658f7b466875409a08e928b15c0858b6c34ea3787208a8a2f2483",
+      "after_sha256": "4dac027195703cef75e1d2461c72acfc732c4c8dc4ff40648cdb7bdd2684a136"
+    },
+    {
+      "command": "runtime-cli-build-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "19156b5af05bb97716bc07de06d2d79f9cc0bbc54c83408a05379f1364315287",
+      "after_sha256": "a25bdab3b9d685556b6b7c9eacebd3676661e607e6564f16bb3d2e58345e93ad"
+    },
+    {
+      "command": "collector-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "e070c8d043a9337ff63e6d46accafdb08fc3ee8022798c9c019ccee791686e76",
+      "after_sha256": "e2acd754212ac35c134bc6fab237a7c518fb68a20a2cab58ecc21ce128dbae93"
+    },
+    {
+      "command": "tooling-script-check-riscv64-diagnostics.sh/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "888ea765390523a884fbbca74a77eb2cb0f626bde3b73b151bcd869e85d8863a",
+      "after_sha256": "696f5e3052235b604799ac4ddc9f0366a6206e762dcfc5c1dd900b8f8bab8863"
+    },
+    {
+      "command": "nested-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "6aa1afa6b5db67ad66554be1ff186570538028e5c27f0c1bc270514e4515e788",
+      "after_sha256": "619b762b8e659fe5d0cedd73280b9a48f6e366ecea69c7f9d854763e40a84334"
+    },
+    {
+      "command": "cli-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "14eb165e3cb654203071dd70161d0dd9a4d6284ba4d401f45838c62b13c5b666",
+      "after_sha256": "670ba5da394bf1276b799748097fd3784a2d5155caa2805fa7ab31681eabaacb"
+    },
+    {
+      "command": "replay-generated-diff/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "240dc991c4ef428ec6e1ef99dd85209ec8bac69b555ad35e3cd97ec2d5d6a9bb",
+      "after_sha256": "bc7c329a1a7a8a7c7e6f572ec016752d11789d2a18da559ae21e18987671212c"
+    },
+    {
+      "command": "hardening-wago_guardpage/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "c2203e94c91e8c35fb1bb70f08a00b46f032452fc49ffbf6c2dbb9031fb71278",
+      "after_sha256": "287c04c82a2073f06524acb846e4538d3f5b2f3c0ae22f2a69fdd8573ea36da2"
+    },
+    {
+      "command": "native-join-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "6e9925104ab9c29e9f7025aaba61ccb8f128cc9ecf142d9e54253b13abf36ef0",
+      "after_sha256": "5235e41054b54bb2049f850922722740c56977dc062d2c11bb0f097fd1408875"
+    },
+    {
+      "command": "tooling-script-release-qualification.sh/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "3f0e216a6f9ef3d68b42ff0ba03c10ec796433f6cd586bb1a9ab1adda0601910",
+      "after_sha256": "849e639c5ff74484fe9ceccf34450d8fa9b97cce119e8bf2e9642baacf4fe997"
+    },
+    {
+      "command": "batch-tinygo-0/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "40df57951e0bd12765e2ec70858d93efdd483aae6142150c6f24478174f35f1b",
+      "after_sha256": "5bd36cbd39fc2e79d9d78f32c52418f0de3195d6cd2355ddf5484873603a7fcf"
+    },
+    {
+      "command": "full-root-replay-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "9f8750d9bf5799b33640ee60c3323d964b20d90ea217b6b4f850eb58d445e04e",
+      "after_sha256": "e77478b5ba51f988b03f3644aaa90c49d57480c826a7fcc11041cab3a9d6c358"
+    },
+    {
+      "command": "catalog-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "54b8b8afeda7f1fa9c49199dcaa0c3b5e29e587847ac42c17708ad5ae645c2fa",
+      "after_sha256": "003c7f05250017f2e8d3538a94547e85d789b6864ab2400e8a83b350deb70f88"
+    },
+    {
+      "command": "final-ancillary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "38f04e6ae7b0cf648c39c0793cb54f6c10a330ff08c78830a99839c3a0e38898",
+      "after_sha256": "8ac0ff2c57c1062b56aa056c2ecad24a956692b5d66a585f58b6df07fa5c8fb2"
+    },
+    {
+      "command": "tooling-node-engine-state-oracle/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "df241eb413274e2e2706f067364369beb5aef9fa12a8e5309741d29ff17d1eb0",
+      "after_sha256": "62ec303be28d45e47c856f57d50c33e5343131ab88d3258457fdab8818dba155"
+    },
+    {
+      "command": "spec-v3-signals-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "e05c0318f18f0f72c0fa74d210aec12d5c2402c6ffd0c48f4ee85321b6a14af6",
+      "after_sha256": "4905f5c5d04256907ec13987867b545d80aac84c58611e73ae12cae7d1048023"
+    },
+    {
+      "command": "version-go/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f418ef732389c70a2814d3910b8ac9963b09615e51c61a98989f3601b1556266",
+      "after_sha256": "7111155912ee01e5a2a70b009d7e8fcf72416ad8aa454579dddeabddecc7f6ab"
+    },
+    {
+      "command": "spec-v1-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "6aea5476f097d5252e132a314e3106baec1adccc2af22cd5e01f81cf3c002134",
+      "after_sha256": "4754af3b1caa1d43a6b40266ededadb15d638db8ff2fcf57239d98e5054346f4"
+    },
+    {
+      "command": "profile-runtime-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "23e0eafa45eec6c764ee7bb74da3a9d7879f580a9ad45eec2a6293db9c475417",
+      "after_sha256": "46bc712e7af85afbce96a44ca4a4a5ba995b63e87ae3dc55ca702d9238655c8d"
+    },
+    {
+      "command": "installer-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "ff7e4603db368e45eaed61ecb24fa2504fd9dd32dfbfe571150a41864c874f03",
+      "after_sha256": "1c45d65ac08614e23caa656896ab1a347b45c1f2e31d93361ee387ae1da4ce31"
+    },
+    {
+      "command": "tooling-node-update-website-bench/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "6bef0f1da762404b25fe7b13b1e998e6d1ce88e317e6e0968b081b9a5e86436e",
+      "after_sha256": "19460469c5eb73cc3e2339fe297c12789795f1228640e5e3930b381e67f08f45"
+    },
+    {
+      "command": "full-root-replay-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "cb1f9ad8cb900dcce170a135990e80583ed9e23346da5a0a0d607e1d30c7fbab",
+      "after_sha256": "aa3c9155fc0b26982d1a2dd90f3dd843f390c056d6443d6dfe30dffbc9cb6494"
+    },
+    {
+      "command": "tooling-build-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "c2e205eac19cf735409ebaa66d8ae620a5a6b604f27277a15158febc4a9e270b",
+      "after_sha256": "96f9c1de6a1bf735fdc9ce908db52edf72af7cb4bb69a6411b43ebbfade731d9"
+    },
+    {
+      "command": "baseline-canonical-checked-preflight/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "fdf72d612b1243a2f4bb29cbe5987e21d273565357aeb05e2b702204e6094e4e",
+      "after_sha256": "78d2cbefc6dda7d462fdcc32b214cab8bee991c7b206062a2cd840a24b344eeb"
+    },
+    {
+      "command": "cli-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "60952ad867d2f8ebfd2b84e11535dfaa1cfbfc52551414a08379ee489b7432f5",
+      "after_sha256": "1bc8abd2cc2b772f40936154dc06e9065314e1e303ae2aa95db22bb061eb29df"
+    },
+    {
+      "command": "batch-platform-0/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "b522fb6ecd0fb90957884149b997ee15de41714d99eaa33c081df6a6e90d6b5a",
+      "after_sha256": "cbfa38b3c69ee5a0c0770cc31885ec3ba7c187d89a4b8c7acb5bce1ce36f7650"
+    },
+    {
+      "command": "tooling-node-fuzz-engine-state/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "7a6537daea4e43beed57ede6f9e1a89d09b6f4812f4870a3caa77af3f213435d",
+      "after_sha256": "1b59d1ff840fea12606b2fef14e8834c016bfbf8b7c92b2859e39bf69bb28791"
+    },
+    {
+      "command": "spec-v1-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "47dbafe728f99490ec38fab36fd006699d6d47d5eca34a320ebc0a8b2672c840",
+      "after_sha256": "a0780425a92e33a2dc728b3ec3ce4ce9c9e33cf31ff116ecb31abc2d5eaabb71"
+    },
+    {
+      "command": "corpus-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "238d878ebc93aaf80d4611d8730b0746a754b710e68cde1ed7753b5abb835ca3",
+      "after_sha256": "9880f2f08f74a6158b90610bcca7f12fa34b943c4afb2c68038862b5c1986d4a"
+    },
+    {
+      "command": "spec-v1-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "28ae97896ed2b022fe3f74bfddbec1d7a8ee8c5d09f7ebd4d029b64216e230d9",
+      "after_sha256": "d7f2fcc3ee96c094ddd63473002665c65a4fec22769c909119ed105443a42ca5"
+    },
+    {
+      "command": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "c5dd4e46df83b45f86bb473beaf77f5f101f171dded0f26526953499958ede28",
+      "after_sha256": "65cb136ebba0b5099409687867d296d9295221602011609dac4e5ed3b2191f7b"
+    },
+    {
+      "command": "tinygo-evacuation-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "8000d50e7bc0740ba16a5431f30fd1ad200fbd119ead83dda94e16579d1fc89b",
+      "after_sha256": "3dfe7b7a2f219e93a7d2fb7000ac52337289a9cb8c8627341e2cd0bfc903293b"
+    },
+    {
+      "command": "final-extended-fuzz/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "8a24e6d4dad7e89721052c84a0a11bb6429f59d3b7964d147520c64c832cbfc6",
+      "after_sha256": "4feff2137f0a1196d1d6c838040f8543e92ba9722cb277f1bd161e1c7e3bcff9"
+    },
+    {
+      "command": "profile-metadata-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "13bd7b31500ce35f5559ef5097dde8ea2de835d9311528d24f49c63abf41f3f5",
+      "after_sha256": "e890ce1eef5a5bae87602a7132d18b435dfb8909334b874d521a7e37a2423137"
+    },
+    {
+      "command": "parent-race-reduced-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "d9240df7572f970da19040f3a741aa43d9fecbedd4612852532189adb68fcdf2",
+      "after_sha256": "535e99c1c485d27b6f88038cba4081a420175f208a670e56633ccdff375c750d"
+    },
+    {
+      "command": "tooling-docs/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f7cb02c8d12a9316d848b2ada1c8e49452dea068c6f39a7554e2c07ff7d39e99",
+      "after_sha256": "d3a88317a5e4ccf5d60cd6753d9a49667c4419d8bad27f9a4281a7d1659a9b14"
+    },
+    {
+      "command": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "3ddc9a7bcb6a2df1fc43b1db3a61be3cc0e0f2a845897115d2473fd3ab7ae25d",
+      "after_sha256": "c8064317a3346ac0d6e8a278bdaa7305fe0b62588a5442b14e449cf96b96779a"
+    },
+    {
+      "command": "tooling-native-compare/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "ef4cb8b2fe08bb888223793fa03a222795aa735ea2fbc96448109d32d98e47c1",
+      "after_sha256": "383de1719ac4a991242c153320138beee021784fa598a2f0cea494c7d9e07e53"
+    },
+    {
+      "command": "guard-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "78a4492dc1b9885ddacf71123f6f8ab708cf6b7b2c17648d725176dece04587b",
+      "after_sha256": "6bcf9c8aa659b364742087bf0bc2d81187e5f850e4998d321dcdc8298bb72c61"
+    },
+    {
+      "command": "replay-native-compare/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "ec527499fe494ba70a8a66a6e0efeaa71d4945592238aa681237d2e0030bf1bd",
+      "after_sha256": "5871501d8585bb3cd5df297f2d9f8d5d4539e18331c1bc66171aa6be5d110ad4"
+    },
+    {
+      "command": "batch-spec-0/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "b8484a6310086cf28b661da56a485566b216ab8a105aba53e1410eb213dca2a9",
+      "after_sha256": "c370c2f9371c8a7c4c44d77bbba631a4f1df03ee0036e22571319c3345a706c3"
+    },
+    {
+      "command": "replay-staticcheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "d6f80df4397a2c467c019357edd7245054aeb31991af12cb127fab388c825004",
+      "after_sha256": "30a867389cb001fdcca74d290ba76e3bd90254b2991aecb6f7ab3eb04ecc55c0"
+    },
+    {
+      "command": "full-root-replay-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "09456d202668444b46bd107fde367eb8e23368fe9917436a4ed79b0794469825",
+      "after_sha256": "a9e2873fb81a6e521690531b2543786ec0032713d3739486e6e837e9a11fc881"
+    },
+    {
+      "command": "batch-tooling-0/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "7c81e6de82150a4dd55c676b676b6dfd0b9a7a7e5e7ae3249d6cee48e506291f",
+      "after_sha256": "db050eb1bb0d10f2f2fa7217fe5fbd3d485eabdcf8ba3028a68e8b875137f01f"
+    },
+    {
+      "command": "backend-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "a918a1d11bea2ec44f57cbf667effe5cf0d653ce0fc7dbc0563d690c952f8e85",
+      "after_sha256": "31678723a8e8091a96ec8931b743dbada3e40466c506fb39560afc8073769874"
+    },
+    {
+      "command": "hardening-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "1472f9f4685be3e64c0f049d60919260f051c0816e5d0e606c056dfa91e243fe",
+      "after_sha256": "f3ab4ea760602dd3ee661aba491e35431cae119c066e13240363d957922a46a1"
+    },
+    {
+      "command": "native-join-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "ca7a35319ee15ccd20285d01b389f266b5006e0dcc2c608927bd0f70728ddffd",
+      "after_sha256": "45e6b6efe545eed67a1e191027eb37574b4057289c80a25d71d4c0ddc263b716"
+    },
+    {
+      "command": "tooling-vet-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "86a17d70c8730879413175aed6d9a9f048d8d40f70e51f4607f15a0f000bc2bc",
+      "after_sha256": "fbc7a6be3e0a6277bbc766cf9af9f6e545340a3a8d49e8e9fad152028dc5192a"
+    },
+    {
+      "command": "seeded-concurrency-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f62824c9afe4fd16ecf0c91eb9454f42c82f0a924ee46196d72a8b237f7ccb5d",
+      "after_sha256": "6c268bf03a6689b87408bce6eeecd09b05e92119262ac99f2b296e9fd9871e45"
+    },
+    {
+      "command": "tinygo-evacuation-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "7fde784a6d314ffccb3cb3612085c1917d82489bedc2b410e4dd1e3661d4f09f",
+      "after_sha256": "93bc905cd97f910002b25f860203359b223884e2013e9872ed91b37767a1d7a7"
+    },
+    {
+      "command": "guard-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "b09872055607c4f19bda3c11cb504ee399d94ed5846ec464cd28a9c5005121b2",
+      "after_sha256": "a52028bcd847c5a6f29296656f16d812b518ec2991ee58c3eab9208053d99af6"
+    },
+    {
+      "command": "parent-race-reduced-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "927cbb026a24bc92d91d425d6f97fa9e2a4ca01f934513f76fd09030ccc69ee3",
+      "after_sha256": "558ef88a17cb5bd0f017bcbd372c7a68472e6fc236fe3de7b050532e2f248ee2"
+    },
+    {
+      "command": "hardening-wagodebug,wago_guardpage/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "5cf68c737910a7759f70b75cb7a57a10511c5bbc36043e3a3d61a1ef02e09aa4",
+      "after_sha256": "0be02d06de7e7a77dbf48a3d056965ba1d97e72db79e0e1e7729c588bbd29a99"
+    },
+    {
+      "command": "diagnostics-established-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "8b0bc762c528b04c828145356f8ad6666566a9f0b7bf672c36e2c13f9bbb4f69",
+      "after_sha256": "04d4b1d26e77c87afcdeb12e42ee83a9ddecd27574e569544b81e97339f0a8f2"
+    },
+    {
+      "command": "tinygo-conversion-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "5629edf68ebcec12627abdccfa9ed7720ba530e6eb75a4c2617c83d2afba5840",
+      "after_sha256": "db5bef86e8b16d12b3fcc3d351463fee6fb979dd27b96f7f1f5593c695ff79cb"
+    },
+    {
+      "command": "tooling-generate/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "d078c8274dd463a11c780db298e8fdd074938941658f89dde2789524f7cc1a3e",
+      "after_sha256": "c69a4d8e03a90372e0814707089251cbc20d93d03d189783cb7eb74df684e1e8"
+    },
+    {
+      "command": "shared-scalar-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "8dea9251fcb320fac5e04c134d934c0de36b9ba83b06df31e14971792feb63e0",
+      "after_sha256": "401d0e92e9b8472616f52a50a65ac9c1f4ec9302da21fe886c317c3699762a05"
+    },
+    {
+      "command": "nested-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "1baad1736669546eaee38070b53332d4986fd79fdc02dd99fc0c3ebdc4b6d669",
+      "after_sha256": "e2b64cba869b55899e6b3c3c82933f52e1f04bc714e3b48f339ad9a59b9d8d19"
+    },
+    {
+      "command": "diagnostics-established-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "ad1f2ae921200ac8d83a58dd27aca6551c698d222dcd037dc4f11bb1ffdf60e2",
+      "after_sha256": "48b0b8110a50f240ae460dbde6deef28c6b5ebb0cd5a114d2c8c3b757749dbee"
+    },
+    {
+      "command": "guard-corpus-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "56c38eab1f3ad7eb96a94421f1592d619d7a1d61a98b5dfe688c6b35ca246cfc",
+      "after_sha256": "7c80092dc11f779973d92a8d1431bb1e20d2a6191e2f5b131f326a803b100a56"
+    },
+    {
+      "command": "graphs-port-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "8409bac4713ae913b6cde5a70ca9e75b2da31b9fe0b699ba9340cf75a5ca09b2",
+      "after_sha256": "fcd4650035c32ea14a6a7d7ce40c169148ca8d9e71fab0e7846c035c30dc9b78"
+    },
+    {
+      "command": "tooling-script-check-diagnostic-dce.sh/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "59a3dc932ab4c7b3246e3c29a9c28c2ea1cb0cec1ad26eec15fc39894d4af6ed",
+      "after_sha256": "abe814b61316205c8387b8192b9406e9d8504b9854f2e8e346b3daccb00b140a"
+    },
+    {
+      "command": "tooling-script-build-release-assets.sh/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "e55e2d1674262c8a6b7ffa19e5690acfdd05ac11806b5a3f5ab0c23bab3eee1a",
+      "after_sha256": "8ae942f288f7d8ea33ba9bf0af2b51d62e772031674105584230be13582032b0"
+    },
+    {
+      "command": "tinygo-joint-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "23188d309b22151050d3b890f83fd3402d0ecc67ec67ed22f7397d5070cf86a0",
+      "after_sha256": "796587cce59544e43b448a8ab9cd36c48c0d97aec99f98610ad298761ee8969e"
+    },
+    {
+      "command": "batch-corpus-2/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "6ea81d30753eb93df8343f402c55d30170ec731262a29fbbc0dda24ade88e91f",
+      "after_sha256": "ab86daff1fcc2d0c0cccbdd9ea43c8d979a1edee1883ef5f24950d47421bb634"
+    },
+    {
+      "command": "tooling-staticcheck-bootstrap/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "1331719ed0b94bab551f528e04717ae9297e50cb00e1921a281a2b45465c8e6a",
+      "after_sha256": "f97c16f7d2215a71d4b839b7706b26528ff35fe4fe58697b4006d65d6eb722a0"
+    },
+    {
+      "command": "hardening-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "060bdbe325f961683c1e2a5c880d34d7423a7e4e67354b31fb03568b351a78c2",
+      "after_sha256": "6c34f04623e9e595b414973b4f055910524eee7403bb7f162055bf6f403126a4"
+    },
+    {
+      "command": "tooling-portable-386/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "0eb0ec41bd9377c8529970443d90827dd11acf8a8ee1775cedb8eb3adb7dcbca",
+      "after_sha256": "ccfac8a5be7291d254337b353b5793aa7ebde224dced055fe22d008536e26d9e"
+    },
+    {
+      "command": "tooling-script-ci-riscv64/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "90e89147df5430f6cb8f214b8859ebd344dd6723f95f85bf7325bdd184764b6a",
+      "after_sha256": "304d42900010dc84daecec3e4d8d8aadf702ed4b52d5e98a76a0c270522ccd01"
+    },
+    {
+      "command": "version-node/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "8e8c45e31d83fd431aeb358f6875603dae515dcd4fc1f6b6b8202a4ff5e3d6f8",
+      "after_sha256": "1e77360c63f9a00ef00dbc1f733b2c06c189fc35259db1f7d1adffad0a77de78"
+    },
+    {
+      "command": "tooling-staticcheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "9ed43b3c131e2b130ca251a2b6e9ca940140009397a3967b6b7071b784866378",
+      "after_sha256": "ef1391934e241d65979a06f5ec5b76aa67dd0d2d95beb683e623d848a8e6150e"
+    },
+    {
+      "command": "tooling-vet-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "86533509b80bb312037aa482fef79da959e4d73e6cbb46bf7a8be4307cb8cd3f",
+      "after_sha256": "78534c67f0544760f5facb9b27ae31273ea3b9bdbd7706bc1f94cb61ef6eee78"
+    },
+    {
+      "command": "qemu-rv64-controls-driver/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "a1c41eba040caa51c303328e7f6d5340e967e7659a5a4e1b2e5c6ff074955e56",
+      "after_sha256": "bbf8afa8d3da41c6b3dffb33173ed9e41ed2d79ae00b37e77d3e693da7e71830"
+    },
+    {
+      "command": "tooling-node-update-website-startup/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f22e4e2c323c6fb845739dbd28feaff9fe0c184ba73d9ffc3af5cb4f554c768b",
+      "after_sha256": "87db12ec73df407ab660d97e43f75866b23ae430c6a6fd97dcd4ca723e476936"
+    },
+    {
+      "command": "tooling-actionlint/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "e36542b88bc2767475c9cfcdcf7f11ad5364615e239f17a54ae597acdf4890aa",
+      "after_sha256": "de67b81cb8c0d15c658a9fcbca2e5b45581a1993ee6fd2a8bad48ceef0500bb9"
+    },
+    {
+      "command": "batch-platform-1/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "7c802deff502f22b8db87b6cc84e651ecdee4f37f1c69e9ae8e4c6a22d679c06",
+      "after_sha256": "98f6c46a41d1c100ba79996d327c68111c9734366c141a1f4dc27b3547157def"
+    },
+    {
+      "command": "replay-format/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "76e73502fc0041f6e773a42a1f4c6f64cf0b85e0e2ab1a97bf7cea4a56c27e39",
+      "after_sha256": "280553c190b29441db9400daaf2831d1efd93c859b404d6d088f5cc223f87177"
+    },
+    {
+      "command": "host-transition-wago_regalloccheck/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "3b05d43adaa2f8adfaee3b9e44e0a211f04d222905377389d21139e766b71c1e",
+      "after_sha256": "b64fc5288c3d3c341f43618ab48aab871da236f57cef8650b10838adfb28f3ed"
+    },
+    {
+      "command": "fuzz-30s-FuzzStructCardDifferential/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "2f492aa15f73ceebbf39c43efbaea52085de6cd510e59c3568cbcaa6c3b0572e",
+      "after_sha256": "3c68eabb8d4540f12ab4598b8f468e83906a73ddd7a31085e008eaef06f912cc"
+    },
+    {
+      "command": "tooling-build-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "d7f3cab9be2d386e4564a0ac791586f54fa88130c620290928e5a9fb308a9440",
+      "after_sha256": "9ee8f789bce65b3a768ac54643ba4f300538607e1c401c196f6cafebbb9b8921"
+    },
+    {
+      "command": "profile-runtime-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "0c1938e27ba6547e51c55079e6c8636ef040fcead835d5830fff8ecf70cd5958",
+      "after_sha256": "89c9aa6934b25e7de6df753ca120a30d930fd108ddd2c571b58e21321ecab729"
+    },
+    {
+      "command": "guard-corpus-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f884f7a6f0017e7c99458e3de8b0fc600a26f35ace22511256b4f342f9511606",
+      "after_sha256": "a2b8db10018e7319a016fcb23bcfc213b6c6911f7bc46972615672a89dffe2c2"
+    },
+    {
+      "command": "batch-corpus-3/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "af5098ce7939b055785a568b67c06b7ecc43cf75978760621acff84a183733ef",
+      "after_sha256": "b0bd59f84d3f4284cda73b743da556527d8701175f6d2d512a3c1da1570bc09e"
+    },
+    {
+      "command": "spec-v3-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "099153bf9658c64ea9557be1d3a2deabde9d73565aaf44548dfb09e728f2df46",
+      "after_sha256": "ced2025a40d91981025913bef3b2bb76f051e14a4e1365392de22a31cdcefe56"
+    },
+    {
+      "command": "host-transition-wago_regalloccheck,wago_guardpage/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "01a814f42195c5c6fc33b0bf53c93274461f8871e5f838df86e08164b56a6186",
+      "after_sha256": "d58042705ac36b48e90793c91d4bbae717f4feb25fb5564ef787f4cee6176082"
+    },
+    {
+      "command": "host-transition-wagodebug,wago_guardpage/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "8e4836164b1c773b4564e00cbb42274cc298e97f6e1dd09f967e4882f81c969d",
+      "after_sha256": "f2fab2a4e678749083a83bd5edaf2fca71b1440bbed74c6476a398202e2b75bd"
+    },
+    {
+      "command": "replay-release-qualification.sh/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "731517ebc5de6b80dad5800192a55beebc296a41a4abb6cc4c97b07162d8f33d",
+      "after_sha256": "d218c3846da37ac19a4f1177bf7d9743fe868fe3395b3f51567cb31228ab32af"
+    },
+    {
+      "command": "profile-metadata-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "e24eeaf6f9c31bff4c26b7ff5d98b5c5df740e5b81909064e20e0e30d4421f8c",
+      "after_sha256": "5084b5e95c828006014d8ed4bdf7f0d8eceb52e77c979cd390a86ac2a6ff35b1"
+    },
+    {
+      "command": "final-hardening/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "ae834e6c881ae93efaa4771618c6b2c7039c124f0677de8ba070561a4f57e7b8",
+      "after_sha256": "4a47448b312af0f1df2758b1c2d7d6f72cdcb9a85adc405a2f076b92c2d29a35"
+    },
+    {
+      "command": "host-transition-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "46be6a838f8b0680678e5fb4f574cc2b24b57130993ce516b607a6eebe989dfc",
+      "after_sha256": "d603dc062f77f508b30093e528c3beb157478e8f048afdccaa447f8a2252cacf"
+    },
+    {
+      "command": "baseline-corpus-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "e27af37dec516d4f2e9e355a0c724e73c1bde043e7b2994245c093c6bc4cb566",
+      "after_sha256": "6d0957e97d8b9bb737a5d9ed25b1cebe834687548cba64bcbfc85500eedcbec3"
+    },
+    {
+      "command": "diagnostics-established-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "a7d84f3b8f526869ee079aba2c2ab307c4838bc264059792676ab213cfc00d71",
+      "after_sha256": "a4e722b412fd9fa813302be338ba6e57d804228f825161501880da53b41f5cbc"
+    },
+    {
+      "command": "batch-spec-1/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "d76d19e46599a5b91416230783f540abb2a77fe8e72320c3f551502d126439bf",
+      "after_sha256": "d90736b4a16feb0f4513463e120b7b1b0d94cec0f92b7ea34491384099df186e"
+    },
+    {
+      "command": "diagnostics-default-ordinary/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "f5f9dd2c4619cf4225da3e4bc48bcd802da104885ef4d8d43ee5d7065de18bda",
+      "after_sha256": "17ba87f52acc4a7aac8f6ccbe9cf9bcfb6fe4d62ff8edfd2dfbed617a8573f24"
+    },
+    {
+      "command": "graphs-baseline-wagodebug/command.json",
+      "omitted_keys": [
+        "CODEX_MANAGED_PACKAGE_ROOT",
+        "CODEX_VERSION",
+        "CODEX_MANAGED_BY_NPM",
+        "CODEX_SESSION_ID",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "__MISE_DIFF",
+        "CODEX_HOME",
+        "CODEX_THREAD_ID",
+        "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS",
+        "CODEX_CI",
+        "CODEX_TOOL_CALL_ID",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"
+      ],
+      "before_sha256": "3905e0e411c6e771288df059a5d46ace595f0ae28bf9d1ed6c34cde7b069f410",
+      "after_sha256": "d09c853e8b7a45bbbe18acbec8bc1e424aa7dc180c4e33e001956ca41ba644e8"
+    }
+  ]
+}

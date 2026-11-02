@@ -1,0 +1,14 @@
+[
+  {
+    "scope": "worktree",
+    "initial_strict_equal": false,
+    "normalized_equal": true,
+    "reason": "setup.py captured git stdout with strip(), then added one newline; integrity.py retained raw stdout. Original records preserved."
+  },
+  {
+    "scope": "index",
+    "initial_strict_equal": false,
+    "normalized_equal": true,
+    "reason": "setup.py captured git stdout with strip(), then added one newline; integrity.py retained raw stdout. Original records preserved."
+  }
+]

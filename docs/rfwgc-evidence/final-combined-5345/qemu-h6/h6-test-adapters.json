@@ -1,0 +1,18 @@
+[
+  {
+    "original": "src/wago/function_environment_nested_owner_host_test.go",
+    "adapter": "src/wago/platform_h6_function_environment_nested_owner_host_test.go",
+    "original_sha256": "7c86024bab8034ddc27ae614d12e1a2fc533cce93353d19124116feaf7452a5f",
+    "adapter_sha256": "a3627e88ea18ef8ec15bce80de7143276cebf4139b684add0c9d9406328a33c0",
+    "body_sha256": "375696674ba4c08bc889c4ac11392a991180dc7a78af525bd9858165b98ada2e",
+    "body_unchanged": true
+  },
+  {
+    "original": "src/wago/function_environment_wakeup_host_test.go",
+    "adapter": "src/wago/platform_h6_function_environment_wakeup_host_test.go",
+    "original_sha256": "b70d5a1bb21472f67e8fa8bc1bb6ae9b58254e83fde79e411c3728bc6c6f1884",
+    "adapter_sha256": "aae2db37dd7c1ed1f58e340ba7009bfb0f58720ca0b6a28eabea2b0997a747c6",
+    "body_sha256": "71f853ddcc7ee092656d95623d272710dc99c245c5ac513b97426b531c72560e",
+    "body_unchanged": true
+  }
+]
