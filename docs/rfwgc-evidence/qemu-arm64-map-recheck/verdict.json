@@ -1,0 +1,9 @@
+{
+  "cells": 228,
+  "failures": 0,
+  "map_activation_scope": true,
+  "passes": 228,
+  "scope_limit": "guest signal 60 is sacrificed; not general RT-signal or full-port approval",
+  "skips": 0,
+  "whole_76_all_3": true
+}

@@ -1,0 +1,6 @@
+{
+  "Replace": {
+    "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago/platform_arch_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/qemu-arm64-map-recheck/platform_arch_test.go",
+    "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago/shared_entry_guard_arm64_test.go": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/shared_entry_guard_arm64_test.go"
+  }
+}

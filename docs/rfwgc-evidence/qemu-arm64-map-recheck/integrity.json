@@ -1,0 +1,22 @@
+{
+  "README.md": "f32900b76247d63bb0ca8333fac69ca7d554a85bcf8f57641399df9a94c2dc8b",
+  "binaries-after.json": "747a295cdca8447cf844387cfac7b141c4d7e44941ebd5fd76657c7ebd046015",
+  "binaries.json": "05c214b75d4b904acd81662ac343fdd6c5e6692e7d568eb8cc11eb594b898fb5",
+  "census.json": "aabd8e190e79284eb677d1b7734de742a6a49e9cb46e678b171a44de89ce7b31",
+  "ordinary-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "ordinary.log.gz": "46dd9113504738844565429e9e0765abf58d1102da982063ac5b68b08690eecc",
+  "overlay.json": "5040ac8898984aa0604ec58e03fef0e8a858fbc4b2dee5b5a618d8ea227d5511",
+  "platform_arch_test.go": "de5db2b35fcdb2e2b33521f2eea3da2f6dadc601c2dd5555c7f18fcf8d773e3a",
+  "process-drain.json": "062f92f36980074aa151b6b3d5e7a2fd5f889bd31465490960d2db8c6b467aa0",
+  "results.json": "c10dea835419f538e08c3d43f5a582ce45766a739e4902f17bedce732213230e",
+  "run.py": "1cc5bbf0bc3762811437841a2b10d1218311c4c5de4ae94a2e2867ba3a56a83c",
+  "source-after.json": "de16e20404b689c292c707ea291c21f5d59b93e15f324917dfddb2c6614758a0",
+  "source-before.json": "de16e20404b689c292c707ea291c21f5d59b93e15f324917dfddb2c6614758a0",
+  "tools-after.json": "68285548d30acf54bd07e3116982f89cb8bf8bc78a89afffd14921ab34c570f3",
+  "tools-before.json": "e0429ebd5015953d2b5f24d27da4ba199399cfeaef46bb795db4b7e3a08a47ef",
+  "verdict.json": "47483579b40df79da23984aaf6c571659c7ea8bbbea756ebc7716c32a3458d5a",
+  "wago_regalloccheck-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "wago_regalloccheck.log.gz": "1150fb2d0bd0385ca248077425cf241d5bf5255229b33dfb8702b28679010ff7",
+  "wagodebug-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "wagodebug.log.gz": "5091e8509d14e4916d959c4bcab3964865265e17c8fd6e389346be3d83f4b103"
+}
