@@ -1,0 +1,745 @@
+# label=pin5847-ordinary src=5847df30f tags=- race=0
+# go version go1.27.1 linux/amd64 GOROOT=/home/dev/.local/share/mise/installs/go/1.27.1
+# overlay: 
+# go test -count=1 -timeout 6m -v -run ^Test(RR|Design|R9(H2|Ownership)|GCExternConversion|HostCallNeedsGCSuspension|GCAdmission|GC.*Invocation|GC.*Start) ./src/wago
+=== RUN   TestDesignInvocationSnapshotCancellation
+=== RUN   TestDesignInvocationSnapshotCancellation/partial-lock-cancel
+=== RUN   TestDesignInvocationSnapshotCancellation/pin-overflow
+--- PASS: TestDesignInvocationSnapshotCancellation (0.00s)
+    --- PASS: TestDesignInvocationSnapshotCancellation/partial-lock-cancel (0.00s)
+    --- PASS: TestDesignInvocationSnapshotCancellation/pin-overflow (0.00s)
+=== RUN   TestDesignInvocationSnapshotLatePublisher
+--- PASS: TestDesignInvocationSnapshotLatePublisher (0.00s)
+=== RUN   TestDesignInvocationSnapshotRetirement
+--- PASS: TestDesignInvocationSnapshotRetirement (0.00s)
+=== RUN   TestDesignInvocationSnapshotAuthenticatedDispatch
+--- PASS: TestDesignInvocationSnapshotAuthenticatedDispatch (0.00s)
+=== RUN   TestDesignInvocationSnapshotCallbackTrap
+=== RUN   TestDesignInvocationSnapshotCallbackTrap/return
+=== RUN   TestDesignInvocationSnapshotCallbackTrap/trap
+--- PASS: TestDesignInvocationSnapshotCallbackTrap (0.00s)
+    --- PASS: TestDesignInvocationSnapshotCallbackTrap/return (0.00s)
+    --- PASS: TestDesignInvocationSnapshotCallbackTrap/trap (0.00s)
+=== RUN   TestDesignRecheckForeignRelayAfterLatePublisher
+    design_recheck_adversary_test.go:152: foreign clear of converted slot: out=[] err=wago: WasmGC struct helper: conversion store lacks pre-admitted invocation domains
+    design_recheck_adversary_test.go:161: foreign copy of converted slot: out=[] err=wago: WasmGC struct helper: bulk store lacks complete invocation authority
+--- PASS: TestDesignRecheckForeignRelayAfterLatePublisher (0.00s)
+=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter
+=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter/none
+    design_recheck_adversary_test.go:295: storage=none dynamic=false instantiateBlocked=false unrelatedLeaseErr=<nil>
+=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter/global
+    design_recheck_adversary_test.go:295: storage=global dynamic=true instantiateBlocked=false unrelatedLeaseErr=<nil>
+=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter/table
+    design_recheck_adversary_test.go:295: storage=table dynamic=true instantiateBlocked=false unrelatedLeaseErr=<nil>
+--- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter (0.00s)
+    --- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter/none (0.00s)
+    --- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter/global (0.00s)
+    --- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter/table (0.00s)
+=== RUN   TestDesignRecheckCallbackChangesPublisherAuthority
+--- PASS: TestDesignRecheckCallbackChangesPublisherAuthority (0.00s)
+=== RUN   TestDesignRecheckNestedSameRuntimeClear
+=== RUN   TestDesignRecheckNestedSameRuntimeClear/direct
+    design_recheck_adversary_test.go:470: direct clear: out=[7] err=<nil>
+=== RUN   TestDesignRecheckNestedSameRuntimeClear/scalar-relay
+    design_recheck_adversary_test.go:470: scalar-relay clear: out=[7] err=<nil>
+=== RUN   TestDesignRecheckNestedSameRuntimeClear/storage-relay
+    design_recheck_adversary_test.go:470: storage-relay clear: out=[7] err=<nil>
+--- PASS: TestDesignRecheckNestedSameRuntimeClear (0.00s)
+    --- PASS: TestDesignRecheckNestedSameRuntimeClear/direct (0.00s)
+    --- PASS: TestDesignRecheckNestedSameRuntimeClear/scalar-relay (0.00s)
+    --- PASS: TestDesignRecheckNestedSameRuntimeClear/storage-relay (0.00s)
+=== RUN   TestDesignRecheckNestedPublish
+    design_recheck_adversary_test.go:512: relay publish: err=<nil> word=0x7e0c14b64fd93345
+--- PASS: TestDesignRecheckNestedPublish (0.00s)
+=== RUN   TestDesignRepairWaitNotifier
+--- PASS: TestDesignRepairWaitNotifier (0.00s)
+=== RUN   TestDesignRepairConversionAdmissionLifecycle
+--- PASS: TestDesignRepairConversionAdmissionLifecycle (0.00s)
+=== RUN   TestDesignRepairScalarRelayOrdinaryStorageWithConversion
+--- PASS: TestDesignRepairScalarRelayOrdinaryStorageWithConversion (0.00s)
+=== RUN   TestDesignRepairConcurrentPublicationRetirement
+--- PASS: TestDesignRepairConcurrentPublicationRetirement (0.00s)
+=== RUN   TestDesignRepairPublicGlobalTokenClassification
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/local
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/foreign
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/forged
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/expired
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/foreign
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/forged
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/expired
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null
+--- PASS: TestDesignRepairPublicGlobalTokenClassification (0.00s)
+    --- PASS: TestDesignRepairPublicGlobalTokenClassification/local (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/local/foreign (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/local/forged (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/local/expired (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null (0.00s)
+    --- PASS: TestDesignRepairPublicGlobalTokenClassification/owned (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/foreign (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/forged (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/expired (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null (0.00s)
+=== RUN   TestDesignRepairPublicTableOrdinary
+--- PASS: TestDesignRepairPublicTableOrdinary (0.00s)
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone
+    design_review_cross_runtime_probe_test.go:63: producer dynamic=false
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime
+    design_review_cross_runtime_probe_test.go:63: producer dynamic=false
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone
+    design_review_cross_runtime_probe_test.go:63: producer dynamic=true
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime
+    design_review_cross_runtime_probe_test.go:63: producer dynamic=true
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone
+    design_review_cross_runtime_probe_test.go:63: producer dynamic=true
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime
+    design_review_cross_runtime_probe_test.go:63: producer dynamic=true
+--- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime (0.00s)
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1
+    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1
+    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none
+    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global
+    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table
+    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1
+    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1
+    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1
+    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table
+    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1
+    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none
+    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global
+    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table
+    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer (0.01s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table (0.00s)
+=== RUN   TestR9OwnershipStateH6FailedInitialization
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xa)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xb)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x10)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x11)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xa)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xb)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x10)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x11)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xa)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xb)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x10)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x11)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xa)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xb)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x10)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x11)
+--- PASS: TestR9OwnershipStateH6FailedInitialization (0.01s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=true/array=true (0.00s)
+=== RUN   TestR9OwnershipStateH6CallbackQuiescence
+=== RUN   TestR9OwnershipStateH6CallbackQuiescence/0
+=== RUN   TestR9OwnershipStateH6CallbackQuiescence/6
+--- PASS: TestR9OwnershipStateH6CallbackQuiescence (0.00s)
+    --- PASS: TestR9OwnershipStateH6CallbackQuiescence/0 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CallbackQuiescence/6 (0.00s)
+=== RUN   TestR9OwnershipStateH6CollectingMutations
+=== RUN   TestR9OwnershipStateH6CollectingMutations/struct.set/region=0
+=== RUN   TestR9OwnershipStateH6CollectingMutations/array.set/region=0
+=== RUN   TestR9OwnershipStateH6CollectingMutations/array.fill/region=0
+=== RUN   TestR9OwnershipStateH6CollectingMutations/mixed.new/region=0
+=== RUN   TestR9OwnershipStateH6CollectingMutations/struct.set/region=6
+=== RUN   TestR9OwnershipStateH6CollectingMutations/array.set/region=6
+=== RUN   TestR9OwnershipStateH6CollectingMutations/array.fill/region=6
+=== RUN   TestR9OwnershipStateH6CollectingMutations/mixed.new/region=6
+--- PASS: TestR9OwnershipStateH6CollectingMutations (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/struct.set/region=0 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/array.set/region=0 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/array.fill/region=0 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/mixed.new/region=0 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/struct.set/region=6 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/array.set/region=6 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/array.fill/region=6 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/mixed.new/region=6 (0.00s)
+=== RUN   TestR9H2ConditionalSlotExplicitDomain
+--- PASS: TestR9H2ConditionalSlotExplicitDomain (0.00s)
+=== RUN   TestR9H2RetiredCollectorPreservesDeferredFinalizer
+--- PASS: TestR9H2RetiredCollectorPreservesDeferredFinalizer (0.00s)
+=== RUN   TestR9OwnershipWakeupContention
+=== RUN   TestR9OwnershipWakeupContention/region=0/native
+=== RUN   TestR9OwnershipWakeupContention/region=0/topology
+=== RUN   TestR9OwnershipWakeupContention/region=0/domain
+=== RUN   TestR9OwnershipWakeupContention/region=0/revoked-domain
+=== RUN   TestR9OwnershipWakeupContention/region=0/driver
+=== RUN   TestR9OwnershipWakeupContention/region=0/foreign-runtime
+=== RUN   TestR9OwnershipWakeupContention/region=6/native
+=== RUN   TestR9OwnershipWakeupContention/region=6/topology
+=== RUN   TestR9OwnershipWakeupContention/region=6/domain
+=== RUN   TestR9OwnershipWakeupContention/region=6/revoked-domain
+=== RUN   TestR9OwnershipWakeupContention/region=6/driver
+=== RUN   TestR9OwnershipWakeupContention/region=6/foreign-runtime
+--- PASS: TestR9OwnershipWakeupContention (0.01s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/native (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/topology (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/domain (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/revoked-domain (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/driver (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/foreign-runtime (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/native (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/topology (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/domain (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/revoked-domain (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/driver (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/foreign-runtime (0.00s)
+=== RUN   TestR9OwnershipWakeupActiveBoundary
+=== RUN   TestR9OwnershipWakeupActiveBoundary/0
+=== RUN   TestR9OwnershipWakeupActiveBoundary/6
+--- PASS: TestR9OwnershipWakeupActiveBoundary (0.00s)
+    --- PASS: TestR9OwnershipWakeupActiveBoundary/0 (0.00s)
+    --- PASS: TestR9OwnershipWakeupActiveBoundary/6 (0.00s)
+=== RUN   TestR9OwnershipWakeupExitCrossing
+=== RUN   TestR9OwnershipWakeupExitCrossing/0
+=== RUN   TestR9OwnershipWakeupExitCrossing/6
+--- PASS: TestR9OwnershipWakeupExitCrossing (0.00s)
+    --- PASS: TestR9OwnershipWakeupExitCrossing/0 (0.00s)
+    --- PASS: TestR9OwnershipWakeupExitCrossing/6 (0.00s)
+=== RUN   TestR9OwnershipWakeupProviderAndStoreClose
+=== RUN   TestR9OwnershipWakeupProviderAndStoreClose/region=0/store-close=false
+=== RUN   TestR9OwnershipWakeupProviderAndStoreClose/region=0/store-close=true
+=== RUN   TestR9OwnershipWakeupProviderAndStoreClose/region=6/store-close=false
+=== RUN   TestR9OwnershipWakeupProviderAndStoreClose/region=6/store-close=true
+--- PASS: TestR9OwnershipWakeupProviderAndStoreClose (0.00s)
+    --- PASS: TestR9OwnershipWakeupProviderAndStoreClose/region=0/store-close=false (0.00s)
+    --- PASS: TestR9OwnershipWakeupProviderAndStoreClose/region=0/store-close=true (0.00s)
+    --- PASS: TestR9OwnershipWakeupProviderAndStoreClose/region=6/store-close=false (0.00s)
+    --- PASS: TestR9OwnershipWakeupProviderAndStoreClose/region=6/store-close=true (0.00s)
+=== RUN   TestR9OwnershipWakeupConcurrentRequests
+--- PASS: TestR9OwnershipWakeupConcurrentRequests (0.00s)
+=== RUN   TestR9OwnershipWakeupRetiredDomainAdmission
+--- PASS: TestR9OwnershipWakeupRetiredDomainAdmission (0.00s)
+=== RUN   TestGCAdmissionOrderedCancellation
+=== RUN   TestGCAdmissionOrderedCancellation/static
+=== RUN   TestGCAdmissionOrderedCancellation/dynamic
+--- PASS: TestGCAdmissionOrderedCancellation (0.00s)
+    --- PASS: TestGCAdmissionOrderedCancellation/static (0.00s)
+    --- PASS: TestGCAdmissionOrderedCancellation/dynamic (0.00s)
+=== RUN   TestGCAdmissionSameOwnerBorrowing
+--- PASS: TestGCAdmissionSameOwnerBorrowing (0.00s)
+=== RUN   TestGCAdmissionUncontendedAllocations
+--- PASS: TestGCAdmissionUncontendedAllocations (0.00s)
+=== RUN   TestGCInvocationNoDomainFastPathPreservesDynamicTopology
+--- PASS: TestGCInvocationNoDomainFastPathPreservesDynamicTopology (0.00s)
+=== RUN   TestR9H2HostContainerPublicGlobal
+=== RUN   TestR9H2HostContainerPublicGlobal/0
+=== RUN   TestR9H2HostContainerPublicGlobal/6
+--- PASS: TestR9H2HostContainerPublicGlobal (0.00s)
+    --- PASS: TestR9H2HostContainerPublicGlobal/0 (0.00s)
+    --- PASS: TestR9H2HostContainerPublicGlobal/6 (0.00s)
+=== RUN   TestR9H2HostContainerPublicTable
+=== RUN   TestR9H2HostContainerPublicTable/0
+=== RUN   TestR9H2HostContainerPublicTable/6
+--- PASS: TestR9H2HostContainerPublicTable (0.00s)
+    --- PASS: TestR9H2HostContainerPublicTable/0 (0.00s)
+    --- PASS: TestR9H2HostContainerPublicTable/6 (0.00s)
+=== RUN   TestR9H2HostContainerClose
+=== RUN   TestR9H2HostContainerClose/container-first
+=== RUN   TestR9H2HostContainerClose/publisher-first
+=== RUN   TestR9H2HostContainerClose/runtime-first
+--- PASS: TestR9H2HostContainerClose (0.00s)
+    --- PASS: TestR9H2HostContainerClose/container-first (0.00s)
+    --- PASS: TestR9H2HostContainerClose/publisher-first (0.00s)
+    --- PASS: TestR9H2HostContainerClose/runtime-first (0.00s)
+=== RUN   TestR9H2HostContainerAuthority
+--- PASS: TestR9H2HostContainerAuthority (0.00s)
+=== RUN   TestR9H2HostContainerMigration
+--- PASS: TestR9H2HostContainerMigration (0.00s)
+=== RUN   TestR9H2HostContainerCycle
+=== RUN   TestR9H2HostContainerCycle/0/clear
+=== RUN   TestR9H2HostContainerCycle/0/close
+=== RUN   TestR9H2HostContainerCycle/6/clear
+=== RUN   TestR9H2HostContainerCycle/6/close
+--- PASS: TestR9H2HostContainerCycle (0.00s)
+    --- PASS: TestR9H2HostContainerCycle/0/clear (0.00s)
+    --- PASS: TestR9H2HostContainerCycle/0/close (0.00s)
+    --- PASS: TestR9H2HostContainerCycle/6/clear (0.00s)
+    --- PASS: TestR9H2HostContainerCycle/6/close (0.00s)
+=== RUN   TestR9H2HostImportGlobal
+=== RUN   TestR9H2HostImportGlobal/0
+    gc_conversion_host_import_host_test.go:132: actual collector region shift=0
+=== RUN   TestR9H2HostImportGlobal/6
+    gc_conversion_host_import_host_test.go:132: actual collector region shift=6
+--- PASS: TestR9H2HostImportGlobal (0.00s)
+    --- PASS: TestR9H2HostImportGlobal/0 (0.00s)
+    --- PASS: TestR9H2HostImportGlobal/6 (0.00s)
+=== RUN   TestR9H2HostImportTable
+=== RUN   TestR9H2HostImportTable/0
+    gc_conversion_host_import_host_test.go:132: actual collector region shift=0
+=== RUN   TestR9H2HostImportTable/6
+    gc_conversion_host_import_host_test.go:132: actual collector region shift=6
+--- PASS: TestR9H2HostImportTable (0.00s)
+    --- PASS: TestR9H2HostImportTable/0 (0.00s)
+    --- PASS: TestR9H2HostImportTable/6 (0.00s)
+=== RUN   TestR9H2HostImportBulk
+=== RUN   TestR9H2HostImportBulk/0
+    gc_conversion_host_import_host_test.go:235: actual collector region shift=0
+=== RUN   TestR9H2HostImportBulk/6
+    gc_conversion_host_import_host_test.go:235: actual collector region shift=6
+--- PASS: TestR9H2HostImportBulk (0.00s)
+    --- PASS: TestR9H2HostImportBulk/0 (0.00s)
+    --- PASS: TestR9H2HostImportBulk/6 (0.00s)
+=== RUN   TestR9H2HostImportInitialization
+=== RUN   TestR9H2HostImportInitialization/0
+    gc_conversion_host_import_host_test.go:362: actual collector region shift=0
+=== RUN   TestR9H2HostImportInitialization/6
+    gc_conversion_host_import_host_test.go:362: actual collector region shift=6
+--- PASS: TestR9H2HostImportInitialization (0.00s)
+    --- PASS: TestR9H2HostImportInitialization/0 (0.00s)
+    --- PASS: TestR9H2HostImportInitialization/6 (0.00s)
+=== RUN   TestR9H2HostImportCycle
+=== RUN   TestR9H2HostImportCycle/0
+    gc_conversion_host_import_host_test.go:436: actual collector region shift=0
+=== RUN   TestR9H2HostImportCycle/6
+    gc_conversion_host_import_host_test.go:436: actual collector region shift=6
+--- PASS: TestR9H2HostImportCycle (0.00s)
+    --- PASS: TestR9H2HostImportCycle/0 (0.00s)
+    --- PASS: TestR9H2HostImportCycle/6 (0.00s)
+=== RUN   TestR9H2HostImportTableIndependentPhysical
+    gc_conversion_host_import_host_test.go:525: actual collector region shift=0
+--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)
+=== RUN   TestR9H2HostImportAuthority
+--- PASS: TestR9H2HostImportAuthority (0.00s)
+=== RUN   TestR9H2HostImportGlobalOrdinaryAndGuards
+--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)
+=== RUN   TestR9H2HostImportTableOrdinaryAndGuards
+--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)
+=== RUN   TestR9H2ReceiptPublisherRetirement
+=== RUN   TestR9H2ReceiptPublisherRetirement/region=0
+=== RUN   TestR9H2ReceiptPublisherRetirement/region=6
+--- PASS: TestR9H2ReceiptPublisherRetirement (0.00s)
+    --- PASS: TestR9H2ReceiptPublisherRetirement/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptPublisherRetirement/region=6 (0.00s)
+=== RUN   TestR9H2ReceiptIndependentContainersAndRollback
+--- PASS: TestR9H2ReceiptIndependentContainersAndRollback (0.00s)
+=== RUN   TestR9H2ReceiptCloseOrders
+=== RUN   TestR9H2ReceiptCloseOrders/provider-first
+=== RUN   TestR9H2ReceiptCloseOrders/publisher-first
+=== RUN   TestR9H2ReceiptCloseOrders/store-first
+--- PASS: TestR9H2ReceiptCloseOrders (0.00s)
+    --- PASS: TestR9H2ReceiptCloseOrders/provider-first (0.00s)
+    --- PASS: TestR9H2ReceiptCloseOrders/publisher-first (0.00s)
+    --- PASS: TestR9H2ReceiptCloseOrders/store-first (0.00s)
+=== RUN   TestR9H2ReceiptConvertedProducerCycle
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/direct/region=0
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/direct/region=6
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/callback/region=0
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/callback/region=6
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/contention/region=0
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/contention/region=6
+--- PASS: TestR9H2ReceiptConvertedProducerCycle (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/direct/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/direct/region=6 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/callback/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/callback/region=6 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/contention/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/contention/region=6 (0.00s)
+=== RUN   TestR9H2ReceiptOnlyContention
+=== RUN   TestR9H2ReceiptOnlyContention/native
+=== RUN   TestR9H2ReceiptOnlyContention/foreign-runtime
+=== RUN   TestR9H2ReceiptOnlyContention/topology
+=== RUN   TestR9H2ReceiptOnlyContention/domain
+=== RUN   TestR9H2ReceiptOnlyContention/driver
+--- PASS: TestR9H2ReceiptOnlyContention (0.00s)
+    --- PASS: TestR9H2ReceiptOnlyContention/native (0.00s)
+    --- PASS: TestR9H2ReceiptOnlyContention/foreign-runtime (0.00s)
+    --- PASS: TestR9H2ReceiptOnlyContention/topology (0.00s)
+    --- PASS: TestR9H2ReceiptOnlyContention/domain (0.00s)
+    --- PASS: TestR9H2ReceiptOnlyContention/driver (0.00s)
+=== RUN   TestR9H2ReceiptDomainKeepsPrivateTypeAdmission
+--- PASS: TestR9H2ReceiptDomainKeepsPrivateTypeAdmission (0.00s)
+=== RUN   TestR9H2ReceiptFinalJournalRemainsCollectionAuthority
+--- PASS: TestR9H2ReceiptFinalJournalRemainsCollectionAuthority (0.00s)
+=== RUN   TestR9H2StoreHooksOriginalProvider
+=== RUN   TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false
+    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+=== RUN   TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true
+    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+=== RUN   TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false
+    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+=== RUN   TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true
+    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+=== RUN   TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false
+    gc_conversion_store_host_test.go:113: actual collector region shift=6
+    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+=== RUN   TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true
+    gc_conversion_store_host_test.go:113: actual collector region shift=6
+    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+=== RUN   TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false
+    gc_conversion_store_host_test.go:113: actual collector region shift=6
+    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+=== RUN   TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true
+    gc_conversion_store_host_test.go:113: actual collector region shift=6
+    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0
+--- PASS: TestR9H2StoreHooksOriginalProvider (0.01s)
+    --- PASS: TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false (0.00s)
+    --- PASS: TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true (0.00s)
+    --- PASS: TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false (0.00s)
+    --- PASS: TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true (0.00s)
+    --- PASS: TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false (0.00s)
+    --- PASS: TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true (0.00s)
+    --- PASS: TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false (0.00s)
+    --- PASS: TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true (0.00s)
+=== RUN   TestR9H2StoreHooksBulk
+=== RUN   TestR9H2StoreHooksBulk/0
+=== RUN   TestR9H2StoreHooksBulk/6
+--- PASS: TestR9H2StoreHooksBulk (0.00s)
+    --- PASS: TestR9H2StoreHooksBulk/0 (0.00s)
+    --- PASS: TestR9H2StoreHooksBulk/6 (0.00s)
+=== RUN   TestR9H2StoreHooksActiveInitialization
+--- PASS: TestR9H2StoreHooksActiveInitialization (0.00s)
+=== RUN   TestR9H2StoreHooksDescriptorMigration
+--- PASS: TestR9H2StoreHooksDescriptorMigration (0.00s)
+=== RUN   TestR9H2StoreHooksIndependentPhysicalTables
+--- PASS: TestR9H2StoreHooksIndependentPhysicalTables (0.00s)
+=== RUN   TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease
+--- PASS: TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease (0.05s)
+=== RUN   TestGCExternConversionStableIdentityAndOwnership
+    gc_extern_conversion_test.go:115: GC extern conversion layouts: state=64 entry=56 live=3
+--- PASS: TestGCExternConversionStableIdentityAndOwnership (0.00s)
+=== RUN   TestGCExternConversionRejectsForeignForgedAndClosed
+--- PASS: TestGCExternConversionRejectsForeignForgedAndClosed (0.00s)
+=== RUN   TestGCExternConversionCollectorFirstCloseFailsClosed
+--- PASS: TestGCExternConversionCollectorFirstCloseFailsClosed (0.00s)
+=== RUN   TestGCExternConversionRejectedReplacementPreservesRoot
+--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)
+=== RUN   TestGCExternConversionPublicationOrderingAndRollback
+--- PASS: TestGCExternConversionPublicationOrderingAndRollback (0.00s)
+=== RUN   TestGCExternConversionWithFunctionTable
+--- PASS: TestGCExternConversionWithFunctionTable (0.00s)
+=== RUN   TestGCExternConversionKeepsLocalRoots
+=== RUN   TestGCExternConversionKeepsLocalRoots/op26/throughput
+=== RUN   TestGCExternConversionKeepsLocalRoots/op26/tiny
+=== RUN   TestGCExternConversionKeepsLocalRoots/op27/throughput
+=== RUN   TestGCExternConversionKeepsLocalRoots/op27/tiny
+--- PASS: TestGCExternConversionKeepsLocalRoots (0.00s)
+    --- PASS: TestGCExternConversionKeepsLocalRoots/op26/throughput (0.00s)
+    --- PASS: TestGCExternConversionKeepsLocalRoots/op26/tiny (0.00s)
+    --- PASS: TestGCExternConversionKeepsLocalRoots/op27/throughput (0.00s)
+    --- PASS: TestGCExternConversionKeepsLocalRoots/op27/tiny (0.00s)
+=== RUN   TestGCExternConversionKeepsVectorAndLocalRoots
+--- PASS: TestGCExternConversionKeepsVectorAndLocalRoots (0.00s)
+=== RUN   TestGCExternConversionForeignLocalRoots
+--- PASS: TestGCExternConversionForeignLocalRoots (0.00s)
+=== RUN   TestGCExternConversionCheckedTableRoots
+--- PASS: TestGCExternConversionCheckedTableRoots (0.00s)
+=== RUN   TestGCExternConversionMissingRootsDisableCollection
+--- PASS: TestGCExternConversionMissingRootsDisableCollection (0.00s)
+=== RUN   TestGCExternConversionWithoutHeapKeepsTinyProfile
+--- PASS: TestGCExternConversionWithoutHeapKeepsTinyProfile (0.00s)
+=== RUN   TestGCExternConversionRejectsForgedFrameWords
+--- PASS: TestGCExternConversionRejectsForgedFrameWords (0.00s)
+=== RUN   TestGCExternConversionManyForeignLocals
+--- PASS: TestGCExternConversionManyForeignLocals (0.00s)
+=== RUN   TestGCExternConversionVoidImportCannotUseEmptyRoots
+--- PASS: TestGCExternConversionVoidImportCannotUseEmptyRoots (0.00s)
+=== RUN   TestGCExternConversionAcrossReferenceTables
+--- PASS: TestGCExternConversionAcrossReferenceTables (0.00s)
+=== RUN   TestGCTableRootsInsideInvocation
+--- PASS: TestGCTableRootsInsideInvocation (0.00s)
+=== RUN   TestGCMutableGlobalRootsInsideInvocation
+--- PASS: TestGCMutableGlobalRootsInsideInvocation (0.00s)
+=== RUN   TestGCLocalStartUsesExactNativeFrameRoots
+--- PASS: TestGCLocalStartUsesExactNativeFrameRoots (0.00s)
+=== RUN   TestGCSingleNativeFrameRootsCollectInsideInvocation
+=== RUN   TestGCSingleNativeFrameRootsCollectInsideInvocation/throughput
+=== RUN   TestGCSingleNativeFrameRootsCollectInsideInvocation/tiny
+--- PASS: TestGCSingleNativeFrameRootsCollectInsideInvocation (0.00s)
+    --- PASS: TestGCSingleNativeFrameRootsCollectInsideInvocation/throughput (0.00s)
+    --- PASS: TestGCSingleNativeFrameRootsCollectInsideInvocation/tiny (0.00s)
+=== RUN   TestGCAdmissionPublicCancellation
+--- PASS: TestGCAdmissionPublicCancellation (0.00s)
+=== RUN   TestGCAdmissionPublicDeadline
+--- PASS: TestGCAdmissionPublicDeadline (0.00s)
+=== RUN   TestGCAdmissionInstantiationCancellation
+=== RUN   TestGCAdmissionInstantiationCancellation/collector
+=== RUN   TestGCAdmissionInstantiationCancellation/start
+--- PASS: TestGCAdmissionInstantiationCancellation (0.00s)
+    --- PASS: TestGCAdmissionInstantiationCancellation/collector (0.00s)
+    --- PASS: TestGCAdmissionInstantiationCancellation/start (0.00s)
+=== RUN   TestGCNativeSubtypeIntervalAppendWaitsForInvocationLease
+--- PASS: TestGCNativeSubtypeIntervalAppendWaitsForInvocationLease (0.10s)
+=== RUN   TestGCAllocatingLocalStartWaitsForInvocationLease
+--- PASS: TestGCAllocatingLocalStartWaitsForInvocationLease (0.05s)
+=== RUN   TestR9H2ConvertedAggregateAdmission
+    r9_h2_converted_admission_test.go:29: product=12 generic=false conversion=true managed=true frameRoots=true sharedSafe=true
+--- PASS: TestR9H2ConvertedAggregateAdmission (0.00s)
+=== RUN   TestR9H2ConvertedAggregateAdmissionControls
+=== RUN   TestR9H2ConvertedAggregateAdmissionControls/numeric
+=== RUN   TestR9H2ConvertedAggregateAdmissionControls/unused-function-type
+--- PASS: TestR9H2ConvertedAggregateAdmissionControls (0.00s)
+    --- PASS: TestR9H2ConvertedAggregateAdmissionControls/numeric (0.00s)
+    --- PASS: TestR9H2ConvertedAggregateAdmissionControls/unused-function-type (0.00s)
+=== RUN   TestR9H2ConvertedAggregateCollectingLocalOwner
+=== RUN   TestR9H2ConvertedAggregateCollectingLocalOwner/region=0
+=== RUN   TestR9H2ConvertedAggregateCollectingLocalOwner/region=6
+--- PASS: TestR9H2ConvertedAggregateCollectingLocalOwner (0.00s)
+    --- PASS: TestR9H2ConvertedAggregateCollectingLocalOwner/region=0 (0.00s)
+    --- PASS: TestR9H2ConvertedAggregateCollectingLocalOwner/region=6 (0.00s)
+=== RUN   TestGCInvocationDomainUsesRegisteredAssociation
+--- PASS: TestGCInvocationDomainUsesRegisteredAssociation (0.00s)
+=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader
+=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader/none
+    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=<nil>
+=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader/table
+    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=<nil>
+--- PASS: TestRRRecheckStorageOnlyReturnBehindDynamicReader (0.00s)
+    --- PASS: TestRRRecheckStorageOnlyReturnBehindDynamicReader/none (0.00s)
+    --- PASS: TestRRRecheckStorageOnlyReturnBehindDynamicReader/table (0.00s)
+=== RUN   TestRRRecheckCanceledAdmissionBehindDynamicReader
+    rr_recheck_adversary_test.go:211: storage(dynamic=true conversionOnly=true) canceledReturnBlocked=false err=context deadline exceeded
+--- PASS: TestRRRecheckCanceledAdmissionBehindDynamicReader (0.30s)
+=== RUN   TestRRRecheckSharedMemoryHandoff
+    rr_recheck_handoff_test.go:84: handoffCompleted=true s1=<nil> s2=<nil>
+--- PASS: TestRRRecheckSharedMemoryHandoff (0.50s)
+=== RUN   TestRRRetirementLastPinAndRevival
+=== RUN   TestRRRetirementLastPinAndRevival/none
+=== RUN   TestRRRetirementLastPinAndRevival/claim
+=== RUN   TestRRRetirementLastPinAndRevival/registration
+=== RUN   TestRRRetirementLastPinAndRevival/store-close
+--- PASS: TestRRRetirementLastPinAndRevival (0.00s)
+    --- PASS: TestRRRetirementLastPinAndRevival/none (0.00s)
+    --- PASS: TestRRRetirementLastPinAndRevival/claim (0.00s)
+    --- PASS: TestRRRetirementLastPinAndRevival/registration (0.00s)
+    --- PASS: TestRRRetirementLastPinAndRevival/store-close (0.00s)
+=== RUN   TestRRRetirementCallbackAndExitWakeups
+--- PASS: TestRRRetirementCallbackAndExitWakeups (0.00s)
+=== RUN   TestRRRetirementBorrowedRootLatePublisher
+--- PASS: TestRRRetirementBorrowedRootLatePublisher (0.00s)
+=== RUN   TestRRRetirementCanceledPartialLastPins
+--- PASS: TestRRRetirementCanceledPartialLastPins (0.00s)
+=== RUN   TestRRRetirementCallbackRefreshBehindReader
+--- PASS: TestRRRetirementCallbackRefreshBehindReader (0.00s)
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=0
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=1
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=2
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=3
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=4
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=5
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=8
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=9
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=16
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=32
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=64
+=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=129
+--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=0 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=1 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=2 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=3 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=4 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=5 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=8 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=9 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=16 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=32 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=64 (0.00s)
+    --- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=129 (0.00s)
+=== RUN   TestGCInvocationDomainSetInlineSortDoesNotAllocate
+--- PASS: TestGCInvocationDomainSetInlineSortDoesNotAllocate (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	1.130s
