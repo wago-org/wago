@@ -1,6 +1,6 @@
 {
-  "source": "5345bd365c13963f1bf60e26bb80789ab9ead4cc",
-  "evidence": "2c9f72744",
+  "source": "9180f09f7590d029bc90df2fa20c0decc590505a",
+  "evidence": "Historical receipts define command recipes only; execution now requires 9180.",
   "lanes": [
     {
       "id": "full-root-replay-ordinary",
@@ -1683,24 +1683,20 @@
   "scope": "51 replay commands plus 12 explicit official-spec commands; not complete Darwin qualification.",
   "unmet_gaps": [
     {
-      "id": "tinygo",
-      "status": "NOT_RUN",
-      "required": "Native Darwin ARM64 patched TinyGo 0.42.0 foreign-stack runtime, evacuation, joint and supported conversion lanes in all three modes. Stock scheduler patch alone is insufficient; port and hash the stage8 foreign-stack patch set and verify native compiler support before execution."
+      "gap": "TinyGo Darwin patched runtime",
+      "status": "NOT_RUN; setup supplement prepared, native verification still required"
     },
     {
-      "id": "generated-gc-graphs",
-      "status": "NOT_RUN",
-      "required": "Port/baseline generated-graph/scalar/noGC fixtures and separate hashed overlays, 32 live objects and >=2048 allocations after 64 calls/collection; canonical corpus is not graph coverage."
+      "gap": "Generated graph baseline comparison",
+      "status": "NOT_RUN; candidate hashed adapter prepared; baseline separate export remains required"
     },
     {
-      "id": "h6-adapter",
-      "status": "NOT_RUN",
-      "required": "Audit the prior ARM64 adapter against Darwin build constraints, retain both ownership/wakeup test bodies and package/test census; QEMU Linux receipts do not qualify Darwin."
+      "gap": "H6 Linux host ownership graph",
+      "status": "INTENTIONALLY_UNSUPPORTED on Darwin; no tag-only adapter permitted"
     },
     {
-      "id": "platform-exclusions",
-      "status": "REQUIRES_REVIEW",
-      "required": "Review every skipped test and ignored build file, notably Linux profiling clock/perf paths, target-specific TinyGo/host tests and external-runtime captured oracle references; never promote absent bodies to passes."
+      "gap": "Darwin platform census",
+      "status": "REQUIRES_REVIEW after execution"
     }
   ]
 }

@@ -539,3 +539,62 @@ func TestDocsOnlyChangesSkipCodeMatrix(t *testing.T) {
 		}
 	}
 }
+
+// Special qualification must never impersonate the required check, even when
+// GitHub creates a skipped check for ci-ok. Aggregate coverage still includes
+// all jobs; special summaries must remain upstream of the normal aggregate.
+func TestPinnedQualificationIsolatedAndAcyclic(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := workflowJobBlocks(string(workflow))
+	aggregate := jobs["ci-ok"]
+	for _, required := range []string{
+		"name: ${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && 'Full CI not run (non-Linux dispatch)' || 'CI' }}",
+		"if: always() && (github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification)",
+	} {
+		if !strings.Contains(aggregate, required) {
+			t.Errorf("required-check isolation missing %q", required)
+		}
+	}
+	summary := jobs["darwin-qualification-summary"]
+	if _, exists := workflowJobNeeds(t, summary)["ci-ok"]; exists {
+		t.Fatal("special summary must not depend on ci-ok")
+	}
+	for _, required := range []string{
+		"name: Non-Linux qualification summary",
+		"if: always() && github.event_name == 'workflow_dispatch' && inputs.darwin_qualification",
+		`test "$DARWIN_RESULT" = success`,
+		`test "$WINDOWS_RESULT" = success`,
+	} {
+		if !strings.Contains(summary, required) {
+			t.Errorf("special summary missing %q", required)
+		}
+	}
+	visited, active := map[string]bool{}, map[string]bool{}
+	var visit func(string)
+	visit = func(name string) {
+		if active[name] {
+			t.Fatalf("workflow dependency cycle at %s", name)
+		}
+		if visited[name] {
+			return
+		}
+		block, exists := jobs[name]
+		if !exists {
+			t.Fatalf("unknown dependency %s", name)
+		}
+		active[name] = true
+		if strings.Contains(block, "    needs:") {
+			for dependency := range workflowJobNeeds(t, block) {
+				visit(dependency)
+			}
+		}
+		active[name] = false
+		visited[name] = true
+	}
+	for name := range jobs {
+		visit(name)
+	}
+}
