@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py", line 132, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py", line 75, in main
+    if a.action=='native': native_host()
+                           ~~~~~~~~~~~^^
+  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py", line 16, in native_host
+    if (platform.system(),platform.machine())!=('Darwin','arm64'): raise ValueError('requires native Darwin arm64; cross compilation is not execution')
+                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: requires native Darwin arm64; cross compilation is not execution

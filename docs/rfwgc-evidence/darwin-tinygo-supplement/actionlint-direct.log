@@ -1,0 +1,8 @@
+docs/rfwgc-evidence/darwin-tinygo-supplement/workflow.proposal.yml:35:19: context "runner" is not allowed here. available contexts are "github", "inputs", "matrix", "needs", "secrets", "strategy", "vars". see https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability for more details [expression]
+   |
+35 |       OUTPUT: ${{ runner.temp }}/tinygo-supplement-${{ matrix.mode }}
+   |                   ^~~~~~~~~~~
+docs/rfwgc-evidence/darwin-tinygo-supplement/workflow.proposal.yml:36:20: context "runner" is not allowed here. available contexts are "github", "inputs", "matrix", "needs", "secrets", "strategy", "vars". see https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability for more details [expression]
+   |
+36 |       ARCHIVE: ${{ runner.temp }}/tinygo0.42.0.darwin-arm64.tar.gz
+   |                    ^~~~~~~~~~~

@@ -1,0 +1,40 @@
+{
+  "tinygo": {
+    "src/internal/task/task_threads.c": "c49052975185e8fa0df1c5f4c0a992f50bc7d374fb11e6289a6be33d6d684a08",
+    "src/internal/task/task_threads.go": "208523a839a0b524f4c4274b742efd3a83e1d16b1da8a13c5b038b8490c6e68a",
+    "src/internal/task/darwin.go": "0aa3f888a7816996ea6ad921e03079a3328c0a0a315d8147e3e1c89317034752",
+    "src/runtime/gc_stack_threads.go": "0b6cc9541f044503425f36fadb01063fa9ab5fbca36615030e24cae8d8c281e7",
+    "src/runtime/runtime_unix.c": "229fea217e4fe2610fbebc0f12eb3bf3d61dc9c7ddb670af7c88a43303c2f2d1",
+    "src/runtime/os_darwin.go": "6ff7879cae6145531acea20af962fa57b0179b2975a7685cb55e83ebbe609a2a",
+    "src/runtime/asm_arm64.S": "52b84ba8c1e6c07cf6c406993cf36053038a1e0266fff9396539b3e3f657f9f5"
+  },
+  "wago": {
+    "src/core/runtime/trampoline_tinygo_arm64.go": "7bec0fc689cec485d5a19a5afc70d2d070e0b129b2be1b9cb480c79d98e3383f",
+    "src/core/runtime/engine_int_tinygo_arm64.go": "bd8f231a0f0c8bf8aa211146624090b7699e4bd90e4d8016ff49df5310eb95a5",
+    "src/core/runtime/foreign_stack_tinygo_threads.go": "738b7ae963ddcf71dde0a3fb0ca83acfcde2692aced2ab2c9cd3c8e0fdeb2cf6",
+    "src/core/runtime/mem_darwin.go": "c21e1680999af0376df4dbd26ae2a5b351d566d34efe909efa44f8cf37a2778a",
+    "src/core/runtime/munmap_range_darwin_arm64_tinygo.go": "b1684570a2b70647398d97870af3ca81bd46bc7107ba0807c3b27e1b36d3def9",
+    "src/core/runtime/madvise_darwin_arm64_tinygo.go": "e61347f52c7f4dc482fb7e6db226170e03e1f5dd202cdbb7a0f9612be93418ed",
+    "src/wago/gc_conversion_host_container_other.go": "cf981869e93770c6500610c8b5f225b64372c8ac84acc015caa656e12f740932",
+    "src/wago/gc_conversion_store_other.go": "77424151720189c67c6084936fb4fcf892134901ce9e79f64c0de702fdad4b8a",
+    "src/wago/gc_conversion_receipt_other.go": "874d278c8237a829905ada858391217e82b38b4a0e92454b68f79f7b96925222"
+  },
+  "sibling_audit": [
+    {
+      "root": "/home/dev/Projects/slipstream",
+      "head": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+      "query": "tinygo|foreign.stack; src; *.go, *.goose, *.mbt",
+      "exit": 1,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "root": "/home/dev/Projects/starshine-master-base",
+      "head": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+      "query": "tinygo|foreign.stack; src; *.go, *.goose, *.mbt",
+      "exit": 1,
+      "stdout": "",
+      "stderr": ""
+    }
+  ]
+}
