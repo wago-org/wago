@@ -1,0 +1,9 @@
+head=c786a9b84bb0298d5bbd6b9522ab611193440cfa
+source=/tmp/wago-token-repair-8_a67qc_/tinygo-source
+fresh_cache=/tmp/wago-token-repair-8_a67qc_/tinygo-cache
+go version go1.27.1 linux/amd64
+tinygo version 0.42.0 linux/amd64 (using go version go1.27.1 and LLVM version 22.1.4)
+1.0.41
+wasm-tools 1.251.0 (a1a178a02 2026-05-28)
+cdd520d062bc2624584f6fc9046929dea9c800af63b791be6cc9d06402c72130  /home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo
+5d5f2ed3febafa41527d4817d1404d972f40b3fc1803be83e140b78edcb2f9ac  /tmp/wago-token-repair-8_a67qc_/tinygo-source/scripts/tinygo-042/wago_foreign_stack.go.in

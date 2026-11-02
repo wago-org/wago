@@ -1,0 +1,98 @@
+[
+  {
+    "label": "converted-arm64-ordinary",
+    "exit": 0,
+    "passed": [
+      "TestR9H2HostContainerPublicGlobal",
+      "TestR9H2HostContainerPublicGlobal/0",
+      "TestR9H2HostContainerPublicGlobal/6",
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportGlobal/0",
+      "TestR9H2HostImportGlobal/6",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards"
+    ],
+    "skipped": [],
+    "failed": [],
+    "missing": [],
+    "raw_sha256": "65a126cf629d987737d600aa31fd194de1d413bd4033ec59a9033e3d2f2bafe4"
+  },
+  {
+    "label": "converted-arm64-wagodebug",
+    "exit": 0,
+    "passed": [
+      "TestR9H2HostContainerPublicGlobal",
+      "TestR9H2HostContainerPublicGlobal/0",
+      "TestR9H2HostContainerPublicGlobal/6",
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportGlobal/0",
+      "TestR9H2HostImportGlobal/6",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards"
+    ],
+    "skipped": [],
+    "failed": [],
+    "missing": [],
+    "raw_sha256": "4abc8ff937c3d3b3b2b9adc0f46e03cc5eb117dce9a166f3281abf6dce9c3169"
+  },
+  {
+    "label": "converted-arm64-wago_regalloccheck",
+    "exit": 0,
+    "passed": [
+      "TestR9H2HostContainerPublicGlobal",
+      "TestR9H2HostContainerPublicGlobal/0",
+      "TestR9H2HostContainerPublicGlobal/6",
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportGlobal/0",
+      "TestR9H2HostImportGlobal/6",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards"
+    ],
+    "skipped": [],
+    "failed": [],
+    "missing": [],
+    "raw_sha256": "f5cae940f57f69a439954ecb013f3fda437bbb118c57463af4cccb9ff489d6cd"
+  },
+  {
+    "label": "converted-riscv64-ordinary",
+    "exit": 0,
+    "passed": [
+      "TestRV64CompactExternHostGlobalPrivate",
+      "TestRV64CompactExternHostGlobalPrivate/vectorfalse/artifactfalse/profile0",
+      "TestRV64CompactExternHostGlobalPrivate/vectorfalse/artifactfalse/profile1",
+      "TestRV64CompactExternHostGlobalPrivate/vectortrue/artifactfalse/profile0",
+      "TestRV64CompactExternHostGlobalPrivate/vectortrue/artifactfalse/profile1"
+    ],
+    "skipped": [],
+    "failed": [],
+    "missing": [],
+    "raw_sha256": "e2e882b934d61c9de625f9f50bd22e5a4e6706d1926cca88b2c902f10e250d09"
+  },
+  {
+    "label": "converted-riscv64-wagodebug",
+    "exit": 0,
+    "passed": [
+      "TestRV64CompactExternHostGlobalPrivate",
+      "TestRV64CompactExternHostGlobalPrivate/vectorfalse/artifactfalse/profile0",
+      "TestRV64CompactExternHostGlobalPrivate/vectorfalse/artifactfalse/profile1",
+      "TestRV64CompactExternHostGlobalPrivate/vectortrue/artifactfalse/profile0",
+      "TestRV64CompactExternHostGlobalPrivate/vectortrue/artifactfalse/profile1"
+    ],
+    "skipped": [],
+    "failed": [],
+    "missing": [],
+    "raw_sha256": "78f8fd7b02bec75b5794ad184a5fa205d154e198fecde9028111ee0f75d24174"
+  },
+  {
+    "label": "converted-riscv64-wago_regalloccheck",
+    "exit": 0,
+    "passed": [
+      "TestRV64CompactExternHostGlobalPrivate",
+      "TestRV64CompactExternHostGlobalPrivate/vectorfalse/artifactfalse/profile0",
+      "TestRV64CompactExternHostGlobalPrivate/vectorfalse/artifactfalse/profile1",
+      "TestRV64CompactExternHostGlobalPrivate/vectortrue/artifactfalse/profile0",
+      "TestRV64CompactExternHostGlobalPrivate/vectortrue/artifactfalse/profile1"
+    ],
+    "skipped": [],
+    "failed": [],
+    "missing": [],
+    "raw_sha256": "e2e882b934d61c9de625f9f50bd22e5a4e6706d1926cca88b2c902f10e250d09"
+  }
+]

@@ -1,0 +1,5 @@
+{
+  "src/internal/task/wago_foreign_stack.go": "5d5f2ed3febafa41527d4817d1404d972f40b3fc1803be83e140b78edcb2f9ac",
+  "src/runtime/gc_stack_threads.go": "0b6cc9541f044503425f36fadb01063fa9ab5fbca36615030e24cae8d8c281e7",
+  "src/internal/task/task_stack.go": "ebbd7303f2fd74c5a89f0e303048236d17fd656a954091d0ce175126abef1795"
+}
