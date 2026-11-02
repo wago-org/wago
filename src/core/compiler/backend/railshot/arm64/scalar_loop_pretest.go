@@ -146,7 +146,11 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame) bool {
 			f.a.B = binary.LittleEndian.AppendUint32(f.a.B, word)
 		}
 	}
-	f.patchBranch26(f.a.Branch(), start)
+	if rotate {
+		f.emitScalarPretestLatch(start, words[:n], exit, owner, coldCode)
+	} else {
+		f.patchBranch26(f.a.Branch(), start)
+	}
 	f.stats.peep("scalar-loop-unroll-pretest")
 	if coldExit {
 		f.stats.peep("scalar-loop-unroll-cold")
@@ -155,6 +159,32 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame) bool {
 		f.stats.peep("scalar-loop-unroll-pair")
 	}
 	return true
+}
+
+// The original entry check guards the first body. After four bodies, repeat
+// that check and branch directly to the already-guarded body on continuation.
+// For an alternating pair this removes the separate unconditional group
+// backedge without skipping condition-prefix work or any iteration's exit
+// check. Other scalar loops retain their established backedge layout. The
+// four-copy group has restored canonical register roles before this prefix.
+func (f *fn) emitScalarPretestLatch(start int, words []uint32, exit int, owner *ctrlFrame, coldCode []byte) {
+	for _, word := range words[:exit] {
+		f.a.B = binary.LittleEndian.AppendUint32(f.a.B, word)
+	}
+	word := words[exit]
+	if word&0x7e000000 == 0x34000000 {
+		word ^= 1 << 24 // CBZ <-> CBNZ, retaining the original operand width.
+	} else {
+		word ^= 1 // B.cond's inverse condition.
+	}
+	site := f.a.Len()
+	f.a.B = binary.LittleEndian.AppendUint32(f.a.B, word)
+	f.patchBranch19(site, start+4*(exit+1))
+	// A false latch condition is an exit after four complete iterations. Cold
+	// tuple payloads contain the same canonical result stores as the first edge.
+	f.a.B = append(f.a.B, coldCode...)
+	f.appendFrameEnd(owner, f.a.Branch(), false)
+	f.stats.peep("scalar-loop-unroll-latch")
 }
 
 // unrollScalarCounter batches a unit increment whose local is neither read nor

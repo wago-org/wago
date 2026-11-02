@@ -3,9 +3,49 @@
 package arm64
 
 import (
+	"encoding/binary"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"testing"
 )
+
+func TestScalarPretestLatchBranchTargets(t *testing.T) {
+	branches := []uint32{0x34000003, 0x35000003, 0xb4000003, 0xb5000003}
+	for condition := uint32(0); condition < 14; condition++ {
+		branches = append(branches, 0x54000000|condition)
+	}
+	for _, branch := range branches {
+		f := gpClassEmitter()
+		f.a.B = make([]byte, 32)
+		owner := ctrlFrame{kind: cfBlock}
+		// The prefix changes a register: it must run once more before the latch
+		// tests the next iteration, and continuation must skip the entry check.
+		prefix := uint32(0x110004a5)              // ADD W5,W5,#1
+		payload := []byte{0x1f, 0x20, 0x03, 0xd5} // NOP cold payload
+		f.emitScalarPretestLatch(8, []uint32{prefix, branch}, 1, &owner, payload)
+		if got := binary.LittleEndian.Uint32(f.a.B[32:]); got != prefix {
+			t.Fatalf("condition prefix missing: %08x", got)
+		}
+		got := binary.LittleEndian.Uint32(f.a.B[36:])
+		inverse := branch ^ 1
+		if branch&0x7e000000 == 0x34000000 {
+			inverse = branch ^ (1 << 24)
+		}
+		if got & ^uint32(0x00ffffe0) != inverse {
+			t.Fatalf("branch %08x inverted to %08x", branch, got)
+		}
+		displacement := int32(got<<8) >> 13 // sign-extended imm19
+		if target := 36 + int(displacement)*4; target != 16 {
+			t.Fatalf("latch targets %d, want first guarded body at 16", target)
+		}
+		if len(f.a.B) != 48 || binary.LittleEndian.Uint32(f.a.B[40:]) != 0xd503201f {
+			t.Fatal("cold payload not on latch fallthrough")
+		}
+		first, second, overflow := f.frameEndSites(&owner)
+		if first != 45 || second != 0 || len(overflow) != 0 {
+			t.Fatalf("fallthrough exit not registered as unconditional: %x %x %v", first, second, overflow)
+		}
+	}
+}
 
 func TestScalarPretestUnrollPreservesExits(t *testing.T) {
 	for _, wide := range []bool{false, true} {

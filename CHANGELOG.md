@@ -74,7 +74,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Keep bounded ARM64 integer-pair loop continuations on the fallthrough path
   and defer local-only exit results. Unroll these loops while preserving every
   exit test, and exchange pair register roles across parallel additions when
-  all early exits can restore the original local homes.
+  all early exits can restore the original local homes. Use a conditional
+  backedge for these alternating pairs to avoid a separate branch per group.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.

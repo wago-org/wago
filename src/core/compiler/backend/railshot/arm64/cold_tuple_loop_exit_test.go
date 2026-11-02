@@ -55,6 +55,9 @@ func TestColdTupleLoopExitPreservesRecurrence(t *testing.T) {
 									if (stats.Funcs[1].Peephole["scalar-loop-unroll-pair"] != 0) != (enabled && !profileEnabled) {
 										t.Fatalf("pair cover missing enabled=%t stats=%v", enabled, stats.Funcs[1].Peephole)
 									}
+									if (stats.Funcs[1].Peephole["scalar-loop-unroll-latch"] != 0) != (enabled && !profileEnabled) {
+										t.Fatalf("latch path mismatch enabled=%t stats=%v", enabled, stats.Funcs[1].Peephole)
+									}
 									hit := false
 									for _, s := range stats.Funcs {
 										hit = hit || s.Peephole["cold-tuple-loop-exit"] != 0
