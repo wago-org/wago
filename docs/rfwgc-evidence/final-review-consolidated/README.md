@@ -5,15 +5,15 @@ Campaign base: `9713878ab452848f7eb7549a90be94b938a898be`.
 Combined correctness evidence: `2c9f72744dd6f414fc8f236c2d45aa39ce6ced69`.
 
 This is an interim consolidation, not final review approval, inclusion closure,
-performance qualification or PR readiness. The required Claude design review is
-still pending at this checkpoint.
+performance qualification or PR readiness. All four initial reviews have completed. The gate is BLOCKED on the Claude
+findings and fresh repair qualification/re-review.
 
 | Review | Evidence commit | Verdict |
 | --- | --- | --- |
 | Daybreak collector | `39ae86d8ad15fde4b890df338cfd1e3683b5b0b5` | One low documentation defect C1; no verified behavioral defect |
 | Daybreak compiler/lifetime | `cf14188a1932f9c65d6abdf67ded69c79fa8baa2` | No verified production defect |
 | Daybreak runtime/rooting | `e39f457f077f093b44c1c7be5ed77deb72b87342` | No verified production defect |
-| Claude design/judgment | Pending | Fan remains open |
+| Claude design/judgment | `f8b0e1827de2eb6d09c98ae10e4754f8fa9cca57` | DR-1/DR-2 executed regressions; DR-3 source-verified platform gap |
 
 ## Finding triage
 
@@ -53,3 +53,33 @@ wagodebug and wago_regalloccheck. Their reports retain scope and harness failure
 those checks do not replace the full combined receipts. Seven-PR and R9 final
 inclusion buckets remain pending all final gates. No PR has been opened or closed
 by this checkpoint.
+
+## Claude findings and subsequent CI review — blocking update
+
+- **DR-1 OPEN:** externref storage alone sets dynamic invocation domains, locking
+  unrelated GC domains for the guest call. Executed baseline controls pass and
+  candidate fails in all three modes. Repair must narrow admission without
+  losing conversion publication authority or creating lock-upgrade deadlocks.
+- **DR-2 OPEN:** the same classification rejects previously valid cross-Runtime
+  scalar-function imports. Same root cause as DR-1, distinct required regression.
+- **DR-3 OPEN:** non-Linux opaque conversion publication can retain pre-fix H2
+  behavior without rejection. Source-verified, not executed on Darwin/Windows.
+  Requires fail-closed admission or actual portable ownership support and an
+  explicit platform disposition; excluded tests do not establish absence.
+- **CI-1 repair awaiting re-review:** Darwin-only dispatch reused required status
+  name CI. Commit `7e887cb25623f711cd92d7ede88b83846f5fe95f` separates the Darwin
+  summary and renames the skipped normal summary to prevent status impersonation.
+  Local workflow contracts/actionlint and planner checks pass in all three modes.
+
+The earlier no-defect slice reviews do not contradict the concrete Claude probes:
+those reviews did not establish absence of the newly exercised regressions. Parent
+accepts DR-1/2/3 for repair. Claude Q2 duplicates resolved C1. Q1/Q4 require added
+large-old-heap and non-GC externref measurement controls; Q3 requires honest serial
+trace fallback accounting. Q5 public API target behavior, Q6 threaded wait liveness,
+and Q7 shared-domain poison behavior remain explicit assessment obligations, not
+silently closed defects. Review repair work invalidates the old candidate as a
+final measurement pin. No acquisition or CI dispatch is authorized yet.
+
+Deadline risk: runtime repair, platform validation, fresh review and combined-head
+qualification add an unestimated critical-path cost. The November 4 target has no
+waiver. Documentation and CI changes cannot affect shipped runtime performance.
