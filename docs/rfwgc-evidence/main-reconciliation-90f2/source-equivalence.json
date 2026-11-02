@@ -1,0 +1,10 @@
+{
+  "rebased_source": "e65ff9373319e909d0f9f0035a960fef52f1e1d4",
+  "tested_reconciliation_source": "0c4f033bb53cb9a1084f92deffb572e3be01d163",
+  "all_non_docs_entries_identical": true,
+  "dirty_files_and_submodules_preserved": true,
+  "replayed_commits": 329,
+  "base": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+  "old_remote_head": "b6260d2d7c993071e03aeb081429e91ac64503dc",
+  "merge_commit_not_in_rebased_history": true
+}

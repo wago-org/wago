@@ -1,0 +1,12 @@
+[
+  {
+    "repo": "/home/dev/Projects/slipstream-gc-realworld",
+    "pin": "4db8f625517d18af49ba53c894f169b33c662fa3",
+    "scope": "Read-only source search for sibling store lowering; no equivalent Wago byteBodyScanner or call-free loop admission established; not a sibling execution verdict"
+  },
+  {
+    "repo": "/home/dev/Projects/starshine-master-base",
+    "pin": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+    "scope": "Read-only source search for sibling store lowering; no equivalent Wago byteBodyScanner or call-free loop admission established; not a sibling execution verdict"
+  }
+]

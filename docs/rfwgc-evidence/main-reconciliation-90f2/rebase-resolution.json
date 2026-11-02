@@ -1,0 +1,18 @@
+{
+  "old_published_head": "b6260d2d7c993071e03aeb081429e91ac64503dc",
+  "onto": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+  "replayed_commits": 329,
+  "rebased_history_head": "abe42a8dcc9fa86f9c1e7db3ce47ccf9802888d7",
+  "final_source": "e65ff9373319e909d0f9f0035a960fef52f1e1d4",
+  "files": {
+    "src/core/compiler/backend/railshot/amd64/driver.go": "At e98051264 keep lifetime replay before main tightened GC reduction eligibility; later replay-consumer updates preserved. At b46fefb2a retain main gcFreshStructFactMode guard and already-landed EH local alias retention.",
+    "src/core/compiler/backend/railshot/amd64/control.go": "At 5b8c58b93 use main selective kind/index decoder, explicitly decode global.set kind/index and consult ExternStoreMayCall(kind,index); retain loop helper rejection.",
+    "src/core/compiler/backend/railshot/amd64/hints.go": "At 5b8c58b93 preserve main extracted scanExtendedHint and scalar-memory fast path; add extern-store classification to extracted helper; retain global store call boundary and ensure direct table.set scanner records helper collection/call boundary.",
+    "src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go": "New final commit adds behavioral scanner/loop contracts for externref global/table/fill/copy/grow with funcref controls; ordinary development initial fixture mistakenly inspected input hints instead of returned hints, corrected before retained final test."
+  },
+  "collector_core": "No textual conflict or design ambiguity. Main #1022 gray-object publication guard retained with existing port allocation/rollback; no collector redesign undertaken.",
+  "history": "No merge commit introduced in rebased port history; local 0c4f reference kept only for custody and immutable receipts. Historical evidence SHA references not rewritten.",
+  "dirt": "All four known file SHA256s and both dirty submodule heads verified unchanged after targeted stash restoration; stash retained as backup.",
+  "qualification": "18-command reconciliation source matrix ongoing; exact all-nondocs equality proof recorded. Additional 6 commands on final e65 source ongoing. No green final-head inference yet.",
+  "push": "HOLD until relevant checks finish; explicit expected old remote SHA will protect force-with-lease"
+}

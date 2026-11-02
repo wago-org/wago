@@ -1,0 +1,128 @@
+/home/dev/Projects/starshine-master-base/src/lib/types.mbt:3316:pub fn Instruction::global_set(gi : GlobalIdx) -> Instruction {
+/home/dev/Projects/starshine-master-base/src/lib/types.mbt:3326:pub fn Instruction::table_set(ti : TableIdx) -> Instruction {
+/home/dev/Projects/starshine-master-base/src/wast/keywords.mbt:185:  map.set("table.set", Opcode(TableSet))
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state_shapes.mbt:722:        Instruction::table_set(TableIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state_shapes.mbt:1036:    Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_global_refining.mbt:206:    yes.push(Instruction::global_set(GlobalIdx::new(target)))
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_global_refining.mbt:208:    no.push(Instruction::global_set(GlobalIdx::new(target)))
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_global_refining.mbt:215:    body.push(Instruction::global_set(GlobalIdx::new(target)))
+/home/dev/Projects/starshine-master-base/src/fuzz/metamorphic.mbt:6037:    @lib.Instruction::global_set(global_idx),
+/home/dev/Projects/starshine-master-base/src/fuzz/metamorphic.mbt:6045:        @lib.Instruction::global_set(global_idx),
+/home/dev/Projects/starshine-master-base/src/fuzz/metamorphic.mbt:6049:        @lib.Instruction::global_set(global_idx),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_dae2_wbtest.mbt:134:    assert_true(producer.contains(Instruction::global_set(GlobalIdx::new(0U))))
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_dae2_wbtest.mbt:350:    assert_true(observer.contains(Instruction::global_set(GlobalIdx::new(1U))))
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_precompute_observability_wbtest.mbt:311:    Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/lib/show.mbt:1103:      logger.write_string("(table.set ")
+/home/dev/Projects/starshine-master-base/src/fuzz/metamorphic_wbtest.mbt:5251:            @lib.Instruction::global_set(@lib.GlobalIdx::new(1U)),
+/home/dev/Projects/starshine-master-base/src/fuzz/metamorphic_wbtest.mbt:5265:                @lib.Instruction::global_set(@lib.GlobalIdx::new(1U)),
+/home/dev/Projects/starshine-master-base/src/fuzz/metamorphic_wbtest.mbt:5271:                @lib.Instruction::global_set(@lib.GlobalIdx::new(1U)),
+/home/dev/Projects/starshine-master-base/src/wast/parser.mbt:5613:    #|    (table.set (local.get 0))
+/home/dev/Projects/starshine-master-base/src/wast/lower_to_lib.mbt:2111:      Ok(@lib.Instruction::global_set(@lib.GlobalIdx::new(gi)))
+/home/dev/Projects/starshine-master-base/src/wast/lower_to_lib.mbt:2137:      Ok(@lib.Instruction::table_set(@lib.TableIdx::new(ti)))
+/home/dev/Projects/starshine-master-base/src/wast/module_wast.mbt:432:    TableSet(idx) => "table.set \{index_text(idx)}"
+/home/dev/Projects/starshine-master-base/src/cmd/rume_reference_policy_wbtest.mbt:11:      #|    (table.set (i32.const 0) (ref.func $answer))
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_constraint.mbt:289:            Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_constraint.mbt:440:          Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_constraint.mbt:659:                  Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/passes_perf_long/sgo_import_alias_scan_perf_test.mbt:18:    body.push(@lib.Instruction::global_set(@lib.GlobalIdx::new(0U)))
+/home/dev/Projects/starshine-master-base/src/fuzz/invalid_binary.mbt:3701:      "table.set instruction with a malformed table-index ULEB immediate",
+/home/dev/Projects/starshine-master-base/src/fuzz/invalid_binary.mbt:3736:      "table.set instruction with an overwide table-index ULEB immediate",
+/home/dev/Projects/starshine-master-base/src/fuzz/invalid_binary.mbt:8289:fn validate_invalid_binary_mutate_malformed_global_set_index_uleb(
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_vacuum_unread_tee.mbt:143:                Instruction::global_set(seen),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_vacuum_unread_tee.mbt:156:        Instruction::global_set(seen),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_vacuum_unread_tee.mbt:160:          [Instruction::global_get(seen), Instruction::global_set(seen)],
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_dae2.mbt:135:      Instruction::global_set(counter),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_dae2.mbt:429:        Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_dae2.mbt:477:          Instruction::global_set(counter),
+/home/dev/Projects/starshine-master-base/src/lib/pkg.generated.mbti:1751:pub fn Instruction::global_set(GlobalIdx) -> Self
+/home/dev/Projects/starshine-master-base/src/lib/pkg.generated.mbti:2116:pub fn Instruction::table_set(TableIdx) -> Self
+/home/dev/Projects/starshine-master-base/src/passes_perf_long/merge_blocks_flat_call_prefix_perf_test.mbt:7:    body.push(@lib.Instruction::global_set(@lib.GlobalIdx::new(0U)))
+/home/dev/Projects/starshine-master-base/src/fuzz/main_wbtest.mbt:2772:  assert_true(wat.contains("table.set"), msg=wat)
+/home/dev/Projects/starshine-master-base/src/cmd/simplify_locals_deep_void_blocks_wbtest.mbt:9:    @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/cmd/simplify_locals_deep_void_blocks_wbtest.mbt:55:fn simplify_locals_deep_void_blocks_count_global_sets(
+/home/dev/Projects/starshine-master-base/src/cmd/simplify_locals_deep_void_blocks_wbtest.mbt:117:    assert_eq(simplify_locals_deep_void_blocks_count_global_sets(output), 1)
+/home/dev/Projects/starshine-master-base/src/cmd/cmd.mbt:3320:      @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/cmd/cmd.mbt:10266:    assert_eq(body[1], @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)))
+/home/dev/Projects/starshine-master-base/src/cmd/cmd.mbt:10313:    assert_eq(body[1], @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)))
+/home/dev/Projects/starshine-master-base/src/cmd/heap_store_optimization_fourth_audit_wbtest.mbt:24:              @lib.Instruction::global_set(g),
+/home/dev/Projects/starshine-master-base/src/cmd/heap_store_optimization_fourth_audit_wbtest.mbt:30:              @lib.Instruction::global_set(out),
+/home/dev/Projects/starshine-master-base/src/binary/decode.mbt:3263:        Ok((idx, i)) => Ok((Instruction::global_set(idx), i))
+/home/dev/Projects/starshine-master-base/src/binary/decode.mbt:3273:        Ok((idx, i)) => Ok((Instruction::table_set(idx), i))
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state_diversity.mbt:140:      Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state_diversity.mbt:269:      Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state_diversity.mbt:276:      Instruction::table_set(TableIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/passes_perf_long/dae2_pure_tail_perf_test.mbt:63:          @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/cmd/merge_blocks_encoding_wbtest.mbt:29:    @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/cmd/cmd_wbtest.mbt:1176:              @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state.mbt:323:      Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state.mbt:696:      Instruction::table_set(TableIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state.mbt:878:      Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state_matrix.mbt:224:      Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state_matrix.mbt:1291:    Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_engine_state_matrix.mbt:1297:    Instruction::table_set(TableIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/ir/pkg.generated.mbti:235:pub fn hot_branch_table_set(HotFunc, Int, Array[Int], Int) -> Unit
+/home/dev/Projects/starshine-master-base/src/ir/pkg.generated.mbti:287:pub fn hot_build_global_set(HotFunc, Int, Int) -> Int
+/home/dev/Projects/starshine-master-base/src/ir/pkg.generated.mbti:341:pub fn hot_build_table_set(HotFunc, Int, Int, Int) -> Int
+/home/dev/Projects/starshine-master-base/src/validate/typecheck_negative_wbtest.mbt:450:    (Instruction::table_set(TableIdx::new(0)), [ValType::i64(), element], []),
+/home/dev/Projects/starshine-master-base/src/validate/typecheck_negative_wbtest.mbt:484:      (Instruction::table_set(TableIdx::new(0)), [ValType::i32(), element]),
+/home/dev/Projects/starshine-master-base/src/validate/gen_invalid_wbtest.mbt:2317:test "gen_invalid_ast_generate supports function-body table.set value type strategy" {
+/home/dev/Projects/starshine-master-base/src/validate/gen_invalid_wbtest.mbt:2341:test "gen_invalid_ast_generate supports function-body table.set index type strategy" {
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid.mbt:3768:          Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid.mbt:4161:          Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid.mbt:4468:          Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_ssa.mbt:2557:    out.push(Instruction::table_set(TableIdx::new(0U)))
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_wbtest.mbt:2462:    gen_valid_test_module_has_global_set(generated.wasm_module),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_wbtest.mbt:2504:        gen_valid_test_instrs_have_global_set(producer_body),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_wbtest.mbt:3009:    gen_valid_test_module_has_global_set(generated.wasm_module),
+/home/dev/Projects/starshine-master-base/src/ir/cfg_pure_preflight_wbtest.mbt:226:  let write = hot_build_global_set(
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_simplify_locals.mbt:275:      Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_simplify_locals.mbt:302:      Instruction::table_set(TableIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_reorder_globals.mbt:218:      body.push(Instruction::global_set(GlobalIdx::new(128U)))
+/home/dev/Projects/starshine-master-base/src/validate/invalid_fuzzer.mbt:1375:      "invalid function-body table.set index type",
+/home/dev/Projects/starshine-master-base/src/validate/invalid_fuzzer.mbt:2110:      "invalid function-body table.set value type",
+/home/dev/Projects/starshine-master-base/src/validate/invalid_fuzzer.mbt:5968:fn validate_invalid_ast_mutate_invalid_function_body_table_set_index_type(
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_directize.mbt:344:        Instruction::table_set(TableIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_msf_record_copy.mbt:106:    Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/rume/remove_unused_module_elements.mbt:3913:      @lib.Instruction::global_set(
+/home/dev/Projects/starshine-master-base/src/rume/remove_unused_module_elements.mbt:3921:      @lib.Instruction::table_set(
+/home/dev/Projects/starshine-master-base/src/ir/hot_mutate.mbt:1466:pub fn hot_branch_table_set(
+/home/dev/Projects/starshine-master-base/src/ir/hot_mutate.mbt:1472:  hot_mutate_require_live_node(func, node_id, "hot branch_table_set node")
+/home/dev/Projects/starshine-master-base/src/ir/hot_mutate.mbt:1474:    hot_mutate_require_label_id(func, target, "hot branch_table_set target")
+/home/dev/Projects/starshine-master-base/src/validate/typecheck.mbt:740:fn typecheck_global_set(st : TcState, idx : GlobalIdx) -> TcResult {
+/home/dev/Projects/starshine-master-base/src/validate/typecheck.mbt:767:// table.set x : [at, t] -> []
+/home/dev/Projects/starshine-master-base/src/validate/typecheck.mbt:770:fn typecheck_table_set(st : TcState, idx : TableIdx) -> TcResult {
+/home/dev/Projects/starshine-master-base/src/validate/gen_valid_descriptor_branches.mbt:82:      Instruction::global_set(GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/passes/optimize_instructions_test.mbt:1093:  // maxBits compare through a straight-line table.set block prefix while keeping
+/home/dev/Projects/starshine-master-base/src/passes/optimize_instructions_test.mbt:1105:        #|        (table.set 0 (i32.const 0) (ref.func $side))
+/home/dev/Projects/starshine-master-base/src/passes/optimize_instructions_test.mbt:1116:  assert_true(pretty.contains("table.set"), msg=pretty)
+/home/dev/Projects/starshine-master-base/src/passes/heap_store_optimization_fourth_audit_test.mbt:24:              @lib.Instruction::global_set(g),
+/home/dev/Projects/starshine-master-base/src/passes/heap_store_optimization_fourth_audit_test.mbt:30:              @lib.Instruction::global_set(out),
+/home/dev/Projects/starshine-master-base/src/passes/heap_store_optimization_fourth_audit_test.mbt:124:          @lib.Instruction::global_set(@lib.GlobalIdx::new(1U)),
+/home/dev/Projects/starshine-master-base/src/passes/code_pushing_wbtest.mbt:679:    code_pushing_direct_global_set_disjoint_from_global_get(
+/home/dev/Projects/starshine-master-base/src/passes/code_pushing_wbtest.mbt:738:    code_pushing_direct_global_set_disjoint_from_global_get(
+/home/dev/Projects/starshine-master-base/src/passes/code_pushing_wbtest.mbt:771:    code_pushing_direct_global_set_disjoint_from_global_get(
+/home/dev/Projects/starshine-master-base/src/passes/dead_argument_elimination2_round2_wbtest.mbt:28:    #|     table.set 0
+/home/dev/Projects/starshine-master-base/src/passes/global_refining.mbt:875:fn gr_collect_func_global_sets(
+/home/dev/Projects/starshine-master-base/src/passes/global_refining.mbt:1237:        gr_collect_func_global_sets(
+/home/dev/Projects/starshine-master-base/src/passes/optimize_instructions.mbt:15674:fn optimize_instructions_try_sink_same_global_set_if(
+/home/dev/Projects/starshine-master-base/src/passes/optimize_instructions.mbt:15754:  let replacement_set = @ir.hot_build_global_set(func, global_id, value_if)
+/home/dev/Projects/starshine-master-base/src/passes/optimize_instructions.mbt:42987:      optimize_instructions_try_sink_same_global_set_if(
+/home/dev/Projects/starshine-master-base/src/passes/memory_packing_wbtest.mbt:93:    mp_instr_stack_counts(@lib.Instruction::table_set(@lib.TableIdx::new(0U))),
+/home/dev/Projects/starshine-master-base/src/passes/memory_packing_wbtest.mbt:123:    @lib.Instruction::table_set(@lib.TableIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/passes/memory_packing_wbtest.mbt:300:    body.contains(@lib.Instruction::global_set(@lib.GlobalIdx::new(0U))),
+/home/dev/Projects/starshine-master-base/src/passes/pass_manager_wbtest.mbt:1326:          @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/passes/pass_manager_wbtest.mbt:1342:    @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/passes/pass_manager_wbtest.mbt:1371:              @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)),
+/home/dev/Projects/starshine-master-base/src/passes/dae_cleanup_parity_followup_test.mbt:55:    assert_eq(body[4], @lib.Instruction::global_set(@lib.GlobalIdx::new(0U)))
+/home/dev/Projects/starshine-master-base/src/passes/code_folding_test.mbt:1543:test "code-folding folds embedded table.set index partial value if suffixes" {
+/home/dev/Projects/starshine-master-base/src/passes/code_folding_test.mbt:1549:      #|    (table.set 0
+/home/dev/Projects/starshine-master-base/src/passes/code_folding_test.mbt:1565:  assert_true(pretty.contains("table.set"), msg=pretty)
+/home/dev/Projects/starshine-master-base/src/passes/memory_packing.mbt:2719:        out.push(@lib.Instruction::global_set(gi))
+/home/dev/Projects/starshine-master-base/src/passes/dae_numeric_result_validation_wbtest.mbt:115:      body.contains(@lib.Instruction::global_set(@lib.GlobalIdx::new(0U))),
+/home/dev/Projects/starshine-master-base/src/passes/memory_packing_test.mbt:224:fn mp_test_instrs_have_global_set(instrs : Array[@lib.Instruction]) -> Bool {
+/home/dev/Projects/starshine-master-base/src/passes/memory_packing_test.mbt:226:    if mp_test_instr_has_global_set(instr) {
+/home/dev/Projects/starshine-master-base/src/passes/memory_packing_test.mbt:234:fn mp_test_instr_has_global_set(instr : @lib.Instruction) -> Bool {
+/home/dev/Projects/starshine-master-base/src/ir/hot_builders.mbt:449:pub fn hot_build_global_set(
+/home/dev/Projects/starshine-master-base/src/ir/hot_builders.mbt:677:pub fn hot_build_table_set(
+/home/dev/Projects/starshine-master-base/src/passes/dae_scalar_undropped_lifetime_wbtest.mbt:125:    body.contains(@lib.Instruction::global_set(@lib.GlobalIdx::new(0U))),
+/home/dev/Projects/starshine-master-base/src/passes/dead_argument_elimination2.mbt:2278:    "(module (type $s (struct (field i32))) (import \"host\" \"f\" (func $f (param i32) (result i32))) (table 1 anyref) (func $callee (param i32 i32) (result i32) local.get 0) (func

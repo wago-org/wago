@@ -1,0 +1,95 @@
+[
+  {
+    "label": "ordinary-focused-race",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_codegenstats",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-race",
+      "-run",
+      "^Test(Extern|GCLifetime|CallFree|LoopScan|InlineCaller)",
+      "-count=1",
+      "-timeout=10m",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "ordinary-diagnostic",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_codegenstats",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-count=1",
+      "-timeout=10m",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wagodebug-focused-race",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_codegenstats,wagodebug",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-race",
+      "-run",
+      "^Test(Extern|GCLifetime|CallFree|LoopScan|InlineCaller)",
+      "-count=1",
+      "-timeout=10m",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wagodebug-diagnostic",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_codegenstats,wagodebug",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-count=1",
+      "-timeout=10m",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wago_regalloccheck-focused-race",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_codegenstats,wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-race",
+      "-run",
+      "^Test(Extern|GCLifetime|CallFree|LoopScan|InlineCaller)",
+      "-count=1",
+      "-timeout=10m",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wago_regalloccheck-diagnostic",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_codegenstats,wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-count=1",
+      "-timeout=10m",
+      "-v"
+    ],
+    "exit": 0
+  }
+]

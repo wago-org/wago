@@ -1,0 +1,208 @@
+=== RUN   TestCallFreeLoopExitReconciliationIsColdAMD64
+--- PASS: TestCallFreeLoopExitReconciliationIsColdAMD64 (0.00s)
+=== RUN   TestCallFreeLoopKeepsPinnedLocalsOnBackedgeAMD64
+--- PASS: TestCallFreeLoopKeepsPinnedLocalsOnBackedgeAMD64 (0.00s)
+=== RUN   TestCallFreeLoopRegisterStateAfterConditionalWriteAMD64
+--- PASS: TestCallFreeLoopRegisterStateAfterConditionalWriteAMD64 (0.00s)
+=== RUN   TestCallFreeLoopDetailsSharedBudgetAMD64
+--- PASS: TestCallFreeLoopDetailsSharedBudgetAMD64 (0.00s)
+=== RUN   TestCallFreeLoopImmediateFreeBudgetAndFloatWindowAMD64
+--- PASS: TestCallFreeLoopImmediateFreeBudgetAndFloatWindowAMD64 (0.00s)
+=== RUN   TestCallFreeRelinquishedPinEdges
+=== RUN   TestCallFreeRelinquishedPinEdges/type=1/reconcile
+=== RUN   TestCallFreeRelinquishedPinEdges/type=1/converge
+=== RUN   TestCallFreeRelinquishedPinEdges/type=2/reconcile
+=== RUN   TestCallFreeRelinquishedPinEdges/type=2/converge
+=== RUN   TestCallFreeRelinquishedPinEdges/type=3/reconcile
+=== RUN   TestCallFreeRelinquishedPinEdges/type=3/converge
+=== RUN   TestCallFreeRelinquishedPinEdges/type=4/reconcile
+=== RUN   TestCallFreeRelinquishedPinEdges/type=4/converge
+=== RUN   TestCallFreeRelinquishedPinEdges/type=5/reconcile
+=== RUN   TestCallFreeRelinquishedPinEdges/type=5/converge
+--- PASS: TestCallFreeRelinquishedPinEdges (0.00s)
+    --- PASS: TestCallFreeRelinquishedPinEdges/type=1/reconcile (0.00s)
+    --- PASS: TestCallFreeRelinquishedPinEdges/type=1/converge (0.00s)
+    --- PASS: TestCallFreeRelinquishedPinEdges/type=2/reconcile (0.00s)
+    --- PASS: TestCallFreeRelinquishedPinEdges/type=2/converge (0.00s)
+    --- PASS: TestCallFreeRelinquishedPinEdges/type=3/reconcile (0.00s)
+    --- PASS: TestCallFreeRelinquishedPinEdges/type=3/converge (0.00s)
+    --- PASS: TestCallFreeRelinquishedPinEdges/type=4/reconcile (0.00s)
+    --- PASS: TestCallFreeRelinquishedPinEdges/type=4/converge (0.00s)
+    --- PASS: TestCallFreeRelinquishedPinEdges/type=5/reconcile (0.00s)
+    --- PASS: TestCallFreeRelinquishedPinEdges/type=5/converge (0.00s)
+=== RUN   TestCallFreeRecoveredPinBecomesDirtyOnWrite
+=== RUN   TestCallFreeRecoveredPinBecomesDirtyOnWrite/1
+=== RUN   TestCallFreeRecoveredPinBecomesDirtyOnWrite/2
+=== RUN   TestCallFreeRecoveredPinBecomesDirtyOnWrite/3
+=== RUN   TestCallFreeRecoveredPinBecomesDirtyOnWrite/4
+=== RUN   TestCallFreeRecoveredPinBecomesDirtyOnWrite/5
+--- PASS: TestCallFreeRecoveredPinBecomesDirtyOnWrite (0.00s)
+    --- PASS: TestCallFreeRecoveredPinBecomesDirtyOnWrite/1 (0.00s)
+    --- PASS: TestCallFreeRecoveredPinBecomesDirtyOnWrite/2 (0.00s)
+    --- PASS: TestCallFreeRecoveredPinBecomesDirtyOnWrite/3 (0.00s)
+    --- PASS: TestCallFreeRecoveredPinBecomesDirtyOnWrite/4 (0.00s)
+    --- PASS: TestCallFreeRecoveredPinBecomesDirtyOnWrite/5 (0.00s)
+=== RUN   TestCallFreePinMergeInvalidatesCleanSlot
+=== RUN   TestCallFreePinMergeInvalidatesCleanSlot/2
+=== RUN   TestCallFreePinMergeInvalidatesCleanSlot/1
+=== RUN   TestCallFreePinMergeInvalidatesCleanSlot/0
+--- PASS: TestCallFreePinMergeInvalidatesCleanSlot (0.00s)
+    --- PASS: TestCallFreePinMergeInvalidatesCleanSlot/2 (0.00s)
+    --- PASS: TestCallFreePinMergeInvalidatesCleanSlot/1 (0.00s)
+    --- PASS: TestCallFreePinMergeInvalidatesCleanSlot/0 (0.00s)
+=== RUN   TestCallFreePinEdgesDoNotStoreRegisterLocals
+=== RUN   TestCallFreePinEdgesDoNotStoreRegisterLocals/0
+=== RUN   TestCallFreePinEdgesDoNotStoreRegisterLocals/1
+--- PASS: TestCallFreePinEdgesDoNotStoreRegisterLocals (0.00s)
+    --- PASS: TestCallFreePinEdgesDoNotStoreRegisterLocals/0 (0.00s)
+    --- PASS: TestCallFreePinEdgesDoNotStoreRegisterLocals/1 (0.00s)
+=== RUN   TestCallFreePinEdgesRestoreAfterMaterialization
+=== RUN   TestCallFreePinEdgesRestoreAfterMaterialization/branch
+=== RUN   TestCallFreePinEdgesRestoreAfterMaterialization/conditional
+=== RUN   TestCallFreePinEdgesRestoreAfterMaterialization/table
+=== RUN   TestCallFreePinEdgesRestoreAfterMaterialization/else
+=== RUN   TestCallFreePinEdgesRestoreAfterMaterialization/end
+=== RUN   TestCallFreePinEdgesRestoreAfterMaterialization/loop
+=== RUN   TestCallFreePinEdgesRestoreAfterMaterialization/if
+--- PASS: TestCallFreePinEdgesRestoreAfterMaterialization (0.00s)
+    --- PASS: TestCallFreePinEdgesRestoreAfterMaterialization/branch (0.00s)
+    --- PASS: TestCallFreePinEdgesRestoreAfterMaterialization/conditional (0.00s)
+    --- PASS: TestCallFreePinEdgesRestoreAfterMaterialization/table (0.00s)
+    --- PASS: TestCallFreePinEdgesRestoreAfterMaterialization/else (0.00s)
+    --- PASS: TestCallFreePinEdgesRestoreAfterMaterialization/end (0.00s)
+    --- PASS: TestCallFreePinEdgesRestoreAfterMaterialization/loop (0.00s)
+    --- PASS: TestCallFreePinEdgesRestoreAfterMaterialization/if (0.00s)
+=== RUN   TestCallFreePinRelinquishmentRetainsFrame
+--- PASS: TestCallFreePinRelinquishmentRetainsFrame (0.00s)
+=== RUN   TestCallFreePinConditionSurvivesRelinquishment
+=== RUN   TestCallFreePinConditionSurvivesRelinquishment/if
+=== RUN   TestCallFreePinConditionSurvivesRelinquishment/branch
+=== RUN   TestCallFreePinConditionSurvivesRelinquishment/fused-branch
+=== RUN   TestCallFreePinConditionSurvivesRelinquishment/table
+--- PASS: TestCallFreePinConditionSurvivesRelinquishment (0.00s)
+    --- PASS: TestCallFreePinConditionSurvivesRelinquishment/if (0.00s)
+    --- PASS: TestCallFreePinConditionSurvivesRelinquishment/branch (0.00s)
+    --- PASS: TestCallFreePinConditionSurvivesRelinquishment/fused-branch (0.00s)
+    --- PASS: TestCallFreePinConditionSurvivesRelinquishment/table (0.00s)
+=== RUN   TestCallFreeRegionalMergeRestoresOnlyMissingPins
+--- PASS: TestCallFreeRegionalMergeRestoresOnlyMissingPins (0.00s)
+=== RUN   TestExternHostStoreContractRouting
+--- PASS: TestExternHostStoreContractRouting (0.00s)
+=== RUN   TestExternHostStoreContractHelperABI
+--- PASS: TestExternHostStoreContractHelperABI (0.01s)
+=== RUN   TestExternHostStoreContractCallFrames
+--- PASS: TestExternHostStoreContractCallFrames (0.03s)
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries/global/111
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries/table/111
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries/fill/111
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries/copy/111
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries/grow/111
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries/global/112
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries/table/112
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries/fill/112
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries/copy/112
+=== RUN   TestExternStoreColdDecodePreservesCallBoundaries/grow/112
+--- PASS: TestExternStoreColdDecodePreservesCallBoundaries (0.00s)
+    --- PASS: TestExternStoreColdDecodePreservesCallBoundaries/global/111 (0.00s)
+    --- PASS: TestExternStoreColdDecodePreservesCallBoundaries/table/111 (0.00s)
+    --- PASS: TestExternStoreColdDecodePreservesCallBoundaries/fill/111 (0.00s)
+    --- PASS: TestExternStoreColdDecodePreservesCallBoundaries/copy/111 (0.00s)
+    --- PASS: TestExternStoreColdDecodePreservesCallBoundaries/grow/111 (0.00s)
+    --- PASS: TestExternStoreColdDecodePreservesCallBoundaries/global/112 (0.00s)
+    --- PASS: TestExternStoreColdDecodePreservesCallBoundaries/table/112 (0.00s)
+    --- PASS: TestExternStoreColdDecodePreservesCallBoundaries/fill/112 (0.00s)
+    --- PASS: TestExternStoreColdDecodePreservesCallBoundaries/copy/112 (0.00s)
+    --- PASS: TestExternStoreColdDecodePreservesCallBoundaries/grow/112 (0.00s)
+=== RUN   TestGCLifetimeProof
+=== RUN   TestGCLifetimeProof/adjacent
+=== RUN   TestGCLifetimeProof/default
+=== RUN   TestGCLifetimeProof/overwrite
+=== RUN   TestGCLifetimeProof/alias-overwrite
+=== RUN   TestGCLifetimeProof/call
+=== RUN   TestGCLifetimeProof/store
+=== RUN   TestGCLifetimeProof/return
+=== RUN   TestGCLifetimeProof/branch
+=== RUN   TestGCLifetimeProof/identity
+=== RUN   TestGCLifetimeProof/unknown
+=== RUN   TestGCLifetimeProof/array
+=== RUN   TestGCLifetimeProof/truncated
+=== RUN   TestGCLifetimeProof/missing-end
+=== RUN   TestGCLifetimeProof/trailing
+=== RUN   TestGCLifetimeProof/stack-underflow
+=== RUN   TestGCLifetimeProof/bad-local
+=== RUN   TestGCLifetimeProof/no-gc
+--- PASS: TestGCLifetimeProof (0.00s)
+    --- PASS: TestGCLifetimeProof/adjacent (0.00s)
+    --- PASS: TestGCLifetimeProof/default (0.00s)
+    --- PASS: TestGCLifetimeProof/overwrite (0.00s)
+    --- PASS: TestGCLifetimeProof/alias-overwrite (0.00s)
+    --- PASS: TestGCLifetimeProof/call (0.00s)
+    --- PASS: TestGCLifetimeProof/store (0.00s)
+    --- PASS: TestGCLifetimeProof/return (0.00s)
+    --- PASS: TestGCLifetimeProof/branch (0.00s)
+    --- PASS: TestGCLifetimeProof/identity (0.00s)
+    --- PASS: TestGCLifetimeProof/unknown (0.00s)
+    --- PASS: TestGCLifetimeProof/array (0.00s)
+    --- PASS: TestGCLifetimeProof/truncated (0.00s)
+    --- PASS: TestGCLifetimeProof/missing-end (0.00s)
+    --- PASS: TestGCLifetimeProof/trailing (0.00s)
+    --- PASS: TestGCLifetimeProof/stack-underflow (0.00s)
+    --- PASS: TestGCLifetimeProof/bad-local (0.00s)
+    --- PASS: TestGCLifetimeProof/no-gc (0.00s)
+=== RUN   TestGCLifetimeBoundsAndTypes
+--- PASS: TestGCLifetimeBoundsAndTypes (0.00s)
+=== RUN   TestGCLifetimeCompileIdentity
+=== RUN   TestGCLifetimeCompileIdentity/qualifying
+=== RUN   TestGCLifetimeCompileIdentity/nonqualifying
+=== RUN   TestGCLifetimeCompileIdentity/no-gc
+--- PASS: TestGCLifetimeCompileIdentity (0.02s)
+    --- PASS: TestGCLifetimeCompileIdentity/qualifying (0.01s)
+    --- PASS: TestGCLifetimeCompileIdentity/nonqualifying (0.01s)
+    --- PASS: TestGCLifetimeCompileIdentity/no-gc (0.00s)
+=== RUN   TestGCLifetimeExactBudgets
+--- PASS: TestGCLifetimeExactBudgets (0.00s)
+=== RUN   TestGCLifetimeNumericTypes
+=== RUN   TestGCLifetimeNumericTypes/i32
+=== RUN   TestGCLifetimeNumericTypes/i64
+=== RUN   TestGCLifetimeNumericTypes/f32
+=== RUN   TestGCLifetimeNumericTypes/f64
+--- PASS: TestGCLifetimeNumericTypes (0.00s)
+    --- PASS: TestGCLifetimeNumericTypes/i32 (0.00s)
+    --- PASS: TestGCLifetimeNumericTypes/i64 (0.00s)
+    --- PASS: TestGCLifetimeNumericTypes/f32 (0.00s)
+    --- PASS: TestGCLifetimeNumericTypes/f64 (0.00s)
+=== RUN   TestGCLifetimeIdentityAndInitializer
+--- PASS: TestGCLifetimeIdentityAndInitializer (0.00s)
+=== RUN   TestGCLifetimeReplay
+--- PASS: TestGCLifetimeReplay (0.00s)
+=== RUN   TestGCLifetimeReplayContextFallback
+=== RUN   TestGCLifetimeReplayContextFallback/type
+=== RUN   TestGCLifetimeReplayContextFallback/locals
+=== RUN   TestGCLifetimeReplayContextFallback/signature
+=== RUN   TestGCLifetimeReplayContextFallback/options
+--- PASS: TestGCLifetimeReplayContextFallback (0.00s)
+    --- PASS: TestGCLifetimeReplayContextFallback/type (0.00s)
+    --- PASS: TestGCLifetimeReplayContextFallback/locals (0.00s)
+    --- PASS: TestGCLifetimeReplayContextFallback/signature (0.00s)
+    --- PASS: TestGCLifetimeReplayContextFallback/options (0.00s)
+=== RUN   TestInlineCallerHintPlanParity
+--- PASS: TestInlineCallerHintPlanParity (0.09s)
+=== RUN   TestInlineCallerHintFallbackAndBudget
+--- PASS: TestInlineCallerHintFallbackAndBudget (0.00s)
+=== RUN   TestInlineCallerHintModuleIntegration
+--- PASS: TestInlineCallerHintModuleIntegration (0.01s)
+=== RUN   TestCallFreeLoopFloatConstantScopeAMD64
+--- PASS: TestCallFreeLoopFloatConstantScopeAMD64 (0.00s)
+=== RUN   TestLoopScanDecodeMatchesReference49
+--- PASS: TestLoopScanDecodeMatchesReference49 (0.41s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	1.595s
+=== RUN   TestExternHostStoreContractRouting
+--- PASS: TestExternHostStoreContractRouting (0.00s)
+=== RUN   TestExternHostStoreContractHelperABI
+--- PASS: TestExternHostStoreContractHelperABI (0.01s)
+=== RUN   TestExternHostStoreContractCallFrames
+--- PASS: TestExternHostStoreContractCallFrames (0.03s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	1.046s
