@@ -54,6 +54,12 @@ func TestNativeImportVariantSourceArtifactAndCalls(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
+						// Public imported callers require exact unwind maps, which exclude
+						// unchecked specialization. The backend no-plan route is exercised
+						// by TestNativeImportVariantRoutesARM64, including the second body.
+						if roots := c.genericGCFrameRoots(); roots == nil || len(roots.callsites) == 0 {
+							t.Fatal("public imported caller lacks unwind return maps")
+						}
 						var image bytes.Buffer
 						if _, err := c.WriteCodeTo(&image); err != nil {
 							t.Fatal(err)
@@ -119,8 +125,8 @@ func TestNativeImportVariantSourceArtifactAndCalls(t *testing.T) {
 							}
 						}
 					}
-					if bytes.Equal(images["0"], images["1"]) || len(images["1"]) <= len(images["0"]) {
-						t.Fatal("guarded variant selector did not add a second body")
+					if !bytes.Equal(images["0"], images["1"]) {
+						t.Fatal("unwind-mapped public caller admitted unchecked second body")
 					}
 				})
 			}
