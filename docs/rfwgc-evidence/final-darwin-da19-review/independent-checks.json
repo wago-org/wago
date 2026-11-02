@@ -1,0 +1,263 @@
+{
+  "scope": "Mocked driver orchestration plus Git/static checks, no native execution",
+  "source": "da19f1a8d29fec7305d937a42622a198b8e79717",
+  "harness": "336416d2a006bbefded9e5b0b8539199bd6b0e3b",
+  "cases": [
+    {
+      "mode": "ordinary",
+      "case": "success",
+      "exit": 0,
+      "commands_started": [
+        "cancellation-ordinary",
+        "core3-child-ordinary",
+        "repaired-contracts-ordinary",
+        "broad-ordinary"
+      ]
+    },
+    {
+      "mode": "ordinary",
+      "case": "diagnosis-fails",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-ordinary",
+        "core3-child-ordinary",
+        "repaired-contracts-ordinary",
+        "broad-ordinary"
+      ]
+    },
+    {
+      "mode": "ordinary",
+      "case": "child-exit-fails",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-ordinary",
+        "core3-child-ordinary",
+        "repaired-contracts-ordinary",
+        "broad-ordinary"
+      ]
+    },
+    {
+      "mode": "ordinary",
+      "case": "child-malformed",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-ordinary",
+        "core3-child-ordinary",
+        "repaired-contracts-ordinary",
+        "broad-ordinary"
+      ]
+    },
+    {
+      "mode": "ordinary",
+      "case": "child-gap",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-ordinary",
+        "core3-child-ordinary",
+        "repaired-contracts-ordinary",
+        "broad-ordinary"
+      ]
+    },
+    {
+      "mode": "ordinary",
+      "case": "census-fails",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-ordinary",
+        "core3-child-ordinary",
+        "repaired-contracts-ordinary",
+        "broad-ordinary"
+      ]
+    },
+    {
+      "mode": "ordinary",
+      "case": "identity-fails",
+      "exit": 2,
+      "commands_started": []
+    },
+    {
+      "mode": "ordinary",
+      "case": "source-fails",
+      "exit": 2,
+      "commands_started": []
+    },
+    {
+      "mode": "ordinary",
+      "case": "source-dirty",
+      "exit": 2,
+      "commands_started": []
+    },
+    {
+      "mode": "wagodebug",
+      "case": "success",
+      "exit": 0,
+      "commands_started": [
+        "cancellation-wagodebug",
+        "core3-child-wagodebug",
+        "repaired-contracts-wagodebug",
+        "broad-wagodebug"
+      ]
+    },
+    {
+      "mode": "wagodebug",
+      "case": "diagnosis-fails",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-wagodebug",
+        "core3-child-wagodebug",
+        "repaired-contracts-wagodebug",
+        "broad-wagodebug"
+      ]
+    },
+    {
+      "mode": "wagodebug",
+      "case": "child-exit-fails",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-wagodebug",
+        "core3-child-wagodebug",
+        "repaired-contracts-wagodebug",
+        "broad-wagodebug"
+      ]
+    },
+    {
+      "mode": "wagodebug",
+      "case": "child-malformed",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-wagodebug",
+        "core3-child-wagodebug",
+        "repaired-contracts-wagodebug",
+        "broad-wagodebug"
+      ]
+    },
+    {
+      "mode": "wagodebug",
+      "case": "child-gap",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-wagodebug",
+        "core3-child-wagodebug",
+        "repaired-contracts-wagodebug",
+        "broad-wagodebug"
+      ]
+    },
+    {
+      "mode": "wagodebug",
+      "case": "census-fails",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-wagodebug",
+        "core3-child-wagodebug",
+        "repaired-contracts-wagodebug",
+        "broad-wagodebug"
+      ]
+    },
+    {
+      "mode": "wagodebug",
+      "case": "identity-fails",
+      "exit": 2,
+      "commands_started": []
+    },
+    {
+      "mode": "wagodebug",
+      "case": "source-fails",
+      "exit": 2,
+      "commands_started": []
+    },
+    {
+      "mode": "wagodebug",
+      "case": "source-dirty",
+      "exit": 2,
+      "commands_started": []
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "case": "success",
+      "exit": 0,
+      "commands_started": [
+        "cancellation-wago_regalloccheck",
+        "core3-child-wago_regalloccheck",
+        "repaired-contracts-wago_regalloccheck",
+        "broad-wago_regalloccheck"
+      ]
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "case": "diagnosis-fails",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-wago_regalloccheck",
+        "core3-child-wago_regalloccheck",
+        "repaired-contracts-wago_regalloccheck",
+        "broad-wago_regalloccheck"
+      ]
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "case": "child-exit-fails",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-wago_regalloccheck",
+        "core3-child-wago_regalloccheck",
+        "repaired-contracts-wago_regalloccheck",
+        "broad-wago_regalloccheck"
+      ]
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "case": "child-malformed",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-wago_regalloccheck",
+        "core3-child-wago_regalloccheck",
+        "repaired-contracts-wago_regalloccheck",
+        "broad-wago_regalloccheck"
+      ]
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "case": "child-gap",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-wago_regalloccheck",
+        "core3-child-wago_regalloccheck",
+        "repaired-contracts-wago_regalloccheck",
+        "broad-wago_regalloccheck"
+      ]
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "case": "census-fails",
+      "exit": 1,
+      "commands_started": [
+        "cancellation-wago_regalloccheck",
+        "core3-child-wago_regalloccheck",
+        "repaired-contracts-wago_regalloccheck",
+        "broad-wago_regalloccheck"
+      ]
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "case": "identity-fails",
+      "exit": 2,
+      "commands_started": []
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "case": "source-fails",
+      "exit": 2,
+      "commands_started": []
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "case": "source-dirty",
+      "exit": 2,
+      "commands_started": []
+    }
+  ],
+  "cancellation_sha256": "a7a719c91e0afe10dab1440814b572a77815b5b219928fe4ef80d80225c445ac",
+  "parent_census": "215/690; rejects skips before accumulation",
+  "graph_census": "all six missing/duplicate cases rejected",
+  "status": "PASS"
+}
