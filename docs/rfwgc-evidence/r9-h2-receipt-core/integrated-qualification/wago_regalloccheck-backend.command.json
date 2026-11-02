@@ -1,0 +1,1 @@
+["/home/dev/.local/share/mise/installs/go/1.27.3/bin/go", "test", "-tags", "wago_regalloccheck", "./src/core/compiler/backend/railshot/amd64", "./src/core/compiler/backend/railshot/arm64", "./src/core/compiler/wasm", "-timeout=10m", "-count=1", "-v"]
