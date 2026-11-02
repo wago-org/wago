@@ -1,0 +1,17 @@
+[
+  {
+    "mode": "ordinary",
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "-failfast",
+      "-timeout=3m",
+      "-run",
+      "^TestPreparedGCRevocableEntryExternalAccess$/^reference-store$",
+      "./src/wago"
+    ],
+    "exit": 1
+  }
+]

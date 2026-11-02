@@ -24,7 +24,12 @@ func managedFunctionAfterLifetimeBoundary(in *Instance) {
 	if in == nil {
 		return
 	}
-	if value, ok := managedFunctionGraphs.Load(in.refStore); ok {
+	// Boundary publication is lazy and protected by lifeMu. Drop it before
+	// entering graph/topology collection to preserve the lock order.
+	in.lifeMu.Lock()
+	store := in.refStore
+	in.lifeMu.Unlock()
+	if value, ok := managedFunctionGraphs.Load(store); ok {
 		graph := value.(*managedFunctionGraph)
 		graph.pendingCollection.Store(true)
 		graph.drainAfterGate(0)
