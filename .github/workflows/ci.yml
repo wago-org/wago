@@ -24,7 +24,7 @@ on:
       source_sha:
         description: 'Exact reviewed source SHA; used only for non-Linux qualification'
         type: string
-        default: '9180f09f7590d029bc90df2fa20c0decc590505a'
+        default: 'f2bb27287220783e86a4ead41fee78693a5129de'
 
 permissions:
   contents: read
@@ -1394,7 +1394,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: darwin-9180-${{ matrix.mode }}-${{ github.run_attempt }}
+          name: darwin-f2bb27287-${{ matrix.mode }}-${{ github.run_attempt }}
           path: |
             setup-receipts
             receipts-${{ matrix.mode }}
@@ -1446,7 +1446,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: windows-9180-${{ matrix.mode }}-${{ github.run_attempt }}
+          name: windows-f2bb27287-${{ matrix.mode }}-${{ github.run_attempt }}
           path: contracts-${{ matrix.mode }}
           if-no-files-found: error
           retention-days: 7

@@ -29,6 +29,8 @@ def run(argv, **kwargs):
 def main():
     report = {'darwin_execution': 'NOT_RUN', 'darwin_compile_only': 'NOT_RUN'}
     plan = json.loads((HERE / 'plan.json').read_text())
+    report['source'] = plan['source']
+    report['driver_files_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in [HERE/'plan.json', HERE/'identity.py', HERE/'contracts.py', HERE/'run.py', HERE/'setup.sh', HERE/'tinygo_setup.py', HERE/'validate_local.py', ROOT/'.github/workflows/ci.yml', ROOT/'tests/integration/cipolicy/workflows_test.go', contracts.REV/'contracts.json']}
     assert len(plan['lanes']) == 63
     for lane in plan['lanes']:
         receipt = ROOT / lane['receipt']
@@ -153,7 +155,7 @@ def main():
                 proc = subprocess.run([sys.executable,str(HERE/'contracts.py'),str(ROOT),str(out),'--mode',mode,'--target',target],capture_output=True,text=True)
                 assert proc.returncode == 2 and 'requires actual native' in proc.stderr and not out.exists()
     report['native_contracts'] = 'PASS: pinned hashes, exact/negative census, six Linux refusals; no native execution'
-    (HERE / 'revision-9180/local-validation.json').write_text(json.dumps(report, indent=2) + '\n')
+    (contracts.REV / 'local-validation.json').write_text(json.dumps(report, indent=2) + '\n')
     print('PASS: local contracts; Darwin remains NOT_RUN')
 
 

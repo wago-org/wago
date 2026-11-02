@@ -1,20 +1,20 @@
-# Reviewed non-Linux execution preparation — source 9180
+# Reviewed non-Linux execution preparation — repaired source f2bb27287
 
-This intermediate commit retains the provisional 9180 pin. A subsequent
-harness-identity commit must pin the CI-repaired source including parent
-archived-docs repair 07dd245528e3ce94d126f2e5cf8609ddb2737e6c.
+Execution source f2bb27287220783e86a4ead41fee78693a5129de includes the CI dependency repair and
+parent archived-docs repair 07dd245528e3ce94d126f2e5cf8609ddb2737e6c.
+This later harness-identity commit is separate from the execution source.
 Activation requires a fresh narrow parent review. **Darwin ARM64 and Windows
 AMD64 execution remain NOT_RUN in all three modes.** No publication, dispatch,
 PR, timing, measurement lease, runtime port or production edit was performed.
 
-Source is exactly `9180f09f7590d029bc90df2fa20c0decc590505a`. The workflow/harness
+Source is exactly `f2bb27287220783e86a4ead41fee78693a5129de`. The workflow/harness
 is independently checked out at the dispatch `github.sha`; source is checked out
 at the full input SHA. `identity.py` rejects other source pins, a mismatched
 driver HEAD and dirty harnesses. Native drivers repeat source/tool/host checks
 and compare source and harness manifests after execution. The historical 96f/7e
 reviews and `local-validation.json` remain unchanged; new preparation receipts
-are under `revision-9180/`. Old command receipts describe recipes, not results
-for the new pin. No old target result qualifies 9180.
+are under `revision-f2bb27287/`; `revision-9180/` retains earlier preparation. Old command receipts describe recipes, not results
+for the new pin. No old target result qualifies this repaired source.
 
 After review and parent-authorized publication, verify the remote branch head
 matches the reviewed workflow commit and that the source pin is reachable. The
@@ -23,7 +23,7 @@ exact activation command is:
 ```sh
 gh workflow run ci.yml --repo wago-org/wago --ref experiment/rfwgc-port \
   -f darwin_qualification=true \
-  -f source_sha=9180f09f7590d029bc90df2fa20c0decc590505a
+  -f source_sha=f2bb27287220783e86a4ead41fee78693a5129de
 ```
 
 The existing input name is retained for compatibility but now selects **both**
@@ -78,7 +78,7 @@ requires a separate runtime/backend implementation task.
 
 ## Darwin supplements and remaining boundaries
 
-The original 63-command Darwin route remains, now pinned to 9180. It runs after
+The original 63-command Darwin route remains, now pinned to f2bb27287. It runs after
 the focused contract lane. It retains package census, JSON failures/skips and
 platform/catalog omissions; its aggregate always says REQUIRES_REVIEW. Existing
 Node 24.22.2, PowerShell 7.6.8 and WABT 1.0.41 hash-checked setup and pinned
@@ -87,7 +87,7 @@ Homebrew/opam metadata and runner image remain recorded infrastructure, not
 hermetic pins. Setup failure is fatal. Captured external-runtime oracles are
 not fresh V8/wasmtime executions.
 
-- **Generated graphs:** `revision-9180/_fixtures/graph_test.go` is the existing
+- **Generated graphs:** `revision-f2bb27287/_fixtures/graph_test.go` is the existing
   candidate helper/test excerpt with a Darwin ARM64 constraint and benchmarks
   removed. A Go overlay adds it without modifying production source. It retains
   64 calls, collection, 32 live objects and at least 2,048 allocations for the
@@ -104,7 +104,7 @@ not fresh V8/wasmtime executions.
   This ownership graph is intentionally unsupported, not an unexplained Darwin
   skip. Applicable Darwin converted-publication rejection is covered above;
   no H6 ownership/wakeup pass is claimed.
-- **TinyGo:** the 9180 `patch-tinygo-042.sh` invokes the hash-checked foreign-stack
+- **TinyGo:** the source-pinned `patch-tinygo-042.sh` invokes the hash-checked foreign-stack
   integration script as well as the scheduler fix. `tinygo_setup.py` prepares
   this exact patch on a separately provisioned native 0.42.0 toolchain, requires
   a separately reviewed native compiler SHA256, and records patched-file hashes.
@@ -125,11 +125,17 @@ state combinations; the full tests/integration/cipolicy package (including
 TestAggregateCIRequiresEveryWorkflowJob and the new isolation/cycle regression)
 in all three modes; unchanged normal verifier contracts; planner tests and full-profile
 verification in all three modes; actionlint 1.7.7; Python/Bash syntax.
-`overlay-builds.json` records only new fixture cross-builds, not target execution.
+`revision-9180/overlay-builds.json` records fixture cross-builds at 9180, not
+target execution or a build of the repaired source. The new source-file hashes
+are verified independently; runtime and fixture bytes are unchanged. The parent
+owns the fresh combined run of the repaired source.
 The first local overlay attempt stopped at the untrusted mise shim; the second
 stopped at an inherited GOROOT/version mismatch. Both attempts remain verbatim
 in separate directories. The final build uses the absolute Go 1.27.1 binary
 and matching GOROOT. None of these build receipts claim native execution.
+The immutable repaired source also passes package discovery on Linux AMD64,
+Darwin ARM64 and Windows AMD64 in all three modes, with both archived probes
+and `_fixtures` excluded (`package-discovery.json`). This is discovery only.
 Broad combined runtime tests are owned by the independent combined worker.
 
 Three Darwin jobs retain 360 minutes each and three Windows jobs allow 30 minutes
