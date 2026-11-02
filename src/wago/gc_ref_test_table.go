@@ -216,9 +216,10 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 		}
 		off := 8 + int(index)*8
 		old := binary.LittleEndian.Uint64(descriptor[off : off+8])
-		if err := s.Conversion.replaceExtern(old, word); err != nil {
-			return err
-		}
+		return s.Conversion.publishExternReplacement(old, word, func() error {
+			binary.LittleEndian.PutUint64(descriptor[off:off+8], word)
+			return nil
+		})
 	}
 	off := 8 + int(index)*8
 	binary.LittleEndian.PutUint64(descriptor[off:off+8], word)

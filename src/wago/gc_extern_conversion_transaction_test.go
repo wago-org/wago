@@ -2,6 +2,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -65,4 +66,71 @@ func TestGCExternConversionRejectedReplacementPreservesRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	collector.Close()
+}
+
+func TestGCExternConversionPublicationOrderingAndRollback(t *testing.T) {
+	_, collector, state, first := newGCExternConversionFixture(t)
+	defer collector.Close()
+	defer state.close()
+	oldWord, err := state.externFromAny(uint64(first))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := collector.NewStructDefaultWithRoots(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newWord, err := state.externFromAny(uint64(second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.replaceExtern(0, oldWord); err != nil {
+		t.Fatal(err)
+	}
+	visible := oldWord
+	oldEntry, err := state.dataEntryForExternLocked(oldWord)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newEntry, err := state.dataEntryForExternLocked(newWord)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldSlot := oldEntry.rootSlot
+	failure := fmt.Errorf("publication rejected before write")
+	for _, fail := range []bool{true, false} {
+		err := state.publishExternReplacement(oldWord, newWord, func() error {
+			if oldEntry.uses != 1 || newEntry.uses != 1 || visible != oldWord {
+				t.Fatal("STOP wrong receipt counts before visible write")
+			}
+			root, e := collector.CheckedTableSlot(oldSlot)
+			if e != nil || root != first {
+				t.Fatal("STOP old root released before publication")
+			}
+			if fail {
+				return failure
+			}
+			visible = newWord
+			return nil
+		})
+		if fail {
+			if err != failure || oldEntry.uses != 1 || newEntry.uses != 0 || visible != oldWord {
+				t.Fatal("STOP failed publication changed ownership/storage")
+			}
+			continue
+		}
+		if err != nil || visible != newWord || oldEntry.kind != 0 || newEntry.uses != 1 {
+			t.Fatal("replacement failed")
+		}
+		root, e := collector.CheckedTableSlot(oldSlot)
+		if e != nil || !root.IsNull() {
+			t.Fatal("old root survived committed replacement")
+		}
+	}
+	if err := state.publishExternReplacement(newWord, newWord, func() error { return nil }); err != nil || newEntry.uses != 1 {
+		t.Fatal("same-value replacement changed receipt balance")
+	}
+	if err := state.publishExternReplacement(newWord, 0, func() error { visible = 0; return nil }); err != nil || newEntry.kind != 0 || visible != 0 {
+		t.Fatal("clear failed")
+	}
 }
