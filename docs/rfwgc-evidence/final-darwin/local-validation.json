@@ -1,0 +1,37 @@
+{
+  "python_syntax": "PASS",
+  "plan_receipt_integrity": "PASS: 51 commands match prior receipts",
+  "no_benchmark_flags": "PASS",
+  "linux_refusal_all_three_modes": [
+    {
+      "mode": "ordinary",
+      "exit_code": 2,
+      "stderr": "usage: run.py [-h] --mode {ordinary,wagodebug,wago_regalloccheck}\n              source output\nrun.py: error: requires actual Darwin arm64; cross compilation and Linux QEMU do not qualify\n",
+      "status": "PASS: rejects Linux before execution"
+    },
+    {
+      "mode": "wagodebug",
+      "exit_code": 2,
+      "stderr": "usage: run.py [-h] --mode {ordinary,wagodebug,wago_regalloccheck}\n              source output\nrun.py: error: requires actual Darwin arm64; cross compilation and Linux QEMU do not qualify\n",
+      "status": "PASS: rejects Linux before execution"
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "exit_code": 2,
+      "stderr": "usage: run.py [-h] --mode {ordinary,wagodebug,wago_regalloccheck}\n              source output\nrun.py: error: requires actual Darwin arm64; cross compilation and Linux QEMU do not qualify\n",
+      "status": "PASS: rejects Linux before execution"
+    }
+  ],
+  "darwin_execution": "NOT_RUN",
+  "darwin_compile_only": "NOT_RUN",
+  "workflow_lint": {
+    "initial_shim_attempt": "FAIL: No version is set for shim: actionlint",
+    "replay_argv": [
+      "/home/dev/.local/share/mise/installs/actionlint/1.7.7/actionlint",
+      "docs/rfwgc-evidence/final-darwin/workflow.proposal.yml"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+}
