@@ -1,0 +1,303 @@
+[
+  {
+    "name": "go-version",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "version"
+    ],
+    "environment_overrides": {},
+    "exit": 0,
+    "log_sha256": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c"
+  },
+  {
+    "name": "staticcheck-version",
+    "command": [
+      "/home/dev/.cache/wago-final-7e41-82jf5iko/tooling/.tools/staticcheck/staticcheck",
+      "-version"
+    ],
+    "environment_overrides": {},
+    "exit": 0,
+    "log_sha256": "8b8e80af8430db2ecc6affed4c01f839a58bf4d9ba9f2998316c818853f5901d"
+  },
+  {
+    "name": "staticcheck",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "run",
+      "./tests/tools/staticcheck-baseline",
+      "verify"
+    ],
+    "environment_overrides": {},
+    "exit": 0,
+    "log_sha256": "3923a6248da777cf9fca85175567b63094fc9070b93543a0c950bba07fdee31a"
+  },
+  {
+    "name": "ordinary-host",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "Conversion|DesignRepair",
+      "-count=1",
+      "-json"
+    ],
+    "environment_overrides": {},
+    "exit": 0,
+    "log_sha256": "31bf1dd687cda38ef6eb4dc0e8b7c442b73595898bd07061257a67cb60260dd3"
+  },
+  {
+    "name": "ordinary-windows-amd64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/ordinary-windows-amd64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "windows",
+      "GOARCH": "amd64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "ordinary-windows-arm64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/ordinary-windows-arm64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "windows",
+      "GOARCH": "arm64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "ordinary-darwin-amd64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/ordinary-darwin-amd64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "darwin",
+      "GOARCH": "amd64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "ordinary-darwin-arm64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/ordinary-darwin-arm64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "darwin",
+      "GOARCH": "arm64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "wagodebug-host",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "Conversion|DesignRepair",
+      "-count=1",
+      "-json"
+    ],
+    "environment_overrides": {},
+    "exit": 0,
+    "log_sha256": "1d63bc7d4bd935c55d660fa5d56cb0aa39dae5a18cd91cd0a051a3662775c1d6"
+  },
+  {
+    "name": "wagodebug-windows-amd64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/wagodebug-windows-amd64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "windows",
+      "GOARCH": "amd64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "wagodebug-windows-arm64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/wagodebug-windows-arm64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "windows",
+      "GOARCH": "arm64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "wagodebug-darwin-amd64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/wagodebug-darwin-amd64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "darwin",
+      "GOARCH": "amd64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "wagodebug-darwin-arm64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/wagodebug-darwin-arm64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "darwin",
+      "GOARCH": "arm64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "wago_regalloccheck-host",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "Conversion|DesignRepair",
+      "-count=1",
+      "-json"
+    ],
+    "environment_overrides": {},
+    "exit": 0,
+    "log_sha256": "6b7f42d20613808d78e872ceb9061dfbac37e19e4031a581ad676572b65d3310"
+  },
+  {
+    "name": "wago_regalloccheck-windows-amd64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/wago_regalloccheck-windows-amd64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "windows",
+      "GOARCH": "amd64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "wago_regalloccheck-windows-arm64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/wago_regalloccheck-windows-arm64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "windows",
+      "GOARCH": "arm64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "wago_regalloccheck-darwin-amd64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/wago_regalloccheck-darwin-amd64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "darwin",
+      "GOARCH": "amd64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "wago_regalloccheck-darwin-arm64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/home/dev/.cache/wago-conversion-recheck-mioc6z00/wago_regalloccheck-darwin-arm64.test"
+    ],
+    "environment_overrides": {
+      "GOOS": "darwin",
+      "GOARCH": "arm64"
+    },
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+]

@@ -1,0 +1,8 @@
+{
+  "status": "PASS",
+  "baseline_sha256": "6ec1f77ad015878673aeef010b38483e0eb4caae526d91e5e2218038525f0594",
+  "baseline_unchanged": true,
+  "test_transformation_exact": true,
+  "removed_symbol_references": 0,
+  "commands": 18
+}
