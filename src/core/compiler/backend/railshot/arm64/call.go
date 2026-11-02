@@ -1880,7 +1880,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	f.flush()
 	for i := range f.locals {
 		if f.locals[i].state != fastLocals[i].state {
-			return fmt.Errorf("direct Go import local-state join differs at local %d", i)
+			return fmt.Errorf("direct Go import local-state join differs at local %d: cross=%d host=%d", i, f.locals[i].state, fastLocals[i].state)
 		}
 	}
 	if nativeBranch >= 0 {
@@ -1975,6 +1975,9 @@ func (f *fn) emitGuardedNativeImportCall(ft *wasm.CompType, roots []*elem, types
 }
 
 func (f *fn) nativeLeafContextShortcut(b ImportBinding, ft *wasm.CompType, recordRoots bool) bool {
+	// Even zero-root unwind plans require a return map. All alternatives must
+	// agree before emission: a native shortcut cannot bypass that callsite.
+	recordRoots = recordRoots || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate
 	p := len(ft.Params)
 	contextShortcut := len(f.m.Imports) > 1 || len(f.m.Memories) > 0 || len(f.m.Globals) > 0 || len(f.m.Tables) > 0
 	return contextShortcut && b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32)
