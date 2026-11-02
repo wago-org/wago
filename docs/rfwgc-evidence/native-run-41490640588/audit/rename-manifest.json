@@ -1,0 +1,42 @@
+[
+  {
+    "old": "docs/rfwgc-evidence/native-run-41466556039/inputs/engine_int_tinygo_test.go",
+    "new": "docs/rfwgc-evidence/native-run-41466556039/inputs/engine_int_tinygo_test.go.txt",
+    "sha256": "583b4d60df164b0849d7663469bfae38e5edaf7948fbe9688836c3d539ee3ac5"
+  },
+  {
+    "old": "docs/rfwgc-evidence/native-run-41466556039/inputs/gc_conversion_store_other.go",
+    "new": "docs/rfwgc-evidence/native-run-41466556039/inputs/gc_conversion_store_other.go.txt",
+    "sha256": "77424151720189c67c6084936fb4fcf892134901ce9e79f64c0de702fdad4b8a"
+  },
+  {
+    "old": "docs/rfwgc-evidence/native-run-41466556039/inputs/gc_extern_multi_table_test.go",
+    "new": "docs/rfwgc-evidence/native-run-41466556039/inputs/gc_extern_multi_table_test.go.txt",
+    "sha256": "10931c5acabff3bdae6782750a619f0d2855b7dbca0415a603f02f2e7b9c2b39"
+  },
+  {
+    "old": "docs/rfwgc-evidence/native-run-41466556039/inputs/rr_recheck_adversary_test.go",
+    "new": "docs/rfwgc-evidence/native-run-41466556039/inputs/rr_recheck_adversary_test.go.txt",
+    "sha256": "0a7136ca75fc22c93f09868a0587a88760c93134c300dcba302294a14dcfda13"
+  },
+  {
+    "old": "docs/rfwgc-evidence/native-run-41466556039/inputs/gc_conversion_store_host.go",
+    "new": "docs/rfwgc-evidence/native-run-41466556039/inputs/gc_conversion_store_host.go.txt",
+    "sha256": "ef4f70433175e5f1f7d807283bf0953a683d043f1248416257904452a31627cc"
+  },
+  {
+    "old": "docs/rfwgc-evidence/native-run-41466556039/inputs/rr_recheck_flags_current_test.go",
+    "new": "docs/rfwgc-evidence/native-run-41466556039/inputs/rr_recheck_flags_current_test.go.txt",
+    "sha256": "cab1e55afc73d062bc090d2893e3b5e3ac9a796b423b0264b1a2e61445b6db7b"
+  },
+  {
+    "old": "docs/rfwgc-evidence/native-run-41466556039/inputs/shared_entry_guard_arm64_test.go",
+    "new": "docs/rfwgc-evidence/native-run-41466556039/inputs/shared_entry_guard_arm64_test.go.txt",
+    "sha256": "a7a719c91e0afe10dab1440814b572a77815b5b219928fe4ef80d80225c445ac"
+  },
+  {
+    "old": "docs/rfwgc-evidence/qemu-arm64-map-recheck/platform_arch_test.go",
+    "new": "docs/rfwgc-evidence/qemu-arm64-map-recheck/platform_arch_test.go.txt",
+    "sha256": "de5db2b35fcdb2e2b33521f2eea3da2f6dadc601c2dd5555c7f18fcf8d773e3a"
+  }
+]
