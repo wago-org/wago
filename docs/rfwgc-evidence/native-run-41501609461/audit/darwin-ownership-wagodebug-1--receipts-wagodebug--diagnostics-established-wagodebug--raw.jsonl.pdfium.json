@@ -1,0 +1,31 @@
+[
+  {
+    "Time": "2026-11-02T19:18:13.704782Z",
+    "Action": "run",
+    "Package": "github.com/wago-org/wago/src/wago",
+    "Test": "TestPDFiumCorpus"
+  },
+  {
+    "Time": "2026-11-02T19:18:13.704784Z",
+    "Action": "output",
+    "Package": "github.com/wago-org/wago/src/wago",
+    "Test": "TestPDFiumCorpus",
+    "Output": "=== RUN   TestPDFiumCorpus\n",
+    "OutputType": "frame"
+  },
+  {
+    "Time": "2026-11-02T19:18:14.530339Z",
+    "Action": "output",
+    "Package": "github.com/wago-org/wago/src/wago",
+    "Test": "TestPDFiumCorpus",
+    "Output": "--- PASS: TestPDFiumCorpus (0.83s)\n",
+    "OutputType": "frame"
+  },
+  {
+    "Time": "2026-11-02T19:18:14.530389Z",
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/wago",
+    "Test": "TestPDFiumCorpus",
+    "Elapsed": 0.83
+  }
+]

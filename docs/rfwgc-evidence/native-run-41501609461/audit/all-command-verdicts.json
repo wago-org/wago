@@ -1,0 +1,704 @@
+[
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "backend-ordinary",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 225
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "cancellation-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "cli-ordinary",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 41
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "collector-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "core3-child-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "corpus-ordinary",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 12
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "diagnostics-default-ordinary",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 38
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "diagnostics-established-ordinary",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 38
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "full-root-replay-ordinary",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 327
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "guard-corpus-ordinary",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 1
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "guard-ordinary",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 35
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "hardening-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "host-transition-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "installer-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "profile-metadata-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "profile-runtime-ordinary",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 3
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "race-ordinary",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 33
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "repaired-contracts-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "reservation-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "seeded-concurrency-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "shared-scalar-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "spec-v1-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "spec-v2-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "spec-v3-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "spec-v3-signals-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "id": "two-result-ordinary",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "backend-wago_regalloccheck",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 225
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "cancellation-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "cli-wago_regalloccheck",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 41
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "collector-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "core3-child-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "corpus-wago_regalloccheck",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 12
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "diagnostics-default-wago_regalloccheck",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 38
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "diagnostics-established-wago_regalloccheck",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 38
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "full-root-replay-wago_regalloccheck",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 327
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "guard-corpus-wago_regalloccheck",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 1
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "guard-wago_regalloccheck",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 35
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "hardening-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "host-transition-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "installer-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "profile-metadata-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "profile-runtime-wago_regalloccheck",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 3
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "race-wago_regalloccheck",
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "failure_events": 2,
+    "skips": 33
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "repaired-contracts-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "reservation-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "seeded-concurrency-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "shared-scalar-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "spec-v1-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "spec-v2-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "spec-v3-signals-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "spec-v3-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "id": "two-result-wago_regalloccheck",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "backend-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 225
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "cancellation-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "cli-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 41
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "collector-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 3
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "core3-child-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "corpus-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 12
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "diagnostics-default-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 44
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "diagnostics-established-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 44
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "full-root-replay-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 336
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "guard-corpus-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 1
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "guard-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 35
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "hardening-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 9
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "host-transition-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "installer-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "profile-metadata-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "profile-runtime-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 3
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "race-wagodebug",
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 42
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "repaired-contracts-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "reservation-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "seeded-concurrency-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "shared-scalar-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "spec-v1-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "spec-v2-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "spec-v3-signals-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "spec-v3-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "id": "two-result-wagodebug",
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "failure_events": 0,
+    "skips": 0
+  }
+]
