@@ -137,3 +137,57 @@ func TestNativeLeafDistinctIndexedOwnership(t *testing.T) {
 		}
 	}
 }
+
+// Enter each acquired wrapper with raw u64 argument/result homes. Unlike public
+// Invoke, this supplies poisoned i32 high bits without guest normalization.
+func TestNativeLeafDistinctRawHomes(t *testing.T) {
+	eng, jm, arena := fixture(t)
+	args, results, trap, ctrl := hostCallFixture(t, jm, arena)
+	callbacks := []any{distinctLeafOne, distinctLeafPair, distinctLeafTwo}
+	params := []uint32{1, 2, 1}
+	access := runtimebridge.GrantHostScalarCall()
+	ok, err := RegisterNativeScalarLeafImports(access, ctrl, callbacks, params)
+	if err != nil || !ok {
+		t.Fatalf("register=%t,%v", ok, err)
+	}
+	defer unregisterNativeScalarLeaf(ctrl)
+	for index := range callbacks {
+		cell := make([]byte, ImportDispatchEntryBytes)
+		if !BindNativeScalarLeafImportAt(access, ctrl, cell, index) {
+			t.Fatalf("binding %d", index)
+		}
+		target := uintptr(binary.LittleEndian.Uint64(cell))
+		for _, overlap := range []bool{false, true} {
+			for _, a := range []uint64{0xfeedface00000000, 0x12345678ffffffff, 0xdeadbeef80000000, 0xffffffff7fffffff} {
+				b := uint64(0xaabbccddfffffffd)
+				binary.LittleEndian.PutUint64(args, a)
+				binary.LittleEndian.PutUint64(args[8:], b)
+				output := results
+				if overlap {
+					output = args
+				} else {
+					binary.LittleEndian.PutUint64(output, ^uint64(0))
+					binary.LittleEndian.PutUint64(output[8:], b)
+				}
+				var want int32
+				switch index {
+				case 0:
+					want = distinctLeafOne(int32(a))
+				case 1:
+					want = distinctLeafPair(int32(a), int32(uint32(b)))
+				case 2:
+					want = distinctLeafTwo(int32(a))
+				}
+				if err = eng.Call(target, args, jm.LinearMemory(), trap, output); err != nil {
+					t.Fatal(err)
+				}
+				if got := binary.LittleEndian.Uint64(output); got != uint64(uint32(want)) {
+					t.Fatalf("binding=%d overlap=%t raw=%x want=%x", index, overlap, got, uint32(want))
+				}
+				if binary.LittleEndian.Uint64(output[8:]) != b {
+					t.Fatal("wrapper overwrote adjacent home")
+				}
+			}
+		}
+	}
+}
