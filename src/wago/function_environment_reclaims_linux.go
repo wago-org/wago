@@ -109,6 +109,11 @@ func (g *managedFunctionGraph) drainAfterGate(id invocationID) {
 			break
 		}
 	}
+	managedFunctionRegistryMu.Lock()
+	g.mu.Lock()
+	g.retireEmptyLocked()
+	g.mu.Unlock()
+	managedFunctionRegistryMu.Unlock()
 	cleanup.finish()
 }
 

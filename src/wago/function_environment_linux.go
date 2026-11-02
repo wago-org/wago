@@ -577,15 +577,29 @@ func drainManagedFunctionReclaims(collector *gc.Collector) {
 			clear(member.slots[len(kept):])
 			member.slots = kept
 		}
-		if len(s.graph.collectors) == 0 {
-			s.graph.retired = true
-			for _, member := range s.graph.members {
-				s.graph.removeMemberLocked(member)
-			}
-			managedFunctionGraphs.Delete(s.graph.store)
-		}
+		s.graph.retireEmptyLocked()
 		s.graph.mu.Unlock()
 		managedFunctionRegistryMu.Unlock()
 	}
 	cleanup.finish()
+}
+
+// Registry and graph locks are held. Collector retirement is not proof that
+// all physical cleanup has finished: a root release can queue finalization
+// while another topology reader still exists. Keep its graph/journal reachable
+// until the post-gate drain consumes it, even with zero collector domains.
+func (g *managedFunctionGraph) retireEmptyLocked() {
+	if g.retired || len(g.collectors) != 0 || g.pendingFinalizers.Load() != 0 || g.pendingReclaims.Load() != 0 {
+		return
+	}
+	for _, member := range g.members {
+		if member.envPins != 0 {
+			return
+		}
+	}
+	g.retired = true
+	for _, member := range g.members {
+		g.removeMemberLocked(member)
+	}
+	managedFunctionGraphs.Delete(g.store)
 }

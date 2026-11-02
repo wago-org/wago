@@ -97,3 +97,42 @@ func TestR9H2ConditionalSlotExplicitDomain(t *testing.T) {
 		}
 	}
 }
+
+// Collector close can overlap an unrelated topology reader. Releasing the last
+// Env then queues a physical finalizer. Retiring the last collector must not
+// erase that journal before the mandatory post-gate drain can consume it.
+func TestR9H2RetiredCollectorPreservesDeferredFinalizer(t *testing.T) {
+	store := newReferenceStore(false)
+	graph := managedFunctionGraphFor(store)
+	owner := &Instance{refStore: store}
+	graph.mu.Lock()
+	member := graph.registerMemberLocked(owner, false)
+	member.finalizationPending = true
+	graph.pendingFinalizers.Add(1)
+	graph.mu.Unlock()
+	collector, err := gc.NewCollector(gc.Config{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer collector.Close()
+	state := &managedFunctionCollector{graph: graph, collector: collector, closed: true}
+	graph.collectors[collector] = state
+	managedFunctionCollectors.Store(collector, state)
+	topology := store.ensureGCTopology()
+	topology.RLock()
+	drainManagedFunctionReclaims(collector)
+	graph.mu.Lock()
+	retained := !graph.retired && graph.members[owner] == member && member.finalizationPending && graph.pendingFinalizers.Load() == 1
+	graph.mu.Unlock()
+	topology.RUnlock()
+	if !retained {
+		t.Fatal("STOP collector retirement erased deferred finalizer")
+	}
+	graph.drainAfterGate(0)
+	if graph.pendingFinalizers.Load() != 0 {
+		t.Fatal("post-gate finalizer not consumed")
+	}
+	if _, ok := managedFunctionGraphs.Load(store); ok {
+		t.Fatal("empty drained graph did not retire")
+	}
+}
