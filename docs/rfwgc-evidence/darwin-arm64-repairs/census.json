@@ -1,0 +1,393 @@
+{
+  "final-ordinary-diagnostics-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "final-ordinary-diagnostics.log": {
+    "PASS": [],
+    "FAIL": [
+      "TestCompileWorkersDeterministicArm64",
+      "TestCompileWorkersDeterministicArm64/synthetic/tiny.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/fib_rec.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/dispatch.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/many_funcs.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/memory_tree.wasm",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64/synthetic/many_funcs.wasm"
+    ],
+    "SKIP": []
+  },
+  "final-ordinary-focused-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "final-ordinary-focused.log": {
+    "PASS": [
+      "TestTableEntryAddressLowering",
+      "TestTableGetSetLowering",
+      "TestTableInitLowering",
+      "TestTableFillLowering",
+      "TestTableGrowLowering",
+      "TestTableCopyLowering",
+      "TestBulkPhysicalArgumentSlots",
+      "TestBulkPhysicalArgumentSlots/memory.init",
+      "TestBulkPhysicalArgumentSlots/memory.copy",
+      "TestBulkPhysicalArgumentSlots/memory.fill",
+      "TestBulkPhysicalArgumentSlots/table.init",
+      "TestBulkPhysicalArgumentSlots/table.copy",
+      "TestBulkPhysicalArgumentSlots/table.fill",
+      "TestBulkPhysicalArgumentSlots/externref.fill",
+      "TestDynamicImportUnwindLocalJoinARM64",
+      "TestDynamicImportUnwindLocalJoinARM64/go-host",
+      "TestDynamicImportUnwindLocalJoinARM64/cross-instance",
+      "TestNativeLeafContextShortcutGCPolicyARM64",
+      "TestTableSetHelperCallHintsArm64"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "final-wago_regalloccheck-diagnostics-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "final-wago_regalloccheck-diagnostics.log": {
+    "PASS": [],
+    "FAIL": [
+      "TestCompileWorkersDeterministicArm64",
+      "TestCompileWorkersDeterministicArm64/synthetic/tiny.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/fib_rec.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/dispatch.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/many_funcs.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/memory_tree.wasm",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64/synthetic/many_funcs.wasm"
+    ],
+    "SKIP": []
+  },
+  "final-wago_regalloccheck-focused-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "final-wago_regalloccheck-focused.log": {
+    "PASS": [
+      "TestTableEntryAddressLowering",
+      "TestTableGetSetLowering",
+      "TestTableInitLowering",
+      "TestTableFillLowering",
+      "TestTableGrowLowering",
+      "TestTableCopyLowering",
+      "TestBulkPhysicalArgumentSlots",
+      "TestBulkPhysicalArgumentSlots/memory.init",
+      "TestBulkPhysicalArgumentSlots/memory.copy",
+      "TestBulkPhysicalArgumentSlots/memory.fill",
+      "TestBulkPhysicalArgumentSlots/table.init",
+      "TestBulkPhysicalArgumentSlots/table.copy",
+      "TestBulkPhysicalArgumentSlots/table.fill",
+      "TestBulkPhysicalArgumentSlots/externref.fill",
+      "TestDynamicImportUnwindLocalJoinARM64",
+      "TestDynamicImportUnwindLocalJoinARM64/go-host",
+      "TestDynamicImportUnwindLocalJoinARM64/cross-instance",
+      "TestNativeLeafContextShortcutGCPolicyARM64",
+      "TestTableSetHelperCallHintsArm64"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "final-wagodebug-diagnostics-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "final-wagodebug-diagnostics.log": {
+    "PASS": [],
+    "FAIL": [
+      "TestCompileWorkersDeterministicArm64",
+      "TestCompileWorkersDeterministicArm64/synthetic/tiny.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/fib_rec.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/dispatch.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/many_funcs.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/memory_tree.wasm",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64/synthetic/many_funcs.wasm"
+    ],
+    "SKIP": []
+  },
+  "final-wagodebug-focused-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "final-wagodebug-focused.log": {
+    "PASS": [
+      "TestTableEntryAddressLowering",
+      "TestTableGetSetLowering",
+      "TestTableInitLowering",
+      "TestTableFillLowering",
+      "TestTableGrowLowering",
+      "TestTableCopyLowering",
+      "TestBulkPhysicalArgumentSlots",
+      "TestBulkPhysicalArgumentSlots/memory.init",
+      "TestBulkPhysicalArgumentSlots/memory.copy",
+      "TestBulkPhysicalArgumentSlots/memory.fill",
+      "TestBulkPhysicalArgumentSlots/table.init",
+      "TestBulkPhysicalArgumentSlots/table.copy",
+      "TestBulkPhysicalArgumentSlots/table.fill",
+      "TestBulkPhysicalArgumentSlots/externref.fill",
+      "TestDynamicImportUnwindLocalJoinARM64",
+      "TestDynamicImportUnwindLocalJoinARM64/go-host",
+      "TestDynamicImportUnwindLocalJoinARM64/cross-instance",
+      "TestNativeLeafContextShortcutGCPolicyARM64",
+      "TestTableSetHelperCallHintsArm64"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "join-ordinary-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "join-ordinary.log": {
+    "PASS": [
+      "TestDynamicImportUnwindLocalJoinARM64",
+      "TestNativeLeafContextShortcutGCPolicyARM64"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "join-wago_regalloccheck-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "join-wago_regalloccheck.log": {
+    "PASS": [
+      "TestDynamicImportUnwindLocalJoinARM64",
+      "TestNativeLeafContextShortcutGCPolicyARM64"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "join-wagodebug-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "join-wagodebug.log": {
+    "PASS": [
+      "TestDynamicImportUnwindLocalJoinARM64",
+      "TestNativeLeafContextShortcutGCPolicyARM64"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "negative-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "negative.log": {
+    "PASS": [],
+    "FAIL": [
+      "TestDynamicImportUnwindLocalJoinARM64"
+    ],
+    "SKIP": []
+  },
+  "recovered-baseline.log": {
+    "PASS": [],
+    "FAIL": [
+      "TestTableGetSetLowering",
+      "TestTableInitLowering",
+      "TestTableFillLowering",
+      "TestTableGrowLowering",
+      "TestTableCopyLowering",
+      "TestBulkPhysicalArgumentSlots",
+      "TestBulkPhysicalArgumentSlots/externref.fill",
+      "TestTableSetHelperCallHintsArm64"
+    ],
+    "SKIP": []
+  },
+  "review-ordinary-diagnostics-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-ordinary-diagnostics.log": {
+    "PASS": [
+      "TestCompileWorkersDeterministicArm64",
+      "TestCompileWorkersDeterministicArm64/synthetic/tiny.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/fib_rec.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/dispatch.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/many_funcs.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/memory_tree.wasm",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64/synthetic/many_funcs.wasm"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-ordinary-focused-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-ordinary-focused.log": {
+    "PASS": [
+      "TestTableEntryAddressLowering",
+      "TestTableGetSetLowering",
+      "TestTableInitLowering",
+      "TestTableFillLowering",
+      "TestTableGrowLowering",
+      "TestTableCopyLowering",
+      "TestBulkPhysicalArgumentSlots",
+      "TestBulkPhysicalArgumentSlots/memory.init",
+      "TestBulkPhysicalArgumentSlots/memory.copy",
+      "TestBulkPhysicalArgumentSlots/memory.fill",
+      "TestBulkPhysicalArgumentSlots/table.init",
+      "TestBulkPhysicalArgumentSlots/table.copy",
+      "TestBulkPhysicalArgumentSlots/table.fill",
+      "TestBulkPhysicalArgumentSlots/externref.fill",
+      "TestDynamicImportUnwindLocalJoinARM64",
+      "TestDynamicImportUnwindLocalJoinARM64/go-host",
+      "TestDynamicImportUnwindLocalJoinARM64/cross-instance",
+      "TestNativeLeafContextShortcutGCPolicyARM64",
+      "TestWorkerModuleStatsComparisonARM64",
+      "TestWorkerModuleStatsComparisonARM64/code_size",
+      "TestWorkerModuleStatsComparisonARM64/frame_size",
+      "TestWorkerModuleStatsComparisonARM64/compiler_path",
+      "TestWorkerModuleStatsComparisonARM64/source_offset",
+      "TestTableSetHelperCallHintsArm64"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-wago_regalloccheck-diagnostics-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-wago_regalloccheck-diagnostics.log": {
+    "PASS": [
+      "TestCompileWorkersDeterministicArm64",
+      "TestCompileWorkersDeterministicArm64/synthetic/tiny.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/fib_rec.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/dispatch.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/many_funcs.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/memory_tree.wasm",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64/synthetic/many_funcs.wasm"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-wago_regalloccheck-focused-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-wago_regalloccheck-focused.log": {
+    "PASS": [
+      "TestTableEntryAddressLowering",
+      "TestTableGetSetLowering",
+      "TestTableInitLowering",
+      "TestTableFillLowering",
+      "TestTableGrowLowering",
+      "TestTableCopyLowering",
+      "TestBulkPhysicalArgumentSlots",
+      "TestBulkPhysicalArgumentSlots/memory.init",
+      "TestBulkPhysicalArgumentSlots/memory.copy",
+      "TestBulkPhysicalArgumentSlots/memory.fill",
+      "TestBulkPhysicalArgumentSlots/table.init",
+      "TestBulkPhysicalArgumentSlots/table.copy",
+      "TestBulkPhysicalArgumentSlots/table.fill",
+      "TestBulkPhysicalArgumentSlots/externref.fill",
+      "TestDynamicImportUnwindLocalJoinARM64",
+      "TestDynamicImportUnwindLocalJoinARM64/go-host",
+      "TestDynamicImportUnwindLocalJoinARM64/cross-instance",
+      "TestNativeLeafContextShortcutGCPolicyARM64",
+      "TestWorkerModuleStatsComparisonARM64",
+      "TestWorkerModuleStatsComparisonARM64/code_size",
+      "TestWorkerModuleStatsComparisonARM64/frame_size",
+      "TestWorkerModuleStatsComparisonARM64/compiler_path",
+      "TestWorkerModuleStatsComparisonARM64/source_offset",
+      "TestTableSetHelperCallHintsArm64"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-wagodebug-diagnostics-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-wagodebug-diagnostics.log": {
+    "PASS": [
+      "TestCompileWorkersDeterministicArm64",
+      "TestCompileWorkersDeterministicArm64/synthetic/tiny.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/fib_rec.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/dispatch.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/many_funcs.wasm",
+      "TestCompileWorkersDeterministicArm64/synthetic/memory_tree.wasm",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64",
+      "TestCompileWorkersSizeSharedAdaptersDeterministicArm64/synthetic/many_funcs.wasm"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-wagodebug-focused-build.log": {
+    "PASS": [],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "review-wagodebug-focused.log": {
+    "PASS": [
+      "TestTableEntryAddressLowering",
+      "TestTableGetSetLowering",
+      "TestTableInitLowering",
+      "TestTableFillLowering",
+      "TestTableGrowLowering",
+      "TestTableCopyLowering",
+      "TestBulkPhysicalArgumentSlots",
+      "TestBulkPhysicalArgumentSlots/memory.init",
+      "TestBulkPhysicalArgumentSlots/memory.copy",
+      "TestBulkPhysicalArgumentSlots/memory.fill",
+      "TestBulkPhysicalArgumentSlots/table.init",
+      "TestBulkPhysicalArgumentSlots/table.copy",
+      "TestBulkPhysicalArgumentSlots/table.fill",
+      "TestBulkPhysicalArgumentSlots/externref.fill",
+      "TestDynamicImportUnwindLocalJoinARM64",
+      "TestDynamicImportUnwindLocalJoinARM64/go-host",
+      "TestDynamicImportUnwindLocalJoinARM64/cross-instance",
+      "TestNativeLeafContextShortcutGCPolicyARM64",
+      "TestWorkerModuleStatsComparisonARM64",
+      "TestWorkerModuleStatsComparisonARM64/code_size",
+      "TestWorkerModuleStatsComparisonARM64/frame_size",
+      "TestWorkerModuleStatsComparisonARM64/compiler_path",
+      "TestWorkerModuleStatsComparisonARM64/source_offset",
+      "TestTableSetHelperCallHintsArm64"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  },
+  "working-execution.log": {
+    "PASS": [
+      "TestBulkPhysicalArgumentSlots",
+      "TestBulkPhysicalArgumentSlots/memory.init",
+      "TestBulkPhysicalArgumentSlots/memory.copy",
+      "TestBulkPhysicalArgumentSlots/memory.fill",
+      "TestBulkPhysicalArgumentSlots/table.init",
+      "TestBulkPhysicalArgumentSlots/table.copy",
+      "TestBulkPhysicalArgumentSlots/table.fill",
+      "TestBulkPhysicalArgumentSlots/externref.fill",
+      "TestDynamicImportUnwindLocalJoinARM64",
+      "TestDynamicImportUnwindLocalJoinARM64/go-host",
+      "TestDynamicImportUnwindLocalJoinARM64/cross-instance"
+    ],
+    "FAIL": [],
+    "SKIP": []
+  }
+}

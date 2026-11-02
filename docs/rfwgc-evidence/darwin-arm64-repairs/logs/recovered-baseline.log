@@ -1,0 +1,18 @@
+--- FAIL: TestTableGetSetLowering (0.01s)
+    backend_primitives_arm64_test.go:1043: table.set externref=true: host import 1073741877 uses 3 param slot(s), 0 result slot(s); synchronous host frame supports at most 0 slots in each direction
+--- FAIL: TestTableInitLowering (0.00s)
+    backend_primitives_arm64_test.go:1070: table.init externref=true: host import 1073741882 uses 5 param slot(s), 0 result slot(s); synchronous host frame supports at most 0 slots in each direction
+--- FAIL: TestTableFillLowering (0.00s)
+    backend_primitives_arm64_test.go:1094: table.fill externref=true: host import 1073741879 uses 4 param slot(s), 0 result slot(s); synchronous host frame supports at most 0 slots in each direction
+--- FAIL: TestTableGrowLowering (0.00s)
+    backend_primitives_arm64_test.go:1115: table.grow externref=true: host import 1073741881 uses 3 param slot(s), 1 result slot(s); synchronous host frame supports at most 0 slots in each direction
+--- FAIL: TestTableCopyLowering (0.00s)
+    backend_primitives_arm64_test.go:1140: table.copy externref=true: host import 1073741880 uses 5 param slot(s), 0 result slot(s); synchronous host frame supports at most 0 slots in each direction
+--- FAIL: TestBulkPhysicalArgumentSlots (0.01s)
+    --- FAIL: TestBulkPhysicalArgumentSlots/externref.fill (0.00s)
+        bulk_slot_owner_test.go:55: host import 1073741879 uses 4 param slot(s), 0 result slot(s); synchronous host frame supports at most 0 slots in each direction
+--- FAIL: TestTableSetHelperCallHintsArm64 (0.00s)
+    scratch_hints_arm64_test.go:171: externref flag 0x1 = true, want false
+    scratch_hints_arm64_test.go:171: externref flag 0x2000 = true, want false
+    scratch_hints_arm64_test.go:171: externref flag 0x1000 = true, want false
+FAIL
