@@ -1,0 +1,4418 @@
+{
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T07:15:14.845904122Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sed-records/Decode",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:15.01218127Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sed-records/Validate",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:15.194309402Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sed-records/Compile",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:15:15.392272736Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sed-records/CompileFull",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:15:15.562210711Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/seqtk-fastq-to-fasta/Decode",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:15.738146177Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/seqtk-fastq-to-fasta/Validate",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:15:15.928744796Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/seqtk-fastq-to-fasta/Compile",
+      "Elapsed": 0.19
+    },
+    {
+      "Time": "2026-11-02T07:15:16.127538659Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/seqtk-fastq-to-fasta/CompileFull",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:15:16.308713473Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lcs-substrings/Decode",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:15:16.463722595Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lcs-substrings/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:16.625438047Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lcs-substrings/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:16.78294214Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lcs-substrings/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:16.938763336Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/needleman-wunsch-dna/Decode",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:17.095410922Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/needleman-wunsch-dna/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:17.25772124Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/needleman-wunsch-dna/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:17.427285736Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/needleman-wunsch-dna/CompileFull",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:17.580291641Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/smith-waterman-dna/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:17.736267978Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/smith-waterman-dna/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:17.897315198Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/smith-waterman-dna/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:18.064933262Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/smith-waterman-dna/CompileFull",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:18.217949748Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fasttree-phylogeny/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:18.376398193Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fasttree-phylogeny/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:18.549413111Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fasttree-phylogeny/Compile",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:18.734939017Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fasttree-phylogeny/CompileFull",
+      "Elapsed": 0.19
+    },
+    {
+      "Time": "2026-11-02T07:15:18.88996398Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/gnu-seq-range/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:19.054796601Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/gnu-seq-range/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:19.22618577Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/gnu-seq-range/Compile",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:19.40352522Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/gnu-seq-range/CompileFull",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:15:19.570328217Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/gnu-tr-uppercase/Decode",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:19.745091735Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/gnu-tr-uppercase/Validate",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:19.928852121Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/gnu-tr-uppercase/Compile",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:15:20.13074057Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/gnu-tr-uppercase/CompileFull",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:15:20.367950335Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/php-buckets/Decode",
+      "Elapsed": 0.24
+    },
+    {
+      "Time": "2026-11-02T07:15:20.679301293Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/php-buckets/Validate",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:15:21.552527882Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/php-buckets/Compile",
+      "Elapsed": 0.87
+    },
+    {
+      "Time": "2026-11-02T07:15:23.043451825Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/php-buckets/CompileFull",
+      "Elapsed": 1.49
+    },
+    {
+      "Time": "2026-11-02T07:15:23.216078257Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ruby-buckets/Decode",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:23.45123352Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ruby-buckets/Validate",
+      "Elapsed": 0.24
+    },
+    {
+      "Time": "2026-11-02T07:15:23.97589135Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ruby-buckets/Compile",
+      "Elapsed": 0.52
+    },
+    {
+      "Time": "2026-11-02T07:15:24.778189259Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ruby-buckets/CompileFull",
+      "Elapsed": 0.8
+    },
+    {
+      "Time": "2026-11-02T07:15:25.0487041Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/clang-cpp-kernels/Decode",
+      "Elapsed": 0.27
+    },
+    {
+      "Time": "2026-11-02T07:15:25.629435577Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/clang-cpp-kernels/Validate",
+      "Elapsed": 0.58
+    },
+    {
+      "Time": "2026-11-02T07:15:28.082847816Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/clang-cpp-kernels/Compile",
+      "Elapsed": 2.45
+    },
+    {
+      "Time": "2026-11-02T07:15:32.201837236Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/clang-cpp-kernels/CompileFull",
+      "Elapsed": 4.12
+    },
+    {
+      "Time": "2026-11-02T07:15:32.476139197Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/clang-c-kernels/Decode",
+      "Elapsed": 0.27
+    },
+    {
+      "Time": "2026-11-02T07:15:33.055519479Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/clang-c-kernels/Validate",
+      "Elapsed": 0.58
+    },
+    {
+      "Time": "2026-11-02T07:15:35.50387542Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/clang-c-kernels/Compile",
+      "Elapsed": 2.45
+    },
+    {
+      "Time": "2026-11-02T07:15:39.51392247Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/clang-c-kernels/CompileFull",
+      "Elapsed": 4.01
+    },
+    {
+      "Time": "2026-11-02T07:15:39.668806306Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lua-cli-buckets/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:39.825555031Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lua-cli-buckets/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:39.997265211Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lua-cli-buckets/Compile",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:40.188840094Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lua-cli-buckets/CompileFull",
+      "Elapsed": 0.19
+    },
+    {
+      "Time": "2026-11-02T07:15:40.341701648Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/micropython-squares/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:40.495465404Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/micropython-squares/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:40.66979631Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/micropython-squares/Compile",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:40.822643537Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecpunpack-config/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:40.987242438Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecpunpack-config/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:41.188800078Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecpunpack-config/Compile",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:15:41.429443286Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecpunpack-config/CompileFull",
+      "Elapsed": 0.24
+    },
+    {
+      "Time": "2026-11-02T07:15:41.582196988Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecppack-bitstream/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:41.750879149Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecppack-bitstream/Validate",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:41.955205532Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecppack-bitstream/Compile",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:15:42.201145567Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecppack-bitstream/CompileFull",
+      "Elapsed": 0.25
+    },
+    {
+      "Time": "2026-11-02T07:15:42.377417776Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-sort/Decode",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:15:42.616103353Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-sort/Validate",
+      "Elapsed": 0.24
+    },
+    {
+      "Time": "2026-11-02T07:15:43.170263841Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-sort/Compile",
+      "Elapsed": 0.55
+    },
+    {
+      "Time": "2026-11-02T07:15:44.045956135Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-sort/CompileFull",
+      "Elapsed": 0.88
+    },
+    {
+      "Time": "2026-11-02T07:15:44.220403672Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-sha256sum/Decode",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:44.458153324Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-sha256sum/Validate",
+      "Elapsed": 0.24
+    },
+    {
+      "Time": "2026-11-02T07:15:45.003601883Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-sha256sum/Compile",
+      "Elapsed": 0.55
+    },
+    {
+      "Time": "2026-11-02T07:15:45.890375107Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-sha256sum/CompileFull",
+      "Elapsed": 0.89
+    },
+    {
+      "Time": "2026-11-02T07:15:46.065145109Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-base64/Decode",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:46.303546936Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-base64/Validate",
+      "Elapsed": 0.24
+    },
+    {
+      "Time": "2026-11-02T07:15:46.853210214Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-base64/Compile",
+      "Elapsed": 0.55
+    },
+    {
+      "Time": "2026-11-02T07:15:47.731868399Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-base64/CompileFull",
+      "Elapsed": 0.88
+    },
+    {
+      "Time": "2026-11-02T07:15:47.906492468Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-wc/Decode",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:48.150894582Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-wc/Validate",
+      "Elapsed": 0.24
+    },
+    {
+      "Time": "2026-11-02T07:15:48.699558417Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-wc/Compile",
+      "Elapsed": 0.55
+    },
+    {
+      "Time": "2026-11-02T07:15:49.585727325Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coreutils-wc/CompileFull",
+      "Elapsed": 0.89
+    },
+    {
+      "Time": "2026-11-02T07:15:49.756848194Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ripgrep-source/Decode",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:15:49.953772637Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ripgrep-source/Validate",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:15:50.289656549Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ripgrep-source/Compile",
+      "Elapsed": 0.34
+    },
+    {
+      "Time": "2026-11-02T07:15:50.770001911Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ripgrep-source/CompileFull",
+      "Elapsed": 0.48
+    },
+    {
+      "Time": "2026-11-02T07:15:50.990625651Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/yosys-counter/Decode",
+      "Elapsed": 0.22
+    },
+    {
+      "Time": "2026-11-02T07:15:51.396228327Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/yosys-counter/Validate",
+      "Elapsed": 0.41
+    },
+    {
+      "Time": "2026-11-02T07:15:52.796789122Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/yosys-counter/Compile",
+      "Elapsed": 1.4
+    },
+    {
+      "Time": "2026-11-02T07:15:55.252580651Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/yosys-counter/CompileFull",
+      "Elapsed": 2.46
+    },
+    {
+      "Time": "2026-11-02T07:15:55.403930925Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icemulti-image/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:55.562523264Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icemulti-image/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:55.746998116Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icemulti-image/Compile",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:15:55.948728487Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icemulti-image/CompileFull",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:15:56.10199706Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icepack-pack/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:56.260013158Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icepack-pack/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:56.447575713Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icepack-pack/Compile",
+      "Elapsed": 0.19
+    },
+    {
+      "Time": "2026-11-02T07:15:56.661511009Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icepack-pack/CompileFull",
+      "Elapsed": 0.21
+    },
+    {
+      "Time": "2026-11-02T07:15:56.815279921Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/iceunpack-unpack/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:56.971203474Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/iceunpack-unpack/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:57.158458703Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/iceunpack-unpack/Compile",
+      "Elapsed": 0.19
+    },
+    {
+      "Time": "2026-11-02T07:15:57.371467843Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/iceunpack-unpack/CompileFull",
+      "Elapsed": 0.21
+    },
+    {
+      "Time": "2026-11-02T07:15:57.523515415Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecpbram-generate/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:57.68514849Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecpbram-generate/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:57.879318389Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecpbram-generate/Compile",
+      "Elapsed": 0.19
+    },
+    {
+      "Time": "2026-11-02T07:15:58.105275027Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecpbram-generate/CompileFull",
+      "Elapsed": 0.23
+    },
+    {
+      "Time": "2026-11-02T07:15:58.256311543Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icebram-generate/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:58.41451822Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icebram-generate/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:58.598585749Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icebram-generate/Compile",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:15:58.806471498Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icebram-generate/CompileFull",
+      "Elapsed": 0.21
+    },
+    {
+      "Time": "2026-11-02T07:15:58.957948792Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecppll-clock/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:59.114537955Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecppll-clock/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:59.302504899Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecppll-clock/Compile",
+      "Elapsed": 0.19
+    },
+    {
+      "Time": "2026-11-02T07:15:59.515509401Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/ecppll-clock/CompileFull",
+      "Elapsed": 0.21
+    },
+    {
+      "Time": "2026-11-02T07:15:59.67056127Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icepll-clock/Decode",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:15:59.819995061Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icepll-clock/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:15:59.974449861Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icepll-clock/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:00.134308257Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/icepll-clock/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:00.286208795Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json2csv-people/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:00.440297047Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json2csv-people/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:00.611074546Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json2csv-people/Compile",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:16:00.8017117Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json2csv-people/CompileFull",
+      "Elapsed": 0.19
+    },
+    {
+      "Time": "2026-11-02T07:16:00.952207673Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tree-ashell-list/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:01.104500388Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tree-ashell-list/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:01.264250942Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tree-ashell-list/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:01.434753155Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tree-ashell-list/CompileFull",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:16:01.585923154Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tree-list/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:01.739256479Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tree-list/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:01.899494599Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tree-list/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:02.062445887Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tree-list/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:02.217763667Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/brotli-compress/Decode",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:02.378237679Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/brotli-compress/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:02.564057857Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/brotli-compress/Compile",
+      "Elapsed": 0.19
+    },
+    {
+      "Time": "2026-11-02T07:16:02.775593465Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/brotli-compress/CompileFull",
+      "Elapsed": 0.21
+    },
+    {
+      "Time": "2026-11-02T07:16:02.930608496Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/brotli-decompress/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:03.092929203Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/brotli-decompress/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:03.2773733Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/brotli-decompress/Compile",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:16:03.490911415Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/brotli-decompress/CompileFull",
+      "Elapsed": 0.21
+    },
+    {
+      "Time": "2026-11-02T07:16:03.644779265Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/jq-json-transform/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:03.80417804Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/jq-json-transform/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:03.999327971Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/jq-json-transform/Compile",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:16:04.227663865Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/jq-json-transform/CompileFull",
+      "Elapsed": 0.23
+    },
+    {
+      "Time": "2026-11-02T07:16:04.406361613Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/age-decrypt/Decode",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:16:04.640764329Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/age-decrypt/Validate",
+      "Elapsed": 0.23
+    },
+    {
+      "Time": "2026-11-02T07:16:05.138773042Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/age-decrypt/Compile",
+      "Elapsed": 0.5
+    },
+    {
+      "Time": "2026-11-02T07:16:05.938110488Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/age-decrypt/CompileFull",
+      "Elapsed": 0.8
+    },
+    {
+      "Time": "2026-11-02T07:16:06.101146808Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/age-keygen-public/Decode",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:06.297865282Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/age-keygen-public/Validate",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:16:06.636429776Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/age-keygen-public/Compile",
+      "Elapsed": 0.34
+    },
+    {
+      "Time": "2026-11-02T07:16:07.144597589Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/age-keygen-public/CompileFull",
+      "Elapsed": 0.51
+    },
+    {
+      "Time": "2026-11-02T07:16:07.297445968Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lzmainfo-header/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:07.451560071Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lzmainfo-header/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:07.607524826Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lzmainfo-header/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:07.768288703Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lzmainfo-header/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:07.920004197Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lzmadec-decompress/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:08.077073093Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lzmadec-decompress/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:08.235807424Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lzmadec-decompress/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:08.398847301Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lzmadec-decompress/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:08.548548346Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/xzdec-decompress/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:08.700153714Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/xzdec-decompress/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:08.857022414Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/xzdec-decompress/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:09.019605485Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/xzdec-decompress/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:09.176218216Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sqlite3-query/Decode",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:09.347840133Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sqlite3-query/Validate",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:16:09.602670552Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sqlite3-query/Compile",
+      "Elapsed": 0.25
+    },
+    {
+      "Time": "2026-11-02T07:16:09.938398747Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sqlite3-query/CompileFull",
+      "Elapsed": 0.34
+    },
+    {
+      "Time": "2026-11-02T07:16:10.096735642Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/duktape-script/Decode",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:10.254120412Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/duktape-script/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:10.445176216Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/duktape-script/Compile",
+      "Elapsed": 0.19
+    },
+    {
+      "Time": "2026-11-02T07:16:10.670097639Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/duktape-script/CompileFull",
+      "Elapsed": 0.22
+    },
+    {
+      "Time": "2026-11-02T07:16:10.823905278Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/quickjs-script/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:10.98387661Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/quickjs-script/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:11.187001965Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/quickjs-script/Compile",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:16:11.423250487Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/quickjs-script/CompileFull",
+      "Elapsed": 0.24
+    },
+    {
+      "Time": "2026-11-02T07:16:11.653870831Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/swift-format-source/Decode",
+      "Elapsed": 0.23
+    },
+    {
+      "Time": "2026-11-02T07:16:12.048273185Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/swift-format-source/Validate",
+      "Elapsed": 0.39
+    },
+    {
+      "Time": "2026-11-02T07:16:13.531110954Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/swift-format-source/Compile",
+      "Elapsed": 1.48
+    },
+    {
+      "Time": "2026-11-02T07:16:15.988951057Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/swift-format-source/CompileFull",
+      "Elapsed": 2.46
+    },
+    {
+      "Time": "2026-11-02T07:16:16.196352526Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/esbuild-minify/Decode",
+      "Elapsed": 0.21
+    },
+    {
+      "Time": "2026-11-02T07:16:16.556908482Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/esbuild-minify/Validate",
+      "Elapsed": 0.36
+    },
+    {
+      "Time": "2026-11-02T07:16:17.627927354Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/esbuild-minify/Compile",
+      "Elapsed": 1.07
+    },
+    {
+      "Time": "2026-11-02T07:16:19.495812234Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/esbuild-minify/CompileFull",
+      "Elapsed": 1.87
+    },
+    {
+      "Time": "2026-11-02T07:16:19.644750252Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tiny/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:19.793276777Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tiny/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:19.942994978Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tiny/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:20.09250568Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tiny/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:20.241451803Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tiny/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:20.539621059Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tiny/Exec/add",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:20.690649709Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fib_rec/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:20.838539811Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fib_rec/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:20.988585056Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fib_rec/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:21.139499772Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fib_rec/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:21.288975409Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fib_rec/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:21.59214185Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fib_rec/Exec/fib",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:21.742863915Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:21.894702003Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:22.044615712Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:22.195166687Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:22.346224471Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:22.646594878Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory/Exec/sum",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:22.79500168Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory_tree/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:22.94445739Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory_tree/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:23.09289517Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory_tree/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:23.242898237Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory_tree/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:23.392548852Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory_tree/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:23.694384729Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/memory_tree/Exec/run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:23.842031054Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/dispatch/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:23.990426235Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/dispatch/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:24.139487445Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/dispatch/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:24.288216903Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/dispatch/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:24.437583396Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/dispatch/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:24.739107448Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/dispatch/Exec/apply",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:24.887233675Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/many_funcs/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:25.035532465Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/many_funcs/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:25.185000268Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/many_funcs/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:25.335036267Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/many_funcs/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:25.484971177Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/many_funcs/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:25.786659367Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/many_funcs/Exec/run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:25.934983175Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/linked_list/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:26.084080513Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/linked_list/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:26.236022118Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/linked_list/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:26.385868943Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/linked_list/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:26.535002289Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/linked_list/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:26.835409738Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/linked_list/Exec/sum",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:26.983323717Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nbody/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:27.13353724Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nbody/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:27.288338539Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nbody/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:27.438861623Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nbody/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:27.587700737Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nbody/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:27.889118512Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nbody/Exec/step",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:28.040516748Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fannkuch/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:28.187981214Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fannkuch/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:28.337147854Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fannkuch/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:28.488060759Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fannkuch/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:28.636388455Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fannkuch/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:28.942116486Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fannkuch/Exec/run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:16:29.093156279Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/matmul/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:29.242667656Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/matmul/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:29.39623942Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/matmul/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:29.544185038Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/matmul/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:29.695073549Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/matmul/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:29.995494485Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/matmul/Exec/run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:30.146896669Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sha256/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:30.296547667Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sha256/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:30.447366908Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sha256/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:30.597960174Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sha256/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:30.750060377Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sha256/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:31.05168898Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sha256/Exec/hashN",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:31.201427683Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/raytrace/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:31.350691285Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/raytrace/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:31.500365408Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/raytrace/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:31.65472484Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/raytrace/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:31.807123364Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/raytrace/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:32.113475417Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/raytrace/Exec/render",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:16:32.263265528Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:32.412809246Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:32.563921016Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:32.720137051Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:32.873489184Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:33.178222081Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as/Exec/serializeN",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:33.483894181Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as/Exec/deserializeN",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:16:33.634411185Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:33.786914456Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:33.937236224Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:34.088104527Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:34.237924384Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:34.540080359Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as/Exec/hashN",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:34.691233577Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:34.841255413Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:34.989561139Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:35.139635113Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:35.289576859Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:35.593621316Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as/Exec/convertN",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:35.7451079Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as-simd/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:35.89475813Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as-simd/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:36.04786889Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as-simd/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:36.201638297Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as-simd/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:36.355060623Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as-simd/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:36.663050302Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as-simd/Exec/serializeN",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:16:36.971435453Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/json-as-simd/Exec/deserializeN",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:16:37.119885271Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as-simd/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:37.269357317Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as-simd/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:37.420730449Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as-simd/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:37.571469321Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as-simd/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:37.725588163Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as-simd/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:38.03096413Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake-as-simd/Exec/hashN",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:16:38.17999067Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as-simd/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:38.329336769Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as-simd/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:38.479075976Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as-simd/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:38.629945333Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as-simd/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:38.784040742Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as-simd/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:39.087442617Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as-simd/Exec/convertN",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:39.392322574Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf-as-simd/Exec/validateN",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:16:39.540062821Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coremark/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:39.690751009Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coremark/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:39.841760199Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coremark/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:39.993503135Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coremark/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:40.14409886Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/coremark/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:40.293397661Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake3/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:40.442987989Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake3/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:40.592988998Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake3/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:40.749009529Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake3/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:40.901469321Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/blake3/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:41.053106028Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/qoi/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:41.20261264Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/qoi/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:41.352193751Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/qoi/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:41.504536824Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/qoi/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:41.654925701Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/qoi/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:41.807134601Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lz4/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:41.956971923Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lz4/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:42.106920905Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lz4/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:42.257337835Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lz4/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:42.408309074Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lz4/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:42.558000904Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/zlib/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:42.709038438Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/zlib/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:42.860522579Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/zlib/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:43.014939012Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/zlib/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:43.169850914Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/zlib/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:43.320235554Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/zstd/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:43.470063679Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/zstd/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:43.623506656Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/zstd/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:43.783339029Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/zstd/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:43.94036617Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/zstd/Instantiate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:44.089897889Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/yyjson/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:44.242412445Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/yyjson/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:44.399686199Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/yyjson/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:44.563341474Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/yyjson/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:44.729583402Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/yyjson/Instantiate",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:16:44.880192422Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf8proc/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:45.029435501Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf8proc/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:45.180300992Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf8proc/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:45.338960135Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf8proc/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:45.492299208Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/utf8proc/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:45.640230315Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/xxhash/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:45.789302704Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/xxhash/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:45.939071929Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/xxhash/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:46.093900757Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/xxhash/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:46.242929203Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/xxhash/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:46.391294585Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/libtommath/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:46.544108904Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/libtommath/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:46.697311561Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/libtommath/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:46.856530855Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/libtommath/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:47.011443189Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/libtommath/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:47.160508625Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nanosvg/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:47.311107197Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nanosvg/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:47.46346538Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nanosvg/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:47.624534405Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nanosvg/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:47.788163953Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/nanosvg/Instantiate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:47.939702689Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/kissfft/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:48.090530391Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/kissfft/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:48.242780351Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/kissfft/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:48.398614656Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/kissfft/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:48.551494408Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/kissfft/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:48.702984743Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/miniz/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:48.852410255Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/miniz/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:49.005234021Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/miniz/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:49.160084821Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/miniz/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:49.314943065Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/miniz/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:49.46500927Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/monocypher/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:49.613871585Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/monocypher/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:49.766186177Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/monocypher/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:49.916386212Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/monocypher/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:50.069074886Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/monocypher/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:50.218018584Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/drwav/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:50.368040746Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/drwav/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:50.522430451Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/drwav/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:50.67654475Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/drwav/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:50.83134199Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/drwav/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:50.980081565Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fastfloat/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:51.129810417Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fastfloat/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:51.280168419Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fastfloat/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:51.432442666Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fastfloat/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:51.584848009Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/fastfloat/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:51.737577009Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/pcre2/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:51.889203651Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/pcre2/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:52.05192684Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/pcre2/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:52.225760192Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/pcre2/CompileFull",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:16:52.400420326Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/pcre2/Instantiate",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:16:52.551083571Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/cjson/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:52.703209019Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/cjson/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:52.857438043Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/cjson/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:53.015546856Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/cjson/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:53.167240084Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lodepng/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:53.317298455Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lodepng/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:53.473409129Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lodepng/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:53.635130329Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lodepng/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:53.787515725Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/wren/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:53.938155467Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/wren/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:54.099740532Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/wren/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:54.267061147Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/wren/CompileFull",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:16:54.418101941Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tinyxml2/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:54.567263409Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tinyxml2/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:54.724917079Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tinyxml2/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:54.884130535Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tinyxml2/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:55.036759178Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lua/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:55.191547602Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lua/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:55.356295952Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lua/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:55.532548704Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/lua/CompileFull",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:16:55.685201764Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-crc32/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:55.836474373Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-crc32/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:55.987230743Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-crc32/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:56.138349064Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-crc32/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:56.287982127Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-huffbench/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:56.436134202Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-huffbench/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:56.58636092Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-huffbench/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:56.741292313Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-huffbench/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:56.890007575Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-matmult-int/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:57.039221793Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-matmult-int/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:57.190498541Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-matmult-int/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:57.340777156Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-matmult-int/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:57.489827867Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-nettle-aes/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:57.63849572Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-nettle-aes/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:57.789470602Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-nettle-aes/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:57.938324725Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-nettle-aes/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:58.091611092Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-nettle-sha256/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:58.243437502Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-nettle-sha256/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:58.392853078Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-nettle-sha256/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:58.543409985Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-nettle-sha256/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:58.693217427Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-qrduino/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:58.842887811Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-qrduino/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:58.993417207Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-qrduino/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:59.145166642Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/embench-qrduino/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:59.294530672Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sightglass-shootout-base64/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:59.444921718Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sightglass-shootout-base64/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:59.596909591Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sightglass-shootout-base64/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:16:59.755168949Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sightglass-shootout-base64/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:16:59.904852488Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sightglass-libsodium-hash/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:00.054443474Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sightglass-libsodium-hash/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:00.207636467Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sightglass-libsodium-hash/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:00.363701499Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/sightglass-libsodium-hash/CompileFull",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:17:00.511985683Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tacle-bsort/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:00.660851839Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tacle-bsort/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:00.81396842Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tacle-bsort/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:00.963971569Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/tacle-bsort/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:01.1180692Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-2mm/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:01.268541058Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-2mm/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:01.419505151Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-2mm/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:01.5694655Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-2mm/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:01.725916246Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-2mm/Instantiate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:17:02.027581938Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-2mm/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:02.176315886Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-3mm/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:02.326482824Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-3mm/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:02.476041189Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-3mm/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:02.626284039Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-3mm/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:02.777799015Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-3mm/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:03.079920964Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-3mm/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:03.229127539Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-adi/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:03.382490653Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-adi/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:03.53144739Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-adi/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:03.684930359Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-adi/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:03.836022061Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-adi/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:04.143025479Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-adi/Exec/polybench_run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:17:04.294576302Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-atax/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:04.449432458Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-atax/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:04.600422831Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-atax/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:04.75292028Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-atax/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:04.902721232Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-atax/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:05.204098314Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-atax/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:05.354243992Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-bicg/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:05.506127862Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-bicg/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:05.654957832Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-bicg/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:05.806272042Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-bicg/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:05.956249465Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-bicg/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:06.259062713Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-bicg/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:06.411663227Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-cholesky/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:06.561100997Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-cholesky/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:06.71348228Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-cholesky/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:06.863237606Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-cholesky/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:07.021753678Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-cholesky/Instantiate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:17:07.336170516Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-cholesky/Exec/polybench_run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:17:07.486508726Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-correlation/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:07.637186382Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-correlation/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:07.789059041Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-correlation/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:07.939918299Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-correlation/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:08.090551011Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-correlation/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:08.394791248Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-correlation/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:08.545282826Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-covariance/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:08.69742466Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-covariance/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:08.852338464Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-covariance/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:09.006007304Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-covariance/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:09.157444976Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-covariance/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:09.461704961Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-covariance/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:09.611897649Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-deriche/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:09.765003482Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-deriche/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:09.915992413Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-deriche/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:10.067276188Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-deriche/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:10.218608995Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-deriche/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:10.523838408Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-deriche/Exec/polybench_run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:17:10.675184941Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-doitgen/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:10.827061318Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-doitgen/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:10.978691853Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-doitgen/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:11.131294122Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-doitgen/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:11.282085523Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-doitgen/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:11.585707322Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-doitgen/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:11.739800928Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-durbin/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:11.891991164Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-durbin/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:12.043308011Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-durbin/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:12.193961234Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-durbin/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:12.345142157Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-durbin/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:12.648083519Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-durbin/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:12.798072826Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-fdtd-2d/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:12.948898152Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-fdtd-2d/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:13.100274892Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-fdtd-2d/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:13.251932559Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-fdtd-2d/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:13.404553002Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-fdtd-2d/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:13.716949093Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-fdtd-2d/Exec/polybench_run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:17:13.868400023Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-floyd-warshall/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:14.020121289Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-floyd-warshall/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:14.171957752Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-floyd-warshall/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:14.322199654Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-floyd-warshall/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:14.472961691Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-floyd-warshall/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:14.784616411Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-floyd-warshall/Exec/polybench_run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:17:14.934766261Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemm/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:15.085176198Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemm/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:15.236286288Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemm/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:15.386361126Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemm/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:15.537137842Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemm/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:15.84217084Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemm/Exec/polybench_run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:17:15.992321721Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemver/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:16.143179519Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemver/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:16.295297291Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemver/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:16.449127324Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemver/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:16.601177719Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemver/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:16.905480388Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gemver/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:17.056897054Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gesummv/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:17.207175365Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gesummv/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:17.358503656Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gesummv/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:17.511588712Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gesummv/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:17.662676802Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gesummv/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:17.970227345Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gesummv/Exec/polybench_run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:17:18.12116344Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gramschmidt/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:18.27155841Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gramschmidt/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:18.422618237Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gramschmidt/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:18.575030421Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gramschmidt/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:18.72733304Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gramschmidt/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:19.030855366Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-gramschmidt/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:19.182894231Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-heat-3d/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:19.333712145Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-heat-3d/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:19.484702532Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-heat-3d/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:19.636145468Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-heat-3d/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:19.793242992Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-heat-3d/Instantiate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:17:20.098307453Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-heat-3d/Exec/polybench_run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:17:20.24843958Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-1d/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:20.398941401Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-1d/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:20.548039779Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-1d/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:20.699038482Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-1d/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:20.854418836Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-1d/Instantiate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:17:21.154639259Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-1d/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:21.305098471Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-2d/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:21.454935094Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-2d/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:21.605314155Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-2d/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:21.759362851Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-2d/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:21.909984387Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-2d/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:22.210563583Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-jacobi-2d/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:22.35871738Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-lu/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:22.508671243Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-lu/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:22.658736687Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-lu/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:22.809072597Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-lu/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:22.957026729Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-lu/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:23.260114533Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-lu/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:23.412977254Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-ludcmp/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:23.564894101Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-ludcmp/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:23.715184687Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-ludcmp/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:23.866355413Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-ludcmp/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:24.016956732Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-ludcmp/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:24.31924678Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-ludcmp/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:24.470162549Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-mvt/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:24.619524793Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-mvt/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:24.769575119Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-mvt/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:24.919918354Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-mvt/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:25.068399485Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-mvt/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:25.369261745Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-mvt/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:25.523461225Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-nussinov/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:25.673235712Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-nussinov/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:25.824950992Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-nussinov/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:25.974310531Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-nussinov/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:26.127017461Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-nussinov/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:26.434631809Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-nussinov/Exec/polybench_run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:17:26.583108542Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-seidel-2d/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:26.732362835Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-seidel-2d/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:26.883336072Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-seidel-2d/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:27.033269799Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-seidel-2d/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:27.183373175Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-seidel-2d/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:27.492485143Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-seidel-2d/Exec/polybench_run",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:17:27.642436394Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-symm/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:27.798913547Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-symm/Validate",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:17:27.947946043Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-symm/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:28.097854724Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-symm/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:28.249550247Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-symm/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:28.552185666Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-symm/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:28.699460274Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syr2k/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:28.847893086Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syr2k/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:28.995849284Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syr2k/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:29.147935841Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syr2k/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:29.296966685Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syr2k/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:29.601110354Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syr2k/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:29.757663019Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syrk/Decode",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:17:29.909576241Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syrk/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:30.060321752Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syrk/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:30.209640938Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syrk/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:30.360922986Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syrk/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:30.662017434Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-syrk/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:30.813311254Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trisolv/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:30.962509262Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trisolv/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:31.112878307Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trisolv/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:31.262431793Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trisolv/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:31.412219537Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trisolv/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:31.713350264Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trisolv/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:31.864921906Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trmm/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:32.013618995Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trmm/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:32.164806486Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trmm/Compile",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:32.314377654Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trmm/CompileFull",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:32.46556219Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trmm/Instantiate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:32.768017513Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/polybench-trmm/Exec/polybench_run",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T07:17:32.916816393Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/wren-modulo/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:33.06927046Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/wren-modulo/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:33.230147229Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/wren-modulo/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:17:33.404585441Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/wren-modulo/CompileFull",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:17:33.554999512Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-array/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:33.707425366Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-array/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:33.87280839Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-array/Compile",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:17:34.05021488Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-array/CompileFull",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:17:34.199627653Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-string/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:34.353347385Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-string/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:34.51618316Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-string/Compile",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T07:17:34.6906738Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-string/CompileFull",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:17:34.843177782Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-json-subset/Decode",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:34.997702064Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-json-subset/Validate",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:17:35.163234659Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-json-subset/Compile",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T07:17:35.341165895Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus/grain-stdlib-json-subset/CompileFull",
+      "Elapsed": 0.18
+    },
+    {
+      "Time": "2026-11-02T07:17:35.341181945Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestCorpus",
+      "Elapsed": 140.81
+    },
+    {
+      "Time": "2026-11-02T07:17:35.341230315Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Test": "TestJsonAsGuardCorrect",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:17:35.343101786Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/bench/suite",
+      "Elapsed": 140.813
+    }
+  ],
+  "raw_sha256": "2b19c50616cb668ccae1b77efcc6500520b12c0bdc77ba57404f4a83ded386a6",
+  "driver_unchanged": true
+}

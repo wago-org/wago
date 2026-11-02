@@ -49,7 +49,7 @@ for lane,arch in [('qemu-h6','arm64'),('qemu-rv64-controls','riscv64')]:
 seen={r['suite'] for r in rows}
 for n in expected:
  if n not in seen:rows.append(dict(suite=n,source=M['pin'],verdict='NOT_RUN',reason='Not executed; no terminal pass evidence.'))
-rows.append(dict(suite='native-Darwin',source=M['pin'],verdict='NOT_RUN',reason='No established native or remote Darwin runner. Acquisition cost unknown.'))
+for target in ['Darwin','Windows']:rows.append(dict(suite='native-'+target,source=M['pin'],verdict='PARENT_OWNED',reason='Remote execution verdict is outside this local assignment.'))
 (E/'qualification.json').write_text(json.dumps(dict(source=M['pin'],rows=rows,counts=dict(collections.Counter(r['verdict'] for r in rows))),indent=2)+'\n')
 runpy.run_path(str(E/'corpus-summary.py'),run_name='__main__')
 print('verdicts',dict(collections.Counter(r['verdict'] for r in rows)))
