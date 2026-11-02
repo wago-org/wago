@@ -3,7 +3,6 @@
 package wago
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -57,12 +56,24 @@ func TestDesignRepairWaitNotifier(t *testing.T) {
 		done <- e
 	}()
 	waitForMemoryWaiters(t, memory, 1)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	out, err := notifier.InvokeContext(ctx, "notify", 0, 1)
-	if err != nil || len(out) != 1 || out[0] != 1 {
-		t.Fatalf("notifier blocked or failed: %v %v", out, err)
+
+	notified := make(chan error, 1)
+	go func() {
+		out, err := notifier.Invoke("notify", 0, 1)
+		if err == nil && (len(out) != 1 || out[0] != 1) {
+			err = fmt.Errorf("notify result %v", out)
+		}
+		notified <- err
+	}()
+	select {
+	case err := <-notified:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("notifier blocked while guest wait held")
 	}
+
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
