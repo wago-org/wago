@@ -1,0 +1,22 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T14:26:02.379684175Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/support/regressioncorpus",
+      "Test": "FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "Elapsed": 30.1
+    },
+    {
+      "Time": "2026-11-02T14:26:02.381245699Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/support/regressioncorpus",
+      "Elapsed": 30.107
+    }
+  ],
+  "raw_sha256": "c1207f7f92d237509d4a6d2c3fc23fca99e5bc68f97b85acb7c4cb372c65ead2",
+  "driver_unchanged": true
+}

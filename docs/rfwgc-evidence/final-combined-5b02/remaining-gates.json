@@ -1,6 +1,6 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 125,
+  "remaining_count": 115,
   "remaining": [
     {
       "suite": "graphs-port-ordinary",
@@ -327,18 +327,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "qemu-collector/arm64-ordinary-collector",
-      "receipt_suite": "qemu-collector/arm64-ordinary-collector",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-collector/arm64-wagodebug-collector",
-      "receipt_suite": "qemu-collector/arm64-wagodebug-collector",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "qemu-collector/arm64-wago_regalloccheck-collector",
       "receipt_suite": "qemu-collector/arm64-wago_regalloccheck-collector",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -477,22 +465,10 @@
       "verdict": "FAIL"
     },
     {
-      "suite": "tinygo-34/host-wago_regalloccheck",
-      "receipt_suite": "tinygo-34/host-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "tinygo-34/standalone-wago_regalloccheck",
-      "receipt_suite": "tinygo-34/standalone-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "tinygo-34/guest-threads-wago_regalloccheck",
       "receipt_suite": "tinygo-34/guest-threads-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/ci-checkers",
@@ -645,46 +621,10 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
-      "receipt_suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "INTERRUPTED"
-    },
-    {
-      "suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
-      "receipt_suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
+      "suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
+      "receipt_suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "RUNNING"
-    },
-    {
-      "suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
-      "receipt_suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
-      "receipt_suite": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "fuzz-30s-FuzzStructCardDifferential",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "fuzz-30s-FuzzValidateRelativePathAndRustScannerDoNotPanic",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
     },
     {
       "suite": "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic",
@@ -808,6 +748,8 @@
     "tooling-vet-ordinary",
     "tooling-vet-wagodebug",
     "tooling-vet-wago_regalloccheck",
+    "qemu-collector/arm64-ordinary-collector",
+    "qemu-collector/arm64-wagodebug-collector",
     "tooling-generate",
     "replay-generated-diff",
     "replay-docs",
@@ -832,7 +774,15 @@
     "tinygo-34/host-wagodebug",
     "tinygo-34/standalone-wagodebug",
     "tinygo-34/guest-threads-wagodebug",
+    "tinygo-34/host-wago_regalloccheck",
+    "tinygo-34/standalone-wago_regalloccheck",
     "fuzz-FuzzStructCardDifferential",
+    "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+    "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
+    "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
+    "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
+    "fuzz-30s-FuzzStructCardDifferential",
+    "fuzz-30s-FuzzValidateRelativePathAndRustScannerDoNotPanic",
     "early-replay-discovery-ordinary",
     "early-replay-compile-ordinary",
     "early-replay-cipolicy-ordinary",

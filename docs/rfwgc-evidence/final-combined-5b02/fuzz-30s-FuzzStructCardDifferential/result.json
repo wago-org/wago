@@ -1,0 +1,22 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T14:25:32.141158303Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Test": "FuzzStructCardDifferential",
+      "Elapsed": 30.01
+    },
+    {
+      "Time": "2026-11-02T14:25:32.14144429Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Elapsed": 30.017
+    }
+  ],
+  "raw_sha256": "583445c49dd8fa7bdb8b1d4f3ca429e438e63e38ae3919cf321d8b448dc51bfe",
+  "driver_unchanged": true
+}
