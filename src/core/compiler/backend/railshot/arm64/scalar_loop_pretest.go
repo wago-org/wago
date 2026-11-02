@@ -67,6 +67,9 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame) bool {
 	if owner == nil {
 		return false
 	}
+	if f.unrollScalarCounter(start, words[:n], exit, owner) {
+		return true
+	}
 	// Retain the original body and its original pending edge. New copies use the
 	// same register homes and preserve an exit check in every iteration.
 	for phase := 1; phase < 4; phase++ {
@@ -79,5 +82,75 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame) bool {
 	}
 	f.patchBranch26(f.a.Branch(), start)
 	f.stats.peep("scalar-loop-unroll-pretest")
+	return true
+}
+
+// unrollScalarCounter batches a unit increment whose local is neither read nor
+// written elsewhere in the loop. An exit after k complete iterations restores
+// base+k in a cold stub. The original phase-zero exit remains at its old site.
+func (f *fn) unrollScalarCounter(start int, words []uint32, exit int, owner *ctrlFrame) bool {
+	increment := -1
+	for i, word := range words {
+		rd := Reg(word & 31)
+		if i <= exit || word&0x7fc00000 != 0x11000000 || word>>10&0xfff != 1 || rd != Reg(word>>5&31) || !f.pinnedLocalMask.has(rd) {
+			continue
+		}
+		independent := true
+		for j, other := range words {
+			if j == i {
+				continue
+			}
+			if j == exit {
+				if other&0x7e000000 == 0x34000000 && Reg(other&31) == rd {
+					independent = false
+				}
+				continue
+			}
+			destination, _ := scalarLoopWord(other)
+			if destination == rd {
+				independent = false
+				break
+			}
+			fields := scalarLoopSources(other)
+			for _, shift := range []uint{5, 10, 16} {
+				if fields&(1<<shift) != 0 && Reg(other>>shift&31) == rd {
+					independent = false
+				}
+			}
+		}
+		if independent {
+			if increment != -1 {
+				return false
+			}
+			increment = i
+		}
+	}
+	if increment < 0 {
+		return false
+	}
+	update := words[increment]
+	f.a.B = f.a.B[:start]
+	var exits [3]int
+	for phase := 0; phase < 4; phase++ {
+		for i, word := range words {
+			if i == increment {
+				continue
+			}
+			if i == exit && phase != 0 {
+				exits[phase-1] = f.a.Len()
+			}
+			f.a.B = binary.LittleEndian.AppendUint32(f.a.B, word)
+		}
+	}
+	// Integer ADD retains the original operand width, including modular wrapping.
+	f.a.B = binary.LittleEndian.AppendUint32(f.a.B, update&^uint32(0xfff<<10)|4<<10)
+	f.patchBranch26(f.a.Branch(), start)
+	for phase, site := range exits {
+		f.patchBranch19(site, f.a.Len())
+		f.a.B = binary.LittleEndian.AppendUint32(f.a.B, update&^uint32(0xfff<<10)|uint32(phase+1)<<10)
+		f.appendFrameEnd(owner, f.a.Branch(), false)
+	}
+	f.stats.peep("scalar-loop-unroll-pretest")
+	f.stats.peep("scalar-loop-unroll-counter")
 	return true
 }

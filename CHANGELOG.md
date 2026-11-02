@@ -62,6 +62,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Unroll bounded ARM64 register-only integer induction loops, checking each
   iteration and preserving the exact induction value on early exits. Unroll
   small register-only loops with a forward exit while retaining every exit test.
+  Combine independent iteration-counter updates across each group and restore
+  the exact count on partial exits.
 - Keep inlined ARM64 integer pairs in registers when a bounded leaf consists
   of a pure integer condition and local-only result arms.
 - Fold repeated ARM64 I32 local terms into one shifted add when their exact
