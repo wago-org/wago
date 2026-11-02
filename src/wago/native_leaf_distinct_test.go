@@ -101,7 +101,7 @@ func TestNativeLeafDistinctDifferentialRoutes(t *testing.T) {
 				defer instances[i].Close()
 				assertDistinctLeafRoute(t, instances[i], enabled && !codeProfileEnabled)
 			}
-			for _, name := range []string{"run", "table", "ref", "tail", "reexport", "trap"} {
+			for _, name := range []string{"run", "table", "run", "ref", "run", "tail", "reexport", "run", "trap", "run"} {
 				for _, x := range []uint64{0, 0xffffffff, 0x80000000, 0x7fffffff, 0xdeadbeef00000007, 0xffffffffffffffff} {
 					args := []uint64{x}
 					if name == "run" || name == "tail" {
@@ -351,5 +351,49 @@ func TestNativeLeafDistinctLocalGCFallback(t *testing.T) {
 	got, err := in.Invoke("run", 7)
 	if err != nil || got[0] != 13 {
 		t.Fatalf("GC generic=%v,%v", got, err)
+	}
+}
+
+//go:noinline
+//go:norace
+func nativeLeafDistinctXor(a, b int32) int32 { return a ^ b }
+
+func TestNativeLeafDistinctBinaryDifferential(t *testing.T) {
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	module := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "a", 0, 0), importEntry("env", "b", 0, 0))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x10, 0, 0x20, 1, 0x10, 1, 0x0b}))))
+	for _, reverse := range []bool{false, true} {
+		a, b := nativeLeafPolynomial, nativeLeafDistinctXor
+		if reverse {
+			a, b = b, a
+		}
+		for _, enabled := range []bool{false, true} {
+			c, err := NewRuntimeConfig().WithOptimization("native-leaf-host", enabled).Compile(module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.a", a, "env.b", b)})
+			if err != nil {
+				c.Close()
+				t.Fatal(err)
+			}
+			assertDistinctLeafRoute(t, in, enabled && !codeProfileEnabled)
+			state := uint32(0x9e3779b9)
+			for i := 0; i < 128; i++ {
+				state = state*1664525 + 1013904223
+				x := int32(state)
+				state = state*1664525 + 1013904223
+				y := int32(state)
+				got, err := in.Invoke("run", uint64(uint32(x))|0xdeadbeef00000000, uint64(uint32(y))|0xaabbccdd00000000)
+				want := I32(b(a(x, y), y))
+				if err != nil || len(got) != 1 || got[0] != want {
+					t.Fatalf("binary reverse=%t enabled=%t: %x,%v want %x", reverse, enabled, got, err, want)
+				}
+			}
+			in.Close()
+			c.Close()
+		}
 	}
 }
