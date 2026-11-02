@@ -1,0 +1,8 @@
+{
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "prior_source": "9180f09f7590d029bc90df2fa20c0decc590505a",
+  "required_ancestor": "07dd245528e3ce94d126f2e5cf8609ddb2737e6c",
+  "source_contains_ci_policy_fix": true,
+  "native_execution": "NOT_RUN",
+  "prior_crossbuilds": "revision-9180/overlay-builds.json; no repaired-source execution claim"
+}

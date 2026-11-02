@@ -13,7 +13,7 @@ from identity import validate
 from run import capture, manifest, write
 
 HERE = Path(__file__).resolve().parent
-REV = HERE / 'revision-9180'
+REV = HERE / json.loads((HERE / 'plan.json').read_text())['supplement_revision']
 SPEC = json.loads((REV / 'contracts.json').read_text())
 
 

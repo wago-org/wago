@@ -1,0 +1,37 @@
+{
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "files": [
+    {
+      "path": "src/wago/function_environment_roots_host.go",
+      "sha256": "8ac0ac06c632d0fd8168289107f7812455abef5b027e13d2ded419d513148a37",
+      "first_line": "//go:build linux && !riscv64 && !tinygo && !wago_target_tinygo"
+    },
+    {
+      "path": "src/wago/function_environment_aggregate_dispatch_linux.go",
+      "sha256": "9712b5f1d68a6a25178eda01e0c57d79e22daa61be83de403db9a347c35500b2",
+      "first_line": "//go:build linux && !tinygo && !wago_target_tinygo"
+    },
+    {
+      "path": "src/wago/function_environment_nested_owner_host_test.go",
+      "sha256": "7c86024bab8034ddc27ae614d12e1a2fc533cce93353d19124116feaf7452a5f",
+      "first_line": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+    },
+    {
+      "path": "src/wago/function_environment_wakeup_host_test.go",
+      "sha256": "b70d5a1bb21472f67e8fa8bc1bb6ae9b58254e83fde79e411c3728bc6c6f1884",
+      "first_line": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+    },
+    {
+      "path": "src/wago/gc_conversion_store.go",
+      "sha256": "e4f017b67a10b821cab52af1d820524fc0574b4452aa2725ce6b120d2ac76fd7",
+      "first_line": "package wago"
+    },
+    {
+      "path": "src/wago/gc_conversion_receipt_other.go",
+      "sha256": "c7c31ec7333a0fab31043869a1127fbdf95fcdedec7523a4b63df47cac2ee574",
+      "first_line": "//go:build !linux || riscv64 || tinygo || wago_target_tinygo"
+    }
+  ],
+  "h6": "Linux-only implementation; no Darwin ownership graph port authorized",
+  "windows": "Core 3 excluded by supportsCompleteCore3Backend; select storage + admission, not converted guest invocation"
+}

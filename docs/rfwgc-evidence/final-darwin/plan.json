@@ -1,6 +1,6 @@
 {
-  "source": "9180f09f7590d029bc90df2fa20c0decc590505a",
-  "evidence": "Historical receipts define command recipes only; execution now requires 9180.",
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "evidence": "Historical recipes only; execution requires CI-repaired source f2bb27287220783e86a4ead41fee78693a5129de",
   "lanes": [
     {
       "id": "full-root-replay-ordinary",
@@ -1698,5 +1698,6 @@
       "gap": "Darwin platform census",
       "status": "REQUIRES_REVIEW after execution"
     }
-  ]
+  ],
+  "supplement_revision": "revision-f2bb27287"
 }
