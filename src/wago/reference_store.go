@@ -757,7 +757,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 	if r.domainHostRoots && (compiledArchitecture == 4 || gcNativeHostActivations.Load() != 0) && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
 		return false
 	}
-	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) && !gcConversionPrivateFrames(r.owner) {
+	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
 		return r.owner.refStore.rangeGCDomainPersistentRootsClassified(r.owner.gc, sink)
 	}
 	if r.owner != nil && managedFunctionOwnerRootsStrong(r.owner, r.owner.gc) {
@@ -828,7 +828,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 	}
 
 	domainRoots := false
-	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) && !gcConversionPrivateFrames(r.owner) {
+	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
 		domainRoots = true
 		if !r.owner.refStore.rangeGCDomainPersistentRoots(r.owner.gc, fn, sink) {
 			return false
@@ -1082,7 +1082,7 @@ func (r *gcNativeFrameRoots) rangeChainFrom(owner *Instance, fn func(gc.RootSlot
 						return true
 					}
 				}
-				if r.owner == nil || r.owner.refStore == nil || !r.owner.refStore.ownsGCCollector(r.owner.gc) || gcConversionPrivateFrames(r.owner) {
+				if r.owner == nil || r.owner.refStore == nil || !r.owner.refStore.ownsGCCollector(r.owner.gc) {
 					return true
 				}
 				foreign := r.owner.refStore.gcFrameOwner(retPC, owner.gc)
@@ -1417,7 +1417,8 @@ func (s *referenceStore) ownsGCCollector(collector *gc.Collector) bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.gcDomains.domainForCollectorLocked(collector) != nil
+	domain := s.gcDomains.domainForCollectorLocked(collector)
+	return domain != nil && !domain.conversionOwned
 }
 
 func (s *referenceStore) gcDomainForCollector(collector *gc.Collector) *gcStoreDomain {
@@ -2031,6 +2032,10 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 		if selected == nil {
 			s.mu.Unlock()
 			return nil, nil, fmt.Errorf("wago: imported WasmGC collector is not a live Runtime domain")
+		}
+		if selected.conversionOwned {
+			s.mu.Unlock()
+			return nil, nil, fmt.Errorf("wago: receipt-owned conversion collector is not a shared type domain")
 		}
 		if !equalGCConfigs(selected.config, config) {
 			s.mu.Unlock()

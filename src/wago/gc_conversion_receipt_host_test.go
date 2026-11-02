@@ -3,11 +3,13 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -551,5 +553,31 @@ func TestR9H2ReceiptOnlyContention(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Lifetime registration does not authorize joining a private type universe.
+func TestR9H2ReceiptDomainKeepsPrivateTypeAdmission(t *testing.T) {
+	store := newReferenceStore(false)
+	publisher, provider, table, word := h2ReceiptFixture(t, store, 0)
+	h2TableSet(t, table, 0, word)
+	receipt := h2AssertReceipt(t, table.conversionContainers[0], 0)
+	if store.ownsGCCollector(publisher.gc) {
+		t.Fatal("STOP receipt authority impersonated shared type admission")
+	}
+	if _, _, err := store.acquireGCCollector(context.Background(), gc.Config{}, publisher.c, publisher.gc); err == nil || !strings.Contains(err.Error(), "not a shared type domain") {
+		t.Fatalf("STOP private conversion type domain admitted: %v", err)
+	}
+	h2AssertReceipt(t, table.conversionContainers[0], 0)
+	if receipt.identity.domain.claims != 1 {
+		t.Fatal("rejected type import changed receipt claim")
+	}
+	if err := publisher.Close(); err != nil {
+		t.Fatal(err)
+	}
+	h2AssertReceipt(t, table.conversionContainers[0], 0)
+	h2TableSet(t, table, 0, 0)
+	if err := provider.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

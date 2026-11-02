@@ -14,6 +14,5 @@ func publishGCConversionTable(s *gcRefTestTableState, table, index, old, word ui
 func releaseGCConversionTables(*gcRefTestTableState)                {}
 func gcConversionCollectorRegistered(*gcExternConversionState) bool { return true }
 func releaseGCConversionOwner(*Instance)                            {}
-func gcConversionPrivateFrames(*Instance) bool                      { return false }
 func lockGCConversionRetirement(*Instance) func()                   { return func() {} }
 func retireGCConversionStoreLocked(*referenceStore)                 {}
