@@ -1,0 +1,1373 @@
+{
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "baseline": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+  "verdict": "INCOMPLETE",
+  "required": [
+    {
+      "suite": "full-root-replay-ordinary",
+      "receipt_suite": "full-root-replay-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "full-root-replay-wagodebug",
+      "receipt_suite": "full-root-replay-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "full-root-replay-wago_regalloccheck",
+      "receipt_suite": "full-root-replay-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "cli-ordinary",
+      "receipt_suite": "cli-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "cli-wagodebug",
+      "receipt_suite": "cli-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "cli-wago_regalloccheck",
+      "receipt_suite": "cli-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "installer-ordinary",
+      "receipt_suite": "installer-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "installer-wagodebug",
+      "receipt_suite": "installer-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "installer-wago_regalloccheck",
+      "receipt_suite": "installer-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "nested-ordinary",
+      "receipt_suite": "nested-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "nested-wagodebug",
+      "receipt_suite": "nested-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "nested-wago_regalloccheck",
+      "receipt_suite": "nested-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "collector-ordinary",
+      "receipt_suite": "collector-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "collector-wagodebug",
+      "receipt_suite": "collector-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "collector-wago_regalloccheck",
+      "receipt_suite": "collector-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "race-ordinary",
+      "receipt_suite": "race-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "race-wagodebug",
+      "receipt_suite": "race-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "race-wago_regalloccheck",
+      "receipt_suite": "race-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "parent-race-reduced-ordinary",
+      "receipt_suite": "parent-race-reduced-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "parent-race-reduced-wagodebug",
+      "receipt_suite": "parent-race-reduced-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "parent-race-reduced-wago_regalloccheck",
+      "receipt_suite": "parent-race-reduced-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "guard-ordinary",
+      "receipt_suite": "guard-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "guard-wagodebug",
+      "receipt_suite": "guard-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "guard-wago_regalloccheck",
+      "receipt_suite": "guard-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "corpus-ordinary",
+      "receipt_suite": "corpus-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "corpus-wagodebug",
+      "receipt_suite": "corpus-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "corpus-wago_regalloccheck",
+      "receipt_suite": "corpus-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "baseline-corpus-ordinary",
+      "receipt_suite": "baseline-corpus-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "baseline-corpus-wagodebug",
+      "receipt_suite": "baseline-corpus-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "baseline-corpus-wago_regalloccheck",
+      "receipt_suite": "baseline-corpus-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "catalog-ordinary",
+      "receipt_suite": "catalog-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "catalog-wagodebug",
+      "receipt_suite": "catalog-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "catalog-wago_regalloccheck",
+      "receipt_suite": "catalog-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "graphs-port-ordinary",
+      "receipt_suite": "graphs-port-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "graphs-port-wagodebug",
+      "receipt_suite": "graphs-port-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "graphs-port-wago_regalloccheck",
+      "receipt_suite": "graphs-port-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "graphs-baseline-ordinary",
+      "receipt_suite": "graphs-baseline-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "graphs-baseline-wagodebug",
+      "receipt_suite": "graphs-baseline-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "graphs-baseline-wago_regalloccheck",
+      "receipt_suite": "graphs-baseline-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v1-ordinary",
+      "receipt_suite": "spec-v1-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v1-wagodebug",
+      "receipt_suite": "spec-v1-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v1-wago_regalloccheck",
+      "receipt_suite": "spec-v1-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v2-ordinary",
+      "receipt_suite": "spec-v2-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v2-wagodebug",
+      "receipt_suite": "spec-v2-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v2-wago_regalloccheck",
+      "receipt_suite": "spec-v2-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v3-ordinary",
+      "receipt_suite": "spec-v3-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v3-wagodebug",
+      "receipt_suite": "spec-v3-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v3-wago_regalloccheck",
+      "receipt_suite": "spec-v3-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v3-signals-ordinary",
+      "receipt_suite": "spec-v3-signals-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v3-signals-wagodebug",
+      "receipt_suite": "spec-v3-signals-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "spec-v3-signals-wago_regalloccheck",
+      "receipt_suite": "spec-v3-signals-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "guard-corpus-ordinary",
+      "receipt_suite": "guard-corpus-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "guard-corpus-wagodebug",
+      "receipt_suite": "guard-corpus-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "guard-corpus-wago_regalloccheck",
+      "receipt_suite": "guard-corpus-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "backend-ordinary",
+      "receipt_suite": "backend-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "backend-wagodebug",
+      "receipt_suite": "backend-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "backend-wago_regalloccheck",
+      "receipt_suite": "backend-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "diagnostics-default-ordinary",
+      "receipt_suite": "diagnostics-default-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "diagnostics-default-wagodebug",
+      "receipt_suite": "diagnostics-default-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "diagnostics-default-wago_regalloccheck",
+      "receipt_suite": "diagnostics-default-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "diagnostics-established-ordinary",
+      "receipt_suite": "diagnostics-established-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "diagnostics-established-wagodebug",
+      "receipt_suite": "diagnostics-established-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "diagnostics-established-wago_regalloccheck",
+      "receipt_suite": "diagnostics-established-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-build-ordinary",
+      "receipt_suite": "tooling-build-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-build-wagodebug",
+      "receipt_suite": "tooling-build-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-build-wago_regalloccheck",
+      "receipt_suite": "tooling-build-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-vet-ordinary",
+      "receipt_suite": "tooling-vet-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-vet-wagodebug",
+      "receipt_suite": "tooling-vet-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-vet-wago_regalloccheck",
+      "receipt_suite": "tooling-vet-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "runtime-cli-build-ordinary",
+      "receipt_suite": "runtime-cli-build-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "runtime-cli-build-wagodebug",
+      "receipt_suite": "runtime-cli-build-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "runtime-cli-build-wago_regalloccheck",
+      "receipt_suite": "runtime-cli-build-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "profile-metadata-ordinary",
+      "receipt_suite": "profile-metadata-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "profile-metadata-wagodebug",
+      "receipt_suite": "profile-metadata-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "profile-metadata-wago_regalloccheck",
+      "receipt_suite": "profile-metadata-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "profile-runtime-ordinary",
+      "receipt_suite": "profile-runtime-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "profile-runtime-wagodebug",
+      "receipt_suite": "profile-runtime-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "profile-runtime-wago_regalloccheck",
+      "receipt_suite": "profile-runtime-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "shared-scalar-ordinary",
+      "receipt_suite": "shared-scalar-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "shared-scalar-wagodebug",
+      "receipt_suite": "shared-scalar-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "shared-scalar-wago_regalloccheck",
+      "receipt_suite": "shared-scalar-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "native-join-ordinary",
+      "receipt_suite": "native-join-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "native-join-wagodebug",
+      "receipt_suite": "native-join-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "native-join-wago_regalloccheck",
+      "receipt_suite": "native-join-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "seeded-concurrency-ordinary",
+      "receipt_suite": "seeded-concurrency-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "seeded-concurrency-wagodebug",
+      "receipt_suite": "seeded-concurrency-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "seeded-concurrency-wago_regalloccheck",
+      "receipt_suite": "seeded-concurrency-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-evacuation-ordinary",
+      "receipt_suite": "tinygo-evacuation-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-evacuation-wagodebug",
+      "receipt_suite": "tinygo-evacuation-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-evacuation-wago_regalloccheck",
+      "receipt_suite": "tinygo-evacuation-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-joint-ordinary",
+      "receipt_suite": "tinygo-joint-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-joint-wagodebug",
+      "receipt_suite": "tinygo-joint-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-joint-wago_regalloccheck",
+      "receipt_suite": "tinygo-joint-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-conversion-ordinary",
+      "receipt_suite": "tinygo-conversion-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-conversion-wagodebug",
+      "receipt_suite": "tinygo-conversion-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-conversion-wago_regalloccheck",
+      "receipt_suite": "tinygo-conversion-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "hardening-ordinary",
+      "receipt_suite": "hardening-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "hardening-wagodebug",
+      "receipt_suite": "hardening-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "hardening-wago_regalloccheck",
+      "receipt_suite": "hardening-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "hardening-wago_guardpage",
+      "receipt_suite": "hardening-wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "hardening-wagodebug,wago_guardpage",
+      "receipt_suite": "hardening-wagodebug,wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "hardening-wago_regalloccheck,wago_guardpage",
+      "receipt_suite": "hardening-wago_regalloccheck,wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "host-transition-ordinary",
+      "receipt_suite": "host-transition-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "host-transition-wagodebug",
+      "receipt_suite": "host-transition-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "host-transition-wago_regalloccheck",
+      "receipt_suite": "host-transition-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "host-transition-wago_guardpage",
+      "receipt_suite": "host-transition-wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "host-transition-wagodebug,wago_guardpage",
+      "receipt_suite": "host-transition-wagodebug,wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "host-transition-wago_regalloccheck,wago_guardpage",
+      "receipt_suite": "host-transition-wago_regalloccheck,wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-collector/arm64-ordinary-collector",
+      "receipt_suite": "qemu-collector/arm64-ordinary-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-collector/arm64-wagodebug-collector",
+      "receipt_suite": "qemu-collector/arm64-wagodebug-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-collector/arm64-wago_regalloccheck-collector",
+      "receipt_suite": "qemu-collector/arm64-wago_regalloccheck-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-facade/arm64-ordinary-facade",
+      "receipt_suite": "qemu-facade/arm64-ordinary-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-facade/arm64-wagodebug-facade",
+      "receipt_suite": "qemu-facade/arm64-wagodebug-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-facade/arm64-wago_regalloccheck-facade",
+      "receipt_suite": "qemu-facade/arm64-wago_regalloccheck-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-guest/arm64-ordinary-guest",
+      "receipt_suite": "qemu-guest/arm64-ordinary-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-guest/arm64-wagodebug-guest",
+      "receipt_suite": "qemu-guest/arm64-wagodebug-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-guest/arm64-wago_regalloccheck-guest",
+      "receipt_suite": "qemu-guest/arm64-wago_regalloccheck-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-collector/riscv64-ordinary-collector",
+      "receipt_suite": "qemu-collector/riscv64-ordinary-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-collector/riscv64-wagodebug-collector",
+      "receipt_suite": "qemu-collector/riscv64-wagodebug-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-collector/riscv64-wago_regalloccheck-collector",
+      "receipt_suite": "qemu-collector/riscv64-wago_regalloccheck-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-facade/riscv64-ordinary-facade",
+      "receipt_suite": "qemu-facade/riscv64-ordinary-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-facade/riscv64-wagodebug-facade",
+      "receipt_suite": "qemu-facade/riscv64-wagodebug-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-facade/riscv64-wago_regalloccheck-facade",
+      "receipt_suite": "qemu-facade/riscv64-wago_regalloccheck-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-guest/riscv64-ordinary-guest",
+      "receipt_suite": "qemu-guest/riscv64-ordinary-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-guest/riscv64-wagodebug-guest",
+      "receipt_suite": "qemu-guest/riscv64-wagodebug-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-guest/riscv64-wago_regalloccheck-guest",
+      "receipt_suite": "qemu-guest/riscv64-wago_regalloccheck-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-h6/arm64-ordinary-guest",
+      "receipt_suite": "qemu-h6/arm64-ordinary-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-h6/arm64-wagodebug-guest",
+      "receipt_suite": "qemu-h6/arm64-wagodebug-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-h6/arm64-wago_regalloccheck-guest",
+      "receipt_suite": "qemu-h6/arm64-wago_regalloccheck-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-ordinary-guest",
+      "receipt_suite": "qemu-rv64-controls/riscv64-ordinary-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wagodebug-guest",
+      "receipt_suite": "qemu-rv64-controls/riscv64-wagodebug-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wago_regalloccheck-guest",
+      "receipt_suite": "qemu-rv64-controls/riscv64-wago_regalloccheck-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-generate",
+      "receipt_suite": "tooling-generate",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "replay-generated-diff",
+      "receipt_suite": "replay-generated-diff",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "replay-format",
+      "receipt_suite": "replay-format",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "replay-docs",
+      "receipt_suite": "replay-docs",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "replay-actionlint",
+      "receipt_suite": "replay-actionlint",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "replay-staticcheck",
+      "receipt_suite": "replay-staticcheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "replay-native-compare",
+      "receipt_suite": "tooling-native-compare",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-portable-386",
+      "receipt_suite": "tooling-portable-386",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-script-ci-riscv64",
+      "receipt_suite": "tooling-script-ci-riscv64",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-node-update-website-bench",
+      "receipt_suite": "tooling-node-update-website-bench",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-node-update-website-startup",
+      "receipt_suite": "tooling-node-update-website-startup",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-node-engine-state-oracle",
+      "receipt_suite": "tooling-node-engine-state-oracle",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-node-fuzz-engine-state",
+      "receipt_suite": "tooling-node-fuzz-engine-state",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "replay-build-release-assets.sh",
+      "receipt_suite": "replay-build-release-assets.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "replay-release-qualification.sh",
+      "receipt_suite": "replay-release-qualification.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "replay-ci-download-go-modules.sh",
+      "receipt_suite": "replay-ci-download-go-modules.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-script-check-diagnostic-dce.sh",
+      "receipt_suite": "tooling-script-check-diagnostic-dce.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-script-check-riscv64-diagnostics.sh",
+      "receipt_suite": "tooling-script-check-riscv64-diagnostics.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tooling-script-check-regalloc-code.sh",
+      "receipt_suite": "tooling-script-check-regalloc-code.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/host-ordinary",
+      "receipt_suite": "tinygo-34/host-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/standalone-ordinary",
+      "receipt_suite": "tinygo-34/standalone-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/guest-threads-ordinary",
+      "receipt_suite": "tinygo-34/guest-threads-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/host-wagodebug",
+      "receipt_suite": "tinygo-34/host-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/standalone-wagodebug",
+      "receipt_suite": "tinygo-34/standalone-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/guest-threads-wagodebug",
+      "receipt_suite": "tinygo-34/guest-threads-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/host-wago_regalloccheck",
+      "receipt_suite": "tinygo-34/host-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/standalone-wago_regalloccheck",
+      "receipt_suite": "tinygo-34/standalone-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+      "receipt_suite": "tinygo-34/guest-threads-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-checkers",
+      "receipt_suite": "tinygo-34/ci-checkers",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-runtime",
+      "receipt_suite": "tinygo-34/ci-runtime",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-cli",
+      "receipt_suite": "tinygo-34/ci-cli",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-cli-smoke",
+      "receipt_suite": "tinygo-34/ci-cli-smoke",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release",
+      "receipt_suite": "tinygo-34/ci-release",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-1",
+      "receipt_suite": "tinygo-34/ci-release-version-1",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-1",
+      "receipt_suite": "tinygo-34/ci-release-fib-1",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-2",
+      "receipt_suite": "tinygo-34/ci-release-version-2",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-2",
+      "receipt_suite": "tinygo-34/ci-release-fib-2",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-3",
+      "receipt_suite": "tinygo-34/ci-release-version-3",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-3",
+      "receipt_suite": "tinygo-34/ci-release-fib-3",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-4",
+      "receipt_suite": "tinygo-34/ci-release-version-4",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-4",
+      "receipt_suite": "tinygo-34/ci-release-fib-4",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-5",
+      "receipt_suite": "tinygo-34/ci-release-version-5",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-5",
+      "receipt_suite": "tinygo-34/ci-release-fib-5",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-6",
+      "receipt_suite": "tinygo-34/ci-release-version-6",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-6",
+      "receipt_suite": "tinygo-34/ci-release-fib-6",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-7",
+      "receipt_suite": "tinygo-34/ci-release-version-7",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-7",
+      "receipt_suite": "tinygo-34/ci-release-fib-7",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-8",
+      "receipt_suite": "tinygo-34/ci-release-version-8",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-8",
+      "receipt_suite": "tinygo-34/ci-release-fib-8",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-9",
+      "receipt_suite": "tinygo-34/ci-release-version-9",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-9",
+      "receipt_suite": "tinygo-34/ci-release-fib-9",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-10",
+      "receipt_suite": "tinygo-34/ci-release-version-10",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-10",
+      "receipt_suite": "tinygo-34/ci-release-fib-10",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "fuzz-FuzzStructCardDifferential",
+      "receipt_suite": "fuzz-FuzzStructCardDifferential",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "receipt_suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
+      "receipt_suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
+      "receipt_suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
+      "receipt_suite": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "fuzz-30s-FuzzStructCardDifferential",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "fuzz-30s-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "fuzz-30s-FuzzDecodeValidateByteBackedDifferentialGenerated",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "early-replay-discovery-ordinary",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "early-replay-compile-ordinary",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "early-replay-cipolicy-ordinary",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "repair-census-ordinary",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-repair-ordinary",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-repairs/arm64-ordinary-guest",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-repairs/riscv64-ordinary-guest",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "early-replay-discovery-wagodebug",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "early-replay-compile-wagodebug",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "early-replay-cipolicy-wagodebug",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "repair-census-wagodebug",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-repair-wagodebug",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-repairs/arm64-wagodebug-guest",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-repairs/riscv64-wagodebug-guest",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "early-replay-discovery-wago_regalloccheck",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "early-replay-compile-wago_regalloccheck",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "early-replay-cipolicy-wago_regalloccheck",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "repair-census-wago_regalloccheck",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-repair-wago_regalloccheck",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-repairs/arm64-wago_regalloccheck-guest",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "qemu-repairs/riscv64-wago_regalloccheck-guest",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "baseline-canonical-checked-preflight",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-unsupported-global-ordinary",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-unsupported-global-wagodebug",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    },
+    {
+      "suite": "tinygo-unsupported-global-wago_regalloccheck",
+      "receipt_suite": null,
+      "source": null,
+      "verdict": "NOT_RUN"
+    }
+  ],
+  "counts": {
+    "NOT_RUN": 220
+  },
+  "attempts": [
+    {
+      "suite": "version-go",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "version-node",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "version-ocaml",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "version-tinygo",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "version-wabt",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    }
+  ],
+  "remote_targets": "Darwin/Windows verdict owned by parent; no local execution promotion"
+}

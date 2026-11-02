@@ -1,0 +1,207 @@
+{
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "required_count": 220,
+  "base_combined": 217,
+  "actual_tinygo_followups": 3,
+  "batches": [
+    {
+      "id": 0,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/repairs-v2.py"
+      ]
+    },
+    {
+      "id": 1,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/tinygo-unsupported-global.py"
+      ]
+    },
+    {
+      "id": 2,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/early-gates.py"
+      ]
+    },
+    {
+      "id": 3,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/qualify.py",
+        "preflight"
+      ]
+    },
+    {
+      "id": 4,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/root-replay.py"
+      ]
+    },
+    {
+      "id": 5,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/run.py",
+        "supplement"
+      ]
+    },
+    {
+      "id": 6,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/run.py",
+        "spec"
+      ]
+    },
+    {
+      "id": 7,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/baseline-preflight.py"
+      ]
+    },
+    {
+      "id": 8,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/run.py",
+        "corpus"
+      ]
+    },
+    {
+      "id": 9,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/qualify.py",
+        "baseline"
+      ]
+    },
+    {
+      "id": 10,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/special.py"
+      ]
+    },
+    {
+      "id": 11,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/lanes.py",
+        "fuzz"
+      ]
+    },
+    {
+      "id": 12,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/fuzz-extended.py"
+      ]
+    },
+    {
+      "id": 13,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/lanes.py",
+        "hardening"
+      ]
+    },
+    {
+      "id": 14,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/ancillary.py"
+      ]
+    },
+    {
+      "id": 15,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/qualify.py",
+        "diagnostics"
+      ]
+    },
+    {
+      "id": 16,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/qualify.py",
+        "graphs"
+      ]
+    },
+    {
+      "id": 17,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/tooling-isolated.py"
+      ]
+    },
+    {
+      "id": 18,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/tooling-replay.py"
+      ]
+    },
+    {
+      "id": 19,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/target-families.py"
+      ]
+    },
+    {
+      "id": 20,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/target-repairs.py",
+        "--pin",
+        "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+        "--qemu-package",
+        "/tmp/qemu-user.deb",
+        "--out",
+        "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-combined-7e41/qemu-repairs"
+      ]
+    },
+    {
+      "id": 21,
+      "argv": [
+        "python3",
+        "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
+        "docs/rfwgc-evidence/final-combined-7e41/tinygo-complete.py"
+      ]
+    }
+  ],
+  "constraints": [
+    "One finite batch at a time; checkpoint completed receipts.",
+    "Never rerun a passed same-pin gate without recorded reason.",
+    "Actual TinyGo unsupported-global cells execute natural tinygo selection, not wago_target_tinygo.",
+    "Original RR3 ARM64 QEMU failures remain FAIL; native platform proof is separate.",
+    "On new verified defect stop; retain attempts and cross-check siblings read-only.",
+    "Installer checksum follow-up: await parent pin; compare complete non-doc diff, preserve 7e41 pin, run affected installer/root/CLI/build/CI gates on separate delta export."
+  ]
+}
