@@ -1,0 +1,7 @@
+{
+  "kind": "PARENT_CONFIRMED_RR3_STOP",
+  "source": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
+  "evidence_commit": "3b8732ad3",
+  "reason": "snapshot.unpin always takes topology writer; parent reports blocked return/cancel/callback and shared-memory notify deadlock in all three modes and race. RR1/RR2 closed. No further 9ad gates authorized. Drain active command naturally; await repaired pin.",
+  "requested_utc": "2026-11-02T11:22:22.248012+00:00"
+}

@@ -1,6 +1,6 @@
 {
   "source": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
-  "remaining_count": 217,
+  "remaining_count": 215,
   "remaining": [
     "full-root-replay-ordinary",
     "full-root-replay-wagodebug",
@@ -197,8 +197,6 @@
     "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
     "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic",
     "fuzz-30s-FuzzDecodeValidateByteBackedDifferentialGenerated",
-    "early-replay-discovery-ordinary",
-    "early-replay-compile-ordinary",
     "early-replay-cipolicy-ordinary",
     "repair-census-ordinary",
     "tinygo-repair-ordinary",
@@ -220,5 +218,10 @@
     "qemu-repairs/riscv64-wago_regalloccheck-guest",
     "baseline-canonical-checked-preflight"
   ],
-  "completed": []
+  "completed": [
+    "early-replay-discovery-ordinary",
+    "early-replay-compile-ordinary"
+  ],
+  "candidate_verdict": "FAILED / INCOMPLETE",
+  "resume_authorized": false
 }

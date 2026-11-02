@@ -1,7 +1,7 @@
 {
   "source": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
   "baseline": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-  "verdict": "INCOMPLETE",
+  "verdict": "FAILED / INCOMPLETE",
   "required": [
     {
       "suite": "full-root-replay-ordinary",
@@ -1175,15 +1175,15 @@
     },
     {
       "suite": "early-replay-discovery-ordinary",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "early-replay-discovery-ordinary",
+      "source": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
+      "verdict": "PASS"
     },
     {
       "suite": "early-replay-compile-ordinary",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "early-replay-compile-ordinary",
+      "source": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
+      "verdict": "PASS"
     },
     {
       "suite": "early-replay-cipolicy-ordinary",
@@ -1307,9 +1307,26 @@
     }
   ],
   "counts": {
-    "NOT_RUN": 217
+    "NOT_RUN": 215,
+    "PASS": 2
   },
   "attempts": [
+    {
+      "suite": "early-replay-compile-ordinary",
+      "source": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "early-replay-discovery-ordinary",
+      "source": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
     {
       "suite": "version-go",
       "source": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
@@ -1351,5 +1368,18 @@
       "verdict": "PASS"
     }
   ],
-  "remote_targets": "Darwin/Windows verdict owned by parent; no local execution promotion"
+  "remote_targets": "Darwin/Windows verdict owned by parent; no local execution promotion",
+  "blocking_finding": {
+    "kind": "PARENT_CONFIRMED_RR3_STOP",
+    "source": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
+    "evidence_commit": "3b8732ad31098db5ea33a2f71a492d3fbcdcecf9",
+    "reason": "snapshot.unpin always takes topology writer; parent reports blocked return/cancel/callback and shared-memory notify deadlock in all three modes and race. RR1/RR2 closed. No further 9ad gates authorized. Drain active command naturally; await repaired pin.",
+    "requested_utc": "2026-11-02T11:22:22.248012+00:00",
+    "verification": "Parent-confirmed independent review; this worker does not rerun the known-blocked candidate",
+    "candidate_verdict": "FAILED / INCOMPLETE",
+    "evidence_path": "docs/rfwgc-evidence/rr-invocation-recheck/README.md",
+    "evidence_sha256": "cac2ec74c3f8ff3e3cf805f09864e505c9b5cad4e284ade242617371f96af835",
+    "sibling_cross_check": "Read review evidence: Slipstream dcb45b56386327a1f71fb039ed02e13562e1e2d7 and Starshine 1d6c0af47140299d8f3c01ed03060d279c43ee03; no analogue asserted. No new triage or review performed."
+  },
+  "execution_state": "STOPPED; await repaired pin; no more 9ad qualification authorized"
 }
