@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
@@ -28,10 +29,11 @@ type gcConversionCore struct {
 // A container is one physical storage allocation, shared by every alias of it.
 // Distinct containers must use distinct objects even for equal slot indexes.
 type gcConversionContainer struct {
-	owner  *Instance
-	store  *referenceStore
-	slots  map[uint64]*gcConversionReceipt
-	closed bool
+	storage []byte
+	owner   *Instance
+	store   *referenceStore
+	slots   map[uint64]*gcConversionReceipt
+	closed  bool
 }
 type gcConversionReceipt struct {
 	identity  *gcConversionIdentity
@@ -80,7 +82,7 @@ func bindGCConversionCore(in *Instance) error {
 	return nil
 }
 
-func newGCConversionContainer(owner *Instance) (*gcConversionContainer, error) {
+func newGCConversionContainer(owner *Instance, storage []byte) (*gcConversionContainer, error) {
 	if owner == nil || owner.refStore == nil {
 		return nil, fmt.Errorf("conversion container has no physical owner")
 	}
@@ -90,7 +92,37 @@ func newGCConversionContainer(owner *Instance) (*gcConversionContainer, error) {
 	if !live || managedFunctionOwnerClaimed(owner) {
 		return nil, fmt.Errorf("conversion container owner retired")
 	}
-	return &gcConversionContainer{owner: owner, store: owner.refStore, slots: make(map[uint64]*gcConversionReceipt)}, nil
+	if len(storage) < 8 {
+		return nil, fmt.Errorf("conversion container descriptor unavailable")
+	}
+	physical := false
+	if owner.c != nil {
+		for i := owner.c.tableImportCount(); i < owner.c.tableCount(); i++ {
+			descriptor := owner.tableDescriptor(i)
+			if len(descriptor) > 0 && &descriptor[0] == &storage[0] && owner.c.tableElementType(i) == ValExternRef {
+				physical = true
+				break
+			}
+		}
+	}
+	if !physical {
+		return nil, fmt.Errorf("conversion container does not belong to its physical owner")
+	}
+	store := owner.refStore
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if c := store.conversionContainers[&storage[0]]; c != nil {
+		if c.owner != owner || c.closed {
+			return nil, fmt.Errorf("conversion container ownership mismatch")
+		}
+		return c, nil
+	}
+	c := &gcConversionContainer{owner: owner, store: store, storage: storage, slots: make(map[uint64]*gcConversionReceipt)}
+	if store.conversionContainers == nil {
+		store.conversionContainers = make(map[*byte]*gcConversionContainer)
+	}
+	store.conversionContainers[&storage[0]] = c
+	return c, nil
 }
 
 func (s *gcExternConversionState) conversionIdentity(word uint64) (*gcConversionIdentity, error) {
@@ -125,12 +157,6 @@ func (s *gcExternConversionState) conversionIdentity(word uint64) (*gcConversion
 	}
 	store.conversions[word] = identity
 	store.mu.Unlock()
-	if entry.hasRoot {
-		if state.conversionFloating == nil {
-			state.conversionFloating = make(map[uint32]*gcConversionIdentity)
-		}
-		state.conversionFloating[entry.rootSlot] = identity
-	}
 	state.graph.epoch.Add(1)
 	return identity, nil
 }
@@ -146,6 +172,9 @@ func (c *gcConversionContainer) prepare(index, word uint64, source *gcExternConv
 	c.owner.lifeMu.Unlock()
 	if !live {
 		return nil, fmt.Errorf("conversion owner released")
+	}
+	if index >= uint64(binary.LittleEndian.Uint32(c.storage)) {
+		return nil, fmt.Errorf("conversion container slot out of bounds")
 	}
 	tx := &gcConversionTransaction{container: c, index: index, old: c.slots[index]}
 	if tx.old != nil && tx.old.identity.word == word {
@@ -180,6 +209,19 @@ func (c *gcConversionContainer) prepare(index, word uint64, source *gcExternConv
 		c.store.mu.Unlock()
 		return nil, fmt.Errorf("conversion domain has no receipt authority")
 	}
+
+	registration := c.store.instances[c.owner]
+	if registration == nil || registration.resourcesReleased {
+		c.store.mu.Unlock()
+		return nil, fmt.Errorf("conversion physical owner is unregistered")
+	}
+	registration.dynamicInvocationDomains = true
+	for {
+		old := c.owner.executionFlags.Load()
+		if c.owner.executionFlags.CompareAndSwap(old, old|executionFlagDynamicGCDomain|executionFlagImportedGCDomain) {
+			break
+		}
+	}
 	domain.claims++
 	c.store.mu.Unlock()
 	stateValue, ok := managedFunctionCollectors.Load(domain.collector)
@@ -209,15 +251,32 @@ func (tx *gcConversionTransaction) commit(publish func() error) error {
 	if tx == nil || tx.done {
 		return fmt.Errorf("conversion transaction already consumed")
 	}
+	defer tx.rollback()
 	if tx.container.slots[tx.index] != tx.old {
 		tx.rollback()
 		return fmt.Errorf("conversion transaction changed physical slot")
+	}
+	if tx.container.closed {
+		tx.rollback()
+		return fmt.Errorf("conversion container retired")
 	}
 	if err := publish(); err != nil {
 		tx.rollback()
 		return err
 	}
+
 	tx.done = true
+	if tx.next != nil && tx.next.identity.publisher != nil {
+		identity := tx.next.identity
+		if identity.ref.IsObj() {
+			stateValue, _ := managedFunctionCollectors.Load(identity.domain.collector)
+			state := stateValue.(*managedFunctionCollector)
+			if state.conversionFloating == nil {
+				state.conversionFloating = make(map[uint32]*gcConversionIdentity)
+			}
+			state.conversionFloating[identity.floating] = identity
+		}
+	}
 	if tx.next == nil {
 		delete(tx.container.slots, tx.index)
 	} else {
@@ -298,6 +357,12 @@ func (c *gcConversionContainer) release() {
 	for _, receipt := range c.slots {
 		receipt.release()
 	}
+	c.store.mu.Lock()
+	if len(c.storage) != 0 && c.store.conversionContainers[&c.storage[0]] == c {
+		delete(c.store.conversionContainers, &c.storage[0])
+	}
+	c.store.mu.Unlock()
+	c.storage = nil
 	c.owner = nil
 }
 func drainConversionClaims(g *managedFunctionGraph) {
@@ -349,7 +414,7 @@ func publishGCConversionTable(s *gcRefTestTableState, table, index, old, word ui
 	container := s.conversionContainers[table]
 	if container == nil {
 		var err error
-		container, err = newGCConversionContainer(s.Conversion.core.owner)
+		container, err = newGCConversionContainer(s.Conversion.core.owner, s.Descriptors[table])
 		if err != nil {
 			return err
 		}
@@ -389,6 +454,9 @@ func clearUnreachableConversionRoots(d *managedFunctionMarkDomain) error {
 		ref := identity.ref
 		index := uint32(ref) >> 1
 		word, bit := int(index>>6), uint64(1)<<(index&63)
+		if !ref.IsObj() && len(identity.receipts) != 0 {
+			continue
+		}
 		if ref.IsObj() && word < len(d.seen) && d.seen[word]&bit != 0 {
 			continue
 		}
@@ -436,11 +504,9 @@ func releaseGCConversionOwner(owner *Instance) {
 	store := owner.refStore
 	store.mu.Lock()
 	var containers []*gcConversionContainer
-	for _, identity := range store.conversions {
-		for r := range identity.receipts {
-			if r.container.owner == owner {
-				containers = append(containers, r.container)
-			}
+	for _, c := range store.conversionContainers {
+		if c.owner == owner {
+			containers = append(containers, c)
 		}
 	}
 	store.mu.Unlock()
@@ -462,7 +528,7 @@ func lockGCConversionRetirement(in *Instance) func() {
 		return func() {}
 	}
 	in.refStore.mu.Lock()
-	needed := len(in.refStore.conversions) != 0 || in.existingGCExternConversionState() != nil
+	needed := len(in.refStore.conversionContainers) != 0 || in.existingGCExternConversionState() != nil
 	in.refStore.mu.Unlock()
 	if !needed {
 		return func() {}
@@ -486,4 +552,11 @@ func retireGCConversionStoreLocked(store *referenceStore) {
 		identity.publisher = nil
 	}
 	store.conversions = nil
+	for _, c := range store.conversionContainers {
+		c.closed = true
+		c.owner = nil
+		c.storage = nil
+		clear(c.slots)
+	}
+	store.conversionContainers = nil
 }

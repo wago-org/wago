@@ -26,22 +26,23 @@ import (
 type referenceStore struct {
 	mu sync.Mutex
 
-	private       bool
-	runtimeClosed bool
-	liveInstances uint32
-	liveObjects   uint32
-	instances     map[*Instance]*referenceStoreInstance
-	typeKeys      map[uint64]structuralTypeRegistration
-	instanceTypes map[*Instance][]uint64
-	byIdentity    map[funcrefIdentity]*funcrefTokenEntry
-	byToken       map[uint64]*funcrefTokenEntry
-	gcByToken     map[uint64]gcRefTokenEntry
-	externKey     uint64
-	externSeed    uint32
-	externFree    uint32
-	externrefs    []externrefSlot
-	conversions   map[uint64]*gcConversionIdentity
-	gcDomains     *gcDomainTopology
+	private              bool
+	runtimeClosed        bool
+	liveInstances        uint32
+	liveObjects          uint32
+	instances            map[*Instance]*referenceStoreInstance
+	typeKeys             map[uint64]structuralTypeRegistration
+	instanceTypes        map[*Instance][]uint64
+	byIdentity           map[funcrefIdentity]*funcrefTokenEntry
+	byToken              map[uint64]*funcrefTokenEntry
+	gcByToken            map[uint64]gcRefTokenEntry
+	externKey            uint64
+	externSeed           uint32
+	externFree           uint32
+	externrefs           []externrefSlot
+	conversions          map[uint64]*gcConversionIdentity
+	conversionContainers map[*byte]*gcConversionContainer
+	gcDomains            *gcDomainTopology
 }
 
 const gcFrameCodeRangePageShift = 12
@@ -2406,7 +2407,7 @@ func (s *referenceStore) lockGCDomainTopologyForInstance(in *Instance) *gcDomain
 	}
 	if in.gc == nil {
 		s.mu.Lock()
-		receipts := len(s.conversions) != 0
+		receipts := len(s.conversionContainers) != 0
 		s.mu.Unlock()
 		if !receipts {
 			return nil
