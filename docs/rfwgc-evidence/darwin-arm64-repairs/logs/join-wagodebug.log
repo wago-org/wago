@@ -1,0 +1,5 @@
+=== RUN   TestDynamicImportUnwindLocalJoinARM64
+--- PASS: TestDynamicImportUnwindLocalJoinARM64 (0.03s)
+=== RUN   TestNativeLeafContextShortcutGCPolicyARM64
+--- PASS: TestNativeLeafContextShortcutGCPolicyARM64 (0.00s)
+PASS
