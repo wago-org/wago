@@ -7,8 +7,50 @@
     "changes": []
   },
   {
+    "archive": "/tmp/wago-final-f2bb-n11khnr8/qemu-collector/source.tar",
+    "export": "/tmp/wago-final-f2bb-n11khnr8/qemu-collector/source",
+    "archive_sha256": "bd0333284954e9a5d4833a5429b6b6f662765228a09423ad4c5e303bd57d5b12",
+    "files": 16184,
+    "changes": []
+  },
+  {
+    "archive": "/tmp/wago-final-f2bb-n11khnr8/qemu-facade/source.tar",
+    "export": "/tmp/wago-final-f2bb-n11khnr8/qemu-facade/source",
+    "archive_sha256": "bd0333284954e9a5d4833a5429b6b6f662765228a09423ad4c5e303bd57d5b12",
+    "files": 16184,
+    "changes": []
+  },
+  {
+    "archive": "/tmp/wago-final-f2bb-n11khnr8/qemu-guest/source.tar",
+    "export": "/tmp/wago-final-f2bb-n11khnr8/qemu-guest/source",
+    "archive_sha256": "bd0333284954e9a5d4833a5429b6b6f662765228a09423ad4c5e303bd57d5b12",
+    "files": 16184,
+    "changes": []
+  },
+  {
+    "archive": "/tmp/wago-final-f2bb-n11khnr8/qemu-h6/source.tar",
+    "export": "/tmp/wago-final-f2bb-n11khnr8/qemu-h6/source",
+    "archive_sha256": "bd0333284954e9a5d4833a5429b6b6f662765228a09423ad4c5e303bd57d5b12",
+    "files": 16184,
+    "changes": []
+  },
+  {
+    "archive": "/tmp/wago-final-f2bb-n11khnr8/qemu-rv64-controls/source.tar",
+    "export": "/tmp/wago-final-f2bb-n11khnr8/qemu-rv64-controls/source",
+    "archive_sha256": "bd0333284954e9a5d4833a5429b6b6f662765228a09423ad4c5e303bd57d5b12",
+    "files": 16184,
+    "changes": []
+  },
+  {
     "archive": "/tmp/wago-final-f2bb-n11khnr8/source.tar",
     "export": "/tmp/wago-final-f2bb-n11khnr8/source",
+    "archive_sha256": "bd0333284954e9a5d4833a5429b6b6f662765228a09423ad4c5e303bd57d5b12",
+    "files": 16184,
+    "changes": []
+  },
+  {
+    "archive": "/tmp/wago-final-f2bb-n11khnr8/target-repairs/source.tar",
+    "export": "/tmp/wago-final-f2bb-n11khnr8/target-repairs/source",
     "archive_sha256": "bd0333284954e9a5d4833a5429b6b6f662765228a09423ad4c5e303bd57d5b12",
     "files": 16184,
     "changes": []
@@ -17,6 +59,11 @@
     "archive": "/tmp/wago-final-f2bb-n11khnr8/tooling.tar",
     "export": "/tmp/wago-final-f2bb-n11khnr8/tooling",
     "archive_sha256": "bd0333284954e9a5d4833a5429b6b6f662765228a09423ad4c5e303bd57d5b12",
+    "files": 16184,
+    "changes": []
+  },
+  {
+    "export": "/tmp/wago-final-f2bb-n11khnr8/tinygo-source",
     "files": 16184,
     "changes": []
   },
@@ -58,6 +105,13 @@
   {
     "archive": "/tmp/wago-final-f2bb-n11khnr8/spec-v3.tar",
     "export": "/tmp/wago-final-f2bb-n11khnr8/tooling/tests/conformance/spec-v3",
+    "archive_sha256": "790a5674b5a59c743a8d96c22d064211357bc68037f25eceaf820234094b89aa",
+    "files": 1234,
+    "changes": []
+  },
+  {
+    "archive": "/tmp/wago-final-f2bb-n11khnr8/spec-v3.tar",
+    "export": "/tmp/wago-final-f2bb-n11khnr8/tinygo-source/tests/conformance/spec-v3",
     "archive_sha256": "790a5674b5a59c743a8d96c22d064211357bc68037f25eceaf820234094b89aa",
     "files": 1234,
     "changes": []

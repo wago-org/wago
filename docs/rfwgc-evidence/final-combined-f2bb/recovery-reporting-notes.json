@@ -1,0 +1,6 @@
+{
+  "repair_census_verified_cells": 12,
+  "repair_census_not_run": 3,
+  "note": "The stopped census reporter prints total row count as verified cells; the 3 explicitly NOT_RUN TinyGo rows are excluded here.",
+  "tinygo_early_return_bodies_reported_as_pass": 32
+}
