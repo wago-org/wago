@@ -1,0 +1,8 @@
+{
+  "code_sha256": "4d8fa8e5820b02008c487d95f7d9ebbb81bd286c2e70182e9b03fca84aea3f0f",
+  "instruction_offset": 52,
+  "instruction": "0xf85b8350",
+  "destination_register": 16,
+  "base_register": 26,
+  "signed_displacement": -72
+}

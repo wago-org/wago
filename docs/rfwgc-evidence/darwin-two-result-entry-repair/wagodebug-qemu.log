@@ -1,0 +1,225 @@
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b78e6a020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.03s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b78e67020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b78e64020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b78dfe020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b78dfb020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b76a14020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b76a11020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b76a0e020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b76a0b020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b76a08020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b76a05020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b76a02020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740fd020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740fa020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740f7020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740f4020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740f1020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740ee020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740eb020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740e8020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740e5020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740e2020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740df020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740dc020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740d9020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740d6020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740d3020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740d0020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740cd020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740ca020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740c7020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+=== RUN   TestTwoIntegerResultRegisterCall
+    callexec_arm64_test.go:132: bridge image=fa0301aafe0fbfa9000040f905000094fe0fc1a8600000f9c0035fd61f2003d5fd7bbfa9fd030091ff4300d11f2003d51f2003d550835bf8ff6330eb63010054f30300aae90313aae00309aa130000940000010bff4300911f2003d51f2003d5fd7bc1a8c0035fd6110080d201000014498359f8300080d2301100b9311500b9b00180d2300100b950835ef85e035ef81f020091c0035fd6ff8300d11f2003d51f2003d5e00700f90c040011ec0b00f9e00740f9e10b40f9ff8300911f2003d51f2003d5c0035fd6 internal=[32 152] entry=0x7f4b740c4020 sharedScalar=false
+    callexec_arm64_test.go:134: bridge before Call2 x=0
+    callexec_arm64_test.go:134: bridge before Call2 x=1
+    callexec_arm64_test.go:134: bridge before Call2 x=7
+    callexec_arm64_test.go:134: bridge before Call2 x=100
+--- PASS: TestTwoIntegerResultRegisterCall (0.00s)
+PASS
