@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -171,4 +172,71 @@ func TestDesignRepairScalarRelayOrdinaryStorageWithConversion(t *testing.T) {
 	if err != nil || len(out) != 1 || out[0] != 7 {
 		t.Fatalf("ordinary scalar relay: %v %v", out, err)
 	}
+}
+
+// The public publisher owns its complete domain lease before native entry.
+// Physical publisher retirement must wait until the new receipt is committed.
+func TestDesignRepairConcurrentPublicationRetirement(t *testing.T) {
+	rt := NewRuntime()
+	publisher, provider, _, _ := h2ReceiptFixture(t, rt.refStore, 0)
+	host, err := rt.NewExternRefTable(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := h2HostToken(t, publisher)
+	domain := publisher.gcInvocationDomain()
+	nativeExecutionMu.Lock()
+	held := true
+	defer func() {
+		if held {
+			nativeExecutionMu.Unlock()
+		}
+	}()
+	published := make(chan error, 1)
+	go func() { published <- host.SetValue(0, token) }()
+	await := func(what string, ready func() bool) {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for !ready() {
+			select {
+			case <-deadline:
+				t.Fatalf("STOP waiting for %s", what)
+			default:
+				runtime.Gosched()
+			}
+		}
+	}
+	await("publication pre-admission", func() bool {
+		domain.invocationState.Lock()
+		defer domain.invocationState.Unlock()
+		return domain.invocationOwner != 0
+	})
+	retired := make(chan error, 1)
+	go func() { retired <- publisher.Close() }()
+	topology := rt.refStore.ensureGCTopology()
+	await("retirement topology writer", func() bool { topology.mu.Lock(); defer topology.mu.Unlock(); return topology.writers != 0 })
+	nativeExecutionMu.Unlock()
+	held = false
+	if err = <-published; err != nil {
+		t.Fatalf("STOP publication: %v", err)
+	}
+	if err = <-retired; err != nil {
+		t.Fatalf("STOP retirement: %v", err)
+	}
+	if publisher.hasPhysicalResources() {
+		t.Fatal("STOP publisher retained")
+	}
+	receipt := h2HostReceipt(t, rt.refStore, host.desc, 0)
+	if receipt.identity.domain != domain {
+		t.Fatal("STOP wrong receipt authority")
+	}
+	if err = host.SetValue(0, ValueExternRef(NullExternRef())); err != nil {
+		t.Fatal(err)
+	}
+	if err = host.SetValue(0, token); err == nil {
+		t.Fatal("STOP retired identity accepted")
+	}
+	host.Close()
+	provider.Close()
+	rt.Close()
 }
