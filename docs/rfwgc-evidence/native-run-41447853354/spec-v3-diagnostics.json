@@ -1,0 +1,41 @@
+[
+  {
+    "mode": "ordinary",
+    "observed_assertion_diagnostics": [
+      {
+        "member": "receipts-ordinary/spec-v3-ordinary/raw.jsonl",
+        "output": "    spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0\n"
+      },
+      {
+        "member": "receipts-ordinary/spec-v3-signals-ordinary/raw.jsonl",
+        "output": "    spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0\n"
+      }
+    ]
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "observed_assertion_diagnostics": [
+      {
+        "member": "receipts-wago_regalloccheck/spec-v3-signals-wago_regalloccheck/raw.jsonl",
+        "output": "    spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0\n"
+      },
+      {
+        "member": "receipts-wago_regalloccheck/spec-v3-wago_regalloccheck/raw.jsonl",
+        "output": "    spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0\n"
+      }
+    ]
+  },
+  {
+    "mode": "wagodebug",
+    "observed_assertion_diagnostics": [
+      {
+        "member": "receipts-wagodebug/spec-v3-signals-wagodebug/raw.jsonl",
+        "output": "    spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0\n"
+      },
+      {
+        "member": "receipts-wagodebug/spec-v3-wagodebug/raw.jsonl",
+        "output": "    spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0\n"
+      }
+    ]
+  }
+]

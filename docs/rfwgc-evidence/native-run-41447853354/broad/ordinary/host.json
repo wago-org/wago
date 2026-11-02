@@ -1,0 +1,10 @@
+{
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "driver": "5fb47abb4b30472bd74751a5ea96b51d668e488a",
+  "submodules": "a8bcbafe6d2fb191ce0188de0e18fdc107fa2598 tests/conformance/spec-v1 (a8bcbaf)\n 05ca4182176763112561ae20153975c12bd689e4 tests/conformance/spec-v2 (05ca418)\n e751278cff42fada16dba6df331fda52aaa90f73 tests/conformance/spec-v2/document/core/util/katex (e751278)\n 9d36019973201a19f9c9ebb0f10828b2fe2374aa tests/conformance/spec-v3 (9d36019)\n e751278cff42fada16dba6df331fda52aaa90f73 tests/conformance/spec-v3/document/core/util/katex (e751278)",
+  "uname": "Darwin sjc22-bm206-4274d9b6-44a2-47b8-b15a-49f8c731d881-0A5FCB6EAD98.local 24.6.0 Darwin Kernel Version 24.6.0: Sun Oct 11 23:44:11 PDT 2026; root:xnu-11417.140.69.713.47~2/RELEASE_ARM64_VMAPPLE arm64",
+  "sw_vers": "ProductName:\t\tmacOS\nProductVersion:\t\t15.8.2\nBuildVersion:\t\t24H232",
+  "go": "go version go1.27.1 darwin/arm64",
+  "driver_sha256": "ad157bc25f276548c14589bcbf78cec06d0481e3ddfa9161e9fe490a0f1318aa",
+  "plan_sha256": "eaed1a76bbfa5256148fe4f129edd1389a3cc87bcc6d4410501ce10074e2b4aa"
+}

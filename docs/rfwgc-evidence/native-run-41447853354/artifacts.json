@@ -1,0 +1,118 @@
+{
+  "artifacts": [
+    {
+      "id": 13145676233,
+      "name": "darwin-ownership-wago_regalloccheck-1",
+      "size_in_bytes": 11367391,
+      "url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13145676233",
+      "archive_download_url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13145676233/zip",
+      "expired": false,
+      "created_at": "2026-11-02T13:27:30Z",
+      "expires_at": "2026-11-09T13:27:28Z",
+      "updated_at": "2026-11-02T13:27:30Z",
+      "digest": "sha256:8b79963e72e33e20d04815a671f16a7abe31ac924353f3b52198ce665a421a32",
+      "workflow_run": {
+        "id": 41447853354,
+        "repository_id": 1277210043,
+        "head_repository_id": 1277210043,
+        "head_branch": "experiment/rfwgc-port",
+        "head_sha": "5fb47abb4b30472bd74751a5ea96b51d668e488a"
+      }
+    },
+    {
+      "id": 13145492266,
+      "name": "darwin-ownership-ordinary-1",
+      "size_in_bytes": 11011634,
+      "url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13145492266",
+      "archive_download_url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13145492266/zip",
+      "expired": false,
+      "created_at": "2026-11-02T13:31:42Z",
+      "expires_at": "2026-11-09T13:31:39Z",
+      "updated_at": "2026-11-02T13:31:42Z",
+      "digest": "sha256:122274cf491d5d11aa66fe4104cf2214547b920a1452519277781ac9f0bb0748",
+      "workflow_run": {
+        "id": 41447853354,
+        "repository_id": 1277210043,
+        "head_repository_id": 1277210043,
+        "head_branch": "experiment/rfwgc-port",
+        "head_sha": "5fb47abb4b30472bd74751a5ea96b51d668e488a"
+      }
+    },
+    {
+      "id": 13145312409,
+      "name": "darwin-ownership-wagodebug-1",
+      "size_in_bytes": 11041518,
+      "url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13145312409",
+      "archive_download_url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13145312409/zip",
+      "expired": false,
+      "created_at": "2026-11-02T13:30:37Z",
+      "expires_at": "2026-11-09T13:30:34Z",
+      "updated_at": "2026-11-02T13:30:37Z",
+      "digest": "sha256:4e616dbea670443b23c995521355d62adef22601973c95d8bee1420d58228c8a",
+      "workflow_run": {
+        "id": 41447853354,
+        "repository_id": 1277210043,
+        "head_repository_id": 1277210043,
+        "head_branch": "experiment/rfwgc-port",
+        "head_sha": "5fb47abb4b30472bd74751a5ea96b51d668e488a"
+      }
+    },
+    {
+      "id": 13143955334,
+      "name": "windows-ownership-wago_regalloccheck-1",
+      "size_in_bytes": 1532554,
+      "url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13143955334",
+      "archive_download_url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13143955334/zip",
+      "expired": false,
+      "created_at": "2026-11-02T12:52:13Z",
+      "expires_at": "2026-11-09T12:52:11Z",
+      "updated_at": "2026-11-02T12:52:13Z",
+      "digest": "sha256:3af890432df4b20c81017e50254a3ddd92161070ebe8efc050cd2ced9e33972c",
+      "workflow_run": {
+        "id": 41447853354,
+        "repository_id": 1277210043,
+        "head_repository_id": 1277210043,
+        "head_branch": "experiment/rfwgc-port",
+        "head_sha": "5fb47abb4b30472bd74751a5ea96b51d668e488a"
+      }
+    },
+    {
+      "id": 13143910365,
+      "name": "windows-ownership-ordinary-1",
+      "size_in_bytes": 1532546,
+      "url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13143910365",
+      "archive_download_url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13143910365/zip",
+      "expired": false,
+      "created_at": "2026-11-02T12:52:13Z",
+      "expires_at": "2026-11-09T12:52:12Z",
+      "updated_at": "2026-11-02T12:52:13Z",
+      "digest": "sha256:266fc7201fc05a9b29438ad06fcb004c402608fe4cf9cd1b6b160016744dcd25",
+      "workflow_run": {
+        "id": 41447853354,
+        "repository_id": 1277210043,
+        "head_repository_id": 1277210043,
+        "head_branch": "experiment/rfwgc-port",
+        "head_sha": "5fb47abb4b30472bd74751a5ea96b51d668e488a"
+      }
+    },
+    {
+      "id": 13143350627,
+      "name": "windows-ownership-wagodebug-1",
+      "size_in_bytes": 1532527,
+      "url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13143350627",
+      "archive_download_url": "https://api.github.com/repos/wago-org/wago/actions/artifacts/13143350627/zip",
+      "expired": false,
+      "created_at": "2026-11-02T12:51:49Z",
+      "expires_at": "2026-11-09T12:51:48Z",
+      "updated_at": "2026-11-02T12:51:49Z",
+      "digest": "sha256:d16dccbe008e33714ef2429fc808ffd8d396c6ce2fc1bcfe11a5ce71440b7f98",
+      "workflow_run": {
+        "id": 41447853354,
+        "repository_id": 1277210043,
+        "head_repository_id": 1277210043,
+        "head_branch": "experiment/rfwgc-port",
+        "head_sha": "5fb47abb4b30472bd74751a5ea96b51d668e488a"
+      }
+    }
+  ]
+}
