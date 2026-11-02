@@ -581,3 +581,45 @@ func TestR9H2ReceiptDomainKeepsPrivateTypeAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestR9H2ReceiptFinalJournalRemainsCollectionAuthority(t *testing.T) {
+	store := newReferenceStore(false)
+	publisher, provider, table, word := h2ReceiptFixture(t, store, 0)
+	h2TableSet(t, table, 0, word)
+	receipt := h2AssertReceipt(t, table.conversionContainers[0], 0)
+	domain := receipt.identity.domain
+	if err := publisher.Close(); err != nil {
+		t.Fatal(err)
+	}
+	h2AssertReceipt(t, table.conversionContainers[0], 0)
+	h2WithAuthority(t, store, func() {
+		tx, err := table.conversionContainers[0].prepare(0, 0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = tx.commit(func() error { binary.LittleEndian.PutUint64(table.Descriptors[0][8:], 0); return nil }); err != nil {
+			t.Fatal(err)
+		}
+		store.mu.Lock()
+		var domains gcInvocationDomainSet
+		conversionAddClaimedDomainsLocked(store, &domains)
+		valid := len(store.gcDomains.conversions) == 0 && domain.conversionClaims == 1 && domain.claims == 1 && domains.len() == 1 && domains.at(0) == domain && store.gcDomains.domainForCollectorLocked(domain.collector) == domain
+		store.mu.Unlock()
+		if !valid {
+			t.Fatal("STOP final journal lost registered collection authority")
+		}
+		domain.invocationState.Lock()
+		id := domain.invocationOwner
+		domain.invocationState.Unlock()
+		if handled, err := collectManagedFunctionStore(store, id); !handled || err != nil {
+			t.Fatalf("final journal domain could not collect: %t %v", handled, err)
+		}
+	})
+	drainManagedFunctionStoreReclaims(store)
+	if store.gcDomainForCollector(domain.collector) != nil || domain.conversionClaims != 0 {
+		t.Fatal("final claim journal did not retire")
+	}
+	if err := provider.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

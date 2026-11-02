@@ -224,6 +224,7 @@ func (c *gcConversionContainer) prepare(index, word uint64, source *gcExternConv
 		}
 	}
 	domain.claims++
+	domain.conversionClaims++
 	c.store.mu.Unlock()
 	stateValue, ok := managedFunctionCollectors.Load(domain.collector)
 	if !ok {
@@ -371,17 +372,40 @@ func drainConversionClaims(g *managedFunctionGraph) {
 	pending := g.receiptReleases
 	g.receiptReleases = nil
 	g.mu.Unlock()
+
 	for _, domain := range pending {
-		g.store.releaseUnclaimedGCCollector(domain.collector)
+		topology := g.store.ensureGCTopology()
+		topology.Lock()
+		g.store.mu.Lock()
+		closeCollector := false
+		if topology.domainForCollectorLocked(domain.collector) == domain {
+			if domain.conversionClaims == 0 || domain.claims == 0 {
+				g.store.mu.Unlock()
+				topology.Unlock()
+				panic("conversion claim journal underflow")
+			}
+			domain.conversionClaims--
+			domain.claims--
+			if domain.refs == 0 && domain.claims == 0 {
+				closeCollector = topology.unlinkDomainLocked(domain)
+			}
+		}
+		g.store.mu.Unlock()
+		topology.Unlock()
+		if closeCollector {
+			domain.collector.Close()
+		}
 	}
+
 }
 func conversionAddClaimedDomainsLocked(store *referenceStore, set *gcInvocationDomainSet) {
 	if store.gcDomains == nil {
 		return
 	}
-	for _, identity := range store.gcDomains.conversions {
-		domain := identity.domain
-		if store.gcDomains.domainForCollectorLocked(domain.collector) == domain {
+	// A released receipt leaves the opaque directory before its deferred claim
+	// is consumed. Enumerate registered authority, including that final interval.
+	for domain := store.gcDomains.first; domain != nil; domain = domain.next {
+		if domain.conversionClaims != 0 {
 			set.add(domain)
 		}
 	}
@@ -556,6 +580,9 @@ func retireGCConversionStoreLocked(store *referenceStore) {
 		}
 		clear(identity.receipts)
 		identity.publisher = nil
+	}
+	for domain := store.gcDomains.first; domain != nil; domain = domain.next {
+		domain.conversionClaims = 0
 	}
 	store.gcDomains.conversions = nil
 	for _, c := range store.gcDomains.conversionContainers {
