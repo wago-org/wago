@@ -1,0 +1,52 @@
+{
+  "acquired": false,
+  "scope": "read-only stat/record snapshot; not owner reconciliation or grant",
+  "paths": {
+    "/home/dev/Projects/wago/.performance-measurement.lock": {
+      "exists": true,
+      "device": 66306,
+      "inode": 23986265
+    },
+    "/tmp/gc-trim-regate-laptop-timing.lock": {
+      "exists": true,
+      "device": 88,
+      "inode": 15622735
+    },
+    "/tmp/gc-wakejoin-laptop-measurement.lease": {
+      "exists": true,
+      "device": 88,
+      "inode": 17464513,
+      "record": {
+        "grant_id": "WAKEJOIN-LAPTOP-20261031",
+        "status": "released",
+        "host": "laptop",
+        "started_utc": "2026-10-31T22:11:10.938394+00:00",
+        "owner_direction": "/tmp/brief-wakejoin.txt",
+        "affinity": "0,2,4,6,8,10,12,14",
+        "thermal_start_limit_mC": 60000,
+        "released_utc": "2026-11-01T21:12:50.219814+00:00",
+        "release_reason": "Owner-directed measurement stop; run-owned processes drained; Wago port priority",
+        "release_record": "/home/dev/.t3/worktrees/slipstream/measure-wakejoin-laptop-20261031/docs/measurements/wakejoin-laptop-20261031/lease-release-20261101/release.json",
+        "remaining_host_ownership": "none",
+        "samples_must_not_resume": true
+      }
+    },
+    "/tmp/gc-trim-regate-laptop-measurement.lease": {
+      "exists": true,
+      "device": 88,
+      "inode": 15205260,
+      "record": {
+        "grant_id": "GC-TRIM-REGATE-20261030",
+        "host": "laptop",
+        "status": "released",
+        "owner_direction": "Joshua 2026-10-30 19:25 ET",
+        "started_utc": "2026-10-30T23:30:56.685854+00:00",
+        "affinity": "0,2,4,6,8,10,12,14",
+        "thermal_start_limit_mC": 60000,
+        "phase": "approved_service_guard_qualification",
+        "finished_utc": "2026-10-31T21:25:48.486165+00:00",
+        "reason": "Full laptop regate acquired, independently replayed and recorded; private build and tool caches removed"
+      }
+    }
+  }
+}

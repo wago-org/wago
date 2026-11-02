@@ -1,0 +1,5267 @@
+{
+  "version": 1,
+  "pins": {
+    "baseline": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+    "port": "5345bd365c13963f1bf60e26bb80789ab9ead4cc",
+    "evidence": "2c9f72744dd6f414fc8f236c2d45aa39ce6ced69",
+    "shape-before": "8dcaa7095169a36eff93652a2b74b10a51900655",
+    "shape-after": "6e706159a0eb71b939bc0e9c9e0e32d5e03d5f4f"
+  },
+  "cells": [
+    {
+      "id": "revision/BenchmarkRFWStage3Native/scalar",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^scalar$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "region/BenchmarkRFWStage3Native/scalar",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^scalar$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Native/graph",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^graph$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "region/BenchmarkRFWStage3Native/graph",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^graph$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Native/low",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^low$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "region/BenchmarkRFWStage3Native/low",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^low$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Native/high",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^high$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "region/BenchmarkRFWStage3Native/high",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^high$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Native/promotion",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^promotion$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "region/BenchmarkRFWStage3Native/promotion",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^promotion$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Native/large",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^large$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "region/BenchmarkRFWStage3Native/large",
+      "package": "native",
+      "selector": "^BenchmarkRFWStage3Native$/^large$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Guest/noGC",
+      "package": "guest",
+      "selector": "^BenchmarkRFWStage3Guest$/^noGC$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "region/BenchmarkRFWStage3Guest/noGC",
+      "package": "guest",
+      "selector": "^BenchmarkRFWStage3Guest$/^noGC$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Guest/scalar",
+      "package": "guest",
+      "selector": "^BenchmarkRFWStage3Guest$/^scalar$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "region/BenchmarkRFWStage3Guest/scalar",
+      "package": "guest",
+      "selector": "^BenchmarkRFWStage3Guest$/^scalar$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Guest/graph",
+      "package": "guest",
+      "selector": "^BenchmarkRFWStage3Guest$/^graph$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "region/BenchmarkRFWStage3Guest/graph",
+      "package": "guest",
+      "selector": "^BenchmarkRFWStage3Guest$/^graph$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Compile/noGC",
+      "package": "guest",
+      "selector": "^BenchmarkRFWStage3Compile$/^noGC$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Compile/scalar",
+      "package": "guest",
+      "selector": "^BenchmarkRFWStage3Compile$/^scalar$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "revision/BenchmarkRFWStage3Compile/graph",
+      "package": "guest",
+      "selector": "^BenchmarkRFWStage3Compile$/^graph$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "RFW_REGION": "Off"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "graph-revision/2",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementGraph$/^2$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "0"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "0"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "graph-region/2",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementGraph$/^2$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "0"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "graph-workers/2/2",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementGraph$/^2$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "2",
+          "FM_SHIFT": "12"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "graph-workers/2/4",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementGraph$/^2$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "4",
+          "FM_SHIFT": "12"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "graph-workers/2/8",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementGraph$/^2$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "8",
+          "FM_SHIFT": "12"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "graph-revision/32",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementGraph$/^32$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "0"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "0"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "graph-region/32",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementGraph$/^32$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "0"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "graph-workers/32/2",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementGraph$/^32$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "2",
+          "FM_SHIFT": "12"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "graph-workers/32/4",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementGraph$/^32$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "4",
+          "FM_SHIFT": "12"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "graph-workers/32/8",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementGraph$/^32$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "8",
+          "FM_SHIFT": "12"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "evacuation/1",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementEvacuation$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_EVAC": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_EVAC": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "evacuation/2",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementEvacuation$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "2",
+          "FM_EVAC": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "2",
+          "FM_EVAC": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "evacuation/4",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementEvacuation$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "4",
+          "FM_EVAC": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "4",
+          "FM_EVAC": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "evacuation/8",
+      "package": "native",
+      "selector": "^BenchmarkFinalMeasurementEvacuation$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "8",
+          "FM_EVAC": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "8",
+          "FM_EVAC": "On"
+        }
+      },
+      "kind": "benchmark",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "owners/TestR9H2HostContainerPublicGlobal",
+      "package": "guest",
+      "selector": "^TestR9H2HostContainerPublicGlobal$",
+      "A": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostContainerPublicGlobal$/^0$"
+      },
+      "B": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostContainerPublicGlobal$/^6$"
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "owners/TestR9H2HostContainerPublicTable",
+      "package": "guest",
+      "selector": "^TestR9H2HostContainerPublicTable$",
+      "A": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostContainerPublicTable$/^0$"
+      },
+      "B": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostContainerPublicTable$/^6$"
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "owners/TestR9H2HostContainerCycle",
+      "package": "guest",
+      "selector": "^TestR9H2HostContainerCycle$",
+      "A": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostContainerCycle$/^0$"
+      },
+      "B": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostContainerCycle$/^6$"
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "owners/TestR9H2HostImportGlobal",
+      "package": "guest",
+      "selector": "^TestR9H2HostImportGlobal$",
+      "A": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostImportGlobal$/^0$"
+      },
+      "B": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostImportGlobal$/^6$"
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "owners/TestR9H2HostImportTable",
+      "package": "guest",
+      "selector": "^TestR9H2HostImportTable$",
+      "A": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostImportTable$/^0$"
+      },
+      "B": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostImportTable$/^6$"
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "owners/TestR9H2HostImportBulk",
+      "package": "guest",
+      "selector": "^TestR9H2HostImportBulk$",
+      "A": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostImportBulk$/^0$"
+      },
+      "B": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostImportBulk$/^6$"
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "owners/TestR9H2HostImportCycle",
+      "package": "guest",
+      "selector": "^TestR9H2HostImportCycle$",
+      "A": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostImportCycle$/^0$"
+      },
+      "B": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9H2HostImportCycle$/^6$"
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "owners/TestR9OwnershipWakeupActiveBoundary",
+      "package": "guest",
+      "selector": "^TestR9OwnershipWakeupActiveBoundary$",
+      "A": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9OwnershipWakeupActiveBoundary$/^0$"
+      },
+      "B": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9OwnershipWakeupActiveBoundary$/^6$"
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "owners/TestR9OwnershipWakeupExitCrossing",
+      "package": "guest",
+      "selector": "^TestR9OwnershipWakeupExitCrossing$",
+      "A": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9OwnershipWakeupExitCrossing$/^0$"
+      },
+      "B": {
+        "pin": "port",
+        "env": {},
+        "selector": "^TestR9OwnershipWakeupExitCrossing$/^6$"
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "shape/TestR9OwnershipStateH6FailedInitialization",
+      "package": "guest",
+      "selector": "^TestR9OwnershipStateH6FailedInitialization$",
+      "A": {
+        "pin": "shape-before",
+        "env": {}
+      },
+      "B": {
+        "pin": "shape-after",
+        "env": {}
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "shape/TestR9OwnershipStateH6CallbackQuiescence",
+      "package": "guest",
+      "selector": "^TestR9OwnershipStateH6CallbackQuiescence$",
+      "A": {
+        "pin": "shape-before",
+        "env": {}
+      },
+      "B": {
+        "pin": "shape-after",
+        "env": {}
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "shape/TestR9H2ReceiptConvertedProducerCycle",
+      "package": "guest",
+      "selector": "^TestR9H2ReceiptConvertedProducerCycle$",
+      "A": {
+        "pin": "shape-before",
+        "env": {}
+      },
+      "B": {
+        "pin": "shape-after",
+        "env": {}
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "shape/TestR9H2HostImportBulk",
+      "package": "guest",
+      "selector": "^TestR9H2HostImportBulk$",
+      "A": {
+        "pin": "shape-before",
+        "env": {}
+      },
+      "B": {
+        "pin": "shape-after",
+        "env": {}
+      },
+      "kind": "test-cycle",
+      "target": "native-linux-amd64"
+    },
+    {
+      "id": "tinygo-idle/1/1048576",
+      "package": "runtime",
+      "selector": "^TestFinalMeasurementIdleStacks$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_ENGINES": "1",
+          "FM_STACK_BYTES": "1048576"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_ENGINES": "1",
+          "FM_STACK_BYTES": "1048576"
+        }
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-idle/1/8388608",
+      "package": "runtime",
+      "selector": "^TestFinalMeasurementIdleStacks$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_ENGINES": "1",
+          "FM_STACK_BYTES": "8388608"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_ENGINES": "1",
+          "FM_STACK_BYTES": "8388608"
+        }
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-idle/8/1048576",
+      "package": "runtime",
+      "selector": "^TestFinalMeasurementIdleStacks$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_ENGINES": "1",
+          "FM_STACK_BYTES": "1048576"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_ENGINES": "8",
+          "FM_STACK_BYTES": "1048576"
+        }
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-idle/8/8388608",
+      "package": "runtime",
+      "selector": "^TestFinalMeasurementIdleStacks$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_ENGINES": "1",
+          "FM_STACK_BYTES": "8388608"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_ENGINES": "8",
+          "FM_STACK_BYTES": "8388608"
+        }
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-active/TestTinyGoForeignStackConcurrentGC",
+      "package": "runtime",
+      "selector": "^TestTinyGoForeignStackConcurrentGC$",
+      "A": {
+        "pin": "port",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-active/TestTinyGoForeignStackGCHostReentry",
+      "package": "runtime",
+      "selector": "^TestTinyGoForeignStackGCHostReentry$",
+      "A": {
+        "pin": "port",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-active/TestTinyGoForeignStackGCPreparedEntry",
+      "package": "runtime",
+      "selector": "^TestTinyGoForeignStackGCPreparedEntry$",
+      "A": {
+        "pin": "port",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-active/TestTinyGoForeignStackGCCloseThunkFailure",
+      "package": "runtime",
+      "selector": "^TestTinyGoForeignStackGCCloseThunkFailure$",
+      "A": {
+        "pin": "port",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-evacuation/6",
+      "package": "native",
+      "selector": "^TestFinalMeasurementEvacuation$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "6",
+          "FM_EVAC": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "6",
+          "FM_EVAC": "On"
+        }
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-evacuation/12",
+      "package": "native",
+      "selector": "^TestFinalMeasurementEvacuation$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12",
+          "FM_EVAC": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12",
+          "FM_EVAC": "On"
+        }
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-evacuation-control/Off",
+      "package": "native",
+      "selector": "^TestFinalMeasurementEvacuation$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12",
+          "FM_EVAC": "Off"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12",
+          "FM_EVAC": "Off"
+        }
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "tinygo-evacuation-control/On",
+      "package": "native",
+      "selector": "^TestFinalMeasurementEvacuation$",
+      "A": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12",
+          "FM_EVAC": "On"
+        }
+      },
+      "B": {
+        "pin": "port",
+        "env": {
+          "FM_WORKERS": "1",
+          "FM_SHIFT": "12",
+          "FM_EVAC": "On"
+        }
+      },
+      "kind": "test-cycle",
+      "target": "tinygo-0.42-patched-linux-amd64-threads-conservative"
+    },
+    {
+      "id": "corpus/compile/sed-records",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "sed-records"
+    },
+    {
+      "id": "corpus/runtime/sed-records",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "sed-records"
+    },
+    {
+      "id": "corpus/compile/seqtk-fastq-to-fasta",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "seqtk-fastq-to-fasta"
+    },
+    {
+      "id": "corpus/runtime/seqtk-fastq-to-fasta",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "seqtk-fastq-to-fasta"
+    },
+    {
+      "id": "corpus/compile/lcs-substrings",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "lcs-substrings"
+    },
+    {
+      "id": "corpus/runtime/lcs-substrings",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "lcs-substrings"
+    },
+    {
+      "id": "corpus/compile/needleman-wunsch-dna",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "needleman-wunsch-dna"
+    },
+    {
+      "id": "corpus/runtime/needleman-wunsch-dna",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "needleman-wunsch-dna"
+    },
+    {
+      "id": "corpus/compile/smith-waterman-dna",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "smith-waterman-dna"
+    },
+    {
+      "id": "corpus/runtime/smith-waterman-dna",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "smith-waterman-dna"
+    },
+    {
+      "id": "corpus/compile/fasttree-phylogeny",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "fasttree-phylogeny"
+    },
+    {
+      "id": "corpus/runtime/fasttree-phylogeny",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "fasttree-phylogeny"
+    },
+    {
+      "id": "corpus/compile/gnu-seq-range",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "gnu-seq-range"
+    },
+    {
+      "id": "corpus/runtime/gnu-seq-range",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "gnu-seq-range"
+    },
+    {
+      "id": "corpus/compile/gnu-tr-uppercase",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "gnu-tr-uppercase"
+    },
+    {
+      "id": "corpus/runtime/gnu-tr-uppercase",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "gnu-tr-uppercase"
+    },
+    {
+      "id": "corpus/compile/php-buckets",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "php-buckets"
+    },
+    {
+      "id": "corpus/runtime/php-buckets",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "php-buckets"
+    },
+    {
+      "id": "corpus/compile/ruby-buckets",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "ruby-buckets"
+    },
+    {
+      "id": "corpus/runtime/ruby-buckets",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "ruby-buckets"
+    },
+    {
+      "id": "corpus/compile/clang-cpp-kernels",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "clang-cpp-kernels"
+    },
+    {
+      "id": "corpus/runtime/clang-cpp-kernels",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "clang-cpp-kernels"
+    },
+    {
+      "id": "corpus/compile/clang-c-kernels",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "clang-c-kernels"
+    },
+    {
+      "id": "corpus/runtime/clang-c-kernels",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "clang-c-kernels"
+    },
+    {
+      "id": "corpus/compile/lua-cli-buckets",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "lua-cli-buckets"
+    },
+    {
+      "id": "corpus/runtime/lua-cli-buckets",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "lua-cli-buckets"
+    },
+    {
+      "id": "corpus/compile/micropython-squares",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "micropython-squares"
+    },
+    {
+      "id": "corpus/runtime/micropython-squares",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "micropython-squares"
+    },
+    {
+      "id": "corpus/compile/ecpunpack-config",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "ecpunpack-config"
+    },
+    {
+      "id": "corpus/runtime/ecpunpack-config",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "ecpunpack-config"
+    },
+    {
+      "id": "corpus/compile/ecppack-bitstream",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "ecppack-bitstream"
+    },
+    {
+      "id": "corpus/runtime/ecppack-bitstream",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "ecppack-bitstream"
+    },
+    {
+      "id": "corpus/compile/coreutils-sort",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "coreutils-sort"
+    },
+    {
+      "id": "corpus/runtime/coreutils-sort",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "coreutils-sort"
+    },
+    {
+      "id": "corpus/compile/coreutils-sha256sum",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "coreutils-sha256sum"
+    },
+    {
+      "id": "corpus/runtime/coreutils-sha256sum",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "coreutils-sha256sum"
+    },
+    {
+      "id": "corpus/compile/coreutils-base64",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "coreutils-base64"
+    },
+    {
+      "id": "corpus/runtime/coreutils-base64",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "coreutils-base64"
+    },
+    {
+      "id": "corpus/compile/coreutils-wc",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "coreutils-wc"
+    },
+    {
+      "id": "corpus/runtime/coreutils-wc",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "coreutils-wc"
+    },
+    {
+      "id": "corpus/compile/ripgrep-source",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "ripgrep-source"
+    },
+    {
+      "id": "corpus/runtime/ripgrep-source",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "ripgrep-source"
+    },
+    {
+      "id": "corpus/compile/yosys-counter",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "yosys-counter"
+    },
+    {
+      "id": "corpus/runtime/yosys-counter",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "yosys-counter"
+    },
+    {
+      "id": "corpus/compile/icemulti-image",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "icemulti-image"
+    },
+    {
+      "id": "corpus/runtime/icemulti-image",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "icemulti-image"
+    },
+    {
+      "id": "corpus/compile/icepack-pack",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "icepack-pack"
+    },
+    {
+      "id": "corpus/runtime/icepack-pack",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "icepack-pack"
+    },
+    {
+      "id": "corpus/compile/iceunpack-unpack",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "iceunpack-unpack"
+    },
+    {
+      "id": "corpus/runtime/iceunpack-unpack",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "iceunpack-unpack"
+    },
+    {
+      "id": "corpus/compile/ecpbram-generate",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "ecpbram-generate"
+    },
+    {
+      "id": "corpus/runtime/ecpbram-generate",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "ecpbram-generate"
+    },
+    {
+      "id": "corpus/compile/icebram-generate",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "icebram-generate"
+    },
+    {
+      "id": "corpus/runtime/icebram-generate",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "icebram-generate"
+    },
+    {
+      "id": "corpus/compile/ecppll-clock",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "ecppll-clock"
+    },
+    {
+      "id": "corpus/runtime/ecppll-clock",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "ecppll-clock"
+    },
+    {
+      "id": "corpus/compile/icepll-clock",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "icepll-clock"
+    },
+    {
+      "id": "corpus/runtime/icepll-clock",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "icepll-clock"
+    },
+    {
+      "id": "corpus/compile/json2csv-people",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "json2csv-people"
+    },
+    {
+      "id": "corpus/runtime/json2csv-people",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "json2csv-people"
+    },
+    {
+      "id": "corpus/compile/tree-ashell-list",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "tree-ashell-list"
+    },
+    {
+      "id": "corpus/runtime/tree-ashell-list",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "tree-ashell-list"
+    },
+    {
+      "id": "corpus/compile/tree-list",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "tree-list"
+    },
+    {
+      "id": "corpus/runtime/tree-list",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "tree-list"
+    },
+    {
+      "id": "corpus/compile/brotli-compress",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "brotli-compress"
+    },
+    {
+      "id": "corpus/runtime/brotli-compress",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "brotli-compress"
+    },
+    {
+      "id": "corpus/compile/brotli-decompress",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "brotli-decompress"
+    },
+    {
+      "id": "corpus/runtime/brotli-decompress",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "brotli-decompress"
+    },
+    {
+      "id": "corpus/compile/jq-json-transform",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "jq-json-transform"
+    },
+    {
+      "id": "corpus/runtime/jq-json-transform",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "jq-json-transform"
+    },
+    {
+      "id": "corpus/compile/age-decrypt",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "age-decrypt"
+    },
+    {
+      "id": "corpus/runtime/age-decrypt",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "age-decrypt"
+    },
+    {
+      "id": "corpus/compile/age-keygen-public",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "age-keygen-public"
+    },
+    {
+      "id": "corpus/runtime/age-keygen-public",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "age-keygen-public"
+    },
+    {
+      "id": "corpus/compile/lzmainfo-header",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "lzmainfo-header"
+    },
+    {
+      "id": "corpus/runtime/lzmainfo-header",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "lzmainfo-header"
+    },
+    {
+      "id": "corpus/compile/lzmadec-decompress",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "lzmadec-decompress"
+    },
+    {
+      "id": "corpus/runtime/lzmadec-decompress",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "lzmadec-decompress"
+    },
+    {
+      "id": "corpus/compile/xzdec-decompress",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "xzdec-decompress"
+    },
+    {
+      "id": "corpus/runtime/xzdec-decompress",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "xzdec-decompress"
+    },
+    {
+      "id": "corpus/compile/sqlite3-query",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "sqlite3-query"
+    },
+    {
+      "id": "corpus/runtime/sqlite3-query",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "sqlite3-query"
+    },
+    {
+      "id": "corpus/compile/duktape-script",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "duktape-script"
+    },
+    {
+      "id": "corpus/runtime/duktape-script",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "duktape-script"
+    },
+    {
+      "id": "corpus/compile/quickjs-script",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "quickjs-script"
+    },
+    {
+      "id": "corpus/runtime/quickjs-script",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "quickjs-script"
+    },
+    {
+      "id": "corpus/compile/swift-format-source",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "swift-format-source"
+    },
+    {
+      "id": "corpus/runtime/swift-format-source",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "swift-format-source"
+    },
+    {
+      "id": "corpus/compile/esbuild-minify",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "esbuild-minify"
+    },
+    {
+      "id": "corpus/runtime/esbuild-minify",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "esbuild-minify"
+    },
+    {
+      "id": "corpus/compile/tiny",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "tiny"
+    },
+    {
+      "id": "corpus/runtime/tiny",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "tiny"
+    },
+    {
+      "id": "corpus/compile/fib_rec",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "fib_rec"
+    },
+    {
+      "id": "corpus/runtime/fib_rec",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "fib_rec"
+    },
+    {
+      "id": "corpus/compile/memory",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "memory"
+    },
+    {
+      "id": "corpus/runtime/memory",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "memory"
+    },
+    {
+      "id": "corpus/compile/memory_tree",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "memory_tree"
+    },
+    {
+      "id": "corpus/runtime/memory_tree",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "memory_tree"
+    },
+    {
+      "id": "corpus/compile/dispatch",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "dispatch"
+    },
+    {
+      "id": "corpus/runtime/dispatch",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "dispatch"
+    },
+    {
+      "id": "corpus/compile/many_funcs",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "many_funcs"
+    },
+    {
+      "id": "corpus/runtime/many_funcs",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "many_funcs"
+    },
+    {
+      "id": "corpus/compile/linked_list",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "linked_list"
+    },
+    {
+      "id": "corpus/runtime/linked_list",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "linked_list"
+    },
+    {
+      "id": "corpus/compile/nbody",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "nbody"
+    },
+    {
+      "id": "corpus/runtime/nbody",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "nbody"
+    },
+    {
+      "id": "corpus/compile/fannkuch",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "fannkuch"
+    },
+    {
+      "id": "corpus/runtime/fannkuch",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "fannkuch"
+    },
+    {
+      "id": "corpus/compile/matmul",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "matmul"
+    },
+    {
+      "id": "corpus/runtime/matmul",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "matmul"
+    },
+    {
+      "id": "corpus/compile/sha256",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "sha256"
+    },
+    {
+      "id": "corpus/runtime/sha256",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "sha256"
+    },
+    {
+      "id": "corpus/compile/raytrace",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "raytrace"
+    },
+    {
+      "id": "corpus/runtime/raytrace",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "raytrace"
+    },
+    {
+      "id": "corpus/compile/json-as",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "json-as"
+    },
+    {
+      "id": "corpus/runtime/json-as",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "json-as"
+    },
+    {
+      "id": "corpus/compile/blake-as",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "blake-as"
+    },
+    {
+      "id": "corpus/runtime/blake-as",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "blake-as"
+    },
+    {
+      "id": "corpus/compile/utf-as",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "utf-as"
+    },
+    {
+      "id": "corpus/runtime/utf-as",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "utf-as"
+    },
+    {
+      "id": "corpus/compile/json-as-simd",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "json-as-simd"
+    },
+    {
+      "id": "corpus/runtime/json-as-simd",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "json-as-simd"
+    },
+    {
+      "id": "corpus/compile/blake-as-simd",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "blake-as-simd"
+    },
+    {
+      "id": "corpus/runtime/blake-as-simd",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "blake-as-simd"
+    },
+    {
+      "id": "corpus/compile/utf-as-simd",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "utf-as-simd"
+    },
+    {
+      "id": "corpus/runtime/utf-as-simd",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "utf-as-simd"
+    },
+    {
+      "id": "corpus/compile/coremark",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "coremark"
+    },
+    {
+      "id": "corpus/runtime/coremark",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "coremark"
+    },
+    {
+      "id": "corpus/compile/blake3",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "blake3"
+    },
+    {
+      "id": "corpus/runtime/blake3",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "blake3"
+    },
+    {
+      "id": "corpus/compile/qoi",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "qoi"
+    },
+    {
+      "id": "corpus/runtime/qoi",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "qoi"
+    },
+    {
+      "id": "corpus/compile/lz4",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "lz4"
+    },
+    {
+      "id": "corpus/runtime/lz4",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "lz4"
+    },
+    {
+      "id": "corpus/compile/zlib",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "zlib"
+    },
+    {
+      "id": "corpus/runtime/zlib",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "zlib"
+    },
+    {
+      "id": "corpus/compile/zstd",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "zstd"
+    },
+    {
+      "id": "corpus/runtime/zstd",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "zstd"
+    },
+    {
+      "id": "corpus/compile/yyjson",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "yyjson"
+    },
+    {
+      "id": "corpus/runtime/yyjson",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "yyjson"
+    },
+    {
+      "id": "corpus/compile/utf8proc",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "utf8proc"
+    },
+    {
+      "id": "corpus/runtime/utf8proc",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "utf8proc"
+    },
+    {
+      "id": "corpus/compile/xxhash",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "xxhash"
+    },
+    {
+      "id": "corpus/runtime/xxhash",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "xxhash"
+    },
+    {
+      "id": "corpus/compile/libtommath",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "libtommath"
+    },
+    {
+      "id": "corpus/runtime/libtommath",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "libtommath"
+    },
+    {
+      "id": "corpus/compile/nanosvg",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "nanosvg"
+    },
+    {
+      "id": "corpus/runtime/nanosvg",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "nanosvg"
+    },
+    {
+      "id": "corpus/compile/kissfft",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "kissfft"
+    },
+    {
+      "id": "corpus/runtime/kissfft",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "kissfft"
+    },
+    {
+      "id": "corpus/compile/miniz",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "miniz"
+    },
+    {
+      "id": "corpus/runtime/miniz",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "miniz"
+    },
+    {
+      "id": "corpus/compile/monocypher",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "monocypher"
+    },
+    {
+      "id": "corpus/runtime/monocypher",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "monocypher"
+    },
+    {
+      "id": "corpus/compile/drwav",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "drwav"
+    },
+    {
+      "id": "corpus/runtime/drwav",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "drwav"
+    },
+    {
+      "id": "corpus/compile/fastfloat",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "fastfloat"
+    },
+    {
+      "id": "corpus/runtime/fastfloat",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "fastfloat"
+    },
+    {
+      "id": "corpus/compile/pcre2",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "pcre2"
+    },
+    {
+      "id": "corpus/runtime/pcre2",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "pcre2"
+    },
+    {
+      "id": "corpus/compile/cjson",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "cjson"
+    },
+    {
+      "id": "corpus/runtime/cjson",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "cjson"
+    },
+    {
+      "id": "corpus/compile/lodepng",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "lodepng"
+    },
+    {
+      "id": "corpus/runtime/lodepng",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "lodepng"
+    },
+    {
+      "id": "corpus/compile/wren",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "wren"
+    },
+    {
+      "id": "corpus/runtime/wren",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "wren"
+    },
+    {
+      "id": "corpus/compile/tinyxml2",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "tinyxml2"
+    },
+    {
+      "id": "corpus/runtime/tinyxml2",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "tinyxml2"
+    },
+    {
+      "id": "corpus/compile/lua",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "lua"
+    },
+    {
+      "id": "corpus/runtime/lua",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "lua"
+    },
+    {
+      "id": "corpus/compile/embench-crc32",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-crc32"
+    },
+    {
+      "id": "corpus/runtime/embench-crc32",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-crc32"
+    },
+    {
+      "id": "corpus/compile/embench-huffbench",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-huffbench"
+    },
+    {
+      "id": "corpus/runtime/embench-huffbench",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-huffbench"
+    },
+    {
+      "id": "corpus/compile/embench-matmult-int",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-matmult-int"
+    },
+    {
+      "id": "corpus/runtime/embench-matmult-int",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-matmult-int"
+    },
+    {
+      "id": "corpus/compile/embench-nettle-aes",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-nettle-aes"
+    },
+    {
+      "id": "corpus/runtime/embench-nettle-aes",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-nettle-aes"
+    },
+    {
+      "id": "corpus/compile/embench-nettle-sha256",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-nettle-sha256"
+    },
+    {
+      "id": "corpus/runtime/embench-nettle-sha256",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-nettle-sha256"
+    },
+    {
+      "id": "corpus/compile/embench-qrduino",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-qrduino"
+    },
+    {
+      "id": "corpus/runtime/embench-qrduino",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "embench-qrduino"
+    },
+    {
+      "id": "corpus/compile/sightglass-shootout-base64",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "sightglass-shootout-base64"
+    },
+    {
+      "id": "corpus/runtime/sightglass-shootout-base64",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "sightglass-shootout-base64"
+    },
+    {
+      "id": "corpus/compile/sightglass-libsodium-hash",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "sightglass-libsodium-hash"
+    },
+    {
+      "id": "corpus/runtime/sightglass-libsodium-hash",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "sightglass-libsodium-hash"
+    },
+    {
+      "id": "corpus/compile/tacle-bsort",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "tacle-bsort"
+    },
+    {
+      "id": "corpus/runtime/tacle-bsort",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "tacle-bsort"
+    },
+    {
+      "id": "corpus/compile/polybench-2mm",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-2mm"
+    },
+    {
+      "id": "corpus/runtime/polybench-2mm",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-2mm"
+    },
+    {
+      "id": "corpus/compile/polybench-3mm",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-3mm"
+    },
+    {
+      "id": "corpus/runtime/polybench-3mm",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-3mm"
+    },
+    {
+      "id": "corpus/compile/polybench-adi",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-adi"
+    },
+    {
+      "id": "corpus/runtime/polybench-adi",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-adi"
+    },
+    {
+      "id": "corpus/compile/polybench-atax",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-atax"
+    },
+    {
+      "id": "corpus/runtime/polybench-atax",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-atax"
+    },
+    {
+      "id": "corpus/compile/polybench-bicg",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-bicg"
+    },
+    {
+      "id": "corpus/runtime/polybench-bicg",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-bicg"
+    },
+    {
+      "id": "corpus/compile/polybench-cholesky",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-cholesky"
+    },
+    {
+      "id": "corpus/runtime/polybench-cholesky",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-cholesky"
+    },
+    {
+      "id": "corpus/compile/polybench-correlation",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-correlation"
+    },
+    {
+      "id": "corpus/runtime/polybench-correlation",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-correlation"
+    },
+    {
+      "id": "corpus/compile/polybench-covariance",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-covariance"
+    },
+    {
+      "id": "corpus/runtime/polybench-covariance",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-covariance"
+    },
+    {
+      "id": "corpus/compile/polybench-deriche",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-deriche"
+    },
+    {
+      "id": "corpus/runtime/polybench-deriche",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-deriche"
+    },
+    {
+      "id": "corpus/compile/polybench-doitgen",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-doitgen"
+    },
+    {
+      "id": "corpus/runtime/polybench-doitgen",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-doitgen"
+    },
+    {
+      "id": "corpus/compile/polybench-durbin",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-durbin"
+    },
+    {
+      "id": "corpus/runtime/polybench-durbin",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-durbin"
+    },
+    {
+      "id": "corpus/compile/polybench-fdtd-2d",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-fdtd-2d"
+    },
+    {
+      "id": "corpus/runtime/polybench-fdtd-2d",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-fdtd-2d"
+    },
+    {
+      "id": "corpus/compile/polybench-floyd-warshall",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-floyd-warshall"
+    },
+    {
+      "id": "corpus/runtime/polybench-floyd-warshall",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-floyd-warshall"
+    },
+    {
+      "id": "corpus/compile/polybench-gemm",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-gemm"
+    },
+    {
+      "id": "corpus/runtime/polybench-gemm",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-gemm"
+    },
+    {
+      "id": "corpus/compile/polybench-gemver",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-gemver"
+    },
+    {
+      "id": "corpus/runtime/polybench-gemver",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-gemver"
+    },
+    {
+      "id": "corpus/compile/polybench-gesummv",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-gesummv"
+    },
+    {
+      "id": "corpus/runtime/polybench-gesummv",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-gesummv"
+    },
+    {
+      "id": "corpus/compile/polybench-gramschmidt",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-gramschmidt"
+    },
+    {
+      "id": "corpus/runtime/polybench-gramschmidt",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-gramschmidt"
+    },
+    {
+      "id": "corpus/compile/polybench-heat-3d",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-heat-3d"
+    },
+    {
+      "id": "corpus/runtime/polybench-heat-3d",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-heat-3d"
+    },
+    {
+      "id": "corpus/compile/polybench-jacobi-1d",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-jacobi-1d"
+    },
+    {
+      "id": "corpus/runtime/polybench-jacobi-1d",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-jacobi-1d"
+    },
+    {
+      "id": "corpus/compile/polybench-jacobi-2d",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-jacobi-2d"
+    },
+    {
+      "id": "corpus/runtime/polybench-jacobi-2d",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-jacobi-2d"
+    },
+    {
+      "id": "corpus/compile/polybench-lu",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-lu"
+    },
+    {
+      "id": "corpus/runtime/polybench-lu",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-lu"
+    },
+    {
+      "id": "corpus/compile/polybench-ludcmp",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-ludcmp"
+    },
+    {
+      "id": "corpus/runtime/polybench-ludcmp",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-ludcmp"
+    },
+    {
+      "id": "corpus/compile/polybench-mvt",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-mvt"
+    },
+    {
+      "id": "corpus/runtime/polybench-mvt",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-mvt"
+    },
+    {
+      "id": "corpus/compile/polybench-nussinov",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-nussinov"
+    },
+    {
+      "id": "corpus/runtime/polybench-nussinov",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-nussinov"
+    },
+    {
+      "id": "corpus/compile/polybench-seidel-2d",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-seidel-2d"
+    },
+    {
+      "id": "corpus/runtime/polybench-seidel-2d",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-seidel-2d"
+    },
+    {
+      "id": "corpus/compile/polybench-symm",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-symm"
+    },
+    {
+      "id": "corpus/runtime/polybench-symm",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-symm"
+    },
+    {
+      "id": "corpus/compile/polybench-syr2k",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-syr2k"
+    },
+    {
+      "id": "corpus/runtime/polybench-syr2k",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-syr2k"
+    },
+    {
+      "id": "corpus/compile/polybench-syrk",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-syrk"
+    },
+    {
+      "id": "corpus/runtime/polybench-syrk",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-syrk"
+    },
+    {
+      "id": "corpus/compile/polybench-trisolv",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-trisolv"
+    },
+    {
+      "id": "corpus/runtime/polybench-trisolv",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-trisolv"
+    },
+    {
+      "id": "corpus/compile/polybench-trmm",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-trmm"
+    },
+    {
+      "id": "corpus/runtime/polybench-trmm",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "polybench-trmm"
+    },
+    {
+      "id": "corpus/compile/wren-modulo",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "wren-modulo"
+    },
+    {
+      "id": "corpus/runtime/wren-modulo",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "wren-modulo"
+    },
+    {
+      "id": "corpus/compile/grain-stdlib-array",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "grain-stdlib-array"
+    },
+    {
+      "id": "corpus/runtime/grain-stdlib-array",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "grain-stdlib-array"
+    },
+    {
+      "id": "corpus/compile/grain-stdlib-string",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "grain-stdlib-string"
+    },
+    {
+      "id": "corpus/runtime/grain-stdlib-string",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "grain-stdlib-string"
+    },
+    {
+      "id": "corpus/compile/grain-stdlib-json-subset",
+      "package": "bench",
+      "selector": "^BenchmarkCompile$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "compile",
+      "target": "native-linux-amd64",
+      "catalog_id": "grain-stdlib-json-subset"
+    },
+    {
+      "id": "corpus/runtime/grain-stdlib-json-subset",
+      "package": "bench",
+      "selector": "^(BenchmarkExec|BenchmarkCommandExec)$",
+      "A": {
+        "pin": "baseline",
+        "env": {}
+      },
+      "B": {
+        "pin": "port",
+        "env": {}
+      },
+      "kind": "runtime",
+      "target": "native-linux-amd64",
+      "catalog_id": "grain-stdlib-json-subset"
+    }
+  ],
+  "blocks": 6,
+  "order": [
+    "ABBA",
+    "BAAB"
+  ],
+  "benchtime": "500ms",
+  "test_cycle_count": 1,
+  "attempts": 3,
+  "admission_c": 60,
+  "discard_c": 85,
+  "control_range": [
+    0.9,
+    1.1
+  ],
+  "seed": 20261102,
+  "status": "PREPARATION_ONLY",
+  "catalog_sha256": "ee1f3fc1aac78c02e7a89b9742a0facc4b1108ff3c53907cc4242633a0896dbe"
+}

@@ -1,0 +1,41 @@
+package gc
+
+import (
+ "encoding/json"
+ "os"
+ "reflect"
+ "strconv"
+ "testing"
+)
+
+// Identical overlay on both revisions. Complete allocation/trace/death cycle,
+// including validation; not a pure pause or allocator latency benchmark.
+func fmGraph(t testing.TB, edges int) {
+ workers, _ := strconv.Atoi(os.Getenv("FM_WORKERS")); if workers == 0 { workers = 1 }
+ shift, _ := strconv.Atoi(os.Getenv("FM_SHIFT"))
+ cfg := Config{NurseryBytes: 16 << 20, ThroughputHeapBytes: 64 << 20}
+ set := func(name string, n int) {
+  f := reflect.ValueOf(&cfg).Elem().FieldByName(name)
+  if !f.IsValid() { if n > 1 || name != "Workers" && n != 0 { t.Fatalf("unsupported %s=%d", name,n) }; return }
+  if f.Kind() == reflect.Int { f.SetInt(int64(n)) } else { f.SetUint(uint64(n)) }
+ }
+ set("Workers",workers); set("NurseryRegionShift",shift)
+ fields := make([]StorageKind,edges); for i := range fields { fields[i]=StorageRefNull }
+ node,err:=NewStructDesc(0,fields); if err!=nil { t.Fatal(err) }
+ array,err:=NewArrayDesc(1,StorageRefNull); if err!=nil { t.Fatal(err) }
+ c,err:=NewCollector(cfg,[]TypeDesc{node,array}); if err!=nil { t.Fatal(err) }; defer c.Close()
+ const count=8192
+ parent,err:=c.NewArrayDefault(1,count); if err!=nil { t.Fatal(err) }
+ refs:=make([]Ref,count)
+ for i:=range refs { refs[i],err=c.NewStructDefault(0); if err!=nil {t.Fatal(err)}; if err=c.ArraySet(parent,uint32(i),RefValue(refs[i])); err!=nil {t.Fatal(err)} }
+ for i,r:=range refs { for j:=range fields { if err=c.StructSet(r,uint32(j),RefValue(refs[(i+j+1)%count])); err!=nil {t.Fatal(err)} } }
+ roots:=RefSliceRoots{parent}
+ for i:=0;i<2;i++ { if err=c.CollectFull(roots); err!=nil {t.Fatal(err)} }
+ if c.Stats().LiveObjects != count+1 {t.Fatal("reachability census",c.Stats())}
+ if err=c.Verify(roots); err!=nil {t.Fatal(err)}
+ if test,ok:=t.(*testing.T);ok { raw,_:=json.Marshal(c.Stats()); test.Log(string(raw)) }
+ if err=c.CollectFull(nil);err!=nil {t.Fatal(err)}
+ if c.Stats().LiveObjects!=0 {t.Fatal("unreleased graph")}
+}
+func TestFinalMeasurementGraph(t *testing.T) { for _,edges:=range []int{2,32} {t.Run(strconv.Itoa(edges),func(t *testing.T){fmGraph(t,edges)})} }
+func BenchmarkFinalMeasurementGraph(b *testing.B) {for _,edges:=range []int{2,32} {b.Run(strconv.Itoa(edges),func(b *testing.B){b.ReportAllocs(); for i:=0;i<b.N;i++ {fmGraph(b,edges)}})}}
