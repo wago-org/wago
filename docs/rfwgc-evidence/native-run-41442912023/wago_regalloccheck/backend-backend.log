@@ -1,0 +1,441 @@
+{"Action":"start","Package":"./src/core/compiler/backend/railshot/arm64"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestRegisterCallOverlappingArgumentSlotARM64"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestRegisterCallOverlappingArgumentSlotARM64","Output":"=== RUN   TestRegisterCallOverlappingArgumentSlotARM64\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestRegisterCallOverlappingArgumentSlotARM64","Output":"    register_call_slot_arm64_test.go:51: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestRegisterCallOverlappingArgumentSlotARM64","Output":"--- SKIP: TestRegisterCallOverlappingArgumentSlotARM64 (0.00s)\n","OutputType":"frame"}
+{"Action":"skip","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestRegisterCallOverlappingArgumentSlotARM64"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestScopedLoopConstExecutionAcrossGuestCalls"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestScopedLoopConstExecutionAcrossGuestCalls","Output":"=== RUN   TestScopedLoopConstExecutionAcrossGuestCalls\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestScopedLoopConstExecutionAcrossGuestCalls","Output":"--- PASS: TestScopedLoopConstExecutionAcrossGuestCalls (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestScopedLoopConstExecutionAcrossGuestCalls"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSharingScratchLayout"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSharingScratchLayout","Output":"=== RUN   TestSharingScratchLayout\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSharingScratchLayout","Output":"    sharing_layout_test.go:11: scratch=10984 fn=2936 node=32 control=72\n"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSharingScratchLayout","Output":"--- PASS: TestSharingScratchLayout (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSharingScratchLayout"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults","Output":"=== RUN   TestSyncHostRestoresX11LocalAfterResults\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults/stack-reg=false","Output":"=== RUN   TestSyncHostRestoresX11LocalAfterResults/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults/stack-reg=false","Output":"--- PASS: TestSyncHostRestoresX11LocalAfterResults/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults/stack-reg=true","Output":"=== RUN   TestSyncHostRestoresX11LocalAfterResults/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults/stack-reg=true","Output":"--- PASS: TestSyncHostRestoresX11LocalAfterResults/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults","Output":"--- PASS: TestSyncHostRestoresX11LocalAfterResults (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11LocalAfterResults"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults","Output":"=== RUN   TestSyncHostRestoresX11GlobalAfterResults\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults/stack-reg=false","Output":"=== RUN   TestSyncHostRestoresX11GlobalAfterResults/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults/stack-reg=false","Output":"--- PASS: TestSyncHostRestoresX11GlobalAfterResults/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults/stack-reg=true","Output":"=== RUN   TestSyncHostRestoresX11GlobalAfterResults/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults/stack-reg=true","Output":"--- PASS: TestSyncHostRestoresX11GlobalAfterResults/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults","Output":"--- PASS: TestSyncHostRestoresX11GlobalAfterResults (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostRestoresX11GlobalAfterResults"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultSpillsPreserveRootMetadata"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultSpillsPreserveRootMetadata","Output":"=== RUN   TestSyncHostResultSpillsPreserveRootMetadata\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultSpillsPreserveRootMetadata","Output":"--- PASS: TestSyncHostResultSpillsPreserveRootMetadata (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultSpillsPreserveRootMetadata"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile","Output":"=== RUN   TestSyncHostResultPressureCompile\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/1/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/1/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/gp/1/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/1/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/gp/1/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/1/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/1/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/1/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/gp/1/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/1/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/gp/1/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/1/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/8/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/8/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/gp/8/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/8/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/gp/8/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/8/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/8/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/8/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/gp/8/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/8/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/gp/8/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/8/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/16/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/16/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/gp/16/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/16/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/gp/16/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/16/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/16/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/16/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/gp/16/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/16/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/gp/16/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/16/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/32/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/32/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/gp/32/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/32/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/gp/32/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/32/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/32/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/gp/32/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/32/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/gp/32/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/32/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/64/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/64/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/gp/64/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/64/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/gp/64/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/64/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/64/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/64/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/gp/64/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/64/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/gp/64/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/gp/64/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/1/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/1/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/fp/1/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/1/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/fp/1/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/1/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/1/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/1/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/fp/1/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/1/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/fp/1/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/1/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/8/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/8/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/fp/8/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/8/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/fp/8/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/8/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/8/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/8/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/fp/8/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/8/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/fp/8/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/8/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/16/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/16/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/fp/16/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/16/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/fp/16/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/16/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/16/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/16/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/fp/16/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/16/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/fp/16/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/16/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/32/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/32/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/fp/32/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/32/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/fp/32/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/32/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/32/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/fp/32/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/32/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/fp/32/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/32/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/64/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/64/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/fp/64/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/64/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/fp/64/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/64/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/64/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/64/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/fp/64/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/64/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/fp/64/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp/64/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/1/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/1/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/fp32/1/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/1/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/fp32/1/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/1/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/1/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/1/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/fp32/1/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/1/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/fp32/1/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/1/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/8/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/8/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/fp32/8/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/8/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/fp32/8/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/8/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/8/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/8/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/fp32/8/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/8/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/fp32/8/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/8/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/16/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/16/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/fp32/16/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/16/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/fp32/16/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/16/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/16/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/16/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/fp32/16/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/16/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/fp32/16/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/16/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/32/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/32/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/fp32/32/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/32/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/fp32/32/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/32/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/32/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/fp32/32/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/32/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/fp32/32/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/32/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/64/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/64/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/fp32/64/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/64/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/fp32/64/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/64/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/64/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/64/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/fp32/64/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/64/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/fp32/64/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/fp32/64/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/1/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/1/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/mixed/1/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/1/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/mixed/1/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/1/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/1/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/1/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/mixed/1/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/1/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/mixed/1/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/1/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/8/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/8/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/mixed/8/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/8/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/mixed/8/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/8/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/8/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/8/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/mixed/8/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/8/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/mixed/8/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/8/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/16/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/16/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/mixed/16/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/16/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/mixed/16/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/16/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/16/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/16/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/mixed/16/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/16/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/mixed/16/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/16/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/32/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/32/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/mixed/32/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/32/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/mixed/32/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/32/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/32/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/mixed/32/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/32/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/mixed/32/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/32/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/54/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/54/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/mixed/54/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/54/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/mixed/54/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/54/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/54/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/54/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/mixed/54/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/54/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/mixed/54/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/mixed/54/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/1/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/1/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/vector/1/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/1/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/vector/1/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/1/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/1/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/1/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/vector/1/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/1/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/vector/1/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/1/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/8/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/8/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/vector/8/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/8/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/vector/8/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/8/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/8/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/8/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/vector/8/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/8/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/vector/8/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/8/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/16/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/16/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/vector/16/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/16/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/vector/16/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/16/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/16/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/16/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/vector/16/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/16/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/vector/16/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/16/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/32/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/32/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureCompile/vector/32/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/32/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureCompile/vector/32/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/32/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/32/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureCompile/vector/32/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/32/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureCompile/vector/32/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile/vector/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile","Output":"--- PASS: TestSyncHostResultPressureCompile (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureCompile"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution","Output":"=== RUN   TestSyncHostResultPressureExecution\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/1/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/1/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/gp/1/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/1/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/gp/1/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/1/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/1/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/1/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/gp/1/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/1/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/gp/1/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/1/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/8/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/8/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/gp/8/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/8/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/gp/8/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/8/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/8/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/8/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/gp/8/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/8/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/gp/8/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/8/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/16/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/16/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/gp/16/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/16/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/gp/16/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/16/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/16/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/16/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/gp/16/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/16/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/gp/16/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/16/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/32/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/32/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/gp/32/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/32/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/gp/32/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/32/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/32/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/gp/32/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/32/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/gp/32/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/32/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/64/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/64/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/gp/64/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/64/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/gp/64/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/64/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/64/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/64/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/gp/64/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/64/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/gp/64/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/gp/64/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/1/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/1/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/fp/1/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/1/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/fp/1/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/1/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/1/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/1/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/fp/1/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/1/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/fp/1/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/1/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/8/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/8/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/fp/8/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/8/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/fp/8/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/8/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/8/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/8/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/fp/8/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/8/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/fp/8/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/8/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/16/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/16/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/fp/16/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/16/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/fp/16/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/16/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/16/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/16/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/fp/16/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/16/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/fp/16/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/16/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/32/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/32/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/fp/32/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/32/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/fp/32/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/32/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/32/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/fp/32/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/32/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/fp/32/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/32/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/64/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/64/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/fp/64/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/64/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/fp/64/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/64/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/64/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/64/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/fp/64/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/64/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/fp/64/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp/64/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/1/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/1/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/fp32/1/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/1/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/fp32/1/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/1/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/1/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/1/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/fp32/1/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/1/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/fp32/1/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/1/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/8/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/8/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/fp32/8/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/8/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/fp32/8/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/8/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/8/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/8/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/fp32/8/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/8/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/fp32/8/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/8/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/16/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/16/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/fp32/16/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/16/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/fp32/16/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/16/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/16/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/16/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/fp32/16/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/16/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/fp32/16/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/16/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/32/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/32/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/fp32/32/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/32/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/fp32/32/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/32/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/32/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/fp32/32/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/32/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/fp32/32/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/32/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/64/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/64/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/fp32/64/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/64/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/fp32/64/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/64/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/64/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/64/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/fp32/64/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/64/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/fp32/64/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/fp32/64/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/1/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/1/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/mixed/1/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/1/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/mixed/1/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/1/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/1/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/1/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/mixed/1/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/1/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/mixed/1/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/1/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/8/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/8/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/mixed/8/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/8/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/mixed/8/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/8/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/8/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/8/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/mixed/8/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/8/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/mixed/8/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/8/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/16/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/16/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/mixed/16/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/16/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/mixed/16/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/16/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/16/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/16/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/mixed/16/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/16/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/mixed/16/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/16/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/32/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/32/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/mixed/32/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/32/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/mixed/32/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/32/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/32/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/mixed/32/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/32/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/mixed/32/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/32/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/54/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/54/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/mixed/54/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/54/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/mixed/54/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/54/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/54/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/54/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/mixed/54/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/54/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/mixed/54/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/mixed/54/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/1/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/1/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/vector/1/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/1/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/vector/1/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/1/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/1/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/1/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/vector/1/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/1/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/vector/1/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/1/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/8/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/8/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/vector/8/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/8/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/vector/8/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/8/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/8/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/8/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/vector/8/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/8/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/vector/8/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/8/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/16/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/16/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/vector/16/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/16/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/vector/16/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/16/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/16/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/16/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/vector/16/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/16/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/vector/16/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/16/stack-reg=true"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/32/stack-reg=false"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/32/stack-reg=false","Output":"=== RUN   TestSyncHostResultPressureExecution/vector/32/stack-reg=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/32/stack-reg=false","Output":"--- PASS: TestSyncHostResultPressureExecution/vector/32/stack-reg=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/32/stack-reg=false"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/32/stack-reg=true","Output":"=== RUN   TestSyncHostResultPressureExecution/vector/32/stack-reg=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/32/stack-reg=true","Output":"--- PASS: TestSyncHostResultPressureExecution/vector/32/stack-reg=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution/vector/32/stack-reg=true"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution","Output":"--- PASS: TestSyncHostResultPressureExecution (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestSyncHostResultPressureExecution"}
+{"Action":"run","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestVariableShiftThreeOperand"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestVariableShiftThreeOperand","Output":"=== RUN   TestVariableShiftThreeOperand\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestVariableShiftThreeOperand","Output":"--- PASS: TestVariableShiftThreeOperand (0.02s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64","Test":"TestVariableShiftThreeOperand"}
+{"Action":"output","Package":"./src/core/compiler/backend/railshot/arm64","Output":"PASS\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/compiler/backend/railshot/arm64"}

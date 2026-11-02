@@ -1,0 +1,467 @@
+{
+  "jobs": [
+    {
+      "id": 125268925843,
+      "name": "Pinned native Linux ARM64 RR3 / ordinary",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Require reviewed exact source and harness before checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Execute unchanged native RR3 qualification",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 6
+        },
+        {
+          "name": "Retain failed and partial native evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Post Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 12
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15
+        }
+      ]
+    },
+    {
+      "id": 125268926227,
+      "name": "Pinned native Linux ARM64 RR3 / wagodebug",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Require reviewed exact source and harness before checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Execute unchanged native RR3 qualification",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 6
+        },
+        {
+          "name": "Retain failed and partial native evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Post Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 12
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15
+        }
+      ]
+    },
+    {
+      "id": 125268926269,
+      "name": "Pinned native Linux ARM64 RR3 / wago_regalloccheck",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Require reviewed exact source and harness before checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Execute unchanged native RR3 qualification",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 6
+        },
+        {
+          "name": "Retain failed and partial native evidence",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Post Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 12
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15
+        }
+      ]
+    },
+    {
+      "id": 125268928035,
+      "name": "Draft smoke / Linux amd64",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928172,
+      "name": "Current Go / Linux amd64",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928184,
+      "name": "Pinned Windows storage contracts / ${{ matrix.mode }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928341,
+      "name": "Pinned Darwin correctness / ${{ matrix.mode }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928442,
+      "name": "Corpus correctness / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928469,
+      "name": "Plan CI profile",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928490,
+      "name": "Regression corpus integrity",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928524,
+      "name": "Build size",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928616,
+      "name": "Race detector / Linux amd64",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928645,
+      "name": "WebAssembly 1.0 conformance / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928705,
+      "name": "Regenerate regression corpus from pinned source",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928737,
+      "name": "Application corpus / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268928806,
+      "name": "Core v2 conformance / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268929004,
+      "name": "Lint & format",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268929028,
+      "name": "matrix.name",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268929047,
+      "name": "Bounded fuzzing / Linux amd64",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268929133,
+      "name": "Core v3 conformance / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268929215,
+      "name": "GC hardening / bounded",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268929217,
+      "name": "Verify corpus shard coverage",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268929432,
+      "name": "TinyGo / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268929653,
+      "name": "Documentation",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125268930166,
+      "name": "Non-Linux qualification summary",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125270222081,
+      "name": "Native Linux ARM64 RR3 qualification summary",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Require all native modes and isolation from normal CI",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 2
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        }
+      ]
+    },
+    {
+      "id": 125270266826,
+      "name": "github.event_name == 'workflow_dispatch' && (inputs.darwin_qualification || inputs.native_arm64_rr3) && 'Full CI not run (qualification dispatch)' || 'CI'",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41442912023,
+      "logs_url": null,
+      "steps": null
+    }
+  ]
+}

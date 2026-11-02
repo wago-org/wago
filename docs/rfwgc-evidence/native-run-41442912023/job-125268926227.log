@@ -1,0 +1,1882 @@
+﻿2026-11-02T12:13:28.8835340Z Current runner version: '2.338.2'
+2026-11-02T12:13:28.8863909Z ##[group]Runner Image Provisioner
+2026-11-02T12:13:28.8864846Z Hosted Compute Agent
+2026-11-02T12:13:28.8865438Z Version: 20261021.618
+2026-11-02T12:13:28.8866312Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-11-02T12:13:28.8867104Z Build Date: 2026-10-21T00:45:21Z
+2026-11-02T12:13:28.8868545Z Worker ID: {72d931c7-571c-4026-93da-2f3ac89004d7}
+2026-11-02T12:13:28.8869354Z Region: northcentralus
+2026-11-02T12:13:28.8869974Z Cloud: Azure
+2026-11-02T12:13:28.8870867Z ##[endgroup]
+2026-11-02T12:13:28.8873245Z ##[group]Operating System
+2026-11-02T12:13:28.8874227Z Ubuntu
+2026-11-02T12:13:28.8874824Z 24.04.5
+2026-11-02T12:13:28.8875360Z LTS
+2026-11-02T12:13:28.8876059Z ##[endgroup]
+2026-11-02T12:13:28.8876640Z ##[group]Runner Image
+2026-11-02T12:13:28.8877333Z Image: ubuntu-24.04-arm
+2026-11-02T12:13:28.8878360Z Version: 20261025.165.1
+2026-11-02T12:13:28.8879890Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24-arm64/20261025.165/images/ubuntu/Ubuntu2404-Arm64-Readme.md
+2026-11-02T12:13:28.8881650Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24-arm64%2F20261025.165
+2026-11-02T12:13:28.8882750Z ##[endgroup]
+2026-11-02T12:13:28.8883942Z ##[group]GITHUB_TOKEN Permissions
+2026-11-02T12:13:28.8887126Z Contents: read
+2026-11-02T12:13:28.8887966Z Metadata: read
+2026-11-02T12:13:28.8888866Z ##[endgroup]
+2026-11-02T12:13:28.8891834Z Secret source: Actions
+2026-11-02T12:13:28.8893010Z Cache mode: write
+2026-11-02T12:13:28.8893908Z Prepare workflow directory
+2026-11-02T12:13:28.9495550Z Prepare all required actions
+2026-11-02T12:13:28.9549959Z Getting action download info
+2026-11-02T12:13:29.1863686Z Download action repository 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-11-02T12:13:29.2866535Z Download action repository 'actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff' (SHA:40f1582b2485089dde7abd97c1529aa768e1baff)
+2026-11-02T12:13:29.6862399Z Download action repository 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-11-02T12:13:29.9159297Z Complete job name: Pinned native Linux ARM64 RR3 / wagodebug
+2026-11-02T12:13:30.0032884Z ##[group]Run mkdir -p setup-receipts
+2026-11-02T12:13:30.0034119Z [36;1mmkdir -p setup-receipts[0m
+2026-11-02T12:13:30.0034903Z [36;1mset -o pipefail[0m
+2026-11-02T12:13:30.0035761Z [36;1m{[0m
+2026-11-02T12:13:30.0036946Z [36;1m  echo "source=$QUALIFICATION_SOURCE harness=$QUALIFICATION_DRIVER workflow=$WORKFLOW_SHA"[0m
+2026-11-02T12:13:30.0038473Z [36;1m  test "$OTHER_QUALIFICATION" = false[0m
+2026-11-02T12:13:30.0039631Z [36;1m  test "$QUALIFICATION_SOURCE" = 5847df30f1af15d10b743d90a24b1429b290d358[0m
+2026-11-02T12:13:30.0040856Z [36;1m  [[ "$QUALIFICATION_DRIVER" =~ ^[0-9a-f]{40}$ ]][0m
+2026-11-02T12:13:30.0041958Z [36;1m  test "$QUALIFICATION_DRIVER" = "$WORKFLOW_SHA"[0m
+2026-11-02T12:13:30.0043025Z [36;1m} 2>&1 | tee setup-receipts/identity.log[0m
+2026-11-02T12:13:30.0198220Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-02T12:13:30.0199808Z env:
+2026-11-02T12:13:30.0200762Z   GO_VERSION: 1.27.1
+2026-11-02T12:13:30.0201738Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T12:13:30.0202659Z   TINYGO_VERSION: 0.42.0
+2026-11-02T12:13:30.0203384Z   JUST_VERSION: 1.58.0
+2026-11-02T12:13:30.0204154Z   GOTOOLCHAIN: local
+2026-11-02T12:13:30.0204993Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T12:13:30.0205975Z   QUALIFICATION_SOURCE: 5847df30f1af15d10b743d90a24b1429b290d358
+2026-11-02T12:13:30.0207248Z   QUALIFICATION_DRIVER: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:30.0208667Z   WORKFLOW_SHA: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:30.0209698Z   OTHER_QUALIFICATION: false
+2026-11-02T12:13:30.0210605Z ##[endgroup]
+2026-11-02T12:13:30.0429859Z source=5847df30f1af15d10b743d90a24b1429b290d358 harness=6c71c4d6747456578f55928e900e36bb2d1449a8 workflow=6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:30.0718736Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+2026-11-02T12:13:30.0720216Z with:
+2026-11-02T12:13:30.0721008Z   ref: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:30.0722098Z   path: harness
+2026-11-02T12:13:30.0722894Z   persist-credentials: false
+2026-11-02T12:13:30.0723675Z   repository: wago-org/wago
+2026-11-02T12:13:30.0728474Z   token: ***
+2026-11-02T12:13:30.0729200Z   ssh-strict: true
+2026-11-02T12:13:30.0730364Z   ssh-user: git
+2026-11-02T12:13:30.0731157Z   clean: true
+2026-11-02T12:13:30.0731877Z   sparse-checkout-cone-mode: true
+2026-11-02T12:13:30.0732792Z   fetch-depth: 1
+2026-11-02T12:13:30.0733512Z   fetch-tags: false
+2026-11-02T12:13:30.0734288Z   show-progress: true
+2026-11-02T12:13:30.0735052Z   lfs: false
+2026-11-02T12:13:30.0735722Z   submodules: false
+2026-11-02T12:13:30.0736593Z   set-safe-directory: true
+2026-11-02T12:13:30.0737485Z   allow-unsafe-pr-checkout: false
+2026-11-02T12:13:30.0738595Z env:
+2026-11-02T12:13:30.0739475Z   GO_VERSION: 1.27.1
+2026-11-02T12:13:30.0740289Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T12:13:30.0741032Z   TINYGO_VERSION: 0.42.0
+2026-11-02T12:13:30.0741755Z   JUST_VERSION: 1.58.0
+2026-11-02T12:13:30.0742533Z   GOTOOLCHAIN: local
+2026-11-02T12:13:30.0743410Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T12:13:30.0744338Z   QUALIFICATION_SOURCE: 5847df30f1af15d10b743d90a24b1429b290d358
+2026-11-02T12:13:30.0745575Z   QUALIFICATION_DRIVER: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:30.0746651Z   WORKFLOW_SHA: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:30.0747805Z   OTHER_QUALIFICATION: false
+2026-11-02T12:13:30.0748955Z ##[endgroup]
+2026-11-02T12:13:30.1615292Z Syncing repository: wago-org/wago
+2026-11-02T12:13:30.1618277Z ##[group]Getting Git version info
+2026-11-02T12:13:30.1619419Z Working directory is '/home/runner/work/wago/wago/harness'
+2026-11-02T12:13:30.1659514Z [command]/usr/bin/git version
+2026-11-02T12:13:30.1717990Z git version 2.56.0
+2026-11-02T12:13:30.1744412Z ##[endgroup]
+2026-11-02T12:13:30.1751947Z Temporarily overriding HOME='/home/runner/work/_temp/e48c721a-da48-40ca-9afb-1952d7c74af3' before making global git config changes
+2026-11-02T12:13:30.1754086Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T12:13:30.1756036Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wago/wago/harness
+2026-11-02T12:13:30.1793086Z ##[group]Initializing the repository
+2026-11-02T12:13:30.1797470Z [command]/usr/bin/git init /home/runner/work/wago/wago/harness
+2026-11-02T12:13:30.1861912Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-02T12:13:30.1863536Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-02T12:13:30.1865243Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-02T12:13:30.1866486Z hint: call:
+2026-11-02T12:13:30.1867485Z hint:
+2026-11-02T12:13:30.1868984Z hint: 	git config --global init.defaultBranch <name>
+2026-11-02T12:13:30.1870685Z hint:
+2026-11-02T12:13:30.1872233Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-02T12:13:30.1874117Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-02T12:13:30.1875913Z hint:
+2026-11-02T12:13:30.1876910Z hint: 	git branch -m <name>
+2026-11-02T12:13:30.1877812Z hint:
+2026-11-02T12:13:30.1879046Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-02T12:13:30.1880716Z Initialized empty Git repository in /home/runner/work/wago/wago/harness/.git/
+2026-11-02T12:13:30.1883422Z [command]/usr/bin/git remote add origin https://github.com/wago-org/wago
+2026-11-02T12:13:30.1918861Z ##[endgroup]
+2026-11-02T12:13:30.1921184Z ##[group]Disabling automatic garbage collection
+2026-11-02T12:13:30.1922799Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-02T12:13:30.1950421Z ##[endgroup]
+2026-11-02T12:13:30.1952028Z ##[group]Setting up auth
+2026-11-02T12:13:30.1962236Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T12:13:30.1983607Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T12:13:30.2254909Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T12:13:30.2285180Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T12:13:30.2483814Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T12:13:30.2515006Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T12:13:30.2713528Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-02T12:13:30.2749716Z ##[endgroup]
+2026-11-02T12:13:30.2751428Z ##[group]Fetching the repository
+2026-11-02T12:13:30.2757499Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:43.2883156Z From https://github.com/wago-org/wago
+2026-11-02T12:13:43.2884181Z  * branch            6c71c4d6747456578f55928e900e36bb2d1449a8 -> FETCH_HEAD
+2026-11-02T12:13:43.2889476Z ##[endgroup]
+2026-11-02T12:13:43.2890207Z ##[group]Determining the checkout info
+2026-11-02T12:13:43.2890926Z ##[endgroup]
+2026-11-02T12:13:43.2894285Z [command]/usr/bin/git sparse-checkout disable
+2026-11-02T12:13:43.2934962Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-02T12:13:43.2963754Z ##[group]Checking out the ref
+2026-11-02T12:13:43.2966757Z [command]/usr/bin/git checkout --progress --force 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:44.3128560Z Updating files:  13% (2590/18637)
+2026-11-02T12:13:44.3862810Z Updating files:  14% (2610/18637)
+2026-11-02T12:13:44.3974894Z Updating files:  15% (2796/18637)
+2026-11-02T12:13:44.4501931Z Updating files:  16% (2982/18637)
+2026-11-02T12:13:44.4572899Z Updating files:  17% (3169/18637)
+2026-11-02T12:13:44.4845015Z Updating files:  18% (3355/18637)
+2026-11-02T12:13:44.4926646Z Updating files:  19% (3542/18637)
+2026-11-02T12:13:44.5510905Z Updating files:  20% (3728/18637)
+2026-11-02T12:13:44.6664806Z Updating files:  21% (3914/18637)
+2026-11-02T12:13:44.7484791Z Updating files:  22% (4101/18637)
+2026-11-02T12:13:44.8195456Z Updating files:  23% (4287/18637)
+2026-11-02T12:13:44.8371842Z Updating files:  24% (4473/18637)
+2026-11-02T12:13:44.8958463Z Updating files:  25% (4660/18637)
+2026-11-02T12:13:44.9115824Z Updating files:  26% (4846/18637)
+2026-11-02T12:13:44.9177765Z Updating files:  27% (5032/18637)
+2026-11-02T12:13:44.9220374Z Updating files:  28% (5219/18637)
+2026-11-02T12:13:44.9645903Z Updating files:  29% (5405/18637)
+2026-11-02T12:13:44.9674453Z Updating files:  30% (5592/18637)
+2026-11-02T12:13:44.9704754Z Updating files:  31% (5778/18637)
+2026-11-02T12:13:44.9734064Z Updating files:  32% (5964/18637)
+2026-11-02T12:13:44.9763836Z Updating files:  33% (6151/18637)
+2026-11-02T12:13:44.9791963Z Updating files:  34% (6337/18637)
+2026-11-02T12:13:44.9819988Z Updating files:  35% (6523/18637)
+2026-11-02T12:13:44.9885530Z Updating files:  36% (6710/18637)
+2026-11-02T12:13:44.9914483Z Updating files:  37% (6896/18637)
+2026-11-02T12:13:44.9942904Z Updating files:  38% (7083/18637)
+2026-11-02T12:13:44.9971623Z Updating files:  39% (7269/18637)
+2026-11-02T12:13:45.0001422Z Updating files:  40% (7455/18637)
+2026-11-02T12:13:45.0030183Z Updating files:  41% (7642/18637)
+2026-11-02T12:13:45.0058581Z Updating files:  42% (7828/18637)
+2026-11-02T12:13:45.0122494Z Updating files:  43% (8014/18637)
+2026-11-02T12:13:45.0215039Z Updating files:  44% (8201/18637)
+2026-11-02T12:13:45.0395725Z Updating files:  45% (8387/18637)
+2026-11-02T12:13:45.0632896Z Updating files:  46% (8574/18637)
+2026-11-02T12:13:45.1545284Z Updating files:  47% (8760/18637)
+2026-11-02T12:13:45.2425896Z Updating files:  48% (8946/18637)
+2026-11-02T12:13:45.2522838Z Updating files:  49% (9133/18637)
+2026-11-02T12:13:45.2552291Z Updating files:  50% (9319/18637)
+2026-11-02T12:13:45.2687444Z Updating files:  51% (9505/18637)
+2026-11-02T12:13:45.2795767Z Updating files:  52% (9692/18637)
+2026-11-02T12:13:45.3030219Z Updating files:  53% (9878/18637)
+2026-11-02T12:13:45.3160443Z Updating files:  54% (10064/18637)
+2026-11-02T12:13:45.3179526Z Updating files:  54% (10204/18637)
+2026-11-02T12:13:45.3315116Z Updating files:  55% (10251/18637)
+2026-11-02T12:13:45.3377273Z Updating files:  56% (10437/18637)
+2026-11-02T12:13:45.3450697Z Updating files:  57% (10624/18637)
+2026-11-02T12:13:45.3580793Z Updating files:  58% (10810/18637)
+2026-11-02T12:13:45.3635475Z Updating files:  59% (10996/18637)
+2026-11-02T12:13:45.4165657Z Updating files:  60% (11183/18637)
+2026-11-02T12:13:45.4214956Z Updating files:  61% (11369/18637)
+2026-11-02T12:13:45.4379822Z Updating files:  62% (11555/18637)
+2026-11-02T12:13:45.4491389Z Updating files:  63% (11742/18637)
+2026-11-02T12:13:45.4582893Z Updating files:  64% (11928/18637)
+2026-11-02T12:13:45.4679970Z Updating files:  65% (12115/18637)
+2026-11-02T12:13:45.4733055Z Updating files:  66% (12301/18637)
+2026-11-02T12:13:45.4797707Z Updating files:  67% (12487/18637)
+2026-11-02T12:13:45.4883692Z Updating files:  68% (12674/18637)
+2026-11-02T12:13:45.5371493Z Updating files:  69% (12860/18637)
+2026-11-02T12:13:45.5435310Z Updating files:  70% (13046/18637)
+2026-11-02T12:13:45.5493331Z Updating files:  71% (13233/18637)
+2026-11-02T12:13:45.5547820Z Updating files:  72% (13419/18637)
+2026-11-02T12:13:45.5605212Z Updating files:  73% (13606/18637)
+2026-11-02T12:13:45.5681671Z Updating files:  74% (13792/18637)
+2026-11-02T12:13:45.5742329Z Updating files:  75% (13978/18637)
+2026-11-02T12:13:45.5814497Z Updating files:  76% (14165/18637)
+2026-11-02T12:13:45.5880492Z Updating files:  77% (14351/18637)
+2026-11-02T12:13:45.5941717Z Updating files:  78% (14537/18637)
+2026-11-02T12:13:45.5996760Z Updating files:  79% (14724/18637)
+2026-11-02T12:13:45.6065477Z Updating files:  80% (14910/18637)
+2026-11-02T12:13:45.6128769Z Updating files:  81% (15096/18637)
+2026-11-02T12:13:45.6203636Z Updating files:  82% (15283/18637)
+2026-11-02T12:13:45.6278135Z Updating files:  83% (15469/18637)
+2026-11-02T12:13:45.6352009Z Updating files:  84% (15656/18637)
+2026-11-02T12:13:45.6419882Z Updating files:  85% (15842/18637)
+2026-11-02T12:13:45.6500765Z Updating files:  86% (16028/18637)
+2026-11-02T12:13:45.6583266Z Updating files:  87% (16215/18637)
+2026-11-02T12:13:45.6651611Z Updating files:  88% (16401/18637)
+2026-11-02T12:13:45.6700294Z Updating files:  89% (16587/18637)
+2026-11-02T12:13:45.6952355Z Updating files:  90% (16774/18637)
+2026-11-02T12:13:45.6993474Z Updating files:  91% (16960/18637)
+2026-11-02T12:13:45.7032108Z Updating files:  92% (17147/18637)
+2026-11-02T12:13:45.7063357Z Updating files:  93% (17333/18637)
+2026-11-02T12:13:45.7098544Z Updating files:  94% (17519/18637)
+2026-11-02T12:13:45.7131839Z Updating files:  95% (17706/18637)
+2026-11-02T12:13:45.7170916Z Updating files:  96% (17892/18637)
+2026-11-02T12:13:45.7209542Z Updating files:  97% (18078/18637)
+2026-11-02T12:13:45.7245904Z Updating files:  98% (18265/18637)
+2026-11-02T12:13:45.7479191Z Updating files:  99% (18451/18637)
+2026-11-02T12:13:45.7479772Z Updating files: 100% (18637/18637)
+2026-11-02T12:13:45.7480074Z Updating files: 100% (18637/18637), done.
+2026-11-02T12:13:45.7716360Z Note: switching to '6c71c4d6747456578f55928e900e36bb2d1449a8'.
+2026-11-02T12:13:45.7717099Z 
+2026-11-02T12:13:45.7717630Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-11-02T12:13:45.7718509Z changes and commit them, and you can discard any commits you make in this
+2026-11-02T12:13:45.7719483Z state without impacting any branches by switching back to a branch.
+2026-11-02T12:13:45.7720017Z 
+2026-11-02T12:13:45.7720232Z If you want to create a new branch to retain commits you create, you may
+2026-11-02T12:13:45.7720795Z do so (now or later) by using -c with the switch command. Example:
+2026-11-02T12:13:45.7721078Z 
+2026-11-02T12:13:45.7721186Z   git switch -c <new-branch-name>
+2026-11-02T12:13:45.7721374Z 
+2026-11-02T12:13:45.7721598Z Or undo this operation with:
+2026-11-02T12:13:45.7721768Z 
+2026-11-02T12:13:45.7721876Z   git switch -
+2026-11-02T12:13:45.7722001Z 
+2026-11-02T12:13:45.7722219Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-11-02T12:13:45.7722556Z 
+2026-11-02T12:13:45.7722779Z HEAD is now at 6c71c4d ci: prepare pinned native ARM64 RR3 qualification
+2026-11-02T12:13:45.7838462Z ##[endgroup]
+2026-11-02T12:13:45.8211693Z [command]/usr/bin/git log -1 --format=%H
+2026-11-02T12:13:45.8236100Z 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:45.8244790Z ##[group]Removing auth
+2026-11-02T12:13:45.8248597Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T12:13:45.8278537Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T12:13:45.8504215Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T12:13:45.8526557Z http.https://github.com/.extraheader
+2026-11-02T12:13:45.8533000Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-02T12:13:45.9187824Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T12:13:45.9424413Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T12:13:45.9454783Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T12:13:45.9681567Z ##[endgroup]
+2026-11-02T12:13:45.9921816Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+2026-11-02T12:13:45.9922370Z with:
+2026-11-02T12:13:45.9922635Z   ref: 5847df30f1af15d10b743d90a24b1429b290d358
+2026-11-02T12:13:45.9923075Z   path: source
+2026-11-02T12:13:45.9923314Z   persist-credentials: false
+2026-11-02T12:13:45.9923630Z   repository: wago-org/wago
+2026-11-02T12:13:45.9926447Z   token: ***
+2026-11-02T12:13:45.9926698Z   ssh-strict: true
+2026-11-02T12:13:45.9927015Z   ssh-user: git
+2026-11-02T12:13:45.9927261Z   clean: true
+2026-11-02T12:13:45.9927543Z   sparse-checkout-cone-mode: true
+2026-11-02T12:13:45.9927853Z   fetch-depth: 1
+2026-11-02T12:13:45.9928398Z   fetch-tags: false
+2026-11-02T12:13:45.9928712Z   show-progress: true
+2026-11-02T12:13:45.9928951Z   lfs: false
+2026-11-02T12:13:45.9929204Z   submodules: false
+2026-11-02T12:13:45.9929515Z   set-safe-directory: true
+2026-11-02T12:13:45.9929788Z   allow-unsafe-pr-checkout: false
+2026-11-02T12:13:45.9930110Z env:
+2026-11-02T12:13:45.9930407Z   GO_VERSION: 1.27.1
+2026-11-02T12:13:45.9930725Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T12:13:45.9931005Z   TINYGO_VERSION: 0.42.0
+2026-11-02T12:13:45.9931277Z   JUST_VERSION: 1.58.0
+2026-11-02T12:13:45.9931525Z   GOTOOLCHAIN: local
+2026-11-02T12:13:45.9931773Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T12:13:45.9932184Z   QUALIFICATION_SOURCE: 5847df30f1af15d10b743d90a24b1429b290d358
+2026-11-02T12:13:45.9932623Z   QUALIFICATION_DRIVER: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:45.9933044Z   WORKFLOW_SHA: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:45.9933420Z   OTHER_QUALIFICATION: false
+2026-11-02T12:13:45.9933675Z ##[endgroup]
+2026-11-02T12:13:46.0674768Z Syncing repository: wago-org/wago
+2026-11-02T12:13:46.0675640Z ##[group]Getting Git version info
+2026-11-02T12:13:46.0676006Z Working directory is '/home/runner/work/wago/wago/source'
+2026-11-02T12:13:46.0723837Z [command]/usr/bin/git version
+2026-11-02T12:13:46.0770087Z git version 2.56.0
+2026-11-02T12:13:46.0780267Z ##[endgroup]
+2026-11-02T12:13:46.0805344Z Temporarily overriding HOME='/home/runner/work/_temp/2f753e91-1b91-4757-b30a-fa9c4c6b032b' before making global git config changes
+2026-11-02T12:13:46.0806240Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T12:13:46.0806861Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wago/wago/source
+2026-11-02T12:13:46.0875154Z ##[group]Initializing the repository
+2026-11-02T12:13:46.0875759Z [command]/usr/bin/git init /home/runner/work/wago/wago/source
+2026-11-02T12:13:46.1035034Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-02T12:13:46.1035982Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-02T12:13:46.1036731Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-02T12:13:46.1037292Z hint: call:
+2026-11-02T12:13:46.1037694Z hint:
+2026-11-02T12:13:46.1038295Z hint: 	git config --global init.defaultBranch <name>
+2026-11-02T12:13:46.1038764Z hint:
+2026-11-02T12:13:46.1039291Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-02T12:13:46.1039908Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-02T12:13:46.1040460Z hint:
+2026-11-02T12:13:46.1040838Z hint: 	git branch -m <name>
+2026-11-02T12:13:46.1041179Z hint:
+2026-11-02T12:13:46.1041677Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-02T12:13:46.1042379Z Initialized empty Git repository in /home/runner/work/wago/wago/source/.git/
+2026-11-02T12:13:46.1046038Z [command]/usr/bin/git remote add origin https://github.com/wago-org/wago
+2026-11-02T12:13:46.1208906Z ##[endgroup]
+2026-11-02T12:13:46.1209456Z ##[group]Disabling automatic garbage collection
+2026-11-02T12:13:46.1217366Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-02T12:13:46.1388485Z ##[endgroup]
+2026-11-02T12:13:46.1389154Z ##[group]Setting up auth
+2026-11-02T12:13:46.1394972Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T12:13:46.1426353Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T12:13:46.1633632Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T12:13:46.1665836Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T12:13:46.1874779Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T12:13:46.1896166Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T12:13:46.2100851Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-02T12:13:46.2227622Z ##[endgroup]
+2026-11-02T12:13:46.2229020Z ##[group]Fetching the repository
+2026-11-02T12:13:46.2235627Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin 5847df30f1af15d10b743d90a24b1429b290d358
+2026-11-02T12:13:57.3545139Z From https://github.com/wago-org/wago
+2026-11-02T12:13:57.3545667Z  * branch            5847df30f1af15d10b743d90a24b1429b290d358 -> FETCH_HEAD
+2026-11-02T12:13:57.3549340Z ##[endgroup]
+2026-11-02T12:13:57.3549813Z ##[group]Determining the checkout info
+2026-11-02T12:13:57.3551476Z ##[endgroup]
+2026-11-02T12:13:57.3557766Z [command]/usr/bin/git sparse-checkout disable
+2026-11-02T12:13:57.3597313Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-02T12:13:57.3626727Z ##[group]Checking out the ref
+2026-11-02T12:13:57.3630820Z [command]/usr/bin/git checkout --progress --force 5847df30f1af15d10b743d90a24b1429b290d358
+2026-11-02T12:13:58.4538496Z Updating files:  14% (2589/18367)
+2026-11-02T12:13:58.4670949Z Updating files:  15% (2756/18367)
+2026-11-02T12:13:58.5196975Z Updating files:  16% (2939/18367)
+2026-11-02T12:13:58.5263300Z Updating files:  17% (3123/18367)
+2026-11-02T12:13:58.5517046Z Updating files:  18% (3307/18367)
+2026-11-02T12:13:58.5605749Z Updating files:  19% (3490/18367)
+2026-11-02T12:13:58.5970226Z Updating files:  20% (3674/18367)
+2026-11-02T12:13:58.6768267Z Updating files:  21% (3858/18367)
+2026-11-02T12:13:58.7885637Z Updating files:  22% (4041/18367)
+2026-11-02T12:13:58.8540395Z Updating files:  23% (4225/18367)
+2026-11-02T12:13:58.8961303Z Updating files:  24% (4409/18367)
+2026-11-02T12:13:58.9644985Z Updating files:  25% (4592/18367)
+2026-11-02T12:13:58.9772008Z Updating files:  26% (4776/18367)
+2026-11-02T12:13:58.9863168Z Updating files:  27% (4960/18367)
+2026-11-02T12:13:58.9914696Z Updating files:  28% (5143/18367)
+2026-11-02T12:13:58.9945409Z Updating files:  29% (5327/18367)
+2026-11-02T12:13:59.0369682Z Updating files:  30% (5511/18367)
+2026-11-02T12:13:59.0398856Z Updating files:  31% (5694/18367)
+2026-11-02T12:13:59.0427966Z Updating files:  32% (5878/18367)
+2026-11-02T12:13:59.0456876Z Updating files:  33% (6062/18367)
+2026-11-02T12:13:59.0485399Z Updating files:  34% (6245/18367)
+2026-11-02T12:13:59.0512736Z Updating files:  35% (6429/18367)
+2026-11-02T12:13:59.0577513Z Updating files:  36% (6613/18367)
+2026-11-02T12:13:59.0606385Z Updating files:  37% (6796/18367)
+2026-11-02T12:13:59.0635864Z Updating files:  38% (6980/18367)
+2026-11-02T12:13:59.0664119Z Updating files:  39% (7164/18367)
+2026-11-02T12:13:59.0693328Z Updating files:  40% (7347/18367)
+2026-11-02T12:13:59.0722652Z Updating files:  41% (7531/18367)
+2026-11-02T12:13:59.0750919Z Updating files:  42% (7715/18367)
+2026-11-02T12:13:59.0779319Z Updating files:  43% (7898/18367)
+2026-11-02T12:13:59.0844410Z Updating files:  44% (8082/18367)
+2026-11-02T12:13:59.1044817Z Updating files:  45% (8266/18367)
+2026-11-02T12:13:59.1121056Z Updating files:  46% (8449/18367)
+2026-11-02T12:13:59.1380049Z Updating files:  47% (8633/18367)
+2026-11-02T12:13:59.2277324Z Updating files:  48% (8817/18367)
+2026-11-02T12:13:59.2374768Z Updating files:  49% (9000/18367)
+2026-11-02T12:13:59.2405106Z Updating files:  50% (9184/18367)
+2026-11-02T12:13:59.2540934Z Updating files:  51% (9368/18367)
+2026-11-02T12:13:59.2647942Z Updating files:  52% (9551/18367)
+2026-11-02T12:13:59.2864218Z Updating files:  53% (9735/18367)
+2026-11-02T12:13:59.3011197Z Updating files:  54% (9919/18367)
+2026-11-02T12:13:59.3157047Z Updating files:  55% (10102/18367)
+2026-11-02T12:13:59.3205236Z Updating files:  56% (10286/18367)
+2026-11-02T12:13:59.3292532Z Updating files:  57% (10470/18367)
+2026-11-02T12:13:59.3437605Z Updating files:  58% (10653/18367)
+2026-11-02T12:13:59.3492338Z Updating files:  59% (10837/18367)
+2026-11-02T12:13:59.3832568Z Updating files:  60% (11021/18367)
+2026-11-02T12:13:59.4025347Z Updating files:  60% (11170/18367)
+2026-11-02T12:13:59.4075212Z Updating files:  61% (11204/18367)
+2026-11-02T12:13:59.4240421Z Updating files:  62% (11388/18367)
+2026-11-02T12:13:59.4348216Z Updating files:  63% (11572/18367)
+2026-11-02T12:13:59.4443561Z Updating files:  64% (11755/18367)
+2026-11-02T12:13:59.4496983Z Updating files:  65% (11939/18367)
+2026-11-02T12:13:59.4555393Z Updating files:  66% (12123/18367)
+2026-11-02T12:13:59.4637045Z Updating files:  67% (12306/18367)
+2026-11-02T12:13:59.4708558Z Updating files:  68% (12490/18367)
+2026-11-02T12:13:59.4774486Z Updating files:  69% (12674/18367)
+2026-11-02T12:13:59.4833853Z Updating files:  70% (12857/18367)
+2026-11-02T12:13:59.4890588Z Updating files:  71% (13041/18367)
+2026-11-02T12:13:59.4938987Z Updating files:  72% (13225/18367)
+2026-11-02T12:13:59.5010281Z Updating files:  73% (13408/18367)
+2026-11-02T12:13:59.5080716Z Updating files:  74% (13592/18367)
+2026-11-02T12:13:59.5146201Z Updating files:  75% (13776/18367)
+2026-11-02T12:13:59.5219719Z Updating files:  76% (13959/18367)
+2026-11-02T12:13:59.5276698Z Updating files:  77% (14143/18367)
+2026-11-02T12:13:59.5339077Z Updating files:  78% (14327/18367)
+2026-11-02T12:13:59.5390737Z Updating files:  79% (14510/18367)
+2026-11-02T12:13:59.5459559Z Updating files:  80% (14694/18367)
+2026-11-02T12:13:59.5527019Z Updating files:  81% (14878/18367)
+2026-11-02T12:13:59.5594471Z Updating files:  82% (15061/18367)
+2026-11-02T12:13:59.5672420Z Updating files:  83% (15245/18367)
+2026-11-02T12:13:59.5742331Z Updating files:  84% (15429/18367)
+2026-11-02T12:13:59.5811215Z Updating files:  85% (15612/18367)
+2026-11-02T12:13:59.5889144Z Updating files:  86% (15796/18367)
+2026-11-02T12:13:59.5971941Z Updating files:  87% (15980/18367)
+2026-11-02T12:13:59.6037836Z Updating files:  88% (16163/18367)
+2026-11-02T12:13:59.6079336Z Updating files:  89% (16347/18367)
+2026-11-02T12:13:59.6335440Z Updating files:  90% (16531/18367)
+2026-11-02T12:13:59.6376106Z Updating files:  91% (16714/18367)
+2026-11-02T12:13:59.6410811Z Updating files:  92% (16898/18367)
+2026-11-02T12:13:59.6443748Z Updating files:  93% (17082/18367)
+2026-11-02T12:13:59.6477858Z Updating files:  94% (17265/18367)
+2026-11-02T12:13:59.6511880Z Updating files:  95% (17449/18367)
+2026-11-02T12:13:59.6551372Z Updating files:  96% (17633/18367)
+2026-11-02T12:13:59.6588149Z Updating files:  97% (17816/18367)
+2026-11-02T12:13:59.6629963Z Updating files:  98% (18000/18367)
+2026-11-02T12:13:59.6860057Z Updating files:  99% (18184/18367)
+2026-11-02T12:13:59.6860458Z Updating files: 100% (18367/18367)
+2026-11-02T12:13:59.6860754Z Updating files: 100% (18367/18367), done.
+2026-11-02T12:13:59.7026602Z Note: switching to '5847df30f1af15d10b743d90a24b1429b290d358'.
+2026-11-02T12:13:59.7026955Z 
+2026-11-02T12:13:59.7027720Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-11-02T12:13:59.7028620Z changes and commit them, and you can discard any commits you make in this
+2026-11-02T12:13:59.7029224Z state without impacting any branches by switching back to a branch.
+2026-11-02T12:13:59.7029503Z 
+2026-11-02T12:13:59.7030018Z If you want to create a new branch to retain commits you create, you may
+2026-11-02T12:13:59.7030593Z do so (now or later) by using -c with the switch command. Example:
+2026-11-02T12:13:59.7030871Z 
+2026-11-02T12:13:59.7030978Z   git switch -c <new-branch-name>
+2026-11-02T12:13:59.7031162Z 
+2026-11-02T12:13:59.7031312Z Or undo this operation with:
+2026-11-02T12:13:59.7031545Z 
+2026-11-02T12:13:59.7031653Z   git switch -
+2026-11-02T12:13:59.7031776Z 
+2026-11-02T12:13:59.7032000Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-11-02T12:13:59.7032341Z 
+2026-11-02T12:13:59.7032664Z HEAD is now at 5847df3 fix(wago): retire released invocation domains without blocking admission
+2026-11-02T12:13:59.7143187Z ##[endgroup]
+2026-11-02T12:13:59.7183132Z [command]/usr/bin/git log -1 --format=%H
+2026-11-02T12:13:59.7206671Z 5847df30f1af15d10b743d90a24b1429b290d358
+2026-11-02T12:13:59.7215201Z ##[group]Removing auth
+2026-11-02T12:13:59.7219062Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T12:13:59.7248995Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T12:13:59.7461644Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T12:13:59.7484359Z http.https://github.com/.extraheader
+2026-11-02T12:13:59.7491450Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-02T12:13:59.7521991Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T12:13:59.7733022Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T12:13:59.7769281Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T12:13:59.7972732Z ##[endgroup]
+2026-11-02T12:13:59.8140861Z ##[group]Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+2026-11-02T12:13:59.8141524Z with:
+2026-11-02T12:13:59.8141751Z   go-version: 1.27.1
+2026-11-02T12:13:59.8142019Z   cache: false
+2026-11-02T12:13:59.8142263Z   check-latest: false
+2026-11-02T12:13:59.8144972Z   token: ***
+2026-11-02T12:13:59.8145370Z env:
+2026-11-02T12:13:59.8145584Z   GO_VERSION: 1.27.1
+2026-11-02T12:13:59.8145858Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T12:13:59.8146124Z   TINYGO_VERSION: 0.42.0
+2026-11-02T12:13:59.8146370Z   JUST_VERSION: 1.58.0
+2026-11-02T12:13:59.8146690Z   GOTOOLCHAIN: local
+2026-11-02T12:13:59.8146937Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T12:13:59.8147271Z   QUALIFICATION_SOURCE: 5847df30f1af15d10b743d90a24b1429b290d358
+2026-11-02T12:13:59.8147776Z   QUALIFICATION_DRIVER: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:59.8148519Z   WORKFLOW_SHA: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:13:59.8148962Z   OTHER_QUALIFICATION: false
+2026-11-02T12:13:59.8149313Z ##[endgroup]
+2026-11-02T12:13:59.9281720Z Setup go version spec 1.27.1
+2026-11-02T12:13:59.9290618Z Attempting to download 1.27.1...
+2026-11-02T12:13:59.9396474Z (node:2514) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-02T12:13:59.9397364Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-02T12:14:00.6201348Z matching 1.27.1...
+2026-11-02T12:14:00.6230440Z Acquiring 1.27.1 from https://github.com/actions/go-versions/releases/download/1.27.1-33583469715/go-1.27.1-linux-arm64.tar.gz
+2026-11-02T12:14:01.1387348Z Extracting Go...
+2026-11-02T12:14:01.1484017Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/13130f52-e65a-47b4-8254-4a25be9f42e1 -f /home/runner/work/_temp/bc30878e-cd77-44c7-8922-6660b20c34aa
+2026-11-02T12:14:02.3360003Z Successfully extracted go to /home/runner/work/_temp/13130f52-e65a-47b4-8254-4a25be9f42e1
+2026-11-02T12:14:02.3360612Z Adding to the cache ...
+2026-11-02T12:14:07.2549201Z Successfully cached go to /opt/hostedtoolcache/go/1.27.1/arm64
+2026-11-02T12:14:07.2551547Z Added go to the path
+2026-11-02T12:14:07.2554786Z Successfully set up Go version 1.27.1
+2026-11-02T12:14:07.2751277Z go version go1.27.1 linux/arm64
+2026-11-02T12:14:07.2751533Z 
+2026-11-02T12:14:07.2751906Z ##[group]go env
+2026-11-02T12:14:08.1124286Z AR='ar'
+2026-11-02T12:14:08.1124862Z CC='gcc'
+2026-11-02T12:14:08.1125164Z CGO_CFLAGS='-O2 -g'
+2026-11-02T12:14:08.1125494Z CGO_CPPFLAGS=''
+2026-11-02T12:14:08.1125805Z CGO_CXXFLAGS='-O2 -g'
+2026-11-02T12:14:08.1126060Z CGO_ENABLED='1'
+2026-11-02T12:14:08.1126338Z CGO_FFLAGS='-O2 -g'
+2026-11-02T12:14:08.1126633Z CGO_LDFLAGS='-O2 -g'
+2026-11-02T12:14:08.1126879Z CXX='g++'
+2026-11-02T12:14:08.1127187Z GCCGO='gccgo'
+2026-11-02T12:14:08.1127418Z GO111MODULE=''
+2026-11-02T12:14:08.1127638Z GOARCH='arm64'
+2026-11-02T12:14:08.1127914Z GOARM64='v8.0'
+2026-11-02T12:14:08.1128460Z GOAUTH='netrc'
+2026-11-02T12:14:08.1128871Z GOBIN='/home/runner/go/bin'
+2026-11-02T12:14:08.1129173Z GOCACHE='/home/runner/.cache/go-build'
+2026-11-02T12:14:08.1129458Z GOCACHEPROG=''
+2026-11-02T12:14:08.1129761Z GODEBUG=''
+2026-11-02T12:14:08.1130069Z GOENV='/home/runner/.config/go/env'
+2026-11-02T12:14:08.1130391Z GOEXE=''
+2026-11-02T12:14:08.1130634Z GOEXPERIMENT=''
+2026-11-02T12:14:08.1130866Z GOFIPS140='off'
+2026-11-02T12:14:08.1131132Z GOFLAGS=''
+2026-11-02T12:14:08.1131873Z GOGCCFLAGS='-fPIC -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=/tmp/go-build2066515543=/tmp/go-build -gno-record-gcc-switches'
+2026-11-02T12:14:08.1132599Z GOHOSTARCH='arm64'
+2026-11-02T12:14:08.1132853Z GOHOSTOS='linux'
+2026-11-02T12:14:08.1133086Z GOINSECURE=''
+2026-11-02T12:14:08.1133390Z GOMOD='/dev/null'
+2026-11-02T12:14:08.1134073Z GOMODCACHE='/home/runner/go/pkg/mod'
+2026-11-02T12:14:08.1134370Z GONOPROXY=''
+2026-11-02T12:14:08.1134658Z GONOSUMDB=''
+2026-11-02T12:14:08.1134887Z GOOS='linux'
+2026-11-02T12:14:08.1135181Z GOPACKAGESDRIVER=''
+2026-11-02T12:14:08.1135701Z GOPATH='/home/runner/go'
+2026-11-02T12:14:08.1135996Z GOPRIVATE=''
+2026-11-02T12:14:08.1136549Z GOPROXY='https://proxy.golang.org,direct'
+2026-11-02T12:14:08.1136924Z GOROOT='/opt/hostedtoolcache/go/1.27.1/arm64'
+2026-11-02T12:14:08.1137332Z GOSUMDB='sum.golang.org'
+2026-11-02T12:14:08.1137606Z GOTELEMETRY='local'
+2026-11-02T12:14:08.1137905Z GOTELEMETRYDIR='/home/runner/.config/go/telemetry'
+2026-11-02T12:14:08.1138526Z GOTMPDIR=''
+2026-11-02T12:14:08.1138754Z GOTOOLCHAIN='local'
+2026-11-02T12:14:08.1139144Z GOTOOLDIR='/opt/hostedtoolcache/go/1.27.1/arm64/pkg/tool/linux_arm64'
+2026-11-02T12:14:08.1139601Z GOVCS=''
+2026-11-02T12:14:08.1139824Z GOVERSION='go1.27.1'
+2026-11-02T12:14:08.1140101Z GOWORK=''
+2026-11-02T12:14:08.1140334Z PKG_CONFIG='pkg-config'
+2026-11-02T12:14:08.1140551Z 
+2026-11-02T12:14:08.1141050Z ##[endgroup]
+2026-11-02T12:14:08.1333992Z ##[group]Run python3 harness/docs/rfwgc-evidence/native-arm64-rr3/run.py --source source --out receipts-wagodebug --mode wagodebug
+2026-11-02T12:14:08.1335134Z [36;1mpython3 harness/docs/rfwgc-evidence/native-arm64-rr3/run.py --source source --out receipts-wagodebug --mode wagodebug[0m
+2026-11-02T12:14:08.1381547Z shell: /usr/bin/bash -e {0}
+2026-11-02T12:14:08.1381878Z env:
+2026-11-02T12:14:08.1382262Z   GO_VERSION: 1.27.1
+2026-11-02T12:14:08.1382565Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T12:14:08.1382879Z   TINYGO_VERSION: 0.42.0
+2026-11-02T12:14:08.1383181Z   JUST_VERSION: 1.58.0
+2026-11-02T12:14:08.1383424Z   GOTOOLCHAIN: local
+2026-11-02T12:14:08.1383770Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T12:14:08.1384122Z   QUALIFICATION_SOURCE: 5847df30f1af15d10b743d90a24b1429b290d358
+2026-11-02T12:14:08.1384597Z   QUALIFICATION_DRIVER: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:14:08.1385050Z   WORKFLOW_SHA: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:14:08.1385534Z   OTHER_QUALIFICATION: false
+2026-11-02T12:14:08.1385843Z ##[endgroup]
+2026-11-02T12:15:55.2470844Z {
+2026-11-02T12:15:55.2471439Z   "qualified": false,
+2026-11-02T12:15:55.2472441Z   "source": "5847df30f1af15d10b743d90a24b1429b290d358",
+2026-11-02T12:15:55.2473001Z   "harness": "6c71c4d6747456578f55928e900e36bb2d1449a8",
+2026-11-02T12:15:55.2473569Z   "mode": "wagodebug",
+2026-11-02T12:15:55.2473931Z   "native_execution": "RUN",
+2026-11-02T12:15:55.2474294Z   "census": {
+2026-11-02T12:15:55.2474573Z     "wago-focused": {
+2026-11-02T12:15:55.2474919Z       "ok": true,
+2026-11-02T12:15:55.2475291Z       "expected": [
+2026-11-02T12:15:55.2475811Z         "TestDesignInvocationSnapshotAuthenticatedDispatch",
+2026-11-02T12:15:55.2476376Z         "TestDesignInvocationSnapshotCallbackTrap",
+2026-11-02T12:15:55.2476909Z         "TestDesignInvocationSnapshotCancellation",
+2026-11-02T12:15:55.2477452Z         "TestDesignInvocationSnapshotLatePublisher",
+2026-11-02T12:15:55.2478209Z         "TestDesignInvocationSnapshotRetirement",
+2026-11-02T12:15:55.2478859Z         "TestDesignRecheckCallbackChangesPublisherAuthority",
+2026-11-02T12:15:55.2479496Z         "TestDesignRecheckForeignRelayAfterLatePublisher",
+2026-11-02T12:15:55.2479970Z         "TestDesignRecheckNestedPublish",
+2026-11-02T12:15:55.2480399Z         "TestDesignRecheckNestedSameRuntimeClear",
+2026-11-02T12:15:55.2481011Z         "TestDesignRecheckStorageOnlyCallTopologyWriter",
+2026-11-02T12:15:55.2481564Z         "TestDesignRepairConcurrentPublicationRetirement",
+2026-11-02T12:15:55.2482157Z         "TestDesignRepairConversionAdmissionLifecycle",
+2026-11-02T12:15:55.2482693Z         "TestDesignRepairPublicGlobalTokenClassification",
+2026-11-02T12:15:55.2483177Z         "TestDesignRepairPublicTableOrdinary",
+2026-11-02T12:15:55.2483856Z         "TestDesignRepairScalarRelayOrdinaryStorageWithConversion",
+2026-11-02T12:15:55.2484361Z         "TestDesignRepairWaitNotifier",
+2026-11-02T12:15:55.2485463Z         "TestDesignReviewExternStorageImportsPrivateGCProducer",
+2026-11-02T12:15:55.2486103Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport",
+2026-11-02T12:15:55.2486645Z         "TestGCAdmissionInstantiationCancellation",
+2026-11-02T12:15:55.2487194Z         "TestGCAdmissionOrderedCancellation",
+2026-11-02T12:15:55.2487637Z         "TestGCAdmissionPublicCancellation",
+2026-11-02T12:15:55.2488418Z         "TestGCAdmissionPublicDeadline",
+2026-11-02T12:15:55.2488882Z         "TestGCAdmissionSameOwnerBorrowing",
+2026-11-02T12:15:55.2489385Z         "TestGCAdmissionUncontendedAllocations",
+2026-11-02T12:15:55.2490030Z         "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease",
+2026-11-02T12:15:55.2490617Z         "TestGCExternConversionAcrossReferenceTables",
+2026-11-02T12:15:55.2491580Z         "TestGCExternConversionCheckedTableRoots",
+2026-11-02T12:15:55.2492270Z         "TestGCExternConversionCollectorFirstCloseFailsClosed",
+2026-11-02T12:15:55.2492869Z         "TestGCExternConversionForeignLocalRoots",
+2026-11-02T12:15:55.2493715Z         "TestGCExternConversionKeepsLocalRoots",
+2026-11-02T12:15:55.2494281Z         "TestGCExternConversionKeepsVectorAndLocalRoots",
+2026-11-02T12:15:55.2494780Z         "TestGCExternConversionManyForeignLocals",
+2026-11-02T12:15:55.2495395Z         "TestGCExternConversionMissingRootsDisableCollection",
+2026-11-02T12:15:55.2496027Z         "TestGCExternConversionPublicationOrderingAndRollback",
+2026-11-02T12:15:55.2496697Z         "TestGCExternConversionRejectedReplacementPreservesRoot",
+2026-11-02T12:15:55.2497304Z         "TestGCExternConversionRejectsForeignForgedAndClosed",
+2026-11-02T12:15:55.2497851Z         "TestGCExternConversionRejectsForgedFrameWords",
+2026-11-02T12:15:55.2498669Z         "TestGCExternConversionStableIdentityAndOwnership",
+2026-11-02T12:15:55.2499292Z         "TestGCExternConversionVoidImportCannotUseEmptyRoots",
+2026-11-02T12:15:55.2499855Z         "TestGCExternConversionWithFunctionTable",
+2026-11-02T12:15:55.2500439Z         "TestGCExternConversionWithoutHeapKeepsTinyProfile",
+2026-11-02T12:15:55.2501026Z         "TestGCInvocationDomainSetInlineSortDoesNotAllocate",
+2026-11-02T12:15:55.2501654Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs",
+2026-11-02T12:15:55.2502238Z         "TestGCInvocationDomainUsesRegisteredAssociation",
+2026-11-02T12:15:55.2502857Z         "TestGCInvocationNoDomainFastPathPreservesDynamicTopology",
+2026-11-02T12:15:55.2503410Z         "TestR9H2ConditionalSlotExplicitDomain",
+2026-11-02T12:15:55.2503870Z         "TestR9H2ConvertedAggregateAdmission",
+2026-11-02T12:15:55.2504388Z         "TestR9H2ConvertedAggregateAdmissionControls",
+2026-11-02T12:15:55.2504951Z         "TestR9H2ConvertedAggregateCollectingLocalOwner",
+2026-11-02T12:15:55.2505399Z         "TestR9H2HostContainerAuthority",
+2026-11-02T12:15:55.2505872Z         "TestR9H2HostContainerClose",
+2026-11-02T12:15:55.2506256Z         "TestR9H2HostContainerCycle",
+2026-11-02T12:15:55.2506695Z         "TestR9H2HostContainerMigration",
+2026-11-02T12:15:55.2507169Z         "TestR9H2HostContainerPublicGlobal",
+2026-11-02T12:15:55.2507589Z         "TestR9H2HostContainerPublicTable",
+2026-11-02T12:15:55.2508184Z         "TestR9H2HostImportAuthority",
+2026-11-02T12:15:55.2508600Z         "TestR9H2HostImportBulk",
+2026-11-02T12:15:55.2509005Z         "TestR9H2HostImportCycle",
+2026-11-02T12:15:55.2509436Z         "TestR9H2HostImportGlobal",
+2026-11-02T12:15:55.2509897Z         "TestR9H2HostImportGlobalOrdinaryAndGuards",
+2026-11-02T12:15:55.2510405Z         "TestR9H2HostImportInitialization",
+2026-11-02T12:15:55.2510799Z         "TestR9H2HostImportTable",
+2026-11-02T12:15:55.2511270Z         "TestR9H2HostImportTableIndependentPhysical",
+2026-11-02T12:15:55.2511815Z         "TestR9H2HostImportTableOrdinaryAndGuards",
+2026-11-02T12:15:55.2512248Z         "TestR9H2ReceiptCloseOrders",
+2026-11-02T12:15:55.2512710Z         "TestR9H2ReceiptConvertedProducerCycle",
+2026-11-02T12:15:55.2513213Z         "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission",
+2026-11-02T12:15:55.2514140Z         "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority",
+2026-11-02T12:15:55.2514742Z         "TestR9H2ReceiptIndependentContainersAndRollback",
+2026-11-02T12:15:55.2515210Z         "TestR9H2ReceiptOnlyContention",
+2026-11-02T12:15:55.2515684Z         "TestR9H2ReceiptPublisherRetirement",
+2026-11-02T12:15:55.2516219Z         "TestR9H2RetiredCollectorPreservesDeferredFinalizer",
+2026-11-02T12:15:55.2516761Z         "TestR9H2StoreHooksActiveInitialization",
+2026-11-02T12:15:55.2517228Z         "TestR9H2StoreHooksBulk",
+2026-11-02T12:15:55.2517648Z         "TestR9H2StoreHooksDescriptorMigration",
+2026-11-02T12:15:55.2518303Z         "TestR9H2StoreHooksIndependentPhysicalTables",
+2026-11-02T12:15:55.2518833Z         "TestR9H2StoreHooksOriginalProvider",
+2026-11-02T12:15:55.2519373Z         "TestRRRecheckCanceledAdmissionBehindDynamicReader",
+2026-11-02T12:15:55.2519904Z         "TestRRRecheckSharedMemoryHandoff",
+2026-11-02T12:15:55.2520416Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader",
+2026-11-02T12:15:55.2521426Z         "TestRRRetirementBorrowedRootLatePublisher",
+2026-11-02T12:15:55.2522008Z         "TestRRRetirementCallbackAndExitWakeups",
+2026-11-02T12:15:55.2522548Z         "TestRRRetirementCallbackRefreshBehindReader",
+2026-11-02T12:15:55.2523115Z         "TestRRRetirementCanceledPartialLastPins",
+2026-11-02T12:15:55.2523594Z         "TestRRRetirementLastPinAndRevival"
+2026-11-02T12:15:55.2523948Z       ],
+2026-11-02T12:15:55.2524211Z       "started": {
+2026-11-02T12:15:55.2524650Z         "TestDesignInvocationSnapshotCancellation": 1,
+2026-11-02T12:15:55.2525199Z         "TestDesignInvocationSnapshotLatePublisher": 1,
+2026-11-02T12:15:55.2525701Z         "TestDesignInvocationSnapshotRetirement": 1,
+2026-11-02T12:15:55.2526250Z         "TestDesignInvocationSnapshotAuthenticatedDispatch": 1,
+2026-11-02T12:15:55.2526836Z         "TestDesignInvocationSnapshotCallbackTrap": 1,
+2026-11-02T12:15:55.2527439Z         "TestDesignRecheckForeignRelayAfterLatePublisher": 1,
+2026-11-02T12:15:55.2528217Z         "TestDesignRecheckStorageOnlyCallTopologyWriter": 1,
+2026-11-02T12:15:55.2528826Z         "TestDesignRecheckCallbackChangesPublisherAuthority": 1,
+2026-11-02T12:15:55.2529358Z         "TestDesignRecheckNestedSameRuntimeClear": 1,
+2026-11-02T12:15:55.2529859Z         "TestDesignRecheckNestedPublish": 1,
+2026-11-02T12:15:55.2530320Z         "TestDesignRepairWaitNotifier": 1,
+2026-11-02T12:15:55.2530832Z         "TestDesignRepairConversionAdmissionLifecycle": 1,
+2026-11-02T12:15:55.2531456Z         "TestDesignRepairScalarRelayOrdinaryStorageWithConversion": 1,
+2026-11-02T12:15:55.2532084Z         "TestDesignRepairConcurrentPublicationRetirement": 1,
+2026-11-02T12:15:55.2532710Z         "TestDesignRepairPublicGlobalTokenClassification": 1,
+2026-11-02T12:15:55.2533253Z         "TestDesignRepairPublicTableOrdinary": 1,
+2026-11-02T12:15:55.2533857Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport": 1,
+2026-11-02T12:15:55.2534532Z         "TestDesignReviewExternStorageImportsPrivateGCProducer": 1,
+2026-11-02T12:15:55.2535091Z         "TestR9H2ConditionalSlotExplicitDomain": 1,
+2026-11-02T12:15:55.2535673Z         "TestR9H2RetiredCollectorPreservesDeferredFinalizer": 1,
+2026-11-02T12:15:55.2536232Z         "TestGCAdmissionOrderedCancellation": 1,
+2026-11-02T12:15:55.2536746Z         "TestGCAdmissionSameOwnerBorrowing": 1,
+2026-11-02T12:15:55.2537603Z         "TestGCAdmissionUncontendedAllocations": 1,
+2026-11-02T12:15:55.2538449Z         "TestGCInvocationNoDomainFastPathPreservesDynamicTopology": 1,
+2026-11-02T12:15:55.2539002Z         "TestR9H2HostContainerPublicGlobal": 1,
+2026-11-02T12:15:55.2539477Z         "TestR9H2HostContainerPublicTable": 1,
+2026-11-02T12:15:55.2539912Z         "TestR9H2HostContainerClose": 1,
+2026-11-02T12:15:55.2540322Z         "TestR9H2HostContainerAuthority": 1,
+2026-11-02T12:15:55.2540817Z         "TestR9H2HostContainerMigration": 1,
+2026-11-02T12:15:55.2541263Z         "TestR9H2HostContainerCycle": 1,
+2026-11-02T12:15:55.2542298Z         "TestR9H2HostImportGlobal": 1,
+2026-11-02T12:15:55.2542725Z         "TestR9H2HostImportTable": 1,
+2026-11-02T12:15:55.2543294Z         "TestR9H2HostImportBulk": 1,
+2026-11-02T12:15:55.2543868Z         "TestR9H2HostImportInitialization": 1,
+2026-11-02T12:15:55.2544285Z         "TestR9H2HostImportCycle": 1,
+2026-11-02T12:15:55.2544789Z         "TestR9H2HostImportTableIndependentPhysical": 1,
+2026-11-02T12:15:55.2545263Z         "TestR9H2HostImportAuthority": 1,
+2026-11-02T12:15:55.2545736Z         "TestR9H2HostImportGlobalOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.2546319Z         "TestR9H2HostImportTableOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.2546792Z         "TestR9H2ReceiptPublisherRetirement": 1,
+2026-11-02T12:15:55.2547302Z         "TestR9H2ReceiptIndependentContainersAndRollback": 1,
+2026-11-02T12:15:55.2547850Z         "TestR9H2ReceiptCloseOrders": 1,
+2026-11-02T12:15:55.2548538Z         "TestR9H2ReceiptConvertedProducerCycle": 1,
+2026-11-02T12:15:55.2549089Z         "TestR9H2ReceiptOnlyContention": 1,
+2026-11-02T12:15:55.2549804Z         "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission": 1,
+2026-11-02T12:15:55.2550451Z         "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority": 1,
+2026-11-02T12:15:55.2551045Z         "TestR9H2StoreHooksOriginalProvider": 1,
+2026-11-02T12:15:55.2551501Z         "TestR9H2StoreHooksBulk": 1,
+2026-11-02T12:15:55.2551971Z         "TestR9H2StoreHooksActiveInitialization": 1,
+2026-11-02T12:15:55.2552495Z         "TestR9H2StoreHooksDescriptorMigration": 1,
+2026-11-02T12:15:55.2552994Z         "TestR9H2StoreHooksIndependentPhysicalTables": 1,
+2026-11-02T12:15:55.2553674Z         "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease": 1,
+2026-11-02T12:15:55.2554349Z         "TestGCExternConversionStableIdentityAndOwnership": 1,
+2026-11-02T12:15:55.2554970Z         "TestGCExternConversionRejectsForeignForgedAndClosed": 1,
+2026-11-02T12:15:55.2555601Z         "TestGCExternConversionCollectorFirstCloseFailsClosed": 1,
+2026-11-02T12:15:55.2556247Z         "TestGCExternConversionRejectedReplacementPreservesRoot": 1,
+2026-11-02T12:15:55.2556931Z         "TestGCExternConversionPublicationOrderingAndRollback": 1,
+2026-11-02T12:15:55.2557557Z         "TestGCExternConversionWithFunctionTable": 1,
+2026-11-02T12:15:55.2558258Z         "TestGCExternConversionKeepsLocalRoots": 1,
+2026-11-02T12:15:55.2558823Z         "TestGCExternConversionKeepsVectorAndLocalRoots": 1,
+2026-11-02T12:15:55.2559348Z         "TestGCExternConversionForeignLocalRoots": 1,
+2026-11-02T12:15:55.2559882Z         "TestGCExternConversionCheckedTableRoots": 1,
+2026-11-02T12:15:55.2560487Z         "TestGCExternConversionMissingRootsDisableCollection": 1,
+2026-11-02T12:15:55.2561077Z         "TestGCExternConversionWithoutHeapKeepsTinyProfile": 1,
+2026-11-02T12:15:55.2561688Z         "TestGCExternConversionRejectsForgedFrameWords": 1,
+2026-11-02T12:15:55.2562244Z         "TestGCExternConversionManyForeignLocals": 1,
+2026-11-02T12:15:55.2562854Z         "TestGCExternConversionVoidImportCannotUseEmptyRoots": 1,
+2026-11-02T12:15:55.2563504Z         "TestGCExternConversionAcrossReferenceTables": 1,
+2026-11-02T12:15:55.2563990Z         "TestGCAdmissionPublicCancellation": 1,
+2026-11-02T12:15:55.2564493Z         "TestGCAdmissionPublicDeadline": 1,
+2026-11-02T12:15:55.2564975Z         "TestGCAdmissionInstantiationCancellation": 1,
+2026-11-02T12:15:55.2565484Z         "TestR9H2ConvertedAggregateAdmission": 1,
+2026-11-02T12:15:55.2566043Z         "TestR9H2ConvertedAggregateAdmissionControls": 1,
+2026-11-02T12:15:55.2566604Z         "TestR9H2ConvertedAggregateCollectingLocalOwner": 1,
+2026-11-02T12:15:55.2567224Z         "TestGCInvocationDomainUsesRegisteredAssociation": 1,
+2026-11-02T12:15:55.2567807Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader": 1,
+2026-11-02T12:15:55.2568659Z         "TestRRRecheckCanceledAdmissionBehindDynamicReader": 1,
+2026-11-02T12:15:55.2569233Z         "TestRRRecheckSharedMemoryHandoff": 1,
+2026-11-02T12:15:55.2569680Z         "TestRRRetirementLastPinAndRevival": 1,
+2026-11-02T12:15:55.2570460Z         "TestRRRetirementCallbackAndExitWakeups": 1,
+2026-11-02T12:15:55.2570980Z         "TestRRRetirementBorrowedRootLatePublisher": 1,
+2026-11-02T12:15:55.2571552Z         "TestRRRetirementCanceledPartialLastPins": 1,
+2026-11-02T12:15:55.2572159Z         "TestRRRetirementCallbackRefreshBehindReader": 1,
+2026-11-02T12:15:55.2572705Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs": 1,
+2026-11-02T12:15:55.2573320Z         "TestGCInvocationDomainSetInlineSortDoesNotAllocate": 1
+2026-11-02T12:15:55.2573721Z       },
+2026-11-02T12:15:55.2573961Z       "passed": {
+2026-11-02T12:15:55.2574441Z         "TestDesignInvocationSnapshotCancellation": 1,
+2026-11-02T12:15:55.2574951Z         "TestDesignInvocationSnapshotLatePublisher": 1,
+2026-11-02T12:15:55.2575510Z         "TestDesignInvocationSnapshotRetirement": 1,
+2026-11-02T12:15:55.2576065Z         "TestDesignInvocationSnapshotAuthenticatedDispatch": 1,
+2026-11-02T12:15:55.2576598Z         "TestDesignInvocationSnapshotCallbackTrap": 1,
+2026-11-02T12:15:55.2577400Z         "TestDesignRecheckForeignRelayAfterLatePublisher": 1,
+2026-11-02T12:15:55.2578130Z         "TestDesignRecheckStorageOnlyCallTopologyWriter": 1,
+2026-11-02T12:15:55.2578821Z         "TestDesignRecheckCallbackChangesPublisherAuthority": 1,
+2026-11-02T12:15:55.2579398Z         "TestDesignRecheckNestedSameRuntimeClear": 1,
+2026-11-02T12:15:55.2579894Z         "TestDesignRecheckNestedPublish": 1,
+2026-11-02T12:15:55.2580405Z         "TestDesignRepairWaitNotifier": 1,
+2026-11-02T12:15:55.2580897Z         "TestDesignRepairConversionAdmissionLifecycle": 1,
+2026-11-02T12:15:55.2581531Z         "TestDesignRepairScalarRelayOrdinaryStorageWithConversion": 1,
+2026-11-02T12:15:55.2582159Z         "TestDesignRepairConcurrentPublicationRetirement": 1,
+2026-11-02T12:15:55.2582764Z         "TestDesignRepairPublicGlobalTokenClassification": 1,
+2026-11-02T12:15:55.2583469Z         "TestDesignRepairPublicTableOrdinary": 1,
+2026-11-02T12:15:55.2584059Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport": 1,
+2026-11-02T12:15:55.2584718Z         "TestDesignReviewExternStorageImportsPrivateGCProducer": 1,
+2026-11-02T12:15:55.2585336Z         "TestR9H2ConditionalSlotExplicitDomain": 1,
+2026-11-02T12:15:55.2585919Z         "TestR9H2RetiredCollectorPreservesDeferredFinalizer": 1,
+2026-11-02T12:15:55.2586458Z         "TestGCAdmissionOrderedCancellation": 1,
+2026-11-02T12:15:55.2586920Z         "TestGCAdmissionSameOwnerBorrowing": 1,
+2026-11-02T12:15:55.2587378Z         "TestGCAdmissionUncontendedAllocations": 1,
+2026-11-02T12:15:55.2588136Z         "TestGCInvocationNoDomainFastPathPreservesDynamicTopology": 1,
+2026-11-02T12:15:55.2588755Z         "TestR9H2HostContainerPublicGlobal": 1,
+2026-11-02T12:15:55.2589247Z         "TestR9H2HostContainerPublicTable": 1,
+2026-11-02T12:15:55.2589715Z         "TestR9H2HostContainerClose": 1,
+2026-11-02T12:15:55.2590128Z         "TestR9H2HostContainerAuthority": 1,
+2026-11-02T12:15:55.2590619Z         "TestR9H2HostContainerMigration": 1,
+2026-11-02T12:15:55.2591087Z         "TestR9H2HostContainerCycle": 1,
+2026-11-02T12:15:55.2591518Z         "TestR9H2HostImportGlobal": 1,
+2026-11-02T12:15:55.2591937Z         "TestR9H2HostImportTable": 1,
+2026-11-02T12:15:55.2592316Z         "TestR9H2HostImportBulk": 1,
+2026-11-02T12:15:55.2592763Z         "TestR9H2HostImportInitialization": 1,
+2026-11-02T12:15:55.2593242Z         "TestR9H2HostImportCycle": 1,
+2026-11-02T12:15:55.2593727Z         "TestR9H2HostImportTableIndependentPhysical": 1,
+2026-11-02T12:15:55.2594198Z         "TestR9H2HostImportAuthority": 1,
+2026-11-02T12:15:55.2594664Z         "TestR9H2HostImportGlobalOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.2595197Z         "TestR9H2HostImportTableOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.2595731Z         "TestR9H2ReceiptPublisherRetirement": 1,
+2026-11-02T12:15:55.2596253Z         "TestR9H2ReceiptIndependentContainersAndRollback": 1,
+2026-11-02T12:15:55.2596775Z         "TestR9H2ReceiptCloseOrders": 1,
+2026-11-02T12:15:55.2597233Z         "TestR9H2ReceiptConvertedProducerCycle": 1,
+2026-11-02T12:15:55.2598133Z         "TestR9H2ReceiptOnlyContention": 1,
+2026-11-02T12:15:55.2598721Z         "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission": 1,
+2026-11-02T12:15:55.2599322Z         "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority": 1,
+2026-11-02T12:15:55.2599929Z         "TestR9H2StoreHooksOriginalProvider": 1,
+2026-11-02T12:15:55.2600351Z         "TestR9H2StoreHooksBulk": 1,
+2026-11-02T12:15:55.2600830Z         "TestR9H2StoreHooksActiveInitialization": 1,
+2026-11-02T12:15:55.2601371Z         "TestR9H2StoreHooksDescriptorMigration": 1,
+2026-11-02T12:15:55.2601894Z         "TestR9H2StoreHooksIndependentPhysicalTables": 1,
+2026-11-02T12:15:55.2602612Z         "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease": 1,
+2026-11-02T12:15:55.2603247Z         "TestGCExternConversionStableIdentityAndOwnership": 1,
+2026-11-02T12:15:55.2603864Z         "TestGCExternConversionRejectsForeignForgedAndClosed": 1,
+2026-11-02T12:15:55.2604558Z         "TestGCExternConversionCollectorFirstCloseFailsClosed": 1,
+2026-11-02T12:15:55.2605376Z         "TestGCExternConversionRejectedReplacementPreservesRoot": 1,
+2026-11-02T12:15:55.2606088Z         "TestGCExternConversionPublicationOrderingAndRollback": 1,
+2026-11-02T12:15:55.2606641Z         "TestGCExternConversionWithFunctionTable": 1,
+2026-11-02T12:15:55.2607221Z         "TestGCExternConversionKeepsLocalRoots": 1,
+2026-11-02T12:15:55.2607780Z         "TestGCExternConversionKeepsVectorAndLocalRoots": 1,
+2026-11-02T12:15:55.2608485Z         "TestGCExternConversionForeignLocalRoots": 1,
+2026-11-02T12:15:55.2609036Z         "TestGCExternConversionCheckedTableRoots": 1,
+2026-11-02T12:15:55.2609615Z         "TestGCExternConversionMissingRootsDisableCollection": 1,
+2026-11-02T12:15:55.2610245Z         "TestGCExternConversionWithoutHeapKeepsTinyProfile": 1,
+2026-11-02T12:15:55.2610864Z         "TestGCExternConversionRejectsForgedFrameWords": 1,
+2026-11-02T12:15:55.2611387Z         "TestGCExternConversionManyForeignLocals": 1,
+2026-11-02T12:15:55.2612029Z         "TestGCExternConversionVoidImportCannotUseEmptyRoots": 1,
+2026-11-02T12:15:55.2612605Z         "TestGCExternConversionAcrossReferenceTables": 1,
+2026-11-02T12:15:55.2613123Z         "TestGCAdmissionPublicCancellation": 1,
+2026-11-02T12:15:55.2613613Z         "TestGCAdmissionPublicDeadline": 1,
+2026-11-02T12:15:55.2614173Z         "TestGCAdmissionInstantiationCancellation": 1,
+2026-11-02T12:15:55.2614771Z         "TestR9H2ConvertedAggregateAdmission": 1,
+2026-11-02T12:15:55.2615283Z         "TestR9H2ConvertedAggregateAdmissionControls": 1,
+2026-11-02T12:15:55.2615906Z         "TestR9H2ConvertedAggregateCollectingLocalOwner": 1,
+2026-11-02T12:15:55.2616502Z         "TestGCInvocationDomainUsesRegisteredAssociation": 1,
+2026-11-02T12:15:55.2617115Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader": 1,
+2026-11-02T12:15:55.2617715Z         "TestRRRecheckCanceledAdmissionBehindDynamicReader": 1,
+2026-11-02T12:15:55.2618457Z         "TestRRRecheckSharedMemoryHandoff": 1,
+2026-11-02T12:15:55.2619042Z         "TestRRRetirementLastPinAndRevival": 1,
+2026-11-02T12:15:55.2619529Z         "TestRRRetirementCallbackAndExitWakeups": 1,
+2026-11-02T12:15:55.2620025Z         "TestRRRetirementBorrowedRootLatePublisher": 1,
+2026-11-02T12:15:55.2620604Z         "TestRRRetirementCanceledPartialLastPins": 1,
+2026-11-02T12:15:55.2621219Z         "TestRRRetirementCallbackRefreshBehindReader": 1,
+2026-11-02T12:15:55.2621846Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs": 1,
+2026-11-02T12:15:55.2622434Z         "TestGCInvocationDomainSetInlineSortDoesNotAllocate": 1
+2026-11-02T12:15:55.2622811Z       },
+2026-11-02T12:15:55.2623142Z       "all_test_passes": {
+2026-11-02T12:15:55.2623677Z         "TestDesignInvocationSnapshotCancellation/partial-lock-cancel": 1,
+2026-11-02T12:15:55.2624383Z         "TestDesignInvocationSnapshotCancellation/pin-overflow": 1,
+2026-11-02T12:15:55.2624958Z         "TestDesignInvocationSnapshotCancellation": 1,
+2026-11-02T12:15:55.2625470Z         "TestDesignInvocationSnapshotLatePublisher": 1,
+2026-11-02T12:15:55.2626305Z         "TestDesignInvocationSnapshotRetirement": 1,
+2026-11-02T12:15:55.2626903Z         "TestDesignInvocationSnapshotAuthenticatedDispatch": 1,
+2026-11-02T12:15:55.2627509Z         "TestDesignInvocationSnapshotCallbackTrap/return": 1,
+2026-11-02T12:15:55.2628290Z         "TestDesignInvocationSnapshotCallbackTrap/trap": 1,
+2026-11-02T12:15:55.2628838Z         "TestDesignInvocationSnapshotCallbackTrap": 1,
+2026-11-02T12:15:55.2629474Z         "TestDesignRecheckForeignRelayAfterLatePublisher": 1,
+2026-11-02T12:15:55.2630082Z         "TestDesignRecheckStorageOnlyCallTopologyWriter/none": 1,
+2026-11-02T12:15:55.2630792Z         "TestDesignRecheckStorageOnlyCallTopologyWriter/global": 1,
+2026-11-02T12:15:55.2631424Z         "TestDesignRecheckStorageOnlyCallTopologyWriter/table": 1,
+2026-11-02T12:15:55.2632020Z         "TestDesignRecheckStorageOnlyCallTopologyWriter": 1,
+2026-11-02T12:15:55.2632653Z         "TestDesignRecheckCallbackChangesPublisherAuthority": 1,
+2026-11-02T12:15:55.2633455Z         "TestDesignRecheckNestedSameRuntimeClear/direct": 1,
+2026-11-02T12:15:55.2634053Z         "TestDesignRecheckNestedSameRuntimeClear/scalar-relay": 1,
+2026-11-02T12:15:55.2634741Z         "TestDesignRecheckNestedSameRuntimeClear/storage-relay": 1,
+2026-11-02T12:15:55.2635288Z         "TestDesignRecheckNestedSameRuntimeClear": 1,
+2026-11-02T12:15:55.2635808Z         "TestDesignRecheckNestedPublish": 1,
+2026-11-02T12:15:55.2636269Z         "TestDesignRepairWaitNotifier": 1,
+2026-11-02T12:15:55.2636757Z         "TestDesignRepairConversionAdmissionLifecycle": 1,
+2026-11-02T12:15:55.2637432Z         "TestDesignRepairScalarRelayOrdinaryStorageWithConversion": 1,
+2026-11-02T12:15:55.2638344Z         "TestDesignRepairConcurrentPublicationRetirement": 1,
+2026-11-02T12:15:55.2639057Z         "TestDesignRepairPublicGlobalTokenClassification/local/foreign": 1,
+2026-11-02T12:15:55.2639809Z         "TestDesignRepairPublicGlobalTokenClassification/local/forged": 1,
+2026-11-02T12:15:55.2640525Z         "TestDesignRepairPublicGlobalTokenClassification/local/expired": 1,
+2026-11-02T12:15:55.2641394Z         "TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null": 1,
+2026-11-02T12:15:55.2642090Z         "TestDesignRepairPublicGlobalTokenClassification/local": 1,
+2026-11-02T12:15:55.2642792Z         "TestDesignRepairPublicGlobalTokenClassification/owned/foreign": 1,
+2026-11-02T12:15:55.2643536Z         "TestDesignRepairPublicGlobalTokenClassification/owned/forged": 1,
+2026-11-02T12:15:55.2644223Z         "TestDesignRepairPublicGlobalTokenClassification/owned/expired": 1,
+2026-11-02T12:15:55.2645010Z         "TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null": 1,
+2026-11-02T12:15:55.2645706Z         "TestDesignRepairPublicGlobalTokenClassification/owned": 1,
+2026-11-02T12:15:55.2646350Z         "TestDesignRepairPublicGlobalTokenClassification": 1,
+2026-11-02T12:15:55.2646935Z         "TestDesignRepairPublicTableOrdinary": 1,
+2026-11-02T12:15:55.2647619Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone": 1,
+2026-11-02T12:15:55.2648782Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime": 1,
+2026-11-02T12:15:55.2649649Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone": 1,
+2026-11-02T12:15:55.2650495Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime": 1,
+2026-11-02T12:15:55.2651539Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone": 1,
+2026-11-02T12:15:55.2652410Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime": 1,
+2026-11-02T12:15:55.2653179Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport": 1,
+2026-11-02T12:15:55.2653966Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none": 1,
+2026-11-02T12:15:55.2654890Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global": 1,
+2026-11-02T12:15:55.2656216Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table": 1,
+2026-11-02T12:15:55.2657132Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none": 1,
+2026-11-02T12:15:55.2658378Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global": 1,
+2026-11-02T12:15:55.2659390Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table": 1,
+2026-11-02T12:15:55.2660332Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none": 1,
+2026-11-02T12:15:55.2661428Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global": 1,
+2026-11-02T12:15:55.2662420Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table": 1,
+2026-11-02T12:15:55.2663364Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none": 1,
+2026-11-02T12:15:55.2664547Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global": 1,
+2026-11-02T12:15:55.2665596Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table": 1,
+2026-11-02T12:15:55.2666572Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none": 1,
+2026-11-02T12:15:55.2667496Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global": 1,
+2026-11-02T12:15:55.2668796Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table": 1,
+2026-11-02T12:15:55.2669730Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none": 1,
+2026-11-02T12:15:55.2670710Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global": 1,
+2026-11-02T12:15:55.2671773Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table": 1,
+2026-11-02T12:15:55.2672565Z         "TestDesignReviewExternStorageImportsPrivateGCProducer": 1,
+2026-11-02T12:15:55.2673137Z         "TestR9H2ConditionalSlotExplicitDomain": 1,
+2026-11-02T12:15:55.2673696Z         "TestR9H2RetiredCollectorPreservesDeferredFinalizer": 1,
+2026-11-02T12:15:55.2674272Z         "TestGCAdmissionOrderedCancellation/static": 1,
+2026-11-02T12:15:55.2674806Z         "TestGCAdmissionOrderedCancellation/dynamic": 1,
+2026-11-02T12:15:55.2675279Z         "TestGCAdmissionOrderedCancellation": 1,
+2026-11-02T12:15:55.2675771Z         "TestGCAdmissionSameOwnerBorrowing": 1,
+2026-11-02T12:15:55.2676251Z         "TestGCAdmissionUncontendedAllocations": 1,
+2026-11-02T12:15:55.2676880Z         "TestGCInvocationNoDomainFastPathPreservesDynamicTopology": 1,
+2026-11-02T12:15:55.2677696Z         "TestR9H2HostContainerPublicGlobal/0": 1,
+2026-11-02T12:15:55.2678339Z         "TestR9H2HostContainerPublicGlobal/6": 1,
+2026-11-02T12:15:55.2678788Z         "TestR9H2HostContainerPublicGlobal": 1,
+2026-11-02T12:15:55.2679314Z         "TestR9H2HostContainerPublicTable/0": 1,
+2026-11-02T12:15:55.2679800Z         "TestR9H2HostContainerPublicTable/6": 1,
+2026-11-02T12:15:55.2680268Z         "TestR9H2HostContainerPublicTable": 1,
+2026-11-02T12:15:55.2680784Z         "TestR9H2HostContainerClose/container-first": 1,
+2026-11-02T12:15:55.2681271Z         "TestR9H2HostContainerClose/publisher-first": 1,
+2026-11-02T12:15:55.2681813Z         "TestR9H2HostContainerClose/runtime-first": 1,
+2026-11-02T12:15:55.2682287Z         "TestR9H2HostContainerClose": 1,
+2026-11-02T12:15:55.2682721Z         "TestR9H2HostContainerAuthority": 1,
+2026-11-02T12:15:55.2683155Z         "TestR9H2HostContainerMigration": 1,
+2026-11-02T12:15:55.2683591Z         "TestR9H2HostContainerCycle/0/clear": 1,
+2026-11-02T12:15:55.2684063Z         "TestR9H2HostContainerCycle/0/close": 1,
+2026-11-02T12:15:55.2684564Z         "TestR9H2HostContainerCycle/6/clear": 1,
+2026-11-02T12:15:55.2685083Z         "TestR9H2HostContainerCycle/6/close": 1,
+2026-11-02T12:15:55.2685810Z         "TestR9H2HostContainerCycle": 1,
+2026-11-02T12:15:55.2686202Z         "TestR9H2HostImportGlobal/0": 1,
+2026-11-02T12:15:55.2686683Z         "TestR9H2HostImportGlobal/6": 1,
+2026-11-02T12:15:55.2687078Z         "TestR9H2HostImportGlobal": 1,
+2026-11-02T12:15:55.2687599Z         "TestR9H2HostImportTable/0": 1,
+2026-11-02T12:15:55.2797653Z         "TestR9H2HostImportTable/6": 1,
+2026-11-02T12:15:55.2798203Z         "TestR9H2HostImportTable": 1,
+2026-11-02T12:15:55.2798540Z         "TestR9H2HostImportBulk/0": 1,
+2026-11-02T12:15:55.2798861Z         "TestR9H2HostImportBulk/6": 1,
+2026-11-02T12:15:55.2799173Z         "TestR9H2HostImportBulk": 1,
+2026-11-02T12:15:55.2799529Z         "TestR9H2HostImportInitialization/0": 1,
+2026-11-02T12:15:55.2799917Z         "TestR9H2HostImportInitialization/6": 1,
+2026-11-02T12:15:55.2800293Z         "TestR9H2HostImportInitialization": 1,
+2026-11-02T12:15:55.2800640Z         "TestR9H2HostImportCycle/0": 1,
+2026-11-02T12:15:55.2800984Z         "TestR9H2HostImportCycle/6": 1,
+2026-11-02T12:15:55.2801699Z         "TestR9H2HostImportCycle": 1,
+2026-11-02T12:15:55.2802139Z         "TestR9H2HostImportTableIndependentPhysical": 1,
+2026-11-02T12:15:55.2802531Z         "TestR9H2HostImportAuthority": 1,
+2026-11-02T12:15:55.2802937Z         "TestR9H2HostImportGlobalOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.2803375Z         "TestR9H2HostImportTableOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.2803815Z         "TestR9H2ReceiptPublisherRetirement/region=0": 1,
+2026-11-02T12:15:55.2804259Z         "TestR9H2ReceiptPublisherRetirement/region=6": 1,
+2026-11-02T12:15:55.2804665Z         "TestR9H2ReceiptPublisherRetirement": 1,
+2026-11-02T12:15:55.2805118Z         "TestR9H2ReceiptIndependentContainersAndRollback": 1,
+2026-11-02T12:15:55.2805580Z         "TestR9H2ReceiptCloseOrders/provider-first": 1,
+2026-11-02T12:15:55.2806011Z         "TestR9H2ReceiptCloseOrders/publisher-first": 1,
+2026-11-02T12:15:55.2806426Z         "TestR9H2ReceiptCloseOrders/store-first": 1,
+2026-11-02T12:15:55.2806799Z         "TestR9H2ReceiptCloseOrders": 1,
+2026-11-02T12:15:55.2807330Z         "TestR9H2ReceiptConvertedProducerCycle/direct/region=0": 1,
+2026-11-02T12:15:55.2807866Z         "TestR9H2ReceiptConvertedProducerCycle/direct/region=6": 1,
+2026-11-02T12:15:55.2808765Z         "TestR9H2ReceiptConvertedProducerCycle/callback/region=0": 1,
+2026-11-02T12:15:55.2809348Z         "TestR9H2ReceiptConvertedProducerCycle/callback/region=6": 1,
+2026-11-02T12:15:55.2809927Z         "TestR9H2ReceiptConvertedProducerCycle/contention/region=0": 1,
+2026-11-02T12:15:55.2810515Z         "TestR9H2ReceiptConvertedProducerCycle/contention/region=6": 1,
+2026-11-02T12:15:55.2811001Z         "TestR9H2ReceiptConvertedProducerCycle": 1,
+2026-11-02T12:15:55.2811409Z         "TestR9H2ReceiptOnlyContention/native": 1,
+2026-11-02T12:15:55.2811853Z         "TestR9H2ReceiptOnlyContention/foreign-runtime": 1,
+2026-11-02T12:15:55.2812292Z         "TestR9H2ReceiptOnlyContention/topology": 1,
+2026-11-02T12:15:55.2812713Z         "TestR9H2ReceiptOnlyContention/domain": 1,
+2026-11-02T12:15:55.2813111Z         "TestR9H2ReceiptOnlyContention/driver": 1,
+2026-11-02T12:15:55.2813487Z         "TestR9H2ReceiptOnlyContention": 1,
+2026-11-02T12:15:55.2813926Z         "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission": 1,
+2026-11-02T12:15:55.2814468Z         "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority": 1,
+2026-11-02T12:15:55.2815104Z         "TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false": 1,
+2026-11-02T12:15:55.2815787Z         "TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true": 1,
+2026-11-02T12:15:55.2816459Z         "TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false": 1,
+2026-11-02T12:15:55.2817123Z         "TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true": 1,
+2026-11-02T12:15:55.2817792Z         "TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false": 1,
+2026-11-02T12:15:55.2818754Z         "TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true": 1,
+2026-11-02T12:15:55.2819771Z         "TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false": 1,
+2026-11-02T12:15:55.2820435Z         "TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true": 1,
+2026-11-02T12:15:55.2820930Z         "TestR9H2StoreHooksOriginalProvider": 1,
+2026-11-02T12:15:55.2821347Z         "TestR9H2StoreHooksBulk/0": 1,
+2026-11-02T12:15:55.2821667Z         "TestR9H2StoreHooksBulk/6": 1,
+2026-11-02T12:15:55.2821983Z         "TestR9H2StoreHooksBulk": 1,
+2026-11-02T12:15:55.2822359Z         "TestR9H2StoreHooksActiveInitialization": 1,
+2026-11-02T12:15:55.2822776Z         "TestR9H2StoreHooksDescriptorMigration": 1,
+2026-11-02T12:15:55.2823218Z         "TestR9H2StoreHooksIndependentPhysicalTables": 1,
+2026-11-02T12:15:55.2823779Z         "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease": 1,
+2026-11-02T12:15:55.2824351Z         "TestGCExternConversionStableIdentityAndOwnership": 1,
+2026-11-02T12:15:55.2825100Z         "TestGCExternConversionRejectsForeignForgedAndClosed": 1,
+2026-11-02T12:15:55.2825670Z         "TestGCExternConversionCollectorFirstCloseFailsClosed": 1,
+2026-11-02T12:15:55.2826238Z         "TestGCExternConversionRejectedReplacementPreservesRoot": 1,
+2026-11-02T12:15:55.2826802Z         "TestGCExternConversionPublicationOrderingAndRollback": 1,
+2026-11-02T12:15:55.2827283Z         "TestGCExternConversionWithFunctionTable": 1,
+2026-11-02T12:15:55.2827787Z         "TestGCExternConversionKeepsLocalRoots/op26/throughput": 1,
+2026-11-02T12:15:55.2828542Z         "TestGCExternConversionKeepsLocalRoots/op26/tiny": 1,
+2026-11-02T12:15:55.2829069Z         "TestGCExternConversionKeepsLocalRoots/op27/throughput": 1,
+2026-11-02T12:15:55.2829577Z         "TestGCExternConversionKeepsLocalRoots/op27/tiny": 1,
+2026-11-02T12:15:55.2830020Z         "TestGCExternConversionKeepsLocalRoots": 1,
+2026-11-02T12:15:55.2830479Z         "TestGCExternConversionKeepsVectorAndLocalRoots": 1,
+2026-11-02T12:15:55.2830942Z         "TestGCExternConversionForeignLocalRoots": 1,
+2026-11-02T12:15:55.2831377Z         "TestGCExternConversionCheckedTableRoots": 1,
+2026-11-02T12:15:55.2831874Z         "TestGCExternConversionMissingRootsDisableCollection": 1,
+2026-11-02T12:15:55.2832405Z         "TestGCExternConversionWithoutHeapKeepsTinyProfile": 1,
+2026-11-02T12:15:55.2832901Z         "TestGCExternConversionRejectsForgedFrameWords": 1,
+2026-11-02T12:15:55.2833362Z         "TestGCExternConversionManyForeignLocals": 1,
+2026-11-02T12:15:55.2833876Z         "TestGCExternConversionVoidImportCannotUseEmptyRoots": 1,
+2026-11-02T12:15:55.2834384Z         "TestGCExternConversionAcrossReferenceTables": 1,
+2026-11-02T12:15:55.2834804Z         "TestGCAdmissionPublicCancellation": 1,
+2026-11-02T12:15:55.2835179Z         "TestGCAdmissionPublicDeadline": 1,
+2026-11-02T12:15:55.2835641Z         "TestGCAdmissionInstantiationCancellation/collector": 1,
+2026-11-02T12:15:55.2836140Z         "TestGCAdmissionInstantiationCancellation/start": 1,
+2026-11-02T12:15:55.2836609Z         "TestGCAdmissionInstantiationCancellation": 1,
+2026-11-02T12:15:55.2837026Z         "TestR9H2ConvertedAggregateAdmission": 1,
+2026-11-02T12:15:55.2837501Z         "TestR9H2ConvertedAggregateAdmissionControls/numeric": 1,
+2026-11-02T12:15:55.2838307Z         "TestR9H2ConvertedAggregateAdmissionControls/unused-function-type": 1,
+2026-11-02T12:15:55.2838891Z         "TestR9H2ConvertedAggregateAdmissionControls": 1,
+2026-11-02T12:15:55.2839410Z         "TestR9H2ConvertedAggregateCollectingLocalOwner/region=0": 1,
+2026-11-02T12:15:55.2839977Z         "TestR9H2ConvertedAggregateCollectingLocalOwner/region=6": 1,
+2026-11-02T12:15:55.2840492Z         "TestR9H2ConvertedAggregateCollectingLocalOwner": 1,
+2026-11-02T12:15:55.2840983Z         "TestGCInvocationDomainUsesRegisteredAssociation": 1,
+2026-11-02T12:15:55.2841523Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": 1,
+2026-11-02T12:15:55.2842096Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": 1,
+2026-11-02T12:15:55.2843054Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader": 1,
+2026-11-02T12:15:55.2843572Z         "TestRRRecheckCanceledAdmissionBehindDynamicReader": 1,
+2026-11-02T12:15:55.2844009Z         "TestRRRecheckSharedMemoryHandoff": 1,
+2026-11-02T12:15:55.2844411Z         "TestRRRetirementLastPinAndRevival/none": 1,
+2026-11-02T12:15:55.2844825Z         "TestRRRetirementLastPinAndRevival/claim": 1,
+2026-11-02T12:15:55.2845274Z         "TestRRRetirementLastPinAndRevival/registration": 1,
+2026-11-02T12:15:55.2845738Z         "TestRRRetirementLastPinAndRevival/store-close": 1,
+2026-11-02T12:15:55.2846151Z         "TestRRRetirementLastPinAndRevival": 1,
+2026-11-02T12:15:55.2846562Z         "TestRRRetirementCallbackAndExitWakeups": 1,
+2026-11-02T12:15:55.2847000Z         "TestRRRetirementBorrowedRootLatePublisher": 1,
+2026-11-02T12:15:55.2847436Z         "TestRRRetirementCanceledPartialLastPins": 1,
+2026-11-02T12:15:55.2847883Z         "TestRRRetirementCallbackRefreshBehindReader": 1,
+2026-11-02T12:15:55.2848861Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=0": 1,
+2026-11-02T12:15:55.2849409Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=1": 1,
+2026-11-02T12:15:55.2849933Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=2": 1,
+2026-11-02T12:15:55.2850452Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=3": 1,
+2026-11-02T12:15:55.2850974Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=4": 1,
+2026-11-02T12:15:55.2851493Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=5": 1,
+2026-11-02T12:15:55.2852009Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=8": 1,
+2026-11-02T12:15:55.2852530Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=9": 1,
+2026-11-02T12:15:55.2853052Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=16": 1,
+2026-11-02T12:15:55.2853585Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=32": 1,
+2026-11-02T12:15:55.2854117Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=64": 1,
+2026-11-02T12:15:55.2854666Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=129": 1,
+2026-11-02T12:15:55.2855191Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs": 1,
+2026-11-02T12:15:55.2855711Z         "TestGCInvocationDomainSetInlineSortDoesNotAllocate": 1
+2026-11-02T12:15:55.2856036Z       },
+2026-11-02T12:15:55.2856228Z       "bad_events": [],
+2026-11-02T12:15:55.2856468Z       "package_results": [
+2026-11-02T12:15:55.2856690Z         "pass"
+2026-11-02T12:15:55.2856864Z       ],
+2026-11-02T12:15:55.2857043Z       "exit": 0
+2026-11-02T12:15:55.2857216Z     },
+2026-11-02T12:15:55.2857397Z     "wago-guard": {
+2026-11-02T12:15:55.2857597Z       "ok": true,
+2026-11-02T12:15:55.2857796Z       "expected": [
+2026-11-02T12:15:55.2858441Z         "TestSharedEntryGuardCancellationAndGC"
+2026-11-02T12:15:55.2858727Z       ],
+2026-11-02T12:15:55.2858909Z       "started": {
+2026-11-02T12:15:55.2859219Z         "TestSharedEntryGuardCancellationAndGC": 1
+2026-11-02T12:15:55.2859503Z       },
+2026-11-02T12:15:55.2859682Z       "passed": {
+2026-11-02T12:15:55.2859994Z         "TestSharedEntryGuardCancellationAndGC": 1
+2026-11-02T12:15:55.2860270Z       },
+2026-11-02T12:15:55.2860472Z       "all_test_passes": {
+2026-11-02T12:15:55.2860810Z         "TestSharedEntryGuardCancellationAndGC": 1
+2026-11-02T12:15:55.2861090Z       },
+2026-11-02T12:15:55.2861283Z       "bad_events": [],
+2026-11-02T12:15:55.2861516Z       "package_results": [
+2026-11-02T12:15:55.2861735Z         "pass"
+2026-11-02T12:15:55.2861908Z       ],
+2026-11-02T12:15:55.2862085Z       "exit": 0
+2026-11-02T12:15:55.2862253Z     },
+2026-11-02T12:15:55.2862450Z     "wago-race-focused": {
+2026-11-02T12:15:55.2862672Z       "ok": true,
+2026-11-02T12:15:55.2862869Z       "expected": [
+2026-11-02T12:15:55.2863243Z         "TestDesignInvocationSnapshotAuthenticatedDispatch",
+2026-11-02T12:15:55.2863692Z         "TestDesignInvocationSnapshotCallbackTrap",
+2026-11-02T12:15:55.2864117Z         "TestDesignInvocationSnapshotCancellation",
+2026-11-02T12:15:55.2864975Z         "TestDesignInvocationSnapshotLatePublisher",
+2026-11-02T12:15:55.2865386Z         "TestDesignInvocationSnapshotRetirement",
+2026-11-02T12:15:55.2865852Z         "TestDesignRecheckCallbackChangesPublisherAuthority",
+2026-11-02T12:15:55.2866340Z         "TestDesignRecheckForeignRelayAfterLatePublisher",
+2026-11-02T12:15:55.2866736Z         "TestDesignRecheckNestedPublish",
+2026-11-02T12:15:55.2867116Z         "TestDesignRecheckNestedSameRuntimeClear",
+2026-11-02T12:15:55.2867561Z         "TestDesignRecheckStorageOnlyCallTopologyWriter",
+2026-11-02T12:15:55.2868305Z         "TestDesignRepairConcurrentPublicationRetirement",
+2026-11-02T12:15:55.2868807Z         "TestDesignRepairConversionAdmissionLifecycle",
+2026-11-02T12:15:55.2869275Z         "TestDesignRepairPublicGlobalTokenClassification",
+2026-11-02T12:15:55.2869696Z         "TestDesignRepairPublicTableOrdinary",
+2026-11-02T12:15:55.2870202Z         "TestDesignRepairScalarRelayOrdinaryStorageWithConversion",
+2026-11-02T12:15:55.2870640Z         "TestDesignRepairWaitNotifier",
+2026-11-02T12:15:55.2871316Z         "TestDesignReviewExternStorageImportsPrivateGCProducer",
+2026-11-02T12:15:55.2871895Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport",
+2026-11-02T12:15:55.2872398Z         "TestGCAdmissionInstantiationCancellation",
+2026-11-02T12:15:55.2872803Z         "TestGCAdmissionOrderedCancellation",
+2026-11-02T12:15:55.2873179Z         "TestGCAdmissionPublicCancellation",
+2026-11-02T12:15:55.2873538Z         "TestGCAdmissionPublicDeadline",
+2026-11-02T12:15:55.2873893Z         "TestGCAdmissionSameOwnerBorrowing",
+2026-11-02T12:15:55.2874275Z         "TestGCAdmissionUncontendedAllocations",
+2026-11-02T12:15:55.2874795Z         "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease",
+2026-11-02T12:15:55.2875310Z         "TestGCExternConversionAcrossReferenceTables",
+2026-11-02T12:15:55.2875733Z         "TestGCExternConversionCheckedTableRoots",
+2026-11-02T12:15:55.2876217Z         "TestGCExternConversionCollectorFirstCloseFailsClosed",
+2026-11-02T12:15:55.2876696Z         "TestGCExternConversionForeignLocalRoots",
+2026-11-02T12:15:55.2877099Z         "TestGCExternConversionKeepsLocalRoots",
+2026-11-02T12:15:55.2877542Z         "TestGCExternConversionKeepsVectorAndLocalRoots",
+2026-11-02T12:15:55.2877978Z         "TestGCExternConversionManyForeignLocals",
+2026-11-02T12:15:55.2878703Z         "TestGCExternConversionMissingRootsDisableCollection",
+2026-11-02T12:15:55.2879233Z         "TestGCExternConversionPublicationOrderingAndRollback",
+2026-11-02T12:15:55.2879775Z         "TestGCExternConversionRejectedReplacementPreservesRoot",
+2026-11-02T12:15:55.2880310Z         "TestGCExternConversionRejectsForeignForgedAndClosed",
+2026-11-02T12:15:55.2880798Z         "TestGCExternConversionRejectsForgedFrameWords",
+2026-11-02T12:15:55.2881273Z         "TestGCExternConversionStableIdentityAndOwnership",
+2026-11-02T12:15:55.2881781Z         "TestGCExternConversionVoidImportCannotUseEmptyRoots",
+2026-11-02T12:15:55.2882244Z         "TestGCExternConversionWithFunctionTable",
+2026-11-02T12:15:55.2882713Z         "TestGCExternConversionWithoutHeapKeepsTinyProfile",
+2026-11-02T12:15:55.2883231Z         "TestGCInvocationDomainSetInlineSortDoesNotAllocate",
+2026-11-02T12:15:55.2883726Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs",
+2026-11-02T12:15:55.2884212Z         "TestGCInvocationDomainUsesRegisteredAssociation",
+2026-11-02T12:15:55.2884760Z         "TestGCInvocationNoDomainFastPathPreservesDynamicTopology",
+2026-11-02T12:15:55.2885238Z         "TestR9H2ConditionalSlotExplicitDomain",
+2026-11-02T12:15:55.2885619Z         "TestR9H2ConvertedAggregateAdmission",
+2026-11-02T12:15:55.2886032Z         "TestR9H2ConvertedAggregateAdmissionControls",
+2026-11-02T12:15:55.2886483Z         "TestR9H2ConvertedAggregateCollectingLocalOwner",
+2026-11-02T12:15:55.2886874Z         "TestR9H2HostContainerAuthority",
+2026-11-02T12:15:55.2887206Z         "TestR9H2HostContainerClose",
+2026-11-02T12:15:55.2887523Z         "TestR9H2HostContainerCycle",
+2026-11-02T12:15:55.2888572Z         "TestR9H2HostContainerMigration",
+2026-11-02T12:15:55.2888936Z         "TestR9H2HostContainerPublicGlobal",
+2026-11-02T12:15:55.2889299Z         "TestR9H2HostContainerPublicTable",
+2026-11-02T12:15:55.2889638Z         "TestR9H2HostImportAuthority",
+2026-11-02T12:15:55.2889948Z         "TestR9H2HostImportBulk",
+2026-11-02T12:15:55.2890243Z         "TestR9H2HostImportCycle",
+2026-11-02T12:15:55.2890549Z         "TestR9H2HostImportGlobal",
+2026-11-02T12:15:55.2890923Z         "TestR9H2HostImportGlobalOrdinaryAndGuards",
+2026-11-02T12:15:55.2891308Z         "TestR9H2HostImportInitialization",
+2026-11-02T12:15:55.2891632Z         "TestR9H2HostImportTable",
+2026-11-02T12:15:55.2892011Z         "TestR9H2HostImportTableIndependentPhysical",
+2026-11-02T12:15:55.2892433Z         "TestR9H2HostImportTableOrdinaryAndGuards",
+2026-11-02T12:15:55.2892798Z         "TestR9H2ReceiptCloseOrders",
+2026-11-02T12:15:55.2893159Z         "TestR9H2ReceiptConvertedProducerCycle",
+2026-11-02T12:15:55.2893867Z         "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission",
+2026-11-02T12:15:55.2894386Z         "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority",
+2026-11-02T12:15:55.2894887Z         "TestR9H2ReceiptIndependentContainersAndRollback",
+2026-11-02T12:15:55.2895282Z         "TestR9H2ReceiptOnlyContention",
+2026-11-02T12:15:55.2895637Z         "TestR9H2ReceiptPublisherRetirement",
+2026-11-02T12:15:55.2896086Z         "TestR9H2RetiredCollectorPreservesDeferredFinalizer",
+2026-11-02T12:15:55.2896529Z         "TestR9H2StoreHooksActiveInitialization",
+2026-11-02T12:15:55.2896871Z         "TestR9H2StoreHooksBulk",
+2026-11-02T12:15:55.2897219Z         "TestR9H2StoreHooksDescriptorMigration",
+2026-11-02T12:15:55.2897641Z         "TestR9H2StoreHooksIndependentPhysicalTables",
+2026-11-02T12:15:55.2898330Z         "TestR9H2StoreHooksOriginalProvider",
+2026-11-02T12:15:55.2898793Z         "TestRRRecheckCanceledAdmissionBehindDynamicReader",
+2026-11-02T12:15:55.2899206Z         "TestRRRecheckSharedMemoryHandoff",
+2026-11-02T12:15:55.2899657Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader",
+2026-11-02T12:15:55.2900112Z         "TestRRRetirementBorrowedRootLatePublisher",
+2026-11-02T12:15:55.2900521Z         "TestRRRetirementCallbackAndExitWakeups",
+2026-11-02T12:15:55.2900956Z         "TestRRRetirementCallbackRefreshBehindReader",
+2026-11-02T12:15:55.2901383Z         "TestRRRetirementCanceledPartialLastPins",
+2026-11-02T12:15:55.2901768Z         "TestRRRetirementLastPinAndRevival"
+2026-11-02T12:15:55.2902024Z       ],
+2026-11-02T12:15:55.2902204Z       "started": {
+2026-11-02T12:15:55.2902545Z         "TestDesignInvocationSnapshotCancellation": 1,
+2026-11-02T12:15:55.2902987Z         "TestDesignInvocationSnapshotLatePublisher": 1,
+2026-11-02T12:15:55.2903416Z         "TestDesignInvocationSnapshotRetirement": 1,
+2026-11-02T12:15:55.2903896Z         "TestDesignInvocationSnapshotAuthenticatedDispatch": 1,
+2026-11-02T12:15:55.2904370Z         "TestDesignInvocationSnapshotCallbackTrap": 1,
+2026-11-02T12:15:55.2904861Z         "TestDesignRecheckForeignRelayAfterLatePublisher": 1,
+2026-11-02T12:15:55.2905356Z         "TestDesignRecheckStorageOnlyCallTopologyWriter": 1,
+2026-11-02T12:15:55.2905870Z         "TestDesignRecheckCallbackChangesPublisherAuthority": 1,
+2026-11-02T12:15:55.2906343Z         "TestDesignRecheckNestedSameRuntimeClear": 1,
+2026-11-02T12:15:55.2906736Z         "TestDesignRecheckNestedPublish": 1,
+2026-11-02T12:15:55.2907092Z         "TestDesignRepairWaitNotifier": 1,
+2026-11-02T12:15:55.2907518Z         "TestDesignRepairConversionAdmissionLifecycle": 1,
+2026-11-02T12:15:55.2908270Z         "TestDesignRepairScalarRelayOrdinaryStorageWithConversion": 1,
+2026-11-02T12:15:55.2908863Z         "TestDesignRepairConcurrentPublicationRetirement": 1,
+2026-11-02T12:15:55.2909371Z         "TestDesignRepairPublicGlobalTokenClassification": 1,
+2026-11-02T12:15:55.2909810Z         "TestDesignRepairPublicTableOrdinary": 1,
+2026-11-02T12:15:55.2910323Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport": 1,
+2026-11-02T12:15:55.2911254Z         "TestDesignReviewExternStorageImportsPrivateGCProducer": 1,
+2026-11-02T12:15:55.2911733Z         "TestR9H2ConditionalSlotExplicitDomain": 1,
+2026-11-02T12:15:55.2912211Z         "TestR9H2RetiredCollectorPreservesDeferredFinalizer": 1,
+2026-11-02T12:15:55.2912658Z         "TestGCAdmissionOrderedCancellation": 1,
+2026-11-02T12:15:55.2913044Z         "TestGCAdmissionSameOwnerBorrowing": 1,
+2026-11-02T12:15:55.2913447Z         "TestGCAdmissionUncontendedAllocations": 1,
+2026-11-02T12:15:55.2913973Z         "TestGCInvocationNoDomainFastPathPreservesDynamicTopology": 1,
+2026-11-02T12:15:55.2914453Z         "TestR9H2HostContainerPublicGlobal": 1,
+2026-11-02T12:15:55.2914826Z         "TestR9H2HostContainerPublicTable": 1,
+2026-11-02T12:15:55.2915178Z         "TestR9H2HostContainerClose": 1,
+2026-11-02T12:15:55.2915526Z         "TestR9H2HostContainerAuthority": 1,
+2026-11-02T12:15:55.2915884Z         "TestR9H2HostContainerMigration": 1,
+2026-11-02T12:15:55.2916232Z         "TestR9H2HostContainerCycle": 1,
+2026-11-02T12:15:55.2916759Z         "TestR9H2HostImportGlobal": 1,
+2026-11-02T12:15:55.2917101Z         "TestR9H2HostImportTable": 1,
+2026-11-02T12:15:55.2917416Z         "TestR9H2HostImportBulk": 1,
+2026-11-02T12:15:55.2917761Z         "TestR9H2HostImportInitialization": 1,
+2026-11-02T12:15:55.2918367Z         "TestR9H2HostImportCycle": 1,
+2026-11-02T12:15:55.2918775Z         "TestR9H2HostImportTableIndependentPhysical": 1,
+2026-11-02T12:15:55.2919161Z         "TestR9H2HostImportAuthority": 1,
+2026-11-02T12:15:55.2919559Z         "TestR9H2HostImportGlobalOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.2919995Z         "TestR9H2HostImportTableOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.2920397Z         "TestR9H2ReceiptPublisherRetirement": 1,
+2026-11-02T12:15:55.2920849Z         "TestR9H2ReceiptIndependentContainersAndRollback": 1,
+2026-11-02T12:15:55.2921316Z         "TestR9H2ReceiptCloseOrders": 1,
+2026-11-02T12:15:55.2921692Z         "TestR9H2ReceiptConvertedProducerCycle": 1,
+2026-11-02T12:15:55.2922080Z         "TestR9H2ReceiptOnlyContention": 1,
+2026-11-02T12:15:55.2922510Z         "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission": 1,
+2026-11-02T12:15:55.2923036Z         "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority": 1,
+2026-11-02T12:15:55.2923493Z         "TestR9H2StoreHooksOriginalProvider": 1,
+2026-11-02T12:15:55.2923836Z         "TestR9H2StoreHooksBulk": 1,
+2026-11-02T12:15:55.2924210Z         "TestR9H2StoreHooksActiveInitialization": 1,
+2026-11-02T12:15:55.2924625Z         "TestR9H2StoreHooksDescriptorMigration": 1,
+2026-11-02T12:15:55.2925067Z         "TestR9H2StoreHooksIndependentPhysicalTables": 1,
+2026-11-02T12:15:55.2925629Z         "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease": 1,
+2026-11-02T12:15:55.2926197Z         "TestGCExternConversionStableIdentityAndOwnership": 1,
+2026-11-02T12:15:55.2926732Z         "TestGCExternConversionRejectsForeignForgedAndClosed": 1,
+2026-11-02T12:15:55.2927286Z         "TestGCExternConversionCollectorFirstCloseFailsClosed": 1,
+2026-11-02T12:15:55.2927863Z         "TestGCExternConversionRejectedReplacementPreservesRoot": 1,
+2026-11-02T12:15:55.2928702Z         "TestGCExternConversionPublicationOrderingAndRollback": 1,
+2026-11-02T12:15:55.2929197Z         "TestGCExternConversionWithFunctionTable": 1,
+2026-11-02T12:15:55.2929624Z         "TestGCExternConversionKeepsLocalRoots": 1,
+2026-11-02T12:15:55.2930085Z         "TestGCExternConversionKeepsVectorAndLocalRoots": 1,
+2026-11-02T12:15:55.2930542Z         "TestGCExternConversionForeignLocalRoots": 1,
+2026-11-02T12:15:55.2930974Z         "TestGCExternConversionCheckedTableRoots": 1,
+2026-11-02T12:15:55.2931474Z         "TestGCExternConversionMissingRootsDisableCollection": 1,
+2026-11-02T12:15:55.2932009Z         "TestGCExternConversionWithoutHeapKeepsTinyProfile": 1,
+2026-11-02T12:15:55.2932505Z         "TestGCExternConversionRejectsForgedFrameWords": 1,
+2026-11-02T12:15:55.2932957Z         "TestGCExternConversionManyForeignLocals": 1,
+2026-11-02T12:15:55.2933859Z         "TestGCExternConversionVoidImportCannotUseEmptyRoots": 1,
+2026-11-02T12:15:55.2934370Z         "TestGCExternConversionAcrossReferenceTables": 1,
+2026-11-02T12:15:55.2934781Z         "TestGCAdmissionPublicCancellation": 1,
+2026-11-02T12:15:55.2935143Z         "TestGCAdmissionPublicDeadline": 1,
+2026-11-02T12:15:55.2935547Z         "TestGCAdmissionInstantiationCancellation": 1,
+2026-11-02T12:15:55.2935955Z         "TestR9H2ConvertedAggregateAdmission": 1,
+2026-11-02T12:15:55.2936387Z         "TestR9H2ConvertedAggregateAdmissionControls": 1,
+2026-11-02T12:15:55.2936856Z         "TestR9H2ConvertedAggregateCollectingLocalOwner": 1,
+2026-11-02T12:15:55.2937347Z         "TestGCInvocationDomainUsesRegisteredAssociation": 1,
+2026-11-02T12:15:55.2937854Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader": 1,
+2026-11-02T12:15:55.2938597Z         "TestRRRecheckCanceledAdmissionBehindDynamicReader": 1,
+2026-11-02T12:15:55.2939032Z         "TestRRRecheckSharedMemoryHandoff": 1,
+2026-11-02T12:15:55.2939419Z         "TestRRRetirementLastPinAndRevival": 1,
+2026-11-02T12:15:55.2940068Z         "TestRRRetirementCallbackAndExitWakeups": 1,
+2026-11-02T12:15:55.2940523Z         "TestRRRetirementBorrowedRootLatePublisher": 1,
+2026-11-02T12:15:55.2940956Z         "TestRRRetirementCanceledPartialLastPins": 1,
+2026-11-02T12:15:55.2941400Z         "TestRRRetirementCallbackRefreshBehindReader": 1,
+2026-11-02T12:15:55.2941874Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs": 1,
+2026-11-02T12:15:55.2942386Z         "TestGCInvocationDomainSetInlineSortDoesNotAllocate": 1
+2026-11-02T12:15:55.2942710Z       },
+2026-11-02T12:15:55.2942888Z       "passed": {
+2026-11-02T12:15:55.2943219Z         "TestDesignInvocationSnapshotCancellation": 1,
+2026-11-02T12:15:55.2943662Z         "TestDesignInvocationSnapshotLatePublisher": 1,
+2026-11-02T12:15:55.2944093Z         "TestDesignInvocationSnapshotRetirement": 1,
+2026-11-02T12:15:55.2944574Z         "TestDesignInvocationSnapshotAuthenticatedDispatch": 1,
+2026-11-02T12:15:55.2945059Z         "TestDesignInvocationSnapshotCallbackTrap": 1,
+2026-11-02T12:15:55.2945541Z         "TestDesignRecheckForeignRelayAfterLatePublisher": 1,
+2026-11-02T12:15:55.2946039Z         "TestDesignRecheckStorageOnlyCallTopologyWriter": 1,
+2026-11-02T12:15:55.2946553Z         "TestDesignRecheckCallbackChangesPublisherAuthority": 1,
+2026-11-02T12:15:55.2947039Z         "TestDesignRecheckNestedSameRuntimeClear": 1,
+2026-11-02T12:15:55.2947429Z         "TestDesignRecheckNestedPublish": 1,
+2026-11-02T12:15:55.2947789Z         "TestDesignRepairWaitNotifier": 1,
+2026-11-02T12:15:55.2948494Z         "TestDesignRepairConversionAdmissionLifecycle": 1,
+2026-11-02T12:15:55.2949053Z         "TestDesignRepairScalarRelayOrdinaryStorageWithConversion": 1,
+2026-11-02T12:15:55.2949604Z         "TestDesignRepairConcurrentPublicationRetirement": 1,
+2026-11-02T12:15:55.2950109Z         "TestDesignRepairPublicGlobalTokenClassification": 1,
+2026-11-02T12:15:55.2950549Z         "TestDesignRepairPublicTableOrdinary": 1,
+2026-11-02T12:15:55.2951081Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport": 1,
+2026-11-02T12:15:55.2951661Z         "TestDesignReviewExternStorageImportsPrivateGCProducer": 1,
+2026-11-02T12:15:55.2952138Z         "TestR9H2ConditionalSlotExplicitDomain": 1,
+2026-11-02T12:15:55.2952616Z         "TestR9H2RetiredCollectorPreservesDeferredFinalizer": 1,
+2026-11-02T12:15:55.2953063Z         "TestGCAdmissionOrderedCancellation": 1,
+2026-11-02T12:15:55.2953449Z         "TestGCAdmissionSameOwnerBorrowing": 1,
+2026-11-02T12:15:55.2953851Z         "TestGCAdmissionUncontendedAllocations": 1,
+2026-11-02T12:15:55.2954380Z         "TestGCInvocationNoDomainFastPathPreservesDynamicTopology": 1,
+2026-11-02T12:15:55.2954859Z         "TestR9H2HostContainerPublicGlobal": 1,
+2026-11-02T12:15:55.2955236Z         "TestR9H2HostContainerPublicTable": 1,
+2026-11-02T12:15:55.2955588Z         "TestR9H2HostContainerClose": 1,
+2026-11-02T12:15:55.2955932Z         "TestR9H2HostContainerAuthority": 1,
+2026-11-02T12:15:55.2956690Z         "TestR9H2HostContainerMigration": 1,
+2026-11-02T12:15:55.2957043Z         "TestR9H2HostContainerCycle": 1,
+2026-11-02T12:15:55.2957372Z         "TestR9H2HostImportGlobal": 1,
+2026-11-02T12:15:55.2957691Z         "TestR9H2HostImportTable": 1,
+2026-11-02T12:15:55.2958215Z         "TestR9H2HostImportBulk": 1,
+2026-11-02T12:15:55.2958580Z         "TestR9H2HostImportInitialization": 1,
+2026-11-02T12:15:55.2958924Z         "TestR9H2HostImportCycle": 1,
+2026-11-02T12:15:55.2959322Z         "TestR9H2HostImportTableIndependentPhysical": 1,
+2026-11-02T12:15:55.2959709Z         "TestR9H2HostImportAuthority": 1,
+2026-11-02T12:15:55.2960109Z         "TestR9H2HostImportGlobalOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.2960547Z         "TestR9H2HostImportTableOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.2960952Z         "TestR9H2ReceiptPublisherRetirement": 1,
+2026-11-02T12:15:55.2961406Z         "TestR9H2ReceiptIndependentContainersAndRollback": 1,
+2026-11-02T12:15:55.2961803Z         "TestR9H2ReceiptCloseOrders": 1,
+2026-11-02T12:15:55.2962436Z         "TestR9H2ReceiptConvertedProducerCycle": 1,
+2026-11-02T12:15:55.2962838Z         "TestR9H2ReceiptOnlyContention": 1,
+2026-11-02T12:15:55.2963274Z         "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission": 1,
+2026-11-02T12:15:55.2963804Z         "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority": 1,
+2026-11-02T12:15:55.2964267Z         "TestR9H2StoreHooksOriginalProvider": 1,
+2026-11-02T12:15:55.2964612Z         "TestR9H2StoreHooksBulk": 1,
+2026-11-02T12:15:55.2964988Z         "TestR9H2StoreHooksActiveInitialization": 1,
+2026-11-02T12:15:55.2965404Z         "TestR9H2StoreHooksDescriptorMigration": 1,
+2026-11-02T12:15:55.2965844Z         "TestR9H2StoreHooksIndependentPhysicalTables": 1,
+2026-11-02T12:15:55.2966406Z         "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease": 1,
+2026-11-02T12:15:55.2966980Z         "TestGCExternConversionStableIdentityAndOwnership": 1,
+2026-11-02T12:15:55.2967513Z         "TestGCExternConversionRejectsForeignForgedAndClosed": 1,
+2026-11-02T12:15:55.2968304Z         "TestGCExternConversionCollectorFirstCloseFailsClosed": 1,
+2026-11-02T12:15:55.2968885Z         "TestGCExternConversionRejectedReplacementPreservesRoot": 1,
+2026-11-02T12:15:55.2969453Z         "TestGCExternConversionPublicationOrderingAndRollback": 1,
+2026-11-02T12:15:55.2969939Z         "TestGCExternConversionWithFunctionTable": 1,
+2026-11-02T12:15:55.2970364Z         "TestGCExternConversionKeepsLocalRoots": 1,
+2026-11-02T12:15:55.2970826Z         "TestGCExternConversionKeepsVectorAndLocalRoots": 1,
+2026-11-02T12:15:55.2971283Z         "TestGCExternConversionForeignLocalRoots": 1,
+2026-11-02T12:15:55.2971722Z         "TestGCExternConversionCheckedTableRoots": 1,
+2026-11-02T12:15:55.2972224Z         "TestGCExternConversionMissingRootsDisableCollection": 1,
+2026-11-02T12:15:55.2972762Z         "TestGCExternConversionWithoutHeapKeepsTinyProfile": 1,
+2026-11-02T12:15:55.2973263Z         "TestGCExternConversionRejectsForgedFrameWords": 1,
+2026-11-02T12:15:55.2973727Z         "TestGCExternConversionManyForeignLocals": 1,
+2026-11-02T12:15:55.2974232Z         "TestGCExternConversionVoidImportCannotUseEmptyRoots": 1,
+2026-11-02T12:15:55.2974728Z         "TestGCExternConversionAcrossReferenceTables": 1,
+2026-11-02T12:15:55.2975144Z         "TestGCAdmissionPublicCancellation": 1,
+2026-11-02T12:15:55.2975514Z         "TestGCAdmissionPublicDeadline": 1,
+2026-11-02T12:15:55.2975920Z         "TestGCAdmissionInstantiationCancellation": 1,
+2026-11-02T12:15:55.2976333Z         "TestR9H2ConvertedAggregateAdmission": 1,
+2026-11-02T12:15:55.2976769Z         "TestR9H2ConvertedAggregateAdmissionControls": 1,
+2026-11-02T12:15:55.2977242Z         "TestR9H2ConvertedAggregateCollectingLocalOwner": 1,
+2026-11-02T12:15:55.2977734Z         "TestGCInvocationDomainUsesRegisteredAssociation": 1,
+2026-11-02T12:15:55.2978456Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader": 1,
+2026-11-02T12:15:55.2978980Z         "TestRRRecheckCanceledAdmissionBehindDynamicReader": 1,
+2026-11-02T12:15:55.2979841Z         "TestRRRecheckSharedMemoryHandoff": 1,
+2026-11-02T12:15:55.2980230Z         "TestRRRetirementLastPinAndRevival": 1,
+2026-11-02T12:15:55.2980639Z         "TestRRRetirementCallbackAndExitWakeups": 1,
+2026-11-02T12:15:55.2981079Z         "TestRRRetirementBorrowedRootLatePublisher": 1,
+2026-11-02T12:15:55.2981516Z         "TestRRRetirementCanceledPartialLastPins": 1,
+2026-11-02T12:15:55.2981963Z         "TestRRRetirementCallbackRefreshBehindReader": 1,
+2026-11-02T12:15:55.2982443Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs": 1,
+2026-11-02T12:15:55.2982956Z         "TestGCInvocationDomainSetInlineSortDoesNotAllocate": 1
+2026-11-02T12:15:55.2983280Z       },
+2026-11-02T12:15:55.2983482Z       "all_test_passes": {
+2026-11-02T12:15:55.2983947Z         "TestDesignInvocationSnapshotCancellation/partial-lock-cancel": 1,
+2026-11-02T12:15:55.2984526Z         "TestDesignInvocationSnapshotCancellation/pin-overflow": 1,
+2026-11-02T12:15:55.2985012Z         "TestDesignInvocationSnapshotCancellation": 1,
+2026-11-02T12:15:55.2985666Z         "TestDesignInvocationSnapshotLatePublisher": 1,
+2026-11-02T12:15:55.2986122Z         "TestDesignInvocationSnapshotRetirement": 1,
+2026-11-02T12:15:55.2986602Z         "TestDesignInvocationSnapshotAuthenticatedDispatch": 1,
+2026-11-02T12:15:55.2987108Z         "TestDesignInvocationSnapshotCallbackTrap/return": 1,
+2026-11-02T12:15:55.2987591Z         "TestDesignInvocationSnapshotCallbackTrap/trap": 1,
+2026-11-02T12:15:55.2988278Z         "TestDesignInvocationSnapshotCallbackTrap": 1,
+2026-11-02T12:15:55.2988772Z         "TestDesignRecheckForeignRelayAfterLatePublisher": 1,
+2026-11-02T12:15:55.2989297Z         "TestDesignRecheckStorageOnlyCallTopologyWriter/none": 1,
+2026-11-02T12:15:55.2989846Z         "TestDesignRecheckStorageOnlyCallTopologyWriter/global": 1,
+2026-11-02T12:15:55.2990395Z         "TestDesignRecheckStorageOnlyCallTopologyWriter/table": 1,
+2026-11-02T12:15:55.2990908Z         "TestDesignRecheckStorageOnlyCallTopologyWriter": 1,
+2026-11-02T12:15:55.2991433Z         "TestDesignRecheckCallbackChangesPublisherAuthority": 1,
+2026-11-02T12:15:55.2991937Z         "TestDesignRecheckNestedSameRuntimeClear/direct": 1,
+2026-11-02T12:15:55.2992444Z         "TestDesignRecheckNestedSameRuntimeClear/scalar-relay": 1,
+2026-11-02T12:15:55.2992982Z         "TestDesignRecheckNestedSameRuntimeClear/storage-relay": 1,
+2026-11-02T12:15:55.2993455Z         "TestDesignRecheckNestedSameRuntimeClear": 1,
+2026-11-02T12:15:55.2993847Z         "TestDesignRecheckNestedPublish": 1,
+2026-11-02T12:15:55.2994199Z         "TestDesignRepairWaitNotifier": 1,
+2026-11-02T12:15:55.2994621Z         "TestDesignRepairConversionAdmissionLifecycle": 1,
+2026-11-02T12:15:55.2995168Z         "TestDesignRepairScalarRelayOrdinaryStorageWithConversion": 1,
+2026-11-02T12:15:55.2995713Z         "TestDesignRepairConcurrentPublicationRetirement": 1,
+2026-11-02T12:15:55.2996288Z         "TestDesignRepairPublicGlobalTokenClassification/local/foreign": 1,
+2026-11-02T12:15:55.2996912Z         "TestDesignRepairPublicGlobalTokenClassification/local/forged": 1,
+2026-11-02T12:15:55.2997551Z         "TestDesignRepairPublicGlobalTokenClassification/local/expired": 1,
+2026-11-02T12:15:55.2998416Z         "TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null": 1,
+2026-11-02T12:15:55.2999047Z         "TestDesignRepairPublicGlobalTokenClassification/local": 1,
+2026-11-02T12:15:55.2999644Z         "TestDesignRepairPublicGlobalTokenClassification/owned/foreign": 1,
+2026-11-02T12:15:55.3000268Z         "TestDesignRepairPublicGlobalTokenClassification/owned/forged": 1,
+2026-11-02T12:15:55.3000884Z         "TestDesignRepairPublicGlobalTokenClassification/owned/expired": 1,
+2026-11-02T12:15:55.3001562Z         "TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null": 1,
+2026-11-02T12:15:55.3002185Z         "TestDesignRepairPublicGlobalTokenClassification/owned": 1,
+2026-11-02T12:15:55.3002713Z         "TestDesignRepairPublicGlobalTokenClassification": 1,
+2026-11-02T12:15:55.3003153Z         "TestDesignRepairPublicTableOrdinary": 1,
+2026-11-02T12:15:55.3004086Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone": 1,
+2026-11-02T12:15:55.3004836Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime": 1,
+2026-11-02T12:15:55.3005590Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone": 1,
+2026-11-02T12:15:55.3006357Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime": 1,
+2026-11-02T12:15:55.3007115Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone": 1,
+2026-11-02T12:15:55.3007875Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime": 1,
+2026-11-02T12:15:55.3008711Z         "TestDesignReviewExternStorageProducerCrossRuntimeImport": 1,
+2026-11-02T12:15:55.3009418Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none": 1,
+2026-11-02T12:15:55.3010268Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global": 1,
+2026-11-02T12:15:55.3011363Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table": 1,
+2026-11-02T12:15:55.3012217Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none": 1,
+2026-11-02T12:15:55.3013078Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global": 1,
+2026-11-02T12:15:55.3013978Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table": 1,
+2026-11-02T12:15:55.3014818Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none": 1,
+2026-11-02T12:15:55.3015685Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global": 1,
+2026-11-02T12:15:55.3016592Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table": 1,
+2026-11-02T12:15:55.3017442Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none": 1,
+2026-11-02T12:15:55.3018487Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global": 1,
+2026-11-02T12:15:55.3019410Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table": 1,
+2026-11-02T12:15:55.3020254Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none": 1,
+2026-11-02T12:15:55.3021177Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global": 1,
+2026-11-02T12:15:55.3022078Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table": 1,
+2026-11-02T12:15:55.3022916Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none": 1,
+2026-11-02T12:15:55.3023782Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global": 1,
+2026-11-02T12:15:55.3024699Z         "TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table": 1,
+2026-11-02T12:15:55.3025414Z         "TestDesignReviewExternStorageImportsPrivateGCProducer": 1,
+2026-11-02T12:15:55.3025896Z         "TestR9H2ConditionalSlotExplicitDomain": 1,
+2026-11-02T12:15:55.3026373Z         "TestR9H2RetiredCollectorPreservesDeferredFinalizer": 1,
+2026-11-02T12:15:55.3026848Z         "TestGCAdmissionOrderedCancellation/static": 1,
+2026-11-02T12:15:55.3027289Z         "TestGCAdmissionOrderedCancellation/dynamic": 1,
+2026-11-02T12:15:55.3027703Z         "TestGCAdmissionOrderedCancellation": 1,
+2026-11-02T12:15:55.3028344Z         "TestGCAdmissionSameOwnerBorrowing": 1,
+2026-11-02T12:15:55.3028762Z         "TestGCAdmissionUncontendedAllocations": 1,
+2026-11-02T12:15:55.3029287Z         "TestGCInvocationNoDomainFastPathPreservesDynamicTopology": 1,
+2026-11-02T12:15:55.3029773Z         "TestR9H2HostContainerPublicGlobal/0": 1,
+2026-11-02T12:15:55.3030169Z         "TestR9H2HostContainerPublicGlobal/6": 1,
+2026-11-02T12:15:55.3030980Z         "TestR9H2HostContainerPublicGlobal": 1,
+2026-11-02T12:15:55.3031367Z         "TestR9H2HostContainerPublicTable/0": 1,
+2026-11-02T12:15:55.3031748Z         "TestR9H2HostContainerPublicTable/6": 1,
+2026-11-02T12:15:55.3032123Z         "TestR9H2HostContainerPublicTable": 1,
+2026-11-02T12:15:55.3032537Z         "TestR9H2HostContainerClose/container-first": 1,
+2026-11-02T12:15:55.3032973Z         "TestR9H2HostContainerClose/publisher-first": 1,
+2026-11-02T12:15:55.3033396Z         "TestR9H2HostContainerClose/runtime-first": 1,
+2026-11-02T12:15:55.3033764Z         "TestR9H2HostContainerClose": 1,
+2026-11-02T12:15:55.3034115Z         "TestR9H2HostContainerAuthority": 1,
+2026-11-02T12:15:55.3034474Z         "TestR9H2HostContainerMigration": 1,
+2026-11-02T12:15:55.3034844Z         "TestR9H2HostContainerCycle/0/clear": 1,
+2026-11-02T12:15:55.3035223Z         "TestR9H2HostContainerCycle/0/close": 1,
+2026-11-02T12:15:55.3035614Z         "TestR9H2HostContainerCycle/6/clear": 1,
+2026-11-02T12:15:55.3036200Z         "TestR9H2HostContainerCycle/6/close": 1,
+2026-11-02T12:15:55.3036583Z         "TestR9H2HostContainerCycle": 1,
+2026-11-02T12:15:55.3036916Z         "TestR9H2HostImportGlobal/0": 1,
+2026-11-02T12:15:55.3037246Z         "TestR9H2HostImportGlobal/6": 1,
+2026-11-02T12:15:55.3037576Z         "TestR9H2HostImportGlobal": 1,
+2026-11-02T12:15:55.3037905Z         "TestR9H2HostImportTable/0": 1,
+2026-11-02T12:15:55.3038750Z         "TestR9H2HostImportTable/6": 1,
+2026-11-02T12:15:55.3039080Z         "TestR9H2HostImportTable": 1,
+2026-11-02T12:15:55.3039399Z         "TestR9H2HostImportBulk/0": 1,
+2026-11-02T12:15:55.3039720Z         "TestR9H2HostImportBulk/6": 1,
+2026-11-02T12:15:55.3040033Z         "TestR9H2HostImportBulk": 1,
+2026-11-02T12:15:55.3040388Z         "TestR9H2HostImportInitialization/0": 1,
+2026-11-02T12:15:55.3040773Z         "TestR9H2HostImportInitialization/6": 1,
+2026-11-02T12:15:55.3041151Z         "TestR9H2HostImportInitialization": 1,
+2026-11-02T12:15:55.3041508Z         "TestR9H2HostImportCycle/0": 1,
+2026-11-02T12:15:55.3041841Z         "TestR9H2HostImportCycle/6": 1,
+2026-11-02T12:15:55.3042164Z         "TestR9H2HostImportCycle": 1,
+2026-11-02T12:15:55.3042563Z         "TestR9H2HostImportTableIndependentPhysical": 1,
+2026-11-02T12:15:55.3042952Z         "TestR9H2HostImportAuthority": 1,
+2026-11-02T12:15:55.3043356Z         "TestR9H2HostImportGlobalOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.3043797Z         "TestR9H2HostImportTableOrdinaryAndGuards": 1,
+2026-11-02T12:15:55.3044240Z         "TestR9H2ReceiptPublisherRetirement/region=0": 1,
+2026-11-02T12:15:55.3044689Z         "TestR9H2ReceiptPublisherRetirement/region=6": 1,
+2026-11-02T12:15:55.3045096Z         "TestR9H2ReceiptPublisherRetirement": 1,
+2026-11-02T12:15:55.3045557Z         "TestR9H2ReceiptIndependentContainersAndRollback": 1,
+2026-11-02T12:15:55.3046018Z         "TestR9H2ReceiptCloseOrders/provider-first": 1,
+2026-11-02T12:15:55.3046450Z         "TestR9H2ReceiptCloseOrders/publisher-first": 1,
+2026-11-02T12:15:55.3046876Z         "TestR9H2ReceiptCloseOrders/store-first": 1,
+2026-11-02T12:15:55.3047243Z         "TestR9H2ReceiptCloseOrders": 1,
+2026-11-02T12:15:55.3047710Z         "TestR9H2ReceiptConvertedProducerCycle/direct/region=0": 1,
+2026-11-02T12:15:55.3048511Z         "TestR9H2ReceiptConvertedProducerCycle/direct/region=6": 1,
+2026-11-02T12:15:55.3049069Z         "TestR9H2ReceiptConvertedProducerCycle/callback/region=0": 1,
+2026-11-02T12:15:55.3049625Z         "TestR9H2ReceiptConvertedProducerCycle/callback/region=6": 1,
+2026-11-02T12:15:55.3050193Z         "TestR9H2ReceiptConvertedProducerCycle/contention/region=0": 1,
+2026-11-02T12:15:55.3050767Z         "TestR9H2ReceiptConvertedProducerCycle/contention/region=6": 1,
+2026-11-02T12:15:55.3051243Z         "TestR9H2ReceiptConvertedProducerCycle": 1,
+2026-11-02T12:15:55.3051647Z         "TestR9H2ReceiptOnlyContention/native": 1,
+2026-11-02T12:15:55.3052082Z         "TestR9H2ReceiptOnlyContention/foreign-runtime": 1,
+2026-11-02T12:15:55.3052906Z         "TestR9H2ReceiptOnlyContention/topology": 1,
+2026-11-02T12:15:55.3053314Z         "TestR9H2ReceiptOnlyContention/domain": 1,
+2026-11-02T12:15:55.3053708Z         "TestR9H2ReceiptOnlyContention/driver": 1,
+2026-11-02T12:15:55.3054084Z         "TestR9H2ReceiptOnlyContention": 1,
+2026-11-02T12:15:55.3054514Z         "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission": 1,
+2026-11-02T12:15:55.3055044Z         "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority": 1,
+2026-11-02T12:15:55.3055792Z         "TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false": 1,
+2026-11-02T12:15:55.3056470Z         "TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true": 1,
+2026-11-02T12:15:55.3057140Z         "TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false": 1,
+2026-11-02T12:15:55.3057809Z         "TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true": 1,
+2026-11-02T12:15:55.3058685Z         "TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false": 1,
+2026-11-02T12:15:55.3059617Z         "TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true": 1,
+2026-11-02T12:15:55.3060299Z         "TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false": 1,
+2026-11-02T12:15:55.3060956Z         "TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true": 1,
+2026-11-02T12:15:55.3061453Z         "TestR9H2StoreHooksOriginalProvider": 1,
+2026-11-02T12:15:55.3061806Z         "TestR9H2StoreHooksBulk/0": 1,
+2026-11-02T12:15:55.3062128Z         "TestR9H2StoreHooksBulk/6": 1,
+2026-11-02T12:15:55.3062445Z         "TestR9H2StoreHooksBulk": 1,
+2026-11-02T12:15:55.3062822Z         "TestR9H2StoreHooksActiveInitialization": 1,
+2026-11-02T12:15:55.3063244Z         "TestR9H2StoreHooksDescriptorMigration": 1,
+2026-11-02T12:15:55.3063691Z         "TestR9H2StoreHooksIndependentPhysicalTables": 1,
+2026-11-02T12:15:55.3064253Z         "TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease": 1,
+2026-11-02T12:15:55.3064828Z         "TestGCExternConversionStableIdentityAndOwnership": 1,
+2026-11-02T12:15:55.3065365Z         "TestGCExternConversionRejectsForeignForgedAndClosed": 1,
+2026-11-02T12:15:55.3065919Z         "TestGCExternConversionCollectorFirstCloseFailsClosed": 1,
+2026-11-02T12:15:55.3066490Z         "TestGCExternConversionRejectedReplacementPreservesRoot": 1,
+2026-11-02T12:15:55.3067061Z         "TestGCExternConversionPublicationOrderingAndRollback": 1,
+2026-11-02T12:15:55.3067550Z         "TestGCExternConversionWithFunctionTable": 1,
+2026-11-02T12:15:55.3068275Z         "TestGCExternConversionKeepsLocalRoots/op26/throughput": 1,
+2026-11-02T12:15:55.3068824Z         "TestGCExternConversionKeepsLocalRoots/op26/tiny": 1,
+2026-11-02T12:15:55.3069348Z         "TestGCExternConversionKeepsLocalRoots/op27/throughput": 1,
+2026-11-02T12:15:55.3069859Z         "TestGCExternConversionKeepsLocalRoots/op27/tiny": 1,
+2026-11-02T12:15:55.3070304Z         "TestGCExternConversionKeepsLocalRoots": 1,
+2026-11-02T12:15:55.3070766Z         "TestGCExternConversionKeepsVectorAndLocalRoots": 1,
+2026-11-02T12:15:55.3071243Z         "TestGCExternConversionForeignLocalRoots": 1,
+2026-11-02T12:15:55.3071680Z         "TestGCExternConversionCheckedTableRoots": 1,
+2026-11-02T12:15:55.3072187Z         "TestGCExternConversionMissingRootsDisableCollection": 1,
+2026-11-02T12:15:55.3072724Z         "TestGCExternConversionWithoutHeapKeepsTinyProfile": 1,
+2026-11-02T12:15:55.3073229Z         "TestGCExternConversionRejectsForgedFrameWords": 1,
+2026-11-02T12:15:55.3073684Z         "TestGCExternConversionManyForeignLocals": 1,
+2026-11-02T12:15:55.3074187Z         "TestGCExternConversionVoidImportCannotUseEmptyRoots": 1,
+2026-11-02T12:15:55.3074687Z         "TestGCExternConversionAcrossReferenceTables": 1,
+2026-11-02T12:15:55.3075107Z         "TestGCAdmissionPublicCancellation": 1,
+2026-11-02T12:15:55.3075477Z         "TestGCAdmissionPublicDeadline": 1,
+2026-11-02T12:15:55.3075933Z         "TestGCAdmissionInstantiationCancellation/collector": 1,
+2026-11-02T12:15:55.3076808Z         "TestGCAdmissionInstantiationCancellation/start": 1,
+2026-11-02T12:15:55.3077271Z         "TestGCAdmissionInstantiationCancellation": 1,
+2026-11-02T12:15:55.3077685Z         "TestR9H2ConvertedAggregateAdmission": 1,
+2026-11-02T12:15:55.3078360Z         "TestR9H2ConvertedAggregateAdmissionControls/numeric": 1,
+2026-11-02T12:15:55.3078964Z         "TestR9H2ConvertedAggregateAdmissionControls/unused-function-type": 1,
+2026-11-02T12:15:55.3079505Z         "TestR9H2ConvertedAggregateAdmissionControls": 1,
+2026-11-02T12:15:55.3080028Z         "TestR9H2ConvertedAggregateCollectingLocalOwner/region=0": 1,
+2026-11-02T12:15:55.3080597Z         "TestR9H2ConvertedAggregateCollectingLocalOwner/region=6": 1,
+2026-11-02T12:15:55.3081122Z         "TestR9H2ConvertedAggregateCollectingLocalOwner": 1,
+2026-11-02T12:15:55.3081618Z         "TestGCInvocationDomainUsesRegisteredAssociation": 1,
+2026-11-02T12:15:55.3082158Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none": 1,
+2026-11-02T12:15:55.3082737Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table": 1,
+2026-11-02T12:15:55.3083506Z         "TestRRRecheckStorageOnlyReturnBehindDynamicReader": 1,
+2026-11-02T12:15:55.3084047Z         "TestRRRecheckCanceledAdmissionBehindDynamicReader": 1,
+2026-11-02T12:15:55.3084488Z         "TestRRRecheckSharedMemoryHandoff": 1,
+2026-11-02T12:15:55.3084891Z         "TestRRRetirementLastPinAndRevival/none": 1,
+2026-11-02T12:15:55.3085311Z         "TestRRRetirementLastPinAndRevival/claim": 1,
+2026-11-02T12:15:55.3086019Z         "TestRRRetirementLastPinAndRevival/registration": 1,
+2026-11-02T12:15:55.3086532Z         "TestRRRetirementLastPinAndRevival/store-close": 1,
+2026-11-02T12:15:55.3086945Z         "TestRRRetirementLastPinAndRevival": 1,
+2026-11-02T12:15:55.3087355Z         "TestRRRetirementCallbackAndExitWakeups": 1,
+2026-11-02T12:15:55.3087796Z         "TestRRRetirementBorrowedRootLatePublisher": 1,
+2026-11-02T12:15:55.3088404Z         "TestRRRetirementCanceledPartialLastPins": 1,
+2026-11-02T12:15:55.3088867Z         "TestRRRetirementCallbackRefreshBehindReader": 1,
+2026-11-02T12:15:55.3089370Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=0": 1,
+2026-11-02T12:15:55.3089895Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=1": 1,
+2026-11-02T12:15:55.3090424Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=2": 1,
+2026-11-02T12:15:55.3090949Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=3": 1,
+2026-11-02T12:15:55.3091471Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=4": 1,
+2026-11-02T12:15:55.3091991Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=5": 1,
+2026-11-02T12:15:55.3092515Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=8": 1,
+2026-11-02T12:15:55.3093042Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=9": 1,
+2026-11-02T12:15:55.3093571Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=16": 1,
+2026-11-02T12:15:55.3094113Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=32": 1,
+2026-11-02T12:15:55.3094662Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=64": 1,
+2026-11-02T12:15:55.3095201Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs/N=129": 1,
+2026-11-02T12:15:55.3095713Z         "TestGCInvocationDomainSetSortMatchesOrderedIDs": 1,
+2026-11-02T12:15:55.3096229Z         "TestGCInvocationDomainSetInlineSortDoesNotAllocate": 1
+2026-11-02T12:15:55.3096558Z       },
+2026-11-02T12:15:55.3096754Z       "bad_events": [],
+2026-11-02T12:15:55.3096990Z       "package_results": [
+2026-11-02T12:15:55.3097210Z         "pass"
+2026-11-02T12:15:55.3097385Z       ],
+2026-11-02T12:15:55.3097563Z       "exit": 0
+2026-11-02T12:15:55.3097745Z     },
+2026-11-02T12:15:55.3097938Z     "wago-race-guard": {
+2026-11-02T12:15:55.3098359Z       "ok": true,
+2026-11-02T12:15:55.3098563Z       "expected": [
+2026-11-02T12:15:55.3098869Z         "TestSharedEntryGuardCancellationAndGC"
+2026-11-02T12:15:55.3099142Z       ],
+2026-11-02T12:15:55.3099323Z       "started": {
+2026-11-02T12:15:55.3099633Z         "TestSharedEntryGuardCancellationAndGC": 1
+2026-11-02T12:15:55.3100314Z       },
+2026-11-02T12:15:55.3100499Z       "passed": {
+2026-11-02T12:15:55.3100810Z         "TestSharedEntryGuardCancellationAndGC": 1
+2026-11-02T12:15:55.3101092Z       },
+2026-11-02T12:15:55.3101293Z       "all_test_passes": {
+2026-11-02T12:15:55.3101628Z         "TestSharedEntryGuardCancellationAndGC": 1
+2026-11-02T12:15:55.3101904Z       },
+2026-11-02T12:15:55.3102098Z       "bad_events": [],
+2026-11-02T12:15:55.3102335Z       "package_results": [
+2026-11-02T12:15:55.3102557Z         "pass"
+2026-11-02T12:15:55.3102733Z       ],
+2026-11-02T12:15:55.3102907Z       "exit": 0
+2026-11-02T12:15:55.3103079Z     },
+2026-11-02T12:15:55.3103270Z     "runtime-runtime": {
+2026-11-02T12:15:55.3103491Z       "ok": true,
+2026-11-02T12:15:55.3103694Z       "expected": [
+2026-11-02T12:15:55.3104040Z         "TestAsyncInterruptRetainsQueuedDeliveryToken",
+2026-11-02T12:15:55.3104431Z         "TestDeadlineCapacityAdmission",
+2026-11-02T12:15:55.3104808Z         "TestInterruptIdleGenerationRollover",
+2026-11-02T12:15:55.3105519Z         "TestInterruptLinearMemoryCapacityReturnsTypedError",
+2026-11-02T12:15:55.3106062Z         "TestInterruptLinearMemoryRegistrationScansPastHoles",
+2026-11-02T12:15:55.3106542Z         "TestInterruptRequestPublishesTokenBeforeTrap",
+2026-11-02T12:15:55.3106994Z         "TestInterruptRequestSharedOwnerRetainsToken",
+2026-11-02T12:15:55.3107405Z         "TestInterruptRequestSharedOwnership",
+2026-11-02T12:15:55.3107762Z         "TestInterruptSignalOwnership",
+2026-11-02T12:15:55.3108408Z         "TestInterruptTokenChangesOnTrapReuse",
+2026-11-02T12:15:55.3108795Z         "TestUnregisterWaitsForSignalReaders"
+2026-11-02T12:15:55.3109063Z       ],
+2026-11-02T12:15:55.3109264Z       "started": {
+2026-11-02T12:15:55.3109548Z         "TestDeadlineCapacityAdmission": 1,
+2026-11-02T12:15:55.3109931Z         "TestInterruptRequestSharedOwnership": 1,
+2026-11-02T12:15:55.3110376Z         "TestAsyncInterruptRetainsQueuedDeliveryToken": 1,
+2026-11-02T12:15:55.3110895Z         "TestInterruptLinearMemoryCapacityReturnsTypedError": 1,
+2026-11-02T12:15:55.3111354Z         "TestUnregisterWaitsForSignalReaders": 1,
+2026-11-02T12:15:55.3111849Z         "TestInterruptLinearMemoryRegistrationScansPastHoles": 1,
+2026-11-02T12:15:55.3112281Z         "TestInterruptSignalOwnership": 1,
+2026-11-02T12:15:55.3112668Z         "TestInterruptTokenChangesOnTrapReuse": 1,
+2026-11-02T12:15:55.3112869Z         "TestInterruptIdleGenerationRollover": 1,
+2026-11-02T12:15:55.3113120Z         "TestInterruptRequestPublishesTokenBeforeTrap": 1,
+2026-11-02T12:15:55.3113361Z         "TestInterruptRequestSharedOwnerRetainsToken": 1
+2026-11-02T12:15:55.3113438Z       },
+2026-11-02T12:15:55.3113534Z       "passed": {
+2026-11-02T12:15:55.3113711Z         "TestDeadlineCapacityAdmission": 1,
+2026-11-02T12:15:55.3113913Z         "TestInterruptRequestSharedOwnership": 1,
+2026-11-02T12:15:55.3114161Z         "TestAsyncInterruptRetainsQueuedDeliveryToken": 1,
+2026-11-02T12:15:55.3114453Z         "TestInterruptLinearMemoryCapacityReturnsTypedError": 1,
+2026-11-02T12:15:55.3114661Z         "TestUnregisterWaitsForSignalReaders": 1,
+2026-11-02T12:15:55.3114948Z         "TestInterruptLinearMemoryRegistrationScansPastHoles": 1,
+2026-11-02T12:15:55.3115131Z         "TestInterruptSignalOwnership": 1,
+2026-11-02T12:15:55.3115340Z         "TestInterruptTokenChangesOnTrapReuse": 1,
+2026-11-02T12:15:55.3115548Z         "TestInterruptIdleGenerationRollover": 1,
+2026-11-02T12:15:55.3115796Z         "TestInterruptRequestPublishesTokenBeforeTrap": 1,
+2026-11-02T12:15:55.3116037Z         "TestInterruptRequestSharedOwnerRetainsToken": 1
+2026-11-02T12:15:55.3116119Z       },
+2026-11-02T12:15:55.3116236Z       "all_test_passes": {
+2026-11-02T12:15:55.3116417Z         "TestDeadlineCapacityAdmission": 1,
+2026-11-02T12:15:55.3116619Z         "TestInterruptRequestSharedOwnership": 1,
+2026-11-02T12:15:55.3116871Z         "TestAsyncInterruptRetainsQueuedDeliveryToken": 1,
+2026-11-02T12:15:55.3117152Z         "TestInterruptLinearMemoryCapacityReturnsTypedError": 1,
+2026-11-02T12:15:55.3117737Z         "TestUnregisterWaitsForSignalReaders": 1,
+2026-11-02T12:15:55.3118222Z         "TestInterruptLinearMemoryRegistrationScansPastHoles": 1,
+2026-11-02T12:15:55.3118417Z         "TestInterruptSignalOwnership": 1,
+2026-11-02T12:15:55.3118628Z         "TestInterruptTokenChangesOnTrapReuse": 1,
+2026-11-02T12:15:55.3118830Z         "TestInterruptIdleGenerationRollover": 1,
+2026-11-02T12:15:55.3119084Z         "TestInterruptRequestPublishesTokenBeforeTrap": 1,
+2026-11-02T12:15:55.3119324Z         "TestInterruptRequestSharedOwnerRetainsToken": 1
+2026-11-02T12:15:55.3119405Z       },
+2026-11-02T12:15:55.3119515Z       "bad_events": [],
+2026-11-02T12:15:55.3119632Z       "package_results": [
+2026-11-02T12:15:55.3119729Z         "pass"
+2026-11-02T12:15:55.3119806Z       ],
+2026-11-02T12:15:55.3119898Z       "exit": 0
+2026-11-02T12:15:55.3119968Z     },
+2026-11-02T12:15:55.3120076Z     "backend-backend": {
+2026-11-02T12:15:55.3120176Z       "ok": false,
+2026-11-02T12:15:55.3120279Z       "expected": [
+2026-11-02T12:15:55.3120741Z         "TestRegisterCallOverlappingArgumentSlotARM64",
+2026-11-02T12:15:55.3121008Z         "TestScopedLoopConstExecutionAcrossGuestCalls",
+2026-11-02T12:15:55.3121232Z         "TestSharingScratchLayout",
+2026-11-02T12:15:55.3121452Z         "TestSyncHostRestoresX11GlobalAfterResults",
+2026-11-02T12:15:55.3121666Z         "TestSyncHostRestoresX11LocalAfterResults",
+2026-11-02T12:15:55.3121850Z         "TestSyncHostResultPressureCompile",
+2026-11-02T12:15:55.3122049Z         "TestSyncHostResultPressureExecution",
+2026-11-02T12:15:55.3122287Z         "TestSyncHostResultSpillsPreserveRootMetadata",
+2026-11-02T12:15:55.3122450Z         "TestVariableShiftThreeOperand"
+2026-11-02T12:15:55.3122530Z       ],
+2026-11-02T12:15:55.3122623Z       "started": {
+2026-11-02T12:15:55.3122876Z         "TestRegisterCallOverlappingArgumentSlotARM64": 1,
+2026-11-02T12:15:55.3123124Z         "TestScopedLoopConstExecutionAcrossGuestCalls": 1,
+2026-11-02T12:15:55.3123293Z         "TestSharingScratchLayout": 1,
+2026-11-02T12:15:55.3123525Z         "TestSyncHostRestoresX11LocalAfterResults": 1,
+2026-11-02T12:15:55.3123756Z         "TestSyncHostRestoresX11GlobalAfterResults": 1,
+2026-11-02T12:15:55.3124006Z         "TestSyncHostResultSpillsPreserveRootMetadata": 1,
+2026-11-02T12:15:55.3124199Z         "TestSyncHostResultPressureCompile": 1,
+2026-11-02T12:15:55.3124403Z         "TestSyncHostResultPressureExecution": 1,
+2026-11-02T12:15:55.3124574Z         "TestVariableShiftThreeOperand": 1
+2026-11-02T12:15:55.3124656Z       },
+2026-11-02T12:15:55.3124754Z       "passed": {
+2026-11-02T12:15:55.3125003Z         "TestScopedLoopConstExecutionAcrossGuestCalls": 1,
+2026-11-02T12:15:55.3125163Z         "TestSharingScratchLayout": 1,
+2026-11-02T12:15:55.3125386Z         "TestSyncHostRestoresX11LocalAfterResults": 1,
+2026-11-02T12:15:55.3125619Z         "TestSyncHostRestoresX11GlobalAfterResults": 1,
+2026-11-02T12:15:55.3125866Z         "TestSyncHostResultSpillsPreserveRootMetadata": 1,
+2026-11-02T12:15:55.3126073Z         "TestSyncHostResultPressureCompile": 1,
+2026-11-02T12:15:55.3126279Z         "TestSyncHostResultPressureExecution": 1,
+2026-11-02T12:15:55.3126453Z         "TestVariableShiftThreeOperand": 1
+2026-11-02T12:15:55.3126540Z       },
+2026-11-02T12:15:55.3126655Z       "all_test_passes": {
+2026-11-02T12:15:55.3126909Z         "TestScopedLoopConstExecutionAcrossGuestCalls": 1,
+2026-11-02T12:15:55.3127068Z         "TestSharingScratchLayout": 1,
+2026-11-02T12:15:55.3127378Z         "TestSyncHostRestoresX11LocalAfterResults/stack-reg=false": 1,
+2026-11-02T12:15:55.3127675Z         "TestSyncHostRestoresX11LocalAfterResults/stack-reg=true": 1,
+2026-11-02T12:15:55.3127900Z         "TestSyncHostRestoresX11LocalAfterResults": 1,
+2026-11-02T12:15:55.3128519Z         "TestSyncHostRestoresX11GlobalAfterResults/stack-reg=false": 1,
+2026-11-02T12:15:55.3128841Z         "TestSyncHostRestoresX11GlobalAfterResults/stack-reg=true": 1,
+2026-11-02T12:15:55.3129409Z         "TestSyncHostRestoresX11GlobalAfterResults": 1,
+2026-11-02T12:15:55.3129665Z         "TestSyncHostResultSpillsPreserveRootMetadata": 1,
+2026-11-02T12:15:55.3129958Z         "TestSyncHostResultPressureCompile/gp/1/stack-reg=false": 1,
+2026-11-02T12:15:55.3130245Z         "TestSyncHostResultPressureCompile/gp/1/stack-reg=true": 1,
+2026-11-02T12:15:55.3130530Z         "TestSyncHostResultPressureCompile/gp/8/stack-reg=false": 1,
+2026-11-02T12:15:55.3130813Z         "TestSyncHostResultPressureCompile/gp/8/stack-reg=true": 1,
+2026-11-02T12:15:55.3131105Z         "TestSyncHostResultPressureCompile/gp/16/stack-reg=false": 1,
+2026-11-02T12:15:55.3131396Z         "TestSyncHostResultPressureCompile/gp/16/stack-reg=true": 1,
+2026-11-02T12:15:55.3131685Z         "TestSyncHostResultPressureCompile/gp/32/stack-reg=false": 1,
+2026-11-02T12:15:55.3131978Z         "TestSyncHostResultPressureCompile/gp/32/stack-reg=true": 1,
+2026-11-02T12:15:55.3132275Z         "TestSyncHostResultPressureCompile/gp/64/stack-reg=false": 1,
+2026-11-02T12:15:55.3132728Z         "TestSyncHostResultPressureCompile/gp/64/stack-reg=true": 1,
+2026-11-02T12:15:55.3133031Z         "TestSyncHostResultPressureCompile/fp/1/stack-reg=false": 1,
+2026-11-02T12:15:55.3133314Z         "TestSyncHostResultPressureCompile/fp/1/stack-reg=true": 1,
+2026-11-02T12:15:55.3133608Z         "TestSyncHostResultPressureCompile/fp/8/stack-reg=false": 1,
+2026-11-02T12:15:55.3133892Z         "TestSyncHostResultPressureCompile/fp/8/stack-reg=true": 1,
+2026-11-02T12:15:55.3134184Z         "TestSyncHostResultPressureCompile/fp/16/stack-reg=false": 1,
+2026-11-02T12:15:55.3134471Z         "TestSyncHostResultPressureCompile/fp/16/stack-reg=true": 1,
+2026-11-02T12:15:55.3134761Z         "TestSyncHostResultPressureCompile/fp/32/stack-reg=false": 1,
+2026-11-02T12:15:55.3135055Z         "TestSyncHostResultPressureCompile/fp/32/stack-reg=true": 1,
+2026-11-02T12:15:55.3135345Z         "TestSyncHostResultPressureCompile/fp/64/stack-reg=false": 1,
+2026-11-02T12:15:55.3135631Z         "TestSyncHostResultPressureCompile/fp/64/stack-reg=true": 1,
+2026-11-02T12:15:55.3135941Z         "TestSyncHostResultPressureCompile/fp32/1/stack-reg=false": 1,
+2026-11-02T12:15:55.3136232Z         "TestSyncHostResultPressureCompile/fp32/1/stack-reg=true": 1,
+2026-11-02T12:15:55.3136531Z         "TestSyncHostResultPressureCompile/fp32/8/stack-reg=false": 1,
+2026-11-02T12:15:55.3136820Z         "TestSyncHostResultPressureCompile/fp32/8/stack-reg=true": 1,
+2026-11-02T12:15:55.3137124Z         "TestSyncHostResultPressureCompile/fp32/16/stack-reg=false": 1,
+2026-11-02T12:15:55.3137420Z         "TestSyncHostResultPressureCompile/fp32/16/stack-reg=true": 1,
+2026-11-02T12:15:55.3137720Z         "TestSyncHostResultPressureCompile/fp32/32/stack-reg=false": 1,
+2026-11-02T12:15:55.3138233Z         "TestSyncHostResultPressureCompile/fp32/32/stack-reg=true": 1,
+2026-11-02T12:15:55.3138576Z         "TestSyncHostResultPressureCompile/fp32/64/stack-reg=false": 1,
+2026-11-02T12:15:55.3138877Z         "TestSyncHostResultPressureCompile/fp32/64/stack-reg=true": 1,
+2026-11-02T12:15:55.3139191Z         "TestSyncHostResultPressureCompile/mixed/1/stack-reg=false": 1,
+2026-11-02T12:15:55.3139490Z         "TestSyncHostResultPressureCompile/mixed/1/stack-reg=true": 1,
+2026-11-02T12:15:55.3139794Z         "TestSyncHostResultPressureCompile/mixed/8/stack-reg=false": 1,
+2026-11-02T12:15:55.3140089Z         "TestSyncHostResultPressureCompile/mixed/8/stack-reg=true": 1,
+2026-11-02T12:15:55.3140397Z         "TestSyncHostResultPressureCompile/mixed/16/stack-reg=false": 1,
+2026-11-02T12:15:55.3140696Z         "TestSyncHostResultPressureCompile/mixed/16/stack-reg=true": 1,
+2026-11-02T12:15:55.3141002Z         "TestSyncHostResultPressureCompile/mixed/32/stack-reg=false": 1,
+2026-11-02T12:15:55.3141305Z         "TestSyncHostResultPressureCompile/mixed/32/stack-reg=true": 1,
+2026-11-02T12:15:55.3141607Z         "TestSyncHostResultPressureCompile/mixed/54/stack-reg=false": 1,
+2026-11-02T12:15:55.3141911Z         "TestSyncHostResultPressureCompile/mixed/54/stack-reg=true": 1,
+2026-11-02T12:15:55.3142492Z         "TestSyncHostResultPressureCompile/vector/1/stack-reg=false": 1,
+2026-11-02T12:15:55.3142800Z         "TestSyncHostResultPressureCompile/vector/1/stack-reg=true": 1,
+2026-11-02T12:15:55.3143105Z         "TestSyncHostResultPressureCompile/vector/8/stack-reg=false": 1,
+2026-11-02T12:15:55.3143414Z         "TestSyncHostResultPressureCompile/vector/8/stack-reg=true": 1,
+2026-11-02T12:15:55.3143728Z         "TestSyncHostResultPressureCompile/vector/16/stack-reg=false": 1,
+2026-11-02T12:15:55.3144034Z         "TestSyncHostResultPressureCompile/vector/16/stack-reg=true": 1,
+2026-11-02T12:15:55.3144348Z         "TestSyncHostResultPressureCompile/vector/32/stack-reg=false": 1,
+2026-11-02T12:15:55.3144654Z         "TestSyncHostResultPressureCompile/vector/32/stack-reg=true": 1,
+2026-11-02T12:15:55.3144853Z         "TestSyncHostResultPressureCompile": 1,
+2026-11-02T12:15:55.3145319Z         "TestSyncHostResultPressureExecution/gp/1/stack-reg=false": 1,
+2026-11-02T12:15:55.3145781Z         "TestSyncHostResultPressureExecution/gp/1/stack-reg=true": 1,
+2026-11-02T12:15:55.3146094Z         "TestSyncHostResultPressureExecution/gp/8/stack-reg=false": 1,
+2026-11-02T12:15:55.3146384Z         "TestSyncHostResultPressureExecution/gp/8/stack-reg=true": 1,
+2026-11-02T12:15:55.3146689Z         "TestSyncHostResultPressureExecution/gp/16/stack-reg=false": 1,
+2026-11-02T12:15:55.3146988Z         "TestSyncHostResultPressureExecution/gp/16/stack-reg=true": 1,
+2026-11-02T12:15:55.3147296Z         "TestSyncHostResultPressureExecution/gp/32/stack-reg=false": 1,
+2026-11-02T12:15:55.3147598Z         "TestSyncHostResultPressureExecution/gp/32/stack-reg=true": 1,
+2026-11-02T12:15:55.3147899Z         "TestSyncHostResultPressureExecution/gp/64/stack-reg=false": 1,
+2026-11-02T12:15:55.3148383Z         "TestSyncHostResultPressureExecution/gp/64/stack-reg=true": 1,
+2026-11-02T12:15:55.3148682Z         "TestSyncHostResultPressureExecution/fp/1/stack-reg=false": 1,
+2026-11-02T12:15:55.3148977Z         "TestSyncHostResultPressureExecution/fp/1/stack-reg=true": 1,
+2026-11-02T12:15:55.3149290Z         "TestSyncHostResultPressureExecution/fp/8/stack-reg=false": 1,
+2026-11-02T12:15:55.3149580Z         "TestSyncHostResultPressureExecution/fp/8/stack-reg=true": 1,
+2026-11-02T12:15:55.3149882Z         "TestSyncHostResultPressureExecution/fp/16/stack-reg=false": 1,
+2026-11-02T12:15:55.3150177Z         "TestSyncHostResultPressureExecution/fp/16/stack-reg=true": 1,
+2026-11-02T12:15:55.3150485Z         "TestSyncHostResultPressureExecution/fp/32/stack-reg=false": 1,
+2026-11-02T12:15:55.3150778Z         "TestSyncHostResultPressureExecution/fp/32/stack-reg=true": 1,
+2026-11-02T12:15:55.3151082Z         "TestSyncHostResultPressureExecution/fp/64/stack-reg=false": 1,
+2026-11-02T12:15:55.3151381Z         "TestSyncHostResultPressureExecution/fp/64/stack-reg=true": 1,
+2026-11-02T12:15:55.3151687Z         "TestSyncHostResultPressureExecution/fp32/1/stack-reg=false": 1,
+2026-11-02T12:15:55.3151992Z         "TestSyncHostResultPressureExecution/fp32/1/stack-reg=true": 1,
+2026-11-02T12:15:55.3152315Z         "TestSyncHostResultPressureExecution/fp32/8/stack-reg=false": 1,
+2026-11-02T12:15:55.3152619Z         "TestSyncHostResultPressureExecution/fp32/8/stack-reg=true": 1,
+2026-11-02T12:15:55.3152935Z         "TestSyncHostResultPressureExecution/fp32/16/stack-reg=false": 1,
+2026-11-02T12:15:55.3153240Z         "TestSyncHostResultPressureExecution/fp32/16/stack-reg=true": 1,
+2026-11-02T12:15:55.3153554Z         "TestSyncHostResultPressureExecution/fp32/32/stack-reg=false": 1,
+2026-11-02T12:15:55.3153859Z         "TestSyncHostResultPressureExecution/fp32/32/stack-reg=true": 1,
+2026-11-02T12:15:55.3154174Z         "TestSyncHostResultPressureExecution/fp32/64/stack-reg=false": 1,
+2026-11-02T12:15:55.3154480Z         "TestSyncHostResultPressureExecution/fp32/64/stack-reg=true": 1,
+2026-11-02T12:15:55.3154795Z         "TestSyncHostResultPressureExecution/mixed/1/stack-reg=false": 1,
+2026-11-02T12:15:55.3155103Z         "TestSyncHostResultPressureExecution/mixed/1/stack-reg=true": 1,
+2026-11-02T12:15:55.3155677Z         "TestSyncHostResultPressureExecution/mixed/8/stack-reg=false": 1,
+2026-11-02T12:15:55.3155989Z         "TestSyncHostResultPressureExecution/mixed/8/stack-reg=true": 1,
+2026-11-02T12:15:55.3156304Z         "TestSyncHostResultPressureExecution/mixed/16/stack-reg=false": 1,
+2026-11-02T12:15:55.3156619Z         "TestSyncHostResultPressureExecution/mixed/16/stack-reg=true": 1,
+2026-11-02T12:15:55.3156938Z         "TestSyncHostResultPressureExecution/mixed/32/stack-reg=false": 1,
+2026-11-02T12:15:55.3157247Z         "TestSyncHostResultPressureExecution/mixed/32/stack-reg=true": 1,
+2026-11-02T12:15:55.3157565Z         "TestSyncHostResultPressureExecution/mixed/54/stack-reg=false": 1,
+2026-11-02T12:15:55.3157874Z         "TestSyncHostResultPressureExecution/mixed/54/stack-reg=true": 1,
+2026-11-02T12:15:55.3158370Z         "TestSyncHostResultPressureExecution/vector/1/stack-reg=false": 1,
+2026-11-02T12:15:55.3158692Z         "TestSyncHostResultPressureExecution/vector/1/stack-reg=true": 1,
+2026-11-02T12:15:55.3159184Z         "TestSyncHostResultPressureExecution/vector/8/stack-reg=false": 1,
+2026-11-02T12:15:55.3159531Z         "TestSyncHostResultPressureExecution/vector/8/stack-reg=true": 1,
+2026-11-02T12:15:55.3159855Z         "TestSyncHostResultPressureExecution/vector/16/stack-reg=false": 1,
+2026-11-02T12:15:55.3160174Z         "TestSyncHostResultPressureExecution/vector/16/stack-reg=true": 1,
+2026-11-02T12:15:55.3160495Z         "TestSyncHostResultPressureExecution/vector/32/stack-reg=false": 1,
+2026-11-02T12:15:55.3160812Z         "TestSyncHostResultPressureExecution/vector/32/stack-reg=true": 1,
+2026-11-02T12:15:55.3161041Z         "TestSyncHostResultPressureExecution": 1,
+2026-11-02T12:15:55.3161214Z         "TestVariableShiftThreeOperand": 1
+2026-11-02T12:15:55.3161296Z       },
+2026-11-02T12:15:55.3161397Z       "bad_events": [
+2026-11-02T12:15:55.3161483Z         {
+2026-11-02T12:15:55.3161615Z           "Action": "skip",
+2026-11-02T12:15:55.3161911Z           "Package": "./src/core/compiler/backend/railshot/arm64",
+2026-11-02T12:15:55.3162221Z           "Test": "TestRegisterCallOverlappingArgumentSlotARM64"
+2026-11-02T12:15:55.3162300Z         }
+2026-11-02T12:15:55.3162379Z       ],
+2026-11-02T12:15:55.3162494Z       "package_results": [
+2026-11-02T12:15:55.3162589Z         "pass"
+2026-11-02T12:15:55.3162663Z       ],
+2026-11-02T12:15:55.3162755Z       "exit": 0
+2026-11-02T12:15:55.3162818Z     }
+2026-11-02T12:15:55.3162886Z   },
+2026-11-02T12:15:55.3162991Z   "job_ceiling_minutes": 45,
+2026-11-02T12:15:55.3163096Z   "matrix_ceiling_minutes": 135,
+2026-11-02T12:15:55.3163190Z   "go_executable": {
+2026-11-02T12:15:55.3163374Z     "path": "/opt/hostedtoolcache/go/1.27.1/arm64/bin/go",
+2026-11-02T12:15:55.3163657Z     "sha256": "1675694ef690db0f18fbe7046a886170904bede1d9db6ec96ae27945c1705c64",
+2026-11-02T12:15:55.3163757Z     "elf_machine": 183
+2026-11-02T12:15:55.3163825Z   },
+2026-11-02T12:15:55.3163920Z   "wabt_executable": {
+2026-11-02T12:15:55.3164269Z     "path": "/home/runner/work/wago/wago/harness/.tools/wabt-1.0.41-linux-arm64/bin/wast2json",
+2026-11-02T12:15:55.3164555Z     "sha256": "26e6fe02eeed144d0c91d8fcdf257d994b33d7e6885aa93e92a54d45027d5cee",
+2026-11-02T12:15:55.3164651Z     "elf_machine": 183
+2026-11-02T12:15:55.3164720Z   },
+2026-11-02T12:15:55.3164818Z   "timer_control_ok": true,
+2026-11-02T12:15:55.3164902Z   "binaries": {
+2026-11-02T12:15:55.3164986Z     "wago": {
+2026-11-02T12:15:55.3165314Z       "sha256": "6cfe65403d1b3fde6f09c25a183a57de9f835827ed12bb80ee3d7ac1e3c50991",
+2026-11-02T12:15:55.3165426Z       "elf_machine": 183
+2026-11-02T12:15:55.3165498Z     },
+2026-11-02T12:15:55.3165591Z     "wago-race": {
+2026-11-02T12:15:55.3165892Z       "sha256": "a73b0284553984745a27677d4406e03b0c06948b0b8950ac39bb0170b7114e1b",
+2026-11-02T12:15:55.3166007Z       "elf_machine": 183
+2026-11-02T12:15:55.3166080Z     },
+2026-11-02T12:15:55.3166170Z     "runtime": {
+2026-11-02T12:15:55.3166480Z       "sha256": "97052a1572481740039191b0eace99bb83947f8ca294478ff4c2ddcd25b97688",
+2026-11-02T12:15:55.3166875Z       "elf_machine": 183
+2026-11-02T12:15:55.3166953Z     },
+2026-11-02T12:15:55.3167040Z     "backend": {
+2026-11-02T12:15:55.3167353Z       "sha256": "fc30265170ef2395e4762f78833ee5f7edc605da9698940296f63c7813a95c94",
+2026-11-02T12:15:55.3167462Z       "elf_machine": 183
+2026-11-02T12:15:55.3167528Z     }
+2026-11-02T12:15:55.3167597Z   },
+2026-11-02T12:15:55.3167694Z   "source_unchanged": true,
+2026-11-02T12:15:55.3167797Z   "harness_unchanged": true
+2026-11-02T12:15:55.3167866Z }
+2026-11-02T12:15:55.3179140Z ##[error]Process completed with exit code 1.
+2026-11-02T12:15:55.3253109Z ##[group]Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+2026-11-02T12:15:55.3253222Z with:
+2026-11-02T12:15:55.3253344Z   name: native-arm64-rr3-5847df30f-wagodebug-1
+2026-11-02T12:15:55.3253452Z   path: setup-receipts
+receipts-wagodebug
+
+2026-11-02T12:15:55.3253533Z   if-no-files-found: error
+2026-11-02T12:15:55.3253609Z   retention-days: 14
+2026-11-02T12:15:55.3253696Z   compression-level: 6
+2026-11-02T12:15:55.3253770Z   overwrite: false
+2026-11-02T12:15:55.3253854Z   include-hidden-files: false
+2026-11-02T12:15:55.3253927Z env:
+2026-11-02T12:15:55.3254003Z   GO_VERSION: 1.27.1
+2026-11-02T12:15:55.3254082Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T12:15:55.3254158Z   TINYGO_VERSION: 0.42.0
+2026-11-02T12:15:55.3254229Z   JUST_VERSION: 1.58.0
+2026-11-02T12:15:55.3254306Z   GOTOOLCHAIN: local
+2026-11-02T12:15:55.3254391Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T12:15:55.3254548Z   QUALIFICATION_SOURCE: 5847df30f1af15d10b743d90a24b1429b290d358
+2026-11-02T12:15:55.3254737Z   QUALIFICATION_DRIVER: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:15:55.3254860Z   WORKFLOW_SHA: 6c71c4d6747456578f55928e900e36bb2d1449a8
+2026-11-02T12:15:55.3254944Z   OTHER_QUALIFICATION: false
+2026-11-02T12:15:55.3255011Z ##[endgroup]
+2026-11-02T12:15:55.4862537Z (node:8040) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-02T12:15:55.4862840Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-02T12:15:55.5030582Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2026-11-02T12:15:55.5031209Z The least common ancestor is /home/runner/work/wago/wago. This will be the root directory of the artifact
+2026-11-02T12:15:55.5031375Z With the provided path, there will be 50 files uploaded
+2026-11-02T12:15:55.5033160Z Artifact name is valid!
+2026-11-02T12:15:55.5034065Z Root directory input is valid!
+2026-11-02T12:15:55.7559762Z Beginning upload of artifact content to blob storage
+2026-11-02T12:15:56.1330107Z (node:8040) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-11-02T12:15:56.4421703Z Uploaded bytes 8388608
+2026-11-02T12:15:56.7716282Z Uploaded bytes 16777216
+2026-11-02T12:15:57.1400558Z Uploaded bytes 25165824
+2026-11-02T12:15:57.6616900Z Uploaded bytes 33554432
+2026-11-02T12:15:57.8945747Z Uploaded bytes 41943040
+2026-11-02T12:15:58.3157796Z Uploaded bytes 50331648
+2026-11-02T12:15:58.7465588Z Uploaded bytes 58720256
+2026-11-02T12:15:58.8692291Z Uploaded bytes 63954503
+2026-11-02T12:15:58.9006948Z Finished uploading artifact content to blob storage!
+2026-11-02T12:15:58.9009334Z SHA256 digest of uploaded artifact zip is 860ecddcd9ca3b5c2d4ca85b6b67d37b12c82ecdeb7da8d9eede0f20eb635e26
+2026-11-02T12:15:58.9011178Z Finalizing artifact upload
+2026-11-02T12:15:59.4125276Z Artifact native-arm64-rr3-5847df30f-wagodebug-1.zip successfully finalized. Artifact ID 13139564738
+2026-11-02T12:15:59.4126158Z Artifact native-arm64-rr3-5847df30f-wagodebug-1 has been successfully uploaded! Final size is 63954503 bytes. Artifact ID is 13139564738
+2026-11-02T12:15:59.4134280Z Artifact download URL: https://github.com/wago-org/wago/actions/runs/41442912023/artifacts/13139564738
+2026-11-02T12:15:59.4360878Z Post job cleanup.
+2026-11-02T12:15:59.5108684Z [command]/usr/bin/git version
+2026-11-02T12:15:59.5138918Z git version 2.56.0
+2026-11-02T12:15:59.5171394Z Temporarily overriding HOME='/home/runner/work/_temp/fe4482be-0878-40d8-87c7-4b6239a1de63' before making global git config changes
+2026-11-02T12:15:59.5172158Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T12:15:59.5172781Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wago/wago/source
+2026-11-02T12:15:59.5202777Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T12:15:59.5258800Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T12:15:59.5509454Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T12:15:59.5541350Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T12:15:59.5778616Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T12:15:59.5810822Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T12:15:59.6186614Z Post job cleanup.
+2026-11-02T12:15:59.6955062Z [command]/usr/bin/git version
+2026-11-02T12:15:59.6990140Z git version 2.56.0
+2026-11-02T12:15:59.7028566Z Temporarily overriding HOME='/home/runner/work/_temp/3a11d187-a151-419a-8a70-30be081e1f13' before making global git config changes
+2026-11-02T12:15:59.7031908Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T12:15:59.7033541Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wago/wago/harness
+2026-11-02T12:15:59.7075376Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T12:15:59.7107369Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T12:15:59.7345094Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T12:15:59.7379699Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T12:15:59.7609173Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T12:15:59.7639846Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T12:15:59.8003080Z Cleaning up orphan processes
+2026-11-02T12:15:59.8379697Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@11d5960a326750d5838078e36cf38b85af677262, actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff, actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
