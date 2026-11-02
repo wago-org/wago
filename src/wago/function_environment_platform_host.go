@@ -12,7 +12,6 @@ import (
 // Host backends do not yet describe raw function words in their exact frame
 // maps. Keep environment slots conservative during an invocation; the joint
 // owner pass makes them conditional only at a fully quiescent boundary.
-func managedFunctionGateOwner(*instancePluginState) invocationID { return 0 }
 func managedFunctionMemberActive(member *managedFunctionMember, _ invocationID) bool {
 	owner := member.owner
 	owner.lifeMu.Lock()
@@ -114,9 +113,6 @@ func (a *managedFunctionAggregateScratch) changeOpaque(s *managedFunctionCollect
 	}
 	a.change(s, in, bits, delta, allocate)
 }
-
-// Compact extern and exception ownership keep their existing host representation.
-type managedFunctionExceptionScratch struct{}
 
 func compactExternAddClaimedDomainsLocked(*referenceStore, *gcInvocationDomainSet) {}
 func compactExternHostRootIsStrong(*gc.Collector, uint32) bool                     { return true }

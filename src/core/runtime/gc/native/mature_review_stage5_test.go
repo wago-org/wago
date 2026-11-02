@@ -32,10 +32,10 @@ func matureReviewOracle(t *testing.T, h *throughputHeap, live []matureReviewExte
 		}
 	}
 	for _, x := range h.freeSpans() {
-		all = append(all, span{x.off, x.size})
+		all = append(all, span(x))
 	}
 	for _, x := range h.pendingFree {
-		all = append(all, span{x.off, x.size})
+		all = append(all, span(x))
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].off < all[j].off })
 	var end uint32

@@ -48,9 +48,9 @@ type managedFunctionMark struct {
 	err                error
 	complete           bool
 	members            []*managedFunctionMember
-	receipts           []managedFunctionReceiptProof
-	nativeCursor       managedFunctionNativeRootCursor
-	nativeDone         bool
+	managedFunctionMarkTarget
+	nativeCursor managedFunctionNativeRootCursor
+	nativeDone   bool
 }
 
 // bindPersistentSlot transfers a private instance slot from the unconditional
