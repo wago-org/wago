@@ -1,0 +1,102 @@
+[
+  {
+    "kind": "positive",
+    "mode": "ordinary",
+    "build_command": [
+      "/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo",
+      "test",
+      "-c",
+      "-scheduler=threads",
+      "-gc=conservative",
+      "-p=2",
+      "-o",
+      "/home/dev/.cache/_wago_resume_4913_al8mthhk/positive-ordinary.test",
+      "./src/core/runtime"
+    ],
+    "build_exit": 1
+  },
+  {
+    "kind": "positive",
+    "mode": "wagodebug",
+    "build_command": [
+      "/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo",
+      "test",
+      "-c",
+      "-scheduler=threads",
+      "-gc=conservative",
+      "-p=2",
+      "-o",
+      "/home/dev/.cache/_wago_resume_4913_al8mthhk/positive-wagodebug.test",
+      "-tags=wagodebug",
+      "./src/core/runtime"
+    ],
+    "build_exit": 1
+  },
+  {
+    "kind": "positive",
+    "mode": "wago_regalloccheck",
+    "build_command": [
+      "/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo",
+      "test",
+      "-c",
+      "-scheduler=threads",
+      "-gc=conservative",
+      "-p=2",
+      "-o",
+      "/home/dev/.cache/_wago_resume_4913_al8mthhk/positive-wago_regalloccheck.test",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime"
+    ],
+    "build_exit": 1
+  },
+  {
+    "kind": "wrong-field",
+    "mode": "ordinary",
+    "build_command": [
+      "/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo",
+      "test",
+      "-c",
+      "-scheduler=threads",
+      "-gc=conservative",
+      "-p=2",
+      "-o",
+      "/home/dev/.cache/_wago_resume_4913_al8mthhk/wrong-field-ordinary.test",
+      "./src/core/runtime"
+    ],
+    "build_exit": 1
+  },
+  {
+    "kind": "wrong-field",
+    "mode": "wagodebug",
+    "build_command": [
+      "/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo",
+      "test",
+      "-c",
+      "-scheduler=threads",
+      "-gc=conservative",
+      "-p=2",
+      "-o",
+      "/home/dev/.cache/_wago_resume_4913_al8mthhk/wrong-field-wagodebug.test",
+      "-tags=wagodebug",
+      "./src/core/runtime"
+    ],
+    "build_exit": 1
+  },
+  {
+    "kind": "wrong-field",
+    "mode": "wago_regalloccheck",
+    "build_command": [
+      "/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo",
+      "test",
+      "-c",
+      "-scheduler=threads",
+      "-gc=conservative",
+      "-p=2",
+      "-o",
+      "/home/dev/.cache/_wago_resume_4913_al8mthhk/wrong-field-wago_regalloccheck.test",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime"
+    ],
+    "build_exit": 1
+  }
+]

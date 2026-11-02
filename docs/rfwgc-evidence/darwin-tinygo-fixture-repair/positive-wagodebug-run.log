@@ -1,0 +1,3 @@
+=== RUN   TestTinyGoNativeResumeUsesPhysicalStackTop
+--- PASS: TestTinyGoNativeResumeUsesPhysicalStackTop (0.00s)
+PASS

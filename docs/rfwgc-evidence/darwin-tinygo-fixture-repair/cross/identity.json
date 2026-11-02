@@ -1,0 +1,18 @@
+{
+  "compiler": "/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo",
+  "compiler_sha256": "cdd520d062bc2624584f6fc9046929dea9c800af63b791be6cc9d06402c72130",
+  "drivers": {
+    "cancellation_test.go.in": "26e5d153a42402d8c316cb5f1228f1544851486509a5c1c93619d85b3a1bf17f",
+    "foreign_stack_arm64_test.go.in": "4afae25cbbf0bf0e8ff0da421178a3c7da251a5328bf8be6c0377642385128f9",
+    "harness.py": "115ccb1742073805f1ab8fdb4f41b634d69264007687211c2603a3aeffc65ea6",
+    "validate.py": "01a7ad8da63573fb4dcee548ff7037afbb1a1aa9a39965113db31e8787db64c9"
+  },
+  "evidence": "CROSS MACH-O ONLY; no native execution",
+  "patch_files": {
+    "src/internal/task/task_threads.c": "c49052975185e8fa0df1c5f4c0a992f50bc7d374fb11e6289a6be33d6d684a08",
+    "src/internal/task/task_threads.go": "208523a839a0b524f4c4274b742efd3a83e1d16b1da8a13c5b038b8490c6e68a",
+    "src/internal/task/wago_foreign_stack.go": "5d5f2ed3febafa41527d4817d1404d972f40b3fc1803be83e140b78edcb2f9ac",
+    "src/runtime/gc_stack_threads.go": "0b6cc9541f044503425f36fadb01063fa9ab5fbca36615030e24cae8d8c281e7"
+  },
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf"
+}

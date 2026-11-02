@@ -1,0 +1,2 @@
+src/core/runtime/engine_host.go:11:2: no required module provides package github.com/wago-org/wago/internal/runtimebridge; to add it:
+	go get github.com/wago-org/wago/internal/runtimebridge
