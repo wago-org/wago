@@ -1709,8 +1709,10 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				break
 			}
 			entryBytes := c.tableEntryBytes(int(el.TableIndex))
+			var conversionSegmentTarget []byte
 			if conversionInitializationEnabled && importedTable != nil && normalizedElemRefType(el.RefType) == ValExternRef {
-				desc = stageConversionInitialTable(&conversionInitialTables, importedTable, elemBase, len(el.Values))
+				conversionSegmentTarget = stageConversionInitialTable(&conversionInitialTables, importedTable, elemBase, 0)
+				desc = append([]byte(nil), conversionSegmentTarget...)
 			}
 			for k, value := range el.Values {
 				slot := int(elemBase) + k
@@ -1733,6 +1735,10 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, writeErr)
 					break
 				}
+			}
+			if initErr == nil && conversionSegmentTarget != nil {
+				copy(conversionSegmentTarget[8+int(elemBase)*8:8+int(end)*8], desc[8+int(elemBase)*8:8+int(end)*8])
+				stageConversionInitialTable(&conversionInitialTables, importedTable, elemBase, len(el.Values))
 			}
 			if initErr != nil {
 				break
@@ -2263,11 +2269,13 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		published.each(func(table *Table) { publicationCleanup.run(table.pruneRetainedInstances) })
 		publicationCleanup.finish()
 	}
-	if initErr != nil {
-		return nil, initErr
-	}
+	// Earlier complete active segments retain their Wasm-mandated effects when
+	// a later segment traps. Each individual segment is prepared atomically.
 	if err := in.initializeConversionReceipts(conversionInitialTables); err != nil {
 		return nil, err
+	}
+	if initErr != nil {
+		return nil, initErr
 	}
 	if err := railshotAdoptFunctionDependencies(in, finishMemoryContext == nil); err != nil {
 		return nil, err

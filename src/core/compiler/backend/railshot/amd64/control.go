@@ -1476,7 +1476,11 @@ func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifie
 
 // scanLoopCallFreeDetails also picks one float constant while the
 // existing loop proof is walking the body. No second bytecode pass is needed.
-func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, pinnedLocals []int, wantFloat bool, budget *int) (bool, uint64, storage, bool) {
+func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, pinnedLocals []int, wantFloat bool, budget *int, modules ...*wasm.Module) (bool, uint64, storage, bool) {
+	var m *wasm.Module
+	if len(modules) != 0 {
+		m = modules[0]
+	}
 	if budget == nil || *budget >= maxCallFreeLoopLookaheadBytes {
 		return false, 0, storage{}, false
 	}
@@ -1532,8 +1536,11 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 		} else {
 			switch op {
 			case 0x05, 0x0b: // else/end have no immediate or proof effect.
-			case 0x20, 0x23, 0x24, 0x0c, 0x0d, 0xd2, 0xd5, 0xd6:
+			case 0x20, 0x23, 0x0c, 0x0d, 0xd2, 0xd5, 0xd6:
 				_, err = r2.U32()
+			case 0x24:
+				index, err = r2.U32()
+				kind = wasm.InstrGlobalSet
 			case 0x21, 0x22:
 				index, err = r2.U32()
 				kind = wasm.InstrLocalSet
@@ -1613,7 +1620,7 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 			// the hot path. Keep the existing stack convergence there.
 			brTable = true
 		}
-		if gcOrAtomicInstructionMayCall(kind, gcStructHelpers) {
+		if shared.ExternStoreMayCall(m, kind, index) || gcOrAtomicInstructionMayCall(kind, gcStructHelpers) {
 			return false, 0, storage{}, false
 		}
 		if bulk {
@@ -1734,7 +1741,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 		if loopRegState {
 			pins = f.pinnedLocals
 		}
-		if callFree, writes, st, hasFloat := scanLoopCallFreeDetails(r, f.classifier, f.gcStructHelpers, pins, len(f.fconsts) < 2, &f.callFreeLoopLookaheadBytes); callFree {
+		if callFree, writes, st, hasFloat := scanLoopCallFreeDetails(r, f.classifier, f.gcStructHelpers, pins, len(f.fconsts) < 2, &f.callFreeLoopLookaheadBytes, f.m); callFree {
 			fr.set(ctrlLoopCallFree, true)
 			loopPinnedWrites = writes
 			loopFloatConst, loopFloatConstOK = st, hasFloat

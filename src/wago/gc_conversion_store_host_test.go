@@ -6,10 +6,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"reflect"
 	"testing"
+	"unsafe"
 )
 
 // No payload reads, collections, escaped calls, or cleanup after STOP.
@@ -405,7 +407,7 @@ func TestR9H2StoreHooksActiveInitialization(t *testing.T) {
 	makeInit := func(bad bool) []byte {
 		elems := [][]byte{{6, 0, 0x41, 0, 0x0b, 0x6f, 2, 0xd0, 0x6f, 0x0b, 0xd0, 0x6f, 0x0b}}
 		if bad {
-			elems = append(elems, []byte{6, 0, 0x41, 2, 0x0b, 0x6f, 1, 0xd0, 0x6f, 0x0b})
+			elems = [][]byte{{6, 0, 0x41, 2, 0x0b, 0x6f, 1, 0xd0, 0x6f, 0x0b}}
 		}
 		return wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(imp)), wasmtest.Section(9, wasmtest.Vec(elems...)))
 	}
@@ -436,4 +438,60 @@ func TestR9H2StoreHooksActiveInitialization(t *testing.T) {
 	_ = provider.Close()
 	_ = bad.Close()
 	_ = good.Close()
+}
+
+func TestR9H2StoreHooksDescriptorMigration(t *testing.T) {
+	store := newReferenceStore(false)
+	publisher, provider, table, word := h2ReceiptFixture(t, store, 0)
+	h2TableSet(t, table, 0, word)
+	c := table.conversionContainers[0]
+	r := h2AssertReceipt(t, c, 0)
+	handle, e := provider.ExportedTable("slots")
+	if e != nil {
+		t.Fatal(e)
+	}
+	arena, e := coreruntime.NewArena(len(handle.desc))
+	if e != nil {
+		t.Fatal(e)
+	}
+	next := arena.Alloc(len(handle.desc))
+	copy(next, handle.desc)
+	h2WithAuthority(t, store, func() {
+		rejected := fmt.Errorf("reject migration")
+		if e := c.migrate(next, func() error { return rejected }); e != rejected {
+			t.Fatal(e)
+		}
+		if &c.storage[0] != &handle.desc[0] || c.slots[0] != r {
+			t.Fatal("migration rollback changed identity")
+		}
+		if e := c.migrate(next, func() error {
+			pointer := uintptr(unsafe.Pointer(&next[0]))
+			provider.tableDescPtr = pointer
+			provider.jm.SetTablePtr(pointer)
+			if provider.nativeContext != 0 {
+				context := unsafe.Slice((*byte)(offHeapPtr(provider.nativeContext)), coreruntime.InstanceContextBytes)
+				binary.LittleEndian.PutUint64(context[8:], uint64(pointer))
+			}
+			handle.desc = next
+			return nil
+		}); e != nil {
+			t.Fatal(e)
+		}
+		canonical, e := newGCConversionContainer(provider, next)
+		if e != nil || canonical != c || c.slots[0] != r {
+			t.Fatal("migration changed canonical receipt")
+		}
+	})
+	if e = publisher.Close(); e != nil {
+		t.Fatal(e)
+	}
+	h2AssertReceipt(t, c, 0)
+	if e = handle.SetValue(0, Value{typ: ValExternRef}); e != nil {
+		t.Fatal(e)
+	}
+	if !r.released || store.gcDomainForCollector(r.identity.domain.collector) != nil {
+		t.Fatal("migrated final clear retained collector")
+	}
+	_ = provider.Close()
+	_ = arena.Close()
 }

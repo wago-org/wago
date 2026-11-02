@@ -1550,7 +1550,11 @@ func (f *fn) alignLoopHeader() {
 // (the body start, just past the blocktype) to the matching `end`, recording the
 // locals it sets. The module-aware classifier keeps mixed memory-width
 // immediates synchronized. Any unexpected decode failure returns no proof.
-func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16, uses *scopedLoopConstUses) (setLocals []uint16, hasCall bool) {
+func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16, uses *scopedLoopConstUses, modules ...*wasm.Module) (setLocals []uint16, hasCall bool) {
+	var m *wasm.Module
+	if len(modules) != 0 {
+		m = modules[0]
+	}
 	start := r.Offset()
 	defer func() { _ = r.JumpTo(start) }()
 	base := len(dst)
@@ -1599,7 +1603,7 @@ func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifi
 			uses.blocked = true
 			uses.mask = 0
 		}
-		if loopInstructionMayCall(imm.Kind) {
+		if shared.ExternStoreMayCall(m, imm.Kind, imm.Index) || loopInstructionMayCall(imm.Kind) {
 			hasCall = true
 		}
 		switch op {
@@ -1683,7 +1687,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if collectConsts {
 			collect = &uses
 		}
-		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals, collect)
+		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals, collect, f.m)
 		if collectConsts && !hasCall {
 			fr.flags |= ctrlFlags(uses.mask) << 12
 		}
