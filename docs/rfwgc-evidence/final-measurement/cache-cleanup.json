@@ -1,0 +1,10 @@
+{
+  "removed": "docs/rfwgc-evidence/final-measurement/.prepared/cache",
+  "reason": "Shared home filesystem near exhaustion; completed preparation private cache only",
+  "active_process_reference_check": "none except inspection command",
+  "retained": "all prepared executables, archived inputs, raw receipts and committed evidence",
+  "after_home_available": "2.0 GiB",
+  "tmp_available": "41 GiB",
+  "unrelated_caches": "untouched",
+  "candidate_seal": "remains INVALID; no measurements"
+}
