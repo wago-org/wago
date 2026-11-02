@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-combined-5345/coverage.py", line 12, in <module>
+    assert len(a)==6 and len(b)==9 and h6,(r['label'],a,b,h6)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('arm64-ordinary-guest', ['TestR9H2HostContainerPublicGlobal', 'TestR9H2HostContainerPublicTable', 'TestR9H2HostContainerClose', 'TestR9H2HostContainerAuthority', 'TestR9H2HostContainerMigration', 'TestR9H2HostContainerCycle'], ['TestR9H2HostImportGlobal', 'TestR9H2HostImportTable', 'TestR9H2HostImportBulk', 'TestR9H2HostImportInitialization', 'TestR9H2HostImportCycle', 'TestR9H2HostImportTableIndependentPhysical', 'TestR9H2HostImportAuthority', 'TestR9H2HostImportGlobalOrdinaryAndGuards', 'TestR9H2HostImportTableOrdinaryAndGuards'], [])

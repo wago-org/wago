@@ -1,0 +1,85 @@
+{
+  "source": "5345bd365c13963f1bf60e26bb80789ab9ead4cc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T03:34:42.346313398Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Test": "TestResolveInstallerVersion/release_build",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:42.346330259Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Test": "TestResolveInstallerVersion/go_install",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:42.346340889Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Test": "TestResolveInstallerVersion/clean_tagged_checkout",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:42.346352581Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Test": "TestResolveInstallerVersion/dirty_tagged_checkout",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:42.346385203Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Test": "TestResolveInstallerVersion/modified_tagged_checkout",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:42.346403347Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Test": "TestResolveInstallerVersion/main_pseudo-version",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:42.346413305Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Test": "TestResolveInstallerVersion/tag-derived_pseudo-version",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:42.34642637Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Test": "TestResolveInstallerVersion/local_build",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:42.346439254Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Test": "TestResolveInstallerVersion/no_build_info",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:42.346446047Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Test": "TestResolveInstallerVersion",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T03:34:42.346657474Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago-installer",
+      "Elapsed": 0.003
+    }
+  ],
+  "raw_sha256": "4f3c37e4e263cc90659c2a7b92279209ad11f59a4f96d10938f2617232760304",
+  "driver_unchanged": true
+}

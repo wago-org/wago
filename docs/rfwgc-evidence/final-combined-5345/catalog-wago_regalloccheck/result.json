@@ -1,0 +1,918 @@
+{
+  "source": "5345bd365c13963f1bf60e26bb80789ab9ead4cc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T02:57:06.513480508Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/sed-records",
+      "Elapsed": 0.05
+    },
+    {
+      "Time": "2026-11-02T02:57:06.547226485Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/seqtk-fastq-to-fasta",
+      "Elapsed": 0.03
+    },
+    {
+      "Time": "2026-11-02T02:57:06.552684629Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/lcs-substrings",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:06.57593145Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/needleman-wunsch-dna",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T02:57:06.601880739Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/smith-waterman-dna",
+      "Elapsed": 0.03
+    },
+    {
+      "Time": "2026-11-02T02:57:06.65447252Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/fasttree-phylogeny",
+      "Elapsed": 0.05
+    },
+    {
+      "Time": "2026-11-02T02:57:06.674824484Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/gnu-seq-range",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T02:57:06.691968271Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/gnu-tr-uppercase",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T02:57:08.622832367Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/php-buckets",
+      "Elapsed": 1.93
+    },
+    {
+      "Time": "2026-11-02T02:57:09.729671958Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/ruby-buckets",
+      "Elapsed": 1.11
+    },
+    {
+      "Time": "2026-11-02T02:57:17.047972406Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/clang-cpp-kernels",
+      "Elapsed": 7.32
+    },
+    {
+      "Time": "2026-11-02T02:57:24.449531647Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/clang-c-kernels",
+      "Elapsed": 7.4
+    },
+    {
+      "Time": "2026-11-02T02:57:24.516937699Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/lua-cli-buckets",
+      "Elapsed": 0.07
+    },
+    {
+      "Time": "2026-11-02T02:57:24.584484955Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/micropython-squares",
+      "Elapsed": 0.07
+    },
+    {
+      "Time": "2026-11-02T02:57:24.734142977Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/ecpunpack-config",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T02:57:24.897354852Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/ecppack-bitstream",
+      "Elapsed": 0.16
+    },
+    {
+      "Time": "2026-11-02T02:57:26.088983665Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/coreutils-sort",
+      "Elapsed": 1.19
+    },
+    {
+      "Time": "2026-11-02T02:57:27.262690088Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/coreutils-sha256sum",
+      "Elapsed": 1.17
+    },
+    {
+      "Time": "2026-11-02T02:57:28.451048126Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/coreutils-base64",
+      "Elapsed": 1.19
+    },
+    {
+      "Time": "2026-11-02T02:57:29.670435237Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/coreutils-wc",
+      "Elapsed": 1.22
+    },
+    {
+      "Time": "2026-11-02T02:57:30.225967178Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/ripgrep-source",
+      "Elapsed": 0.56
+    },
+    {
+      "Time": "2026-11-02T02:57:34.217357948Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/yosys-counter",
+      "Elapsed": 3.99
+    },
+    {
+      "Time": "2026-11-02T02:57:34.301514357Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/icemulti-image",
+      "Elapsed": 0.08
+    },
+    {
+      "Time": "2026-11-02T02:57:34.41324614Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/icepack-pack",
+      "Elapsed": 0.11
+    },
+    {
+      "Time": "2026-11-02T02:57:34.523378358Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/iceunpack-unpack",
+      "Elapsed": 0.11
+    },
+    {
+      "Time": "2026-11-02T02:57:34.653945787Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/ecpbram-generate",
+      "Elapsed": 0.13
+    },
+    {
+      "Time": "2026-11-02T02:57:34.750507441Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/icebram-generate",
+      "Elapsed": 0.1
+    },
+    {
+      "Time": "2026-11-02T02:57:34.860479648Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/ecppll-clock",
+      "Elapsed": 0.11
+    },
+    {
+      "Time": "2026-11-02T02:57:34.873674657Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/icepll-clock",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:34.939533592Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/json2csv-people",
+      "Elapsed": 0.07
+    },
+    {
+      "Time": "2026-11-02T02:57:34.970016588Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/tree-ashell-list",
+      "Elapsed": 0.03
+    },
+    {
+      "Time": "2026-11-02T02:57:34.993372235Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/tree-list",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T02:57:35.081096947Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/brotli-compress",
+      "Elapsed": 0.09
+    },
+    {
+      "Time": "2026-11-02T02:57:35.166278182Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/brotli-decompress",
+      "Elapsed": 0.09
+    },
+    {
+      "Time": "2026-11-02T02:57:35.315073504Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/jq-json-transform",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T02:57:36.070331708Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/age-decrypt",
+      "Elapsed": 0.76
+    },
+    {
+      "Time": "2026-11-02T02:57:36.507603772Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/age-keygen-public",
+      "Elapsed": 0.44
+    },
+    {
+      "Time": "2026-11-02T02:57:36.518003139Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/lzmainfo-header",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:36.530352268Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/lzmadec-decompress",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:36.549304723Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/xzdec-decompress",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T02:57:36.866948068Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/sqlite3-query",
+      "Elapsed": 0.32
+    },
+    {
+      "Time": "2026-11-02T02:57:36.999260826Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/duktape-script",
+      "Elapsed": 0.13
+    },
+    {
+      "Time": "2026-11-02T02:57:37.173949171Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/quickjs-script",
+      "Elapsed": 0.17
+    },
+    {
+      "Time": "2026-11-02T02:57:42.089989426Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/swift-format-source",
+      "Elapsed": 4.92
+    },
+    {
+      "Time": "2026-11-02T02:57:43.99263307Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/esbuild-minify",
+      "Elapsed": 1.9
+    },
+    {
+      "Time": "2026-11-02T02:57:43.992878502Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/tiny",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.993016952Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/fib_rec",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.993144712Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/memory",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.993322566Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/memory_tree",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.993498737Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/dispatch",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.996788768Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/many_funcs",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.99692866Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/linked_list",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.997204308Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/nbody",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.997546491Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/fannkuch",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.997803724Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/matmul",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.998059304Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/sha256",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:43.998676554Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/raytrace",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.00424744Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/json-as",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.004975477Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/blake-as",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.005514901Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/utf-as",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.011073283Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/json-as-simd",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.012917838Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/blake-as-simd",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.014685659Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/utf-as-simd",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.016145682Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/coremark",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.018574876Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/blake3",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.019129578Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/qoi",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.019699518Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/lz4",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.022793441Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/zlib",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.032854011Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/zstd",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.057398872Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/yyjson",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T02:57:44.059980061Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/utf8proc",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.060406412Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/xxhash",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.070460981Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/libtommath",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.08246895Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/nanosvg",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.085128846Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/kissfft",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.091840746Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/miniz",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.093804535Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/monocypher",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.100261916Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/drwav",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.103406824Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/fastfloat",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.148499867Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/pcre2",
+      "Elapsed": 0.05
+    },
+    {
+      "Time": "2026-11-02T02:57:44.160249551Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/cjson",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.1836438Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/lodepng",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T02:57:44.223797054Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/wren",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-11-02T02:57:44.236481873Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/tinyxml2",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.298616151Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/lua",
+      "Elapsed": 0.06
+    },
+    {
+      "Time": "2026-11-02T02:57:44.299033375Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/embench-crc32",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.300000482Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/embench-huffbench",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.300384754Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/embench-matmult-int",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.300996032Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/embench-nettle-aes",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.301761891Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/embench-nettle-sha256",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.304679773Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/embench-qrduino",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.312107937Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/sightglass-shootout-base64",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.323041848Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/sightglass-libsodium-hash",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T02:57:44.323262082Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/tacle-bsort",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.32376143Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-2mm",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.32459728Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-3mm",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.325202758Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-adi",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.325749585Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-atax",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.326344663Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-bicg",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.32707763Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-cholesky",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.327712372Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-correlation",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.328308633Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-covariance",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.328815685Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-deriche",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.329273265Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-doitgen",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.329658599Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-durbin",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.33024481Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-fdtd-2d",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.330576022Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-floyd-warshall",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.331367479Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-gemm",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.332983355Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-gemver",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.333473235Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-gesummv",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.333950542Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-gramschmidt",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.334616603Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-heat-3d",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.335077359Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-jacobi-1d",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.335570846Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-jacobi-2d",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.336202993Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-lu",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.336926492Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-ludcmp",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.337443243Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-mvt",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.337911393Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-nussinov",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.338292809Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-seidel-2d",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.339163455Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-symm",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.339665147Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-syr2k",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.340097309Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-syrk",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.340507991Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-trisolv",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.340931166Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/polybench-trmm",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T02:57:44.38120721Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/wren-modulo",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-11-02T02:57:44.455209744Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/grain-stdlib-array",
+      "Elapsed": 0.07
+    },
+    {
+      "Time": "2026-11-02T02:57:44.520221257Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/grain-stdlib-string",
+      "Elapsed": 0.06
+    },
+    {
+      "Time": "2026-11-02T02:57:44.592779167Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/grain-stdlib-json-subset",
+      "Elapsed": 0.07
+    },
+    {
+      "Time": "2026-11-02T02:57:44.592786791Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile",
+      "Elapsed": 38.13
+    },
+    {
+      "Time": "2026-11-02T02:57:44.594855477Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 38.131
+    }
+  ],
+  "raw_sha256": "9f4c22f73d66bb88a88af7d227ce34b4035385b89fef95850d193cfc4ce0b5b9",
+  "driver_unchanged": true
+}

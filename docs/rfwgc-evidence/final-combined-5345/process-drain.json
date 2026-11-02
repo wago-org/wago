@@ -1,0 +1,6 @@
+{
+  "source": "5345bd365c13963f1bf60e26bb80789ab9ead4cc",
+  "owned_runtime_processes": [],
+  "drained": true,
+  "scope": "Only this qualification; no assertion about other workers or a measurement lease."
+}

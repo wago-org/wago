@@ -1,0 +1,12 @@
+{
+  "recorded_exports": [
+    "/tmp/wago-final-5345-rs0ccmve"
+  ],
+  "owned_python_cache": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-combined-5345/__pycache__",
+  "removed": [
+    "/tmp/wago-final-5345-rs0ccmve",
+    "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-combined-5345/__pycache__"
+  ],
+  "remaining": [],
+  "inventory": "owned-artifact-inventory.json.gz"
+}
