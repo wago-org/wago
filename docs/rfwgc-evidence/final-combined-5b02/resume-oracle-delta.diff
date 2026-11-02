@@ -1,0 +1,22 @@
+diff --git a/src/core/runtime/engine_int_tinygo_test.go b/src/core/runtime/engine_int_tinygo_test.go
+index e6c3fd3bc..a1409cd2d 100644
+--- a/src/core/runtime/engine_int_tinygo_test.go
++++ b/src/core/runtime/engine_int_tinygo_test.go
+@@ -26,8 +26,15 @@ func TestTinyGoNativeResumeUsesPhysicalStackTop(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	defer e.Close()
+-	if got, want := e.nativeResumeStackTop(), e.preparedInt.stackTop; got != want || got == e.stackTop {
+-		t.Fatalf("resume stack top = %#x, want physical top %#x distinct from entry %#x", got, want, e.stackTop)
++	if got, want := e.nativeResumeStackTop(), e.preparedInt.stackTop; got != want {
++		t.Fatalf("resume stack top = %#x, want physical top %#x", got, want)
++	}
++	entry := e.stackTop
++	e.stackTop = e.preparedInt.stackTop ^ uintptr(16)
++	got, want := e.nativeResumeStackTop(), e.preparedInt.stackTop
++	e.stackTop = entry
++	if got != want {
++		t.Fatalf("resume used controlled entry sentinel: got %#x want %#x", got, want)
+ 	}
+ }
+ 

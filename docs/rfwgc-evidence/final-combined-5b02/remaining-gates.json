@@ -1,96 +1,18 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 42,
+  "remaining_count": 24,
   "remaining": [
-    {
-      "suite": "graphs-port-ordinary",
-      "receipt_suite": "graphs-port-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "graphs-port-wagodebug",
-      "receipt_suite": "graphs-port-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "graphs-port-wago_regalloccheck",
-      "receipt_suite": "graphs-port-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "graphs-baseline-ordinary",
-      "receipt_suite": "graphs-baseline-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
     {
       "suite": "graphs-baseline-wagodebug",
       "receipt_suite": "graphs-baseline-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "verdict": "INTERRUPTED"
     },
     {
       "suite": "graphs-baseline-wago_regalloccheck",
       "receipt_suite": "graphs-baseline-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "backend-wagodebug",
-      "receipt_suite": "backend-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "backend-wago_regalloccheck",
-      "receipt_suite": "backend-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "diagnostics-default-ordinary",
-      "receipt_suite": "diagnostics-default-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "RUNNING"
-    },
-    {
-      "suite": "diagnostics-default-wagodebug",
-      "receipt_suite": "diagnostics-default-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "diagnostics-default-wago_regalloccheck",
-      "receipt_suite": "diagnostics-default-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "diagnostics-established-ordinary",
-      "receipt_suite": "diagnostics-established-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "diagnostics-established-wagodebug",
-      "receipt_suite": "diagnostics-established-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "diagnostics-established-wago_regalloccheck",
-      "receipt_suite": "diagnostics-established-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-evacuation-wagodebug",
-      "receipt_suite": "tinygo-evacuation-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
     },
     {
       "suite": "tinygo-evacuation-wago_regalloccheck",
@@ -99,26 +21,14 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "tinygo-joint-ordinary",
-      "receipt_suite": "tinygo-joint-ordinary",
+      "suite": "tinygo-joint-wagodebug",
+      "receipt_suite": "tinygo-joint-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "RUNNING"
     },
     {
-      "suite": "tinygo-joint-wagodebug",
-      "receipt_suite": "tinygo-joint-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "tinygo-joint-wago_regalloccheck",
       "receipt_suite": "tinygo-joint-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-conversion-ordinary",
-      "receipt_suite": "tinygo-conversion-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -131,24 +41,6 @@
     {
       "suite": "tinygo-conversion-wago_regalloccheck",
       "receipt_suite": "tinygo-conversion-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-guest/arm64-wago_regalloccheck-guest",
-      "receipt_suite": "qemu-guest/arm64-wago_regalloccheck-guest",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-guest/riscv64-ordinary-guest",
-      "receipt_suite": "qemu-guest/riscv64-ordinary-guest",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-guest/riscv64-wagodebug-guest",
-      "receipt_suite": "qemu-guest/riscv64-wagodebug-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -289,6 +181,10 @@
     "catalog-ordinary",
     "catalog-wagodebug",
     "catalog-wago_regalloccheck",
+    "graphs-port-ordinary",
+    "graphs-port-wagodebug",
+    "graphs-port-wago_regalloccheck",
+    "graphs-baseline-ordinary",
     "spec-v1-ordinary",
     "spec-v1-wagodebug",
     "spec-v1-wago_regalloccheck",
@@ -305,6 +201,14 @@
     "guard-corpus-wagodebug",
     "guard-corpus-wago_regalloccheck",
     "backend-ordinary",
+    "backend-wagodebug",
+    "backend-wago_regalloccheck",
+    "diagnostics-default-ordinary",
+    "diagnostics-default-wagodebug",
+    "diagnostics-default-wago_regalloccheck",
+    "diagnostics-established-ordinary",
+    "diagnostics-established-wagodebug",
+    "diagnostics-established-wago_regalloccheck",
     "tooling-build-ordinary",
     "tooling-build-wagodebug",
     "tooling-build-wago_regalloccheck",
@@ -330,6 +234,9 @@
     "seeded-concurrency-wagodebug",
     "seeded-concurrency-wago_regalloccheck",
     "tinygo-evacuation-ordinary",
+    "tinygo-evacuation-wagodebug",
+    "tinygo-joint-ordinary",
+    "tinygo-conversion-ordinary",
     "hardening-ordinary",
     "hardening-wagodebug",
     "hardening-wago_regalloccheck",
@@ -350,12 +257,15 @@
     "qemu-facade/arm64-wago_regalloccheck-facade",
     "qemu-guest/arm64-ordinary-guest",
     "qemu-guest/arm64-wagodebug-guest",
+    "qemu-guest/arm64-wago_regalloccheck-guest",
     "qemu-collector/riscv64-ordinary-collector",
     "qemu-collector/riscv64-wagodebug-collector",
     "qemu-collector/riscv64-wago_regalloccheck-collector",
     "qemu-facade/riscv64-ordinary-facade",
     "qemu-facade/riscv64-wagodebug-facade",
     "qemu-facade/riscv64-wago_regalloccheck-facade",
+    "qemu-guest/riscv64-ordinary-guest",
+    "qemu-guest/riscv64-wagodebug-guest",
     "tooling-generate",
     "replay-generated-diff",
     "replay-docs",
