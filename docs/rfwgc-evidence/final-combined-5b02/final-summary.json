@@ -205,37 +205,37 @@
       "suite": "graphs-port-ordinary",
       "receipt_suite": "graphs-port-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "graphs-port-wagodebug",
       "receipt_suite": "graphs-port-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "graphs-port-wago_regalloccheck",
       "receipt_suite": "graphs-port-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "graphs-baseline-ordinary",
       "receipt_suite": "graphs-baseline-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "verdict": "PASS"
     },
     {
       "suite": "graphs-baseline-wagodebug",
       "receipt_suite": "graphs-baseline-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "verdict": "INTERRUPTED"
     },
     {
       "suite": "graphs-baseline-wago_regalloccheck",
       "receipt_suite": "graphs-baseline-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "spec-v1-ordinary",
@@ -337,49 +337,49 @@
       "suite": "backend-wagodebug",
       "receipt_suite": "backend-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "backend-wago_regalloccheck",
       "receipt_suite": "backend-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "diagnostics-default-ordinary",
       "receipt_suite": "diagnostics-default-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "diagnostics-default-wagodebug",
       "receipt_suite": "diagnostics-default-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "diagnostics-default-wago_regalloccheck",
       "receipt_suite": "diagnostics-default-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "diagnostics-established-ordinary",
       "receipt_suite": "diagnostics-established-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "diagnostics-established-wagodebug",
       "receipt_suite": "diagnostics-established-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "diagnostics-established-wago_regalloccheck",
       "receipt_suite": "diagnostics-established-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-build-ordinary",
@@ -535,7 +535,7 @@
       "suite": "tinygo-evacuation-wagodebug",
       "receipt_suite": "tinygo-evacuation-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-evacuation-wago_regalloccheck",
@@ -547,13 +547,13 @@
       "suite": "tinygo-joint-ordinary",
       "receipt_suite": "tinygo-joint-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-joint-wagodebug",
       "receipt_suite": "tinygo-joint-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-joint-wago_regalloccheck",
@@ -565,7 +565,7 @@
       "suite": "tinygo-conversion-ordinary",
       "receipt_suite": "tinygo-conversion-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-conversion-wagodebug",
@@ -703,7 +703,7 @@
       "suite": "qemu-guest/arm64-wago_regalloccheck-guest",
       "receipt_suite": "qemu-guest/arm64-wago_regalloccheck-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-collector/riscv64-ordinary-collector",
@@ -745,13 +745,13 @@
       "suite": "qemu-guest/riscv64-ordinary-guest",
       "receipt_suite": "qemu-guest/riscv64-ordinary-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-guest/riscv64-wagodebug-guest",
       "receipt_suite": "qemu-guest/riscv64-wagodebug-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-guest/riscv64-wago_regalloccheck-guest",
@@ -1325,14 +1325,31 @@
     }
   ],
   "counts": {
-    "PASS": 178,
-    "NOT_RUN": 39,
+    "PASS": 196,
+    "INTERRUPTED": 1,
     "RUNNING": 2,
+    "NOT_RUN": 20,
     "FAIL": 1
   },
   "attempts": [
     {
       "suite": "backend-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "backend-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "backend-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",
@@ -1486,10 +1503,50 @@
     {
       "suite": "diagnostics-default-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-default-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-default-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-established-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-established-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "diagnostics-established-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "early-replay-cipolicy-ordinary",
@@ -1661,6 +1718,54 @@
     },
     {
       "suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-baseline-ordinary",
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-baseline-wago_regalloccheck",
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "receipt_valid": false,
+      "driver": "run.py",
+      "exit": null,
+      "verdict": "RUNNING"
+    },
+    {
+      "suite": "graphs-baseline-wagodebug",
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-port-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-port-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "graphs-port-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",
@@ -2220,6 +2325,14 @@
       "verdict": "RUNNING"
     },
     {
+      "suite": "tinygo-conversion-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "tinygo-evacuation-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
@@ -2228,7 +2341,23 @@
       "verdict": "PASS"
     },
     {
+      "suite": "tinygo-evacuation-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "tinygo-joint-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-joint-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": false,
       "driver": "run.py",
