@@ -1,0 +1,13 @@
+{
+  "pins": {
+    "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+    "previous": "8526d061047dd4b6afd218157a5e4c709456a167"
+  },
+  "source_archive_sha256": "9ca226384ac27874ae0ffd36030931f805b232e963dcb1475f5c87b84660a3f5",
+  "source_files": {
+    "src/wago/gc_conversion_store_other.go": "77424151720189c67c6084936fb4fcf892134901ce9e79f64c0de702fdad4b8a",
+    "src/wago/gc_conversion_unsupported_test.go": "e8c0e80677df947464b2bb05e924d37090d1346e6a4fbf875e8f6bcd5929bc08"
+  },
+  "previous_archive_sha256": "473fa3be685a6c84ab50e6318837e91103d36a4cf041e40825830daf35eb6370",
+  "negative_control_probe_sha256": "58b86e8c857b45b7a8e210e66f241dc6de12d063db1ca0ff931269c05061ca1f"
+}
