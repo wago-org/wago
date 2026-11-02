@@ -1,0 +1,7 @@
+=== RUN   TestRFWStage3MeasurementNative
+=== RUN   TestRFWStage3MeasurementNative/On/large
+    rfwgc_stage3_measurement_bench_test.go:81: live checkpoint {"eden_bump":0,"handles_cap":256,"handles_len":256,"layout_bytes_by_space":{},"nursery_backing_cap":12288,"nursery_backing_len":12288,"region_used_extents":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"stats":{"Allocations":256,"MinorCollections":0,"FullCollections":2,"MinorObjectsScanned":0,"MinorRememberedScanned":0,"YoungBytesCopied":0,"PromotedBytes":0,"LiveObjects":0,"TenuringThreshold":2},"survivor_bump":0,"throughput_backing_cap":16777216,"throughput_backing_len":16777216}
+    rfwgc_stage3_measurement_bench_test.go:112: {"Allocations":256,"MinorCollections":0,"FullCollections":3,"MinorObjectsScanned":0,"MinorRememberedScanned":0,"YoungBytesCopied":0,"PromotedBytes":0,"LiveObjects":0,"TenuringThreshold":2}
+--- PASS: TestRFWStage3MeasurementNative (0.01s)
+    --- PASS: TestRFWStage3MeasurementNative/On/large (0.01s)
+PASS

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/polybench-covariance
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-covariance
+--- PASS: TestFinalPreparationCompile (0.01s)
+    --- PASS: TestFinalPreparationCompile/polybench-covariance (0.00s)
+PASS

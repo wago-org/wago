@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/ruby-buckets
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/ruby-buckets
+--- PASS: TestFinalPreparationRuntime (0.45s)
+    --- PASS: TestFinalPreparationRuntime/ruby-buckets (0.44s)
+PASS

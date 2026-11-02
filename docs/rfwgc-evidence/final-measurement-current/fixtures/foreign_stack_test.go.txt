@@ -1,0 +1,15 @@
+//go:build linux && amd64 && tinygo && scheduler.threads
+package runtime
+import ("os"; "strconv"; grt "runtime"; "testing")
+// Idle registered mappings: scan eight times, then close and scan again.
+// Active/reentry/interrupt behavior uses the unchanged handshake tests separately.
+func TestFinalMeasurementIdleStacks(t *testing.T) {
+ n,_:=strconv.Atoi(os.Getenv("FM_ENGINES")); if n==0 {n=1}
+ size,_:=strconv.ParseUint(os.Getenv("FM_STACK_BYTES"),10,64);if size==0 {size=DefaultNativeStackBytes}
+ engines:=make([]*Engine,0,n)
+ defer func(){for _,e:=range engines {if err:=e.Close();err!=nil {t.Fatal(err)}}}()
+ for i:=0;i<n;i++ { e,err:=NewEngineWithStackBytes(size);if err!=nil {t.Fatal(err)};engines=append(engines,e);if e.StackBytes()!=size {t.Fatal("stack extent")} }
+ for i:=0;i<8;i++ {grt.GC()}
+ for _,e:=range engines {if err:=e.Close();err!=nil {t.Fatal(err)}}
+ grt.GC()
+}

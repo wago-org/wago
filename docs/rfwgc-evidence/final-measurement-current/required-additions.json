@@ -1,0 +1,512 @@
+{
+  "status": "REQUIRED_PREPARATION_NOT_ACQUISITION_AUTHORIZATION",
+  "original_cells": 316,
+  "additional_cells": 33,
+  "proposed_total_cells": 349,
+  "accepted_samples_if_all_supported": 8376,
+  "gate_tests": [
+    "TestDesignReviewExternStorageImportsPrivateGCProducer",
+    "TestDesignReviewExternStorageProducerCrossRuntimeImport",
+    "target-scoped DR-3 repair qualification owned by runtime repair thread"
+  ],
+  "cells": [
+    {
+      "id": "plain-extern/global-set",
+      "selector": "^BenchmarkFinalMeasurementPlainExtern$/^global-set$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Non-GC host-token store workload; 256 scalar stores or 256 bulk elements; full compile/instantiate/invoke/token/close cycle",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "plain-extern/table-set",
+      "selector": "^BenchmarkFinalMeasurementPlainExtern$/^table-set$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Non-GC host-token store workload; 256 scalar stores or 256 bulk elements; full compile/instantiate/invoke/token/close cycle",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "plain-extern/fill",
+      "selector": "^BenchmarkFinalMeasurementPlainExtern$/^fill$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Non-GC host-token store workload; 256 scalar stores or 256 bulk elements; full compile/instantiate/invoke/token/close cycle",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "plain-extern/copy",
+      "selector": "^BenchmarkFinalMeasurementPlainExtern$/^copy$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Non-GC host-token store workload; 256 scalar stores or 256 bulk elements; full compile/instantiate/invoke/token/close cycle",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "plain-extern/init",
+      "selector": "^BenchmarkFinalMeasurementPlainExtern$/^init$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Non-GC host-token store workload; 256 scalar stores or 256 bulk elements; full compile/instantiate/invoke/token/close cycle",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "plain-extern/grow",
+      "selector": "^BenchmarkFinalMeasurementPlainExtern$/^grow$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Non-GC host-token store workload; 256 scalar stores or 256 bulk elements; full compile/instantiate/invoke/token/close cycle",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/none/False/1",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^none$/^shared=false$/^participants=1$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/none/True/1",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^none$/^shared=true$/^participants=1$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-topology/none/1",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^none$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^none$/^shared=false$/^participants=1$"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^none$/^shared=true$/^participants=1$"
+      },
+      "scope": "Separate/same Runtime control; n independent producers of distinct type shapes; do not normalize n=1 and n=2 as same amount of work",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/none/False/2",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^none$/^shared=false$/^participants=2$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/none/True/2",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^none$/^shared=true$/^participants=2$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-topology/none/2",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^none$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^none$/^shared=false$/^participants=2$"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^none$/^shared=true$/^participants=2$"
+      },
+      "scope": "Separate/same Runtime control; n independent producers of distinct type shapes; do not normalize n=1 and n=2 as same amount of work",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/global/False/1",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^global$/^shared=false$/^participants=1$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/global/True/1",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^global$/^shared=true$/^participants=1$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-topology/global/1",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^global$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^global$/^shared=false$/^participants=1$"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^global$/^shared=true$/^participants=1$"
+      },
+      "scope": "Separate/same Runtime control; n independent producers of distinct type shapes; do not normalize n=1 and n=2 as same amount of work",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/global/False/2",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^global$/^shared=false$/^participants=2$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/global/True/2",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^global$/^shared=true$/^participants=2$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-topology/global/2",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^global$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^global$/^shared=false$/^participants=2$"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^global$/^shared=true$/^participants=2$"
+      },
+      "scope": "Separate/same Runtime control; n independent producers of distinct type shapes; do not normalize n=1 and n=2 as same amount of work",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/table/False/1",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^table$/^shared=false$/^participants=1$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/table/True/1",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^table$/^shared=true$/^participants=1$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-topology/table/1",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^table$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^table$/^shared=false$/^participants=1$"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^table$/^shared=true$/^participants=1$"
+      },
+      "scope": "Separate/same Runtime control; n independent producers of distinct type shapes; do not normalize n=1 and n=2 as same amount of work",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/table/False/2",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^table$/^shared=false$/^participants=2$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-revision/table/True/2",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^table$/^shared=true$/^participants=2$",
+      "A": {
+        "pin": "baseline"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE"
+      },
+      "scope": "Full lifecycle and host-callback overlap; proves callback boundary concurrency only, NOT long guest invocation gate independence",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "domains-topology/table/2",
+      "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^table$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^table$/^shared=false$/^participants=2$"
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "selector": "^BenchmarkFinalMeasurementIndependentDomains$/^table$/^shared=true$/^participants=2$"
+      },
+      "scope": "Separate/same Runtime control; n independent producers of distinct type shapes; do not normalize n=1 and n=2 as same amount of work",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "old-fill-region/1/0",
+      "selector": "^BenchmarkFinalMeasurementLargeOldNurseryFill$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "0",
+          "FM_WORKERS": "1",
+          "FM_OBJECT_EDGES": "0"
+        }
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "12",
+          "FM_WORKERS": "1",
+          "FM_OBJECT_EDGES": "0"
+        }
+      },
+      "scope": "64 MiB live old payload; 64 KiB nursery; 8192 fresh scalar allocations; full setup/validation/cleanup cycle; installed object-edge source forces serial tracing; requested workers do not prove active participants",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "old-fill-region/1/1",
+      "selector": "^BenchmarkFinalMeasurementLargeOldNurseryFill$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "0",
+          "FM_WORKERS": "1",
+          "FM_OBJECT_EDGES": "1"
+        }
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "12",
+          "FM_WORKERS": "1",
+          "FM_OBJECT_EDGES": "1"
+        }
+      },
+      "scope": "64 MiB live old payload; 64 KiB nursery; 8192 fresh scalar allocations; full setup/validation/cleanup cycle; installed object-edge source forces serial tracing; requested workers do not prove active participants",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "old-fill-region/2/0",
+      "selector": "^BenchmarkFinalMeasurementLargeOldNurseryFill$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "0",
+          "FM_WORKERS": "2",
+          "FM_OBJECT_EDGES": "0"
+        }
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "12",
+          "FM_WORKERS": "2",
+          "FM_OBJECT_EDGES": "0"
+        }
+      },
+      "scope": "64 MiB live old payload; 64 KiB nursery; 8192 fresh scalar allocations; full setup/validation/cleanup cycle; installed object-edge source forces serial tracing; requested workers do not prove active participants",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "old-fill-region/2/1",
+      "selector": "^BenchmarkFinalMeasurementLargeOldNurseryFill$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "0",
+          "FM_WORKERS": "2",
+          "FM_OBJECT_EDGES": "1"
+        }
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "12",
+          "FM_WORKERS": "2",
+          "FM_OBJECT_EDGES": "1"
+        }
+      },
+      "scope": "64 MiB live old payload; 64 KiB nursery; 8192 fresh scalar allocations; full setup/validation/cleanup cycle; installed object-edge source forces serial tracing; requested workers do not prove active participants",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "old-fill-region/4/0",
+      "selector": "^BenchmarkFinalMeasurementLargeOldNurseryFill$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "0",
+          "FM_WORKERS": "4",
+          "FM_OBJECT_EDGES": "0"
+        }
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "12",
+          "FM_WORKERS": "4",
+          "FM_OBJECT_EDGES": "0"
+        }
+      },
+      "scope": "64 MiB live old payload; 64 KiB nursery; 8192 fresh scalar allocations; full setup/validation/cleanup cycle; installed object-edge source forces serial tracing; requested workers do not prove active participants",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "old-fill-region/4/1",
+      "selector": "^BenchmarkFinalMeasurementLargeOldNurseryFill$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "0",
+          "FM_WORKERS": "4",
+          "FM_OBJECT_EDGES": "1"
+        }
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "12",
+          "FM_WORKERS": "4",
+          "FM_OBJECT_EDGES": "1"
+        }
+      },
+      "scope": "64 MiB live old payload; 64 KiB nursery; 8192 fresh scalar allocations; full setup/validation/cleanup cycle; installed object-edge source forces serial tracing; requested workers do not prove active participants",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "old-fill-region/8/0",
+      "selector": "^BenchmarkFinalMeasurementLargeOldNurseryFill$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "0",
+          "FM_WORKERS": "8",
+          "FM_OBJECT_EDGES": "0"
+        }
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "12",
+          "FM_WORKERS": "8",
+          "FM_OBJECT_EDGES": "0"
+        }
+      },
+      "scope": "64 MiB live old payload; 64 KiB nursery; 8192 fresh scalar allocations; full setup/validation/cleanup cycle; installed object-edge source forces serial tracing; requested workers do not prove active participants",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "old-fill-region/8/1",
+      "selector": "^BenchmarkFinalMeasurementLargeOldNurseryFill$",
+      "A": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "0",
+          "FM_WORKERS": "8",
+          "FM_OBJECT_EDGES": "1"
+        }
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "12",
+          "FM_WORKERS": "8",
+          "FM_OBJECT_EDGES": "1"
+        }
+      },
+      "scope": "64 MiB live old payload; 64 KiB nursery; 8192 fresh scalar allocations; full setup/validation/cleanup cycle; installed object-edge source forces serial tracing; requested workers do not prove active participants",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    },
+    {
+      "id": "old-fill-revision",
+      "selector": "^BenchmarkFinalMeasurementLargeOldNurseryFill$",
+      "A": {
+        "pin": "baseline",
+        "env": {
+          "FM_SHIFT": "0",
+          "FM_WORKERS": "1",
+          "FM_OBJECT_EDGES": "0"
+        }
+      },
+      "B": {
+        "pin": "REPAIRED_CANDIDATE",
+        "env": {
+          "FM_SHIFT": "0",
+          "FM_WORKERS": "1",
+          "FM_OBJECT_EDGES": "0"
+        }
+      },
+      "scope": "Full lifecycle, old heap default-path revision control",
+      "status": "REQUIRES_NEW_CANDIDATE_AND_BOUNDED_PLAN_APPROVAL"
+    }
+  ]
+}

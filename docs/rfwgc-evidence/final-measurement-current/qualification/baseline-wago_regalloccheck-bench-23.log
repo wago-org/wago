@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/clang-c-kernels
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/clang-c-kernels
+--- PASS: TestFinalPreparationRuntime (6.52s)
+    --- PASS: TestFinalPreparationRuntime/clang-c-kernels (6.50s)
+PASS

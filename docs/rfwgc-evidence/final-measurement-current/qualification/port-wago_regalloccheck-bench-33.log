@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/coreutils-sort
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/coreutils-sort
+--- PASS: TestFinalPreparationRuntime (1.16s)
+    --- PASS: TestFinalPreparationRuntime/coreutils-sort (1.15s)
+PASS

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/swift-format-source
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/swift-format-source
+--- PASS: TestFinalPreparationRuntime (2.26s)
+    --- PASS: TestFinalPreparationRuntime/swift-format-source (2.21s)
+PASS

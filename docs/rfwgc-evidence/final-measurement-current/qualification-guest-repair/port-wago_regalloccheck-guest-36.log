@@ -1,0 +1,5 @@
+=== RUN   TestFinalMeasurementIndependentDomains
+=== RUN   TestFinalMeasurementIndependentDomains/global/shared=false/participants=1
+--- PASS: TestFinalMeasurementIndependentDomains (0.00s)
+    --- PASS: TestFinalMeasurementIndependentDomains/global/shared=false/participants=1 (0.00s)
+PASS

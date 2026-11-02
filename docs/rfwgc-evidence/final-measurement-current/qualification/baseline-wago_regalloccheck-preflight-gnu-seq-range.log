@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/gnu-seq-range
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/gnu-seq-range
+--- PASS: TestFinalPreparationCompile (0.02s)
+    --- PASS: TestFinalPreparationCompile/gnu-seq-range (0.02s)
+PASS

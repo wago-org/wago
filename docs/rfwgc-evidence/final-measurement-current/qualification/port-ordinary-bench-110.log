@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/sha256
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/sha256
+--- PASS: TestFinalPreparationCompile (0.01s)
+    --- PASS: TestFinalPreparationCompile/sha256 (0.00s)
+PASS

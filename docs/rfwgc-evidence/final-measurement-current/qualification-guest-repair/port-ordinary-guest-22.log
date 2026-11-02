@@ -1,0 +1,5 @@
+=== RUN   TestR9OwnershipWakeupActiveBoundary
+=== RUN   TestR9OwnershipWakeupActiveBoundary/0
+--- PASS: TestR9OwnershipWakeupActiveBoundary (0.00s)
+    --- PASS: TestR9OwnershipWakeupActiveBoundary/0 (0.00s)
+PASS

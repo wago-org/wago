@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/sqlite3-query
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/sqlite3-query
+--- PASS: TestFinalPreparationCompile (0.12s)
+    --- PASS: TestFinalPreparationCompile/sqlite3-query (0.12s)
+PASS

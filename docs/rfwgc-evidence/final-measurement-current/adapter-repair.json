@@ -1,0 +1,16 @@
+{
+  "status": "CORRECTED_HARNESS_BUILD_COLLISION",
+  "cause": "041f source already includes TestDesignReviewExternStorageImportsPrivateGCProducer and TestDesignReviewExternStorageProducerCrossRuntimeImport; historical overlay names collided",
+  "change": "Rename both copied probe entrypoints TestCurrentPreparationDesignReview... identically on baseline and candidate; test bodies unchanged; rebuild/check both guest adapters in all three modes",
+  "preserved_failed_builds": [
+    "qualification/port-ordinary-guest-build.log",
+    "qualification/port-wagodebug-guest-build.log",
+    "qualification/port-wago_regalloccheck-guest-build.log"
+  ],
+  "replacement_keys": [
+    "native-linux-amd64/baseline/guest",
+    "native-linux-amd64/port/guest"
+  ],
+  "production_modified": false,
+  "runtime_finding": false
+}

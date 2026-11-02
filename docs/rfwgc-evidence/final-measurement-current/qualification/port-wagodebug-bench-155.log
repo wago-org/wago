@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/drwav.drwav_run
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/drwav.drwav_run
+--- PASS: TestFinalPreparationRuntime (0.01s)
+    --- PASS: TestFinalPreparationRuntime/drwav.drwav_run (0.01s)
+PASS

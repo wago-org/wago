@@ -1,0 +1,16 @@
+{
+  "status": "OWN_KNOWN_CHILDREN_REAPED",
+  "scope": "Only this preparation; all owned build/check driver sessions have completed and all direct subprocess waits returned. No global or cross-namespace drain claim.",
+  "drivers": [
+    "qualify.py",
+    "qualify-guest-repair.py",
+    "qualify-gates.py",
+    "qualify-census.py",
+    "qualify-shapes.py"
+  ],
+  "global_owner_drain": "NOT_ATTESTED",
+  "lease_acquired": false,
+  "host_reserved": false,
+  "benchmarks_executed": false,
+  "run_owned_processes_modified": false
+}
