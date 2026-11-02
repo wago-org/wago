@@ -1,0 +1,245 @@
+[
+  {
+    "name": "darwin-arm64-ordinary-build",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-final-0pw6svl2/darwin-arm64-ordinary.test"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source",
+    "exit": 0,
+    "GOOS": "darwin",
+    "GOARCH": "arm64"
+  },
+  {
+    "name": "darwin-arm64-wagodebug-build",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-final-0pw6svl2/darwin-arm64-wagodebug.test"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source",
+    "exit": 0,
+    "GOOS": "darwin",
+    "GOARCH": "arm64"
+  },
+  {
+    "name": "darwin-arm64-wago_regalloccheck-build",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-final-0pw6svl2/darwin-arm64-wago_regalloccheck.test"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source",
+    "exit": 0,
+    "GOOS": "darwin",
+    "GOARCH": "arm64"
+  },
+  {
+    "name": "linux-arm64-ordinary-build",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-arm64-ordinary.test"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "arm64"
+  },
+  {
+    "name": "linux-arm64-ordinary-qemu",
+    "command": [
+      "/tmp/wago-pr994-tools/root/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-arm64-ordinary.test",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=12m",
+      "-test.run=^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source/src/wago",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "arm64"
+  },
+  {
+    "name": "linux-arm64-wagodebug-build",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-arm64-wagodebug.test"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "arm64"
+  },
+  {
+    "name": "linux-arm64-wagodebug-qemu",
+    "command": [
+      "/tmp/wago-pr994-tools/root/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-arm64-wagodebug.test",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=12m",
+      "-test.run=^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source/src/wago",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "arm64"
+  },
+  {
+    "name": "linux-arm64-wago_regalloccheck-build",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-arm64-wago_regalloccheck.test"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "arm64"
+  },
+  {
+    "name": "linux-arm64-wago_regalloccheck-qemu",
+    "command": [
+      "/tmp/wago-pr994-tools/root/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-arm64-wago_regalloccheck.test",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=12m",
+      "-test.run=^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source/src/wago",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "arm64"
+  },
+  {
+    "name": "linux-riscv64-ordinary-build",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-riscv64-ordinary.test"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "riscv64"
+  },
+  {
+    "name": "linux-riscv64-ordinary-qemu",
+    "command": [
+      "/tmp/wago-pr994-tools/root/usr/bin/qemu-riscv64",
+      "-cpu",
+      "rv64,zba=false,zbb=false,zbc=false,zbs=false,v=false",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-riscv64-ordinary.test",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=12m",
+      "-test.run=^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source/src/wago",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "riscv64"
+  },
+  {
+    "name": "linux-riscv64-wagodebug-build",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-riscv64-wagodebug.test"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "riscv64"
+  },
+  {
+    "name": "linux-riscv64-wagodebug-qemu",
+    "command": [
+      "/tmp/wago-pr994-tools/root/usr/bin/qemu-riscv64",
+      "-cpu",
+      "rv64,zba=false,zbb=false,zbc=false,zbs=false,v=false",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-riscv64-wagodebug.test",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=12m",
+      "-test.run=^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source/src/wago",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "riscv64"
+  },
+  {
+    "name": "linux-riscv64-wago_regalloccheck-build",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-riscv64-wago_regalloccheck.test"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "riscv64"
+  },
+  {
+    "name": "linux-riscv64-wago_regalloccheck-qemu",
+    "command": [
+      "/tmp/wago-pr994-tools/root/usr/bin/qemu-riscv64",
+      "-cpu",
+      "rv64,zba=false,zbb=false,zbc=false,zbs=false,v=false",
+      "/tmp/wago-darwin-final-0pw6svl2/linux-riscv64-wago_regalloccheck.test",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=12m",
+      "-test.run=^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+    ],
+    "cwd": "/tmp/wago-darwin-final-0pw6svl2/source/src/wago",
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "riscv64"
+  }
+]

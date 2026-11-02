@@ -1,0 +1,8 @@
+{
+  "pin": "3242c18a19620aa77f39dd63cb5cd7544d4ca70a",
+  "source": "/tmp/wago-darwin-final-0pw6svl2/source",
+  "manifest": "../qualified-3242c18a1/source-manifest.json",
+  "unchanged_before_after": true,
+  "source_blob_count": 4166,
+  "driver_sha256": "51e61f12160461b92014ce8c20154234336ae78248c26b409ff5b6592289e0a1"
+}

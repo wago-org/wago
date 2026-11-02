@@ -1,0 +1,12 @@
+[
+  {
+    "path": "/tmp/wago-pr994-tools/root/usr/bin/qemu-aarch64",
+    "sha256": "73cc2584f119f9e74c85c0a8549dbb6fd104ae3897a06a7500797f9e5b4d0943",
+    "version": "qemu-aarch64 version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)\nCopyright (c) 2003-2025 Fabrice Bellard and the QEMU Project developers\n"
+  },
+  {
+    "path": "/tmp/wago-pr994-tools/root/usr/bin/qemu-riscv64",
+    "sha256": "f2bb9b35eb97fc6b67c43a65d944ea9dcd7b1908df95faf28cea68511e762dc5",
+    "version": "qemu-riscv64 version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)\nCopyright (c) 2003-2025 Fabrice Bellard and the QEMU Project developers\n"
+  }
+]
