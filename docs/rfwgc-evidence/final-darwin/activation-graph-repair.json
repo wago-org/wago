@@ -1,0 +1,10 @@
+{
+  "execution_source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "harness": "1fe8aab8edc8451731f3534f59b37a4fcca42640",
+  "review": "3f0a171bb5c7dd5a7566317180fa9f44f4e9c6d6",
+  "prior_failed_run": 41393006371,
+  "run_id": 41396042416,
+  "url": "https://github.com/wago-org/wago/actions/runs/41396042416",
+  "status": "DISPATCHED_RESULTS_PENDING",
+  "scope": "Native correctness only; no benchmark or PR; broad platform qualification not implied"
+}
