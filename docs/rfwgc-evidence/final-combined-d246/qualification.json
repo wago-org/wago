@@ -3412,13 +3412,3347 @@
       "plain_failures": [],
       "suite": "cli-wagodebug",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "INTERRUPTED",
-      "exit": null,
+      "verdict": "PASS",
+      "exit": 0,
       "command": "cli-wagodebug/command.json",
-      "pass_count": 0,
-      "top_level_passes": [],
+      "pass_count": 1059,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerMovesPayloadsAcrossFilesystems"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerReleaseMetadataHonorsCancellation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerReleaseMetadataRejectsTrailingAndOversizedData"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestMovePathDoesNotMaskOrdinaryRenameErrors"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerUsesEmbeddedReleaseIdentityByDefault"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerUsesLocalManagerOverride"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerUsesLocalSourceOverrideWithoutMovingCheckout"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerDryRunPresentation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerBuildsExactCanonicalCanaryFromSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerCanonicalBetaManagerResolutionPaginates"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerReleaseCatalogKeepsPagesWithinMetadataLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerCanonicalRollingGitFetchUsesExactDetachedCommit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerCanonicalRollingArchiveFallbackUsesExactCommit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerArchiveCancellationCleansTemporaryTree"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerArchiveDownloadCancellation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerResolvesNewestCanaryArtifactForSourceBuild"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerDownloadsCanaryManagerWorkflowArtifact"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerManagerDownloadFallsBackFromOfficialToBeta"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerManagerDownloadFallsBackFromBetaToCanaryArtifact"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerManagerDownloadDoesNotBypassBadOfficialChecksum"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerManagerDownloadDoesNotBypassLocalFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestUnixPathSetupIsIdempotent"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerScriptedInstallDirectoryAndReinstallMode"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerScriptedPathSetupKeepsStatusDetails"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerPromptWordingMatchesWarmFlow"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestPathRefreshIsOfferedOnlyAfterAddingPath"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerTranscriptParity"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerWarmFinishAfterPathSetup"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerFinishWhenPathIsAlreadyReady"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestUnixPartialAndFullCleanupSemantics"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/automation",
+          "test": "TestParseLeadingAndEnvironment"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/automation",
+          "test": "TestEnvironmentPolicyAndOfflineGoCommand"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestParseAndHelpRecognition"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestParsePreservesRepeatedStringFlagsInOrder"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestPassThroughRecognizesInterspersedCommandFlags"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestDispatchSuccessfulPaths"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestInvocationWantsHelpFollowsCommandTree"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestHelpMarksDefaultGroupCommandOptional"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestHelpShowsShortFormForPairedBooleanFlags"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestHelpKeepsOptimizationFlagsOutOfEverydayHelp"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestSuggestChildFindsUnambiguousTypos"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestAutomationFlagsAndCommandSchema"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestUnsupportedAutomationOutputIsRejected"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestConfigureAutomationHonorsPassThroughBoundary"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/command",
+          "test": "TestCompleteTraversesCommandsAndFlags"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/handoff",
+          "test": "TestMetadataEnvironment"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/handoff",
+          "test": "TestRuntimeCommandsCarryRoutingAndCompilationSurface"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/handoff",
+          "test": "TestMetadataEnvironmentOmitsEmptyFields"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/handoff",
+          "test": "TestFromEnvironment"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/handoff",
+          "test": "TestRuntimeOwnsPluginCommand"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/handoff",
+          "test": "TestLooksLikeRuntimeTarget"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+          "test": "TestPickerDrillsIntoSubpackagesAndReturns"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+          "test": "TestPickerAcceptsCanonicalGitHubPackage"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+          "test": "TestPickerGroupsCanonicalSubpackages"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+          "test": "TestPickerPaginatesAtFifteenRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/profiling",
+          "test": "TestProfileCommandIsAbsent"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestProjectModelDoesNotDependOnRuntime"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestProjectRejectsDuplicateJSON"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestProjectMetadataLimits"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestEncodedProjectMetadataIncludesNewlineInLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestLockRoundTripV1CompleteResolution"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestReadLockRejectsV0UnknownAndMalformedState"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestLockAuthorityPolicyFailsClosed"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestRequiredAuthorityMayBeDeclined"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestRequiredAuthorityMayBeGrantedWithNarrowerScope"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestModuleCloseAuthorityIsKnownAndUnscoped"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestActiveCallerInvokeAuthorityIsKnownAndUnscoped"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestLockContractBindingsAndCycles"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestOptionalContractMayBindNoProvider"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestManyContractMustBindEverySelectedProvider"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestLockContractBindingIsExactChoiceNotEveryAvailableProvider"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestValidateLockedResolutionIsCompletePrunedAndReproducible"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestValidateLockedResolutionIncludesContractReachability"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestLockRejectsEmptyDependencyConstraint"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestLockRejectsConflictingSharedSourceReleases"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestValidGoChecksumRequiresCanonicalBase64"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestInitializeCreatesManifestAndPreservesFields"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestLockedModeRejectsManifestAndLockfileWrites"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestInitializeWithMergesWizardFields"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestManifestValidationRejectsUnknownNestedAndMalformedFields"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestManifestValidationAcceptsCataloguedOptimizationFamilies"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestManifestValidationAcceptsRetiredV1OptimizationNames"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestEnsureGitignoreIsIdempotent"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestRequirementsUseCanonicalFullIDsAndFullSemverRanges"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestDependencyUpdatePreservesPackageField"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestRemoveDependencyPublishesPrunedCoherentMetadata"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestRequirementsRejectV0AliasesAndInvalidManifests"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestValidatePluginIDRejectsRelativeAndNonCanonical"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestExpandGitHubPluginID"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestValidateConstraintUsesFullRangeGrammar"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestPluginSelectionsIncludesDirectAndTransitiveLockedGraph"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestPluginSelectionsRequiresDirectResolution"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestPluginSelectionsFreshReadDoesNotCreateProjectState"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstallerVerificationIsBounded"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestSourceRollbackRetainsBackup"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestInstalledLauncherAliasDispatches"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestResolveAndDisplayPath"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestPathSuggestionsOnlyReturnMatchingDirectories"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestEnvironmentRadioUsesConfiguredDefaultWithoutConsole"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestWriteSelectionUsesPortableNewline"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestColorsAreDisabledWithoutConsole"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestNoColorDisablesConsoleStyling"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestProgressUsesAnimatedLoader"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestCleanupProtectionDetectsReplacedRoot"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/installer",
+          "test": "TestReinstallCleanupPreservesReleaseIdentity"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestRegisteredBooleanSettingOwnsValueAccess"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestSchemaNamesComeFromRegisteredSettings"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestResolveCompilationOwnsPrecedence"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestExtendedConstantSettingsDisableWins"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestResolveCompilationFiltersTargetOptimizations"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestCoreSelectionDefaultsAndExplicitRelease2"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestExplicitCoreOverridesStoredFeatures"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestProjectSchemaCoversEveryLocalSetting"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestProjectSchemaIsGeneratedFromRegistrations"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestLocalSettingsSaveRejectsStaleTarget"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestGlobalSettingsSaveRejectsStaleTarget"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestGlobalSettingsConcurrentSavesSerializeConflictCheck"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestLocalSettingsSaveDetectsEachLayerChange"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestLocalSettingsSaveRefreshesSnapshot"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestLocalSettingsOverrideGlobalAndResetToGlobal"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestLocalRuntimeOverrideIsSparse"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestLocalSettingsSavePreservesConcurrentManifestUpdate"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestGlobalTargetIgnoresLocalManifest"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestExplicitLocalRequiresManifest"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestLocalSettingsIgnoreRetiredV1Optimizations"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestGlobalSettingsIgnoreRetiredV1Optimizations"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestSettingsRoundTripAndDefaults"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestSettingsSavePreservesExistingOnReplaceFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestPartialSettingsKeepBuiltInDefaults"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestSettingsRejectDuplicateMembers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestSettingsRejectPreviewAndUnknown"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/settings",
+          "test": "TestResetRestoresBuiltInValue"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestPickerDrillDownSelectAndBack"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestPickerRootLeftEscapeAndQuitCancel"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestPickerAcceptPageReturnsWithLeftOrEscape"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestPickerRightSelectsLeaf"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestPickerSkipsAndRejectsDisabledItems"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestPickerFramePaginatesAtWindowBoundary"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectFrame"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectFrameGroupsAndIndentsRows"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectMovementClamps"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectToggleAllNone"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectDisabledPreviewCannotBeSelected"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectFixedRowCannotBeSelected"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectActionRowSubmitsWithoutPermissionMark"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectWrapsDescriptionsWithinRedrawWidth"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectConfirmOffSubmitsImmediately"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectAcceptCancel"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectRejectKey"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectRejectRowIsExclusive"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectEnterOnRejectRowRejects"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectEnterAccepts"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectEscCancels"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestDecodeKey"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestActionPrompt"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectRightSubmitsAndAllSelectsEveryItem"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectPaginatesAtWindowBoundary"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectExpandsAndEditsNestedItems"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestMultiSelectParentToggleKeepsRequiredNestedItem"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestPermissionFormUsesCompactWrappingViewport"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/tui",
+          "test": "TestPermissionFormCancelRowCancels"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/wasmcall",
+          "test": "TestValidateSignatureRejectsValuesWithoutCLITextEncoding"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/wasmcall",
+          "test": "TestParseArgsRejectsUnsupportedParameterBeforeSlotMarshalling"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/wasmcall",
+          "test": "TestFormatResultsMismatchedLengths"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+          "test": "TestProbeAcceptsCurrentSupervisor"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+          "test": "TestProbeRejectsExecutableWithoutProtocol"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+          "test": "TestSignalRelayForwardsGuestGroupInterrupt"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+          "test": "TestSignalProcessIdentityRejectsChangedStart"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+          "test": "TestRunPropagatesChildStopAndContinue"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+          "test": "TestChildLifetimeSurvivesGoThreadExit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+          "test": "TestGuardianStartupReportsWorkerAfterGuardianExit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+          "test": "TestEnvironmentReplacesInternalValues"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+          "test": "TestGuardianDeathStopsWorkerTree"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+          "test": "TestRunReapsAdoptedChildrenWhileGuestRuns"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestInternalPackagesDoNotDependOnCommands"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestManagerDoesNotDependOnRuntimePackages"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestCompileUsesConfiguredFeatures"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestManagerCompletionUsesFullCommandTree"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestManagerCommandSurfaceCoversEveryLeaf"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestManagerCapturesForwardedAutomation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestManagerRoutesRuntimeCommandsAndImplicitTargets"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestManagerOwnsPluginLifecycleAndDelegatesIntrospection"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestManagerCommandRegistry"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestManagerCommandAliases"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestAddCommandAcceptsMultiplePackages"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestVersionCommandConstructor"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestManagerUsageShowsCommonFlagsOnly"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestDisplayPathUsesHomeShorthand"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestResolvedRunnerRetriesAcrossPluginPublicationRename"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestResolvedRunnerRetryBoundaries"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestResolvedRunnerRetryExec"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestResolvedRunnerRetryChild"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager",
+          "test": "TestRunnerExitCodePreservesRefreshFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/auth",
+          "test": "TestCommandTree"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/auth/login",
+          "test": "TestRunOwnsLoginFlagParsing"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/cache/clean",
+          "test": "TestCleanWithoutFlagsOpensInteractiveSelection"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/cache/clean",
+          "test": "TestAllFlagSelectsEveryCache"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/cache/prune",
+          "test": "TestParseDaysRejectsDurationOverflow"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/compile",
+          "test": "TestCommandPassesStandaloneOptions"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/compile",
+          "test": "TestCommandCarriesRuntimeKnobOverrides"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/compile",
+          "test": "TestCommandExposesEveryTargetOptimizationKnob"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/compile",
+          "test": "TestCommandAcceptsGlobalShortAndLongFlags"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/compile",
+          "test": "TestCommandAcceptsCoreFeatureSet"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/compile",
+          "test": "TestCommandAcceptsRunParallelForms"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/config",
+          "test": "TestConfigDefaultsToInteractiveAction"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/config",
+          "test": "TestConfigRootFlagsProvideOneShotActions"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/config",
+          "test": "TestConfigSetRequiresExplicitExperimentalFlag"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/config",
+          "test": "TestConfigKeepsCompletionSubcommand"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/config",
+          "test": "TestConfigSubcommandsCarryScope"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/init",
+          "test": "TestWagoSchemaTracksPluginManifest"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/init",
+          "test": "TestSetupPickerOffersRunOrPlugin"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/init",
+          "test": "TestPluginManifestIncludesPublishMetadata"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/init",
+          "test": "TestRunModeRejectsPluginOptions"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/init",
+          "test": "TestRunSetupNeedsNoName"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/init",
+          "test": "TestPluginSetupFlagsSelectPluginModeWithoutPrompt"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/init",
+          "test": "TestPluginManifestRejectsRelativePluginID"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin",
+          "test": "TestArgumentParsing"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin",
+          "test": "TestParseAuthorityScopeOverrides"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin",
+          "test": "TestParseAuthorityScopeOverridesRejectsAmbiguousJSON"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/add",
+          "test": "TestCommandForwardsNonInteractiveAuthorityChoice"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/add",
+          "test": "TestCommandExpandsGitHubPluginShorthand"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/add",
+          "test": "TestCommandPreservesQualifiedPluginIDs"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/add",
+          "test": "TestCommandForwardsScopeOverridesForTheResolvedGraph"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/add",
+          "test": "TestCommandSupportsAllowAllWithoutPrompt"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/add",
+          "test": "TestCommandAllowAllAcceptsContractsWithoutChangingOtherFlags"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/config",
+          "test": "TestCommandForwardsInlineJSON"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/grant",
+          "test": "TestGrantHelpDocumentsSingleFullGraphScopeDocument"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/grant",
+          "test": "TestGrantForwardsExactScopeOverrides"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/grant",
+          "test": "TestGrantAllowsPickingAPluginWhenNoIDIsSupplied"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/grant",
+          "test": "TestGrantRequiresExplicitFullPluginID"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/remove",
+          "test": "TestCommandForwardsContractReviewChoice"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/update",
+          "test": "TestUpdateForwardsScopeOverridesForTheResolvedGraph"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/plugin/update",
+          "test": "TestForceFlagBypassesRevisionCheck"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/self/update",
+          "test": "TestCommandForwardsForce"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/update",
+          "test": "TestCommandWithoutTargetsUsesSelector"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/update",
+          "test": "TestCommandCanUpdateOneComponentWithoutTUI"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/update",
+          "test": "TestCommandSupportsPositionalTargetsWithoutTUI"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/update",
+          "test": "TestCommandAllFlagSelectsEveryComponent"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/update",
+          "test": "TestComponentPickerSelectsEverythingByDefault"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/version",
+          "test": "TestCommandTree"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/version/install",
+          "test": "TestEnsureRuntimeInstallsWhenMissing"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/version/install",
+          "test": "TestEnsureRuntimeKeepsActiveRuntime"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/version/install",
+          "test": "TestEnsureRuntimeStopsAfterCancelledInstall"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/version/switch",
+          "test": "TestRunDelegatesInteractiveSelectionWhenVersionIsOmitted"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/version/switch",
+          "test": "TestRunForwardsSelection"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/version/update",
+          "test": "TestRunDelegatesInteractiveSelectionWhenTargetIsOmitted"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/commands/version/update",
+          "test": "TestRunForwardsOptions"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestPluginBuildRemovalKeepsOpenedDirectoryAfterPathSwap"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestMeasureBuildsDoesNotFollowVersionSymlink"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestCleanRemovesOnlySelectedCacheLocations"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestCleanBuildsDoesNotFollowVersionDirectorySymlink"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestLocalBuildCleanupRejectsLinkedDirectory"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestCleanBuildsRemovesPluginLeafSymlinkWithoutFollowingIt"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestCleanBuildsRemovesMalformedPluginFileLeaf"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestPruneKeepsInstalledAndCurrentCaches"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestFormatBytes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestCleanWaitsForGlobalPluginTransaction"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestDownloadsOnlyCleanDoesNotCreateProjectLockState"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/cache",
+          "test": "TestCleanPickerShowsSizesAndSelectsEverythingByDefault"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestCompletionSupportsCommonShells"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestInstallCompletionIsIdempotent"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestBashCompletionPassesNestedCommandWords"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestBashCompletionPreservesCandidateLines"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestBashCompletionHelperErrorAllowsFallbackWithErrexit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestCompletionRejectsUnknownShell"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestFishCompletionXDGConfigHome"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestFishCompletionRequiresHomeOrXDG"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestRootItemsExposeConfigSections"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestLocalRootClearsOverrides"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestCore3FeaturesAreStableAndThreadsRemainExperimental"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestPrintIncludesExperimentalSectionOnRequest"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/config",
+          "test": "TestPrintDiffNamesInheritanceLayer"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestParsePluginSpecExpandsGitHubShorthand"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginRuntimeBinaryResolvesGlobalBuild"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPublishedStagedRuntimeKeepsItsVerification"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginRuntimeBinaryBlocksConcurrentPublication"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestLockedPluginResolutionRequiresPinnedVersionsBeforeBuilding"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestVerifySourceChecksumsReconcilesGeneratedModule"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestPluginSelectionsReadsOneMetadataSnapshot"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestScopeGlobal"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestSelectPluginScope"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestTruthy"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestMetadataTransactionRecoversCommittedSplitWrite"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestMetadataTransactionRejectsInconsistentPairBeforeCommit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestMetadataReadDoesNotRequireOrCreateProjectState"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestMetadataTransactionPreservesExistingFileModes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestMetadataTransactionPreservesPriorFileWhenJournalCommitFails"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestMetadataTransactionRejectsCorruptRecoveryJournal"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/internal/project",
+          "test": "TestConcurrentDependencyUpdatesAreSerialized"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestDecodeBuildGoJSONContextClosesInheritedStdoutOnCancel"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestBuildLockContextStopsWaitingWithoutEntering"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestBuildLockTreatsInaccessibleExistingDirectoryAsContention"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestBuildLockSerializesModuleAccess"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestBuildLockRetriesRemovalRace"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestBuildLockReportsPersistentPermissionFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestBuildLockPermissionRetryHonorsCancellation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestBuildLockReportsOtherErrorsWithoutRetry"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestIsNotFound"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestInputFromLockLinksSharedSourceOnceAndRejectsConflicts"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestBuildModuleFilesystemAndGoModHelpers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestGeneratedModuleGoCommandsIgnoreParentWorkspace"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestNewBuildIdentityIsPerBinary"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestRejectChangedBuildInputs"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestResolvedBuildHashTracksFilesystemReplacementContent"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestBuildHashTracksBuildTag"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestResolvedBuildHashTracksModuleAndGoEnvironment"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestResolvedBuildHashTracksAssemblyIncludes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestResolvedBuildHashSupportsVendorMode"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestTidyBuildModuleSkipsVendorMode"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestResolvedBuildHashIgnoresGeneratedMainThroughDirectorySymlink"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestEnsureBinaryUsesResolvedInputsAndPreservesPriorBuildOnFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestInstalledSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestEnsureModuleCreatesReusableGoModule"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestSyncModuleRefreshesWagoSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestSyncModuleDropsRemovedMirroredReplace"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestReviewRejectOtherModuleAsInstalledSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestReviewRejectOtherCurrentModule"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+          "test": "TestWagoModuleDirective"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/gocommand",
+          "test": "TestLimitedStderrRetainsHeadAndTail"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/gocommand",
+          "test": "TestLimitedStderrOversizedChunkWrapsTail"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/gocommand",
+          "test": "TestCompletedGoLeaderStopsPipeHoldingDescendant"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/gocommand",
+          "test": "TestCompletedGoLeaderStopsStdoutPipeHolder"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/gocommand",
+          "test": "TestDetachedPipeHolderIsBoundedBeforeLeaderReap"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/gocommand",
+          "test": "TestOutputPreservesExitErrorAndStderr"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin/gocommand",
+          "test": "TestBeforeWaitReportsGroupSignalFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/progress",
+          "test": "TestInstallProgressLineAndTerminalRendering"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/progress",
+          "test": "TestFinishStopsSpinnerBeforeInteractiveOutput"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/progress",
+          "test": "TestClearStopsSpinnerWithoutLeavingStatusLine"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceAuthorizationKeepsCredentialsOutOfURLs"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestLinkDeviceFlowShowsCompleteLinkWithoutSeparateCodeInstructions"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCodeDeviceFlowShowsCodeAndVerificationPage"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestInteractiveDeviceAuthorizationWaitsForBrowserAction"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestInteractiveDeviceAuthorizationContinuesWithoutOpeningBrowser"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestUnavailableDevicePromptDoesNotOpenBrowser"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceExchangeErrorRedactsCredentials"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceExchangeRejectsContradictoryErrorAndToken"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceExchangeRejectsDuplicateDecisionFields"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDevicePollingErrorRedactsCredentials"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceAuthorizationRejectsContradictoryErrorAndCodes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDevicePollingRejectsContradictoryErrorAndToken"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDevicePollingRejectsDuplicateDecisionFields"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDevicePollingRejectsMissingTokenAndError"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceAuthorizationCancellationStopsBeforeTokenPolling"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceAuthorizationPinsRegistryOrigin"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestGitHubOAuthScopeAllowlist"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceAuthorizationRejectsScopeEscalationBeforeGitHub"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceAuthorizationRejectsClientConfigErrorBeforeGitHub"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestAuthenticationFieldsAreBoundedAndPrintable"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryTokenInputIsBounded"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryTokenInputHonorsCancellation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceVerificationURLIsPinnedToProvider"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestBrowserDeviceFlowRejectsUntrustedVerificationURL"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryHTTPHelpers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestAuthenticatedRegistryErrorsDiscardReflectedCredentials"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryIdentityAndErrorsAreTerminalSafe"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryIdentityRejectsAmbiguousAndReflectedJSON"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryDisplayBaseIsTerminalSafeAndBounded"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryBaseURLSecurityPolicy"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryRequestRejectsRemotePlaintextBeforeDial"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryRequestRejectsUnsafeBearerBeforeDial"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryAuthenticationResponsesUseSmallerLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestFetchMeUsesPinnedRegistryOrigin"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryExchangeRedirectDoesNotForwardCredential"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryRequestIsBoundedAndCancelable"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRecordRegistryInstall"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRecordRegistryInstallRejectsRemotePlaintextBeforeDial"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryModuleResolution"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistrySessionCommandsAndOAuthHelpers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestLoginMethodPickerDefaultsToLinkAndAcceptsRightArrow"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialMutationRejectsPreCanceledContextWithoutCreatingStore"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialMutationRejectsNullStoreWithoutOverwritingIt"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialStoreRejectsDuplicateMembers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialStorePreservesCaseSensitiveRegistryPaths"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialStoreReadAndWriteAreBounded"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialStoreRejectsNonRegularPath"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialMutationRejectsSymlinkDestination"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialUpdateRepairsPrivateMode"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestConcurrentCredentialMutationsPreserveUnrelatedEntries"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialProcessesSerialize"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialPublicationFailuresPreserveOldFile"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialTemporaryFileIsPrivateAndReadersSeeCompleteJSON"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCredentialStoreRejectsFIFOWithoutBlocking"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryConfigAndCredentials"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryConfigDefaultsAndMalformedCredentials"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRegistryConfigRemainingBranches"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestDeviceFlowTimingIsBounded"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestOAuthHelpers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestOAuthJSONRejectsDuplicateObjectMembers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestOAuthJSONErrorsDoNotReflectRemoteValues"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestEditDistance"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestEditDistanceWithinMatchesExactDistance"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestClosestModuleRejectsOversizedMetadata"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestClosestModuleIgnoresInvalidCandidateID"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestClosestModule"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolveInstallPackageReturnsPublishedSubpackages"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolveInstallPackageTreatsProviderIDAsNonPackage"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolveInstallPackageRejectsForeignSubpackage"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolvePublishTagConfirmsExistingTagWithCommitAndAge"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolvePublishTagCreatesAndPushesFromDefaultBranch"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolvePublishTagFetchesAnExistingRemoteTag"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolvePublishTagOffersToPushAnExistingLocalTag"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolvePublishTagCanChooseCurrentBranchInsteadOfDefault"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestPublishBranchItemsIncludeRemoteOnlyDefaultBranch"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolvePublishTagRejectsBranchWithoutCurrentReleaseFiles"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolvePublishTagRejectsDirtyReleaseCheckout"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestResolvePublishTagCancellationAndNonInteractiveInstructions"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestRelativeAge"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestSourceSize"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestPublishPayloadUsesDownloadedArtifactSize"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestValidatePublishProvidersRequiresManifestCatalogParity"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestParsePublishManifestUsesNestedV1PackageAndExplicitCatalogs"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestParsePublishManifestExplainsApplicationManifest"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCanonicalGoVersionAndIsolatedWorkspace"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestFullGitCommit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestCatalogVersionInfersOneProviderVersion"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestUnresolvedReleaseTagInstructions"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestComparePublishedPackageManifestIgnoresProjectStateOnly"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestModulePathFromGoMod"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/registry",
+          "test": "TestGenerateProviderCatalogUsesCurrentModuleAndDetectsDrift"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestVerifyStagedRuntimeBoundsUntrustedProcess"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestVerifyStagedRuntimeStartFailureReturnsError"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestLinuxStagedRuntimePinsSeccompThreadUntilExec"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestGrantPropagatesMutationContext"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestLockedPluginResolutionRejectsPreexistingSourceReplace"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestRuntimePathForInvocationLeavesMinimalRuntimeAlone"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphPoolWorkersDependencyAndBinding"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphRecordsExactReviewedContractChoice"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphBacktracksContractBindingAroundCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphBacktracksReleaseWhenNewestCannotBindAcyclically"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphMovesPreviousOptionalBindingAroundCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphManyBindsAllAndPreservesSurvivorOrder"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphNewOptionalWithProvidersRequiresReview"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphRejectsEmptyDependencyConstraint"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestContractChangesRequireExplicitNoninteractiveReview"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestRemovalDoesNotSilentlyAcceptContractChanges"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphDiamondDeduplicatesAndIntersectsRanges"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphRejectsConflictsAndCycles"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphBacktracksFromNewestCandidate"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphBacktracksToCommonSharedSourceRelease"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphRejectsImpossibleSharedSourceRelease"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphOptionalContractAbsentAndPrunesStaleDependencies"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphAuthorityReviewPreservesNarrowOptionalGrant"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphPreservesNarrowRequiredGrant"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphBoundsCatalogQueriesDuringBacktracking"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestResolveCatalogGraphCachesExactQueriesDuringBacktracking"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestHTTPCatalogUsesRepeatedRangesAndStrictMetadata"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestHTTPCatalogRejectsExcessiveTotalBeforePagination"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestHTTPCatalogRejectsSparsePaginationAtPageBudget"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestHTTPCatalogSharesResolutionByteBudgetAcrossQueries"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestHTTPCatalogPreservesCaseSensitiveConfigSchemaProperties"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestHTTPCatalogRejectsExactDuplicateConfigSchemaProperties"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestCatalogPreflightRejectsOversizedPageBeforeMaterialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestCatalogPreflightRejectsOversizedNestedCollectionBeforeMaterialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestCatalogPreflightPreservesArbitraryConfigSchemaCollections"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestHTTPCatalogRejectsAmbiguousMetadataWithoutReflection"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestHTTPCatalogRejectsRemotePlaintextBeforeRequest"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestHTTPCatalogDefaultClientRefusesRedirects"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestHTTPCatalogErrorsAreTerminalSafeAndBounded"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestCatalogMetadataErrorsAreTerminalSafeAndBounded"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestCatalogRejectsUnprefixedSourceVersion"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestCatalogRejectsOversizedEngineConstraintBeforeDigestingDefinition"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginEnvironmentUsesSharedGlobalIntentAndToolchainBuild"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginEnvironmentKeepsLocalAndGlobalIsolated"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginEnvironmentExplainsMissingExplicitLocalManifest"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestRunPluginScopeOverrides"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginCommandScopeOverrides"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestEditAuthorityGrantsNarrowsNamedAndResourceScopes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestEditAuthorityGrantsRejectsWrongPluginUnknownDeniedAndWidenedScopes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestNonInteractiveResolutionSeparatesScopeAndOptionalSelection"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestReviewResolutionAppliesScopesBeforeLockValidation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestReportCompletedPluginInstallsCountsInstalledPackagesOnce"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestEmptyMaintenanceReportsSayNoPluginsEnabled"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestGlobalPluginDirectoryIsSharedV1Intent"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPackageInstallModeOffersEverythingOrSubpackageSelection"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPackageSubpackageSelectorStartsWithEverySubpackageSelected"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestReviewPackageInstallChoicesKeepsConstraintsForChosenProviders"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestNoInputKeepsPackageRootForInstallEverything"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestAllowAllSkipsPackageSelection"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestBuildModuleLocationAndSourceSelectionHelpers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginBuildTargetsActiveRuntime"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginOperationKeepsCapturedRuntime"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginPlanReviewOwnsChoicesScopesValidationAndWarnings"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginPlanReviewGrantAllRestoresRequestedScope"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestAllowAllReviewPreservesExactBindingsAndScopeLimits"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestRejectedRebuildChild"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestManagedReleaseUninstallRemovesAllPairs"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestManagedUninstallWaitsForPublication"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestRetiredCleanupPreservesNewInstallation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestChannelPreservesReleaseTrack"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUpdateStagesAreUniqueAndSameDirectory"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUpdateSkipsMatchingManagerCommit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUpdateSynchronizesManagedPluginBuildSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallModePickerUsesRadioButtonsAndDefaultsFull"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallConfirmationUsesRadioButtonsAndDefaultsYes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallConfirmationDefaultsYesWithoutTTY"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestParseSelfUninstallMode"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallRequiresConfirmationAndPreservesProjects"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestRemoveInstallerPathBlocksPreservesUnrelatedLines"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallTargetsOnlyManagedState"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallRemovesInstalledFishCompletion"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallTargetsKeepCustomWagoHomeAsBoundary"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallTargetsRejectCustomWagoHomeAsRecursiveTarget"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallFullRemovesSelectedWagoHomeIncludingPlugins"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallFullPreservesUnownedCustomWagoHomeContent"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallFullPreservesSharedInstallationDirectory"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallPartialPreservesGlobalPlugins"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestSelfUninstallMinimalRemovesOnlyManager"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestFishCompletionCleanupWithoutHome"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestFullUninstallIncludesActiveXDGPaths"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestFishCompletionInstallCleanupPath"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/self",
+          "test": "TestFullUninstallRemovesLegacySymlinkAndXDGData"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestRejectedRebuildPreservesActiveRuntime"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestFormatReviewPlanSummarizesSecurityAndContracts"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestAuthorityReviewSelectorLabelsEditablePluginRequirementAndCancel"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestAuthorityReviewSelectorDeduplicatesAuthorities"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestAuthorityReviewSelectorEditsAuthorityByPackage"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestAuthorityReviewSelectorShowsUsedByAndLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestSelectGrantPluginExpandsGitHubShorthand"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestGrantPluginPickerListsInstalledPlugins"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestGrantPluginTargetsUseDependenciesWhenRootHasNoAuthorities"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestUnmetPluginRequirementWarningsAreNonBlocking"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestAuthorityRejectionChoicesUseYesAndNo"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestConfigureCancellationStopsActiveFetchAndReleasesLock"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestConfigureCancellationStopsActiveBuildAndReleasesLock"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestBoundStagedRuntimeStartFailureDoesNotPanic"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestVerifyStagedRuntimeRejectsX32ProcessSyscallAlias"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginBuildFileHelpers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPublishPluginTransactionRollsBackBuildBeforeMetadataCommit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPublishPluginTransactionPublishesCompleteStagedState"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+          "test": "TestPluginUpdateRequiredNeedsBuildAndLockToMatch"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/status",
+          "test": "TestInspectReportsActiveRuntime"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/status",
+          "test": "TestInspectReportsManifestDirectory"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/status",
+          "test": "TestPrintKeepsStatusCompact"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestActiveStateAtomicFailureAndValidation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestActiveStateConcurrentSnapshots"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestActiveStateLegacyMigrationAndCorruption"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestActiveStateReadDoesNotCreateLock"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestDiagnosticChannel"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestParseReleaseChecksumStrict"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestDownloadReleaseAssetRejectsOversizedChecksumBeforeAsset"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestDownloadReleaseAssetStreamsVerifiesAndReplaces"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestDownloadReleaseAssetAcceptsExactUnknownLengthLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestDownloadReleaseAssetFailuresPreserveDestination"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestDownloadReleaseAssetCancellationPreservesDestination"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestConcurrentReleaseDownloadsDoNotCollide"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionSelectionAndOrderingHelpers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionStateAndBuildFileHelpers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionManagerState"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionStorageRejectsPathTraversal"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestProfileInstallationState"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestRuntimeBuildsInstallSideBySide"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionUseDoesNotShowInstallationLocation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestInstallShowsInstallationLocation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestPromptYesNoDefaultsYesAndAcceptsNo"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestUseInstalledPickerUsesRadioButtonsAndDefaultsYes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestOfferUseUpdatedPromptsEvenWhenChannelIsCurrentAndDefaultsYes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestUpdateChannelPickerDefaultsToCurrentChannel"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestUninstallVersionPickerListsAllVersionsAndCurrent"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestInstalledVersionPickerShowsCurrentProfileAndBrowsesProfiles"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestInstalledWagoLabel"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestUpdateVersionTarget"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestInstallPickerHidesImmutableChannelTagsAtTopLevel"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestRemoteReleasePickerAcceptsOnlyCanonicalPublishedTags"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestInstallPickerMovesUnavailableChannelsToBottom"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestInstallPickerIncludesBetaReleasesWithBranchTargets"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestInstallPickerProfilePageReturnsToReleasePage"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestPaginatedInstallPickerKeepsChannelsSelectableAndLoadActionsTerminal"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestRelativeReleaseAgeUsesCompactElapsedUnits"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionMutationSerializesRemovalAndSelection"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionMutationWaitHonorsCancellation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestLatestChannelRelease"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestLatestStableReleaseAcceptsOnlyCanonicalStableTag"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestLatestChannelReleasePaginates"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestReleaseDiscoveryKeepsLargePagesWithinMetadataLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestLatestChannelReleaseUsesLinkPaginationAndSkipsDrafts"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestReleasePaginationRejectsMalformedAndCrossOriginTargets"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestLatestChannelReleaseRejectsPaginationLoop"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestLatestChannelReleaseAcceptsBranchTarget"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestChannelCommitReleaseResolvesBranchTargetTag"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestChannelCommitReleasePeelsAnnotatedTag"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestChannelCommitReleaseRejectsInvalidTagRef"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestLatestChannelReleaseCancellationBetweenPages"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestRollingChannelWithoutPublishedReleaseUsesCanonicalMainSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestLatestChannelReleaseBoundsPagination"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestMainCommitBrowsingPaginatesAndResolvesTip"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionBrowseDiscoveryFetchesOnePageAtATime"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionBrowseDiscoveryLaterFailurePreservesHistoryAndCursor"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionBrowseDiscoveryCancellationPreservesHistoryAndCursor"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestReleaseDiscoveryBoundsTotalPagination"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestDiscoveryPagersDistinguishExhaustionFromHardLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestReleaseMetadataIsBoundedAndCancelable"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestHTTPGetBytesReportsDownloadProgress"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestDownloadBinaryChecksum"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionAssetsIncludeProfileAndHost"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestCanonicalReleaseRef"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestIsRollingChannel"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestRunnerReleaseDoesNotExecuteCurrentRuntime"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestReleaseFromOutput"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestCompare"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestParseNumeric"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestExecuteSourceCommandCancellation"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestSourceCheckoutRejectsNilContext"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestSourceCheckoutCancellationStopsGitWithoutArchiveFallback"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestDownloadSourceArchiveIsSizeBounded"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestMissingReleaseAssetFallsBackToSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestMissingManagerAssetFallsBackToSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestCanaryWorkflowArtifactPreferredForRuntimeAndManager"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestCanaryWorkflowArtifactFailureBuildsExactSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestChecksumMismatchDoesNotBuildFromSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestCanaryResolvesLatestArtifactAsSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestCanonicalCanaryCommitRemainsCommitAddressed"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestCanonicalCanaryCommitWithoutTagRemainsExactSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestCanaryCommitMissingReleaseBuildsExactSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestRollingReleaseMissingAssetsPreserveExactSourceIdentity"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestBuildRunnerFromSourceUsesProfileTag"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestFinishSourceBuildReplacesExisting"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestBuildRunnerFromSourceFallsBackToArchiveWithoutGit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestSourceArchiveURLUsesExactCanaryCommit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestSourceBuildTags"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestBuildRunnerFromSourceChecksOutExactCanaryCommit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestSyncInstalledSourceReplacesManagedCheckoutAtExactCanaryCommit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestSourceRollbackRetainsBackup"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestInstalledCommitMatchesOnlyCanonicalHashes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestSameReleaseRejectsMalformedRollingIdentityEvenWhenTextMatches"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestRollingCommitIdentityRequiresCanonicalSHA"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "TestVersionUpdateSkipsMatchingInstalledCommitUnlessForced"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/version",
+          "test": "FuzzParseReleaseChecksum"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime",
+          "test": "TestValidationModeDoesNotWaitForProjectLock"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime",
+          "test": "TestUsageDocumentsCommandSurface"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime",
+          "test": "TestRuntimeCommandSurfaceCoversEveryLeaf"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime",
+          "test": "TestRuntimeHandoffDescriptionMatchesRuntimeSurface"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime",
+          "test": "TestRuntimeHelpDoesNotInjectManagerCommands"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime",
+          "test": "TestRuntimeCommandAndRunTargetClassification"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime",
+          "test": "TestRuntimeCommandAliases"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime",
+          "test": "TestCommandHelpBypassesPluginRuntime"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime",
+          "test": "TestUsageDoesNotAdvertiseValidateDirect"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands",
+          "test": "TestRegistryPreservesCommandOrderAndAliases"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/module/exports",
+          "test": "TestBuildReportIncludesEveryExportKindInNameOrder"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/module/exports",
+          "test": "TestReportJSONPreservesZeroAndFalseExportProperties"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/module/exports",
+          "test": "TestExportDetails"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/plugin/inspect",
+          "test": "TestPackageArgumentIsOptionalForInteractiveSelection"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/plugin/list",
+          "test": "TestPlanEntry"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestOptimizationFlags"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestSettingsCatalogMatchesActiveBackendKnobs"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestHelpCollapsesBooleanPairs"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestHelpRecognitionAfterSeparatedParallelism"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunRecognizesFlagsAfterModulePath"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunNativeStackFlag"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunGCHeapFlags"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestFriendlyInstantiationErrorIsProviderNeutral"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestTrapReasonIncludesWasmFrame"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestLoadModuleAndResolveExport"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunParallelFlagForms"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunExecValueMode"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunSuccessWaitsForTeardown"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunTrapWaitsForTeardown"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunZeroGuestExitReportsTeardownFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunExecInvokesReactorInitializerInOrder"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunExecMultipleInvokesConsumeArgumentsByArity"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunExecGCHeapOverride"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunExecProgramMode"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunValueParsingAndFormatting"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunRejectsRetiredArtifactFlag"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestGCStage7Options"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestRunStartSignature"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchSupervisorMirrorsTerminalJobControl"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedChildLaunchUsesManagerAsSupervisor"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedChildLaunchRejectsOldManager"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedChildLaunchRequiresManager"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedProcessScanGone"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedSupervisorCleansSanitizedDaemon"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchGuardianStopsWhenOuterWatcherDies"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchTrackingExcludesLateDaemon"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchFinishDoesNotReapUnrelatedChild"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchReapsSeededWorkerAfterRootExit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedTerminalRestoreAfterRelayClose"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchSupervisorContinuesAfterChildSIGINT"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchSignalSkipsTerminalGroupButReachesDetachedDescendant"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchSignalSendsOnceToIsolatedGroup"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedProcessDescendantsScansEveryThread"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedTerminalGroupCanRestoreEmptyGroup"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWithoutWatchFlagsPreservesGuestArguments"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestFileStampDetectsSameSizeRewriteWithRestoredModTime"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchSupervisorRestartsLongRunningChildWithDetachedDescendant"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchSupervisorRestartsAfterChildExit"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedChildStopKeepsCompletedExitNonfatal"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchSupervisorHandlesDeleteAndRecreate"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchSupervisorForwardsInterrupt"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchHelperProcess"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedStopDetectsExitBeforeWaitPublication"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedStopErrorRejectsCleanupFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/run",
+          "test": "TestWatchedStopAcceptsGracefulExitAfterKillAttempt"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/validate",
+          "test": "TestModuleBytes"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/validate",
+          "test": "TestCommandConfirmsValidModule"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/validate",
+          "test": "TestHelpDocumentsParallelism"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/validate",
+          "test": "TestParallelFlagForms"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/commands/validate",
+          "test": "TestModuleBytesCore3"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/module",
+          "test": "TestCompileEmptyModule"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/modulefile",
+          "test": "TestReadBoundsModuleInput"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/modulefile",
+          "test": "TestReadStreamReturnsExactSizedResult"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/modulefile",
+          "test": "TestReadUsesExactSizedResult"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/plugin",
+          "test": "TestConfigureExposesOnlyExplicitReviewedPluginSet"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/plugin",
+          "test": "TestConfigureAndPluginSetDeepCopyMutableMetadata"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/plugin",
+          "test": "TestVerifyRejectsDefinitionDigestDriftWithoutRunningProvider"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/plugin",
+          "test": "TestBuildReportUsesImmutableDefinitionAndPlan"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/version",
+          "test": "TestVersionReportIncludesDiagnostics"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/version",
+          "test": "TestVersionJSONOmitsFeatures"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/runtime/internal/version",
+          "test": "TestDiagnosticChannel"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestRunEmptyStartModule"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestReportErrorPreservesExitCodesWithoutHidingTeardownFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestRunReportsZeroExitTeardownFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestExecuteClosesModuleAndWaitsForRuntimeTeardown"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestExecuteRejectsModuleWithoutFunctionExports"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestExecuteInvokesExportWithTypedArgs"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestExecuteSelectsSoleExportWithTypedArgs"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestExecuteSelectsMainBeforeOtherExports"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestExecuteRejectsWrongInvokeArguments"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestExecuteRejectsV128ResultWithoutPanicking"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestExecuteAppliesOptimizationKnobs"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestExecuteRejectsUnknownOptimization"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestExecuteSupportsCore3"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestRuntimeConfigUsesBakedFunctionWorkers"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestRuntimeConfigUsesBakedFeatures"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/standalone",
+          "test": "TestRuntimeConfigBakedDefaultsDoNotAllocateMore"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/wago",
+          "test": "TestRuntimeEntrypointDelegatesToRuntimeCLI"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestTinyGoSupportsCooperativeInterruption"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestTinyGoForeignStackGCInterruption"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestParseTargetAndDefaultOutput"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestRequireToolchainExplainsPathRequirement"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestRequireToolchainAcceptsVersionFoundOnPath"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestMainSourceBakesInvokeExport"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestBuildLinksMachineCodeWithoutCompiler"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestBuildTinyGoLinksMachineCodeWithoutCompiler"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestBuildTinyGoStripsByDefault"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestBuildRejectsCore3OnUnsupportedTarget"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestGeneratedSourcesBakeFeatures"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestLinuxRISCV64StandaloneTarget"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestBuildRejectsNonNativeTarget"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestBuildNativeModuleWithData"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestBuildNativeModuleWithGCReferences"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestCopyRuntimeSourcesIsolated"
+        },
+        {
+          "package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+          "test": "TestStripTinyGoLinuxUsesPortableOptions"
+        }
+      ],
       "failures": [],
-      "skips": []
+      "skips": [
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:25.130596054Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/internal/parallel",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/internal/parallel\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:26.643872459Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/internal/settings",
+            "Test": "TestUnavailableFeaturesMayRemainDisabled",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestUnavailableFeaturesMayRemainDisabled\n    store_test.go:163: all features are available on this platform\n--- SKIP: TestUnavailableFeaturesMayRemainDisabled (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:26.696358613Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/internal/settings/cmd/genschema",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/internal/settings/cmd/genschema\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:26.807003932Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/internal/ui",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/internal/ui\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.245985437Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/auth/logout",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/auth/logout\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.245995015Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/auth/whoami",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/auth/whoami\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.24600304Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/cache",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.345223209Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/cache/dir",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache/dir\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.34524Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/cache/options",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache/options\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.436443637Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/cache/size",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache/size\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.67087048Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/config/completions",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/completions\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.6708812Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/config/diff",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/diff\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.670888233Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/config/get",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/get\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.670895186Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/config/list",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/list\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.670903502Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/config/options",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/options\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.670910244Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/config/reset",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/reset\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:32.670916676Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/config/set",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/set\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.087500984Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/catalog",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/catalog\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.199920484Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/deprecate",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/deprecate\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.305606482Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/outdated",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/outdated\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.305614778Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/publish",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/publish\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.30562134Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/rebuild",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/rebuild\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.404612599Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/tree",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/tree\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.404623259Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/unpublish",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/unpublish\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.51769294Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/self",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/self\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.517702538Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/self/uninstall",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/self/uninstall\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.60927117Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/status",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/status\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.821496619Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/version/current",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/current\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:33.924671553Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/version/list",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/list\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:34.027466042Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/version/uninstall",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/uninstall\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:34.131374693Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/commands/version/which",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/which\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:34.658881089Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/internal/config",
+            "Test": "TestInstalledZshCompletionCanBeSourced",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestInstalledZshCompletionCanBeSourced\n    completions_test.go:77: zsh is not installed\n--- SKIP: TestInstalledZshCompletionCanBeSourced (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:34.768807088Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/internal/config",
+            "Test": "TestZshCompletionPassesNestedCommandWords",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestZshCompletionPassesNestedCommandWords\n    completions_test.go:155: zsh is not installed\n--- SKIP: TestZshCompletionPassesNestedCommandWords (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:52.915922819Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/internal/self/replace",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/manager/internal/self/replace\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:44:55.928128739Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/manager/internal/version",
+            "Test": "TestRISCV64InstallBuildSelection",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestRISCV64InstallBuildSelection\n    lifecycle_test.go:720: native riscv64 build selection\n--- SKIP: TestRISCV64InstallBuildSelection (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:45:08.594613013Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/runtime/commands/module",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/module\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:45:08.594625216Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/runtime/commands/module/capabilities",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/module/capabilities\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:45:08.77252125Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/runtime/commands/module/imports",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/module/imports\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:45:08.77253191Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/runtime/commands/plugin",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/plugin\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:45:12.646767932Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/cli/runtime/internal/profile",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/internal/profile\t[no test files]\n"
+        }
+      ]
     },
     {
       "plain_passes": [],
@@ -5492,6 +8826,20 @@
           "detail": "?   \tgithub.com/wago-org/wago/cli/internal/parallel\t[no test files]\n"
         }
       ]
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "full-root-replay-wago_regalloccheck",
+      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+      "verdict": "INTERRUPTED",
+      "exit": null,
+      "command": "full-root-replay-wago_regalloccheck/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
     },
     {
       "plain_passes": [],
@@ -39558,6 +42906,25 @@
       "plain_passes": [],
       "plain_skips": [],
       "plain_failures": [],
+      "suite": "installer-wagodebug",
+      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "installer-wagodebug/command.json",
+      "pass_count": 10,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/cli/wago-installer",
+          "test": "TestResolveInstallerVersion"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
       "suite": "nested-ordinary",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
       "verdict": "PASS",
@@ -39980,6 +43347,441 @@
         {
           "event": {
             "Time": "2026-11-02T10:37:54.244302995Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestSqliCalibrate",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestSqliCalibrate\n    sqli_rule_test.go:74: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory\n--- SKIP: TestSqliCalibrate (0.00s)\n"
+        }
+      ]
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "nested-wagodebug",
+      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "nested-wagodebug/command.json",
+      "pass_count": 505,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/bench/cmd/benchpub",
+          "test": "TestSuiteRegexIncludesPublishedBoundaryBenchmarks"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/cmd/benchpub",
+          "test": "TestParseRunAcceptsOptionalProcessorSuffix"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/cmd/benchpub",
+          "test": "TestParseRunDropsContainerWithChildrenWithoutProcessorSuffix"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/cmd/corpus-shard",
+          "test": "TestPlanWritesSelectorAndCompletionReport"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/cmd/validatestats",
+          "test": "TestValidationStatsCommand"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/corpusplan",
+          "test": "TestGroupsAreDeterministicAndComplete"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/corpusplan",
+          "test": "TestWorkUnitsCountStagesAndSemanticRepetitions"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/corpusplan",
+          "test": "TestLoadCatalogFiltersCommandOnlyAndVerifiesDigests"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/corpusplan",
+          "test": "TestParseShard"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestBLAKE3LegacyRotateRollback"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestCorpusReleasesCompiledMappings"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestLoadManifestRejectsMalformedDocuments"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestLoadManifestRejectsTrailingContent"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestLoadManifestContractMutations"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestPointerExportsHonorExecutionTimeout"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestExecutionRejectsChangedOracle"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestSemanticCorpusManifest"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestSemanticCorpus"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestApplicationCorpusShardPlanIsDeterministicAndComplete"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestApplicationCorpusWorkflowMatchesShardPlan"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestBenchNativeMappingRelease"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestBenchMappingIdentityPredicate"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestBenchMappingIdentityAddressReuse"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestBenchCompiledOwner"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestBenchBackendRelease"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogContainsOnlyExecutableWorkloads"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandCorpusRunsOnLinuxAMD64"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestWebsiteProfileUsesCuratedPairedWorkloads"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestSightglassLibsodiumTuningInput"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusCandidatesStaySeparateFromExecutableCatalog"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestValidateCorpusModuleRequiresEndToEndOracle"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogSemanticLinks"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogSelection"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestValidateCorpusModuleStagesAndSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogCIGates"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestValidateCorpusModuleCommandOracles"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestAShellGetcwd"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestAShellGetenv"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandOracleStdout"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandArgsMulticall"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandTreeSHA256"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandSupportsPlatform"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandScratchPreopen"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestApplicationCorpusRuns"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestExplicitMemoryCopyForward12"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestExplicitMemoryCopyForward12Dynamic"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestExplicitMemoryCopyForward12DynamicHigh"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusCompletionWrappers"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusCompletionProtocol"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusChildOutputLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusCompletionDuplicateExports"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusCompletionExactSlots"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpus"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusChildTimeout"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusTimeoutRunner"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestExecBatchAllocationUnits"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestFirstPreparedIterationLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestFirstPreparedCallState"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestFirstPreparedCallControls"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogGrainStdlibHostContract"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogGrainStdlibSourceBundle"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogGrainStdlibCore2Profile"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestImportLifecycleIndependentCommands"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestImportLifecycleSetupFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestMinimalWASICommand"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusSemanticExec"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestSharingFixtures"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestSharingMappedStorageUsesOwnerCapacity"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestSharingZeroLocals"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestWASIConstructionCopiesConfiguration"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestWASIRegistrationCopiesSignatures"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestWorkerDiagnosticConfiguration"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "FuzzWASIConstructionIsolation"
+        }
+      ],
+      "failures": [],
+      "skips": [
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:17.755113643Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/chart",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/bench/chart\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:17.882880798Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/cmd/explain",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/bench/cmd/explain\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:17.979741205Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/cmd/wagoprof",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/bench/cmd/wagoprof\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:19.541638207Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestVerifyApplicationCorpusShardReports",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestVerifyApplicationCorpusShardReports\n    application_corpus_shards_test.go:122: application corpus shard report directory is not configured\n--- SKIP: TestVerifyApplicationCorpusShardReports (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:33.433537358Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/lua-cli-buckets/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/lua-cli-buckets/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lua-cli-buckets/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:34.025024667Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/micropython-squares/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/micropython-squares/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/micropython-squares/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:36.783451116Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestVerifyCorpusCorrectnessShardReports",
+            "Elapsed": 0.21
+          },
+          "detail": "=== RUN   TestVerifyCorpusCorrectnessShardReports\n    corpus_correctness_shards_test.go:36: corpus correctness shard report directory is not configured\n--- SKIP: TestVerifyCorpusCorrectnessShardReports (0.21s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:44.902709008Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestCorpusChild",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestCorpusChild\n    corpus_runner_test.go:123: parent-only helper\n--- SKIP: TestCorpusChild (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:45.031318776Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestJsonAsBench",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestJsonAsBench\n    jsonas_test.go:29: json-as module not present (set WAGO_JSON_MODULE): open corpus/json-as.wasm: no such file or directory\n--- SKIP: TestJsonAsBench (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:46.817324305Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestSharingGCObservation",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestSharingGCObservation\n    sharing_gc_observation_linux_test.go:16: diagnostic\n--- SKIP: TestSharingGCObservation (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:46.817335026Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestSharingMemory",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestSharingMemory\n    sharing_memory_linux_test.go:71: diagnostic\n--- SKIP: TestSharingMemory (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:46.817346126Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestSharingMappedMemory",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestSharingMappedMemory\n    sharing_memory_linux_test.go:123: diagnostic\n--- SKIP: TestSharingMappedMemory (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T10:49:46.817892512Z",
             "Action": "skip",
             "Package": "github.com/wago-org/wago/bench/suite",
             "Test": "TestSqliCalibrate",
@@ -75216,18 +79018,6 @@
       "reason": "Not executed; no terminal pass evidence."
     },
     {
-      "suite": "installer-wagodebug",
-      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "nested-wagodebug",
-      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
       "suite": "collector-wagodebug",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
       "verdict": "NOT_RUN",
@@ -75403,12 +79193,6 @@
     },
     {
       "suite": "tooling-vet-wagodebug",
-      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "full-root-replay-wago_regalloccheck",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
       "verdict": "NOT_RUN",
       "reason": "Not executed; no terminal pass evidence."
@@ -76093,9 +79877,9 @@
     }
   ],
   "counts": {
-    "PASS": 30,
+    "PASS": 33,
     "INTERRUPTED": 4,
     "FAIL": 2,
-    "NOT_RUN": 210
+    "NOT_RUN": 207
   }
 }

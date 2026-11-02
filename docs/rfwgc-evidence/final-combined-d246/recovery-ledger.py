@@ -17,6 +17,11 @@ for p in sorted(E.glob('*/command.json')):
  want=base if n.startswith(('baseline-','graphs-baseline-')) else pin
  valid=bool(r and r.get('source')==c.get('source')==want and r.get('driver_unchanged') and c.get('driver_sha256') in known and r.get('raw_sha256')==hashlib.sha256(b).hexdigest())
  attempts.append(dict(suite=n,source=c.get('source'),receipt_valid=valid,driver=known.get(c.get('driver_sha256')),exit=r.get('exit'),verdict=('PASS' if r['exit']==0 else 'FAIL') if valid else 'INTERRUPTED' if not r else 'INVALID_RECEIPT'))
+ if not r:
+  proc=read(p.parent/'process.json')
+  try:actual=pathlib.Path('/proc',str(proc['pid']),'cmdline').read_bytes().rstrip(b'\0').decode().split('\0')
+  except (OSError,KeyError):actual=[]
+  if actual==c.get('argv'):attempts[-1]['verdict']='RUNNING'
  if n in by and not valid:by[n]['verdict']=attempts[-1]['verdict']
  if n.startswith('resume-') and valid:by[n.removeprefix('resume-')]=by[n]
  if n.startswith('corrected-') and valid:by[n.removeprefix('corrected-')]=by[n]
