@@ -7,6 +7,15 @@ import run
 
 
 class HarnessContracts(unittest.TestCase):
+    def test_backend_diagnostics_tags(self):
+        for mode in ['ordinary', 'wagodebug', 'wago_regalloccheck']:
+            base = [] if mode == 'ordinary' else [mode]
+            self.assertEqual(run.build_tags(mode, 'backend'),
+                             ['-tags=' + ','.join(base + ['wago_codegenstats'])])
+            for group in ['wago', 'wago-race', 'runtime']:
+                self.assertEqual(run.build_tags(mode, group),
+                                 ['-tags=' + mode] if base else [])
+
     def test_exact_identity(self):
         h = 'a' * 40
         run.identity(run.SOURCE, h, run.SOURCE, h)

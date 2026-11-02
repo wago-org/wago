@@ -127,3 +127,11 @@ job logs, including failures. A changed harness needs fresh review and a new pin
 Native RR3, original guard, race, runtime/backend and timer-control results remain
 **NOT_RUN** until those native artifacts exist and pass review. The November 4
 target remains at risk pending dispatch and actual native results.
+
+## Backend diagnostics correction after run 41442912023
+
+The first native run passed the timer controls, focused/race, guard and runtime
+lanes in all modes, but failed the backend census because one required test
+skipped without `wago_codegenstats`. The backend binary now adds that tag in
+each mode. Other binaries, source pin, deadlines, probes and census are unchanged.
+The failed run is preserved; a reviewed native rerun is still required.
