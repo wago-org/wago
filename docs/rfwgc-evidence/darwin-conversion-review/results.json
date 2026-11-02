@@ -1,0 +1,237 @@
+[
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-count=1",
+      "-timeout=5m",
+      "-v"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "ordinary-focused.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "ordinary-race.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo",
+      "./src/wago",
+      "-run",
+      "^TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory$",
+      "-count=1",
+      "-timeout=2m",
+      "-v"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "ordinary-unsupported.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-review-kcrfe4sl/ordinary-darwin-wago.test"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "ordinary-darwin-cross.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-count=1",
+      "-timeout=5m",
+      "-v"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "wagodebug-focused.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "wagodebug-race.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo,wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory$",
+      "-count=1",
+      "-timeout=2m",
+      "-v"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "wagodebug-unsupported.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-review-kcrfe4sl/wagodebug-darwin-wago.test"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "wagodebug-darwin-cross.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-count=1",
+      "-timeout=5m",
+      "-v"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "wago_regalloccheck-focused.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "wago_regalloccheck-race.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo,wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory$",
+      "-count=1",
+      "-timeout=2m",
+      "-v"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "wago_regalloccheck-unsupported.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/wago-darwin-review-kcrfe4sl/wago_regalloccheck-darwin-wago.test"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "wago_regalloccheck-darwin-cross.log"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "list",
+      "-json",
+      "./src/wago",
+      "./src/core/runtime/gc/native"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "darwin-selection.json"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "list",
+      "-json",
+      "./src/wago",
+      "./src/core/runtime/gc/native"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "linux-amd64-selection.json"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "list",
+      "-json",
+      "./src/wago",
+      "./src/core/runtime/gc/native"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "linux-rv64-selection.json"
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "list",
+      "-json",
+      "-tags=wago_target_tinygo",
+      "./src/wago",
+      "./src/core/runtime/gc/native"
+    ],
+    "cwd": "/tmp/wago-darwin-review-kcrfe4sl/source",
+    "exit": 0,
+    "log": "tinygo-tag-selection.json"
+  }
+]

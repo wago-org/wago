@@ -1,0 +1,8 @@
+{
+  "pin": "3242c18a19620aa77f39dd63cb5cd7544d4ca70a",
+  "archive_sha256": "223cd056e0be0f620a98810c351a5500fc3df498223d4f42fc9bf0401db6d4dd",
+  "go": "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+  "go_sha256": "30969f97169d7f43fe6a085873d75613adc21e30818a8c61d95bd27275df4624",
+  "goroot": "/home/dev/.local/share/mise/installs/go/1.27.1",
+  "temporary_source_removed": true
+}
