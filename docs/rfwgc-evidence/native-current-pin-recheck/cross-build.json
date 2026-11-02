@@ -1,0 +1,20 @@
+{
+  "status": "PASS",
+  "native_execution": "NOT_RUN",
+  "go": "go1.27.1 linux/amd64",
+  "source": "08f511fac41a77f4c0f9046f88ebc78ad05a5da6",
+  "harness": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
+  "targeted_host_tests": {
+    "package": "./src/wago",
+    "run": "^TestGCExternConversionAcrossReferenceTables$",
+    "count": 1,
+    "modes": ["ordinary", "wagodebug", "wago_regalloccheck"],
+    "result": "PASS in all modes, zero skips"
+  },
+  "cross_builds": [
+    {"target": "darwin/arm64", "packages": ["./src/wago"], "modes": ["ordinary", "wagodebug", "wago_regalloccheck"], "result": "PASS"},
+    {"target": "windows/amd64", "packages": ["./src/wago"], "modes": ["ordinary", "wagodebug", "wago_regalloccheck"], "result": "PASS"},
+    {"target": "linux/arm64", "packages": ["./src/wago", "./src/core/runtime", "./src/core/compiler/backend/railshot/arm64"], "modes": ["ordinary", "wagodebug", "wago_regalloccheck"], "backend_tags": ["wago_codegenstats", "wagodebug,wago_codegenstats", "wago_regalloccheck,wago_codegenstats"], "result": "PASS"}
+  ],
+  "controls": "CGO_ENABLED=0; go test -c; existing Go build cache; no binaries executed; no full suite duplicated"
+}
