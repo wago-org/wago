@@ -1,0 +1,1257 @@
+{
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T07:32:57.80366048Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestCompilerSiteJournalCopiesBudgetsAndOptIn",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.803674807Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestCompilerSiteBoundariesAndOwnership",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.803685377Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestJournalLifetimeAndCopies",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.804665236Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestSnapshotPublicationOrdering",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.804678781Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestBoundedJournalReportsLoss",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.804689792Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestSourceMetadataCopiedAndValidated",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.804702997Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestInlineSourcesValidationOwnershipAndBudget",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.804716542Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestTimelineReservationAndCompletion",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.804727022Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestTimelineSharedMemoryLimit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.804737612Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestTimelineConcurrentFinishAndClose",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.804748953Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestTimelineDisabled",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.804759623Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestUnwindJournalCopiesBudgetsAndOptIn",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.804772357Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Test": "TestUnwindDirectoryValidationAndBoundaries",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.805011796Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834142162Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestCompilerSitesJoinSamplesWithoutFillingGaps",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834152802Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestRV64JITDumpCodeAndGenerations",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834160026Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestRV64JITDumpRejectsCompilerUnwind",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834167941Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpRecordsAndRetirement",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834174333Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestExportErrorsAndAddressReuse",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834184672Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPerfMapEscapesAllSymbolFields/module",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834191284Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPerfMapEscapesAllSymbolFields/artifact",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834197877Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPerfMapEscapesAllSymbolFields/region_kind",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834201674Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPerfMapEscapesAllSymbolFields",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834208497Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestTemporalResolutionAndRegionBoundaries",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834216241Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestParsePerfScript",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834225338Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyLeafOnlyAttribution",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834231911Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSharedRegionsHaveDistinctSymbols",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834238182Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpDiscoveryMapping",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834244084Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSavedInputLimits",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834250966Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyDecompressionAndTableLimits",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834257699Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolutionLimitsBeforeCopyAndAggregation",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834267708Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestInputFileBudgetAndMetadataCardinality",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834287545Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPerfMapAdjacentAndZeroSizeLoads/address_order_and_adjacency",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834299698Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPerfMapAdjacentAndZeroSizeLoads/overlap_with_next_address_span",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834306791Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPerfMapAdjacentAndZeroSizeLoads/zero_size_inside_prior_load",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834313864Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPerfMapAdjacentAndZeroSizeLoads/prior_zero_size_inside_later_load",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.834318383Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPerfMapAdjacentAndZeroSizeLoads",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970329418Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPprofInlineLocationsInStandardViewer",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:32:57.97035183Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestPprofRejectsIncompatibleAndUnrepresentableValues",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970361658Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolveRejectsWeightOverflow",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970370325Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolveNoSamplesKeepsInputBudgetChecks",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970379502Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolveFutureEventsStayOutsideSampleWindow",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970388559Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolveSingleLoadLifecycle",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970407605Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolveReplacementClearsCachedImage/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970417463Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolveReplacementClearsCachedImage/32",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970422503Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolveReplacementClearsCachedImage",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970444484Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolveInterleavedImageLifecycle",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970467327Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolveZeroSizeImageAtLiveBase",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970476684Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestResolveZeroSizeImageInsideLiveRange",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970543139Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyMetadataLookupControls/missing/1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.97056506Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyMetadataLookupControls/first/1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970587081Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyMetadataLookupControls/repeated/1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970607339Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyMetadataLookupControls/shared/1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970810751Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyMetadataLookupControls/missing/256",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.970989827Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyMetadataLookupControls/first/256",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971291834Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyMetadataLookupControls/repeated/256",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971435924Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyMetadataLookupControls/shared/256",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971439341Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyMetadataLookupControls",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971462134Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyDuplicateFunctionIndexUsesFirstMetadata/1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.97165729Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyDuplicateFunctionIndexUsesFirstMetadata/256",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971663862Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSamplyDuplicateFunctionIndexUsesFirstMetadata",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971682608Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSparseSourcesRespectGapsAndMappingGenerations",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971703767Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestInlineCallerAttributionSurvivesTeardown",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971711662Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestSourceResolutionRejectsMismatchedImageIdentity",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971725418Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestTimelineReentryAndOverlappingChildren",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971740366Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestTimelineIncompleteNeverInventsExclusiveCost",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.971755023Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestTimelineRejectsInvalidAncestry",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.974948738Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestEncodeAMD64UnwindTransitionsAndSparseGaps",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.97496063Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestEncodeAMD64UnwindRejectsUnsupportedAndOverflow",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.974970299Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpCompilerUnwindRegions",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.974990086Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpRejectsInvalidCompilerUnwind/wrong-machine",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.974999183Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpRejectsInvalidCompilerUnwind/wrong-target",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975009292Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpRejectsInvalidCompilerUnwind/unsupported-register",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975018389Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpRejectsInvalidCompilerUnwind/cross-region",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975026554Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpRejectsInvalidCompilerUnwind/literal",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975035441Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpRejectsInvalidCompilerUnwind/manual-conflict",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975041322Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpRejectsInvalidCompilerUnwind",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975049257Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindLayoutAndBinding",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975061139Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/address",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975070407Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/generation",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975078371Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/size",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975086346Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/timestamp",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975094021Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/duplicate",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975102897Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975110502Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/truncated",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975118747Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/bad-cie",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975127494Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/mapped-size",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975135899Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/mapped-range",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975144435Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData/short-write",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975148533Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Test": "TestJITDumpUnwindRejectsUnboundOrMalformedData",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:32:57.975582618Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Elapsed": 0.158
+    },
+    {
+      "Time": "2026-11-02T07:33:05.048466967Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCapturePhasesAndResultOracle/valid",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.049509594Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCapturePhasesAndResultOracle/bad-result",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.049519232Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCapturePhasesAndResultOracle",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.04952893Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCaptureConfigurationFailsClosed",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.049541584Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestRawStackCaptureRequiresExplicitConfiguration",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.053145879Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestDirectGuestTimelineCaptureAndLoss",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.055526297Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCaptureUnwindCapabilityIsSeparateFromStacks",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.055866586Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorReturnsOriginalChildFailure",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.057160494Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorRequiresFinalManifest",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.057691862Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorPreservesDamagedManifestAndPublishesFailure/missing",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.058280607Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorPreservesDamagedManifestAndPublishesFailure/empty",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.058929314Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorPreservesDamagedManifestAndPublishesFailure/truncated",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.059603069Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorPreservesDamagedManifestAndPublishesFailure/unknown-version",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.060223504Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorPreservesDamagedManifestAndPublishesFailure/contradictory-state",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.060839881Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorPreservesDamagedManifestAndPublishesFailure/unexpected-pending-backend",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.060846142Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorPreservesDamagedManifestAndPublishesFailure",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.061478369Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorPublishesCompletionOnlyAfterFinalization",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.061757503Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorFailedManifestPublicationPreservesPendingState",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.062066032Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorCannotPromoteFailedWorkload",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.062332201Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestCollectorDoesNotOverwriteExistingFailureEvidence",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.370327331Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfRawStackBundlePreservesSymbols/inject-failure=false",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:33:05.67628605Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfRawStackBundlePreservesSymbols/inject-failure=true",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:33:05.676296279Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfRawStackBundlePreservesSymbols",
+      "Elapsed": 0.61
+    },
+    {
+      "Time": "2026-11-02T07:33:05.676679057Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfJITSymbolCopyRejectsNonRegularFiles",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.676948773Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfControlAcknowledgement/\"ack\\n\"",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.677178314Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfControlAcknowledgement/\"ack\\n\\x00\"",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.677476053Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfControlAcknowledgement/\"bad\\n\"",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.677704401Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfControlAcknowledgement/\"ack\\nextra\"",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.677936958Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfControlAcknowledgement/\"xxxxx\"",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.677943751Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfControlAcknowledgement",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.68032496Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestDeniedPerfPreservesFailedManifest",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.683578006Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestInterruptedChildManifestRetainsRawPerfCapture",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:05.785189846Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestFailedChildStopsPerfCollector",
+      "Elapsed": 0.1
+    },
+    {
+      "Time": "2026-11-02T07:33:05.938308722Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSilentConversionFailsManifestAndPreservesRaw/inject",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:33:06.036566065Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestCLICollectorReexecutionAndJSONReports",
+      "Elapsed": 0.86
+    },
+    {
+      "Time": "2026-11-02T07:33:06.037503946Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestAssemblyUsesRelocatedSymbolsAndSampledRegion",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.038648404Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestPerfFallbackRejectsMalformedOutputPromptly",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.038979826Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestReportsRejectPendingCollectors",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.038999843Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestDiffRejectsDifferentStackSamplingCosts",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039085905Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonKeepsElapsedCPUHelpersAndUnknownSeparate",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039096845Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonWithoutNativeSamplingRetainsWallTime",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039119918Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonRejectsIncompatibleMeasurement/phase_isolation",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039129817Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonRejectsIncompatibleMeasurement/source_collection",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039142661Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonRejectsIncompatibleMeasurement/unwind_collection",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039152299Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonRejectsIncompatibleMeasurement/native_bytes",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039162709Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonRejectsIncompatibleMeasurement/collector_version",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.03917387Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonRejectsIncompatibleMeasurement/zero_duration",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039186894Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonRejectsIncompatibleMeasurement/no_completed_work",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039203355Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonRejectsIncompatibleMeasurement/no_observations",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039213684Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonRejectsIncompatibleMeasurement/wrong_units",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039220036Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonRejectsIncompatibleMeasurement",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039230817Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonDoesNotChooseArbitraryCompilerVariant",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039244372Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestComparisonPropagatesOutputFailures",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039358536Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestSiteSummaryPreservesSparseAttributionAndTotals",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039368936Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestSiteSummaryRejectsInconsistentTotals",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039380337Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestSitesFlagIsLimitedToTop",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039397079Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestInitializationCostsIgnoreLaterExecutionCount",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039449798Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Test": "TestTopJSONAndTextShareStaticRowsAndLimit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.039765069Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Elapsed": 0.861
+    },
+    {
+      "Time": "2026-11-02T07:33:06.092522913Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSilentConversionFailsManifestAndPreservesRaw/script",
+      "Elapsed": 0.15
+    },
+    {
+      "Time": "2026-11-02T07:33:06.092530437Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSilentConversionFailsManifestAndPreservesRaw",
+      "Elapsed": 0.31
+    },
+    {
+      "Time": "2026-11-02T07:33:06.093479539Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfSampleStreamPreservesWeights",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.094632693Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfSampleLimitStopsProducer",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.095730774Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfSampleStreamPropagatesProducerFailure",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.098475867Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfConversionDiagnosticLimitStopsProducer/script",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.101459617Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfConversionDiagnosticLimitStopsProducer/inject",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.101470708Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfConversionDiagnosticLimitStopsProducer",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:33:06.101688697Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestPerfSampleStreamStartFailure",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.202473154Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSilentPerfConvertersHaveDeadlines/false",
+      "Elapsed": 0.1
+    },
+    {
+      "Time": "2026-11-02T07:33:06.298554533Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/profiling",
+      "Test": "TestProfileCommandRecordsAndParsesReports",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:33:06.298724773Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/profiling",
+      "Elapsed": 0.007
+    },
+    {
+      "Time": "2026-11-02T07:33:06.303229088Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSilentPerfConvertersHaveDeadlines/true",
+      "Elapsed": 0.1
+    },
+    {
+      "Time": "2026-11-02T07:33:06.30323562Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSilentPerfConvertersHaveDeadlines",
+      "Elapsed": 0.2
+    },
+    {
+      "Time": "2026-11-02T07:33:06.305203723Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticCatalogAndCaptureOracles/public/valid",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.306364452Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticCatalogAndCaptureOracles/public/bad-memory",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.307490175Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticCatalogAndCaptureOracles/prepared/valid",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.308624384Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticCatalogAndCaptureOracles/prepared/bad-memory",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.308635094Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticCatalogAndCaptureOracles",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:33:06.308689296Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticContractNearMisses",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.310576829Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticInputsResetBetweenContracts",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.311290859Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticReturnUsesCatalogHexBits",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.312676139Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticVectorRestoresInputEveryCase",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.314068312Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticDynamicSingleCallPointers",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.316129511Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticVectorPointersRefreshBetweenGroups",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.319292618Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSemanticMemoryOraclesWithStatusReturn",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.319305121Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSlotListPreservesExactValues",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.319317495Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Test": "TestSlotListRejectsMalformedConfiguration",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:33:06.32002362Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Elapsed": 1.275
+    }
+  ],
+  "raw_sha256": "8bc46898e7c64d5d580d4ea42b7906de4aaa51844c969b8e54b6ba9a2eb462d5",
+  "driver_unchanged": true
+}
