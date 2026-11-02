@@ -51,6 +51,14 @@
       "command_sha256": "154accd2eaf6481f86eb38cfc2bd23a5fad5f2a8d1a819a46d58cbaa2766e4ea"
     },
     {
+      "suite": "collector-ordinary",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run-v4.py",
+      "raw_sha256": "b5e76aedaef9c66a48fea68493342762ca41d298d2c37ec1a0f792dc4695003b",
+      "command_sha256": "cb99b25f839178382a1785fe2fdc242dedd56546c09f6a3ec389a813361c0701"
+    },
+    {
       "suite": "continued-step-2",
       "valid": false,
       "verdict": "INTERRUPTED",
@@ -259,6 +267,14 @@
       "command_sha256": "7579b418664bd1d6452f1932d922a7ee2df32f383aa02fe14f6b23e90da89e99"
     },
     {
+      "suite": "race-ordinary",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run-v4.py",
+      "raw_sha256": "da51deb9fc3e5fe4c6f0fa27345b943bdcdbcc89d9598c50f05f8f06ec5f165e",
+      "command_sha256": "5d43181d3128fdd67cf8cf8be40e1363fe29b0d1c7dcef99ecdb0ccb9880cab8"
+    },
+    {
       "suite": "repair-census-ordinary",
       "valid": true,
       "verdict": "PASS",
@@ -340,7 +356,7 @@
     }
   ],
   "counts": {
-    "PASS": 37,
+    "PASS": 39,
     "INTERRUPTED": 3,
     "FAIL": 2
   },

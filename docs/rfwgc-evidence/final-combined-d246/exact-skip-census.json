@@ -25924,6 +25924,622 @@
     }
   },
   {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.62433018Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/instance/typed/panicfalse",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/instance/typed/panicfalse\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/typed/panicfalse (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.62447391Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/instance/typed/panictrue",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/instance/typed/panictrue\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/typed/panictrue (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.624595588Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/instance/HostCall/panicfalse",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/instance/HostCall/panicfalse\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/HostCall/panicfalse (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.624716074Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/instance/HostCall/panictrue",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/instance/HostCall/panictrue\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/HostCall/panictrue (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.624819899Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/instance/Caller/panicfalse",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/instance/Caller/panicfalse\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/Caller/panicfalse (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.624924616Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/instance/Caller/panictrue",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/instance/Caller/panictrue\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/Caller/panictrue (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.625027489Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/prepared/typed/panicfalse",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/prepared/typed/panicfalse\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/typed/panicfalse (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.625128789Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/prepared/typed/panictrue",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/prepared/typed/panictrue\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/typed/panictrue (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.625239727Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/prepared/HostCall/panicfalse",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/prepared/HostCall/panicfalse\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/HostCall/panicfalse (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.625365313Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/prepared/HostCall/panictrue",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/prepared/HostCall/panictrue\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/HostCall/panictrue (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.625478896Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/prepared/Caller/panicfalse",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/prepared/Caller/panicfalse\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/Caller/panicfalse (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.625578203Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/prepared/Caller/panictrue",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/prepared/Caller/panictrue\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/Caller/panictrue (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.625676187Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/session/typed/panicfalse",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/session/typed/panicfalse\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/session/typed/panicfalse (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.62579494Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/session/typed/panictrue",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/session/typed/panictrue\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/session/typed/panictrue (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.625895699Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/session/HostCall/panicfalse",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/session/HostCall/panicfalse\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/session/HostCall/panicfalse (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.62599765Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/session/HostCall/panictrue",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/session/HostCall/panictrue\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/session/HostCall/panictrue (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.626103419Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/session/Caller/panicfalse",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/session/Caller/panicfalse\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/session/Caller/panicfalse (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:47.626207565Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestBoundedDirectGuardedNativeHandoff/session/Caller/panictrue",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestBoundedDirectGuardedNativeHandoff/session/Caller/panictrue\n    bounded_native_handoff_test.go:51: mutable-context handoff; detached contexts are covered by TestDetachedNumericResourceIsolation\n--- SKIP: TestBoundedDirectGuardedNativeHandoff/session/Caller/panictrue (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:02:54.433480362Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestDeferredEffectsGuardLoadPressure",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestDeferredEffectsGuardLoadPressure\n    deferred_effects_guard_pressure_test.go:55: guard-page build required\n--- SKIP: TestDeferredEffectsGuardLoadPressure (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.424228397Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=16",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=16\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=16 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.424319018Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=17",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=17\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=17 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.424400971Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=19",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=19\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=19 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.424482364Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=16",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=16\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=16 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.424554359Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=17",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=17\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=17 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.424617568Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=19",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=19\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=19 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.424747752Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestGCConditionalSnapshotRepeatedWideStores/array=false",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestGCConditionalSnapshotRepeatedWideStores/array=false\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestGCConditionalSnapshotRepeatedWideStores/array=false (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.424834505Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestGCConditionalSnapshotRepeatedWideStores/array=true",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestGCConditionalSnapshotRepeatedWideStores/array=true\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestGCConditionalSnapshotRepeatedWideStores/array=true (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.424949792Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestDynamicFunctionConditionalSnapshot/pins=16",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestDynamicFunctionConditionalSnapshot/pins=16\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestDynamicFunctionConditionalSnapshot/pins=16 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.425019012Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestDynamicFunctionConditionalSnapshot/pins=17",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestDynamicFunctionConditionalSnapshot/pins=17\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestDynamicFunctionConditionalSnapshot/pins=17 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:03:53.425092019Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestDynamicFunctionConditionalSnapshot/pins=19",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestDynamicFunctionConditionalSnapshot/pins=19\n    gc_conditional_snapshot_amd64_test.go:96: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestDynamicFunctionConditionalSnapshot/pins=19 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:05:16.755655501Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestGCNativeResolverTelemetryAttributesModuleStub",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestGCNativeResolverTelemetryAttributesModuleStub\n    gc_native_resolver_amd64_test.go:56: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestGCNativeResolverTelemetryAttributesModuleStub (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:09:32.60236217Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestCustomInstructionRecipeBudgetARM64",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestCustomInstructionRecipeBudgetARM64\n    instruction_recipe_budget_test.go:30: ARM64 recipe admission budget\n--- SKIP: TestCustomInstructionRecipeBudgetARM64 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:09:32.615308297Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestCustomInstructionRecipeInputOnlyARM64",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestCustomInstructionRecipeInputOnlyARM64\n    instruction_recipe_native_test.go:111: ARM64 recipe input canonicalization\n--- SKIP: TestCustomInstructionRecipeInputOnlyARM64 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:09:36.957024802Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestModuleGlobalRegionalLeasePreservesResultSlotsAMD64",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestModuleGlobalRegionalLeasePreservesResultSlotsAMD64\n    module_global_lease_amd64_test.go:61: compiler diagnostics require -tags=wago_codegenstats (also enabled by wago_profile)\n--- SKIP: TestModuleGlobalRegionalLeasePreservesResultSlotsAMD64 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:09:36.979550962Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestMoonBitStarshineWasmGCSmokeCompile",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestMoonBitStarshineWasmGCSmokeCompile\n    moonbit_starshine_smoke_amd64_test.go:40: set WAGO_STARSHINE_SMOKE_WASM to a MoonBit wasm-gc Starshine CLI artifact\n--- SKIP: TestMoonBitStarshineWasmGCSmokeCompile (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:09:36.979789839Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestMoonBitStarshineWasmGCSmokeInstantiate",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestMoonBitStarshineWasmGCSmokeInstantiate\n    moonbit_starshine_smoke_amd64_test.go:58: set WAGO_STARSHINE_SMOKE_WASM to a MoonBit wasm-gc Starshine CLI artifact\n--- SKIP: TestMoonBitStarshineWasmGCSmokeInstantiate (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:09:38.031847359Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestNativeIdleCacheResidencyDiagnostic",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestNativeIdleCacheResidencyDiagnostic\n    native_cache_residency_linux_amd64_test.go:78: opt-in normal-operation mapping diagnostic\n--- SKIP: TestNativeIdleCacheResidencyDiagnostic (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:09:54.901073264Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestRFWStage3CorpusCompile",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestRFWStage3CorpusCompile\n    rfwgc_stage3_measurement_bench_test.go:147: explicit corpus gate; RFW_CATALOG required\n--- SKIP: TestRFWStage3CorpusCompile (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:10:05.200049124Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestSIMDExtmulCorpusCensus",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSIMDExtmulCorpusCensus\n    simd_extmul_census_test.go:165: set WAGO_EXTMUL_CORPUS to a real workload directory\n--- SKIP: TestSIMDExtmulCorpusCensus (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:10:05.842798151Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestSIMDFloorAverageCorpusCensus",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSIMDFloorAverageCorpusCensus\n    simd_floor_average_census_test.go:210: set WAGO_FLOOR_CORPUS to a real workload directory\n--- SKIP: TestSIMDFloorAverageCorpusCensus (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:10:06.83493751Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestSIMDSourcePairSelectionAMD64",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSIMDSourcePairSelectionAMD64\n    simd_rule_pairs_amd64_test.go:65: selection inspection requires wago_codegenstats\n--- SKIP: TestSIMDSourcePairSelectionAMD64 (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:12:25.629756664Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestSpecSuiteExec",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSpecSuiteExec\n    spectest_exec_test.go:1302: set WAGO_SPECTEST_DIR to a checked-out WebAssembly/testsuite to run\n--- SKIP: TestSpecSuiteExec (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:12:25.634033809Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestThreadsOfficialAtomicSuite",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestThreadsOfficialAtomicSuite\n    threads_official_test.go:25: set WAGO_THREADS_SPEC_DIR to the pinned WebAssembly/threads checkout\n--- SKIP: TestThreadsOfficialAtomicSuite (0.00s)\n"
+    }
+  },
+  {
+    "suite": "race-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:12:25.634072061Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/wago",
+        "Test": "TestThreadsOfficialConcurrentScripts",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestThreadsOfficialConcurrentScripts\n    threads_official_test.go:67: set WAGO_THREADS_SPEC_DIR to the pinned WebAssembly/threads checkout\n--- SKIP: TestThreadsOfficialConcurrentScripts (0.00s)\n"
+    }
+  },
+  {
     "suite": "tmp-resume-full-root-replay-ordinary",
     "kind": "go-json",
     "detail": {
