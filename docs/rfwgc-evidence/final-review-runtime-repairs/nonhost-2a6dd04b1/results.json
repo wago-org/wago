@@ -1,0 +1,88 @@
+[
+  {
+    "label": "darwin-arm64-ordinary",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/dr-nonhost-w28e1zkw/darwin-arm64-ordinary.test"
+    ],
+    "exit": 0,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "darwin-arm64-wagodebug",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/dr-nonhost-w28e1zkw/darwin-arm64-wagodebug.test",
+      "-tags",
+      "wagodebug"
+    ],
+    "exit": 0,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "darwin-arm64-wago_regalloccheck",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/dr-nonhost-w28e1zkw/darwin-arm64-wago_regalloccheck.test",
+      "-tags",
+      "wago_regalloccheck"
+    ],
+    "exit": 0,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "windows-amd64-ordinary",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/dr-nonhost-w28e1zkw/windows-amd64-ordinary.test"
+    ],
+    "exit": 0,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "windows-amd64-wagodebug",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/dr-nonhost-w28e1zkw/windows-amd64-wagodebug.test",
+      "-tags",
+      "wagodebug"
+    ],
+    "exit": 0,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "windows-amd64-wago_regalloccheck",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "./src/wago",
+      "-o",
+      "/tmp/dr-nonhost-w28e1zkw/windows-amd64-wago_regalloccheck.test",
+      "-tags",
+      "wago_regalloccheck"
+    ],
+    "exit": 0,
+    "execution": "NOT_RUN"
+  }
+]

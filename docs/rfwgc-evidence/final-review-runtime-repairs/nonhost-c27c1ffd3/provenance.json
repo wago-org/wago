@@ -1,0 +1,7 @@
+{
+  "pin": "c27c1ffd384715412ebc079579e630aadbfbecaf",
+  "source": "/tmp/dr-nonhost-gqia1bio/source",
+  "archive_sha256": "e080cb8bdced04f59f2854d95ee98a1b440f713dc4d2c95a60969f2ab0c41357",
+  "driver_sha256": "3d09429ece02ce9723e3f766b71fb9c02f72f168aa1fb09fbb1b12a7b7f7b5b4",
+  "execution": "NOT_RUN: no Darwin or Windows runner"
+}

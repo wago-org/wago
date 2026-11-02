@@ -1,0 +1,8 @@
+{
+  "pin": "6a17679bf145b1966079dac3b8a4e436c4e7db33",
+  "source": "/tmp/wago-h2-integrated-2x8o179y/source",
+  "archive_sha256": "972cfc590fd58b1c08cd959ef6fc27dbf155e1ac7710c0f90a2120b218c2a6a5",
+  "driver_sha256": "f7bc23b645bcc305710a7382f2d2c2d554c428f6d9f2852f09ac869f91b18c57",
+  "go": "go version go1.27.3 linux/amd64",
+  "corpus": "160000 commit a8bcbafe6d2fb191ce0188de0e18fdc107fa2598\ttests/conformance/spec-v1\n160000 commit 05ca4182176763112561ae20153975c12bd689e4\ttests/conformance/spec-v2\n160000 commit 9d36019973201a19f9c9ebb0f10828b2fe2374aa\ttests/conformance/spec-v3\n"
+}

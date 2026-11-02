@@ -1,0 +1,41 @@
+  - binary/instruction-and-expression-encoding.md
+  - custom-descriptors/descriptor-instruction-surface.md
+  - fuzzing/generator-coverage-ledger.md
+---
+
+# WebAssembly GC Core Boundary
+
+## Overview
+
+Use this page when a claim mentions “WebAssembly GC” and you need to know which layer is meant. The ordinary GC feature is now a finished/Core-3.0 WebAssembly surface: it covers recursive `func` / `struct` / `array` types, abstract heap types such as `any`, `eq`, `struct`, `array`, and `i31`, typed references, ordinary cast/test/branch/call reference instructions, and struct/array aggregate instructions. The `call_ref` / `return_call_ref` slice is cross-linked to the focused typed-function-reference boundary at [`wasm-typed-function-references-boundary.md`](wasm-typed-function-references-boundary.md). The active More Array Constructors proposal is separate: `array.new_array`, `array.new_memory`, and `array.new_table` route through [`wasm-more-array-constructors-boundary.md`](wasm-more-array-constructors-boundary.md), while current Core `array.new*` support remains part of this GC layer. That does **not** mean every Starshine layer exposes every Core syntax spelling today.
+
+The official Core 3.0 type/instruction/text/binary/validation pages and the Starshine owner files in the layer map establish this GC boundary. The current [`constant-expression guide`](validate/constant-expressions.md), grounded in Core validation and local tests, records one narrow but important local status: Starshine now admits Core `array.new`, `array.new_default`, and `array.new_fixed` in constant expressions after array-type resolution. The five Core array constructors also have WAST text support. This does not add the separate More Array Constructors proposal. The important routing rule is:
+
+```text
+Core WebAssembly GC
+  -> Starshine core model + binary codec + validator + generator surface
+  -> narrower Starshine WAST text authoring surface
+  -> narrower Starshine constant-expression initializer allow-list
+  -> separate active-proposal/local custom-descriptor surface
+```
+
+Beginners can read this as: **GC is the heap-object and reference-type part of modern Wasm, but Starshine does not expose every GC thing through the same entrypoint yet.** If a WAST file cannot be parsed, the same module shape might still be valid as a core builder, generated module, or binary fixture.
+
+## Layer Map
+
+| Layer | Starshine owner | What this proves | Main caveat |
+| --- | --- | --- | --- |
+| Core type model | [`src/lib/types.mbt`](../../src/lib/types.mbt) | `AbsHeapType`, `HeapType`, `RefType`, `CompType::{Struct,Array,Func}`, `SubType`, `RecType`, `TypeMetadata`, and GC/reference/aggregate `Instruction` variants exist in the in-memory module model. | Core presence is not WAST text support or initializer support. |
+| WAST type text | [`src/wast/parser.mbt`](../../src/wast/parser.mbt), [`src/wast/lower_to_lib.mbt`](../../src/wast/lower_to_lib.mbt), [`src/wast/module_wast.mbt`](../../src/wast/module_wast.mbt) | Starshine can author useful `(type ... (struct ...))`, `(type ... (array ...))`, `(rec ...)`, subtype, exact-ref, and descriptor metadata fixtures. | Detailed type-use caveats live in [`wast/gc-type-authoring.md`](wast/gc-type-authoring.md), including explicit `(type ...)` plus inline param/result consistency. |
+| WAST instruction text | [`src/wast/keywords.mbt`](../../src/wast/keywords.mbt), [`src/wast/parser.mbt`](../../src/wast/parser.mbt), [`src/wast/module_wast.mbt`](../../src/wast/module_wast.mbt) | Basic refs, `ref.eq`, `ref.as_non_null`, `ref.i31`, `i31.get_*`, `any.convert_extern`, `extern.convert_any`, `struct.new*`, `struct.get*`, `struct.atomic.get*`, and descriptor test/cast helpers are text-exposed. | Ordinary `ref.test` / `ref.cast`, `br_on_*`, ordinary non-tail `call_ref`, `struct.set`, and Core `array.*` are current WAST gaps; proposal `array.new_array` / `array.new_memory` / `array.new_table` are no-support active-proposal work. |
+| Binary codec | [`src/binary/decode.mbt`](../../src/binary/decode.mbt), [`src/binary/encode.mbt`](../../src/binary/encode.mbt) | GC type encodings, reference instructions, and broader aggregate instruction opcodes roundtrip at the byte/core level. | Decode success does not prove type validity, declaration membership, mutability, or bounds/effect safety. |
+| Validation/typechecking | [`src/validate/validate.mbt`](../../src/validate/validate.mbt), [`src/validate/typecheck.mbt`](../../src/validate/typecheck.mbt) | Type sections, subtyping, reference casts/tests/branches/calls, struct/array instructions, packed signedness, mutability, and data/element-backed array operations are semantically checked. | Constant-expression validation is a separate allow-list and is narrower than ordinary body typechecking. |
+| Valid generation | [`src/validate/gen_valid.mbt`](../../src/validate/gen_valid.mbt) | Fuzzing can exercise GC/reference-shaped modules through local feature/profile toggles. | `GenValidProposalFeature` / toggles are local fuzz vocabulary, not standards-status evidence. |
+| Custom descriptors | [`custom-descriptors/descriptor-instruction-surface.md`](custom-descriptors/descriptor-instruction-surface.md) | Starshine has local/proposal-facing descriptor metadata, exact refs, descriptor allocation, `ref.get_desc`, and non-branch descriptor predicate/cast forms. | Custom descriptors are active proposal evidence, not ordinary Core GC. The upstream proposal remains struct-oriented; Starshine array metadata behavior is local unless separately source-confirmed. |
+
+## Concrete Shapes
+
+### Core GC type and reference shape
+
+```wat
+(module

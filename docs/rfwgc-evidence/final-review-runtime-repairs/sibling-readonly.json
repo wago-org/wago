@@ -1,0 +1,20 @@
+[
+  {
+    "repo": "/home/dev/Projects/slipstream",
+    "pin": "084be3d4bf70fb5337085ceddfab1bfa9db8b1c9",
+    "path": "src/jit.goose",
+    "start": 291,
+    "end": 305,
+    "source_sha256": "2dab65a592e4851ebd47067ab4f8e984c1c83681beb457cf59def7cb7e617f87",
+    "excerpt": "slipstream-readonly.txt"
+  },
+  {
+    "repo": "/home/dev/Projects/starshine-master-base",
+    "pin": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+    "path": "docs/wiki/wasm-gc-core-boundary.md",
+    "start": 30,
+    "end": 70,
+    "source_sha256": "64dd3aa84eea16f5f52b402e6be6acf87b9b47cc8986a20753f99e628c73a340",
+    "excerpt": "starshine-master-base-readonly.txt"
+  }
+]
