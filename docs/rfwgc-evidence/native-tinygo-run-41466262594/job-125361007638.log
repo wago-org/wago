@@ -1,0 +1,142 @@
+﻿2026-11-02T15:17:21.9180254Z Current runner version: '2.338.2'
+2026-11-02T15:17:21.9196038Z ##[group]Runner Image Provisioner
+2026-11-02T15:17:21.9196707Z Hosted Compute Agent
+2026-11-02T15:17:21.9197072Z Version: 20261021.618
+2026-11-02T15:17:21.9197443Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-11-02T15:17:21.9198196Z Build Date: 2026-10-21T00:45:21Z
+2026-11-02T15:17:21.9198622Z Worker ID: {14d4e929-f837-4ba2-a7c1-323e83c19cbd}
+2026-11-02T15:17:21.9199108Z Region: centralus
+2026-11-02T15:17:21.9199464Z Cloud: Azure
+2026-11-02T15:17:21.9199823Z ##[endgroup]
+2026-11-02T15:17:21.9200892Z ##[group]Operating System
+2026-11-02T15:17:21.9201299Z Ubuntu
+2026-11-02T15:17:21.9201660Z 24.04.5
+2026-11-02T15:17:21.9201995Z LTS
+2026-11-02T15:17:21.9202315Z ##[endgroup]
+2026-11-02T15:17:21.9202687Z ##[group]Runner Image
+2026-11-02T15:17:21.9203051Z Image: ubuntu-24.04
+2026-11-02T15:17:21.9203421Z Version: 20261025.353.1
+2026-11-02T15:17:21.9204225Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261025.353/images/ubuntu/Ubuntu2404-Readme.md
+2026-11-02T15:17:21.9205361Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261025.353
+2026-11-02T15:17:21.9205954Z ##[endgroup]
+2026-11-02T15:17:21.9206664Z ##[group]GITHUB_TOKEN Permissions
+2026-11-02T15:17:21.9208201Z Contents: read
+2026-11-02T15:17:21.9208637Z Metadata: read
+2026-11-02T15:17:21.9209028Z ##[endgroup]
+2026-11-02T15:17:21.9210362Z Secret source: Actions
+2026-11-02T15:17:21.9210952Z Cache mode: write
+2026-11-02T15:17:21.9211511Z Prepare workflow directory
+2026-11-02T15:17:21.9599061Z Prepare all required actions
+2026-11-02T15:17:21.9641924Z Complete job name: Darwin TinyGo supplement complete
+2026-11-02T15:17:22.0350745Z ##[group]Run python3 -c 'import json,os; n=json.loads(os.environ["RESULTS"]); assert n["darwin-tinygo-native"]["result"] == "success", n; assert all(v["result"] == "skipped" for k,v in n.items() if k != "darwin-tinygo-native"), n'
+2026-11-02T15:17:22.0353072Z [36;1mpython3 -c 'import json,os; n=json.loads(os.environ["RESULTS"]); assert n["darwin-tinygo-native"]["result"] == "success", n; assert all(v["result"] == "skipped" for k,v in n.items() if k != "darwin-tinygo-native"), n'[0m
+2026-11-02T15:17:22.0862791Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-02T15:17:22.0863898Z env:
+2026-11-02T15:17:22.0864495Z   GO_VERSION: 1.27.1
+2026-11-02T15:17:22.0865014Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T15:17:22.0865545Z   TINYGO_VERSION: 0.42.0
+2026-11-02T15:17:22.0866124Z   JUST_VERSION: 1.58.0
+2026-11-02T15:17:22.0873237Z   RESULTS: {
+  "changes": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "docs": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "lint": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "regression-integrity": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "regression-rebuild": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "smoke": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "gc-hardening": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "race": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "current-go": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "platform-test": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "corpus-correctness": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "app-corpus": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "app-corpus-verify": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "spec-v1": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "core-v2": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "core-v3": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "fuzz": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "tinygo": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "size": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "native-arm64-rr3": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "native-arm64-rr3-summary": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "darwin-qualification": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "windows-qualification": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "darwin-qualification-summary": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "darwin-tinygo-native": {
+    "result": "success",
+    "outputs": {}
+  }
+}
+2026-11-02T15:17:22.0880882Z ##[endgroup]
+2026-11-02T15:17:22.1406358Z Cleaning up orphan processes

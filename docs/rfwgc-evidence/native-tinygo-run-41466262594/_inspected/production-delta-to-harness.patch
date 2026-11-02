@@ -1,0 +1,16 @@
+diff --git a/src/wago/gc_conversion_store.go b/src/wago/gc_conversion_store.go
+index 2341d0e04..7bbd0ed68 100644
+--- a/src/wago/gc_conversion_store.go
++++ b/src/wago/gc_conversion_store.go
+@@ -247,11 +247,3 @@ func stageConversionInitialTable(rows *[]conversionInitialTable, t *Table, start
+ func (t *Table) SetValue(index uint64, value Value) error {
+ 	return setConversionTablePublic(t, index, value)
+ }
+-
+-// Unauthenticated adapters remain available for unsupported-platform controls.
+-func (in *Instance) publishConversionStore(owner *Instance, storage []byte, index, word uint64, publish func() error) error {
+-	return in.publishConversionStoreInvocation(gcConversionInvocation{}, owner, storage, index, word, publish)
+-}
+-func (in *Instance) publishConversionRange(owner *Instance, storage []byte, start, limit uint64, words []uint64, publish func()) error {
+-	return in.publishConversionRangeInvocation(gcConversionInvocation{}, owner, storage, start, limit, words, publish)
+-}
