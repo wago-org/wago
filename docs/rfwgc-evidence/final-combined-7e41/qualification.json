@@ -5,6 +5,1047 @@
       "plain_passes": [],
       "plain_skips": [],
       "plain_failures": [],
+      "suite": "repair-census-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "repair-census-ordinary/command.json",
+      "pass_count": 250,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotCancellation"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotLatePublisher"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotRetirement"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotAuthenticatedDispatch"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotCallbackTrap"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckForeignRelayAfterLatePublisher"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckStorageOnlyCallTopologyWriter"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckCallbackChangesPublisherAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckNestedSameRuntimeClear"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckNestedPublish"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairWaitNotifier"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairConversionAdmissionLifecycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairScalarRelayOrdinaryStorageWithConversion"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairConcurrentPublicationRetirement"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairPublicGlobalTokenClassification"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairPublicTableOrdinary"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignReviewExternStorageProducerCrossRuntimeImport"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignReviewExternStorageImportsPrivateGCProducer"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipStateH6FailedInitialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipStateH6CallbackQuiescence"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipStateH6CollectingMutations"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConditionalSlotExplicitDomain"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2RetiredCollectorPreservesDeferredFinalizer"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupContention"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupActiveBoundary"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupExitCrossing"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupProviderAndStoreClose"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupConcurrentRequests"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupRetiredDomainAdmission"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerPublicGlobal"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerPublicTable"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerClose"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerMigration"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportGlobal"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportTable"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportBulk"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportInitialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportTableIndependentPhysical"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportGlobalOrdinaryAndGuards"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportTableOrdinaryAndGuards"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptPublisherRetirement"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptIndependentContainersAndRollback"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptCloseOrders"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptConvertedProducerCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptOnlyContention"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksOriginalProvider"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksBulk"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksActiveInitialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksDescriptorMigration"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksIndependentPhysicalTables"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionStableIdentityAndOwnership"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionRejectsForeignForgedAndClosed"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionCollectorFirstCloseFailsClosed"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionRejectedReplacementPreservesRoot"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionPublicationOrderingAndRollback"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionWithFunctionTable"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionKeepsLocalRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionKeepsVectorAndLocalRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionForeignLocalRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionCheckedTableRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionMissingRootsDisableCollection"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionWithoutHeapKeepsTinyProfile"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionRejectsForgedFrameWords"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionManyForeignLocals"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionVoidImportCannotUseEmptyRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionAcrossReferenceTables"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConvertedAggregateAdmission"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConvertedAggregateAdmissionControls"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConvertedAggregateCollectingLocalOwner"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRecheckStorageOnlyReturnBehindDynamicReader"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRecheckCanceledAdmissionBehindDynamicReader"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRecheckSharedMemoryHandoff"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementLastPinAndRevival"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementCallbackAndExitWakeups"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementBorrowedRootLatePublisher"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementCanceledPartialLastPins"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementCallbackRefreshBehindReader"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "repair-census-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "repair-census-wago_regalloccheck/command.json",
+      "pass_count": 250,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotCancellation"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotLatePublisher"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotRetirement"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotAuthenticatedDispatch"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotCallbackTrap"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckForeignRelayAfterLatePublisher"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckStorageOnlyCallTopologyWriter"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckCallbackChangesPublisherAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckNestedSameRuntimeClear"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckNestedPublish"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairWaitNotifier"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairConversionAdmissionLifecycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairScalarRelayOrdinaryStorageWithConversion"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairConcurrentPublicationRetirement"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairPublicGlobalTokenClassification"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairPublicTableOrdinary"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignReviewExternStorageProducerCrossRuntimeImport"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignReviewExternStorageImportsPrivateGCProducer"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipStateH6FailedInitialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipStateH6CallbackQuiescence"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipStateH6CollectingMutations"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConditionalSlotExplicitDomain"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2RetiredCollectorPreservesDeferredFinalizer"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupContention"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupActiveBoundary"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupExitCrossing"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupProviderAndStoreClose"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupConcurrentRequests"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupRetiredDomainAdmission"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerPublicGlobal"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerPublicTable"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerClose"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerMigration"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportGlobal"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportTable"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportBulk"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportInitialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportTableIndependentPhysical"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportGlobalOrdinaryAndGuards"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportTableOrdinaryAndGuards"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptPublisherRetirement"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptIndependentContainersAndRollback"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptCloseOrders"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptConvertedProducerCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptOnlyContention"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksOriginalProvider"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksBulk"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksActiveInitialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksDescriptorMigration"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksIndependentPhysicalTables"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionStableIdentityAndOwnership"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionRejectsForeignForgedAndClosed"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionCollectorFirstCloseFailsClosed"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionRejectedReplacementPreservesRoot"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionPublicationOrderingAndRollback"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionWithFunctionTable"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionKeepsLocalRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionKeepsVectorAndLocalRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionForeignLocalRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionCheckedTableRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionMissingRootsDisableCollection"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionWithoutHeapKeepsTinyProfile"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionRejectsForgedFrameWords"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionManyForeignLocals"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionVoidImportCannotUseEmptyRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionAcrossReferenceTables"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConvertedAggregateAdmission"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConvertedAggregateAdmissionControls"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConvertedAggregateCollectingLocalOwner"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRecheckStorageOnlyReturnBehindDynamicReader"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRecheckCanceledAdmissionBehindDynamicReader"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRecheckSharedMemoryHandoff"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementLastPinAndRevival"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementCallbackAndExitWakeups"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementBorrowedRootLatePublisher"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementCanceledPartialLastPins"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementCallbackRefreshBehindReader"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "repair-census-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "repair-census-wagodebug/command.json",
+      "pass_count": 250,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotCancellation"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotLatePublisher"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotRetirement"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotAuthenticatedDispatch"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignInvocationSnapshotCallbackTrap"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckForeignRelayAfterLatePublisher"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckStorageOnlyCallTopologyWriter"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckCallbackChangesPublisherAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckNestedSameRuntimeClear"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRecheckNestedPublish"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairWaitNotifier"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairConversionAdmissionLifecycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairScalarRelayOrdinaryStorageWithConversion"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairConcurrentPublicationRetirement"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairPublicGlobalTokenClassification"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignRepairPublicTableOrdinary"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignReviewExternStorageProducerCrossRuntimeImport"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestDesignReviewExternStorageImportsPrivateGCProducer"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipStateH6FailedInitialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipStateH6CallbackQuiescence"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipStateH6CollectingMutations"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConditionalSlotExplicitDomain"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2RetiredCollectorPreservesDeferredFinalizer"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupContention"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupActiveBoundary"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupExitCrossing"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupProviderAndStoreClose"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupConcurrentRequests"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9OwnershipWakeupRetiredDomainAdmission"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerPublicGlobal"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerPublicTable"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerClose"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerMigration"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostContainerCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportGlobal"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportTable"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportBulk"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportInitialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportTableIndependentPhysical"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportGlobalOrdinaryAndGuards"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2HostImportTableOrdinaryAndGuards"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptPublisherRetirement"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptIndependentContainersAndRollback"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptCloseOrders"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptConvertedProducerCycle"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptOnlyContention"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksOriginalProvider"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksBulk"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksActiveInitialization"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksDescriptorMigration"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2StoreHooksIndependentPhysicalTables"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionStableIdentityAndOwnership"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionRejectsForeignForgedAndClosed"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionCollectorFirstCloseFailsClosed"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionRejectedReplacementPreservesRoot"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionPublicationOrderingAndRollback"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionWithFunctionTable"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionKeepsLocalRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionKeepsVectorAndLocalRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionForeignLocalRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionCheckedTableRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionMissingRootsDisableCollection"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionWithoutHeapKeepsTinyProfile"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionRejectsForgedFrameWords"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionManyForeignLocals"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionVoidImportCannotUseEmptyRoots"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestGCExternConversionAcrossReferenceTables"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConvertedAggregateAdmission"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConvertedAggregateAdmissionControls"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestR9H2ConvertedAggregateCollectingLocalOwner"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRecheckStorageOnlyReturnBehindDynamicReader"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRecheckCanceledAdmissionBehindDynamicReader"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRecheckSharedMemoryHandoff"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementLastPinAndRevival"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementCallbackAndExitWakeups"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementBorrowedRootLatePublisher"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementCanceledPartialLastPins"
+        },
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRRRetirementCallbackRefreshBehindReader"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
       "suite": "version-go",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "verdict": "PASS",
@@ -1507,7 +2548,7 @@
     }
   ],
   "counts": {
-    "PASS": 5,
+    "PASS": 8,
     "NOT_RUN": 222
   }
 }
