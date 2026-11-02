@@ -13,7 +13,7 @@
       "suite": "full-root-replay-wagodebug",
       "receipt_suite": "full-root-replay-wagodebug",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "full-root-replay-wago_regalloccheck",
@@ -31,7 +31,7 @@
       "suite": "cli-wagodebug",
       "receipt_suite": "cli-wagodebug",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "NOT_RUN"
+      "verdict": "INTERRUPTED"
     },
     {
       "suite": "cli-wago_regalloccheck",
@@ -61,7 +61,7 @@
       "suite": "nested-ordinary",
       "receipt_suite": "nested-ordinary",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "INTERRUPTED"
+      "verdict": "PASS"
     },
     {
       "suite": "nested-wagodebug",
@@ -1307,8 +1307,8 @@
     }
   ],
   "counts": {
-    "PASS": 21,
-    "NOT_RUN": 195,
+    "PASS": 23,
+    "NOT_RUN": 193,
     "INTERRUPTED": 1
   },
   "attempts": [
@@ -1343,6 +1343,14 @@
       "driver": "run-v4.py",
       "exit": 0,
       "verdict": "PASS"
+    },
+    {
+      "suite": "cli-wagodebug",
+      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+      "receipt_valid": false,
+      "driver": "run-v4.py",
+      "exit": null,
+      "verdict": "INTERRUPTED"
     },
     {
       "suite": "continued-step-2",
@@ -1441,6 +1449,14 @@
       "verdict": "FAIL"
     },
     {
+      "suite": "full-root-replay-wagodebug",
+      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+      "receipt_valid": true,
+      "driver": "run-v4.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "full-step-0",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
       "receipt_valid": true,
@@ -1475,10 +1491,10 @@
     {
       "suite": "nested-ordinary",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run-v4.py",
-      "exit": null,
-      "verdict": "INTERRUPTED"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "parent-race-reduced-ordinary",
