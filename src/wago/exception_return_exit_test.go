@@ -5,6 +5,7 @@ package wago
 import (
 	"fmt"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -170,24 +171,29 @@ func testExceptionReturnExit(t *testing.T, data []byte, hostCalls, inline bool) 
 }
 
 // exceptionReturnShapeModule builds $inner, which returns from inside two
-// try_tables with the given result shape, and $run, which throws its argument
-// after $inner returned and catches it itself. A large frame places the
-// handler records beyond the directly addressable stack displacement.
+// try_tables with the given result shape, and $run, which checks the returned
+// values, then throws its argument and catches it itself. A wrong returned
+// value traps. A large frame places the handler records beyond the directly
+// addressable stack displacement.
 func exceptionReturnShapeModule(shape string, largeFrame bool) []byte {
 	tagSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
 	runSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
-	var innerSig, ret, drop, fallback []byte
+	// checkI32 traps unless the i32 on top of the stack is the argument;
+	// checkF64 does the same for its f64 conversion.
+	checkI32 := []byte{0x20, 0, 0x47, 0x04, 0x40, 0x00, 0x0b}       // local.get 0; i32.ne; if unreachable end
+	checkF64 := []byte{0x20, 0, 0xb7, 0x62, 0x04, 0x40, 0x00, 0x0b} // local.get 0; f64.convert_i32_s; f64.ne; if unreachable end
+	var innerSig, ret, check, fallback []byte
 	switch shape {
 	case "i32":
 		innerSig = runSig
-		ret, drop, fallback = []byte{0x20, 0}, []byte{0x1a}, []byte{0x41, 0x7f}
+		ret, check, fallback = []byte{0x20, 0}, checkI32, []byte{0x41, 0x7f}
 	case "f64":
 		innerSig = wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.F64})
-		ret, drop = []byte{0x20, 0, 0xb7}, []byte{0x1a} // f64.convert_i32_s
+		ret, check = []byte{0x20, 0, 0xb7}, checkF64 // f64.convert_i32_s
 		fallback = []byte{0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0xbf}
 	case "i32x2":
 		innerSig = wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32, wasm.I32})
-		ret, drop, fallback = []byte{0x20, 0, 0x20, 0}, []byte{0x1a, 0x1a}, []byte{0x41, 0x7f, 0x41, 0x7f}
+		ret, check, fallback = []byte{0x20, 0, 0x20, 0}, slices.Concat(checkI32, checkI32), []byte{0x41, 0x7f, 0x41, 0x7f}
 	default:
 		panic("unknown shape " + shape)
 	}
@@ -209,7 +215,7 @@ func exceptionReturnShapeModule(shape string, largeFrame bool) []byte {
 		innerCode = append(wasmtest.ULEB(uint32(len(fn))), fn...)
 	}
 	run := []byte{0x02, 0x7f, 0x1f, 0x40, 1, byte(wasm.CatchTag), 0, 0, 0x20, 0, 0x10, 1}
-	run = append(run, drop...)
+	run = append(run, check...)
 	run = append(run, 0x20, 0, 0x10, 0, 0x0b, 0x41, 0x7f, 0x0f, 0x0b, 0x0b)
 
 	return wasmtest.Module(
@@ -247,6 +253,82 @@ func TestExceptionReturnExitShapesDiscardHandlers(t *testing.T) {
 					}
 				})
 			}
+		}
+	}
+}
+
+// exceptionReturnTeeModule combines both shapes: $inner computes x > 3 after
+// a host call, stores it with local.tee, branches on it with br_if inside two
+// try_tables and returns the stored boolean from inside them. $run checks
+// the boolean, then throws its argument and catches it itself; a wrong
+// boolean traps.
+func exceptionReturnTeeModule() []byte {
+	tagSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+	i32Sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	imports := wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("id")...), 0x00, 1)))
+	const id, throwFn, innerFn = 0, 1, 2
+
+	throwBody := []byte{0x20, 0, 0x08, 0, 0x0b}
+	inner := []byte{0x02, 0x7f}                                     // block $h (result i32)
+	inner = append(inner, 0x1f, 0x40, 1, byte(wasm.CatchTag), 0, 0) // try_table (catch 0 $h)
+	inner = append(inner, 0x1f, 0x40, 1, byte(wasm.CatchTag), 0, 1)
+	inner = append(inner, 0x02, 0x40)                       // block $b
+	inner = append(inner, 0x20, 0, 0x10, id, 0x41, 3, 0x4a) // local.get 0; call $id; i32.const 3; i32.gt_s
+	inner = append(inner, 0x22, 1, 0x0d, 0, 0x0b)           // local.tee $ok; br_if $b; end $b
+	inner = append(inner, 0x20, 1, 0x0f)                    // local.get $ok; return
+	inner = append(inner, 0x0b, 0x0b, 0x00, 0x0b, 0x1a)     // end; end; unreachable; end $h; drop payload
+	inner = append(inner, 0x41, 0x7f, 0x0b)                 // i32.const -1
+	fn := append([]byte{1, 1, 0x7f}, inner...)              // one i32 local, $ok
+	innerCode := append(wasmtest.ULEB(uint32(len(fn))), fn...)
+
+	run := []byte{0x02, 0x7f, 0x1f, 0x40, 1, byte(wasm.CatchTag), 0, 0}     // block $c (result i32); try_table (catch 0 $c)
+	run = append(run, 0x20, 0, 0x10, innerFn)                               // local.get 0; call $inner
+	run = append(run, 0x20, 0, 0x41, 3, 0x4a, 0x47, 0x04, 0x40, 0x00, 0x0b) // x > 3; i32.ne; if unreachable end
+	run = append(run, 0x20, 0, 0x10, throwFn, 0x0b, 0x41, 0x7f, 0x0f, 0x0b, 0x0b)
+
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(tagSig, i32Sig)),
+		imports,
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1}, []byte{1})),
+		wasmtest.Section(13, wasmtest.Vec([]byte{0, 0})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 3))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(throwBody), innerCode, wasmtest.Code(run))),
+	)
+}
+
+func TestExceptionReturnOfATeeDerivedBooleanDiscardsHandlers(t *testing.T) {
+	stFlagsModes := []bool{true, false}
+	if runtime.GOARCH == "riscv64" {
+		// The RV64 backend has no st-flags option.
+		stFlagsModes = []bool{true}
+	}
+	for _, stFlags := range stFlagsModes {
+		for _, inline := range exceptionReturnExitInlineModes() {
+			t.Run(fmt.Sprintf("st-flags=%t/inline=%t", stFlags, inline), func(t *testing.T) {
+				cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+				if runtime.GOARCH != "riscv64" {
+					cfg = cfg.WithOptimization("inline", inline).WithOptimization("st-flags", stFlags)
+				}
+				c, err := Compile(cfg, exceptionReturnTeeModule())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				imports := NewImports()
+				imports.HostFunc("env", "id", func(x int32) int32 { return x }).Params(ValI32).Results(ValI32)
+				in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				// 5 takes the branch with a true boolean, 0 falls through with a
+				// false one.
+				for _, arg := range []uint64{5, 0} {
+					if got, err := in.Invoke("run", arg); err != nil || len(got) != 1 || got[0] != arg {
+						t.Fatalf("run(%d) = %v, %v; want the caller to catch %d", arg, got, err, arg)
+					}
+				}
+			})
 		}
 	}
 }
