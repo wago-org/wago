@@ -28,6 +28,9 @@ func compiledConversionStoreHooks(c *Compiled) bool {
 // set, even for a collector-free provider. Never acquire invocation leases here.
 func (in *Instance) publishConversionStore(owner *Instance, storage []byte, index, word uint64, publish func() error) error {
 	if in.refStore == nil {
+		if owner == nil {
+			return fmt.Errorf("host conversion storage has no current store")
+		}
 		return publish()
 	}
 	source := in.existingGCExternConversionState()
@@ -36,7 +39,7 @@ func (in *Instance) publishConversionStore(owner *Instance, storage []byte, inde
 	topology := store.gcDomains
 	needed := topology != nil && (len(topology.conversions) != 0 || len(topology.conversionContainers) != 0) || source != nil && source.core != nil
 	store.mu.Unlock()
-	if !needed {
+	if !needed && owner != nil {
 		return publish()
 	}
 	domains := in.gcInvocationDomains()
@@ -53,16 +56,7 @@ func (in *Instance) publishConversionStore(owner *Instance, storage []byte, inde
 			domains.at(i).mu.Unlock()
 		}
 	}()
-	if owner == nil {
-		if word == 0 {
-			return publish()
-		}
-		if _, ok := store.resolveExternref(word); ok {
-			return publish()
-		}
-		return fmt.Errorf("converted host container has no physical owner")
-	}
-	container, err := newGCConversionContainer(owner, storage)
+	container, err := conversionContainerForStore(store, owner, storage)
 	if err != nil {
 		return err
 	}
@@ -112,6 +106,18 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 	owner := access
 	if g.owner != nil {
 		owner = g.owner.instance
+	}
+	if g.owner != nil && g.owner.instance == nil && g.owner.store != nil {
+		if access != nil {
+			if access.refStore != g.owner.store {
+				return true, fmt.Errorf("host global access crosses Runtime")
+			}
+			if err := access.beginInvocation(); err != nil {
+				return true, err
+			}
+			defer access.endInvocation()
+		}
+		return true, setConversionHostGlobal(g, value)
 	}
 	if owner == nil || owner.refStore == nil {
 		return false, nil
@@ -188,11 +194,10 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 }
 
 func (in *Instance) publishConversionRange(owner *Instance, storage []byte, start, limit uint64, words []uint64, publish func()) error {
-	if len(words) == 0 {
-		publish()
-		return nil
-	}
 	if in.refStore == nil {
+		if owner == nil {
+			return fmt.Errorf("host conversion storage has no current store")
+		}
 		publish()
 		return nil
 	}
@@ -201,7 +206,7 @@ func (in *Instance) publishConversionRange(owner *Instance, storage []byte, star
 	store.mu.Lock()
 	needed := store.gcDomains != nil && (len(store.gcDomains.conversions) != 0 || len(store.gcDomains.conversionContainers) != 0) || source != nil && source.core != nil
 	store.mu.Unlock()
-	if !needed {
+	if !needed && owner != nil {
 		publish()
 		return nil
 	}
@@ -217,18 +222,7 @@ func (in *Instance) publishConversionRange(owner *Instance, storage []byte, star
 			domains.at(i).mu.Unlock()
 		}
 	}()
-	if owner == nil {
-		for _, word := range words {
-			if word != 0 {
-				if _, ok := store.resolveExternref(word); !ok {
-					return fmt.Errorf("converted host container has no physical owner")
-				}
-			}
-		}
-		publish()
-		return nil
-	}
-	c, err := newGCConversionContainer(owner, storage)
+	c, err := conversionContainerForStore(store, owner, storage)
 	if err != nil {
 		return err
 	}
@@ -291,6 +285,11 @@ func (in *Instance) initializeConversionReceipts(staged []conversionInitialTable
 		}
 	}()
 	prepare := func(owner *Instance, storage []byte, index, word uint64) error {
+		if owner == nil {
+			if _, err := conversionContainerForStore(store, nil, storage); err != nil {
+				return err
+			}
+		}
 		if word == 0 {
 			store.mu.Lock()
 			c := store.gcDomains.conversionContainers[&storage[0]]
@@ -299,15 +298,7 @@ func (in *Instance) initializeConversionReceipts(staged []conversionInitialTable
 				return nil
 			}
 		}
-		if owner == nil {
-			if word == 0 {
-				return nil
-			}
-			if _, ok := store.resolveExternref(word); ok {
-				return nil
-			}
-		}
-		c, e := newGCConversionContainer(owner, storage)
+		c, e := conversionContainerForStore(store, owner, storage)
 		if e != nil {
 			return e
 		}
@@ -370,7 +361,7 @@ func setConversionTablePublic(t *Table, index uint64, value Value) error {
 	}
 	owner := t.instanceOwner()
 	if owner == nil {
-		return fmt.Errorf("extern table mutation requires an instance-owned table")
+		return setConversionHostTable(t, index, value)
 	}
 	if err := owner.beginInvocation(); err != nil {
 		return err

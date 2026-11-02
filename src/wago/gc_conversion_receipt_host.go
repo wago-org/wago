@@ -30,12 +30,14 @@ type gcConversionCore struct {
 // A container is one physical storage allocation, shared by every alias of it.
 // Distinct containers must use distinct objects even for equal slot indexes.
 type gcConversionContainer struct {
-	storage []byte
-	owner   *Instance
-	store   *referenceStore
-	slots   map[uint64]*gcConversionReceipt
-	closed  bool
-	cell    bool // a physical global cell has exactly one slot
+	storage    []byte
+	owner      *Instance
+	hostTable  *tableOwner
+	hostGlobal *globalOwner
+	store      *referenceStore
+	slots      map[uint64]*gcConversionReceipt
+	closed     bool
+	cell       bool // a physical global cell has exactly one slot
 }
 type gcConversionReceipt struct {
 	identity  *gcConversionIdentity
@@ -189,14 +191,24 @@ func (c *gcConversionContainer) prepare(index, word uint64, source *gcExternConv
 	return c.prepareLimit(index, word, limit, source)
 }
 func (c *gcConversionContainer) prepareLimit(index, word, limit uint64, source *gcExternConversionState) (*gcConversionTransaction, error) {
-	if c == nil || c.closed || c.owner == nil || managedFunctionOwnerClaimed(c.owner) {
+	if c == nil || c.closed {
 		return nil, fmt.Errorf("conversion container retired")
 	}
-	c.owner.lifeMu.Lock()
-	live := !c.owner.resourcesClosed
-	c.owner.lifeMu.Unlock()
-	if !live {
-		return nil, fmt.Errorf("conversion owner released")
+	if c.owner != nil {
+		if managedFunctionOwnerClaimed(c.owner) {
+			return nil, fmt.Errorf("conversion owner claimed")
+		}
+		c.owner.lifeMu.Lock()
+		live := !c.owner.resourcesClosed
+		c.owner.lifeMu.Unlock()
+		if !live {
+			return nil, fmt.Errorf("conversion owner released")
+		}
+	} else if !c.hostLive() {
+		return nil, fmt.Errorf("host conversion owner released")
+	}
+	if c.cell && limit != 1 || !c.cell && (len(c.storage) < 8 || limit > uint64(binary.LittleEndian.Uint32(c.storage[4:])) || limit > uint64((len(c.storage)-8)/8)) {
+		return nil, fmt.Errorf("conversion storage extent invalid")
 	}
 	if index >= limit {
 		return nil, fmt.Errorf("conversion container slot out of bounds")
@@ -235,16 +247,18 @@ func (c *gcConversionContainer) prepareLimit(index, word, limit uint64, source *
 		return nil, fmt.Errorf("conversion domain has no receipt authority")
 	}
 
-	registration := c.store.instances[c.owner]
-	if registration == nil || registration.resourcesReleased {
-		c.store.mu.Unlock()
-		return nil, fmt.Errorf("conversion physical owner is unregistered")
-	}
-	registration.dynamicInvocationDomains = true
-	for {
-		old := c.owner.executionFlags.Load()
-		if c.owner.executionFlags.CompareAndSwap(old, old|executionFlagDynamicGCDomain|executionFlagImportedGCDomain) {
-			break
+	if c.owner != nil {
+		registration := c.store.instances[c.owner]
+		if registration == nil || registration.resourcesReleased {
+			c.store.mu.Unlock()
+			return nil, fmt.Errorf("conversion physical owner is unregistered")
+		}
+		registration.dynamicInvocationDomains = true
+		for {
+			old := c.owner.executionFlags.Load()
+			if c.owner.executionFlags.CompareAndSwap(old, old|executionFlagDynamicGCDomain|executionFlagImportedGCDomain) {
+				break
+			}
 		}
 	}
 	domain.claims++
@@ -260,12 +274,22 @@ func (c *gcConversionContainer) prepareLimit(index, word, limit uint64, source *
 		queueConversionClaim(state.graph, domain)
 		return nil, err
 	}
-	if err = state.bindPersistentSlot(c.owner, gc.SlotTable, root); err != nil {
+	if c.owner != nil {
+		err = state.bindPersistentSlot(c.owner, gc.SlotTable, root)
+	}
+	if err != nil {
 		_ = domain.collector.SetTableSlot(root, gc.Null())
 		queueConversionClaim(state.graph, domain)
 		return nil, err
 	}
 	receipt := &gcConversionReceipt{identity: identity, container: c, index: index, root: root}
+	if c.owner == nil {
+		if state.conversionHostSlots == nil {
+			state.conversionHostSlots = make(map[uint32]*gcConversionContainer)
+		}
+		state.conversionHostSlots[root] = c
+		state.graph.epoch.Add(1)
+	}
 	identity.receipts[receipt] = struct{}{}
 	tx.next = receipt
 	return tx, nil
@@ -353,6 +377,7 @@ func (r *gcConversionReceipt) release() {
 	if stateValue, ok := managedFunctionCollectors.Load(domain.collector); ok {
 		state := stateValue.(*managedFunctionCollector)
 		state.graph.mu.Lock()
+		delete(state.conversionHostSlots, r.root)
 		member := state.tableOwners[r.root]
 		delete(state.tableOwners, r.root)
 		if member != nil {
@@ -499,7 +524,7 @@ func clearUnreachableConversionRoots(d *managedFunctionMarkDomain) error {
 	for _, identity := range identities {
 		for receipt := range identity.receipts {
 			member := d.state.tableOwners[receipt.root]
-			if !d.mark.live[member] {
+			if !(receipt.container.owner == nil && conversionHostRootIsStrong(receipt.container)) && !d.mark.live[member] {
 				receipt.release()
 			}
 		}
@@ -597,6 +622,9 @@ func retireGCConversionStoreLocked(store *referenceStore) {
 	}
 	for _, identity := range store.gcDomains.conversions {
 		for receipt := range identity.receipts {
+			if state, ok := managedFunctionCollectors.Load(identity.domain.collector); ok {
+				delete(state.(*managedFunctionCollector).conversionHostSlots, receipt.root)
+			}
 			receipt.released = true
 			if receipt.container.slots[receipt.index] == receipt {
 				delete(receipt.container.slots, receipt.index)
@@ -637,7 +665,7 @@ func (c *gcConversionContainer) migrate(storage []byte, publish func() error) er
 			return fmt.Errorf("conversion migration changed a slot")
 		}
 	}
-	if _, err := newGCConversionContainer(c.owner, old); err != nil {
+	if _, err := conversionContainerForStore(c.store, c.owner, old); err != nil {
 		return err
 	}
 	c.store.mu.Lock()
