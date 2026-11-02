@@ -25,8 +25,8 @@ def census(events, target):
     expected = set(SPEC['tests'][target])
     passed = [e['Test'] for e in events if e.get('Test') and '/' not in e['Test'] and e.get('Action') == 'pass']
     failures = [e for e in events if e.get('Action') in ('fail', 'skip')]
-    children = {e['Test'] for e in events if e.get('Test') and e.get('Action') == 'pass'}
-    return len(passed) == len(expected) and set(passed) == expected and not failures and (target != 'darwin' or set(SPEC['graph_subtests']) <= children)
+    children = [e['Test'] for e in events if e.get('Test') and e.get('Action') == 'pass']
+    return len(passed) == len(expected) and set(passed) == expected and not failures and (target != 'darwin' or all(children.count(name) == 1 for name in SPEC['graph_subtests']))
 
 
 def main():

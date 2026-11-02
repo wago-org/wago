@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import identity
 import contracts
+import discriminators
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
@@ -30,7 +31,7 @@ def main():
     report = {'darwin_execution': 'NOT_RUN', 'darwin_compile_only': 'NOT_RUN'}
     plan = json.loads((HERE / 'plan.json').read_text())
     report['source'] = plan['source']
-    report['driver_files_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in [HERE/'plan.json', HERE/'identity.py', HERE/'contracts.py', HERE/'run.py', HERE/'setup.sh', HERE/'tinygo_setup.py', HERE/'validate_local.py', ROOT/'.github/workflows/ci.yml', ROOT/'tests/integration/cipolicy/workflows_test.go', contracts.REV/'contracts.json']}
+    report['driver_files_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in [HERE/'plan.json', HERE/'identity.py', HERE/'contracts.py', HERE/'run.py', HERE/'setup.sh', HERE/'tinygo_setup.py', HERE/'discriminators.py', HERE/'validate_local.py', ROOT/'.github/workflows/ci.yml', ROOT/'tests/integration/cipolicy/workflows_test.go', contracts.REV/'contracts.json']}
     assert len(plan['lanes']) == 63
     for lane in plan['lanes']:
         receipt = ROOT / lane['receipt']
@@ -128,7 +129,7 @@ def main():
         report['planner_all_modes'].append(run(['go', 'run', *tags, './tests/tools/ci-plan', 'verify'], cwd=ROOT, env=env))
     report['workflow_lint'] = run(['go', 'run', 'github.com/rhysd/actionlint/cmd/actionlint@v1.7.7', '.github/workflows/ci.yml'], cwd=ROOT)
     report['shell_syntax'] = run(['bash', '-n', str(HERE / 'setup.sh')])
-    for name in ['identity.py', 'run.py', 'contracts.py', 'validate_local.py', 'tinygo_setup.py']:
+    for name in ['identity.py', 'run.py', 'contracts.py', 'validate_local.py', 'tinygo_setup.py', 'discriminators.py']:
         compile((HERE / name).read_text(), str(HERE / name), 'exec')
     report['python_syntax'] = 'PASS'
     spec = contracts.SPEC
@@ -157,6 +158,34 @@ def main():
                 out = Path(tmp)/'receipts'
                 proc = subprocess.run([sys.executable,str(HERE/'contracts.py'),str(ROOT),str(out),'--mode',mode,'--target',target],capture_output=True,text=True)
                 assert proc.returncode == 2 and 'requires actual native' in proc.stderr and not out.exists()
+    for mode in MODES:
+        narrow = discriminators.lanes(mode)
+        assert len(narrow) == 3
+        for lane in narrow:
+            assert '-count=1' in lane['argv'] and not any(x.startswith('-bench') for x in lane['argv'])
+            events = [{'Test': n, 'Action': 'pass'} for n in lane['expected_tests']]
+            if lane['discriminator'] == 'core3-child':
+                payload = dict(protocol='2', fixture=discriminators.FIXTURE, nonce=discriminators.NONCE,
+                               modules_passed=10, modules_failed=0, modules_skipped=0,
+                               assertions_passed=18, assertions_failed=0, assertions_skipped=0)
+                event = {'Action': 'output', 'Output': discriminators.MARKER+json.dumps(payload)+'\n'}
+                assert not discriminators.evaluate(lane, events, {'commands': []})[1]
+                assert discriminators.evaluate(lane, events+[event], {'commands': []})[1]
+                assert not discriminators.evaluate(lane, events+[event,event], {'commands': []})[1]
+                for key, value in [('modules_passed',9), ('assertions_passed',17), ('modules_skipped',1), ('assertions_skipped',1), ('nonce','wrong')]:
+                    bad = dict(payload, **{key: value})
+                    assert not discriminators.evaluate(lane, events+[dict(event,Output=discriminators.MARKER+json.dumps(bad))], {'commands': []})[1]
+                raw = {'Action':'output', 'Output':'spectest_exec_test.go:1833: gc/const-expr-gc.wast.wast:96 module instantiate rejected: unsupported publication\n'}
+                commands = {'commands':[{'type':'module_definition','filename':'commands.5.wasm','line':90}, {'type':'module_instance','line':96}]}
+                detail, _ = discriminators.evaluate(lane, events+[raw], commands)
+                assert detail['rejection_sites'][0]['commands'][0]['definition'] == 'commands.5.wasm'
+                events.append(event)
+            assert discriminators.evaluate(lane, events, {'commands': []})[1]
+            assert not discriminators.evaluate(lane, events[1:], {'commands': []})[1]
+            assert not discriminators.evaluate(lane, events+[{'Action':'skip','Test':'unexpected'}], {'commands': []})[1]
+    assert "if: ${{ !cancelled() && steps.darwin-setup.outcome == 'success' }}" in after['darwin-qualification']
+    assert 'continue-on-error' not in after['darwin-qualification']
+    report['discriminators'] = 'PASS: all-mode exact census; missing/duplicate/wrong nonce/gapped child rejected; rejection source-site mapping; safe continuation retains failed step'
     report['native_contracts'] = 'PASS: pinned hashes, exact/negative census, six Linux refusals; no native execution'
     (contracts.REV / 'local-validation.json').write_text(json.dumps(report, indent=2) + '\n')
     print('PASS: local contracts; Darwin remains NOT_RUN')

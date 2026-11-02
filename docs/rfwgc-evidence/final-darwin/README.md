@@ -1,147 +1,132 @@
-# Reviewed non-Linux execution preparation — repaired source f2bb27287
+# Next exact-pin native Darwin qualification — proposed only
 
-Execution source f2bb27287220783e86a4ead41fee78693a5129de includes the CI dependency repair and
-parent archived-docs repair 07dd245528e3ce94d126f2e5cf8609ddb2737e6c.
-This later harness-identity commit is separate from the execution source.
-Activation requires a fresh narrow parent review. **Darwin ARM64 and Windows
-AMD64 execution remain NOT_RUN in all three modes.** No publication, dispatch,
-PR, timing, measurement lease, runtime port or production edit was performed.
+Execution source: **`da19f1a8d29fec7305d937a42622a198b8e79717`**. This is the
+latest committed head requested after the ARM64 handoff. Initial preparation at
+`76cdc5cb77f505176f74abb7c17e4bf454da8650` is retained in `revision-76cdc5cb7/`.
+The new source contains c786 token authentication, d8dc/a915 join work, bc624
+helper fixtures and 02eaf/b943 worker comparison repairs. ARM64's tested source
+was b9433aa2050c8069baa3edbaa50bd4e8e9c95b26; its QEMU passes are not native
+Darwin qualification. Later source changes are **unqualified** by this pin.
 
-Source is exactly `f2bb27287220783e86a4ead41fee78693a5129de`. The workflow/harness
-is independently checked out at the dispatch `github.sha`; source is checked out
-at the full input SHA. `identity.py` rejects other source pins, a mismatched
-driver HEAD and dirty harnesses. Native drivers repeat source/tool/host checks
-and compare source and harness manifests after execution. The historical 96f/7e
-reviews and `local-validation.json` remain unchanged; new preparation receipts
-are under `revision-f2bb27287/`; `revision-9180/` retains earlier preparation. Old command receipts describe recipes, not results
-for the new pin. No old target result qualifies this repaired source.
+**No push or dispatch performed. Native Darwin remains NOT_RUN at this pin.**
+Parent's independent ARM64 review and review of this harness must precede
+activation. There are no waived gates, deadline changes, production edits, test
+source edits, benchmarks, timing measurements, subagents or PRs in this work.
+Evidence/harness changes cannot affect shipped runtime performance.
 
-After review and parent-authorized publication, verify the remote branch head
-matches the reviewed workflow commit and that the source pin is reachable. The
-exact activation command is:
+## Exact execution and diagnostic gates
+
+All three modes (ordinary, wagodebug, wago_regalloccheck) retain the original
+Darwin conversion-rejection contracts and all six generated graph leaves.
+The graph option repair from harness 1fe8 remains; fixture hashes and assertions
+are unchanged, and duplicate graph leaf passes are now rejected. Windows keeps
+its four storage/rejection/admission contracts, not a GC JIT qualification claim.
+
+Each Darwin broad driver now starts with three independent narrow lanes:
+
+1. **Unchanged TestSharedEntryGuardCancellationAndGC**, exact single-test pass,
+   no skips. Its intrinsic three-second cancellation deadline and admission/GC
+   assertions remain untouched. QEMU failed cancellation in all modes while
+   preceding admission/GC passed; the earlier native run did not flag this test.
+   The ARM64 cancellation audit finds no source-level link to the join repair.
+   Native host interruption, delivery, matching and unwind remain discriminators.
+2. **Exact Core 3 child**, selecting TestWasmtimeCore3Corpus with
+   WAGO_WASMTIME_CORE3_FIXTURE=gc/const-expr-gc.wast, protocol 2, an explicit nonce,
+   WAGO_BOUNDS=explicit, verbose JSON events and a 30-second test timeout (the
+   existing parent child budget). No enclosing corpus parent suppresses stdout.
+   Require exactly one authenticated marker with **10 modules/18 assertions,
+   zero failures/skips**, plus exactly one top-level pass and process exit zero.
+   Zero exit with 9/17 passed plus 1/1 skipped is a **failed gate**.
+3. **Ten repaired contracts**, including original converted-global/table
+   rejection behavior and shared import, fallback, result/argument and native-pin
+   tests. Cancellation is separate so it cannot obscure this census.
+
+These add nine commands across modes to the unchanged **63 broad commands**.
+Broad Core 3 still requires **215 modules/690 assertions**. The prior parent
+205/672 excludes the entire 10/18 fixture because its skip check precedes total
+accumulation; totals and expectations are not adjusted.
+
+The child receipt retains complete raw output, all marker payloads, exit code,
+exact census, observed rejection reason/phase/source line, mapped module-definition
+filename, the entire commands.json and all fixture hashes. Thus a rejection at
+module_instance line 96 can be tied to commands.5.wasm, with assertion line 97
+preserved in the command file. Converted-global initialization is **suspected,
+not confirmed** until native output establishes it. Unemitted assertion reasons
+are not fabricated; a missing marker, malformed marker or crash fails qualification.
+The native artifact, not a source inference, must establish the exact reason.
+
+A narrow diagnostic failure does not stop subsequent independent lanes. A
+focused-contract step failure no longer suppresses the broad driver after
+successful setup; there is no continue-on-error. Setup failure/cancellation still
+blocks unsafe execution. Original failed step/job status and driver aggregate
+failure remain. Every attempt gets a new output directory and artifact attempt
+suffix; source and driver manifests are checked before/after, and running drivers
+must never be edited. All historical failed attempts and prior native archives
+remain intact.
+
+## Identity and CI isolation
+
+Source and harness are independent checkouts. `identity.py` requires the full
+source pin, exact workflow execution HEAD and a clean harness. The native driver
+requires native Darwin ARM64 without Rosetta, exact Go 1.27.1, clean initialized
+source/submodules and rejects inherited target/test overrides (allowing only the
+three setup-provided interpreter path/identity variables). `contracts.json`
+binds source and fixture hashes. Each mode records complete source and driver
+manifests. The new immutable export was verified against all **17,895 Git blobs**;
+its compressed SHA256 manifest is `revision-da19f1a8d/source-manifest.json.gz`.
+
+Only `.github/workflows/ci.yml`'s special Darwin setup identifier/continuation
+condition and native artifact pin labels changed. Normal CI bodies, planner and
+summary contracts remain unchanged. No special dispatch produces a success or
+skipped check named CI. Normal ci-ok still depends on every job; special summary
+is acyclic and requires both native matrices successful and all normal jobs
+skipped. Neither special-summary success nor local checks mean full CI success.
+
+`revision-da19f1a8d/local-validation.json` records syntax, actionlint 1.7.7,
+identity/refusal and exact/negative census checks, 64 summary state combinations,
+and policy/planner/full-profile verification in all three modes. Tests used the
+explicit Go 1.27.1 install and matching GOROOT, GOTOOLCHAIN=local, and PATH without
+mise shims. `immutable-check.json` separately records all six policy/planner
+runs against an immutable archive, with only the proposed workflow overlaid;
+all pass, no unexpected source changes. These are harness checks, not native
+runtime execution. The initial-pin validation receipt is historical; the fresh
+repin validation supersedes it. No failed attempt was deleted.
+
+## Activation review and unresolved gates
+
+After parent review and separately authorized publication, the **proposed only**
+dispatch is:
 
 ```sh
 gh workflow run ci.yml --repo wago-org/wago --ref experiment/rfwgc-port \
   -f darwin_qualification=true \
-  -f source_sha=f2bb27287220783e86a4ead41fee78693a5129de
+  -f source_sha=da19f1a8d29fec7305d937a42622a198b8e79717
 ```
 
-The existing input name is retained for compatibility but now selects **both**
-native matrices. A fresh attempt produces three Darwin and three Windows
-artifacts. Check the run head SHA against the reviewed commit, then retain all
-artifacts and setup/job logs. Missing artifacts, setup failures, cancellation,
-timeouts, skipped bodies and absent test events do not qualify execution.
+Parent must verify the remote branch equals the reviewed harness SHA and confirm
+source reachability before activating. Any later harness change needs refreshed
+identity/review. Artifact labels are darwin-da19f1a8d and windows-da19f1a8d plus
+mode and attempt. Retain job/setup logs as well as all six artifacts, including
+failed/partial runs. Missing events or artifacts cannot qualify a gate.
 
-The special summary requires both matrices successful and every normal job
-skipped. The disabled normal summary is named `Full CI not run (non-Linux
-dispatch)`, including its skipped check: no special dispatch emits `CI`.
-Normal event job bodies and planner contracts remain unchanged. The normal
-aggregate now also depends on all three special jobs, which skip on normal
-events. The special summary never depends on ci-ok; the graph is acyclic.
-The existing special concurrency suffix isolates normal CI. Neither special
-summary success nor contract success is full CI or port inclusion approval.
+Open gates and blockers:
 
-## Exact new contract selection
+- Native cancellation, Core 3 zero-gap census, repaired contracts and broad
+  Darwin correctness: NOT_RUN at this source. If the suspected converted-global
+  initializer rejection is confirmed, harness work cannot close it; parent needs
+  a production ownership/lifetime implementation. No scope waiver is assumed.
+- Native Linux ARM64 cancellation remains a separate parent gate.
+- TinyGo: NOT_RUN. A reviewed native Darwin compiler archive/hash and exact
+  patched runtime identity are still missing. `tinygo_setup.py` is preparation
+  only; no TinyGo execution or qualification is invented.
+- Matched baseline graphs at a3c08365f531eb3c9003e3acf3e0a822c12c31f4 remain
+  NOT_RUN and outside this dispatch. Adding an independently checked baseline
+  export/overlay/census is a separate supplement; candidate success cannot
+  substitute. All six candidate fixtures retain their identical historical bytes.
+- H6 ownership remains intentionally unsupported on Darwin, not implemented by
+  this harness; platform census and skipped broad cases require parent review.
 
-`contracts.py` uses Go 1.27.1, CGO disabled, GOWORK off and no inherited build
-or target overrides. Hashes bind the source tests, admission policy, TinyGo
-patch inputs and supplementary fixtures. Git checkout on Windows disables CRLF
-conversion before either checkout. Package build-file census and full JSON test
-events are retained. Any failure/skip, missing or duplicate top-level pass, wrong
-fixture output or changed source/driver fails the contract. All three modes use
-the same exact selection:
-
-| Test | Darwin ARM64 | Windows AMD64 |
-| --- | --- | --- |
-| TestDesignRepairPublicTableOrdinary | required | required |
-| TestDesignRepairUnsupportedBulkAtomicity | required | required |
-| TestDesignRepairUnsupportedConvertedPublicToken | required | required |
-| TestDesignRepairUnsupportedConvertedPublication | required | not selected: Core 3 not admitted |
-| TestRFWStage3MeasurementGuest | required + six exact leaf subtests | not applicable |
-| TestQualificationWindowsGCAdmission | not applicable | required |
-
-Thus Darwin requires five top-level passes, including six graph leaf passes;
-Windows requires four. The three common tests check ordinary/null public table
-storage, rejection without destination mutation, bulk/initialization rejection
-and authentication of ownership wrappers before public unwrapping.
-
-Darwin's converted-publication test invokes actual conversion and rejects guest
-and public converted publication before writes. Windows `supportsCompleteCore3Backend`
-excludes AMD64/Windows: the durable converted-guest test would fail during
-Compile, before the intended publication assertion. The separate hashed Windows
-fixture instead asserts `UnsupportedFeatureError` and no compiled result for
-Core 3. This is real Windows storage/admission execution when run, **not Windows
-GC JIT functionality or equivalent execution of the Darwin conversion body**.
-No feature mask is weakened to manufacture a Windows pass. Parent must explicitly
-accept this support boundary; a demand for converted Windows guest execution
-requires a separate runtime/backend implementation task.
-
-## Darwin supplements and remaining boundaries
-
-The original 63-command Darwin route remains, now pinned to f2bb27287. It runs after
-the focused contract lane. It retains package census, JSON failures/skips and
-platform/catalog omissions; its aggregate always says REQUIRES_REVIEW. Existing
-Node 24.22.2, PowerShell 7.6.8 and WABT 1.0.41 hash-checked setup and pinned
-OCaml/dune/menhir interpreter setup are unchanged. macOS/Xcode/Python,
-Homebrew/opam metadata and runner image remain recorded infrastructure, not
-hermetic pins. Setup failure is fatal. Captured external-runtime oracles are
-not fresh V8/wasmtime executions.
-
-- **Generated graphs:** `revision-f2bb27287/_fixtures/graph_test.go` is the existing
-  candidate helper/test excerpt with a Darwin ARM64 constraint and benchmarks
-  removed. A Go overlay adds it without modifying production source. It retains
-  64 calls, collection, 32 live objects and at least 2,048 allocations for the
-  graph; noGC requires zero allocations. All six name/region-state leaves must
-  pass. Generated graph/scalar/noGC bytes must equal the separately hashed
-  historical fixtures. Candidate execution is NOT_RUN. The separate baseline
-  export at `a3c08365f531eb3c9003e3acf3e0a822c12c31f4` and matched baseline graph
-  run remain a required supplement; candidate success cannot substitute for it.
-- **H6:** `function_environment_roots_host.go` and aggregate host dispatch are
-  Linux-only. The earlier ARM64 adapter was explicitly Linux ARM64 and relied
-  on that implementation. Darwin's unsupported ownership adapter cannot supply
-  `managedFunctionGraph`/host graph state. Copying the H6 bodies with Darwin tags
-  would not qualify applicable behavior and would require a runtime port.
-  This ownership graph is intentionally unsupported, not an unexplained Darwin
-  skip. Applicable Darwin converted-publication rejection is covered above;
-  no H6 ownership/wakeup pass is claimed.
-- **TinyGo:** the source-pinned `patch-tinygo-042.sh` invokes the hash-checked foreign-stack
-  integration script as well as the scheduler fix. `tinygo_setup.py` prepares
-  this exact patch on a separately provisioned native 0.42.0 toolchain, requires
-  a separately reviewed native compiler SHA256, and records patched-file hashes.
-  It is intentionally not wired into activation before artifact review. The
-  historical Linux compiler hash is not a Darwin binary pin. Remaining work:
-  provision/verify the Darwin compiler archive and complete patched runtime
-  identity, review setup receipts, then execute evacuation, foreign-stack/joint
-  and supported conversion selectors in all modes with exact target census.
-  No TinyGo Darwin pass or runtime patch port is claimed.
-
-## Local verification and ceiling
-
-Run `PYTHONDONTWRITEBYTECODE=1 python3 docs/rfwgc-evidence/final-darwin/validate_local.py`.
-New receipts include source/fixture identities; wrong identity/dirty harness
-refusal; Linux refusal in all three modes for both native contract targets and
-the existing driver; exact-census negative cases; 64 explicit special-summary
-state combinations; the full tests/integration/cipolicy package (including
-TestAggregateCIRequiresEveryWorkflowJob and the new isolation/cycle regression)
-in all three modes; unchanged normal verifier contracts; planner tests and full-profile
-verification in all three modes; actionlint 1.7.7; Python/Bash syntax.
-`revision-9180/overlay-builds.json` records fixture cross-builds at 9180, not
-target execution or a build of the repaired source. The new source-file hashes
-are verified independently; runtime and fixture bytes are unchanged. The parent
-owns the fresh combined run of the repaired source.
-The first local overlay attempt stopped at the untrusted mise shim; the second
-stopped at an inherited GOROOT/version mismatch. Both attempts remain verbatim
-in separate directories. The final build uses the absolute Go 1.27.1 binary
-and matching GOROOT. None of these build receipts claim native execution.
-The immutable repaired source also passes package discovery on Linux AMD64,
-Darwin ARM64 and Windows AMD64 in all three modes, with both archived probes
-and `_fixtures` excluded (`package-discovery.json`). This is discovery only.
-Broad combined runtime tests are owned by the independent combined worker.
-
-Three Darwin jobs retain 360 minutes each and three Windows jobs allow 30 minutes
-each: **1,080 Mac + 90 Windows job-minutes per attempt**, plus the separate Ubuntu
-summary job with its existing default timeout. These are hard job ceilings,
-not estimates or timing measurements. Artifacts retain seven days. No monetary
-or storage-cost guarantee is made. Reruns multiply these bounds. Evidence/opt-in
-CI changes cannot affect shipped runtime performance; no performance claim or
-READY TO MEASURE for production is made here.
+Nov 4 deadline feasibility and repair cost remain **unknown**, pending native
+execution and the Core 3 reason. Existing ceilings remain 1,080 Mac plus 90
+Windows job-minutes per attempt, plus summary job and seven-day artifact retention;
+these are configured bounds, not measured runtime or cost estimates.

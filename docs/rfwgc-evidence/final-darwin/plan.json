@@ -1,6 +1,6 @@
 {
-  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
-  "evidence": "Historical recipes only; execution requires CI-repaired source f2bb27287220783e86a4ead41fee78693a5129de",
+  "source": "da19f1a8d29fec7305d937a42622a198b8e79717",
+  "evidence": "Historical recipes only; native qualification NOT_RUN at da19f1a8d29fec7305d937a42622a198b8e79717",
   "lanes": [
     {
       "id": "full-root-replay-ordinary",
@@ -1699,5 +1699,5 @@
       "status": "REQUIRES_REVIEW after execution"
     }
   ],
-  "supplement_revision": "revision-f2bb27287"
+  "supplement_revision": "revision-da19f1a8d"
 }

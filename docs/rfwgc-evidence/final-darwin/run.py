@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from identity import validate
+import discriminators
 
 HERE = Path(__file__).resolve().parent
 PLAN = json.loads((HERE / "plan.json").read_text())
@@ -59,11 +60,11 @@ def main():
         parser.error("Go target is not native Darwin ARM64")
     if capture(["go", "version"], root) != "go version go1.27.1 darwin/arm64":
         parser.error("requires pinned Go 1.27.1")
-    if any(os.environ.get(k) for k in ["GOFLAGS", "WAGO_BOUNDS", "WAGO_SHARED_SCALAR"]):
-        parser.error("clear inherited GOFLAGS/WAGO_BOUNDS/WAGO_SHARED_SCALAR")
+    if any(os.environ.get(k) for k in ["GOFLAGS", "GOOS", "GOARCH", "GOWORK", "GOEXPERIMENT"]) or any(k.startswith("WAGO_") and k not in ("WAGO_WAST2JSON", "WAGO_SPEC_INTERPRETER", "WAGO_SPEC_INTERPRETER_REVISION") and v for k, v in os.environ.items()):
+        parser.error("clear inherited target/build/test overrides; only setup interpreter variables are allowed")
     out.mkdir(parents=True, exist_ok=False)
     driver_before = manifest(harness)
-    lanes = [x for x in PLAN["lanes"] if x["mode"] == args.mode]
+    lanes = discriminators.lanes(args.mode) + [x for x in PLAN["lanes"] if x["mode"] == args.mode]
     if not lanes:
         parser.error("no planned lanes")
     write(out / "execution-plan.json", {"lanes": lanes, "unmet_gaps": PLAN["unmet_gaps"]})
@@ -87,7 +88,7 @@ def main():
         write(out / "progress.json", {"active_lane": lane["id"], "completed": len(results), "planned": len(lanes)})
         env = os.environ.copy()
         env.update({k: v.replace("{source}", str(root)) for k, v in lane["environment"].items()})
-        env.update(GOTOOLCHAIN="local", GOMAXPROCS="2")
+        env.update(GOTOOLCHAIN="local", GOMAXPROCS="2", GOWORK="off")
         cwd = root / lane["cwd"]
         write(dest / "command.json", {**lane, "effective_environment": {k: v for k, v in env.items() if k.startswith("WAGO_") or k in ("GOTOOLCHAIN", "GOMAXPROCS")}})
         # Record included/excluded source files for each tag configuration.
@@ -99,6 +100,7 @@ def main():
             census = subprocess.run(["go", "list", "-json", "-test"] + tags + packages,
                                     cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT)
         events, failed, details, passes, failures = [], [], {}, 0, 0
+        all_events = []
         with (dest / "raw.jsonl").open("w") as stream:
             proc = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True)
@@ -109,6 +111,8 @@ def main():
                     event = json.loads(line)
                 except ValueError:
                     continue
+                if lane.get("discriminator"):
+                    all_events.append(event)
                 key = (event.get("Package"), event.get("Test"))
                 if event.get("Action") == "output":
                     details.setdefault(key, []).append(event.get("Output", ""))
@@ -124,6 +128,17 @@ def main():
                   "passing_test_events": passes, "failure_events": failures, "failures": failed, "skips": events,
                   "status": "PASS_WITH_SKIPS" if code == 0 and passes and not failures and census.returncode == 0 and events else
                             "PASS" if code == 0 and passes and not failures and census.returncode == 0 else "FAIL"}
+        if lane.get("discriminator"):
+            fixture_dir = root / "tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc"
+            commands = json.loads((fixture_dir / "commands.json").read_text())
+            if lane["discriminator"] == "core3-child":
+                write(dest / "commands-source.json", commands)
+                write(dest / "fixture-manifest.json", {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                      for p in fixture_dir.iterdir() if p.is_file()})
+            diagnostic, exact = discriminators.evaluate(lane, all_events, commands)
+            result["diagnostic"] = diagnostic
+            if not exact:
+                result["status"] = "FAIL"
         write(dest / "result.json", result)
         results.append(result)
         write(out / "results.json", results)
