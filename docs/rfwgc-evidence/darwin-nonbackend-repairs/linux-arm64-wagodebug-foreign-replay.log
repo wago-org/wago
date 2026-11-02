@@ -1,0 +1,3 @@
+=== RUN   TestSharedEntryGuardForeignFallback
+--- PASS: TestSharedEntryGuardForeignFallback (0.10s)
+PASS
