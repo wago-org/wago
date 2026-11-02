@@ -352,6 +352,21 @@ func TestR9H2StoreHooksBulk(t *testing.T) {
 			if out = call("grow", 3); out[0] != uint64(^uint32(0)) || len(c.slots) != 6 {
 				t.Fatal("failed grow changed receipts")
 			}
+			// Public aliases share the exact physical receipts and public token identity.
+			public := Value{typ: ValExternRef, bits: r.identity.publicExtern}
+			beforeReceipt := c.slots[0]
+			if e = handle.SetValue(0, public); e != nil {
+				t.Fatal(e)
+			}
+			if c.slots[0] != beforeReceipt {
+				t.Fatal("public same-value table store duplicated receipt")
+			}
+			if e = handle.SetValue(5, Value{typ: ValExternRef}); e != nil {
+				t.Fatal(e)
+			}
+			if e = handle.SetValue(5, public); e != nil {
+				t.Fatal(e)
+			}
 			call("init", 1, 0, 2)
 			if len(c.slots) != 4 || c.slots[1] != nil || c.slots[2] != nil {
 				t.Fatal("init did not clear exact receipts")
@@ -367,4 +382,58 @@ func TestR9H2StoreHooksBulk(t *testing.T) {
 			_ = pc.Close()
 		})
 	}
+}
+
+func TestR9H2StoreHooksActiveInitialization(t *testing.T) {
+	store := newReferenceStore(false)
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	publisher, provider, table, word := h2ReceiptFixture(t, store, 0)
+	h2TableSet(t, table, 0, word)
+	h2TableSet(t, table, 1, word)
+	c := table.conversionContainers[0]
+	r := h2AssertReceipt(t, c, 0)
+	if e := publisher.Close(); e != nil {
+		t.Fatal(e)
+	}
+	h2AssertReceipt(t, c, 1)
+	handle, e := provider.ExportedTable("slots")
+	if e != nil {
+		t.Fatal(e)
+	}
+	imp := append(wasmtest.Name("p"), wasmtest.Name("slots")...)
+	imp = append(imp, 1, 0x6f, 0, 2)
+	makeInit := func(bad bool) []byte {
+		elems := [][]byte{{6, 0, 0x41, 0, 0x0b, 0x6f, 2, 0xd0, 0x6f, 0x0b, 0xd0, 0x6f, 0x0b}}
+		if bad {
+			elems = append(elems, []byte{6, 0, 0x41, 2, 0x0b, 0x6f, 1, 0xd0, 0x6f, 0x0b})
+		}
+		return wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(imp)), wasmtest.Section(9, wasmtest.Vec(elems...)))
+	}
+	bad, e := Compile(cfg, makeInit(true))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = instantiateCore(bad, InstantiateOptions{store: store, Imports: testImports("p.slots", handle)}); e == nil {
+		t.Fatal("expected failed initialization")
+	}
+	h2AssertReceipt(t, c, 0)
+	h2AssertReceipt(t, c, 1)
+	if binary.LittleEndian.Uint64(handle.desc[8:]) != word {
+		t.Fatal("failed initializer published partial write")
+	}
+	good, e := Compile(cfg, makeInit(false))
+	if e != nil {
+		t.Fatal(e)
+	}
+	initialized, e := instantiateCore(good, InstantiateOptions{store: store, Imports: testImports("p.slots", handle)})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(c.slots) != 0 || store.gcDomainForCollector(r.identity.domain.collector) != nil {
+		t.Fatal("active clear retained collector")
+	}
+	_ = initialized.Close()
+	_ = provider.Close()
+	_ = bad.Close()
+	_ = good.Close()
 }

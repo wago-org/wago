@@ -1237,6 +1237,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
 		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])))
 	}
+	var conversionInitialTables []conversionInitialTable
 	var globalCells []*Global
 	var instantiationRoots gc.Slots
 	functionConstruction := newManagedFunctionConstruction(c, b.collector, &instantiationRoots)
@@ -1708,6 +1709,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				break
 			}
 			entryBytes := c.tableEntryBytes(int(el.TableIndex))
+			if conversionInitializationEnabled && importedTable != nil && normalizedElemRefType(el.RefType) == ValExternRef {
+				desc = stageConversionInitialTable(&conversionInitialTables, importedTable, elemBase, len(el.Values))
+			}
 			for k, value := range el.Values {
 				slot := int(elemBase) + k
 				off := 8 + slot*entryBytes
@@ -2261,6 +2265,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	}
 	if initErr != nil {
 		return nil, initErr
+	}
+	if err := in.initializeConversionReceipts(conversionInitialTables); err != nil {
+		return nil, err
 	}
 	if err := railshotAdoptFunctionDependencies(in, finishMemoryContext == nil); err != nil {
 		return nil, err

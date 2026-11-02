@@ -179,6 +179,9 @@ func (s *gcExternConversionState) conversionIdentity(word uint64) (*gcConversion
 // prepare acquires a distinct root and domain claim before any visible write.
 // source may be nil for an identity already registered by another publisher.
 func (c *gcConversionContainer) prepare(index, word uint64, source *gcExternConversionState) (*gcConversionTransaction, error) {
+	if c == nil || c.closed {
+		return nil, fmt.Errorf("conversion container retired")
+	}
 	limit := uint64(1)
 	if !c.cell {
 		limit = uint64(binary.LittleEndian.Uint32(c.storage))
@@ -613,4 +616,43 @@ func retireGCConversionStoreLocked(store *referenceStore) {
 		clear(c.slots)
 	}
 	store.gcDomains.conversionContainers = nil
+}
+
+// migrate transfers the directory key of one physical allocation while retaining
+// every receipt object/index. The caller owns full publication authority and
+// updates every native/exported descriptor alias in publish, which must leave
+// them unchanged on error. Host table.grow uses reserved capacity and needs no
+// relocation; this adapter is for an allocation replacement.
+func (c *gcConversionContainer) migrate(storage []byte, publish func() error) error {
+	if c == nil || c.closed || c.cell || len(storage) < 8 {
+		return fmt.Errorf("invalid conversion table migration")
+	}
+	old := c.storage
+	n, capacity := binary.LittleEndian.Uint32(storage), binary.LittleEndian.Uint32(storage[4:])
+	if n != binary.LittleEndian.Uint32(old) || n > capacity || uint64(capacity)*8+8 > uint64(len(storage)) {
+		return fmt.Errorf("conversion migration shape mismatch")
+	}
+	for i := uint64(0); i < uint64(n); i++ {
+		if binary.LittleEndian.Uint64(old[8+i*8:]) != binary.LittleEndian.Uint64(storage[8+i*8:]) {
+			return fmt.Errorf("conversion migration changed a slot")
+		}
+	}
+	if _, err := newGCConversionContainer(c.owner, old); err != nil {
+		return err
+	}
+	c.store.mu.Lock()
+	conflict := c.store.gcDomains.conversionContainers[&storage[0]]
+	c.store.mu.Unlock()
+	if conflict != nil && conflict != c {
+		return fmt.Errorf("conversion migration aliases another owner")
+	}
+	if err := publish(); err != nil {
+		return err
+	}
+	c.store.mu.Lock()
+	delete(c.store.gcDomains.conversionContainers, &old[0])
+	c.store.gcDomains.conversionContainers[&storage[0]] = c
+	c.storage = storage
+	c.store.mu.Unlock()
+	return nil
 }

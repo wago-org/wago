@@ -2,6 +2,8 @@
 
 package wago
 
+import "fmt"
+
 func compiledConversionStoreHooks(*Compiled) bool { return false }
 func (*Instance) publishConversionStore(_ *Instance, _ []byte, _, _ uint64, publish func() error) error {
 	return publish()
@@ -15,4 +17,12 @@ func setConversionGlobalPublic(*Instance, *Global, Value) (bool, error) { return
 func (*Instance) publishConversionRange(_ *Instance, _ []byte, _, _ uint64, _ []uint64, publish func()) error {
 	publish()
 	return nil
+}
+
+const conversionInitializationEnabled = false
+
+func (*Instance) initializeConversionReceipts([]conversionInitialTable) error { return nil }
+
+func setConversionTablePublic(*Table, uint64, Value) error {
+	return fmt.Errorf("public extern table receipts are unsupported on this target")
 }

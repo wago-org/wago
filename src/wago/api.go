@@ -5496,7 +5496,9 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 			if bits == 0 && !required.Ref.Nullable || bits != 0 && required.Ref.Heap.Abstract == AbstractHeapNoExtern {
 				return fmt.Errorf("%s: externref argument %d does not match its exact structural type", subject, i)
 			}
-			if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+			if internal, ok := conversionBoundaryWord(in, bits, true); ok {
+				bits = internal
+			} else if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
 				conversion := in.existingGCExternConversionState()
 				if conversion == nil {
 					return fmt.Errorf("%s: extern conversion state is unavailable for argument %d", subject, i)
@@ -5682,7 +5684,9 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 				clear(values)
 				return fmt.Errorf("%s: externref result %d does not match its exact structural type", subject, i)
 			}
-			if in.c.compactExternFrameRoots() && values[slot] != 0 {
+			if public, ok := conversionBoundaryWord(in, values[slot], false); ok {
+				values[slot] = public
+			} else if in.c.compactExternFrameRoots() && values[slot] != 0 {
 				public, issueErr := in.issueCompactExternPublicToken(values[slot])
 				if issueErr != nil {
 					clear(values)
