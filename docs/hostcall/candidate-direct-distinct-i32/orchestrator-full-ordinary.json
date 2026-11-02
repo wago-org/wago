@@ -1,0 +1,16 @@
+{
+  "command": "go test -p=1 -count=1 ./...",
+  "head_at_start": "844428e3a23bd54fe0c2c5e7ece7561847ce5e0d",
+  "runtime_source_head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+  "runtime_source_unchanged_during_run": true,
+  "exit_code": 0,
+  "test_exclusions": [],
+  "platform": "Linux amd64, Go 1.27.1",
+  "environment": {
+    "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1",
+    "PATH_prefix": "/home/dev/Projects/wago-hostcall-record/.tools/wabt-1.0.41-linux-x64/bin",
+    "WAGO_SPEC_INTERPRETER": "/home/dev/Projects/wago-hostcall-record/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+    "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+  },
+  "note": "Same CI-equivalent tooling and package serialization as the successful exact-base run. Earlier concurrent-package red results are retained; this is not an unmodified unit-recipe all-green claim."
+}
