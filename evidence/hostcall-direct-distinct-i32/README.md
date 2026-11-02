@@ -71,3 +71,7 @@ Temporary tooling paths in manifests are historical execution paths, now removed
 ## Orchestrator safety review
 
 An independent sol review found no implementation correctness issue, and confirmed the staging-marker differential assertion proves actual direct execution. It found that both replay scripts recorded failed command statuses but returned zero themselves. The orchestrator corrected both aggregate exit statuses. `test-gate-runners.py` executes the real runners with controlled subprocess outcomes: all-success and every command position failing normally or by signal (50 scenarios). Each failure remains in the complete manifest and makes the runner return nonzero. The contract check passed; `gate-runner-contract.log` retains its output. These evidence-tool changes do not change the qualified runtime source tree.
+
+## Orchestrator complete ordinary-root run
+
+The complete ordinary root suite, **without test exclusions**, passed with `go test -p=1 -count=1 ./...` and the same verified WABT/interpreter/environment as the successful pinned-baseline run. `orchestrator-full-ordinary.json` records the exact environment and `orchestrator-full-ordinary.log` retains output. Package serialization resolves the observed concurrent-package test instability without removing tests. The earlier concurrent-command TinyGo abort and its exact-base reproduction remain recorded; this does not rewrite those red results or assert an all-green unmodified unit recipe. Runtime source is unchanged from the qualified source head.

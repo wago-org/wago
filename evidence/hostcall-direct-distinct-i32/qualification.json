@@ -33,5 +33,8 @@
       "evidence": "baseline.json"
     }
   ],
-  "cleanup": "All candidate-owned build temporaries, exact-base exports and downloaded tooling removed. Shared caches and other artifacts untouched."
+  "cleanup": "All candidate-owned build temporaries, exact-base exports and downloaded tooling removed. Shared caches and other artifacts untouched.",
+  "ordinary_root_serialized_no_skips_passed": true,
+  "ordinary_root_serialized_evidence": "orchestrator-full-ordinary.json",
+  "independent_review": "No runtime correctness findings; aggregate gate-script exit statuses corrected and 50 contract scenarios passed."
 }
