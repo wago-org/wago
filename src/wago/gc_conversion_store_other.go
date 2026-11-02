@@ -57,6 +57,17 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 	} else if access != nil {
 		store = access.refStore
 	}
+	// Public ingress authenticates tokens before classifying their payload.
+	// Leave invalid and cross-store words to the ordinary global validation,
+	// which preserves its invalid-token error and never publishes them.
+	if value.bits != 0 {
+		if store == nil {
+			return false, nil
+		}
+		if _, ok := store.resolveExternref(value.bits); !ok {
+			return false, nil
+		}
+	}
 	if err := unsupportedConversionWord(store, value.bits); err != nil {
 		return true, err
 	}
