@@ -1,0 +1,4 @@
+# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
+src/wago/design_repair_admission_test.go:54:8: cannot use gcHelperFailuref("wait result %v", out) (value of interface type any) as error value in assignment: interface{} does not implement error (missing method Error)
+FAIL	github.com/wago-org/wago/src/wago [build failed]
+FAIL

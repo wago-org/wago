@@ -1,0 +1,15 @@
+        3 => {
+            let expected = runtime_value_type(m, t.value_type);
+            if t.mutable != e.mutable || (if t.mutable { expected != e.value_type }
+                else { !store_value_matches(store, e.value_type, expected) }) { return 129; }
+            global_refs.push(e.address);
+            if rt.native_heap != 0 {
+                let kind = root_value_kind(m, t.value_type);
+                var native_region = ng_region_key(rt.native_heap, e.address);
+                if native_region == 0 && kind != 0 {
+                    native_region = gc2_region_install(rt, e.address, 1, 16, kind, e.address);
+                }
+                require(r, kind == 0 || native_region != 0, "imported global root registration failed");
+                global_regions.push(native_region);
+            }
+            m.globals.push(Global { t.value_type, t.mutable }); m.imported_globals += 1;

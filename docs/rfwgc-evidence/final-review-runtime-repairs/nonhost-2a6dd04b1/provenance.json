@@ -1,0 +1,7 @@
+{
+  "pin": "2a6dd04b10bdbd51acc414311df149d5e08f9db9",
+  "source": "/tmp/dr-nonhost-w28e1zkw/source",
+  "archive_sha256": "6001a8a688bc92fec890f4b2073295e76b1e9f80612bdca5dd28d0f63ea87117",
+  "driver_sha256": "0ed783c866e55a935e7ec2b4e2addb748405b5fd28a039fa5f5ef7665b157a7b",
+  "execution": "NOT_RUN: no Darwin or Windows runner"
+}
