@@ -1,0 +1,6 @@
+{
+  "file": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/1.test: Mach-O 64-bit executable arm64",
+  "loads": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/1.test:\n\t/usr/lib/libSystem.B.dylib (compatibility version 0.0.0, current version 0.0.0)",
+  "sha256": "38ca28af39da183a94967521666383f0a3c105a16770c1a1c4eac132f89c7ca2",
+  "size": 2859344
+}

@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "/Users/runner/work/_temp/tinygo-supplement-wagodebug/0.test",
+    "-test.v",
+    "-test.run=^(TestTinyGoForeignStackConcurrentGC|TestTinyGoForeignStackGCPreparedEntry|TestTinyGoForeignStackGCHostReentry|TestTinyGoForeignStackGCCloseThunkFailure|TestTinyGoTrampolineFailurePreservesInterrupt|TestTinyGoNativeResumeUsesPhysicalStackTop|TestPreparedIntThunkOwnedByEngine)$"
+  ],
+  "cwd": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/source/src/core/runtime",
+  "environment": {
+    "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/go-cache",
+    "GOENV": "off",
+    "GOFLAGS": "-mod=readonly -p=2",
+    "GOMAXPROCS": "2",
+    "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/modules",
+    "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+    "GOTOOLCHAIN": "local",
+    "GOWORK": "off",
+    "HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug",
+    "PATH": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo",
+    "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/cache"
+  },
+  "timeout_seconds": 600
+}
