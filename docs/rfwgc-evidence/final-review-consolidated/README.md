@@ -66,10 +66,14 @@ by this checkpoint.
   behavior without rejection. Source-verified, not executed on Darwin/Windows.
   Requires fail-closed admission or actual portable ownership support and an
   explicit platform disposition; excluded tests do not establish absence.
-- **CI-1 repair awaiting re-review:** Darwin-only dispatch reused required status
+- **CI-1 CLOSED after independent re-review:** Darwin-only dispatch reused required status
   name CI. Commit `7e887cb25623f711cd92d7ede88b83846f5fe95f` separates the Darwin
   summary and renames the skipped normal summary to prevent status impersonation.
   Local workflow contracts/actionlint and planner checks pass in all three modes.
+  Independent re-review `446e9254dda5838241ddf0cf783d3c8ccd3fb37a` confirms
+  that neither successful nor skipped special-event checks are named CI, while
+  normal CI contracts remain unchanged. Darwin dispatch still waits for the
+  runtime repairs and refreshed source/harness identity.
 
 The earlier no-defect slice reviews do not contradict the concrete Claude probes:
 those reviews did not establish absence of the newly exercised regressions. Parent
