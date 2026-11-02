@@ -51,6 +51,9 @@ var (
 // Call2 executes the mapped function at entry with two integer args (X0, X1) via
 // the foreign-stack trampoline and returns X0. Exported so the railshot/arm64
 // backend beachhead can run its compiled code through the proven no-cgo path.
+// It does not establish a module context in X26. Only use it for code that
+// does not read basedata (including stack fences) or enter a runtime trap path.
+// Compiled wrapper calls needing those facilities must use runtime.Engine.
 func Call2(entry, a0, a1 uintptr) uintptr {
 	spikeStackOnce.Do(func() {
 		stack, err := mmapRW(256 * 1024)
