@@ -1,0 +1,252 @@
+[
+  {
+    "id": "shared-scalar-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 83,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "repaired-contracts-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 10,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "cancellation-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "two-result-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "guard-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 9368,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS_WITH_SKIPS"
+  },
+  {
+    "id": "installer-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 10,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "race-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 10819,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS_WITH_SKIPS"
+  },
+  {
+    "id": "reservation-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 2,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "collector-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 2210,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "spec-v3-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "host-transition-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 48,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "backend-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 9310,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS_WITH_SKIPS"
+  },
+  {
+    "id": "spec-v2-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "corpus-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 880,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS_WITH_SKIPS"
+  },
+  {
+    "id": "spec-v3-signals-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "profile-runtime-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 62,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS_WITH_SKIPS"
+  },
+  {
+    "id": "full-root-replay-ordinary",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 27614,
+    "failure_events": 3,
+    "failures": [
+      {
+        "package": "github.com/wago-org/wago/docs/rfwgc-evidence/native-run-41466556039/inputs",
+        "test": null,
+        "detail": "FAIL\tgithub.com/wago-org/wago/docs/rfwgc-evidence/native-run-41466556039/inputs [build failed]\n"
+      },
+      {
+        "package": "github.com/wago-org/wago/docs/rfwgc-evidence/qemu-arm64-map-recheck",
+        "test": "TestPlatformExecutionArchitecture",
+        "detail": "=== RUN   TestPlatformExecutionArchitecture\n    platform_arch_test.go:12: actual darwin/arm64 expected linux/\n--- FAIL: TestPlatformExecutionArchitecture (0.00s)\n"
+      },
+      {
+        "package": "github.com/wago-org/wago/docs/rfwgc-evidence/qemu-arm64-map-recheck",
+        "test": null,
+        "detail": "FAIL\nFAIL\tgithub.com/wago-org/wago/docs/rfwgc-evidence/qemu-arm64-map-recheck\t0.009s\n"
+      }
+    ],
+    "status": "FAIL"
+  },
+  {
+    "id": "cli-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 999,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS_WITH_SKIPS"
+  },
+  {
+    "id": "spec-v1-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "profile-metadata-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 157,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "seeded-concurrency-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 24,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "guard-corpus-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 628,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS_WITH_SKIPS"
+  },
+  {
+    "id": "hardening-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 6630,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "core3-child-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS"
+  },
+  {
+    "id": "diagnostics-established-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 18397,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS_WITH_SKIPS"
+  },
+  {
+    "id": "diagnostics-default-ordinary",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 18397,
+    "failure_events": 0,
+    "failures": [],
+    "status": "PASS_WITH_SKIPS"
+  }
+]
