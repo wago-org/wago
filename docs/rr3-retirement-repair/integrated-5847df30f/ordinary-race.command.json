@@ -1,0 +1,1 @@
+["/home/dev/.local/share/mise/installs/go/1.27.3/bin/go", "test", "-race", "./src/wago", "-run", "^Test(RR|Design|R9(H2|Ownership)|GCExternConversion|HostCallNeedsGCSuspension|GCAdmission|GC.*Invocation|GC.*Start)", "-timeout=3m", "-count=1", "-v"]

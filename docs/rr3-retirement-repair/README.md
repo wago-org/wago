@@ -84,3 +84,55 @@ cross-builds are compile-only; the parent owns actual native execution.
 No benchmarks, performance timings, measurement lease, subagents, new review,
 push or PR were performed. Completion and measurement readiness depend on the
 recorded final pin and parent review; no self-approval is given here.
+
+## Immutable qualification at 5847df30f
+
+Source/test pin: `5847df30f1af15d10b743d90a24b1429b290d358`.
+`summary.json` records command exit, complete skip lists, top-level census,
+failed tests and source integrity. The summarizer exits **1** and sets
+`qualified: false`: ARM64 guest execution failed. This is not a closure or
+combined-head qualification claim. All drivers finished without edits.
+
+| Gate | ordinary | wagodebug | wago_regalloccheck |
+| --- | --- | --- | --- |
+| Focused | PASS 100, 0 skips | PASS 100, 0 skips | PASS 100, 0 skips |
+| Scoped race | PASS 100, 0 skips | PASS 100, 0 skips | PASS 100, 0 skips |
+| Full Wago | PASS 2539, 44 skips | PASS 2533, 50 skips | PASS 2539, 44 skips |
+| Backend/compiler | PASS 1006, 552 skips | PASS 1004, 554 skips | PASS 1129, 553 skips |
+| ARM64 QEMU | **FAIL**, 74 pass / 1 fail | **FAIL**, 74 pass / 1 fail | **FAIL**, 74 pass / 1 fail |
+| RV64 QEMU controls | PASS 48, 0 skips | PASS 48, 0 skips | PASS 48, 0 skips |
+| TinyGo compatibility | PASS 5, 0 skips | PASS 5, 0 skips | PASS 5, 0 skips |
+| Linux ARM64/RV64 builds | PASS | PASS | PASS |
+| Darwin ARM64/Windows AMD64 builds | PASS | PASS | PASS |
+
+Pass counts are top-level families; skip counts include logged subtests. Full
+Wago/backend platform or mode exclusions remain raw and enumerated in the
+summary. No required focused family is skipped. RV64 excludes the original
+amd64/arm64 RR3/lifecycle files by their build constraints; it is relevant
+controls only. TinyGo smoke does not qualify host opaque receipts. Darwin and
+Windows are build-only here. Native Linux ARM64 execution is **NOT_RUN** and
+is the open discriminator. No full-package race or full conformance campaign
+is claimed.
+
+All four immutable exports match all **4014 tracked src blobs** at the source
+pin, with zero changed blobs, zero post-run export changes, and unchanged
+drivers. Original RR1/RR2 and RR3 probes remain byte-identical. The target-only
+fixture/architecture adapter is separately hashed and not a production edit.
+
+`TIMER-DIAGNOSIS.md` details the ARM64 failure and bounded controls. This QEMU
+rejects native timer creation with signal 64 (EINVAL) but accepts signal 35;
+native AMD64 accepts both. No production signal-selection change or adapted
+harness was made. Failed target commands and all earlier attempts are retained.
+
+RR1/RR2 adversaries remain passing on the host all3/race and on ARM64 QEMU.
+RR3 host return/cancellation/shared-memory and new lifecycle families pass
+all3/race after the Slipstream audit; full platform qualification is incomplete.
+Final review and any closure decision belong to the parent.
+
+READY TO MEASURE (independent worker only): branch `experiment/rfwgc-port`,
+source pin `5847df30f1af15d10b743d90a24b1429b290d358`. Sensitive paths are
+conversion-only entry/exit, snapshot claims and domain retirement, nested-root
+admission and callback suspension/resume. Proposed workloads: scalar and
+storage-only calls with zero/nonzero domains, nested imports, callback-heavy
+calls, and contended last-pin/Close churn. No performance result is asserted;
+this designation does not waive the open ARM64 qualification or final review.
