@@ -1,0 +1,41 @@
+[
+  {
+    "mode": "ordinary",
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestGCExternConversionStableIdentityAndOwnership (0.00s)",
+      "--- PASS: TestGCExternConversionRejectsForeignForgedAndClosed (0.00s)",
+      "--- PASS: TestGCExternConversionCollectorFirstCloseFailsClosed (0.00s)",
+      "--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)",
+      "--- PASS: TestGCExternConversionPublicationOrderingAndRollback (0.00s)"
+    ],
+    "skips": [],
+    "failures": []
+  },
+  {
+    "mode": "wagodebug",
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestGCExternConversionStableIdentityAndOwnership (0.00s)",
+      "--- PASS: TestGCExternConversionRejectsForeignForgedAndClosed (0.00s)",
+      "--- PASS: TestGCExternConversionCollectorFirstCloseFailsClosed (0.00s)",
+      "--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)",
+      "--- PASS: TestGCExternConversionPublicationOrderingAndRollback (0.00s)"
+    ],
+    "skips": [],
+    "failures": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestGCExternConversionStableIdentityAndOwnership (0.00s)",
+      "--- PASS: TestGCExternConversionRejectsForeignForgedAndClosed (0.00s)",
+      "--- PASS: TestGCExternConversionCollectorFirstCloseFailsClosed (0.00s)",
+      "--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)",
+      "--- PASS: TestGCExternConversionPublicationOrderingAndRollback (0.00s)"
+    ],
+    "skips": [],
+    "failures": []
+  }
+]

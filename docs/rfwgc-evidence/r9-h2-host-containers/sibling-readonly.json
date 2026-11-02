@@ -1,0 +1,14 @@
+{
+  "slipstream": {
+    "pin": "084be3d4bf70fb5337085ceddfab1bfa9db8b1c9",
+    "path": "src/jit.goose",
+    "lines": "260-304",
+    "finding": "Imported tables and globals authenticate provider metadata then register physical descriptor-keyed native root regions before exposure. Representation differs; no host opaque receipt contract inferred."
+  },
+  "starshine": {
+    "pin": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+    "path": "docs/wiki/wasm-gc-core-boundary.md",
+    "finding": "Core model, codec, validation and WAST boundaries; no equivalent native host container lifetime implementation established."
+  },
+  "method": "git show, read-only, before implementation/triage; no sibling edits or new defect claim"
+}

@@ -1,0 +1,4 @@
+=== RUN   TestR9H2StoreHooksActiveInitialization
+--- PASS: TestR9H2StoreHooksActiveInitialization (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	1.014s
