@@ -50,6 +50,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Borrow immutable ARM64 loop constants directly for immediate read-only
+  multiply-add inputs instead of reloading them inside the loop.
 - Reuse immutable ARM64 loop constants for unsigned I32 reciprocal multipliers,
   including call-free loop scopes in functions with guest calls.
 - Shorten ARM64 constant integer division/remainder and multiply-add sequences

@@ -23,9 +23,9 @@ func (f *fn) tryShiftedMulAdd(node, mul, addend *elem, dest Reg, wide bool) Reg 
 		return regNone
 	}
 	saved := f.pinned
-	ra, ownRa := f.materializeRead(addend)
+	ra, ownRa := f.mulAddRead(addend)
 	f.pinned = f.pinned.add(ra)
-	x, ownX := f.materializeRead(source)
+	x, ownX := f.mulAddRead(source)
 	f.pinned = f.pinned.add(x)
 	d := dest
 	if d == regNone {
@@ -64,4 +64,19 @@ func (f *fn) tryShiftedMulAdd(node, mul, addend *elem, dest Reg, wide bool) Reg 
 	f.consumeBlockBelow(node)
 	f.occupy(node, d)
 	return d
+}
+
+// MADD/MSUB inputs are consumed immediately and never written. Reuse an
+// immutable constant lease just as we borrow a pinned local's register.
+func (f *fn) mulAddRead(e *elem) (Reg, bool) {
+	if e.elemKind() == ekValue && e.st.kind == stConst {
+		if reg, ok := f.cachedIntConst(e.st); ok {
+			if regallocCheckEnabled {
+				f.checkUse(e)
+			}
+			f.stats.peep("mul-add-cached-constant")
+			return reg, false
+		}
+	}
+	return f.materializeRead(e)
 }

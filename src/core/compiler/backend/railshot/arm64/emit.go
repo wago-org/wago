@@ -171,7 +171,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 
 	// MADD/MSUB fusion: add(c, a*b) → MADD (c + a*b), sub(c, a*b) → MSUB (c - a*b)
 	// in one instruction when the multiply operands have a safe bounded cover.
-// A constant 1+2^k product can instead use a shifted ADD and an ADD/SUB.
+	// A constant 1+2^k product can instead use a shifted ADD and an ADD/SUB.
 	// Checked before the LEA/local-sink forms so a*b±c never splits into MUL + ADD.
 	if node.deferredOp() == opAdd || node.deferredOp() == opSub {
 		if r := f.tryMulAddFuse(node, dest, w); r != regNone {
@@ -1417,11 +1417,11 @@ func (f *fn) tryMulAddFuse(node *elem, dest Reg, w bool) Reg {
 	savedPinned := f.pinned
 	// Realize the accumulator first: nested accumulations must not recurse
 	// while both outer multiplicands consume the transient register floor.
-	ra, ownRa := f.materializeRead(addend)
+	ra, ownRa := f.mulAddRead(addend)
 	f.pinned = f.pinned.add(ra)
-	n, ownN := f.materializeRead(f.s.arg0(mul))
+	n, ownN := f.mulAddRead(f.s.arg0(mul))
 	f.pinned = f.pinned.add(n)
-	m, ownM := f.materializeRead(f.s.arg1(mul))
+	m, ownM := f.mulAddRead(f.s.arg1(mul))
 	f.pinned = f.pinned.add(m)
 	d := dest
 	if d == regNone {
