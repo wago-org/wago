@@ -869,3 +869,25 @@ Use separate coherent commits and immutable all3/race/target gates, retain prior
 failed probes and honest supported-region admission. Final H6/H2 integration,
 Stage7/TinyGo/QEMU combined-head and full conformance/corpus/performance/review
 gates remain open; seven tabled PRs remain integrated/pending final buckets.
+
+## Astra coordination and store-hook checkpoint — 2026-11-02
+
+Assessed port35c36bc594d2a027317cfcd321379f2d40c6b219, production501e9ab46.
+Receipt core79db49daa and module-owned store hooks are implemented; integrated
+all3 suites, ARM64QEMU host tests/RV64 controls and supportedTinyGo smoke pass
+within r9-h2-store-hooks documented scope. Original surviving-provider and
+conditional-cycle gates pass. Final H2 scope/combined gates remain open.
+
+Integration owner retains sole implementation authority. Support Astra
+mcp:d176e968-4193-4ac3-8dec-d61fffb20e95 is advisory/docs-only on
+docs/gc-port-astra-support. Hook worker64e91191 is completed, files released,
+no unfinished edits. Active combinedqualification10ea28d4 owns evidence only.
+No new parallel implementation assigned before supportmap is reconciled/adopted.
+
+Source confirms host-created converted containers lack Instance-owned adapters
+and remain rejected; support assessment agrees. migrate has only test callers;
+current growth uses reserved capacity and does not relocate. Lack of relocation
+caller is not itself a missing production path: do not invent allocator changes
+solely to create a parallel slice. Any future relocating caller must use migration
+contract. Await exact support definitions; final buckets/adoptions/disagreements
+and reasons belong to integration owner. Seven PRs remain pending final gates.
