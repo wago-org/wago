@@ -132,6 +132,7 @@ func equalWorkerModuleStatsARM64(a, b *ModuleStats) bool {
 		}
 		aFunc, bFunc := *aCopy.Funcs[i], *bCopy.Funcs[i]
 		aFunc.CompileNanos, bFunc.CompileNanos = 0, 0
+		aFunc.ScalarAdmissionNanos, bFunc.ScalarAdmissionNanos = 0, 0
 		aCopy.Funcs[i], bCopy.Funcs[i] = &aFunc, &bFunc
 	}
 	return reflect.DeepEqual(&aCopy, &bCopy)
@@ -205,5 +206,40 @@ func assertCompiledModuleEqualArm64(t *testing.T, got, want *encoder.CompiledMod
 	}
 	if got.PreparedIsolatedTables != want.PreparedIsolatedTables {
 		t.Fatalf("PreparedIsolatedTables = %v, want %v", got.PreparedIsolatedTables, want.PreparedIsolatedTables)
+	}
+}
+
+func TestWorkerModuleStatsComparisonARM64(t *testing.T) {
+	fresh := func() *ModuleStats {
+		return &ModuleStats{Funcs: []*CodegenStats{{SharedScalar: true, CodeBytes: 48, FrameBytes: 16}}}
+	}
+	a, b := fresh(), fresh()
+	a.Compile.ScalarScratchPeak = 128
+	a.Compile.ScalarScratchRetained = 128
+	b.Compile.ScalarScratchDiscarded = 256
+	a.Funcs[0].ScalarAdmissionNanos = 1
+	b.Funcs[0].ScalarAdmissionNanos = 99
+	if !equalWorkerModuleStatsARM64(a, b) {
+		t.Fatal("worker measurements must not affect output comparison")
+	}
+	if a.Funcs[0].ScalarAdmissionNanos != 1 || a.Compile.ScalarScratchRetained != 128 {
+		t.Fatal("comparison changed its input")
+	}
+	for _, tc := range []struct {
+		name   string
+		change func(*ModuleStats)
+	}{
+		{"code size", func(s *ModuleStats) { s.Funcs[0].CodeBytes++ }},
+		{"frame size", func(s *ModuleStats) { s.Funcs[0].FrameBytes++ }},
+		{"compiler path", func(s *ModuleStats) { s.Funcs[0].SharedScalar = false }},
+		{"source offset", func(s *ModuleStats) { s.Funcs[0].SourceInternalOffset++ }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			changed := fresh()
+			tc.change(changed)
+			if equalWorkerModuleStatsARM64(fresh(), changed) {
+				t.Fatal("semantic metadata difference was ignored")
+			}
+		})
 	}
 }
