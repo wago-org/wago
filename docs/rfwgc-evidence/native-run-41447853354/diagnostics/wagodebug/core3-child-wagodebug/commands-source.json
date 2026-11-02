@@ -1,0 +1,365 @@
+{
+  "commands": [
+    {
+      "filename": "commands.0.wasm",
+      "line": 1,
+      "type": "module_definition"
+    },
+    {
+      "line": 10,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "struct-new-const",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "7"
+        }
+      ],
+      "line": 11,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.1.wasm",
+      "line": 12,
+      "type": "module_definition"
+    },
+    {
+      "line": 33,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "struct-new-default-i32",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 34,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "struct-new-default-i64",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i64",
+          "value": "0"
+        }
+      ],
+      "line": 35,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "struct-new-default-f32",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "f32",
+          "value": "0"
+        }
+      ],
+      "line": 36,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "struct-new-default-f64",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "f64",
+          "value": "0"
+        }
+      ],
+      "line": 37,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "struct-new-default-ref-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 38,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.2.wasm",
+      "line": 39,
+      "type": "module_definition"
+    },
+    {
+      "line": 50,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-const-len",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "3"
+        }
+      ],
+      "line": 51,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-const-elem",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "99"
+        }
+      ],
+      "line": 52,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.3.wasm",
+      "line": 53,
+      "type": "module_definition"
+    },
+    {
+      "line": 65,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-default-const-len",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "4"
+        }
+      ],
+      "line": 66,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-default-const-elem",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "0"
+        }
+      ],
+      "line": 67,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.4.wasm",
+      "line": 68,
+      "type": "module_definition"
+    },
+    {
+      "line": 83,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-fixed-const-len",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "3"
+        }
+      ],
+      "line": 84,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-fixed-const-elem0",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "10"
+        }
+      ],
+      "line": 85,
+      "type": "assert_return"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "array-new-fixed-const-elem2",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "30"
+        }
+      ],
+      "line": 86,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.5.wasm",
+      "line": 87,
+      "type": "module_definition"
+    },
+    {
+      "line": 96,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "extern-convert-any-const",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "55"
+        }
+      ],
+      "line": 97,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.6.wasm",
+      "line": 98,
+      "type": "module_definition"
+    },
+    {
+      "line": 106,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "extern-convert-any-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 107,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.7.wasm",
+      "line": 108,
+      "type": "module_definition"
+    },
+    {
+      "line": 117,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "any-convert-extern-non-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "7"
+        }
+      ],
+      "line": 118,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.8.wasm",
+      "line": 119,
+      "type": "module_definition"
+    },
+    {
+      "line": 127,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "any-convert-extern-null",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "1"
+        }
+      ],
+      "line": 128,
+      "type": "assert_return"
+    },
+    {
+      "filename": "commands.9.wasm",
+      "line": 129,
+      "type": "module_definition"
+    },
+    {
+      "line": 137,
+      "type": "module_instance"
+    },
+    {
+      "action": {
+        "args": [],
+        "field": "ref-i31-const",
+        "type": "invoke"
+      },
+      "expected": [
+        {
+          "type": "i32",
+          "value": "42"
+        }
+      ],
+      "line": 138,
+      "type": "assert_return"
+    }
+  ],
+  "source": "WebAssembly/spec interpreter 3.0.0"
+}

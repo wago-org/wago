@@ -1,0 +1,1639 @@
+{
+  "status": "PASS",
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "driver": "5fb47abb4b30472bd74751a5ea96b51d668e488a",
+  "native_execution": true,
+  "exit_codes": [
+    0,
+    0
+  ],
+  "exact_census": true,
+  "graph_hashes": true,
+  "unchanged": true,
+  "terminal_events": [
+    {
+      "Time": "2026-11-02T13:00:22.808517Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignInvocationSnapshotCancellation/partial-lock-cancel",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.808561Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignInvocationSnapshotCancellation/pin-overflow",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.80857Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignInvocationSnapshotCancellation",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.813969Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignInvocationSnapshotLatePublisher",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T13:00:22.815319Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignInvocationSnapshotRetirement",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.816328Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignInvocationSnapshotAuthenticatedDispatch",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.817703Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignInvocationSnapshotCallbackTrap/return",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.819145Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignInvocationSnapshotCallbackTrap/trap",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.819195Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignInvocationSnapshotCallbackTrap",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.821817Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckForeignRelayAfterLatePublisher",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.826354Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckStorageOnlyCallTopologyWriter/none",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.828219Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckStorageOnlyCallTopologyWriter/global",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.831308Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckStorageOnlyCallTopologyWriter/table",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.831356Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckStorageOnlyCallTopologyWriter",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T13:00:22.833967Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckCallbackChangesPublisherAuthority",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.834669Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckNestedSameRuntimeClear/direct",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.835342Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckNestedSameRuntimeClear/scalar-relay",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.837288Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckNestedSameRuntimeClear/storage-relay",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.837313Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckNestedSameRuntimeClear",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.838624Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRecheckNestedPublish",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.840806Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairWaitNotifier",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.842446Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairConversionAdmissionLifecycle",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.843374Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairScalarRelayOrdinaryStorageWithConversion",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.843731Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairConcurrentPublicationRetirement",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.843818Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairPublicTableOrdinary",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.845146Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublication/TestR9H2HostContainerPublicGlobal/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.845745Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublication/TestR9H2HostContainerPublicGlobal/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.845781Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublication/TestR9H2HostContainerPublicGlobal",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.846094Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublication/TestR9H2HostContainerPublicTable/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.846382Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublication/TestR9H2HostContainerPublicTable/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.846421Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublication/TestR9H2HostContainerPublicTable",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.846451Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublication",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.847241Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedBulkAtomicity/TestR9H2StoreHooksBulk/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.847676Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedBulkAtomicity/TestR9H2StoreHooksBulk/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.84769Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedBulkAtomicity/TestR9H2StoreHooksBulk",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.847986Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedBulkAtomicity/TestR9H2StoreHooksActiveInitialization",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.848704Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedBulkAtomicity/TestR9H2ReceiptIndependentContainersAndRollback",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.848739Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedBulkAtomicity",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.84914Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification/local/foreign",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.849156Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification/local/forged",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.849178Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification/local/expired",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.849222Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.84923Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification/local",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.849298Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification/owned/foreign",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.849315Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification/owned/forged",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.849338Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification/owned/expired",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.849371Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.849396Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification/owned",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.849406Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestDesignRepairPublicGlobalTokenClassification",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.849665Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestR9H2HostContainerAuthority",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.852488Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken/TestR9H2HostImportAuthority",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.852529Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.853075Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestExternrefGlobalHoldingConvertedGCReference",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.854447Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=false/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.855386Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=false/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.856803Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=true/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.857317Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=true/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.857734Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=false/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.858052Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=false/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.858361Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=true/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.858718Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=true/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.859134Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=false/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.859442Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=false/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.859812Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=true/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.860098Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=true/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.860824Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=false/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.861956Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=false/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.862986Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=true/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.864399Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=true/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.864988Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=false/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.865492Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=false/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.866325Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=true/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.866742Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=true/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.867091Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=false/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.867419Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=false/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.867794Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=true/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.868138Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=true/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.868808Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=false/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.869104Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=false/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.869631Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=true/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.86994Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=true/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.870358Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=false/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.870612Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=false/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.870939Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=true/array=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.871584Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=true/array=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.871611Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6FailedInitialization",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T13:00:22.874805Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CallbackQuiescence/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.876727Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CallbackQuiescence/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.876754Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CallbackQuiescence",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T13:00:22.877Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CollectingMutations/struct.set/region=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.877149Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CollectingMutations/array.set/region=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.877891Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CollectingMutations/array.fill/region=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.878388Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CollectingMutations/mixed.new/region=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.879075Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CollectingMutations/struct.set/region=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.879502Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CollectingMutations/array.set/region=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.879647Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CollectingMutations/array.fill/region=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.880048Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CollectingMutations/mixed.new/region=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.880075Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipStateH6CollectingMutations",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.880196Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestManagedFunctionHostShape",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.880284Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ConditionalSlotExplicitDomain",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.880355Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2RetiredCollectorPreservesDeferredFinalizer",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.880778Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=0/native",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.881038Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=0/topology",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.88293Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=0/domain",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.884384Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=0/revoked-domain",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.885547Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=0/driver",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.888126Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=0/foreign-runtime",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.88841Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=6/native",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.889202Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=6/topology",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.890609Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=6/domain",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.890931Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=6/revoked-domain",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.891251Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=6/driver",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.894102Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention/region=6/foreign-runtime",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.894139Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupContention",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T13:00:22.89485Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupActiveBoundary/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.895337Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupActiveBoundary/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.895362Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupActiveBoundary",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.897088Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupExitCrossing/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.898173Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupExitCrossing/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.898188Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupExitCrossing",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.898934Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupProviderAndStoreClose/region=0/store-close=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.899274Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupProviderAndStoreClose/region=0/store-close=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.899778Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupProviderAndStoreClose/region=6/store-close=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.901065Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupProviderAndStoreClose/region=6/store-close=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.901091Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupProviderAndStoreClose",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.902682Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupConcurrentRequests",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.90274Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9OwnershipWakeupRetiredDomainAdmission",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.904195Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestConvertedMake42ClassificationAndReceipt",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.905102Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestConvertedInitializer55PersistentRoot",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.906047Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerPublicGlobal/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.906893Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerPublicGlobal/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.906903Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerPublicGlobal",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.907657Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerPublicTable/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.907988Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerPublicTable/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.908013Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerPublicTable",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.908803Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerClose/container-first",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.909137Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerClose/publisher-first",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.90938Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerClose/runtime-first",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.909391Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerClose",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.909698Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerAuthority",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.909879Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerMigration",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.910487Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerCycle/0/clear",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.910867Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerCycle/0/close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.911371Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerCycle/6/clear",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.911722Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerCycle/6/close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.911729Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostContainerCycle",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.912101Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportGlobal/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.912473Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportGlobal/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.91248Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportGlobal",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.912791Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportTable/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.913093Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportTable/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.913102Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportTable",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.914259Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportBulk/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.915332Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportBulk/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.915358Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportBulk",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.916171Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportInitialization/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.916393Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportInitialization/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.916442Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportInitialization",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.916609Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportCycle/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.916756Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportCycle/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.916783Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportCycle",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.91705Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportTableIndependentPhysical",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.917529Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportAuthority",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.917659Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportGlobalOrdinaryAndGuards",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.917854Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2HostImportTableOrdinaryAndGuards",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.918221Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptPublisherRetirement/region=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.918437Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptPublisherRetirement/region=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.918467Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptPublisherRetirement",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.918921Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptIndependentContainersAndRollback",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.919295Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptCloseOrders/provider-first",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.919503Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptCloseOrders/publisher-first",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.919677Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptCloseOrders/store-first",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.919684Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptCloseOrders",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.920109Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptConvertedProducerCycle/direct/region=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.921069Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptConvertedProducerCycle/direct/region=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.922551Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptConvertedProducerCycle/callback/region=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.923529Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptConvertedProducerCycle/callback/region=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.924035Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptConvertedProducerCycle/contention/region=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.924478Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptConvertedProducerCycle/contention/region=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.924508Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptConvertedProducerCycle",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.924662Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptOnlyContention/native",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.925093Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptOnlyContention/foreign-runtime",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.925314Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptOnlyContention/topology",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.92552Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptOnlyContention/domain",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.925775Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptOnlyContention/driver",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.925781Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptOnlyContention",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.925965Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.926163Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.928668Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.929293Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.93031Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.932809Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.933714Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.93463Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.935915Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.938042Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.938053Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksOriginalProvider",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T13:00:22.939625Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksBulk/0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.940439Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksBulk/6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.940472Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksBulk",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.940916Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksActiveInitialization",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.941168Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksDescriptorMigration",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.941772Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2StoreHooksIndependentPhysicalTables",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.943367Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/noGC/false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.943508Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/noGC/true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.94389Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/scalar/false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.944115Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/scalar/true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.945111Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/graph/false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.945894Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest/graph/true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.945902Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3MeasurementGuest",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.946027Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ConvertedAggregateAdmission",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.94618Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ConvertedAggregateAdmissionControls/numeric",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.946416Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ConvertedAggregateAdmissionControls/unused-function-type",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.946427Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ConvertedAggregateAdmissionControls",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.946836Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ConvertedAggregateCollectingLocalOwner/region=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.946994Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ConvertedAggregateCollectingLocalOwner/region=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.947002Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestR9H2ConvertedAggregateCollectingLocalOwner",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.949898Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.953502Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:22.953513Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRecheckStorageOnlyReturnBehindDynamicReader",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T13:00:23.257928Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRecheckCanceledAdmissionBehindDynamicReader",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T13:00:23.764096Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRecheckSharedMemoryHandoff",
+      "Elapsed": 0.51
+    },
+    {
+      "Time": "2026-11-02T13:00:23.766492Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementLastPinAndRevival/none",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:23.766567Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementLastPinAndRevival/claim",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:23.766608Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementLastPinAndRevival/registration",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:23.766681Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementLastPinAndRevival/store-close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:23.766702Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementLastPinAndRevival",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:23.767867Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementCallbackAndExitWakeups",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:23.768262Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementBorrowedRootLatePublisher",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:23.768354Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementCanceledPartialLastPins",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:23.768458Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementCallbackRefreshBehindReader",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:00:23.771168Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 0.988
+    }
+  ],
+  "ceiling": "Windows storage/admission only; no Windows converted GC JIT claim. Darwin results qualify only the recorded source and leaves. TinyGo remains OPEN."
+}

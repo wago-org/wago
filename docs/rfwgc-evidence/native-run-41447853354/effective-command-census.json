@@ -1,0 +1,1418 @@
+[
+  {
+    "mode": "ordinary",
+    "lane": "cancellation-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-run=^(TestSharedEntryGuardCancellationAndGC)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "core3-child-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-run=^(TestWasmtimeCore3Corpus)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "repaired-contracts-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-run=^(TestExternrefGlobalHoldingConvertedGCReference|TestGCExternConversionAcrossReferenceTables|TestFixedSharedDirectGoImport|TestFixedSharedDirectGoCallerScope|TestFixedSharedDirectGoImportPolicy|TestSharedSingleEntryGuardAndGoFallback|TestSharedEntryRegisterResultAndGoFallback|TestSharedEntryRegisterArgumentAndGoFallback|TestSharedEntryGuardForeignFallback|TestSharedSingleNativePinsAndGoFallback)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "full-root-replay-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "./..."
+    ],
+    "census_exit": 0,
+    "package_records": 455,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "collector-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "./src/core/runtime/gc/..."
+    ],
+    "census_exit": 0,
+    "package_records": 7,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "race-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-race",
+      "./src/core/runtime/gc/...",
+      "./src/core/runtime",
+      "./src/wago",
+      "./tests/integration/..."
+    ],
+    "census_exit": 0,
+    "package_records": 20,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "guard-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage",
+      "./src/core/runtime",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 7,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "backend-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "./src/core/compiler/backend/..."
+    ],
+    "census_exit": 0,
+    "package_records": 12,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "cli-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_runtime",
+      "./cli/..."
+    ],
+    "census_exit": 0,
+    "package_records": 199,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "installer-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "./..."
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "corpus-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-run",
+      "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "guard-corpus-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage",
+      "-run",
+      "^(TestCorpus|TestJsonAsGuardCorrect)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "host-transition-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-count=3",
+      "-run",
+      "Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "hardening-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-count=3",
+      "./src/core/runtime/gc/..."
+    ],
+    "census_exit": 0,
+    "package_records": 7,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "profile-runtime-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile",
+      "-run",
+      "^Test(CodeProfile|Profile|AdapterUnwind)",
+      "./src/wago",
+      "./src/core/compiler/backend/railshot/..."
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "profile-metadata-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile",
+      "./internal/jitprofile",
+      "./profile",
+      "./internal/profcapture",
+      "./internal/profilecmd",
+      "./cli/internal/profiling"
+    ],
+    "census_exit": 0,
+    "package_records": 15,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "diagnostics-default-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "diagnostics-established-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "shared-scalar-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats",
+      "-run",
+      "^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "seeded-concurrency-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-run",
+      "^TestRuntimeConcurrency",
+      "./tests/integration/runtimeconcurrency"
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "spec-v1-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "spec-v2-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "spec-v3-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "ordinary",
+    "lane": "spec-v3-signals-ordinary",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-ordinary/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "cancellation-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wagodebug",
+      "-run=^(TestSharedEntryGuardCancellationAndGC)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "core3-child-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wagodebug",
+      "-run=^(TestWasmtimeCore3Corpus)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "repaired-contracts-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wagodebug",
+      "-run=^(TestExternrefGlobalHoldingConvertedGCReference|TestGCExternConversionAcrossReferenceTables|TestFixedSharedDirectGoImport|TestFixedSharedDirectGoCallerScope|TestFixedSharedDirectGoImportPolicy|TestSharedSingleEntryGuardAndGoFallback|TestSharedEntryRegisterResultAndGoFallback|TestSharedEntryRegisterArgumentAndGoFallback|TestSharedEntryGuardForeignFallback|TestSharedSingleNativePinsAndGoFallback)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "full-root-replay-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "./..."
+    ],
+    "census_exit": 0,
+    "package_records": 455,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "collector-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "./src/core/runtime/gc/..."
+    ],
+    "census_exit": 0,
+    "package_records": 7,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "race-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-race",
+      "./src/core/runtime/gc/...",
+      "./src/core/runtime",
+      "./src/wago",
+      "./tests/integration/..."
+    ],
+    "census_exit": 0,
+    "package_records": 20,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "guard-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug,wago_guardpage",
+      "./src/core/runtime",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 7,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "backend-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "./src/core/compiler/backend/..."
+    ],
+    "census_exit": 0,
+    "package_records": 12,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "cli-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_runtime,wagodebug",
+      "./cli/..."
+    ],
+    "census_exit": 0,
+    "package_records": 199,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "installer-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "./..."
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "corpus-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-run",
+      "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "guard-corpus-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage,wagodebug",
+      "-run",
+      "^(TestCorpus|TestJsonAsGuardCorrect)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "host-transition-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-count=3",
+      "-run",
+      "Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "hardening-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-count=3",
+      "./src/core/runtime/gc/..."
+    ],
+    "census_exit": 0,
+    "package_records": 7,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "profile-runtime-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile,wagodebug",
+      "-run",
+      "^Test(CodeProfile|Profile|AdapterUnwind)",
+      "./src/wago",
+      "./src/core/compiler/backend/railshot/..."
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "profile-metadata-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile,wagodebug",
+      "./internal/jitprofile",
+      "./profile",
+      "./internal/profcapture",
+      "./internal/profilecmd",
+      "./cli/internal/profiling"
+    ],
+    "census_exit": 0,
+    "package_records": 15,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "diagnostics-default-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wagodebug",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "diagnostics-established-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wagodebug",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "shared-scalar-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wagodebug",
+      "-run",
+      "^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "seeded-concurrency-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-run",
+      "^TestRuntimeConcurrency",
+      "./tests/integration/runtimeconcurrency"
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v1-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v2-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v3-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v3-signals-wagodebug",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wagodebug/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage,wagodebug",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "cancellation-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wago_regalloccheck",
+      "-run=^(TestSharedEntryGuardCancellationAndGC)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "core3-child-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wago_regalloccheck",
+      "-run=^(TestWasmtimeCore3Corpus)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "repaired-contracts-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wago_regalloccheck",
+      "-run=^(TestExternrefGlobalHoldingConvertedGCReference|TestGCExternConversionAcrossReferenceTables|TestFixedSharedDirectGoImport|TestFixedSharedDirectGoCallerScope|TestFixedSharedDirectGoImportPolicy|TestSharedSingleEntryGuardAndGoFallback|TestSharedEntryRegisterResultAndGoFallback|TestSharedEntryRegisterArgumentAndGoFallback|TestSharedEntryGuardForeignFallback|TestSharedSingleNativePinsAndGoFallback)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "full-root-replay-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "census_exit": 0,
+    "package_records": 456,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "collector-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime/gc/..."
+    ],
+    "census_exit": 0,
+    "package_records": 7,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "race-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-race",
+      "./src/core/runtime/gc/...",
+      "./src/core/runtime",
+      "./src/wago",
+      "./tests/integration/..."
+    ],
+    "census_exit": 0,
+    "package_records": 20,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "guard-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck,wago_guardpage",
+      "./src/core/runtime",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 7,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "backend-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/..."
+    ],
+    "census_exit": 0,
+    "package_records": 12,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "cli-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_runtime,wago_regalloccheck",
+      "./cli/..."
+    ],
+    "census_exit": 0,
+    "package_records": 199,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "installer-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "corpus-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-run",
+      "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "guard-corpus-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage,wago_regalloccheck",
+      "-run",
+      "^(TestCorpus|TestJsonAsGuardCorrect)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "host-transition-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-count=3",
+      "-run",
+      "Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "hardening-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-count=3",
+      "./src/core/runtime/gc/..."
+    ],
+    "census_exit": 0,
+    "package_records": 7,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "profile-runtime-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile,wago_regalloccheck",
+      "-run",
+      "^Test(CodeProfile|Profile|AdapterUnwind)",
+      "./src/wago",
+      "./src/core/compiler/backend/railshot/..."
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "profile-metadata-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile,wago_regalloccheck",
+      "./internal/jitprofile",
+      "./profile",
+      "./internal/profcapture",
+      "./internal/profilecmd",
+      "./cli/internal/profiling"
+    ],
+    "census_exit": 0,
+    "package_records": 15,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "diagnostics-default-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wago_regalloccheck",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "diagnostics-established-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wago_regalloccheck",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "shared-scalar-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wago_regalloccheck",
+      "-run",
+      "^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 16,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "seeded-concurrency-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-run",
+      "^TestRuntimeConcurrency",
+      "./tests/integration/runtimeconcurrency"
+    ],
+    "census_exit": 0,
+    "package_records": 3,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v1-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v2-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v3-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v3-signals-wago_regalloccheck",
+    "effective_argv": [
+      "go",
+      "test",
+      "-mod=readonly",
+      "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage,wago_regalloccheck",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "census_exit": 0,
+    "package_records": 4,
+    "all_package_errors_absent": true
+  }
+]

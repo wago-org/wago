@@ -1,0 +1,6 @@
+{
+  "dispatch_sha256": "4035dcd63e74a7908d1290db68a6180101415f7c6689ff259c0fcf64f875fa5f",
+  "index_before_owned_staging": "",
+  "worktree_before_owned_commit": " M docs/rfwgc-evidence/darwin-tinygo-supplement/cancellation_test.go.in\n M docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py\n M docs/rfwgc-evidence/stage2-corpus/measure.py\n M docs/rfwgc-evidence/stage2-corpus/summarize.py\n M docs/rfwgc-port-log.md\n M tests/conformance/spec-v1\n M tests/conformance/spec-v2\n?? src/core/compiler/backend/railshot/arm64/dynamic_import_join_test.go.5233535196653571793\n",
+  "note": "Snapshot only; concurrent parent work is not restored or modified."
+}

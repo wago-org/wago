@@ -1,0 +1,18 @@
+{
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "driver": "5fb47abb4b30472bd74751a5ea96b51d668e488a",
+  "qualification_source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "baseline": false,
+  "target": "darwin",
+  "machine": "arm64",
+  "python": "3.15.2 (main, Oct 25 2026, 16:57:51) [Clang 17.0.0 (clang-1700.6.4.2)]",
+  "go": "go version go1.27.1 darwin/arm64",
+  "go_env": {
+    "GOHOSTARCH": "arm64",
+    "GOHOSTOS": "darwin",
+    "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64"
+  },
+  "go_sha256": "132b69336a1f809932a8a20b0201dbbb980e86e3a323ae32e893639d83d71598",
+  "driver_sha256": "26cc47cc182dfbd26458b3e3aac892c34c7c206af5b0f18a850736778438c21a",
+  "contracts_sha256": "913bdb0971747603e9eaafbb6a01021e5feb69ec17993a81a7a776b0857f29c6"
+}

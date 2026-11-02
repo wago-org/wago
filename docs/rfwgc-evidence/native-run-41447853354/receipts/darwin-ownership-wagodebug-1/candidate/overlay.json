@@ -1,0 +1,15 @@
+{
+  "Replace": {
+    "/Users/runner/work/wago/wago/source/src/wago/qualification_supplement_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/graph_test.go",
+    "/Users/runner/work/wago/wago/source/src/wago/design_repair_unsupported_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/design_repair_unsupported_test.go",
+    "/Users/runner/work/wago/wago/source/src/wago/design_repair_unsupported_token_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/design_repair_unsupported_token_test.go",
+    "/Users/runner/work/wago/wago/source/src/wago/rr_recheck_adversary_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/rr_recheck_adversary_test.go",
+    "/Users/runner/work/wago/wago/source/src/wago/rr_recheck_flags_current_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/rr_recheck_flags_current_test.go",
+    "/Users/runner/work/wago/wago/source/src/wago/rr_recheck_handoff_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/rr_recheck_handoff_test.go",
+    "/Users/runner/work/wago/wago/source/src/wago/rr_retirement_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/rr_retirement_test.go",
+    "/Users/runner/work/wago/wago/source/src/wago/design_invocation_snapshot_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/design_invocation_snapshot_test.go",
+    "/Users/runner/work/wago/wago/source/src/wago/design_recheck_adversary_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/design_recheck_adversary_test.go",
+    "/Users/runner/work/wago/wago/source/src/wago/design_repair_admission_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/design_repair_admission_test.go",
+    "/Users/runner/work/wago/wago/source/src/wago/gc_lifecycle_regression_test.go": "/Users/runner/work/wago/wago/harness/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/gc_lifecycle_helper_test.go"
+  }
+}

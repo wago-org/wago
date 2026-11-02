@@ -1,0 +1,120 @@
+{
+  "status": "PASS",
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "driver": "5fb47abb4b30472bd74751a5ea96b51d668e488a",
+  "native_execution": true,
+  "exit_codes": [
+    0,
+    0
+  ],
+  "exact_census": true,
+  "graph_hashes": true,
+  "unchanged": true,
+  "terminal_events": [
+    {
+      "Time": "2026-11-02T12:52:03.8629304Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairPublicTableOrdinary",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.863346Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedBulkAtomicity",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.863346Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.863346Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.863346Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestUnsupportedConversionGlobalValidationOrdering/ordinary",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.863346Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestUnsupportedConversionGlobalValidationOrdering/null",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.863346Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestUnsupportedConversionGlobalValidationOrdering/invalid",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.863346Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestUnsupportedConversionGlobalValidationOrdering/cross-store",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.863346Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestUnsupportedConversionGlobalValidationOrdering/immutable-before-invalid",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.8639054Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestUnsupportedConversionGlobalValidationOrdering/immutable-before-null",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.8639054Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestUnsupportedConversionGlobalValidationOrdering/closed-before-invalid",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.8639054Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestUnsupportedConversionGlobalValidationOrdering/closed-before-null",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.8639054Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestUnsupportedConversionGlobalValidationOrdering",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.8639054Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestQualificationWindowsGCAdmission",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T12:52:03.8665635Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 0.024
+    }
+  ],
+  "ceiling": "Windows storage/admission only; no Windows converted GC JIT claim. Darwin results qualify only the recorded source and leaves. TinyGo remains OPEN."
+}
