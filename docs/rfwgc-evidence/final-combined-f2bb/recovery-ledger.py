@@ -36,5 +36,15 @@ for n in required['prior_gate_names_only']+required['additional']:
  effective.append(dict(suite=n,receipt_suite=r.get('suite'),source=r.get('source'),verdict=r.get('verdict','NOT_RUN')))
 counts=dict(collections.Counter(r['verdict'] for r in effective))
 (E/'final-summary.json').write_text(json.dumps(dict(source=pin,baseline=base,verdict='PASS' if all(r['verdict']=='PASS' for r in effective) else 'INCOMPLETE',required=effective,counts=counts,attempts=attempts,remote_targets='Darwin/Windows verdict owned by parent; no local execution promotion'),indent=2)+'\n')
+# Retain surrounding plain-runner reasons, not only terminal SKIP lines.
+for lane in ['tinygo-34','qemu-collector','qemu-facade','qemu-guest','qemu-h6','qemu-rv64-controls','qemu-repairs']:
+ for log in sorted((E/lane).glob('*.log')):
+  ls=log.read_text(errors='replace').splitlines()
+  for i,l in enumerate(ls):
+   if '--- SKIP:' in l:
+    suite=lane+'/'+log.stem;detail='\n'.join(ls[max(0,i-4):i+1])
+    existing=next((x for x in skips if x['suite']==suite and x['kind']=='target' and x['detail']==l),None)
+    if existing:existing.update(kind='target-with-reason',detail=detail)
+    else:skips.append(dict(suite=suite,kind='plain-with-reason',detail=detail))
 (E/'exact-skip-census.json').write_text(json.dumps(skips,indent=2)+'\n')
 print('required',len(effective),counts,'captured skips',len(skips))

@@ -1,0 +1,22 @@
+{
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T07:26:39.249409414Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/tools/regression-corpus",
+      "Test": "FuzzNormalizeWABTJSONDoesNotPanic",
+      "Elapsed": 31.01
+    },
+    {
+      "Time": "2026-11-02T07:26:39.250009922Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/tools/regression-corpus",
+      "Elapsed": 31.008
+    }
+  ],
+  "raw_sha256": "33ae04b20dd32b75186b528e08e0846110e6de6d85ddb939de7ae9178f793537",
+  "driver_unchanged": true
+}

@@ -1,0 +1,5 @@
+{
+  "failure": "Supplemental read-only audit selected /home/dev/Projects/wago/tests/conformance/spec-v2, which is not initialized as a submodule repository there. git archive: fatal: not a tree object: 05ca4182176763112561ae20153975c12bd689e4",
+  "effect": "No archive or source was changed; no qualification command failed.",
+  "repair": "Use the same explicit submodule repositories as the immutable setup driver: this worktree for v1/v2, main checkout for v3."
+}

@@ -1,0 +1,330 @@
+{
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T07:28:41.499601921Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled/tiny",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.508987627Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.508995712Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T07:28:41.516674073Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/codec/tiny",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.526668681Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/codec/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.52667858Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/codec",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T07:28:41.52668386Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-11-02T07:28:41.527219816Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRuntimeGCHostFuncRefCallAndTailOwnership",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:28:41.532599563Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/compiled/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.537019819Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/compiled/tiny",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:28:41.537026251Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/compiled",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.542085305Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/codec/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.54645142Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/codec/tiny",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:28:41.546457842Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/codec",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.546464875Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T07:28:41.555423269Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled/tiny",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.565066387Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.56507847Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T07:28:41.573328464Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/codec/tiny",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.583571498Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/codec/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.583580555Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/codec",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T07:28:41.5835882Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-11-02T07:28:41.584315935Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRuntimeGCHostFuncRefCallAndTailOwnership",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:28:41.58998731Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/compiled/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.594376167Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/compiled/tiny",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:28:41.594382739Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/compiled",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.599740695Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/codec/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.604124272Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/codec/tiny",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:28:41.604129773Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/codec",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.6041445Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T07:28:41.613410241Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled/tiny",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.622954754Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.622963841Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/compiled",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T07:28:41.630692797Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/codec/tiny",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.640131462Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/codec/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.64014118Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots/codec",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T07:28:41.64014642Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCCrossInstanceCallsWithSharedPersistentRoots",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-11-02T07:28:41.640862815Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRuntimeGCHostFuncRefCallAndTailOwnership",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:28:41.646448618Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/compiled/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.650913167Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/compiled/tiny",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:28:41.650919589Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/compiled",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.656040931Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/codec/throughput",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.66042006Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/codec/tiny",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T07:28:41.660426923Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens/codec",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T07:28:41.660432494Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGenericGCResultsIssueBoundedHostTokens",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T07:28:41.661346689Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 0.172
+    }
+  ],
+  "raw_sha256": "02346bc072b06c7f42d4591527a257e2e5dceb8253417b754c5cd7fc19762a9a",
+  "driver_unchanged": true
+}
