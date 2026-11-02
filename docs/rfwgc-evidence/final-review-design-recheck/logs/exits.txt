@@ -1,0 +1,13 @@
+control-base-9713878 ordinary exit=0
+recheck-9180 ordinary exit=1
+recheck-5345 ordinary exit=1
+control-base-9713878 wagodebug exit=0
+recheck-9180 wagodebug exit=1
+control-base-9713878 wago_regalloccheck exit=1
+recheck-5345 wagodebug exit=1
+recheck-9180 wago_regalloccheck exit=1
+recheck-5345 wago_regalloccheck exit=1
+durable-dr-9180 ordinary exit=1
+durable-dr-9180 wagodebug exit=0
+durable-dr-9180 wago_regalloccheck exit=0
+race-9180 ordinary exit=1

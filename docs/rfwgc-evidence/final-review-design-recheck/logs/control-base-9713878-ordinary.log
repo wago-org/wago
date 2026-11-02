@@ -1,0 +1,27 @@
+=== RUN   TestDesignRecheckBaseStorageOnlyCallTopologyWriter
+=== RUN   TestDesignRecheckBaseStorageOnlyCallTopologyWriter/none
+    design_recheck_baseline_control_test.go:172: storage=none dynamic=false instantiateBlocked=false unrelatedLeaseErr=<nil>
+=== RUN   TestDesignRecheckBaseStorageOnlyCallTopologyWriter/global
+    design_recheck_baseline_control_test.go:172: storage=global dynamic=false instantiateBlocked=false unrelatedLeaseErr=<nil>
+=== RUN   TestDesignRecheckBaseStorageOnlyCallTopologyWriter/table
+    design_recheck_baseline_control_test.go:172: storage=table dynamic=false instantiateBlocked=false unrelatedLeaseErr=<nil>
+--- PASS: TestDesignRecheckBaseStorageOnlyCallTopologyWriter (0.01s)
+    --- PASS: TestDesignRecheckBaseStorageOnlyCallTopologyWriter/none (0.00s)
+    --- PASS: TestDesignRecheckBaseStorageOnlyCallTopologyWriter/global (0.00s)
+    --- PASS: TestDesignRecheckBaseStorageOnlyCallTopologyWriter/table (0.00s)
+=== RUN   TestDesignRecheckBaseNestedSameRuntimeClear
+=== RUN   TestDesignRecheckBaseNestedSameRuntimeClear/direct
+    design_recheck_baseline_control_test.go:231: direct clear: out=[7] err=<nil>
+=== RUN   TestDesignRecheckBaseNestedSameRuntimeClear/scalar-relay
+    design_recheck_baseline_control_test.go:231: scalar-relay clear: out=[7] err=<nil>
+=== RUN   TestDesignRecheckBaseNestedSameRuntimeClear/storage-relay
+    design_recheck_baseline_control_test.go:231: storage-relay clear: out=[7] err=<nil>
+--- PASS: TestDesignRecheckBaseNestedSameRuntimeClear (0.00s)
+    --- PASS: TestDesignRecheckBaseNestedSameRuntimeClear/direct (0.00s)
+    --- PASS: TestDesignRecheckBaseNestedSameRuntimeClear/scalar-relay (0.00s)
+    --- PASS: TestDesignRecheckBaseNestedSameRuntimeClear/storage-relay (0.00s)
+=== RUN   TestDesignRecheckBaseNestedPublish
+    design_recheck_baseline_control_test.go:272: relay publish: err=<nil> word=0xa893c911b1c1c769
+--- PASS: TestDesignRecheckBaseNestedPublish (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.011s

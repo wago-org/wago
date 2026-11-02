@@ -1,0 +1,22 @@
+diff -ru d246/src/wago/gc_conversion_store_host.go d246-cf/src/wago/gc_conversion_store_host.go
+--- d246/src/wago/gc_conversion_store_host.go	2026-11-02 09:32:51.000000000 +0000
++++ d246-cf/src/wago/gc_conversion_store_host.go	2026-11-02 10:36:51.088142676 +0000
+@@ -43,7 +43,7 @@
+ 		return publish()
+ 	}
+ 	domains := in.gcInvocationDomains()
+-	if !domains.ownedBy(in.currentInvocationID()) {
++	if !domains.ownedBy(recheckCFRootOwner(domains)) {
+ 		return fmt.Errorf("conversion store lacks pre-admitted invocation domains")
+ 	}
+ 	// Domain mutation locks are below invocation/native authority, as for the
+@@ -211,7 +211,7 @@
+ 		return nil
+ 	}
+ 	domains := in.gcInvocationDomains()
+-	if !domains.ownedBy(in.currentInvocationID()) {
++	if !domains.ownedBy(recheckCFRootOwner(domains)) {
+ 		return fmt.Errorf("bulk store lacks complete invocation authority")
+ 	}
+ 	for i := 0; i < domains.len(); i++ {
+Only in d246-cf/src/wago: zz_recheck_cf_diag.go
