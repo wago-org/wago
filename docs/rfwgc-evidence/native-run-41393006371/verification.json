@@ -1,0 +1,202 @@
+{
+  "run": 41393006371,
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "harness": "6bd79ae0403ed75e7f20489d93d731ce9a42baeb",
+  "verification": "PASS",
+  "full_job_log_count": 7,
+  "log_archive_entry_count": 89,
+  "jobs": {
+    "failure": 4,
+    "success": 3,
+    "skipped": 20
+  },
+  "cells": [
+    {
+      "artifact": "darwin-f2bb27287-ordinary-1",
+      "archive_sha256": "cea2b65f1f8de38e8a2c6132495daa597c6191ac3feea5863cd9c20353c45a67",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedConvertedPublication",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken"
+        ],
+        "fail": [
+          "TestRFWStage3MeasurementGuest"
+        ],
+        "skip": []
+      },
+      "failed_leaf_count": 6,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 3614
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16194,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {
+        "graph.wasm": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+        "scalar.wasm": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+        "noGC.wasm": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0"
+      },
+      "go_sha256": "132b69336a1f809932a8a20b0201dbbb980e86e3a323ae32e893639d83d71598"
+    },
+    {
+      "artifact": "darwin-f2bb27287-wago_regalloccheck-1",
+      "archive_sha256": "5cfd7a4a20541309b20e22fdbbf1895e0d7ea9c4c005ff5a501ce34703496a8d",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedConvertedPublication",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken"
+        ],
+        "fail": [
+          "TestRFWStage3MeasurementGuest"
+        ],
+        "skip": []
+      },
+      "failed_leaf_count": 6,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 3614
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16194,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {
+        "graph.wasm": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+        "scalar.wasm": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+        "noGC.wasm": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0"
+      },
+      "go_sha256": "132b69336a1f809932a8a20b0201dbbb980e86e3a323ae32e893639d83d71598"
+    },
+    {
+      "artifact": "darwin-f2bb27287-wagodebug-1",
+      "archive_sha256": "72cdb38866c2c368707751d263810d4773dc7eddfe38a2800656f838d53ea24c",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedConvertedPublication",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken"
+        ],
+        "fail": [
+          "TestRFWStage3MeasurementGuest"
+        ],
+        "skip": []
+      },
+      "failed_leaf_count": 6,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 3614
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16194,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {
+        "graph.wasm": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+        "scalar.wasm": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+        "noGC.wasm": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0"
+      },
+      "go_sha256": "132b69336a1f809932a8a20b0201dbbb980e86e3a323ae32e893639d83d71598"
+    },
+    {
+      "artifact": "windows-f2bb27287-ordinary-1",
+      "archive_sha256": "a04758508f3531a1465884d38f792be97e39cf3af4229705578bf3d495110c4f",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken",
+          "TestQualificationWindowsGCAdmission"
+        ],
+        "fail": [],
+        "skip": []
+      },
+      "failed_leaf_count": 0,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 0
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16194,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {},
+      "go_sha256": "d3ccdb604eafa6031133aefe1a3db24f0bb7362b857bc2125ac4e4c178b4b490"
+    },
+    {
+      "artifact": "windows-f2bb27287-wago_regalloccheck-1",
+      "archive_sha256": "c4393061644d0489add43053c0d78cf597b13e3e950baad40737eff9fdbcdb38",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken",
+          "TestQualificationWindowsGCAdmission"
+        ],
+        "fail": [],
+        "skip": []
+      },
+      "failed_leaf_count": 0,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 0
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16194,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {},
+      "go_sha256": "d3ccdb604eafa6031133aefe1a3db24f0bb7362b857bc2125ac4e4c178b4b490"
+    },
+    {
+      "artifact": "windows-f2bb27287-wagodebug-1",
+      "archive_sha256": "49399a59201364edfafad46cd64fbe8a7cff450d8130af63475689100ec78bbf",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken",
+          "TestQualificationWindowsGCAdmission"
+        ],
+        "fail": [],
+        "skip": []
+      },
+      "failed_leaf_count": 0,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 0
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16194,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {},
+      "go_sha256": "d3ccdb604eafa6031133aefe1a3db24f0bb7362b857bc2125ac4e4c178b4b490"
+    }
+  ],
+  "scope": "Offline evidence validation only. No runtime execution or timing performed."
+}
