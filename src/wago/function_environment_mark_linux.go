@@ -218,7 +218,7 @@ func (m *managedFunctionMark) step(budget uint32) (uint32, bool, error) {
 			if kind == gc.SlotTable {
 				owners = d.state.tableOwners
 			}
-			if !(kind == gc.SlotTable && d.state.conversionFloating[*index] != nil) && owners[*index] == nil && (kind != gc.SlotGlobal || d.state.hostEnvSlots[*index] == gc.Null() && compactExternHostRootIsStrong(d.state.collector, *index)) {
+			if !(kind == gc.SlotTable && d.state.conversionFloating[*index] != nil) && owners[*index] == nil && (kind != gc.SlotTable || d.state.conversionHostSlots[*index] == nil || conversionHostRootIsStrong(d.state.conversionHostSlots[*index])) && (kind != gc.SlotGlobal || d.state.hostEnvSlots[*index] == gc.Null() && compactExternHostRootIsStrong(d.state.collector, *index)) {
 				ref, err := d.state.collector.PersistentSlotRef(kind, *index)
 				if err != nil {
 					return used, false, err

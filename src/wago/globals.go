@@ -469,6 +469,7 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 	}
 	g := newGlobalInCell(ValExternRef, initial.token, V128{}, mutable, arena.Alloc(8), arena)
 	g.owner.store = rt.refStore
+	registerConversionHost(rt.refStore, g.cell, nil, g.owner)
 	return g, nil
 }
 
@@ -476,6 +477,8 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 // global importer closes. Instance-owned exported globals remain no-ops because
 // their producer instance owns the cell.
 func (g *Global) Close() error {
+	unlockConversion := lockConversionHostGlobalClose(g)
+	defer unlockConversion()
 	if handled, err := railshotTryCloseCompactExternHostGlobal(g); handled {
 		return err
 	}
@@ -501,6 +504,7 @@ func (g *Global) Close() error {
 	o.closed = true
 	arena, store := o.arena, o.store
 	o.arena = nil
+	conversionStorage := g.cell
 	g.cell = nil
 	var dependencies globalDescriptorDependencyBatch
 	for root, state := range o.retained {
@@ -514,6 +518,8 @@ func (g *Global) Close() error {
 	o.mu.Unlock()
 	// Root release may re-enter instance finalization, so it must not happen
 	// while globalOwner.mu is held.
+	releaseConversionHostStorage(store, conversionStorage)
+	unlockConversion()
 	var cleanup resourceCleanup
 	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
 	var err error
@@ -736,6 +742,9 @@ func (g *Global) getValueNoLease() (Value, error) {
 		return Value{typ: typ, bits: token}, nil
 	}
 	if typ == ValExternRef {
+		if public, ok := conversionHostPublicWord(store, bits); ok {
+			return Value{typ: ValExternRef, bits: public}, nil
+		}
 		public, handled, err := source.publicExternFromGlobal(bits)
 		if err != nil {
 			return Value{}, fmt.Errorf("global contains an invalid externref value: %w", err)
@@ -1843,6 +1852,9 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 		return nil
 	}
 	if typ == ValExternRef {
+		if _, ok := conversionHostPublicWord(store, bits); ok {
+			return nil
+		}
 		if railshotValidCompactExternHostGlobalWord(g, store, collector, bits) {
 			return nil
 		}
