@@ -153,7 +153,7 @@ type managedFunctionCollector struct {
 	liveOwners          map[*managedFunctionMember]bool
 	reclaimed           []*managedFunctionEnv
 	closed              bool
-	exception           *managedFunctionExceptionScratch
+	managedFunctionCollectorTarget
 }
 
 func (s *managedFunctionCollector) ObjectEdgeCount(ref gc.Ref) uint32 {

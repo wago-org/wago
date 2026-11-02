@@ -92,8 +92,6 @@ func managedFunctionDrainDeadDependencies(g *managedFunctionGraph) {
 	cleanup.finish()
 }
 
-type managedFunctionReceiptProof struct{}
-
 func (m *managedFunctionMark) lockDependencySnapshot() func() {
 	m.snapshotHostDependencies()
 	return func() {}

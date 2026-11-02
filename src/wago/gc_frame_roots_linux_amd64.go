@@ -321,10 +321,6 @@ func bodyUsesEH(body []byte, classifier *wasm.ModuleInstructionClassifier) bool 
 	return false
 }
 
-func gcFrameConservativeMasks(body []byte, localRoots int, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
-	return gcFrameAllLiveMasksArenaWithClassifier(body, localRoots, classifier)
-}
-
 //go:noinline
 func gcFrameHostCallABI(ft *wasm.CompType) bool {
 	if ft == nil {
