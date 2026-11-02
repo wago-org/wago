@@ -1,13 +1,7 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 145,
+  "remaining_count": 143,
   "remaining": [
-    {
-      "suite": "nested-wago_regalloccheck",
-      "receipt_suite": "nested-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
     {
       "suite": "race-wago_regalloccheck",
       "receipt_suite": "race-wago_regalloccheck",
@@ -21,16 +15,10 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "corpus-wago_regalloccheck",
-      "receipt_suite": "corpus-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
       "suite": "baseline-corpus-ordinary",
       "receipt_suite": "baseline-corpus-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "verdict": "RUNNING"
     },
     {
       "suite": "baseline-corpus-wagodebug",
@@ -558,7 +546,7 @@
       "suite": "tinygo-34/host-ordinary",
       "receipt_suite": "tinygo-34/host-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "INTERRUPTED"
     },
     {
       "suite": "tinygo-34/standalone-ordinary",
@@ -885,6 +873,7 @@
     "installer-wago_regalloccheck",
     "nested-ordinary",
     "nested-wagodebug",
+    "nested-wago_regalloccheck",
     "collector-ordinary",
     "collector-wagodebug",
     "collector-wago_regalloccheck",
@@ -897,6 +886,7 @@
     "guard-wagodebug",
     "corpus-ordinary",
     "corpus-wagodebug",
+    "corpus-wago_regalloccheck",
     "catalog-ordinary",
     "catalog-wagodebug",
     "catalog-wago_regalloccheck",

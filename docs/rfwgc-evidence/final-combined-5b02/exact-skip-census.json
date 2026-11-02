@@ -1782,6 +1782,174 @@
     }
   },
   {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:04:30.47531502Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/clang-c-kernels/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/clang-c-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-c-kernels/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:04:38.106982841Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/clang-cpp-kernels/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/clang-cpp-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-cpp-kernels/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:05:14.323941404Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/fasttree-phylogeny/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/fasttree-phylogeny/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/fasttree-phylogeny/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:05:14.342942727Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/gnu-seq-range/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/gnu-seq-range/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/gnu-seq-range/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:05:14.358560069Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/gnu-tr-uppercase/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/gnu-tr-uppercase/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/gnu-tr-uppercase/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:05:18.693448567Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/lcs-substrings/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/lcs-substrings/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lcs-substrings/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:05:19.056958573Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/lua-cli-buckets/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/lua-cli-buckets/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lua-cli-buckets/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:05:19.776580982Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/micropython-squares/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/micropython-squares/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/micropython-squares/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:05:19.799404598Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/needleman-wunsch-dna/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/needleman-wunsch-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/needleman-wunsch-dna/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:05:33.300230079Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/sed-records/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/sed-records/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/sed-records/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:05:33.332092984Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "corpus-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:05:33.416531653Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/smith-waterman-dna/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/smith-waterman-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/smith-waterman-dna/wazero (0.00s)\n"
+    }
+  },
+  {
     "suite": "corpus-wagodebug",
     "kind": "go-json",
     "detail": {
@@ -37660,6 +37828,185 @@
     "detail": {
       "event": {
         "Time": "2026-11-02T13:48:30.198715927Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestSqliCalibrate",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSqliCalibrate\n    sqli_rule_test.go:74: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory\n--- SKIP: TestSqliCalibrate (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:07:54.99771857Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/chart",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/bench/chart\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:07:55.116691667Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/cmd/explain",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/bench/cmd/explain\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:07:55.248794649Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/cmd/wagoprof",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/bench/cmd/wagoprof\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:07:55.609719469Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestVerifyApplicationCorpusShardReports",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestVerifyApplicationCorpusShardReports\n    application_corpus_shards_test.go:122: application corpus shard report directory is not configured\n--- SKIP: TestVerifyApplicationCorpusShardReports (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:08:11.677968247Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/lua-cli-buckets/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/lua-cli-buckets/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lua-cli-buckets/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:08:12.33421656Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/micropython-squares/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/micropython-squares/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/micropython-squares/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:08:15.554936449Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestVerifyCorpusCorrectnessShardReports",
+        "Elapsed": 0.2
+      },
+      "detail": "=== RUN   TestVerifyCorpusCorrectnessShardReports\n    corpus_correctness_shards_test.go:36: corpus correctness shard report directory is not configured\n--- SKIP: TestVerifyCorpusCorrectnessShardReports (0.20s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:08:26.125455896Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestCorpusChild",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestCorpusChild\n    corpus_runner_test.go:123: parent-only helper\n--- SKIP: TestCorpusChild (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:08:26.373684859Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestJsonAsBench",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestJsonAsBench\n    jsonas_test.go:29: json-as module not present (set WAGO_JSON_MODULE): open corpus/json-as.wasm: no such file or directory\n--- SKIP: TestJsonAsBench (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:08:28.320607606Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestSharingGCObservation",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSharingGCObservation\n    sharing_gc_observation_linux_test.go:16: diagnostic\n--- SKIP: TestSharingGCObservation (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:08:28.320620981Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestSharingMemory",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSharingMemory\n    sharing_memory_linux_test.go:71: diagnostic\n--- SKIP: TestSharingMemory (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:08:28.320632453Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestSharingMappedMemory",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSharingMappedMemory\n    sharing_memory_linux_test.go:123: diagnostic\n--- SKIP: TestSharingMappedMemory (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:08:28.321518177Z",
         "Action": "skip",
         "Package": "github.com/wago-org/wago/bench/suite",
         "Test": "TestSqliCalibrate",
