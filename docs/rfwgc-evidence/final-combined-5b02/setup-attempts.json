@@ -1,0 +1,14 @@
+[
+  {
+    "attempt": 1,
+    "phase": "copy-driver-files",
+    "exit": 1,
+    "error": "IsADirectoryError: tooling-script-ci-download-go-modules.sh receipt directory matched suffix filter",
+    "correction": "Require is_file before copying drivers; no test executed; immutable source setup itself completed successfully; existing export retained."
+  },
+  {
+    "attempt": 2,
+    "phase": "copy-driver-files",
+    "exit": 0
+  }
+]
