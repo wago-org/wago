@@ -1,5 +1,0 @@
---- FAIL: TestPinnedQualificationIsolatedAndAcyclic (0.00s)
-    workflows_test.go:635: unknown dependency "darwin-tinygo-native"
-FAIL
-FAIL	github.com/wago-org/wago/tests/integration/cipolicy	0.004s
-FAIL

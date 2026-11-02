@@ -1,1 +1,0 @@
-go test -tags wagodebug ./src/wago -run \^TestGCExternConversionRejectedReplacementPreservesRoot\$ -count=1 -timeout=60s 

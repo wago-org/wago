@@ -1,1 +1,0 @@
-timeout --kill-after=5s 180s sh scripts/bootstrap-wabt.sh --verify

@@ -1,3 +1,0 @@
-driver exit=0
-All fifteen requested commands completed exit=0 on immutable1059c88e8e97840c121b3e4bc4e9f44b4b0c9a0b.
-The script copy was unchanged for the entire replay.

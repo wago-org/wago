@@ -1,8 +1,0 @@
-{"Time":"2026-11-02T15:11:06.071604Z","Action":"start","Package":"github.com/wago-org/wago/src/wago"}
-{"Time":"2026-11-02T15:11:06.082881Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryGuardCancellationAndGC"}
-{"Time":"2026-11-02T15:11:06.084478Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryGuardCancellationAndGC","Output":"=== RUN   TestSharedEntryGuardCancellationAndGC\n","OutputType":"frame"}
-{"Time":"2026-11-02T15:11:06.089607Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryGuardCancellationAndGC","Output":"--- PASS: TestSharedEntryGuardCancellationAndGC (0.01s)\n","OutputType":"frame"}
-{"Time":"2026-11-02T15:11:06.089675Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryGuardCancellationAndGC","Elapsed":0.01}
-{"Time":"2026-11-02T15:11:06.090457Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Output":"PASS\n","OutputType":"frame"}
-{"Time":"2026-11-02T15:11:06.090543Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Output":"ok  \tgithub.com/wago-org/wago/src/wago\t0.019s\n"}
-{"Time":"2026-11-02T15:11:06.090554Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Elapsed":0.019}

@@ -16,35 +16,14 @@ on:
     types: [checks_requested]
     branches: [main]
   workflow_dispatch:
-    inputs:
-      darwin_tinygo_supplement:
-        description: Run only the reviewed exact-pin Darwin TinyGo supplement
-        type: boolean
-        default: false
-      darwin_qualification:
-        description: 'Run reviewed Darwin correctness and Windows contracts (not full CI)'
-        type: boolean
-        default: false
-      native_arm64_rr3:
-        description: 'Run reviewed exact-pin native Linux ARM64 RR3 qualification only'
-        type: boolean
-        default: false
-      harness_sha:
-        description: 'Full reviewed workflow/harness SHA, required for manual qualification'
-        type: string
-        default: ''
-      source_sha:
-        description: 'Exact reviewed source SHA; used only for manual qualification'
-        type: string
-        default: ''
 
 permissions:
   contents: read
 
 # Cancel superseded runs on the same ref (e.g. new pushes to a PR).
 concurrency:
-  group: ci-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && '-darwin-qualification' || '' }}${{ github.event_name == 'workflow_dispatch' && inputs.native_arm64_rr3 && '-native-arm64-rr3' || '' }}${{ github.event_name == 'workflow_dispatch' && inputs.darwin_tinygo_supplement && format('-darwin-tinygo-{0}', github.run_id) || '' }}
-  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.darwin_tinygo_supplement) }}
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   GO_VERSION: "1.27.1"
@@ -57,7 +36,7 @@ jobs:
   # a failed preflight, so it cannot turn an empty selection into a green check.
   changes:
     name: Plan CI profile
-    if: (github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement)) && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     outputs:
       profile: ${{ steps.plan.outputs.profile }}
@@ -1351,244 +1330,15 @@ jobs:
             ci-card/size-symbols.tsv
           if-no-files-found: error
 
-  native-arm64-rr3:
-    name: Pinned native Linux ARM64 RR3 / ${{ matrix.mode }}
-    if: github.event_name == 'workflow_dispatch' && inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [ordinary, wagodebug, wago_regalloccheck]
-    env:
-      GOTOOLCHAIN: local
-      PYTHONDONTWRITEBYTECODE: '1'
-      QUALIFICATION_SOURCE: ${{ inputs.source_sha }}
-      QUALIFICATION_DRIVER: ${{ inputs.harness_sha }}
-      WORKFLOW_SHA: ${{ github.sha }}
-      OTHER_QUALIFICATION: ${{ inputs.darwin_qualification }}
-    steps:
-      - name: Require reviewed exact source and harness before checkout
-        timeout-minutes: 1
-        shell: bash
-        run: |
-          mkdir -p setup-receipts
-          set -o pipefail
-          {
-            echo "source=$QUALIFICATION_SOURCE harness=$QUALIFICATION_DRIVER workflow=$WORKFLOW_SHA"
-            test "$OTHER_QUALIFICATION" = false
-            test "$QUALIFICATION_SOURCE" = 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
-            [[ "$QUALIFICATION_DRIVER" =~ ^[0-9a-f]{40}$ ]]
-            test "$QUALIFICATION_DRIVER" = "$WORKFLOW_SHA"
-          } 2>&1 | tee setup-receipts/identity.log
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        timeout-minutes: 2
-        with:
-          ref: ${{ inputs.harness_sha }}
-          path: harness
-          persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        timeout-minutes: 2
-        with:
-          ref: '08f511fac41a77f4c0f9046f88ebc78ad05a5da6'
-          path: source
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        timeout-minutes: 3
-        with:
-          go-version: '1.27.1'
-          cache: false
-      - name: Execute unchanged native RR3 qualification
-        timeout-minutes: 35
-        run: >-
-          python3 harness/docs/rfwgc-evidence/native-arm64-rr3/run.py
-          --source source --out receipts-${{ matrix.mode }} --mode ${{ matrix.mode }}
-      - name: Retain failed and partial native evidence
-        timeout-minutes: 2
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: native-arm64-rr3-08f511fac-${{ matrix.mode }}-${{ github.run_attempt }}
-          path: |
-            setup-receipts
-            receipts-${{ matrix.mode }}
-          if-no-files-found: error
-          retention-days: 14
-
-  native-arm64-rr3-summary:
-    name: Native Linux ARM64 RR3 qualification summary
-    if: always() && github.event_name == 'workflow_dispatch' && inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement
-    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification, windows-qualification, darwin-qualification-summary, native-arm64-rr3]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 3
-    steps:
-      - name: Require all native modes and isolation from normal CI
-        env:
-          RESULTS: ${{ toJSON(needs) }}
-        run: |
-          python3 -c 'import json, os; n=json.loads(os.environ["RESULTS"]); assert n["native-arm64-rr3"]["result"] == "success", n; assert all(v["result"] == "skipped" for k,v in n.items() if k != "native-arm64-rr3"), n'
-          echo 'Exact-pin native ARM64 focused qualification passed; full CI was not run. Parent review remains required.' >> "$GITHUB_STEP_SUMMARY"
-
-  darwin-qualification:
-    name: Pinned Darwin correctness / ${{ matrix.mode }}
-    if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement
-    runs-on: macos-15
-    timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [ordinary, wagodebug, wago_regalloccheck]
-    env:
-      GOTOOLCHAIN: local
-      GOENV: 'off'
-      PYTHONDONTWRITEBYTECODE: '1'
-      QUALIFICATION_SOURCE: ${{ inputs.source_sha }}
-      QUALIFICATION_DRIVER: ${{ github.sha }}
-      QUALIFICATION_HARNESS: ${{ inputs.harness_sha }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ github.sha }}
-          path: harness
-          persist-credentials: false
-      - name: Validate exact input before source checkout
-        run: |
-          mkdir -p setup-receipts
-          python3 harness/docs/rfwgc-evidence/final-darwin/identity.py > setup-receipts/identity.json
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ inputs.source_sha }}
-          path: source
-          submodules: recursive
-          persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: a3c08365f531eb3c9003e3acf3e0a822c12c31f4
-          path: baseline
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version: '1.27.1'
-          cache: false
-      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3
-        with:
-          just-version: '1.58.0'
-      - name: Provision native tools and official interpreter
-        id: darwin-setup
-        shell: bash
-        run: |
-          mkdir -p setup-receipts
-          set -o pipefail
-          bash harness/docs/rfwgc-evidence/final-darwin/setup.sh source setup-receipts 2>&1 | tee setup-receipts/setup.log
-      - name: Execute exact new contracts and generated graphs
-        run: >-
-          python3 harness/docs/rfwgc-evidence/final-darwin/contracts.py
-          source contracts-${{ matrix.mode }} --target darwin --mode ${{ matrix.mode }}
-      - name: Execute bounded identical baseline graphs
-        if: ${{ !cancelled() && steps.darwin-setup.outcome == 'success' }}
-        timeout-minutes: 20
-        run: >-
-          python3 harness/docs/rfwgc-evidence/final-darwin/contracts.py
-          baseline baseline-${{ matrix.mode }} --target darwin --mode ${{ matrix.mode }} --baseline
-      - name: Execute correctness and retain census
-        if: ${{ !cancelled() && steps.darwin-setup.outcome == 'success' }}
-        run: >-
-          python3 harness/docs/rfwgc-evidence/final-darwin/run.py
-          source receipts-${{ matrix.mode }} --mode '${{ matrix.mode }}'
-      - name: Retain setup, failures and partial results
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: darwin-ownership-${{ matrix.mode }}-${{ github.run_attempt }}
-          path: |
-            setup-receipts
-            receipts-${{ matrix.mode }}
-            contracts-${{ matrix.mode }}
-            baseline-${{ matrix.mode }}
-          if-no-files-found: error
-          retention-days: 7
-
-  windows-qualification:
-    name: Pinned Windows storage contracts / ${{ matrix.mode }}
-    if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement
-    runs-on: windows-2025
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [ordinary, wagodebug, wago_regalloccheck]
-    defaults:
-      run:
-        shell: bash
-    env:
-      GOTOOLCHAIN: local
-      GOENV: 'off'
-      PYTHONDONTWRITEBYTECODE: '1'
-      QUALIFICATION_SOURCE: ${{ inputs.source_sha }}
-      QUALIFICATION_DRIVER: ${{ github.sha }}
-      QUALIFICATION_HARNESS: ${{ inputs.harness_sha }}
-    steps:
-      - name: Preserve Git blob bytes for hash validation
-        run: git config --global core.autocrlf false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ github.sha }}
-          path: harness
-          persist-credentials: false
-      - name: Validate exact input before source checkout
-        run: python harness/docs/rfwgc-evidence/final-darwin/identity.py
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ inputs.source_sha }}
-          path: source
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version: '1.27.1'
-          cache: false
-      - name: Execute admitted native storage contracts
-        run: |
-          export GOROOT="$(go env GOROOT)"
-          python harness/docs/rfwgc-evidence/final-darwin/contracts.py \
-            source contracts-${{ matrix.mode }} --target windows --mode ${{ matrix.mode }}
-      - name: Retain failures and exact census
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: windows-ownership-${{ matrix.mode }}-${{ github.run_attempt }}
-          path: contracts-${{ matrix.mode }}
-          if-no-files-found: error
-          retention-days: 7
-
   # This is the sole required status check. It validates the selected plan, so
   # skipped jobs are accepted only when the profile did not expect them.
-  darwin-qualification-summary:
-    name: Non-Linux qualification summary
-    timeout-minutes: 3
-    if: always() && github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement
-    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification, windows-qualification]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify special Darwin matrix (does not qualify full CI)
-        if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement
-        env:
-          WINDOWS_RESULT: ${{ needs.windows-qualification.result }}
-          DARWIN_RESULT: ${{ needs.darwin-qualification.result }}
-          NORMAL_RESULTS: ${{ toJSON(needs) }}
-        run: |
-          test "$DARWIN_RESULT" = success
-          test "$WINDOWS_RESULT" = success
-          python3 -c 'import json, os; n=json.loads(os.environ["NORMAL_RESULTS"]); assert all(v["result"] == "skipped" for k,v in n.items() if k not in ("darwin-qualification", "windows-qualification")), n'
-          echo 'Pinned non-Linux command execution succeeded; gaps and skips still require review.' >> "$GITHUB_STEP_SUMMARY"
-
   ci-ok:
-    name: ${{ github.event_name == 'workflow_dispatch' && (inputs.darwin_qualification || inputs.native_arm64_rr3 || inputs.darwin_tinygo_supplement) && 'Full CI not run (qualification dispatch)' || 'CI' }}
-    if: always() && (github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement))
-    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification, windows-qualification, darwin-qualification-summary, native-arm64-rr3, native-arm64-rr3-summary, darwin-tinygo-native, darwin-tinygo-summary]
+    name: CI
+    if: always()
+    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size]
     runs-on: ubuntu-latest
     steps:
       - name: Identify qualification profile
-        if: github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement)
         env:
           CI_PROFILE: ${{ needs.changes.outputs.profile || needs.smoke.outputs.profile }}
           CI_EXPECTED_JOBS: ${{ needs.changes.outputs.expected_jobs || needs.smoke.outputs.expected_jobs }}
@@ -1596,11 +1346,9 @@ jobs:
           echo "::notice title=CI profile::$CI_PROFILE"
           echo "Expected jobs: $CI_EXPECTED_JOBS"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        if: github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement)
         with:
           ref: ${{ github.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        if: github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement)
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -1612,7 +1360,6 @@ jobs:
             bench/go.sum
             cli/wago-installer/go.mod
       - name: Verify every expected CI result
-        if: github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement)
         env:
           CI_PROFILE: ${{ needs.changes.outputs.profile || needs.smoke.outputs.profile }}
           CI_CODE: ${{ needs.changes.outputs.code || needs.smoke.outputs.code }}
@@ -1639,99 +1386,3 @@ jobs:
           path: stable-qualification/ci-qualification.json
           if-no-files-found: error
           retention-days: 90
-
-  darwin-tinygo-native:
-    name: TinyGo Darwin ARM64 (${{ matrix.mode }})
-    if: github.event_name == 'workflow_dispatch' && inputs.darwin_tinygo_supplement
-    runs-on: macos-15
-    timeout-minutes: 110
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        mode: [ordinary, wagodebug, wago_regalloccheck]
-    env:
-      GOTOOLCHAIN: local
-      GOENV: 'off'
-      GOWORK: 'off'
-      EXPECTED_HARNESS: ${{ inputs.harness_sha }}
-      EXPECTED_SOURCE: ${{ inputs.source_sha }}
-      OTHER_DARWIN: ${{ inputs.darwin_qualification }}
-      OTHER_ARM: ${{ inputs.native_arm64_rr3 }}
-      MODE: ${{ matrix.mode }}
-    steps:
-      - name: Identity and native platform gate
-        timeout-minutes: 1
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$OTHER_DARWIN" == false && "$OTHER_ARM" == false ]]
-          mkdir "$RUNNER_TEMP/tinygo-setup-$MODE"
-          printf 'source=%s\nharness=%s\nworkflow=%s\n' "$EXPECTED_SOURCE" "$EXPECTED_HARNESS" "$GITHUB_SHA" > "$RUNNER_TEMP/tinygo-setup-$MODE/identity.log"
-          uname -a >> "$RUNNER_TEMP/tinygo-setup-$MODE/identity.log"
-          printf 'OUTPUT=%s/tinygo-supplement-%s\nARCHIVE=%s/tinygo0.42.0.darwin-arm64.tar.gz\n' "$RUNNER_TEMP" "$MODE" "$RUNNER_TEMP" >> "$GITHUB_ENV"
-          [[ "$EXPECTED_SOURCE" == 7e41fafbbcd737ed1edce11b94b43b4eda134dcf ]]
-          [[ "$EXPECTED_HARNESS" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$EXPECTED_HARNESS" == "$GITHUB_SHA" ]]
-          [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]]
-          [[ "$(sysctl -in sysctl.proc_translated 2>/dev/null || true)" != 1 ]]
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ inputs.harness_sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        timeout-minutes: 10
-        with:
-          go-version: '1.27.1'
-          cache: false
-      - name: Verified compiler release
-        timeout-minutes: 6
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --location --max-time 300 --output "$ARCHIVE" https://github.com/tinygo-org/tinygo/releases/download/v0.42.0/tinygo0.42.0.darwin-arm64.tar.gz
-          printf '%s  %s\n' 493da3585e66c5da677a4be39402faf2041b4e45a61eb456e4547eca753a544e "$ARCHIVE" | shasum -a 256 -c -
-      - name: Native compiled-artifact qualification
-        timeout-minutes: 95
-        shell: bash
-        env:
-          MODE: ${{ matrix.mode }}
-        run: |
-          set -euo pipefail
-          python3 docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py native \
-            --repo "$GITHUB_WORKSPACE" --archive "$ARCHIVE" --output "$OUTPUT" \
-            --mode "$MODE" --harness "$EXPECTED_HARNESS" --go "$(command -v go)"
-      - name: Retain downloaded archive identity even on failure
-        if: always()
-        timeout-minutes: 1
-        shell: bash
-        run: |
-          if [[ -f "$RUNNER_TEMP/tinygo0.42.0.darwin-arm64.tar.gz" ]]; then
-            shasum -a 256 "$RUNNER_TEMP/tinygo0.42.0.darwin-arm64.tar.gz" > "$RUNNER_TEMP/tinygo-setup-$MODE/archive.sha256"
-          fi
-      - name: Preserve complete and failed attempts
-        if: always()
-        timeout-minutes: 5
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: darwin-tinygo-${{ matrix.mode }}-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: error
-          path: |
-            ${{ runner.temp }}/tinygo-setup-${{ matrix.mode }}/*
-            ${{ env.OUTPUT }}/*.json
-            ${{ env.OUTPUT }}/*.log
-            ${{ env.OUTPUT }}/*.test
-  darwin-tinygo-summary:
-    name: Darwin TinyGo supplement complete
-    if: always() && github.event_name == 'workflow_dispatch' && inputs.darwin_tinygo_supplement
-    needs: [changes, docs, lint, regression-integrity, regression-rebuild, smoke, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, native-arm64-rr3, native-arm64-rr3-summary, darwin-qualification, windows-qualification, darwin-qualification-summary, darwin-tinygo-native]
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    env:
-      RESULTS: ${{ toJSON(needs) }}
-    steps:
-      - shell: bash
-        run: |
-          python3 -c 'import json,os; n=json.loads(os.environ["RESULTS"]); assert n["darwin-tinygo-native"]["result"] == "success", n; assert all(v["result"] == "skipped" for k,v in n.items() if k != "darwin-tinygo-native"), n'

@@ -1,4 +1,0 @@
-56e0719bafdb9baba3f1fa762919f2f102838029:src/wago/design_repair_unsupported_test.go:70:	if err = in.publishConversionRange(nil, nil, 0, 2, []uint64{ref.token, ^uint64(0)}, func() { published = true }); err == nil || published {
-56e0719bafdb9baba3f1fa762919f2f102838029:src/wago/design_repair_unsupported_test.go:73:	if err = in.publishConversionRange(nil, nil, 0, 2, []uint64{ref.token, 0}, func() { published = true }); err != nil || !published {
-56e0719bafdb9baba3f1fa762919f2f102838029:src/wago/gc_conversion_store.go:252:func (in *Instance) publishConversionStore(owner *Instance, storage []byte, index, word uint64, publish func() error) error {
-56e0719bafdb9baba3f1fa762919f2f102838029:src/wago/gc_conversion_store.go:255:func (in *Instance) publishConversionRange(owner *Instance, storage []byte, start, limit uint64, words []uint64, publish func()) error {

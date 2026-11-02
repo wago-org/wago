@@ -1,6 +1,0 @@
-{
-  "reference": "3b04e6837",
-  "source": "6e706159a0eb71b939bc0e9c9e0e32d5e03d5f4f",
-  "function": "func managedFunctionAfterLifetimeBoundary(in *Instance) {\n\tif in == nil {\n\t\treturn\n\t}\n\t// Boundary publication is lazy and protected by lifeMu. Drop it before\n\t// entering graph/topology collection to preserve the lock order.\n\tin.lifeMu.Lock()\n\tstore := in.refStore\n\tin.lifeMu.Unlock()\n\tif value, ok := managedFunctionGraphs.Load(store); ok {\n\t\tgraph := value.(*managedFunctionGraph)\n\t\tgraph.pendingCollection.Store(true)\n\t\tgraph.drainAfterGate(0)\n\t}\n}",
-  "byte_identical": true
-}

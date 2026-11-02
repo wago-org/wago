@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/ecppll-clock
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/ecppll-clock
---- PASS: TestFinalPreparationCompile (0.04s)
-    --- PASS: TestFinalPreparationCompile/ecppll-clock (0.04s)
-PASS

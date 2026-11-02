@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/clang-c-kernels
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/clang-c-kernels
---- PASS: TestFinalPreparationCompile (2.28s)
-    --- PASS: TestFinalPreparationCompile/clang-c-kernels (2.26s)
-PASS

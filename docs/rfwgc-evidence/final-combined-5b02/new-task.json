@@ -1,8 +1,0 @@
-{
-  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "scratch": "/home/dev/.cache/_wago_final_5b02_n61wfxab",
-  "required_count": 220,
-  "old_receipt_reuse": false,
-  "cleanup_review": "b8513359a",
-  "native_platforms": "5847 native ARM64 and 7e41 native Darwin are separate; no current-pin execution credit."
-}

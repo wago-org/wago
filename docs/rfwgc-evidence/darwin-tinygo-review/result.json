@@ -1,7 +1,0 @@
-{
-  "activation": "NO",
-  "local_checks": "PASS",
-  "native_darwin_tinygo": "NOT_RUN",
-  "no_cross_rebuild": true,
-  "supplement_files_unchanged": true
-}

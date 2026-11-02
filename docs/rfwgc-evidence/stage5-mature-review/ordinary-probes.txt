@@ -1,6 +1,0 @@
-=== RUN   TestMatureReviewStage5ExtentTransactions
---- PASS: TestMatureReviewStage5ExtentTransactions (0.01s)
-=== RUN   TestMatureReviewStage5MixedNativeCheckedCycles
---- PASS: TestMatureReviewStage5MixedNativeCheckedCycles (0.00s)
-PASS
-ok  	github.com/wago-org/wago/src/core/runtime/gc/native	0.012s

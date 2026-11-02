@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/lua
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/lua
---- PASS: TestFinalPreparationCompile (0.04s)
-    --- PASS: TestFinalPreparationCompile/lua (0.03s)
-PASS

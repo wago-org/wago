@@ -1,5 +1,0 @@
-=== RUN   TestFinalMeasurementIndependentDomains
-=== RUN   TestFinalMeasurementIndependentDomains/table/shared=true/participants=1
---- PASS: TestFinalMeasurementIndependentDomains (0.00s)
-    --- PASS: TestFinalMeasurementIndependentDomains/table/shared=true/participants=1 (0.00s)
-PASS

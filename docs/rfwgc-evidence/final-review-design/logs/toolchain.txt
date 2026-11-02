@@ -1,5 +1,0 @@
-go version go1.27.3 linux/amd64
-e409a71d1dd97b4839a793c93df55b54bdaf77ccd046c85e1b1bbb3d83145bf1  /tmp/fr-probe/design_review_cross_runtime_probe_test.go
-c46767e78a53a5c8ba5cacfe68c85b0537e0849e8f6e835b9259352cb3b8653e  /tmp/fr-probe/design_review_probe_test.go
-
-Note: the repository pre-commit hook gofmt-reformatted probes/design_review_probe_test.go (indentation and import ordering only; no semantic change). Hashes above are of the executed pre-gofmt copies; SHA256SUMS covers the committed files.

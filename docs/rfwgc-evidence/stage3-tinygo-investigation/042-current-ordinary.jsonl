@@ -1,8 +1,0 @@
-{"Time":"2026-11-01T21:51:55.778505702Z","Action":"start","Package":"github.com/wago-org/wago/cli/manager/internal/standalone"}
-{"Time":"2026-11-01T21:51:55.781254755Z","Action":"run","Package":"github.com/wago-org/wago/cli/manager/internal/standalone","Test":"TestTinyGoSupportsCooperativeInterruption"}
-{"Time":"2026-11-01T21:51:55.781329295Z","Action":"output","Package":"github.com/wago-org/wago/cli/manager/internal/standalone","Test":"TestTinyGoSupportsCooperativeInterruption","Output":"=== RUN   TestTinyGoSupportsCooperativeInterruption\n","OutputType":"frame"}
-{"Time":"2026-11-01T21:52:39.688301302Z","Action":"output","Package":"github.com/wago-org/wago/cli/manager/internal/standalone","Test":"TestTinyGoSupportsCooperativeInterruption","Output":"--- PASS: TestTinyGoSupportsCooperativeInterruption (43.91s)\n","OutputType":"frame"}
-{"Time":"2026-11-01T21:52:39.688354332Z","Action":"pass","Package":"github.com/wago-org/wago/cli/manager/internal/standalone","Test":"TestTinyGoSupportsCooperativeInterruption","Elapsed":43.91}
-{"Time":"2026-11-01T21:52:39.688383396Z","Action":"output","Package":"github.com/wago-org/wago/cli/manager/internal/standalone","Output":"PASS\n","OutputType":"frame"}
-{"Time":"2026-11-01T21:52:39.688927217Z","Action":"output","Package":"github.com/wago-org/wago/cli/manager/internal/standalone","Output":"ok  \tgithub.com/wago-org/wago/cli/manager/internal/standalone\t43.910s\n"}
-{"Time":"2026-11-01T21:52:39.688951192Z","Action":"pass","Package":"github.com/wago-org/wago/cli/manager/internal/standalone","Elapsed":43.91}

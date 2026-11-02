@@ -1,9 +1,0 @@
-{
-  "checks": {
-    "json": 196,
-    "python": 20,
-    "shell": 1
-  },
-  "status": "PASS",
-  "scope": "Evidence syntax/JSON only; does not qualify failing production."
-}

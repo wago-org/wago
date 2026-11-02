@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/grain-stdlib-string
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/grain-stdlib-string
---- PASS: TestFinalPreparationRuntime (0.07s)
-    --- PASS: TestFinalPreparationRuntime/grain-stdlib-string (0.06s)
-PASS

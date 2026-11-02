@@ -1,3 +1,0 @@
-ok  	github.com/wago-org/wago/internal/regalloccheck	0.028s
-ok  	github.com/wago-org/wago/src/core/encoder/amd64	0.245s
-ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.060s

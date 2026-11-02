@@ -1,9 +1,0 @@
-{
-  "failed_run": 41393006371,
-  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
-  "removed_option": "gc-lifetime-analyze (AMD64 only)",
-  "before_fixture_sha256": "4a870bba864d3675eec43fd05aef7425d174a2b78df9303e96d3b3a3cf485315",
-  "after_fixture_sha256": "be828e247b0e6286d18f9b159414c7ccd2baf7bfa5af6ddeebcd1d85b661b101",
-  "preserved": "CoreV3, inline=false, Wasm bytes, all six leaves and every assertion",
-  "native_execution": "PENDING"
-}

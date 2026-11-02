@@ -1,2 +1,0 @@
-# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
-src/wago/final_review_domain_test.go:16:85: cannot use uint64(8192 * (i + 1)) (value of type uint64) as uint32 value in struct literal

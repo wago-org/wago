@@ -1,2 +1,0 @@
-$ go test ./src/wago -run ^TestGC -count=1
-ok  	github.com/wago-org/wago/src/wago	3.257s

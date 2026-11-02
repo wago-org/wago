@@ -1,7 +1,0 @@
-{
-  "launcher": "Shell here-document executed through exec_command",
-  "retained_launcher_file": null,
-  "contemporaneous_launcher_file_hash": null,
-  "recipe": "linux-resume-results.json at 375e47bb81ee2969615cf48ec31b94eb1edf8daf records exact build and run argv; linux-tool.json records compiler and environment; source manifests and logs separately hashed",
-  "limitation": "No standalone Linux launcher source artifact was retained. Do not claim a launcher-file identity. No reconstruction is credited as contemporaneous evidence."
-}

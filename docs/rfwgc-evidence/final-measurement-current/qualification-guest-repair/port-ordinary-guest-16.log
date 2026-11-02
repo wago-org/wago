@@ -1,6 +1,0 @@
-=== RUN   TestR9H2HostImportTable
-=== RUN   TestR9H2HostImportTable/0
-    gc_conversion_host_import_host_test.go:132: actual collector region shift=0
---- PASS: TestR9H2HostImportTable (0.00s)
-    --- PASS: TestR9H2HostImportTable/0 (0.00s)
-PASS

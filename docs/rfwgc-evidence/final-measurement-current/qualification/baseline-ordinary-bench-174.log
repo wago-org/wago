@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/embench-matmult-int
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/embench-matmult-int
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/embench-matmult-int (0.00s)
-PASS

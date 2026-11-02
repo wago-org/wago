@@ -1,6 +1,0 @@
-{
-  "rename": "fixtures -> _fixtures",
-  "bytes_unchanged": true,
-  "reason": "exclude archived test-only adapters from Go root package discovery on every target",
-  "build_receipts": "six successful pre-rename cross-builds retained; execution NOT_RUN"
-}

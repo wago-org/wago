@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/memory_tree
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/memory_tree
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/memory_tree (0.00s)
-PASS

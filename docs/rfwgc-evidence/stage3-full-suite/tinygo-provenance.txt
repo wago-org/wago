@@ -1,2 +1,0 @@
-tinygo version 0.43.0 linux/amd64 (using go version go1.27.1 and LLVM version 22.1.4)
-678938bbd1815180a288d23764deeb04bf846b710dc7ed34ebbbf1e19e5a436a  /home/dev/.local/share/mise/installs/tinygo/0.43.0/tinygo/bin/tinygo

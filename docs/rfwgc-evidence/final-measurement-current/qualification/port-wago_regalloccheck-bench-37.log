@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/coreutils-base64
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/coreutils-base64
---- PASS: TestFinalPreparationRuntime (1.19s)
-    --- PASS: TestFinalPreparationRuntime/coreutils-base64 (1.18s)
-PASS

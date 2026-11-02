@@ -1,6 +1,0 @@
-{
-  "removed": "owned .exports source archives and Go build cache after all six test processes exited",
-  "preserved": "measurement preparation and fixtures; all files outside stage3-corpus-execution; shared log, Stage 2 scripts and conformance submodules",
-  "benchmarks": "none",
-  "source_modifications": "none"
-}

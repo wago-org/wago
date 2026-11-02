@@ -1,7 +1,0 @@
-goos: linux
-goarch: amd64
-pkg: github.com/wago-org/wago/src/wago
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkGCLifetimeRuntime/throughput/no-gc/on=false         	 1443244	       418.0 ns/op	         0 guest-charges/op	         0 handleless/op	         0 layout-B/op	         0 materialized/op	         0 observed-nursery-advance-B/op	         0 published-handles/op	         0 retained-nursery-B	         0 throughput-rounded-B/op	       0 B/op	       0 allocs/op
-BenchmarkGCLifetimeRuntime/throughput/no-gc/on=true          	 1441440	       416.9 ns/op	         0 guest-charges/op	         0 handleless/op	         0 layout-B/op	         0 materialized/op	         0 observed-nursery-advance-B/op	         0 published-handles/op	         0 retained-nursery-B	         0 throughput-rounded-B/op	       0 B/op	       0 allocs/op
-PASS

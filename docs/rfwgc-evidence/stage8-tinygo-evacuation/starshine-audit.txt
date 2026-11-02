@@ -1,1 +1,0 @@
-No TinyGo, evacuation, reservation, pressure, collector, or trace match in the pinned GC core-boundary document. It describes core type/instruction validation, not a native collector implementation. Exact source hash: sibling-audit.json.

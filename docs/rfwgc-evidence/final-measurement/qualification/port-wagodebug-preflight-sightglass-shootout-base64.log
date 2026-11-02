@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/sightglass-shootout-base64
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/sightglass-shootout-base64
---- PASS: TestFinalPreparationCompile (0.01s)
-    --- PASS: TestFinalPreparationCompile/sightglass-shootout-base64 (0.00s)
-PASS

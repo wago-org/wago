@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/json2csv-people
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/json2csv-people
---- PASS: TestFinalPreparationCompile (0.04s)
-    --- PASS: TestFinalPreparationCompile/json2csv-people (0.02s)
-PASS

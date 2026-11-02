@@ -1,6 +1,0 @@
-042-current-ordinary exit=0
-042-current-wagodebug exit=0
-042-current-wago_regalloccheck exit=0
-042-baseline-ordinary exit=0
-042-baseline-wagodebug exit=0
-042-baseline-wago_regalloccheck exit=0

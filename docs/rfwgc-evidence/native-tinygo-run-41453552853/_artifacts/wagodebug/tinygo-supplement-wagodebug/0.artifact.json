@@ -1,6 +1,0 @@
-{
-  "file": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/0.test: Mach-O 64-bit executable arm64",
-  "loads": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/0.test:\n\t/usr/lib/libSystem.B.dylib (compatibility version 0.0.0, current version 0.0.0)",
-  "sha256": "aa79194a0f9d09a530f088eedf6a71ba60a65a43b948c4f176bf88a6a613e684",
-  "size": 943872
-}

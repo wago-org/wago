@@ -1,7 +1,0 @@
-COMMAND: ["taskset", "-c", "6", "/tmp/wago-lifetime-bench-h8axf37q/port.test", "-test.run=^$", "-test.bench=^BenchmarkGCLifetimeCompile$/^nonqualifying$/^off$", "-test.benchmem", "-test.count=1", "-test.benchtime=1s"]
-goos: linux
-goarch: amd64
-pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkGCLifetimeCompile/nonqualifying/off     	   10000	    126563 ns/op	  119312 B/op	     275 allocs/op
-PASS

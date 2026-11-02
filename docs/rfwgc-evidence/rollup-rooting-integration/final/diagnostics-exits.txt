@@ -1,3 +1,0 @@
-ordinary diagnostics exit=0
-wagodebug diagnostics exit=0
-wago_regalloccheck diagnostics exit=0

@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/kissfft.kissfft_run
-    final_preparation_test.go:33: FM_LEAF BenchmarkExec/kissfft.kissfft_run
---- PASS: TestFinalPreparationRuntime (0.02s)
-    --- PASS: TestFinalPreparationRuntime/kissfft.kissfft_run (0.01s)
-PASS

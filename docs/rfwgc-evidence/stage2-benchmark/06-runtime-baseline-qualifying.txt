@@ -1,8 +1,0 @@
-COMMAND: ["taskset", "-c", "10", "/tmp/wago-stage2-benchmark-x2ota2yr/baseline-runtime.test", "-test.run=^$", "-test.bench=^BenchmarkGCLifetimeRuntime$/^throughput$/^qualifying$", "-test.benchmem", "-test.count=1", "-test.benchtime=500ms", "-test.timeout=5m"]
-goos: linux
-goarch: amd64
-pkg: github.com/wago-org/wago/src/wago
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkGCLifetimeRuntime/throughput/qualifying/on=false         	 2178117	       277.6 ns/op	         1.000 guest-charges/op	         0 handleless/op	        24.00 layout-B/op	         1.000 materialized/op	        24.00 observed-nursery-advance-B/op	         1.000 published-handles/op	     24576 retained-nursery-B	        32.00 throughput-rounded-B/op	       0 B/op	       0 allocs/op
-BenchmarkGCLifetimeRuntime/throughput/qualifying/on=true          	 2165898	       276.8 ns/op	         1.000 guest-charges/op	         0 handleless/op	        24.00 layout-B/op	         1.000 materialized/op	        24.00 observed-nursery-advance-B/op	         1.000 published-handles/op	     24576 retained-nursery-B	        32.00 throughput-rounded-B/op	       0 B/op	       0 allocs/op
-PASS

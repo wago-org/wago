@@ -1,8 +1,0 @@
-COMMAND: ["taskset", "-c", "10", "/tmp/wago-stage2-benchmark-x2ota2yr/stage2-compile.test", "-test.run=^$", "-test.bench=^BenchmarkGCLifetimeCompile$/^qualifying$", "-test.benchmem", "-test.count=1", "-test.benchtime=500ms", "-test.timeout=5m"]
-goos: linux
-goarch: amd64
-pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkGCLifetimeCompile/qualifying/off     	    4938	    130580 ns/op	  131072 B/op	     274 allocs/op
-BenchmarkGCLifetimeCompile/qualifying/on      	    1639	    351572 ns/op	  299472 B/op	    2463 allocs/op
-PASS

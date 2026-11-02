@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/memory
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/memory
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/memory (0.00s)
-PASS

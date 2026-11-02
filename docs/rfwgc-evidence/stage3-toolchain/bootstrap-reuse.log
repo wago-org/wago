@@ -1,3 +1,0 @@
-Nothing to do.
-# To update the current shell environment, run: eval $(opam env)
-export PATH=/home/dev/.local/share/wago-rfwgc-opam/rfwgc/bin:$PATH

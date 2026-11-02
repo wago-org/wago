@@ -1,7 +1,0 @@
-{
-  "kind": "CHECKPOINT_ONLY_NO_DEFECT",
-  "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-  "reason": "Bounded recovery checkpoint after current full ordinary race terminal receipt; prevent next gate scheduling without interrupting current command. User authorized checkpoint to avoid another provider loss.",
-  "requested_utc": "2026-11-02T11:12:53.930419+00:00",
-  "resume": "After current command drains, preserve this marker as recovery-checkpoint-stop.json and remove only this exact checkpoint marker. Never clear a real defect stop."
-}

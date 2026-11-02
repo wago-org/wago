@@ -1,3 +1,0 @@
-$ go test -tags=wagodebug ./src/core/runtime/gc/... -count=1
-ok  	github.com/wago-org/wago/src/core/runtime/gc	0.002s
-ok  	github.com/wago-org/wago/src/core/runtime/gc/native	1.361s

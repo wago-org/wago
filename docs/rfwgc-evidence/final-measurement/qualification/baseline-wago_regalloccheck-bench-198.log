@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/polybench-cholesky
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-cholesky
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/polybench-cholesky (0.00s)
-PASS

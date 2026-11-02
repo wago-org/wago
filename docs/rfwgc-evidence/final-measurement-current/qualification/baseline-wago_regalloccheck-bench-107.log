@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/fannkuch.run
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/fannkuch.run
---- PASS: TestFinalPreparationRuntime (0.01s)
-    --- PASS: TestFinalPreparationRuntime/fannkuch.run (0.00s)
-PASS

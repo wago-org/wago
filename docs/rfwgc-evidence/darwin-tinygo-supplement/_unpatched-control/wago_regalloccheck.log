@@ -1,2 +1,0 @@
-src/core/runtime/engine_prepared_state_tinygo.go:15: linker could not find symbol _runtime.wagoUnregisterForeignStack
-src/core/runtime/trampoline_tinygo_arm64.go:105: linker could not find symbol _runtime.wagoRegisterForeignStack

@@ -1,7 +1,0 @@
-{
-  "stage8_exact_architecture_only_transform": true,
-  "removed_amd64_option_occurrences": 2,
-  "canonical_resume_test_equals_execution_overlay": true,
-  "canonical_sha256": "583b4d60df164b0849d7663469bfae38e5edaf7948fbe9688836c3d539ee3ac5",
-  "production_source_pin_unchanged": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf"
-}

@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/ruby-buckets
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/ruby-buckets
---- PASS: TestFinalPreparationCompile (0.94s)
-    --- PASS: TestFinalPreparationCompile/ruby-buckets (0.94s)
-PASS

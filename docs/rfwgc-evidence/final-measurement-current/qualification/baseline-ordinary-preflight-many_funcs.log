@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/many_funcs
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/many_funcs
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/many_funcs (0.00s)
-PASS

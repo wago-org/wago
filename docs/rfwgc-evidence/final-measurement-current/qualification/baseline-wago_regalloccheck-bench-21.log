@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/clang-cpp-kernels
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/clang-cpp-kernels
---- PASS: TestFinalPreparationRuntime (6.57s)
-    --- PASS: TestFinalPreparationRuntime/clang-cpp-kernels (6.55s)
-PASS

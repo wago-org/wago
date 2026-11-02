@@ -1,6 +1,0 @@
-arm64 ordinary wago cross-compile exit=0
-arm64 wagodebug wago cross-compile exit=0
-arm64 wago_regalloccheck wago cross-compile exit=0
-riscv64 ordinary wago cross-compile exit=0
-riscv64 wagodebug wago cross-compile exit=0
-riscv64 wago_regalloccheck wago cross-compile exit=0

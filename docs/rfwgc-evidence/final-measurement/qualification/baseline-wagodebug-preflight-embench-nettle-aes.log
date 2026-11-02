@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/embench-nettle-aes
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/embench-nettle-aes
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/embench-nettle-aes (0.00s)
-PASS

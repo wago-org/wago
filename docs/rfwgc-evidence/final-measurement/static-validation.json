@@ -1,8 +1,0 @@
-{
-  "python_parse": "PASS",
-  "command_expansion": "PASS",
-  "logical_cells": 316,
-  "unbound_rows_retained": 580,
-  "executed_expanded_commands": 0,
-  "example_cpu_set": "synthetic serialization test, not approved affinity"
-}

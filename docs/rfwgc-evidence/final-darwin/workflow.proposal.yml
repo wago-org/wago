@@ -1,3 +1,0 @@
-# Superseded by the opt-in darwin_qualification input and dedicated matrix in
-# .github/workflows/ci.yml. Do not install a standalone workflow.
-# Parent review is required before publication/activation; see README.md.

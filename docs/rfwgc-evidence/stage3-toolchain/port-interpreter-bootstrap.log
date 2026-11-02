@@ -1,6 +1,0 @@
-make: Entering directory '/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/.tools/stage3-toolchain/port/tests/conformance/spec-v3/interpreter'
-rm -f wasm
-dune build wasm.exe
-ln _build/default/wasm.exe wasm
-make: Leaving directory '/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/.tools/stage3-toolchain/port/tests/conformance/spec-v3/interpreter'
-WebAssembly/spec interpreter 9d36019973201a19f9c9ebb0f10828b2fe2374aa (/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/.tools/stage3-toolchain/port/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm)

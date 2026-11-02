@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/embench-nettle-sha256
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/embench-nettle-sha256
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/embench-nettle-sha256 (0.00s)
-PASS

@@ -1,5 +1,0 @@
-{
-  "/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo": "cdd520d062bc2624584f6fc9046929dea9c800af63b791be6cc9d06402c72130",
-  "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_conservative.go": "60e63df2bc0d60c9962dc60a918d243107a9827a7acd3c330ed7746fdbde3341",
-  "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/internal/task/task_stack.go": "ebbd7303f2fd74c5a89f0e303048236d17fd656a954091d0ce175126abef1795"
-}

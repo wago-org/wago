@@ -1,3 +1,0 @@
-qualified-focused-ordinary exit=0
-qualified-full-ordinary exit=0
-qualified-race-ordinary exit=1

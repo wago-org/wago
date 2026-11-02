@@ -1,6 +1,0 @@
-//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo
-
-package wago
-
-// 9713878ab has no conversion-only classification.
-func rrConversionOnly(*referenceStoreInstance) bool { return false }

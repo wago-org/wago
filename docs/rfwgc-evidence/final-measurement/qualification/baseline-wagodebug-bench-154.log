@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/drwav
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/drwav
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/drwav (0.00s)
-PASS

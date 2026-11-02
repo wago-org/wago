@@ -1,5 +1,0 @@
-=== RUN   TestGCAdmissionPublicDeadline
---- PASS: TestGCAdmissionPublicDeadline (0.18s)
-=== RUN   TestCallDeadlineWhileCallbackOwnsAdmission
---- PASS: TestCallDeadlineWhileCallbackOwnsAdmission (0.06s)
-PASS

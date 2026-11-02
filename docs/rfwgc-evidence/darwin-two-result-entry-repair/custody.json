@@ -1,3 +1,0 @@
-{
-  "note": "First commit attempt accidentally staged preexisting failed-child artifacts sharing the evidence directory; hook reformatted two archived Go overlays. No commit occurred. Restored both from original index blobs and verified their recorded SHA256; unstaged directory; parent-owned files moved here. Failed-child artifacts remain untouched and uncommitted. Launcher paths refer to original run location; move does not change any bytes."
-}

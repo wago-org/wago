@@ -1,8 +1,0 @@
-{
-  "source": "5345bd365c13963f1bf60e26bb80789ab9ead4cc",
-  "exit": 1,
-  "verdict": "FAIL",
-  "events": [],
-  "raw_sha256": "ad767aacf8176d5f7835812db5be3c1654b8977cc4c9089b1d853055bf80f266",
-  "driver_unchanged": true
-}

@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/grain-stdlib-array
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/grain-stdlib-array
---- PASS: TestFinalPreparationCompile (0.06s)
-    --- PASS: TestFinalPreparationCompile/grain-stdlib-array (0.06s)
-PASS

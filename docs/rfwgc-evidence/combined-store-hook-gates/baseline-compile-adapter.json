@@ -1,8 +1,0 @@
-{
-  "pin": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-  "source": "/tmp/wago-combined-501e9-to2k8cyp/compile-baseline",
-  "test_overlay": "src/wago/rfwgc_stage3_measurement_bench_test.go",
-  "overlay_source": "501e9ab46c4f68090c7bbeb17a6ad14f4fadda6d",
-  "overlay_sha256": "7571b96fe4693232f97b545d93de6d97300f0055ee709e2db7c48a940a98ef20",
-  "no_guest_execution": true
-}

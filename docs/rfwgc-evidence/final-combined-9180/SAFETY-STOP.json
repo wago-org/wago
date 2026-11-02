@@ -1,4 +1,0 @@
-{
-  "source": "9180f09f7590d029bc90df2fa20c0decc590505a",
-  "reason": "Full root gate: review probes compile as standalone package with undefined symbols; TestAggregateCIRequiresEveryWorkflowJob fails absent Darwin aggregate dependencies. Stop on defect; no production or expectation edits authorized."
-}

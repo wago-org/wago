@@ -1,1 +1,0 @@
-PASS: compiler binary, patch inputs, and patched runtime sources unchanged

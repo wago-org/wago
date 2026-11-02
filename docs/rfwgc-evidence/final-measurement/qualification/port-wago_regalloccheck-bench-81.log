@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/sqlite3-query
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/sqlite3-query
---- PASS: TestFinalPreparationRuntime (0.66s)
-    --- PASS: TestFinalPreparationRuntime/sqlite3-query (0.66s)
-PASS

@@ -1,7 +1,0 @@
-{
-  "mode": "ordinary",
-  "gate": "ci-policy",
-  "exit": 1,
-  "verdict": "FAIL",
-  "raw_sha256": "d9876c519db930f458bc9e98fa6f7d1f07b0cd439b716aa1ba8b9744861337bd"
-}

@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/iceunpack-unpack
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/iceunpack-unpack
---- PASS: TestFinalPreparationRuntime (0.40s)
-    --- PASS: TestFinalPreparationRuntime/iceunpack-unpack (0.40s)
-PASS

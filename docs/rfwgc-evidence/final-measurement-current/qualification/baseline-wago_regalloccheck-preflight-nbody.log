@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/nbody
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/nbody
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/nbody (0.00s)
-PASS

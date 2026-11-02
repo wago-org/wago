@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/tinyxml2
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/tinyxml2
---- PASS: TestFinalPreparationCompile (0.01s)
-    --- PASS: TestFinalPreparationCompile/tinyxml2 (0.01s)
-PASS

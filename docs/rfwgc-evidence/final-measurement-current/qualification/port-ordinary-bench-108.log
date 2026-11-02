@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/matmul
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/matmul
---- PASS: TestFinalPreparationCompile (0.01s)
-    --- PASS: TestFinalPreparationCompile/matmul (0.00s)
-PASS

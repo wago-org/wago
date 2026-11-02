@@ -1,5 +1,0 @@
-{
-  "fixtures/foreign_stack_test.go.txt": "d6ce562908135c66819f281f581d176cace36f3b645ed86a20f68ac68b6aebbf",
-  "fixtures/graph_test.go.txt": "56c42817b826510933ad0b7477c90dcf528244c175d72c5ec7e57421d2b5d960",
-  "fixtures/evacuation_test.go.txt": "c18991ae95753ad5247b0a4b1e8c15ab13214ec28835d078995b6514789f8f70"
-}

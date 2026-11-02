@@ -1,2 +1,0 @@
-bootstrap-spec-interpreter: dune is required to build the official Release 3 interpreter
-RESULT exit=1

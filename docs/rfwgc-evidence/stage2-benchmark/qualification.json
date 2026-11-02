@@ -1,8 +1,0 @@
-{
-  "accepted_pairs": 72,
-  "rejected_pairs": 24,
-  "accepted_max_external_host_pct": 4.787234042553192,
-  "accepted_max_sibling_pct": 2.9702970297029703,
-  "fresh_start": "2026-10-30T22:37:17.957096+00:00",
-  "fresh_end": "2026-10-30T22:55:37.311146+00:00"
-}

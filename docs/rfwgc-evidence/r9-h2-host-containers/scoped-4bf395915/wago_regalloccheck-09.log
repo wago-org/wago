@@ -1,4 +1,0 @@
-=== RUN   TestR9H2HostContainerMigration
---- PASS: TestR9H2HostContainerMigration (0.00s)
-PASS
-ok  	github.com/wago-org/wago/src/wago	0.006s

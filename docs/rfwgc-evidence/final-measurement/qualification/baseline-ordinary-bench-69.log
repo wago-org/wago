@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/jq-json-transform
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/jq-json-transform
---- PASS: TestFinalPreparationRuntime (0.55s)
-    --- PASS: TestFinalPreparationRuntime/jq-json-transform (0.54s)
-PASS

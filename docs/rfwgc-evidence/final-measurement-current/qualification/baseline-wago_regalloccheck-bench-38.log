@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/coreutils-wc
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/coreutils-wc
---- PASS: TestFinalPreparationCompile (0.92s)
-    --- PASS: TestFinalPreparationCompile/coreutils-wc (0.91s)
-PASS

@@ -1,6 +1,0 @@
-=== RUN   TestR9H2HostImportCycle
-=== RUN   TestR9H2HostImportCycle/6
-    gc_conversion_host_import_host_test.go:436: actual collector region shift=6
---- PASS: TestR9H2HostImportCycle (0.00s)
-    --- PASS: TestR9H2HostImportCycle/6 (0.00s)
-PASS

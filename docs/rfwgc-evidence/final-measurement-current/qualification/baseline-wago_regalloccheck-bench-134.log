@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/zlib
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/zlib
---- PASS: TestFinalPreparationCompile (0.01s)
-    --- PASS: TestFinalPreparationCompile/zlib (0.00s)
-PASS

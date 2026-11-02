@@ -1,4 +1,0 @@
-Staticcheck standard: 265 existing finding(s), 0 new
-Staticcheck runtime: 0 existing finding(s), 0 new
-Staticcheck profiling: 247 existing finding(s), 0 new
-Staticcheck diagnostics: 265 existing finding(s), 0 new

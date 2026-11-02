@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/blake-as-simd.hashN
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/blake-as-simd.hashN
---- PASS: TestFinalPreparationRuntime (0.02s)
-    --- PASS: TestFinalPreparationRuntime/blake-as-simd.hashN (0.00s)
-PASS

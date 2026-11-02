@@ -1,4 +1,0 @@
-{
-  "error": "Validator expected LLVM text, but tinygo test -c emitted a Mach-O binary despite .ll suffix; binary never executed",
-  "artifact_sha256": "d3363b7f8a549eab07d6116f974c485fb0c74f71da6cf6d0c619bf8e7569a187"
-}

@@ -1,7 +1,0 @@
-Linux t3 7.2.8-9-omarchy #1 SMP PREEMPT_DYNAMIC Sat, 17 Oct 2026 22:09:33 +0000 x86_64 GNU/Linux
-
-Local native ARM64/RV64/Darwin runner: none established. No remote endpoint or credentials supplied.
-QEMU user package copied into private temporary directory, no system install or shared toolchain changes.
-qemu-system-aarch64 and qemu-system-riscv64 absent from PATH.
-Repository CI declares ubuntu-24.04-arm, ubuntu-24.04-riscv, macos-15; these are future hosted execution routes, not evidence that this task executed there.
-Linux-user QEMU executes Linux ELF, not Darwin Mach-O or Darwin executable mapping policy. Darwin execution remains open.

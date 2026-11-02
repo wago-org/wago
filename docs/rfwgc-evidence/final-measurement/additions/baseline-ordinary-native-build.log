@@ -1,2 +1,0 @@
-# github.com/wago-org/wago/src/core/runtime/gc/native [github.com/wago-org/wago/src/core/runtime/gc/native.test]
-src/core/runtime/gc/native/final_review_native_test.go:19:66: c.SetObjectEdgeSource undefined (type *Collector has no field or method SetObjectEdgeSource)

@@ -1,5 +1,0 @@
-=== RUN   TestFinalMeasurementLargeOldNurseryFill
-    final_review_native_test.go:25: {"after_fill":{"Allocations":16384,"MinorCollections":1173,"FullCollections":1,"MinorObjectsScanned":0,"MinorRememberedScanned":0,"YoungBytesCopied":0,"PromotedBytes":0,"LiveObjects":8194,"TenuringThreshold":3},"after_full":{"Allocations":16384,"MinorCollections":1173,"FullCollections":2,"MinorObjectsScanned":0,"MinorRememberedScanned":0,"YoungBytesCopied":0,"PromotedBytes":0,"LiveObjects":8192,"TenuringThreshold":3},"before":{"Allocations":8192,"MinorCollections":1170,"FullCollections":1,"MinorObjectsScanned":0,"MinorRememberedScanned":0,"YoungBytesCopied":0,"PromotedBytes":0,"LiveObjects":8192,"TenuringThreshold":3},"object_edge_calls":24576,"requested_workers":8}
-    final_review_native_test.go:27: joined_phase_participants {"Trace":[0,1,0,0,0,0,0,0],"Sweep":[0,2,0,0,0,0,0,0],"Copy":[0,0,0,0,0,0,0,0]}
---- PASS: TestFinalMeasurementLargeOldNurseryFill (0.15s)
-PASS

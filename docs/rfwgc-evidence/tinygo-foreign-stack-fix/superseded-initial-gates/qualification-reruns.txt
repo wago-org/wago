@@ -1,5 +1,0 @@
-host-ordinary-toolpath-fixed exit=1
-host-ordinary-fixtures-fixed exit=1
-host-pinned-ordinary exit=0
-host-pinned-wagodebug exit=0
-host-pinned-wago_regalloccheck exit=0

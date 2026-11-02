@@ -1,7 +1,0 @@
-{
-  "mode": "ordinary",
-  "gate": "probe-package",
-  "exit": 1,
-  "verdict": "FAIL",
-  "raw_sha256": "275dddd60f52c43543751b809d3c50ced21d3ecfdfadd438522a9b22b6204fa3"
-}

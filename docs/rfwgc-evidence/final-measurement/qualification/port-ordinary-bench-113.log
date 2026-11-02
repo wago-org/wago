@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/raytrace.render
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/raytrace.render
---- PASS: TestFinalPreparationRuntime (0.01s)
-    --- PASS: TestFinalPreparationRuntime/raytrace.render (0.00s)
-PASS

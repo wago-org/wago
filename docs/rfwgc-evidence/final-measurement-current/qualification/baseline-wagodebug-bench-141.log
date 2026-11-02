@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/utf8proc.utf8proc_run
-    final_preparation_test.go:33: FM_LEAF BenchmarkExec/utf8proc.utf8proc_run
---- PASS: TestFinalPreparationRuntime (0.01s)
-    --- PASS: TestFinalPreparationRuntime/utf8proc.utf8proc_run (0.00s)
-PASS

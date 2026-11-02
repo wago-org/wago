@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/icepll-clock
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/icepll-clock
---- PASS: TestFinalPreparationRuntime (0.02s)
-    --- PASS: TestFinalPreparationRuntime/icepll-clock (0.02s)
-PASS

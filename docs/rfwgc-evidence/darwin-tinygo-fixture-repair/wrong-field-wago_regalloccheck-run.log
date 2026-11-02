@@ -1,4 +1,0 @@
-=== RUN   TestTinyGoNativeResumeUsesPhysicalStackTop
-    resume stack top = 0x7f0dae19d000, want physical top 0x7f0d6e000000
---- FAIL: TestTinyGoNativeResumeUsesPhysicalStackTop (0.00s)
-FAIL

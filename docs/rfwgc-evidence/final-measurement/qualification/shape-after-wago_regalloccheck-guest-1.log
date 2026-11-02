@@ -1,7 +1,0 @@
-=== RUN   TestR9OwnershipStateH6CallbackQuiescence
-=== RUN   TestR9OwnershipStateH6CallbackQuiescence/0
-=== RUN   TestR9OwnershipStateH6CallbackQuiescence/6
---- PASS: TestR9OwnershipStateH6CallbackQuiescence (0.01s)
-    --- PASS: TestR9OwnershipStateH6CallbackQuiescence/0 (0.00s)
-    --- PASS: TestR9OwnershipStateH6CallbackQuiescence/6 (0.00s)
-PASS

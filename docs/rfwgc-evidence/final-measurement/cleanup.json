@@ -1,8 +1,0 @@
-{
-  "removed": [
-    "docs/rfwgc-evidence/final-measurement/.prepared"
-  ],
-  "owned_test_processes_drained": true,
-  "lease_held": false,
-  "scope": "only this preparation; no global reviewer/worker drain assertion"
-}

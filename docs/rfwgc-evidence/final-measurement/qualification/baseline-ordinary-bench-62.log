@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/tree-list
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/tree-list
---- PASS: TestFinalPreparationCompile (0.01s)
-    --- PASS: TestFinalPreparationCompile/tree-list (0.01s)
-PASS

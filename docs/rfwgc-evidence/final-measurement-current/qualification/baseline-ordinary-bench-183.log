@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/sightglass-shootout-base64
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/sightglass-shootout-base64
---- PASS: TestFinalPreparationRuntime (0.01s)
-    --- PASS: TestFinalPreparationRuntime/sightglass-shootout-base64 (0.01s)
-PASS

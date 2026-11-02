@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/zlib.zlib_inflate_run
-    final_preparation_test.go:33: FM_LEAF BenchmarkExec/zlib.zlib_inflate_run
---- PASS: TestFinalPreparationRuntime (0.03s)
-    --- PASS: TestFinalPreparationRuntime/zlib.zlib_inflate_run (0.00s)
-PASS

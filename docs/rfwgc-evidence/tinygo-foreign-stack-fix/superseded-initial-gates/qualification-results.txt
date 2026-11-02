@@ -1,2 +1,0 @@
-host-ordinary exit=1
-standalone-ordinary exit=0

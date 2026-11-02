@@ -1,1 +1,0 @@
-timeout --kill-after=15s 1200s go test -count=1 -timeout=15m -skip \^TestStaged ./src/wago

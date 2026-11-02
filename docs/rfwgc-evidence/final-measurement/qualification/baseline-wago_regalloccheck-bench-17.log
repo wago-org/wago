@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/php-buckets
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/php-buckets
---- PASS: TestFinalPreparationRuntime (1.68s)
-    --- PASS: TestFinalPreparationRuntime/php-buckets (1.67s)
-PASS

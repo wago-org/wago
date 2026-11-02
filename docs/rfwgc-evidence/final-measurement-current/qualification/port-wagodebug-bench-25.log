@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/lua-cli-buckets
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/lua-cli-buckets
---- PASS: TestFinalPreparationRuntime (0.16s)
-    --- PASS: TestFinalPreparationRuntime/lua-cli-buckets (0.16s)
-PASS

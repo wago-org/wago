@@ -1,8 +1,0 @@
-=== RUN   TestR9H2HostContainerPublicTable
-=== RUN   TestR9H2HostContainerPublicTable/0
-=== RUN   TestR9H2HostContainerPublicTable/6
---- PASS: TestR9H2HostContainerPublicTable (0.00s)
-    --- PASS: TestR9H2HostContainerPublicTable/0 (0.00s)
-    --- PASS: TestR9H2HostContainerPublicTable/6 (0.00s)
-PASS
-ok  	github.com/wago-org/wago/src/wago	1.016s

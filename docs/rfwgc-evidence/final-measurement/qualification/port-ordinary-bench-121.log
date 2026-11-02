@@ -1,9 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/json-as-simd.serializeN
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/json-as-simd.serializeN
-=== RUN   TestFinalPreparationRuntime/json-as-simd.deserializeN
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/json-as-simd.deserializeN
---- PASS: TestFinalPreparationRuntime (0.02s)
-    --- PASS: TestFinalPreparationRuntime/json-as-simd.serializeN (0.00s)
-    --- PASS: TestFinalPreparationRuntime/json-as-simd.deserializeN (0.00s)
-PASS

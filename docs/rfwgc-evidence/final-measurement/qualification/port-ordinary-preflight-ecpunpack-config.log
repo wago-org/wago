@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/ecpunpack-config
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/ecpunpack-config
---- PASS: TestFinalPreparationCompile (0.06s)
-    --- PASS: TestFinalPreparationCompile/ecpunpack-config (0.05s)
-PASS

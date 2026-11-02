@@ -1,6 +1,0 @@
-=== RUN   TestR9H2HostContainerAuthority
---- PASS: TestR9H2HostContainerAuthority (0.00s)
-=== RUN   TestR9H2HostImportAuthority
---- PASS: TestR9H2HostImportAuthority (0.00s)
-PASS
-ok  	github.com/wago-org/wago/src/wago	0.007s

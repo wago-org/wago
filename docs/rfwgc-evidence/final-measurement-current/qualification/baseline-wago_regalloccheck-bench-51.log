@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/ecpbram-generate
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/ecpbram-generate
---- PASS: TestFinalPreparationRuntime (0.12s)
-    --- PASS: TestFinalPreparationRuntime/ecpbram-generate (0.11s)
-PASS

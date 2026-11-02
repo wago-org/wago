@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/needleman-wunsch-dna
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/needleman-wunsch-dna
---- PASS: TestFinalPreparationRuntime (0.02s)
-    --- PASS: TestFinalPreparationRuntime/needleman-wunsch-dna (0.01s)
-PASS

@@ -1,8 +1,0 @@
-{
-  "pin": "c35acfe97d2e22701be9d89c1b306b6bf41f04fd",
-  "source": "/tmp/wago-h2-integrated-t4mtt2yr/source",
-  "archive_sha256": "c17fc190dcc710c28b967738a05a6f0c6cf8324cd4f387b7ebe436b328ff2530",
-  "driver_sha256": "87d2323c5caa1ec18a4a82f574887e37dd9f330e6bbe6260aab2154fe581fa78",
-  "go": "go version go1.27.3 linux/amd64",
-  "corpus": "160000 commit a8bcbafe6d2fb191ce0188de0e18fdc107fa2598\ttests/conformance/spec-v1\n160000 commit 05ca4182176763112561ae20153975c12bd689e4\ttests/conformance/spec-v2\n160000 commit 9d36019973201a19f9c9ebb0f10828b2fe2374aa\ttests/conformance/spec-v3\n"
-}

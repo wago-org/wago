@@ -1,7 +1,0 @@
-ordinary	focused	0	0
-ordinary	diagnostics	0	0
-wagodebug	focused	0	0
-wagodebug	diagnostics	0	0
-wago_regalloccheck	focused	0	0
-wago_regalloccheck	diagnostics	0	0
-negative-original-call.go	focused	0	1

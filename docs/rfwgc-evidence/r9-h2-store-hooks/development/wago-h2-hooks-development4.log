@@ -1,6 +1,0 @@
-# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
-src/wago/gc_conversion_store.go:118:12: in.c.tableAddr64 undefined (type *Compiled has no field or method tableAddr64, but does have field TableAddr64)
-src/wago/gc_conversion_store.go:133:12: in.c.tableAddr64 undefined (type *Compiled has no field or method tableAddr64, but does have field TableAddr64)
-src/wago/gc_conversion_store.go:161:13: in.c.tableAddr64 undefined (type *Compiled has no field or method tableAddr64, but does have field TableAddr64)
-FAIL	github.com/wago-org/wago/src/wago [build failed]
-FAIL

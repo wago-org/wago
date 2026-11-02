@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/miniz
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/miniz
---- PASS: TestFinalPreparationCompile (0.01s)
-    --- PASS: TestFinalPreparationCompile/miniz (0.01s)
-PASS

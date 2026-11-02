@@ -1,9 +1,0 @@
-2026-11-02T15:37:43.1040000Z Evaluating darwin-qualification-summary.if
-2026-11-02T15:37:43.1040000Z Evaluating: (always() && (github.event_name == 'workflow_dispatch') && inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement)
-2026-11-02T15:37:43.1040000Z Expanded: (true && ('workflow_dispatch' == 'workflow_dispatch') && true && !false && !false)
-2026-11-02T15:37:43.1040000Z Result: true
-2026-11-02T15:37:43.3040000Z Job is about to start running on the hosted runner: GitHub Actions 1000143734
-2026-11-02T15:37:43.1540000Z Requested labels: ubuntu-latest
-2026-11-02T15:37:43.1540000Z Job defined at: wago-org/wago/.github/workflows/ci.yml@refs/heads/experiment/rfwgc-port
-2026-11-02T15:37:43.1540000Z Waiting for a runner to pick up this job...
-2026-11-02T15:37:43.3020000Z Job is waiting for a hosted runner to come online.

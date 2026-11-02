@@ -1,1 +1,0 @@
-["go", "test", "-count=1", "-timeout=25m", "-run", "Evacuation", "./src/core/runtime/gc/native"]

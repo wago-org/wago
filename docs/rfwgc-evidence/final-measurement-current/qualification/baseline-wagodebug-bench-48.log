@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/iceunpack-unpack
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/iceunpack-unpack
---- PASS: TestFinalPreparationCompile (0.05s)
-    --- PASS: TestFinalPreparationCompile/iceunpack-unpack (0.04s)
-PASS

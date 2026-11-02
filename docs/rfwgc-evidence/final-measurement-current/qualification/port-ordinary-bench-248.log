@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/wren-modulo
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/wren-modulo
---- PASS: TestFinalPreparationCompile (0.01s)
-    --- PASS: TestFinalPreparationCompile/wren-modulo (0.01s)
-PASS

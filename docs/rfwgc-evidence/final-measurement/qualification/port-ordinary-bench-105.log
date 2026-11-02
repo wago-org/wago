@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/nbody.step
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/nbody.step
---- PASS: TestFinalPreparationRuntime (0.01s)
-    --- PASS: TestFinalPreparationRuntime/nbody.step (0.00s)
-PASS

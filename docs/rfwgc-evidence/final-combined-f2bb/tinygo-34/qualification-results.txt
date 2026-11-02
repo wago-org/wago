@@ -1,3 +1,0 @@
-host-ordinary exit=0
-standalone-ordinary exit=0
-guest-threads-ordinary exit=1

@@ -1,7 +1,0 @@
-driver exit=127 AFTER all fifteen requested commands completed with exit=0.
-The live script was edited while bash was executing its parsed for loop.
-After the loop bash resumed reading at an obsolete byte offset and attempted
-"ompiler/backend/railshot/amd64", which failed as a nonexistent command.
-No qualification command was replaced by this fragment. Per-suite results
-are all PASS; the orchestration process itself is FAIL and is not called PASS.
-Exact tool output: qualify.sh: line 57: ompiler/backend/railshot/amd64: No such file or directory

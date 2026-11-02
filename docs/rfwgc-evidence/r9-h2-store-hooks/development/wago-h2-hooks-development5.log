@@ -1,4 +1,0 @@
-# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
-src/wago/gc_conversion_store_host_test.go:198:47: invalid operation: clearer.ctrl == 0 (mismatched types []byte and untyped int)
-FAIL	github.com/wago-org/wago/src/wago [build failed]
-FAIL

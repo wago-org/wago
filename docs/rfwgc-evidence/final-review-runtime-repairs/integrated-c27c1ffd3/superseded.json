@@ -1,4 +1,0 @@
-{
-  "status": "INCOMPLETE_SUPERSEDED",
-  "reason": "RV64 control found overly broad local transaction rejection; repaired in subsequent source commits. Completed gates retained."
-}

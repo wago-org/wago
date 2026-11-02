@@ -1,4 +1,0 @@
-=== RUN   TestReviewImportedAccessNamespace
---- PASS: TestReviewImportedAccessNamespace (0.00s)
-PASS
-ok  	github.com/wago-org/wago/src/wago	0.008s

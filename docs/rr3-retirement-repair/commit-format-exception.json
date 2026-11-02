@@ -1,5 +1,0 @@
-{
-  "reason": "Explicit user requires original review probes byte-identical. Pre-commit gofmt expands this original adapter; restored original bytes and checked gofmt on every other owned Go file. One-command hooksPath override; no persistent config or test-gate change.",
-  "file": "src/wago/rr_recheck_flags_current_test.go",
-  "sha256": "146214b6ae828763c40f5dc1533d31a632591b16dfdcf4ab7ef150ba794e4a5b"
-}

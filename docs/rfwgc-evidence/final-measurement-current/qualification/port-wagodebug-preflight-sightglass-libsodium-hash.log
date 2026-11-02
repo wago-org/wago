@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/sightglass-libsodium-hash
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/sightglass-libsodium-hash
---- PASS: TestFinalPreparationCompile (0.01s)
-    --- PASS: TestFinalPreparationCompile/sightglass-libsodium-hash (0.00s)
-PASS

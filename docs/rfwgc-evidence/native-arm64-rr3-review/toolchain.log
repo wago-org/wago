@@ -1,6 +1,0 @@
-{
-	"GOHOSTARCH": "amd64",
-	"GOHOSTOS": "linux",
-	"GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
-	"GOVERSION": "go1.27.1"
-}

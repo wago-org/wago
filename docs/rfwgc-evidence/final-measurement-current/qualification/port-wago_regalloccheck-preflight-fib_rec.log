@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/fib_rec
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/fib_rec
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/fib_rec (0.00s)
-PASS

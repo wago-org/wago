@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/coremark.coremark_run
-    final_preparation_test.go:33: FM_LEAF BenchmarkExec/coremark.coremark_run
---- PASS: TestFinalPreparationRuntime (0.13s)
-    --- PASS: TestFinalPreparationRuntime/coremark.coremark_run (0.12s)
-PASS

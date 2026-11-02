@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/linked_list.sum
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/linked_list.sum
---- PASS: TestFinalPreparationRuntime (0.00s)
-    --- PASS: TestFinalPreparationRuntime/linked_list.sum (0.00s)
-PASS

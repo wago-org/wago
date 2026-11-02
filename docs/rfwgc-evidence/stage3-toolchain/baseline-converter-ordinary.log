@@ -1,8 +1,0 @@
-=== RUN   TestRelease3DocumentationMatchesCommittedBaseline
---- PASS: TestRelease3DocumentationMatchesCommittedBaseline (0.00s)
-=== RUN   TestRelease3InterpreterBootstrapIsPinned
---- PASS: TestRelease3InterpreterBootstrapIsPinned (0.00s)
-=== RUN   TestRelease3InterpreterBinaryScriptConverter
---- PASS: TestRelease3InterpreterBinaryScriptConverter (0.03s)
-PASS
-ok  	github.com/wago-org/wago/tests/conformance/spectest	0.035s

@@ -1,8 +1,0 @@
-{
-  "pin": "4bf395915fa2532b99bfec8f3a8d565cb6e4b217",
-  "source": "/tmp/wago-h2-integrated-p852j3cp/source",
-  "archive_sha256": "b62205d6ee97498042eb6e7701ffa8d1fbb175dcd29d1ff1cc2b3520498638ed",
-  "driver_sha256": "87d2323c5caa1ec18a4a82f574887e37dd9f330e6bbe6260aab2154fe581fa78",
-  "go": "go version go1.27.3 linux/amd64",
-  "corpus": "160000 commit a8bcbafe6d2fb191ce0188de0e18fdc107fa2598\ttests/conformance/spec-v1\n160000 commit 05ca4182176763112561ae20153975c12bd689e4\ttests/conformance/spec-v2\n160000 commit 9d36019973201a19f9c9ebb0f10828b2fe2374aa\ttests/conformance/spec-v3\n"
-}

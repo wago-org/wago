@@ -1,1 +1,0 @@
-Initial post-cleanup tool hash check exited 1 because private .tools aliases had been removed with their archive. Rechecked identical shared binaries through their surviving absolute paths; all hashes match. No tool or production source was changed.

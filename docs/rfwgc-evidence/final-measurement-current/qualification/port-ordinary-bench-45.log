@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/icemulti-image
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/icemulti-image
---- PASS: TestFinalPreparationRuntime (0.06s)
-    --- PASS: TestFinalPreparationRuntime/icemulti-image (0.05s)
-PASS

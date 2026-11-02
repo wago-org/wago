@@ -1,7 +1,0 @@
-[
-  {
-    "attempt": 1,
-    "failure": "Inherited run.py JSON event parser treated a valid JSON string from go list as a dictionary; discovery command completed but receipt parser raised AttributeError. Original raw log and driver preserved.",
-    "repair": "Accept only dictionary JSON events; repeat early gates in distinct directories."
-  }
-]

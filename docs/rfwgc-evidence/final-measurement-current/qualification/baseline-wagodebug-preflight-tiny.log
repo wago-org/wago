@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/tiny
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/tiny
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/tiny (0.00s)
-PASS

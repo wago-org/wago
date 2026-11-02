@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/icemulti-image
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/icemulti-image
---- PASS: TestFinalPreparationCompile (0.07s)
-    --- PASS: TestFinalPreparationCompile/icemulti-image (0.07s)
-PASS

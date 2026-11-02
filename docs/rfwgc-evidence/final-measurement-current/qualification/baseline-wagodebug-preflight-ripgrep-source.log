@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/ripgrep-source
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/ripgrep-source
---- PASS: TestFinalPreparationCompile (0.21s)
-    --- PASS: TestFinalPreparationCompile/ripgrep-source (0.20s)
-PASS

@@ -1,1 +1,0 @@
-["tinygo", "test", "-scheduler=threads", "-gc=conservative", "-tags=wagodebug", "-v", "-run", "Evacuation", "./src/core/runtime/gc/native"]

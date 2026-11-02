@@ -1,6 +1,0 @@
-{
-  "outside_diff_sha256": "3e3354ea7c2fdeefdba0c391855b82a871d3ae6538c6833a787eec735648dad4",
-  "outside_index_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "gitlinks": "160000 a8bcbafe6d2fb191ce0188de0e18fdc107fa2598 0\ttests/conformance/spec-v1\n160000 05ca4182176763112561ae20153975c12bd689e4 0\ttests/conformance/spec-v2\n160000 9d36019973201a19f9c9ebb0f10828b2fe2374aa 0\ttests/conformance/spec-v3\n",
-  "verification": "outside state checked immediately before scoped commit; other threads may advance independently"
-}

@@ -1,8 +1,0 @@
-{
-  "pin": "c27c1ffd384715412ebc079579e630aadbfbecaf",
-  "source": "/tmp/wago-h2-integrated-fk75crf3/source",
-  "archive_sha256": "bd6678b1bcc89c72d4dd8f98295a5eb119af4efc0c379c83eeee93a7272560e9",
-  "driver_sha256": "f7bc23b645bcc305710a7382f2d2c2d554c428f6d9f2852f09ac869f91b18c57",
-  "go": "go version go1.27.3 linux/amd64",
-  "corpus": "160000 commit a8bcbafe6d2fb191ce0188de0e18fdc107fa2598\ttests/conformance/spec-v1\n160000 commit 05ca4182176763112561ae20153975c12bd689e4\ttests/conformance/spec-v2\n160000 commit 9d36019973201a19f9c9ebb0f10828b2fe2374aa\ttests/conformance/spec-v3\n"
-}

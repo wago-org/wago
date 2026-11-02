@@ -1,7 +1,0 @@
-{
-  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
-  "reason": "Real TinyGo test failure: invalid foreign/forged externrefs misclassified as unsupported opaque converted publication.",
-  "gate": "tinygo-34/guest-threads-ordinary",
-  "at": "2026-11-02T08:21:52.099969+00:00",
-  "policy": "No further qualification execution; read-only audit and evidence finalization only."
-}

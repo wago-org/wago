@@ -1,1 +1,0 @@
-Stopped remaining checks after full suite exposed missing archived submodule fixtures and mise shim trust errors. Initial full failure log retained. Rerun uses pinned gitlink fixture archives and explicit tool paths. No production failure inferred from setup errors.

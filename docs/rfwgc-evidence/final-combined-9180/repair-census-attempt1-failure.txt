@@ -1,1 +1,0 @@
-After ordinary test exit=0, census serialization failed: TypeError comparing None (package terminal pass event) and str. Assertions passed before serialization. No production/test expectation change. Original repairs.py retained unchanged.

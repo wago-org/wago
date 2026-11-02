@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/coreutils-sha256sum
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/coreutils-sha256sum
---- PASS: TestFinalPreparationRuntime (0.53s)
-    --- PASS: TestFinalPreparationRuntime/coreutils-sha256sum (0.52s)
-PASS

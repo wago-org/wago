@@ -1,4 +1,0 @@
-{
-  "status": "INCOMPLETE_SUPERSEDED",
-  "reason": "Test watchdog repaired at c27c1ffd3 after QEMU rejected native deadline timer; all completed and partial logs retained."
-}

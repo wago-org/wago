@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/duktape-script
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/duktape-script
---- PASS: TestFinalPreparationRuntime (0.41s)
-    --- PASS: TestFinalPreparationRuntime/duktape-script (0.40s)
-PASS

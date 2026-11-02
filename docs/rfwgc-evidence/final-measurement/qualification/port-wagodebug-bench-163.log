@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/lodepng
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/lodepng
---- PASS: TestFinalPreparationRuntime (0.03s)
-    --- PASS: TestFinalPreparationRuntime/lodepng (0.03s)
-PASS

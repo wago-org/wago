@@ -1,2 +1,0 @@
-PASS: all 34 qualification commands exited 0; all eleven Fibonacci outputs equal 6765.
-Qualified production source: 57a99d01df0ae2beb5afc7a947bc9e06621b2259

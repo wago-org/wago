@@ -1,7 +1,0 @@
-{
-  "pin": "9180f09f7590d029bc90df2fa20c0decc590505a",
-  "source": "/tmp/dr-nonhost-cvh1x3iv/source",
-  "archive_sha256": "3a19a74b43253264e5629e0910ec02bf3cd5708c5ca4169a196ffba8f1c1c8dc",
-  "driver_sha256": "278cb3f52008c5415998e514201180daba24e01d8b3bceb40e9296d79dcc7913",
-  "execution": "NOT_RUN: no Darwin or Windows runner"
-}

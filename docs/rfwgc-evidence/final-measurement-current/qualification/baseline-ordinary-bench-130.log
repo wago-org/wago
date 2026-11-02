@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/qoi
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/qoi
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/qoi (0.00s)
-PASS

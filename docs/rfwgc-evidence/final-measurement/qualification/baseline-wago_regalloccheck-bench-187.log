@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/tacle-bsort
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/tacle-bsort
---- PASS: TestFinalPreparationRuntime (0.00s)
-    --- PASS: TestFinalPreparationRuntime/tacle-bsort (0.00s)
-PASS

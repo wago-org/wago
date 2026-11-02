@@ -1,4 +1,0 @@
-=== RUN   TestFinalMeasurementEvacuation
-    final_measurement_evacuation_test.go:50: {"Kind":"major","Result":"success","Evacuation":"moved","RequiredCause":null,"Pressure":false,"Demand":270336,"Credit":556512,"Need":532480,"MovedBytes":270336,"MovedPhysical":270336,"Candidates":8448,"Runs":17,"ReservationWorkers":8,"CopyWorkers":8}
---- PASS: TestFinalMeasurementEvacuation (0.06s)
-PASS

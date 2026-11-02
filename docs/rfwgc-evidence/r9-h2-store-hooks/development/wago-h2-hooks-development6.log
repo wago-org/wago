@@ -1,5 +1,0 @@
---- FAIL: TestR9H2ReceiptDomainKeepsPrivateTypeAdmission (0.00s)
-    gc_conversion_receipt_host_test.go:566: STOP receipt authority impersonated shared type admission
-FAIL
-FAIL	github.com/wago-org/wago/src/wago	0.019s
-FAIL

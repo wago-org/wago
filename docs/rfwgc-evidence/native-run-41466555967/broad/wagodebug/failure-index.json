@@ -1,8 +1,0 @@
-[
-  {
-    "lane": "race-wagodebug",
-    "package": "github.com/wago-org/wago/src/wago",
-    "test": null,
-    "detail": "FAIL\tgithub.com/wago-org/wago/src/wago\t326.285s\n"
-  }
-]

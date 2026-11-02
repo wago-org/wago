@@ -1,6 +1,0 @@
-=== RUN   TestParallelStage6PortableOwnerCallbacks
---- PASS: TestParallelStage6PortableOwnerCallbacks (12.21s)
-=== RUN   TestParallelOwnershipCallbacksKeepSerialTrace
---- PASS: TestParallelOwnershipCallbacksKeepSerialTrace (0.12s)
-PASS
-ok  	github.com/wago-org/wago/src/core/runtime/gc/native	13.363s

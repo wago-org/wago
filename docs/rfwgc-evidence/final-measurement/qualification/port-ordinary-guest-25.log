@@ -1,5 +1,0 @@
-=== RUN   TestR9OwnershipWakeupExitCrossing
-=== RUN   TestR9OwnershipWakeupExitCrossing/6
---- PASS: TestR9OwnershipWakeupExitCrossing (0.00s)
-    --- PASS: TestR9OwnershipWakeupExitCrossing/6 (0.00s)
-PASS

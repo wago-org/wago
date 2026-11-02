@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/ecppll-clock
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/ecppll-clock
---- PASS: TestFinalPreparationRuntime (0.07s)
-    --- PASS: TestFinalPreparationRuntime/ecppll-clock (0.07s)
-PASS

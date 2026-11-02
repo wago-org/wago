@@ -1,5 +1,0 @@
-mise ERROR error parsing config file: /tmp/wago-rollup-1030-3_qo5ims/source/mise.toml
-mise ERROR Config files in /tmp/wago-rollup-1030-3_qo5ims/source/mise.toml are not trusted.
-Trust them with `mise trust`. See https://mise.jdx.dev/cli/trust.html for more information.
-mise ERROR Version: 2026.10.4 linux-x64 (2026-10-07)
-mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information

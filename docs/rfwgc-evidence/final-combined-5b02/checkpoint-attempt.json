@@ -1,6 +1,0 @@
-{
-  "attempt": "diagnostics/graphs milestone",
-  "exit": 1,
-  "reason": "git commit --only rejected an empty active fixture directory; no qualification command failed",
-  "recovery": "Commit completed receipt paths and individual existing fixture files only; preserve shared index"
-}

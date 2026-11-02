@@ -1,4 +1,0 @@
-driver exit=0
-source=631cb70499e3fa61357171a0e3d1a60e7a0883fa
-18/18 requested commands exit=0
-Temporary driver copy unchanged; SHA256 matches committed qualify-wakeup.sh.

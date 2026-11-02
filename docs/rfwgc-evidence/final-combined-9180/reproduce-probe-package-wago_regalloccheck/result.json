@@ -1,7 +1,0 @@
-{
-  "mode": "wago_regalloccheck",
-  "gate": "probe-package",
-  "exit": 1,
-  "verdict": "FAIL",
-  "raw_sha256": "3578d29dfa39f738ffde7e89d9091f6396c9a01a8a4892ecc74ab6df9d2b744a"
-}

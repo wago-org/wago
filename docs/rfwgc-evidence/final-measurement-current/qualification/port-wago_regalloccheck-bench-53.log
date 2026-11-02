@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/icebram-generate
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/icebram-generate
---- PASS: TestFinalPreparationRuntime (0.10s)
-    --- PASS: TestFinalPreparationRuntime/icebram-generate (0.10s)
-PASS

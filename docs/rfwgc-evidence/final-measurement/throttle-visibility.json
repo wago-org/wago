@@ -1,6 +1,0 @@
-{
-  "read_only": true,
-  "observed": {},
-  "status": "NO_QUALIFIED_CPU_THROTTLE_COUNTER",
-  "limitation": "No portable AMD thermal-throttling counter was established in this container. CPU frequency variation alone is not proof of throttling. Owner must provide and qualify a host-side counter/adapter, or approve an explicit revised observability protocol; acquisition runner refuses an empty counter list."
-}

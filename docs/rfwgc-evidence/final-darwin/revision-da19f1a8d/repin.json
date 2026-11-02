@@ -1,8 +1,0 @@
-{
-  "source": "da19f1a8d29fec7305d937a42622a198b8e79717",
-  "initial_source": "76cdc5cb77f505176f74abb7c17e4bf454da8650",
-  "reason": "Explicit parent update after completed ARM64 evidence and cancellation audit",
-  "source_after_pin_changes": "unqualified",
-  "dispatch": "NOT_RUN; parent review required",
-  "initial_pin_validation": "revision-76cdc5cb7/local-validation.json"
-}

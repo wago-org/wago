@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/polybench-covariance.polybench_run
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/polybench-covariance.polybench_run
---- PASS: TestFinalPreparationRuntime (0.00s)
-    --- PASS: TestFinalPreparationRuntime/polybench-covariance.polybench_run (0.00s)
-PASS

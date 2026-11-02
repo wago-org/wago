@@ -1,4 +1,0 @@
-{
-  "error": "requires native Darwin arm64; cross compilation is not execution",
-  "type": "ValueError"
-}

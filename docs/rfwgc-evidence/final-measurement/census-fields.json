@@ -1,8 +1,0 @@
-{
-  "live_payload_bytes_by_space": "Historical raw key: sum of live handleEntry.size per space, INCLUDING header/extent; not cumulative allocation bytes or user-payload-only bytes.",
-  "stats.Allocations": "Collector allocation charge count, not necessarily one live handle per charge for compiler-proof paths.",
-  "old_heap_fixture": "8192 * 8192 bytes of user array payload retained, plus object headers; each ephemeral scalar has one i64 field; exact live extents and charge delta recorded.",
-  "allocation_bytes_limit": "Graph and evacuation initial census has all fixture allocations live and therefore exposes their total initial object extents. Dead ephemeral allocations cannot be reconstructed from endpoint occupancy alone; no total-byte or peak-memory claim for those endpoints.",
-  "ParallelActivity": "Each array index i counts completed joined phases with i+1 participants; no increase in multi-participant Trace when object edge source installed; absent serial counters are not zero work.",
-  "backing_len_cap": "Endpoint Go backing allocation extents, not RSS, peak occupancy, fragmentation or retained memory after close."
-}

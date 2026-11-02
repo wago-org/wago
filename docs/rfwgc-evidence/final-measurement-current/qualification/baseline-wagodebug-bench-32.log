@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/coreutils-sort
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/coreutils-sort
---- PASS: TestFinalPreparationCompile (0.42s)
-    --- PASS: TestFinalPreparationCompile/coreutils-sort (0.41s)
-PASS

@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/esbuild-minify
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/esbuild-minify
---- PASS: TestFinalPreparationRuntime (2.14s)
-    --- PASS: TestFinalPreparationRuntime/esbuild-minify (2.13s)
-PASS

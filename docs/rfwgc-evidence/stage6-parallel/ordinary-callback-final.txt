@@ -1,6 +1,0 @@
-=== RUN   TestParallelStage6PortableOwnerCallbacks
---- PASS: TestParallelStage6PortableOwnerCallbacks (10.57s)
-=== RUN   TestParallelStage6Poison
---- PASS: TestParallelStage6Poison (0.06s)
-PASS
-ok  	github.com/wago-org/wago/src/core/runtime/gc/native	11.647s

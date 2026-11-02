@@ -1,7 +1,0 @@
-{"Action":"start","Package":"./src/wago"}
-{"Action":"run","Package":"./src/wago","Test":"TestSharedEntryGuardCancellationAndGC"}
-{"Action":"output","Package":"./src/wago","Test":"TestSharedEntryGuardCancellationAndGC","Output":"=== RUN   TestSharedEntryGuardCancellationAndGC\n","OutputType":"frame"}
-{"Action":"output","Package":"./src/wago","Test":"TestSharedEntryGuardCancellationAndGC","Output":"--- PASS: TestSharedEntryGuardCancellationAndGC (0.01s)\n","OutputType":"frame"}
-{"Action":"pass","Package":"./src/wago","Test":"TestSharedEntryGuardCancellationAndGC"}
-{"Action":"output","Package":"./src/wago","Output":"PASS\n","OutputType":"frame"}
-{"Action":"pass","Package":"./src/wago"}

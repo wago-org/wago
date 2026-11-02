@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/json-as
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/json-as
---- PASS: TestFinalPreparationCompile (0.01s)
-    --- PASS: TestFinalPreparationCompile/json-as (0.01s)
-PASS

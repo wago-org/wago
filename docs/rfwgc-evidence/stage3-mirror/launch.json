@@ -1,9 +1,0 @@
-{
-  "wago_initial_head": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-  "slipstream_base": "db6014de2316f13dd08ea8618d614c28132f2688",
-  "slipstream_launch": "506b08d3d3fa3c8e8b1ce9ac0cb4f30a2463cdc3",
-  "typecap_report": "01303964bf52d2f3c86f556480cb07cf5ec35165",
-  "typecap_implementation": "059d10f170c0a513cbcf65ab2956f3dff717a892",
-  "typecap_report_is_landed": false,
-  "starshine_read_only_ref": "e075c47e61b01ab9e4fd0ae4a7ca47b755e3fca1"
-}

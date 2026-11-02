@@ -1,5 +1,0 @@
-TestR9H2ReceiptPublisherRetirement
-TestR9H2ReceiptCloseOrders
-TestR9H2ReceiptConvertedProducerCycle
-TestR9H2ReceiptFinalJournalRemainsCollectionAuthority
-ok  	github.com/wago-org/wago/src/wago	0.003s

@@ -1,5 +1,0 @@
-=== RUN   TestExternrefGlobalHoldingConvertedGCReference
---- PASS: TestExternrefGlobalHoldingConvertedGCReference (0.00s)
-=== RUN   TestGCExternConversionAcrossReferenceTables
---- PASS: TestGCExternConversionAcrossReferenceTables (0.00s)
-PASS

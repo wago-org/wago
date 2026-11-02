@@ -1,8 +1,0 @@
-=== RUN   TestR9ProtocolConditionPublication
---- PASS: TestR9ProtocolConditionPublication (0.00s)
-=== RUN   TestR9ProtocolStopBeforeWorkerReceive
---- PASS: TestR9ProtocolStopBeforeWorkerReceive (0.00s)
-=== RUN   TestR9ProtocolPhaseBeforeWorkerReceive
---- PASS: TestR9ProtocolPhaseBeforeWorkerReceive (0.00s)
-PASS
-ok  	github.com/wago-org/wago/src/core/runtime/gc/native	0.002s

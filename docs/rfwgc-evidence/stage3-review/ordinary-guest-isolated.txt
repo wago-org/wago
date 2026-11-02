@@ -1,2 +1,0 @@
-$ go test -overlay=docs/rfwgc-evidence/stage3-review/guest-overlay.json ./src/wago -run ^TestGC -count=1 -timeout=5m
-ok  	github.com/wago-org/wago/src/wago	3.349s

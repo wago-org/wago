@@ -1,1 +1,0 @@
-All nine test commands exited 0. The driver then exited 2 because its file was edited while Bash was reading it (unexpected EOF). Superseded by complete rerun of the unchanged test selections with the finalized driver.

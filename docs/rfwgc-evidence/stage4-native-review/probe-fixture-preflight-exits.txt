@@ -1,3 +1,0 @@
-ordinary probes-artifacts 1
-wagodebug probes-artifacts 1
-wago_regalloccheck probes-artifacts 1

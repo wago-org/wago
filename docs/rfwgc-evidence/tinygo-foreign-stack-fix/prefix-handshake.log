@@ -1,4 +1,0 @@
-=== RUN   TestTinyGoForeignStackConcurrentGC
-=== RUN   TestTinyGoForeignStackConcurrentGC/return
-FAIL	github.com/wago-org/wago/src/core/runtime	65.559s
-exit=1

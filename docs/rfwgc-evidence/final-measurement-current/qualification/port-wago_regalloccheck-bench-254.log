@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/grain-stdlib-json-subset
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/grain-stdlib-json-subset
---- PASS: TestFinalPreparationCompile (0.06s)
-    --- PASS: TestFinalPreparationCompile/grain-stdlib-json-subset (0.06s)
-PASS

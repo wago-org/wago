@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/gnu-seq-range
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/gnu-seq-range
---- PASS: TestFinalPreparationRuntime (0.02s)
-    --- PASS: TestFinalPreparationRuntime/gnu-seq-range (0.02s)
-PASS

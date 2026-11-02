@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/tree-ashell-list
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/tree-ashell-list
---- PASS: TestFinalPreparationRuntime (0.04s)
-    --- PASS: TestFinalPreparationRuntime/tree-ashell-list (0.02s)
-PASS

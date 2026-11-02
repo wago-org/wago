@@ -1,2 +1,0 @@
-{"binary": "/home/dev/.local/share/wago-tinygo-investigation/artifacts/042-baseline-ordinary/artifact-875963-gc-during/runner", "sha256": "04ee333ff7153255cd14be94b3895d622fb02373d7473fc89b31d47722daacd2"}
-{"iteration": 0, "exit": -6, "output": "boundary: during-guest-gc-enter\npanic: runtime error at 0x000000000027d968: nil pointer dereference\n"}

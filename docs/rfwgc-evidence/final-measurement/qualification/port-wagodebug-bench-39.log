@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/coreutils-wc
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/coreutils-wc
---- PASS: TestFinalPreparationRuntime (0.69s)
-    --- PASS: TestFinalPreparationRuntime/coreutils-wc (0.68s)
-PASS

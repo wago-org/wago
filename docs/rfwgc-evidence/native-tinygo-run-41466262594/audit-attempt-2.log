@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/native-tinygo-run-41466262594/audit.py", line 22, in <module>
-    assert len(jobs)==30 and sum(j['conclusion']=='success' for j in jobs)==4
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError

@@ -1,3 +1,0 @@
-From https://github.com/jtenner/slipstream
- * branch                master     -> FETCH_HEAD
-db6014de2316f13dd08ea8618d614c28132f2688

@@ -1,8 +1,0 @@
-[
-  {
-    "path": "resume-full-root-replay-ordinary/result.json",
-    "raw_sha256": "2588dcd22c7b4300cdeef7bb817322777a51cad018e5b42d44a9896d0927e8f4",
-    "bytes": 8350445,
-    "retained_failed_attempt": "/tmp/wago-final-f2bb-n11khnr8/failed-compression-result.json.gz"
-  }
-]

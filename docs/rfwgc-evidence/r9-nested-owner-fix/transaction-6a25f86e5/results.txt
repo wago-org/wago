@@ -1,3 +1,0 @@
-ordinary exit=0
-wagodebug exit=0
-wago_regalloccheck exit=0

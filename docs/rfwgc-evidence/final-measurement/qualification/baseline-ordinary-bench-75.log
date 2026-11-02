@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/lzmainfo-header
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/lzmainfo-header
---- PASS: TestFinalPreparationRuntime (0.01s)
-    --- PASS: TestFinalPreparationRuntime/lzmainfo-header (0.01s)
-PASS

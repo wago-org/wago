@@ -1,8 +1,0 @@
-=== RUN   TestNativeImportVariantRoutesARM64
-=== RUN   TestNativeImportVariantRoutesARM64/compact=true/pair=false/trap=false
-    native_import_variant_route_test.go:117: native=false
-    native_import_variant_route_test.go:117: native=true
-    native_import_variant_route_test.go:114: native guard target 0x444 does not start with STP FP,LR
---- FAIL: TestNativeImportVariantRoutesARM64 (0.12s)
-    --- FAIL: TestNativeImportVariantRoutesARM64/compact=true/pair=false/trap=false (0.11s)
-FAIL

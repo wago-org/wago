@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/age-decrypt
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/age-decrypt
---- PASS: TestFinalPreparationCompile (0.54s)
-    --- PASS: TestFinalPreparationCompile/age-decrypt (0.53s)
-PASS

@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/embench-matmult-int
-    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/embench-matmult-int
---- PASS: TestFinalPreparationRuntime (0.00s)
-    --- PASS: TestFinalPreparationRuntime/embench-matmult-int (0.00s)
-PASS

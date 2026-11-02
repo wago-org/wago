@@ -1,9 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/utf-as-simd.convertN
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/utf-as-simd.convertN
-=== RUN   TestFinalPreparationRuntime/utf-as-simd.validateN
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/utf-as-simd.validateN
---- PASS: TestFinalPreparationRuntime (0.00s)
-    --- PASS: TestFinalPreparationRuntime/utf-as-simd.convertN (0.00s)
-    --- PASS: TestFinalPreparationRuntime/utf-as-simd.validateN (0.00s)
-PASS

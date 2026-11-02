@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/libtommath.libtommath_run
-    final_preparation_test.go:33: FM_LEAF BenchmarkExec/libtommath.libtommath_run
---- PASS: TestFinalPreparationRuntime (0.01s)
-    --- PASS: TestFinalPreparationRuntime/libtommath.libtommath_run (0.00s)
-PASS

@@ -1,8 +1,0 @@
-=== RUN   TestExternHostStoreContractRouting
---- PASS: TestExternHostStoreContractRouting (0.00s)
-=== RUN   TestExternHostStoreContractHelperABI
---- PASS: TestExternHostStoreContractHelperABI (0.00s)
-=== RUN   TestExternHostStoreContractCallFrames
---- PASS: TestExternHostStoreContractCallFrames (0.00s)
-PASS
-ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.007s

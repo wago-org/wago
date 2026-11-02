@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/polybench-deriche
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-deriche
---- PASS: TestFinalPreparationCompile (0.00s)
-    --- PASS: TestFinalPreparationCompile/polybench-deriche (0.00s)
-PASS

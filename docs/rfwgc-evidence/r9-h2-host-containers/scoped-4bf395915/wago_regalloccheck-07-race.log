@@ -1,8 +1,0 @@
-=== RUN   TestR9H2HostContainerPublicGlobal
-=== RUN   TestR9H2HostContainerPublicGlobal/0
-=== RUN   TestR9H2HostContainerPublicGlobal/6
---- PASS: TestR9H2HostContainerPublicGlobal (0.01s)
-    --- PASS: TestR9H2HostContainerPublicGlobal/0 (0.01s)
-    --- PASS: TestR9H2HostContainerPublicGlobal/6 (0.00s)
-PASS
-ok  	github.com/wago-org/wago/src/wago	1.026s

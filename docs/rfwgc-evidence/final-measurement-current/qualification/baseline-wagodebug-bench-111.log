@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/sha256.hashN
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/sha256.hashN
---- PASS: TestFinalPreparationRuntime (0.00s)
-    --- PASS: TestFinalPreparationRuntime/sha256.hashN (0.00s)
-PASS

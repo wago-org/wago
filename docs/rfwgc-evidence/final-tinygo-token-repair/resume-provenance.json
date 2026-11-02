@@ -1,9 +1,0 @@
-{
-  "pin": "c786a9b84bb0298d5bbd6b9522ab611193440cfa",
-  "archive_sha256": "0e8f548c3972542b588c1f560c299aec42995889eb88c1871cd95933b35c5d93",
-  "driver_sha256": "2b35bbb7b1dc0a08650f7b7b92d88821ae11a71be2f5b00bff188726e99c1d12",
-  "original_sha256": "799a0ce7621ed4445fc4b877cd3d996152fa9b0dd0ec5662b8a01a813dd17047",
-  "adapter_sha256": "e006574f529c0bb03c11427313f2d9f54b5efc4e42112a656d93552e1babc719",
-  "regression_sha256": "4024486ee37148b718bd2c0860d3852d8953e7568dc03f926bd18a96b04a2a67",
-  "adapter_change": "build constraint only; original body unchanged"
-}

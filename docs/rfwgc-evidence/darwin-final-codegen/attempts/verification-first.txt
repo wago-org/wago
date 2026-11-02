@@ -1,1 +1,0 @@
-First offline verifier invocation failed its manifest-count assertion because git ls-tree ran from the evidence subdirectory without --full-tree. The archive itself had already been checked against all 18,604 blob IDs. Added --full-tree and reran; no qualification or source changes.

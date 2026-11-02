@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/pcre2.pcre2_run
-    final_preparation_test.go:33: FM_LEAF BenchmarkExec/pcre2.pcre2_run
---- PASS: TestFinalPreparationRuntime (0.06s)
-    --- PASS: TestFinalPreparationRuntime/pcre2.pcre2_run (0.03s)
-PASS

@@ -1,6 +1,0 @@
-=== RUN   TestReviewImportedAccessNamespace
-    review_imported_access_namespace_test.go:24: access namespace was not rejected: handled=false err=<nil>
---- FAIL: TestReviewImportedAccessNamespace (0.00s)
-FAIL
-FAIL	github.com/wago-org/wago/src/wago	0.002s
-FAIL

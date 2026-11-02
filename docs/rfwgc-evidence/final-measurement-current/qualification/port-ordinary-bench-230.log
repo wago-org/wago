@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationCompile
-=== RUN   TestFinalPreparationCompile/polybench-ludcmp
-    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-ludcmp
---- PASS: TestFinalPreparationCompile (0.01s)
-    --- PASS: TestFinalPreparationCompile/polybench-ludcmp (0.00s)
-PASS

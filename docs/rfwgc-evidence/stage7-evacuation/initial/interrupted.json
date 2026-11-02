@@ -1,8 +1,0 @@
-{
-  "reason": "Superseded after production edge-case refinements and actual guest relocation fixture. Ordinary full collector and full race passed; remaining commands interrupted, not passes.",
-  "processes": [
-    2511478,
-    2686101,
-    2687055
-  ]
-}

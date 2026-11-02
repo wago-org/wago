@@ -1,1 +1,0 @@
-["/home/dev/.local/share/mise/installs/go/1.27.3/bin/go", "test", "-race", "-tags", "wagodebug", "./src/wago", "-run", "^TestR9H2RetiredCollectorPreservesDeferredFinalizer$", "-count=1", "-v", "-timeout=3m"]

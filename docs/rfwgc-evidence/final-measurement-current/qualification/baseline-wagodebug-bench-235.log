@@ -1,6 +1,0 @@
-=== RUN   TestFinalPreparationRuntime
-=== RUN   TestFinalPreparationRuntime/polybench-nussinov.polybench_run
-    final_preparation_test.go:28: FM_LEAF BenchmarkExec/polybench-nussinov.polybench_run
---- PASS: TestFinalPreparationRuntime (0.01s)
-    --- PASS: TestFinalPreparationRuntime/polybench-nussinov.polybench_run (0.00s)
-PASS

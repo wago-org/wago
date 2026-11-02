@@ -1,9 +1,0 @@
-{
-  "pin": "3b04e68376024c689ec651adf1817955ea75d707",
-  "all_pass": true,
-  "host_acceptance": false,
-  "failure": null,
-  "export_changes": [],
-  "commands": 174,
-  "remaining_gates": "All specified pinned gates and full-package race passed. Later compiler/diagnostic/lint changes require a new combined pin; diagnostics/staticcheck and parent closure remain pending."
-}
