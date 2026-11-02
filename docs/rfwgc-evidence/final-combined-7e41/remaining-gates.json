@@ -1,6 +1,6 @@
 {
   "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-  "remaining_count": 207,
+  "remaining_count": 199,
   "remaining": [
     {
       "suite": "full-root-replay-ordinary",
@@ -111,24 +111,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "parent-race-reduced-ordinary",
-      "receipt_suite": "parent-race-reduced-ordinary",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "parent-race-reduced-wagodebug",
-      "receipt_suite": "parent-race-reduced-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "parent-race-reduced-wago_regalloccheck",
-      "receipt_suite": "parent-race-reduced-wago_regalloccheck",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "guard-ordinary",
       "receipt_suite": "guard-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
@@ -181,24 +163,6 @@
       "receipt_suite": "baseline-corpus-wago_regalloccheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "catalog-ordinary",
-      "receipt_suite": "catalog-ordinary",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "catalog-wagodebug",
-      "receipt_suite": "catalog-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "catalog-wago_regalloccheck",
-      "receipt_suite": "catalog-wago_regalloccheck",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "RUNNING"
     },
     {
       "suite": "graphs-port-ordinary",
@@ -1231,21 +1195,15 @@
       "receipt_suite": null,
       "source": null,
       "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-unsupported-global-wagodebug",
-      "receipt_suite": "tinygo-unsupported-global-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "tinygo-unsupported-global-wago_regalloccheck",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
     }
   ],
   "completed": [
+    "parent-race-reduced-ordinary",
+    "parent-race-reduced-wagodebug",
+    "parent-race-reduced-wago_regalloccheck",
+    "catalog-ordinary",
+    "catalog-wagodebug",
+    "catalog-wago_regalloccheck",
     "early-replay-discovery-ordinary",
     "early-replay-compile-ordinary",
     "early-replay-cipolicy-ordinary",
@@ -1258,6 +1216,8 @@
     "early-replay-compile-wago_regalloccheck",
     "early-replay-cipolicy-wago_regalloccheck",
     "repair-census-wago_regalloccheck",
-    "tinygo-unsupported-global-ordinary"
+    "tinygo-unsupported-global-ordinary",
+    "tinygo-unsupported-global-wagodebug",
+    "tinygo-unsupported-global-wago_regalloccheck"
   ]
 }

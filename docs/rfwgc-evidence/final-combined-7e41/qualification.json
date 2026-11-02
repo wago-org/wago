@@ -5,13 +5,56 @@
       "plain_passes": [],
       "plain_skips": [],
       "plain_failures": [],
+      "suite": "catalog-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "catalog-ordinary/command.json",
+      "pass_count": 129,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRFWStage3CorpusCompile"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
       "suite": "catalog-wago_regalloccheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "INTERRUPTED",
-      "exit": null,
+      "verdict": "PASS",
+      "exit": 0,
       "command": "catalog-wago_regalloccheck/command.json",
-      "pass_count": 0,
-      "top_level_passes": [],
+      "pass_count": 129,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRFWStage3CorpusCompile"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "catalog-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "catalog-wagodebug/command.json",
+      "pass_count": 129,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRFWStage3CorpusCompile"
+        }
+      ],
       "failures": [],
       "skips": []
     },
@@ -1705,6 +1748,63 @@
       "plain_passes": [],
       "plain_skips": [],
       "plain_failures": [],
+      "suite": "parent-race-reduced-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "parent-race-reduced-ordinary/command.json",
+      "pass_count": 2,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestPreparedGCRevocableEntryExternalAccess"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "parent-race-reduced-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "parent-race-reduced-wago_regalloccheck/command.json",
+      "pass_count": 2,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestPreparedGCRevocableEntryExternalAccess"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "parent-race-reduced-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "parent-race-reduced-wagodebug/command.json",
+      "pass_count": 2,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestPreparedGCRevocableEntryExternalAccess"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
       "suite": "repair-census-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "verdict": "PASS",
@@ -2768,13 +2868,49 @@
       "skips": []
     },
     {
-      "plain_passes": [],
+      "plain_passes": [
+        "--- PASS: TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/ordinary (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/null (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/cross-store (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/immutable-before-invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/immutable-before-null (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/closed-before-invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/closed-before-null (0.00s)",
+        "--- PASS: TestUnsupportedConversionGlobalValidationOrdering (0.00s)"
+      ],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tinygo-unsupported-global-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tinygo-unsupported-global-wago_regalloccheck/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [
+        "--- PASS: TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/ordinary (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/null (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/cross-store (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/immutable-before-invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/immutable-before-null (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/closed-before-invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/closed-before-null (0.00s)",
+        "--- PASS: TestUnsupportedConversionGlobalValidationOrdering (0.00s)"
+      ],
       "plain_skips": [],
       "plain_failures": [],
       "suite": "tinygo-unsupported-global-wagodebug",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "INTERRUPTED",
-      "exit": null,
+      "verdict": "PASS",
+      "exit": 0,
       "command": "tinygo-unsupported-global-wagodebug/command.json",
       "pass_count": 0,
       "top_level_passes": [],
@@ -3158,18 +3294,6 @@
       "failures": []
     },
     {
-      "suite": "catalog-ordinary",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "parent-race-reduced-ordinary",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
       "suite": "full-root-replay-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "verdict": "NOT_RUN",
@@ -3374,18 +3498,6 @@
       "reason": "Not executed; no terminal pass evidence."
     },
     {
-      "suite": "catalog-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "parent-race-reduced-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
       "suite": "full-root-replay-wagodebug",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "verdict": "NOT_RUN",
@@ -3585,12 +3697,6 @@
     },
     {
       "suite": "tooling-vet-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "parent-race-reduced-wago_regalloccheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "verdict": "NOT_RUN",
       "reason": "Not executed; no terminal pass evidence."
@@ -4281,8 +4387,7 @@
     }
   ],
   "counts": {
-    "INTERRUPTED": 2,
-    "PASS": 18,
-    "NOT_RUN": 221
+    "PASS": 26,
+    "NOT_RUN": 216
   }
 }
