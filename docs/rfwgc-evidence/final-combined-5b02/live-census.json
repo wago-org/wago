@@ -2,22 +2,20 @@
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
   "matches": [
     {
-      "suite": "tinygo-34/standalone-ordinary",
-      "pid": 1211425,
+      "suite": "tinygo-34/guest-threads-ordinary",
+      "pid": 1325094,
       "cwd": "/home/dev/.cache/_wago_final_5b02_n61wfxab/tinygo-source",
       "argv": [
-        "go",
+        "tinygo",
         "test",
         "-v",
-        "-failfast",
-        "-count=1",
-        "-timeout=25m",
+        "-scheduler=threads",
+        "-gc=conservative",
         "-tags=wago_runtime",
-        "-run",
-        "^(TestBuildTinyGoLinksMachineCodeWithoutCompiler|TestBuildTinyGoStripsByDefault|TestTinyGoSupportsCooperativeInterruption|TestTinyGoForeignStackGCInterruption)$",
-        "./cli/manager/internal/standalone"
+        "./src/core/runtime",
+        "./src/wago"
       ],
-      "start_ticks": "31422982"
+      "start_ticks": "31451834"
     }
   ]
 }

@@ -1,0 +1,29 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "files": {
+    "tinygo-34/qualification-provenance.txt": "c3ea30a6af089bfe845f3e677c02acad0f6121f3111a5dd2c53ab937700319ed",
+    "tinygo-34/qualification-bootstrap.log": "bbf6c5ac145cd41cae99e3e284a4c684767070ed62d8ba579e18bfd9a4752063",
+    "tinygo-34.sh": "d4cd85233ad73a6d0fadfbdb129932e1e0778f3bcc64366b558a0cfdba1794be",
+    "tinygo-34/host-ordinary.command": "558f786a625d6786d0ad24c285e76ecb496bbf02b10a5bffe65545828ea8bb90",
+    "tinygo-34/host-ordinary.log": "54af8282396276b84b0c69ce29b61ec66eb3b699963ac82cfc748b349e1113cd",
+    "tinygo-34/standalone-ordinary.command": "3ca49ced29adc3240d6009d54d7d39b9cc8b07cd7deb52407b05683e89aa9c56",
+    "tinygo-34/standalone-ordinary.log": "946081d0bfa8009240d0a08c8fb7f1f2ff55372b200c34399b820a57cb7a16ff"
+  },
+  "receipts": [
+    {
+      "suite": "tinygo-34/host-ordinary",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "558f786a625d6786d0ad24c285e76ecb496bbf02b10a5bffe65545828ea8bb90",
+      "raw_sha256": "54af8282396276b84b0c69ce29b61ec66eb3b699963ac82cfc748b349e1113cd"
+    },
+    {
+      "suite": "tinygo-34/standalone-ordinary",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "3ca49ced29adc3240d6009d54d7d39b9cc8b07cd7deb52407b05683e89aa9c56",
+      "raw_sha256": "946081d0bfa8009240d0a08c8fb7f1f2ff55372b200c34399b820a57cb7a16ff"
+    }
+  ],
+  "previous_seals_verified": true
+}
