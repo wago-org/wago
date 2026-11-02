@@ -132,30 +132,6 @@ type managedFunctionEnv struct {
 	descriptors []uint64
 }
 
-type managedFunctionCollector struct {
-	mu                  sync.Mutex // observer journal only; maps are collector-domain serialized
-	graph               *managedFunctionGraph
-	collector           *gc.Collector
-	typeID              gc.TypeID
-	envs                map[gc.Ref]*managedFunctionEnv    // weak, removed before handle reuse
-	byOwner             map[*Instance]*managedFunctionEnv // same weak identity
-	byDescriptor        map[uint64]*managedFunctionEnv
-	shadows             map[gc.Ref]managedFunctionEdge   // inline first producer; null tombstones preserve Tiny cursors
-	extraShadows        map[gc.Ref][]managedFunctionEdge // cold overflow for multiple producers
-	aggregate           *managedFunctionAggregateScratch
-	globalOwners        map[uint32]*managedFunctionMember
-	tableOwners         map[uint32]*managedFunctionMember
-	hostEnvSlots        map[uint32]gc.Ref                 // floating roots, excluded from the quiescent joint mark
-	conversionHostSlots map[uint32]*gcConversionContainer // collector-local physical host receipts
-	conversionFloating  map[uint32]*gcConversionIdentity
-	hostFreeSlots       []uint32
-	authorized          bool // only a validated joint mark may make slots conditional
-	liveOwners          map[*managedFunctionMember]bool
-	reclaimed           []*managedFunctionEnv
-	closed              bool
-	managedFunctionCollectorTarget
-}
-
 func (s *managedFunctionCollector) ObjectEdgeCount(ref gc.Ref) uint32 {
 	if _, ok := s.shadows[ref]; ok {
 		return 1 + uint32(len(s.extraShadows[ref]))

@@ -8,7 +8,7 @@ import (
 )
 
 // These are the pre-split RV64 sizes and offsets, captured by execution at
-// 563631afba41d58f6de9eb7fd31bb8aa3f16f55e. The target wrapper must preserve
+// 563631afba41d58f6de9eb7fd31bb8aa3f16f55e. The target declaration must preserve
 // every existing field, including the exact receipt and exception state slots.
 func TestManagedFunctionRV64Shape(t *testing.T) {
 	for _, shape := range []struct {
