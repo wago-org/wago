@@ -1184,6 +1184,12 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 		fr.controlSite = inlineTupleFallthroughSite
 		f.stats.peep("inline-tuple-fallthrough")
 	}
+	var prefix inlineReadonlyPrefix
+	if fr.isInlineTupleFallthrough() {
+		prefix = f.detachInlineReadonlyPrefix()
+		fr.height = f.depth()
+	}
+	defer f.restoreInlineReadonlyPrefix(prefix)
 	f.setFrameBaseTypes(&fr, f.currentLogicalTypes())
 	f.flush()
 	f.pushCtrl(&fr)

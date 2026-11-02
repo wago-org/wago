@@ -2658,7 +2658,12 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 
 	if fr.isStraightLineBlock() {
 		f.releaseCtrlMerge(&fr)
-		if f.unreachable || f.depth() != fr.height+fr.resultN {
+		// A private inlined callee can trap or diverge without reaching this
+		// block's end. Its isolated controls supply no caller fallthrough edge.
+		if f.unreachable {
+			return nil
+		}
+		if f.depth() != fr.height+fr.resultN {
 			return fmt.Errorf("straight-line block stack height mismatch")
 		}
 		return nil

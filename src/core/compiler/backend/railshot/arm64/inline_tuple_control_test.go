@@ -110,6 +110,9 @@ func TestInlineTupleFallthroughKeepsResultsAndRejectsBoundaryEdges(t *testing.T)
 							if diagnosticsEnabled && (stats.Funcs[0].Peephole["inline-tuple-fallthrough"] != 0) != (enabled && positive && !profileEnabled) {
 								t.Fatalf("fallthrough proof variant=%s enabled=%t stats=%v", variant, enabled, stats.Funcs[0].Peephole)
 							}
+							if diagnosticsEnabled && variant == "fallthrough" && (stats.Funcs[0].Peephole["inline-tuple-readonly-prefix"] != 0) != (enabled && !profileEnabled) {
+								t.Fatalf("readonly prefix enabled=%v stats=%v", enabled, stats.Funcs[0].Peephole)
+							}
 							stores := positive && variant != "drop-result" && variant != "one-store" && variant != "unreachable"
 							if diagnosticsEnabled && (stats.Funcs[0].Peephole["inline-tuple-result-stores"] != 0) != (enabled && stores && !profileEnabled) {
 								t.Fatalf("tuple store path variant=%s enabled=%t stats=%v", variant, enabled, stats.Funcs[0].Peephole)

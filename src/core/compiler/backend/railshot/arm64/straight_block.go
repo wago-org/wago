@@ -43,7 +43,7 @@ func (f *fn) straightLineBlock(r *wasm.Reader, kind ctrlKind, params, results in
 	return shared.IsStraightLineBlockWithSplicedCalls(r, f.classifier, func(index uint32) bool {
 		t := f.inlineTargets.target(int(index))
 		_, reserved := f.inlineBase[int(index)]
-		return reserved && t != nil && t.integerPairLeaf()
+		return reserved && t != nil && (t.integerPairLeaf() || f.inlineTupleFallsThrough(t))
 	})
 }
 

@@ -50,6 +50,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Retain immutable ARM64 caller operands across bounded private integer-tuple
+  control flow, including nested fallthrough blocks and trapping callees.
 - Reuse proved ARM64 pinned-local entry guards at bounded loop backedges when
   unrolling is unavailable, retaining zero-iteration checks and every body site.
 - Borrow immutable ARM64 loop constants directly for immediate read-only

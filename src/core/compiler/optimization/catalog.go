@@ -456,7 +456,7 @@ var catalog = []Definition{
 	arm64("atomic-lse", "LSE atomics", "use native acquire/release atomic RMW and compare-exchange on LSE hosts"),
 	both("atomic-static-bounds", "Constant atomic bounds", "prove aligned constant atomic addresses against the declared memory minimum"),
 	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
-	both("straight-line-block", "Straight-line blocks", "retain operand residency through small blocks without branches or calls"),
+	both("straight-line-block", "Straight-line blocks", "retain operand residency through bounded fallthrough blocks and fully spliced private callees"),
 	arm64("loop-local-params", "Loop parameter locals", "transfer bounded integer loop parameters directly into pinned local homes"),
 	arm64("scalar-loop-unroll", "Scalar loop unrolling", "replicate bounded register-only integer loops and streamline short pinned-local loop backedges"),
 	arm64("cold-tuple-loop-exit", "Cold integer tuple loop exits", "defer local-only tuple exit arms so loop continuations fall through"),

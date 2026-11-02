@@ -14,7 +14,8 @@ func IsStraightLineBlock(source *wasm.Reader, classifier wasm.ModuleInstructionC
 
 // IsStraightLineBlockWithSplicedCalls additionally admits calls for which the
 // backend proves that lowering will splice a bounded native fallthrough body.
-// The predicate must reject every actual call, helper and control-flow callee.
+// The predicate must reject every actual call/helper and prove any spliced
+// control remains inside a private callee boundary, never reaching this block.
 // All structural bounds and reader-preservation rules remain unchanged.
 func IsStraightLineBlockWithSplicedCalls(source *wasm.Reader, classifier wasm.ModuleInstructionClassifier, spliced func(uint32) bool) bool {
 	r := *source
