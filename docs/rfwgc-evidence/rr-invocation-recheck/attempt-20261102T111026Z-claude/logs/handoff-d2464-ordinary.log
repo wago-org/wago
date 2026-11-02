@@ -1,0 +1,8 @@
+# label=handoff-d2464-ordinary pin=d2464100f tags=- race=0
+# go version go1.27.1 linux/amd64 GOROOT=/home/dev/.local/share/mise/installs/go/1.27.1
+# go test -count=1 -timeout 300s -v -run ^TestRRRecheckSharedMemoryHandoff$ ./src/wago
+=== RUN   TestRRRecheckSharedMemoryHandoff
+    rr_recheck_handoff_test.go:84: handoffCompleted=true s1=<nil> s2=<nil>
+--- PASS: TestRRRecheckSharedMemoryHandoff (0.50s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.506s

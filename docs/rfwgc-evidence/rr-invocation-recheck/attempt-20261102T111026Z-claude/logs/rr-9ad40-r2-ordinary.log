@@ -1,0 +1,20 @@
+# label=rr-9ad40-r2-ordinary pin=9ad40bce4 tags=- race=0
+# go version go1.27.1 linux/amd64 GOROOT=/home/dev/.local/share/mise/installs/go/1.27.1
+# go test -count=1 -timeout 600s -v -run ^TestRRRecheck ./src/wago
+=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader
+=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader/none
+    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=<nil>
+=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader/table
+    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=true secondAdmissionErr=context deadline exceeded
+    rr_recheck_adversary_test.go:177: storage-only call could not return while an unrelated true-dynamic call ran
+    rr_recheck_adversary_test.go:180: second storage-only call stalled: context deadline exceeded
+--- FAIL: TestRRRecheckStorageOnlyReturnBehindDynamicReader (3.01s)
+    --- PASS: TestRRRecheckStorageOnlyReturnBehindDynamicReader/none (0.00s)
+    --- FAIL: TestRRRecheckStorageOnlyReturnBehindDynamicReader/table (3.00s)
+=== RUN   TestRRRecheckCanceledAdmissionBehindDynamicReader
+    rr_recheck_adversary_test.go:211: storage(dynamic=true conversionOnly=true) canceledReturnBlocked=true err=context deadline exceeded
+    rr_recheck_adversary_test.go:213: canceled storage-only admission did not return within 2s of its deadline
+--- FAIL: TestRRRecheckCanceledAdmissionBehindDynamicReader (2.30s)
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	5.315s
+FAIL

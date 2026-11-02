@@ -1,0 +1,7 @@
+# label=rr-9ad40-ordinary pin=9ad40bce4 tags=- race=0
+# go version go1.27.1 linux/amd64 GOROOT=/home/dev/.local/share/mise/installs/go/1.27.1
+# go test -count=1 -timeout 600s -v -run ^TestRRRecheck ./src/wago
+# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
+src/wago/rr_recheck_adversary_test.go:47:94: cannot use run (variable of type byte) as uint32 value in argument to wasmtest.ExportEntry
+FAIL	github.com/wago-org/wago/src/wago [build failed]
+FAIL
