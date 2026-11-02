@@ -16,7 +16,8 @@ for p in sorted(E.glob('*/command.json')):
  if raw.exists() or z.exists():
   with (raw.open('rb') if raw.exists() else gzip.open(z,'rb')) as f:
    for b in iter(lambda:f.read(1048576),b''):hh.update(b)
- valid=bool(r and c.get('source')==r.get('source')==M['pin'] and r.get('driver_unchanged') and c.get('driver_sha256') in known and hh.hexdigest()==r.get('raw_sha256'))
+ want=json.loads((E/'baseline.json').read_text())['pin'] if d.name.startswith(('baseline-','graphs-baseline-')) else M['pin']
+ valid=bool(r and c.get('source')==r.get('source')==want and r.get('driver_unchanged') and c.get('driver_sha256') in known and hh.hexdigest()==r.get('raw_sha256'))
  rows.append(dict(suite=d.name,valid=valid,verdict=r.get('verdict','INTERRUPTED'),driver=known.get(c.get('driver_sha256')),raw_sha256=hh.hexdigest(),command_sha256=sha(p)))
 processes=[]
 # Exclude this inspection and its shell ancestors from ownership candidates.

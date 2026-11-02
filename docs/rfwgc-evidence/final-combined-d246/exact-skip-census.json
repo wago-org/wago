@@ -524,6 +524,530 @@
     }
   },
   {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:03.7268692Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/internal/parallel",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/internal/parallel\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:05.266240003Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/internal/settings",
+        "Test": "TestUnavailableFeaturesMayRemainDisabled",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestUnavailableFeaturesMayRemainDisabled\n    store_test.go:163: all features are available on this platform\n--- SKIP: TestUnavailableFeaturesMayRemainDisabled (0.00s)\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:05.308250549Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/internal/settings/cmd/genschema",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/internal/settings/cmd/genschema\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:05.419049816Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/internal/ui",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/internal/ui\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:10.655479946Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/auth/logout",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/auth/logout\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:10.655488222Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/auth/whoami",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/auth/whoami\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:10.655495756Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/cache",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:10.751455823Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/cache/dir",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache/dir\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:10.751464519Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/cache/options",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache/options\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:10.836585455Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/cache/size",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache/size\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.07860988Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/completions",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/completions\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.078626972Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/diff",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/diff\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.078642772Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/get",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/get\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.078657209Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/list",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/list\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.078670945Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/options",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/options\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.078685141Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/reset",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/reset\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.078699969Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/set",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/set\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.459504826Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/catalog",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/catalog\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.549589411Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/deprecate",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/deprecate\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.635993046Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/outdated",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/outdated\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.636003425Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/publish",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/publish\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.636012913Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/rebuild",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/rebuild\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.724638479Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/tree",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/tree\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.724648297Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/unpublish",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/unpublish\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.818485538Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/self",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/self\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.818493493Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/self/uninstall",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/self/uninstall\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:11.901107392Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/status",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/status\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:12.076990325Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/version/current",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/current\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:12.158907586Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/version/list",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/list\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:12.250190521Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/version/uninstall",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/uninstall\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:12.348218099Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/version/which",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/which\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:12.81386567Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/internal/config",
+        "Test": "TestInstalledZshCompletionCanBeSourced",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestInstalledZshCompletionCanBeSourced\n    completions_test.go:77: zsh is not installed\n--- SKIP: TestInstalledZshCompletionCanBeSourced (0.00s)\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:12.91516465Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/internal/config",
+        "Test": "TestZshCompletionPassesNestedCommandWords",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestZshCompletionPassesNestedCommandWords\n    completions_test.go:155: zsh is not installed\n--- SKIP: TestZshCompletionPassesNestedCommandWords (0.00s)\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:31.74162733Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/internal/self/replace",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/internal/self/replace\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:55:33.528945929Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/internal/version",
+        "Test": "TestRISCV64InstallBuildSelection",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestRISCV64InstallBuildSelection\n    lifecycle_test.go:720: native riscv64 build selection\n--- SKIP: TestRISCV64InstallBuildSelection (0.00s)\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:56:01.550569303Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/runtime/commands/module",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/module\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:56:01.550579592Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/runtime/commands/module/capabilities",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/module/capabilities\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:56:01.678532365Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/runtime/commands/module/imports",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/module/imports\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:56:01.678542634Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/runtime/commands/plugin",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/plugin\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:56:05.389826878Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/runtime/internal/profile",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/internal/profile\t[no test files]\n"
+    }
+  },
+  {
     "suite": "cli-wagodebug",
     "kind": "go-json",
     "detail": {
@@ -25033,6 +25557,185 @@
     "detail": {
       "event": {
         "Time": "2026-11-02T10:37:54.244302995Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestSqliCalibrate",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSqliCalibrate\n    sqli_rule_test.go:74: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory\n--- SKIP: TestSqliCalibrate (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:59:35.661424391Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/chart",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/bench/chart\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:59:35.958034731Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/cmd/explain",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/bench/cmd/explain\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:59:36.254938342Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/cmd/wagoprof",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/bench/cmd/wagoprof\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:59:38.620486762Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestVerifyApplicationCorpusShardReports",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestVerifyApplicationCorpusShardReports\n    application_corpus_shards_test.go:122: application corpus shard report directory is not configured\n--- SKIP: TestVerifyApplicationCorpusShardReports (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:59:53.371607111Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/lua-cli-buckets/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/lua-cli-buckets/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lua-cli-buckets/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:59:53.999199976Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/micropython-squares/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/micropython-squares/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/micropython-squares/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:59:56.917515895Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestVerifyCorpusCorrectnessShardReports",
+        "Elapsed": 0.18
+      },
+      "detail": "=== RUN   TestVerifyCorpusCorrectnessShardReports\n    corpus_correctness_shards_test.go:36: corpus correctness shard report directory is not configured\n--- SKIP: TestVerifyCorpusCorrectnessShardReports (0.18s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:00:08.661107174Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestCorpusChild",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestCorpusChild\n    corpus_runner_test.go:123: parent-only helper\n--- SKIP: TestCorpusChild (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:00:09.051630458Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestJsonAsBench",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestJsonAsBench\n    jsonas_test.go:29: json-as module not present (set WAGO_JSON_MODULE): open corpus/json-as.wasm: no such file or directory\n--- SKIP: TestJsonAsBench (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:00:11.252984842Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestSharingGCObservation",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSharingGCObservation\n    sharing_gc_observation_linux_test.go:16: diagnostic\n--- SKIP: TestSharingGCObservation (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:00:11.25299976Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestSharingMemory",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSharingMemory\n    sharing_memory_linux_test.go:71: diagnostic\n--- SKIP: TestSharingMemory (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:00:11.253015008Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestSharingMappedMemory",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestSharingMappedMemory\n    sharing_memory_linux_test.go:123: diagnostic\n--- SKIP: TestSharingMappedMemory (0.00s)\n"
+    }
+  },
+  {
+    "suite": "nested-wago_regalloccheck",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T11:00:11.25390011Z",
         "Action": "skip",
         "Package": "github.com/wago-org/wago/bench/suite",
         "Test": "TestSqliCalibrate",

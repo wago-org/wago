@@ -37,7 +37,7 @@
       "suite": "cli-wago_regalloccheck",
       "receipt_suite": "cli-wago_regalloccheck",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "installer-ordinary",
@@ -55,7 +55,7 @@
       "suite": "installer-wago_regalloccheck",
       "receipt_suite": "installer-wago_regalloccheck",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "nested-ordinary",
@@ -73,7 +73,7 @@
       "suite": "nested-wago_regalloccheck",
       "receipt_suite": "nested-wago_regalloccheck",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "collector-ordinary",
@@ -1307,9 +1307,8 @@
     }
   ],
   "counts": {
-    "PASS": 27,
-    "RUNNING": 1,
-    "NOT_RUN": 189
+    "PASS": 30,
+    "NOT_RUN": 187
   },
   "attempts": [
     {
@@ -1347,10 +1346,10 @@
     {
       "suite": "cli-wago_regalloccheck",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run-v4.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "cli-wagodebug",
@@ -1505,6 +1504,14 @@
       "verdict": "PASS"
     },
     {
+      "suite": "installer-wago_regalloccheck",
+      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+      "receipt_valid": true,
+      "driver": "run-v4.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "installer-wagodebug",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
       "receipt_valid": true,
@@ -1514,6 +1521,14 @@
     },
     {
       "suite": "nested-ordinary",
+      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+      "receipt_valid": true,
+      "driver": "run-v4.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "nested-wago_regalloccheck",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
       "receipt_valid": true,
       "driver": "run-v4.py",
