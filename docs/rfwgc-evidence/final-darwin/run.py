@@ -40,7 +40,7 @@ def main():
     if platform.system() != "Darwin" or platform.machine() != "arm64":
         parser.error("requires actual Darwin arm64; cross compilation and Linux QEMU do not qualify")
     identity = validate(os.environ.get("QUALIFICATION_SOURCE", ""),
-                        os.environ.get("QUALIFICATION_DRIVER", ""))
+                        os.environ.get("QUALIFICATION_DRIVER", ""), os.environ.get("QUALIFICATION_HARNESS", ""))
     root, out = args.source.resolve(), args.output.resolve()
     harness = Path(capture(["git", "rev-parse", "--show-toplevel"], HERE)).resolve()
     if root == harness or root in harness.parents or harness in root.parents:
@@ -63,6 +63,8 @@ def main():
     if any(os.environ.get(k) for k in ["GOFLAGS", "GOOS", "GOARCH", "GOWORK", "GOEXPERIMENT"]) or any(k.startswith("WAGO_") and k not in ("WAGO_WAST2JSON", "WAGO_SPEC_INTERPRETER", "WAGO_SPEC_INTERPRETER_REVISION") and v for k, v in os.environ.items()):
         parser.error("clear inherited target/build/test overrides; only setup interpreter variables are allowed")
     out.mkdir(parents=True, exist_ok=False)
+    from contracts import darwin_overlays
+    write(out/'overlay.json', {'Replace': darwin_overlays(root)})
     driver_before = manifest(harness)
     lanes = discriminators.lanes(args.mode) + [x for x in PLAN["lanes"] if x["mode"] == args.mode]
     if not lanes:
@@ -90,14 +92,17 @@ def main():
         env.update({k: v.replace("{source}", str(root)) for k, v in lane["environment"].items()})
         env.update(GOTOOLCHAIN="local", GOMAXPROCS="2", GOWORK="off")
         cwd = root / lane["cwd"]
-        write(dest / "command.json", {**lane, "effective_environment": {k: v for k, v in env.items() if k.startswith("WAGO_") or k in ("GOTOOLCHAIN", "GOMAXPROCS")}})
+        write(dest / "command.json", {**lane, "effective_environment": {k: v for k, v in env.items() if k.startswith("WAGO_") or k in ("GOTOOLCHAIN", "GOMAXPROCS", "GOWORK", "GOROOT", "GOENV", "CGO_ENABLED")}})
         # Record included/excluded source files for each tag configuration.
         argv = lane["argv"]
+        # Apply declared test-only migration to every original broad command.
+        argv = argv[:2] + ["-mod=readonly", "-overlay="+str(out/"overlay.json")] + argv[2:]
+        write(dest / "effective-argv.json", argv)
         stop = argv.index("-args") if "-args" in argv else len(argv)
         packages = [x for x in argv[:stop] if x.startswith("./")]
         tags = [x for x in argv if x.startswith("-tags=") or x == "-race"]
         with (dest / "package-census.jsonl").open("w") as stream:
-            census = subprocess.run(["go", "list", "-json", "-test"] + tags + packages,
+            census = subprocess.run(["go", "list", "-mod=readonly", "-overlay="+str(out/"overlay.json"), "-json", "-test"] + tags + packages,
                                     cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT)
         events, failed, details, passes, failures = [], [], {}, 0, 0
         all_events = []

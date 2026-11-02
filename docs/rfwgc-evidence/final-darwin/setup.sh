@@ -10,6 +10,11 @@ receipts=$(cd "$2" && pwd)
 git -C "$source_root" submodule status --recursive | tee "$receipts/submodules.txt"
 ! grep -E '^[-+U]' "$receipts/submodules.txt"
 [[ $(go version) == 'go version go1.27.1 darwin/arm64' ]]
+export GOROOT="$(go env GOROOT)"
+printf 'GOROOT=%s\n' "$GOROOT" >> "$GITHUB_ENV"
+[[ -n $GOROOT && $(go env GOROOT) == "$GOROOT" ]]
+[[ $(command -v go) == "$GOROOT/bin/go" ]]
+go env -json GOROOT GOVERSION GOHOSTOS GOHOSTARCH > "$receipts/go-toolchain.json"
 [[ $(just --version) == 'just 1.58.0' ]]
 xcode-select -p
 clang --version

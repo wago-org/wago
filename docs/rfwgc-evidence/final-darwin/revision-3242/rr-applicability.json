@@ -1,0 +1,37 @@
+{
+  "test_only_tag_adapters": [
+    "rr_recheck_adversary_test.go",
+    "rr_recheck_flags_current_test.go",
+    "rr_recheck_handoff_test.go",
+    "rr_retirement_test.go",
+    "design_invocation_snapshot_test.go",
+    "design_recheck_adversary_test.go",
+    "design_repair_admission_test.go"
+  ],
+  "tests": [
+    "TestRRRecheckStorageOnlyReturnBehindDynamicReader",
+    "TestRRRecheckCanceledAdmissionBehindDynamicReader",
+    "TestRRRecheckSharedMemoryHandoff",
+    "TestRRRetirementLastPinAndRevival",
+    "TestRRRetirementCallbackAndExitWakeups",
+    "TestRRRetirementBorrowedRootLatePublisher",
+    "TestRRRetirementCanceledPartialLastPins",
+    "TestRRRetirementCallbackRefreshBehindReader",
+    "TestDesignInvocationSnapshotCancellation",
+    "TestDesignInvocationSnapshotLatePublisher",
+    "TestDesignInvocationSnapshotRetirement",
+    "TestDesignInvocationSnapshotAuthenticatedDispatch",
+    "TestDesignInvocationSnapshotCallbackTrap",
+    "TestDesignRecheckForeignRelayAfterLatePublisher",
+    "TestDesignRecheckStorageOnlyCallTopologyWriter",
+    "TestDesignRecheckCallbackChangesPublisherAuthority",
+    "TestDesignRecheckNestedSameRuntimeClear",
+    "TestDesignRecheckNestedPublish",
+    "TestDesignRepairWaitNotifier",
+    "TestDesignRepairConversionAdmissionLifecycle",
+    "TestDesignRepairScalarRelayOrdinaryStorageWithConversion",
+    "TestDesignRepairConcurrentPublicationRetirement"
+  ],
+  "production_tags_unchanged": true,
+  "native_execution": "NOT_RUN"
+}

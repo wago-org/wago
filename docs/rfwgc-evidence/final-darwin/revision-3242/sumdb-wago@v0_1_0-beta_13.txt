@@ -1,0 +1,9 @@
+69162336
+github.com/wago-org/wago v0.1.0-beta.13 h1:s+XoBfR6+JCJsXUEosNJKUdziXdl0ZJTmhMViwozmSw=
+github.com/wago-org/wago v0.1.0-beta.13/go.mod h1:q0pPiPF6W6GZpTXbWwy+GT+r19KHSzB/gRcPUVHyntI=
+
+go.sum database tree
+70627358
+6Fm8I2dMWOZjDOXKxNtTDQUf9VriB1biwGfmkKfjWTU=
+
+— sum.golang.org Az3gruK2R/Pdv07DOTlQjDAH3TwtXU+WvwVT/PYPIlJtkX7nn67f6O0Awd8C3s6R9Px/tkPdaAZl50eHWeeRHQHLvws=

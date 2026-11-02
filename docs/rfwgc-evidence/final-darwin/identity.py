@@ -10,7 +10,9 @@ HERE = Path(__file__).resolve().parent
 SOURCE = json.loads((HERE / 'plan.json').read_text())['source']
 
 
-def validate(source, driver):
+def validate(source, driver, requested=None):
+    if requested is not None and (not re.fullmatch(r"[0-9a-f]{40}", requested) or requested != driver):
+        raise ValueError("harness_sha must equal the full reviewed workflow execution SHA")
     if not re.fullmatch(r'[0-9a-f]{40}', source) or source != SOURCE:
         raise ValueError('source_sha must equal the full reviewed plan source: ' + SOURCE)
     if not re.fullmatch(r'[0-9a-f]{40}', driver):
@@ -26,4 +28,5 @@ def validate(source, driver):
 
 if __name__ == '__main__':
     print(json.dumps(validate(os.environ.get('QUALIFICATION_SOURCE', ''),
-                              os.environ.get('QUALIFICATION_DRIVER', ''))))
+                              os.environ.get('QUALIFICATION_DRIVER', ''),
+                              os.environ.get('QUALIFICATION_HARNESS', ''))))
