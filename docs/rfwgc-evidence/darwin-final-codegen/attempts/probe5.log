@@ -1,0 +1,51 @@
+=== RUN   TestNativeImportVariantRoutesARM64
+=== RUN   TestNativeImportVariantRoutesARM64/compact=false/pair=false/trap=false
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+=== RUN   TestNativeImportVariantRoutesARM64/compact=false/pair=false/trap=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+=== RUN   TestNativeImportVariantRoutesARM64/compact=false/pair=true/trap=false
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+=== RUN   TestNativeImportVariantRoutesARM64/compact=false/pair=true/trap=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+=== RUN   TestNativeImportVariantRoutesARM64/compact=true/pair=false/trap=false
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+=== RUN   TestNativeImportVariantRoutesARM64/compact=true/pair=false/trap=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+=== RUN   TestNativeImportVariantRoutesARM64/compact=true/pair=true/trap=false
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+=== RUN   TestNativeImportVariantRoutesARM64/compact=true/pair=true/trap=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+    native_import_variant_route_test.go:113: native=false
+    native_import_variant_route_test.go:113: native=true
+--- PASS: TestNativeImportVariantRoutesARM64 (1.06s)
+    --- PASS: TestNativeImportVariantRoutesARM64/compact=false/pair=false/trap=false (0.17s)
+    --- PASS: TestNativeImportVariantRoutesARM64/compact=false/pair=false/trap=true (0.12s)
+    --- PASS: TestNativeImportVariantRoutesARM64/compact=false/pair=true/trap=false (0.12s)
+    --- PASS: TestNativeImportVariantRoutesARM64/compact=false/pair=true/trap=true (0.13s)
+    --- PASS: TestNativeImportVariantRoutesARM64/compact=true/pair=false/trap=false (0.13s)
+    --- PASS: TestNativeImportVariantRoutesARM64/compact=true/pair=false/trap=true (0.13s)
+    --- PASS: TestNativeImportVariantRoutesARM64/compact=true/pair=true/trap=false (0.13s)
+    --- PASS: TestNativeImportVariantRoutesARM64/compact=true/pair=true/trap=true (0.13s)
+PASS

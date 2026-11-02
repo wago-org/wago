@@ -1,0 +1,37 @@
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=0
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=0/pair=false
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=0/pair=true
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=1
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=1/pair=false
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=1/pair=true
+--- PASS: TestNativeImportVariantSourceArtifactAndCalls (0.66s)
+    --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=0 (0.37s)
+        --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=0/pair=false (0.25s)
+        --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=0/pair=true (0.12s)
+    --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=1 (0.28s)
+        --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=1/pair=false (0.15s)
+        --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=1/pair=true (0.13s)
+=== RUN   TestNativeImportVariantRespectsPolicies
+=== RUN   TestNativeImportVariantRespectsPolicies/native-leaf-host
+=== RUN   TestNativeImportVariantRespectsPolicies/reg-abi
+--- PASS: TestNativeImportVariantRespectsPolicies (0.02s)
+    --- PASS: TestNativeImportVariantRespectsPolicies/native-leaf-host (0.01s)
+    --- PASS: TestNativeImportVariantRespectsPolicies/reg-abi (0.01s)
+=== RUN   TestNativeImportVariantForeignFallback
+    native_import_variant_safety_arm64_test.go:16: wat2wasm: exit status 1
+        mise ERROR error parsing config file: ~/.cache/wago-final-codegen/source/mise.toml
+        mise ERROR Config files in ~/.cache/wago-final-codegen/source/mise.toml are not trusted.
+        Trust them with `mise trust`. See https://mise.jdx.dev/cli/trust.html for more information.
+        mise ERROR Version: 2026.10.4 linux-x64 (2026-10-07)
+        mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+--- FAIL: TestNativeImportVariantForeignFallback (0.03s)
+=== RUN   TestNativeImportVariantTrap
+    native_import_variant_safety_arm64_test.go:55: wat2wasm: exit status 1
+        mise ERROR error parsing config file: ~/.cache/wago-final-codegen/source/mise.toml
+        mise ERROR Config files in ~/.cache/wago-final-codegen/source/mise.toml are not trusted.
+        Trust them with `mise trust`. See https://mise.jdx.dev/cli/trust.html for more information.
+        mise ERROR Version: 2026.10.4 linux-x64 (2026-10-07)
+        mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+--- FAIL: TestNativeImportVariantTrap (0.01s)
+FAIL

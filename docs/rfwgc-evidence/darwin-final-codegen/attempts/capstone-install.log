@@ -1,0 +1,6 @@
+Collecting capstone
+  Downloading capstone-5.0.9-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (3.3 kB)
+Downloading capstone-5.0.9-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (1.5 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.5/1.5 MB 22.9 MB/s eta 0:00:00
+Installing collected packages: capstone
+Successfully installed capstone-5.0.9

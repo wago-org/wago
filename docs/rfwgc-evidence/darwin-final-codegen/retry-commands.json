@@ -1,0 +1,161 @@
+{
+  "source": "d6f4e94fe671542d7e22fe84e8fe1f9358661c3a",
+  "commands": [
+    {
+      "name": "final-ordinary-diagnostics",
+      "argv": [
+        "/tmp/qemu-x/usr/bin/qemu-aarch64",
+        "/home/dev/.cache/wago-final-codegen/ordinary-diagnostics.test",
+        "-test.run",
+        "^(TestCodegenStatsPeepholesArm64|TestCompactShiftedAddImmediateArm64|TestConstFoldPackPeepArm64|TestEntryArgumentRegistersPromoteLeafLocalsArm64|TestEntryInitializedLocalSkipsZeroArm64|TestEntryParamPairsWrapperARM64|TestEntryZeroPairsARM64|TestIntervalRegionDynamicReuseArm64|TestLeafScratchPinAssignmentsArm64|TestZeroBranchIfArm64|TestSharedEstablishedPathPairs|TestSharedScalarLeafMatchesEstablishedCodeArm64)$",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=120s"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source/src/core/compiler/backend/railshot/arm64",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "linux",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery",
+        "PATH": "/home/dev/.local/share/mise/installs/node/24.22.2/bin:/home/dev/.local/share/mise/installs/github-web-assembly-wabt/1.0.42/bin:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin"
+      },
+      "exit": 0,
+      "log": "logs/final-ordinary-diagnostics.log",
+      "binary_sha256": "806018df1dc4cf2e96bb3d60cc90bf339cfb3aad644a54b957b0eb9bf18128a8"
+    },
+    {
+      "name": "final-ordinary-public",
+      "argv": [
+        "/tmp/qemu-x/usr/bin/qemu-aarch64",
+        "/home/dev/.cache/wago-final-codegen/ordinary-public.test",
+        "-test.run",
+        "^(TestNativeImportVariantSourceArtifactAndCalls|TestNativeImportVariantTrap|TestNativeImportVariantRespectsPolicies|TestNativeImportVariantForeignFallback)$",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=120s"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source/src/wago",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "linux",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery",
+        "PATH": "/home/dev/.local/share/mise/installs/node/24.22.2/bin:/home/dev/.local/share/mise/installs/github-web-assembly-wabt/1.0.42/bin:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin"
+      },
+      "exit": 0,
+      "log": "logs/final-ordinary-public.log",
+      "binary_sha256": "591293a52ebea3d50a7c94a6228a9a7694d7587e1f3c7199f2d5e5420bdb8140"
+    },
+    {
+      "name": "final-wagodebug-diagnostics",
+      "argv": [
+        "/tmp/qemu-x/usr/bin/qemu-aarch64",
+        "/home/dev/.cache/wago-final-codegen/wagodebug-diagnostics.test",
+        "-test.run",
+        "^(TestCodegenStatsPeepholesArm64|TestCompactShiftedAddImmediateArm64|TestConstFoldPackPeepArm64|TestEntryArgumentRegistersPromoteLeafLocalsArm64|TestEntryInitializedLocalSkipsZeroArm64|TestEntryParamPairsWrapperARM64|TestEntryZeroPairsARM64|TestIntervalRegionDynamicReuseArm64|TestLeafScratchPinAssignmentsArm64|TestZeroBranchIfArm64|TestSharedEstablishedPathPairs|TestSharedScalarLeafMatchesEstablishedCodeArm64)$",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=120s"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source/src/core/compiler/backend/railshot/arm64",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "linux",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery",
+        "PATH": "/home/dev/.local/share/mise/installs/node/24.22.2/bin:/home/dev/.local/share/mise/installs/github-web-assembly-wabt/1.0.42/bin:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin"
+      },
+      "exit": 0,
+      "log": "logs/final-wagodebug-diagnostics.log",
+      "binary_sha256": "b2bf39ca0090c714456f38bf3af1d96314da44448d41b564c440d6830a2f5829"
+    },
+    {
+      "name": "final-wagodebug-public",
+      "argv": [
+        "/tmp/qemu-x/usr/bin/qemu-aarch64",
+        "/home/dev/.cache/wago-final-codegen/wagodebug-public.test",
+        "-test.run",
+        "^(TestNativeImportVariantSourceArtifactAndCalls|TestNativeImportVariantTrap|TestNativeImportVariantRespectsPolicies|TestNativeImportVariantForeignFallback)$",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=120s"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source/src/wago",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "linux",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery",
+        "PATH": "/home/dev/.local/share/mise/installs/node/24.22.2/bin:/home/dev/.local/share/mise/installs/github-web-assembly-wabt/1.0.42/bin:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin"
+      },
+      "exit": 0,
+      "log": "logs/final-wagodebug-public.log",
+      "binary_sha256": "377aa64cdf1d72b3c9830f40de2624eb4793c58cc571fde9ad97c434d310e4ba"
+    },
+    {
+      "name": "final-wago_regalloccheck-diagnostics",
+      "argv": [
+        "/tmp/qemu-x/usr/bin/qemu-aarch64",
+        "/home/dev/.cache/wago-final-codegen/wago_regalloccheck-diagnostics.test",
+        "-test.run",
+        "^(TestCodegenStatsPeepholesArm64|TestCompactShiftedAddImmediateArm64|TestConstFoldPackPeepArm64|TestEntryArgumentRegistersPromoteLeafLocalsArm64|TestEntryInitializedLocalSkipsZeroArm64|TestEntryParamPairsWrapperARM64|TestEntryZeroPairsARM64|TestIntervalRegionDynamicReuseArm64|TestLeafScratchPinAssignmentsArm64|TestZeroBranchIfArm64|TestSharedEstablishedPathPairs|TestSharedScalarLeafMatchesEstablishedCodeArm64)$",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=120s"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source/src/core/compiler/backend/railshot/arm64",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "linux",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery",
+        "PATH": "/home/dev/.local/share/mise/installs/node/24.22.2/bin:/home/dev/.local/share/mise/installs/github-web-assembly-wabt/1.0.42/bin:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin"
+      },
+      "exit": 0,
+      "log": "logs/final-wago_regalloccheck-diagnostics.log",
+      "binary_sha256": "7dddc1b35976ba9e7d8e21a563bf8f81106c20ebc1d1318b623cabcbe2a22247"
+    },
+    {
+      "name": "final-wago_regalloccheck-public",
+      "argv": [
+        "/tmp/qemu-x/usr/bin/qemu-aarch64",
+        "/home/dev/.cache/wago-final-codegen/wago_regalloccheck-public.test",
+        "-test.run",
+        "^(TestNativeImportVariantSourceArtifactAndCalls|TestNativeImportVariantTrap|TestNativeImportVariantRespectsPolicies|TestNativeImportVariantForeignFallback)$",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=120s"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source/src/wago",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "linux",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery",
+        "PATH": "/home/dev/.local/share/mise/installs/node/24.22.2/bin:/home/dev/.local/share/mise/installs/github-web-assembly-wabt/1.0.42/bin:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin"
+      },
+      "exit": 0,
+      "log": "logs/final-wago_regalloccheck-public.log",
+      "binary_sha256": "b13bf1d380090c527cfec11d5f623ab21d336e3b85d12ed756b7a3d1c9e46e88"
+    }
+  ]
+}
