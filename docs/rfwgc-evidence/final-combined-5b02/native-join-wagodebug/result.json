@@ -1,0 +1,204 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T14:33:23.932227319Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i32/live=1/seed=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.932422425Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i32/live=1/seed=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.932616399Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i32/live=8/seed=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.932824209Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i32/live=8/seed=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.933119875Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i32/live=24/seed=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.933353403Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i32/live=24/seed=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.933505909Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i64/live=1/seed=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.93365555Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i64/live=1/seed=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.933819538Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i64/live=8/seed=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.934019173Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i64/live=8/seed=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.934287587Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i64/live=24/seed=0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.934519592Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure/i64/live=24/seed=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.934527347Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntegerLiveAcrossJoinPressure",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.934680084Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureObserverControls",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.962935824Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeEvidence/conditional_NOP_control",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.965288552Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeEvidence",
+      "Elapsed": 0.03
+    },
+    {
+      "Time": "2026-11-02T14:33:23.965315843Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls/missing_division",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.965331061Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls/extra_arithmetic",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.965345448Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls/late_arithmetic",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.965360016Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls/outside_function",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.965374443Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls/wrong_target",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.96538898Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls/conditional_middle",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.965409899Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls/exit_middle",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.965421401Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls/no_join",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.965433744Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls/call",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.965442962Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls/duplicate_marker",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.96544749Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestJoinPressureNativeObserverControls",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:33:23.96601204Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Elapsed": 0.036
+    }
+  ],
+  "raw_sha256": "86e8d14beb28da023446974b8e1cf3024ac0794830fab4acba2c3cf9542ae16c",
+  "driver_unchanged": true
+}

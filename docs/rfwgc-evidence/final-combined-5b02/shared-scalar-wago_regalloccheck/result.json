@@ -1,0 +1,612 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T14:34:05.035849294Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T14:34:16.025704994Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestSharedScalarZeroLocalCodeAndExecution",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:16.038324889Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestSharedScalarZeroLocalAgreements",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:16.038874471Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Elapsed": 0.018
+    },
+    {
+      "Time": "2026-11-02T14:34:16.04244764Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T14:34:21.287982808Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T14:34:21.292417926Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared",
+      "Test": "TestScalarIncomingRegisterAndReturnOwnership",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:21.292439426Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared",
+      "Test": "TestScalarIncomingRegisterHasNoImplicitHome",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:21.292454384Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared",
+      "Test": "TestScalarRawIncomingReturnNormalization",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:21.29281463Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared",
+      "Test": "TestScalarValueBoundsAndLayout/creation-limit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:21.292834287Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared",
+      "Test": "TestScalarValueBoundsAndLayout/dead-reference",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:21.29284122Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared",
+      "Test": "TestScalarValueBoundsAndLayout",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:21.293199092Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T14:34:46.28076184Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarFallbackScratchEdgeValues",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.281425306Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/both-edges/wide=false/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.281865943Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/both-edges/wide=false/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.282275212Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/different-locals/wide=false/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.282694319Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/different-locals/wide=false/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.283106783Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/overwrite-before-join/wide=false/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.283511623Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/overwrite-before-join/wide=false/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.284032561Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/overwrite-after-join/wide=false/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.284471095Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/overwrite-after-join/wide=false/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.285976051Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/nested/wide=false/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.287140918Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/nested/wide=false/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.288107313Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/both-edges/wide=true/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.288928395Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/both-edges/wide=true/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.289714551Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/different-locals/wide=true/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.290472864Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/different-locals/wide=true/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.291563522Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/overwrite-before-join/wide=true/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.292438095Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/overwrite-before-join/wide=true/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.293262282Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/overwrite-after-join/wide=true/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.294054359Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/overwrite-after-join/wide=true/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.295505324Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/nested/wide=true/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.297473099Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias/nested/wide=true/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.29748947Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarJoinResultLocalAlias",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T14:34:46.299354462Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarEightIncomingParameters/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.301093276Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarEightIncomingParameters/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.301103055Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarEightIncomingParameters",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.302001902Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarRawI32Return",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.302162875Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarVersionsPressureAndJoins/old_version",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.302315702Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarVersionsPressureAndJoins/blocks_keep_deferred_versions",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.303005246Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarVersionsPressureAndJoins/block_around_if_join",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.311802234Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarVersionsPressureAndJoins/pressure_join",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:46.312038578Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarVersionsPressureAndJoins/fixed_nested",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.312467133Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarVersionsPressureAndJoins/comparison_join_overwrite",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.312474907Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarVersionsPressureAndJoins",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:46.312642342Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarI64WidthsAndReturn",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.313172537Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarFallbackTrapBeforeReturn",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.313402669Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarUnpinnedLeafIngress",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.313691041Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarMixedBankFallback",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.315531797Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarCommutativeDeferredOperands",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.318099649Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarPressureWithoutJoin",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.323971885Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarCleanHomesAndResultRegisters",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:46.33955699Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarOldHomeUnderPressure",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T14:34:46.340110439Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarFallbackScratchTransitions",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.39842215Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarPressureFixedOperandsAndJoin",
+      "Elapsed": 0.06
+    },
+    {
+      "Time": "2026-11-02T14:34:46.398663974Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=false/shift=0/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.39877913Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=false/shift=0/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.399115011Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=false/shift=1/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.399506837Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=false/shift=1/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.399634586Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=false/shift=2/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.399753359Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=false/shift=2/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.399869718Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=false/shift=3/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.399989212Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=false/shift=3/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.400139274Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=true/shift=0/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.400280579Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=true/shift=0/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.400436222Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=true/shift=1/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.400594379Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=true/shift=1/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.400731867Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=true/shift=2/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.400867502Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=true/shift=2/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.40100513Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=true/shift=3/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.401144402Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths/wide=true/shift=3/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.401151545Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarScaledAddWidths",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.402889558Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/old-zero-at-join/wide=false/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.4043976Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/old-zero-at-join/wide=false/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.406691738Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/nested-no-else-tail-return/wide=false/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.408644224Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/nested-no-else-tail-return/wide=false/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.408811959Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/untouched-tail-return/wide=false/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.408924711Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/untouched-tail-return/wide=false/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.410543831Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/old-zero-at-join/wide=true/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.412475819Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/old-zero-at-join/wide=true/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.414949273Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/nested-no-else-tail-return/wide=true/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.417803732Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/nested-no-else-tail-return/wide=true/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.418005421Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/untouched-tail-return/wide=true/regABI=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.41813806Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins/untouched-tail-return/wide=true/regABI=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:46.418149472Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSharedScalarZeroPoolVersionsAndJoins",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T14:34:46.419041397Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 0.142
+    }
+  ],
+  "raw_sha256": "9a11c35e36c044aa4978806027d30631d143e06d2fbefcf28be427686555adea",
+  "driver_unchanged": true
+}
