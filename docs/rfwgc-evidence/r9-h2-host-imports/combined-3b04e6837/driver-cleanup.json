@@ -1,0 +1,7 @@
+{
+  "removed": [
+    "/tmp/wago-platform-azehffq6",
+    "/tmp/wago-h2-tinygo-xjdgfap_"
+  ],
+  "retained_integrated_export": "in use by full-package race"
+}

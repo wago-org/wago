@@ -1,0 +1,8 @@
+=== RUN   TestR9H2StoreHooksBulk
+=== RUN   TestR9H2StoreHooksBulk/0
+=== RUN   TestR9H2StoreHooksBulk/6
+--- PASS: TestR9H2StoreHooksBulk (0.01s)
+    --- PASS: TestR9H2StoreHooksBulk/0 (0.01s)
+    --- PASS: TestR9H2StoreHooksBulk/6 (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	1.027s

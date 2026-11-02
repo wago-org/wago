@@ -1,0 +1,23 @@
+{
+  "base": "67ef1f39e61dd61ee891bdefa5f8218a74aba806",
+  "status": "B COMMITTED; pinned combined matrix/integrated/QEMU/TinyGo PASS; full-package race running; no H2 closure",
+  "paths": {
+    "src/wago/gc_conversion_store.go": "e4f017b67a10b821cab52af1d820524fc0574b4452aa2725ce6b120d2ac76fd7",
+    "src/wago/gc_conversion_host_import_host_test.go": "120e0355f388acade09946730a23e6a33c40a54ab2ed4cb61b3240bfe9e82751",
+    "src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go": "17698fd884b3e088e02d0674ad6e6226c414f61ba7937ab18899803acf252337",
+    "src/core/compiler/backend/railshot/arm64/extern_host_store_contract_test.go": "4f67805281795e4d357770b1f79778f33edd96c2d114fe1c329aa0f6044ae411"
+  },
+  "patch_sha256": "35d9ef36fabff1042b4eae9b060d15994e5cf00fae665ed54fef7bd2da7666f5",
+  "api_changes": [],
+  "helper_ids": [
+    53,
+    54,
+    55,
+    56,
+    57,
+    58
+  ],
+  "host_acceptance": false,
+  "source_commit": "7b14d483a9d4774b9e87ea3f3f14b4190eb3c9e8",
+  "qualification_pin": "3b04e68376024c689ec651adf1817955ea75d707"
+}

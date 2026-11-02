@@ -1,0 +1,306 @@
+{
+  "source_pin": "3b04e68376024c689ec651adf1817955ea75d707",
+  "b_commit": "7b14d483a9d4774b9e87ea3f3f14b4190eb3c9e8",
+  "H2_closed": false,
+  "b_patch_sha256": "35d9ef36fabff1042b4eae9b060d15994e5cf00fae665ed54fef7bd2da7666f5",
+  "scoped": {
+    "matrix_cells": 17,
+    "normal_race_executions": 102,
+    "host_import_tests_per_mode_normal_and_race": 9,
+    "backend_contract_tests_per_arch_mode": 3,
+    "skips": 0
+  },
+  "lanes": {
+    "integrated": [
+      {
+        "label": "ordinary-focused",
+        "exit": 0,
+        "top_level_PASS": 57,
+        "all_PASS_assertions": 174,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "ordinary-full",
+        "exit": 0,
+        "top_level_PASS": 2512,
+        "all_PASS_assertions": 12304,
+        "SKIP_assertions": 44,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "ordinary-race",
+        "exit": 0,
+        "top_level_PASS": 57,
+        "all_PASS_assertions": 174,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "ordinary-backend",
+        "exit": 0,
+        "top_level_PASS": 1004,
+        "all_PASS_assertions": 8871,
+        "SKIP_assertions": 552,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "ordinary-cross-arm64",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "ordinary-cross-riscv64",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wagodebug-focused",
+        "exit": 0,
+        "top_level_PASS": 57,
+        "all_PASS_assertions": 174,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wagodebug-full",
+        "exit": 0,
+        "top_level_PASS": 2506,
+        "all_PASS_assertions": 12295,
+        "SKIP_assertions": 50,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wagodebug-race",
+        "exit": 0,
+        "top_level_PASS": 57,
+        "all_PASS_assertions": 174,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wagodebug-backend",
+        "exit": 0,
+        "top_level_PASS": 1002,
+        "all_PASS_assertions": 8865,
+        "SKIP_assertions": 554,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wagodebug-cross-arm64",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wagodebug-cross-riscv64",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wago_regalloccheck-focused",
+        "exit": 0,
+        "top_level_PASS": 57,
+        "all_PASS_assertions": 174,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wago_regalloccheck-full",
+        "exit": 0,
+        "top_level_PASS": 2512,
+        "all_PASS_assertions": 12304,
+        "SKIP_assertions": 44,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wago_regalloccheck-race",
+        "exit": 0,
+        "top_level_PASS": 57,
+        "all_PASS_assertions": 174,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wago_regalloccheck-backend",
+        "exit": 0,
+        "top_level_PASS": 1127,
+        "all_PASS_assertions": 9665,
+        "SKIP_assertions": 553,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wago_regalloccheck-cross-arm64",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wago_regalloccheck-cross-riscv64",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      }
+    ],
+    "targets": [
+      {
+        "label": "arm64-version",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "arm64-ordinary-guest-build",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "arm64-ordinary-guest",
+        "exit": 0,
+        "top_level_PASS": 49,
+        "all_PASS_assertions": 104,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "arm64-wagodebug-guest-build",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "arm64-wagodebug-guest",
+        "exit": 0,
+        "top_level_PASS": 49,
+        "all_PASS_assertions": 104,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "arm64-wago_regalloccheck-guest-build",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "arm64-wago_regalloccheck-guest",
+        "exit": 0,
+        "top_level_PASS": 49,
+        "all_PASS_assertions": 104,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "riscv64-version",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "riscv64-ordinary-guest-build",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "riscv64-ordinary-guest",
+        "exit": 0,
+        "top_level_PASS": 45,
+        "all_PASS_assertions": 159,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "riscv64-wagodebug-guest-build",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "riscv64-wagodebug-guest",
+        "exit": 0,
+        "top_level_PASS": 45,
+        "all_PASS_assertions": 159,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "riscv64-wago_regalloccheck-guest-build",
+        "exit": 0,
+        "top_level_PASS": 0,
+        "all_PASS_assertions": 0,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "riscv64-wago_regalloccheck-guest",
+        "exit": 0,
+        "top_level_PASS": 45,
+        "all_PASS_assertions": 159,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      }
+    ],
+    "tinygo": [
+      {
+        "label": "ordinary",
+        "exit": 0,
+        "top_level_PASS": 5,
+        "all_PASS_assertions": 5,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wagodebug",
+        "exit": 0,
+        "top_level_PASS": 5,
+        "all_PASS_assertions": 5,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      },
+      {
+        "label": "wago_regalloccheck",
+        "exit": 0,
+        "top_level_PASS": 5,
+        "all_PASS_assertions": 5,
+        "SKIP_assertions": 0,
+        "FAIL_assertions": 0
+      }
+    ]
+  },
+  "pending": [
+    "Full-package race all three modes (currently running)",
+    "Next combined pin must include compiler fixes, diagnostic-contract fix and lint cleanup; current pin predates them",
+    "Separate diagnostics/staticcheck and final parent combined closure remain required"
+  ]
+}

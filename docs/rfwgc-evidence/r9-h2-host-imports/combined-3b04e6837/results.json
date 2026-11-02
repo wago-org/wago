@@ -1,0 +1,3754 @@
+[
+  {
+    "label": "ordinary-nine-host-imports",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImport",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.00s)",
+      "--- PASS: TestR9H2HostImportTable (0.00s)",
+      "--- PASS: TestR9H2HostImportBulk (0.00s)",
+      "--- PASS: TestR9H2HostImportInitialization (0.00s)",
+      "--- PASS: TestR9H2HostImportCycle (0.00s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.00s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "ordinary-nine-host-imports-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImport",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.01s)",
+      "--- PASS: TestR9H2HostImportTable (0.01s)",
+      "--- PASS: TestR9H2HostImportBulk (0.01s)",
+      "--- PASS: TestR9H2HostImportInitialization (0.00s)",
+      "--- PASS: TestR9H2HostImportCycle (0.00s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.01s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-nine-host-imports",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImport",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.00s)",
+      "--- PASS: TestR9H2HostImportTable (0.00s)",
+      "--- PASS: TestR9H2HostImportBulk (0.00s)",
+      "--- PASS: TestR9H2HostImportInitialization (0.00s)",
+      "--- PASS: TestR9H2HostImportCycle (0.00s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.00s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-nine-host-imports-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImport",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.01s)",
+      "--- PASS: TestR9H2HostImportTable (0.01s)",
+      "--- PASS: TestR9H2HostImportBulk (0.01s)",
+      "--- PASS: TestR9H2HostImportInitialization (0.00s)",
+      "--- PASS: TestR9H2HostImportCycle (0.00s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.00s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-nine-host-imports",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImport",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.00s)",
+      "--- PASS: TestR9H2HostImportTable (0.00s)",
+      "--- PASS: TestR9H2HostImportBulk (0.00s)",
+      "--- PASS: TestR9H2HostImportInitialization (0.00s)",
+      "--- PASS: TestR9H2HostImportCycle (0.00s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.00s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-nine-host-imports-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImport",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.01s)",
+      "--- PASS: TestR9H2HostImportTable (0.01s)",
+      "--- PASS: TestR9H2HostImportBulk (0.01s)",
+      "--- PASS: TestR9H2HostImportInitialization (0.01s)",
+      "--- PASS: TestR9H2HostImportCycle (0.00s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.01s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-00-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksOriginalProvider$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksOriginalProvider"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-00-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksOriginalProvider$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-00-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksOriginalProvider$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.06s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-00-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksOriginalProvider$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksOriginalProvider"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-00-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksOriginalProvider$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.02s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-00-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksOriginalProvider$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.03s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-00-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksOriginalProvider$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksOriginalProvider"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-00-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksOriginalProvider$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-00-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksOriginalProvider$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.14s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-01-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainerPublicGlobal"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerPublicGlobal"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-01-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicGlobal (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-01-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicGlobal (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-01-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainerPublicGlobal"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerPublicGlobal"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-01-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicGlobal (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-01-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicGlobal (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-01-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainerPublicGlobal"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerPublicGlobal"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-01-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicGlobal (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-01-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicGlobal (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-02-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportGlobal"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-02-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.01s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-02-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.01s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-02-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportGlobal"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-02-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.00s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-02-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.00s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-02-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportGlobal"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-02-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.00s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-02-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportGlobal",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportGlobal (0.01s)",
+      "--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-03-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooks(OriginalProvider|IndependentPhysicalTables)$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksOriginalProvider",
+      "TestR9H2StoreHooksIndependentPhysicalTables"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-03-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks(OriginalProvider|IndependentPhysicalTables)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.01s)",
+      "--- PASS: TestR9H2StoreHooksIndependentPhysicalTables (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-03-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks(OriginalProvider|IndependentPhysicalTables)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.04s)",
+      "--- PASS: TestR9H2StoreHooksIndependentPhysicalTables (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-03-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooks(OriginalProvider|IndependentPhysicalTables)$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksOriginalProvider",
+      "TestR9H2StoreHooksIndependentPhysicalTables"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-03-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks(OriginalProvider|IndependentPhysicalTables)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.01s)",
+      "--- PASS: TestR9H2StoreHooksIndependentPhysicalTables (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-03-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks(OriginalProvider|IndependentPhysicalTables)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.03s)",
+      "--- PASS: TestR9H2StoreHooksIndependentPhysicalTables (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-03-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooks(OriginalProvider|IndependentPhysicalTables)$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksOriginalProvider",
+      "TestR9H2StoreHooksIndependentPhysicalTables"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-03-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks(OriginalProvider|IndependentPhysicalTables)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.05s)",
+      "--- PASS: TestR9H2StoreHooksIndependentPhysicalTables (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-03-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks(OriginalProvider|IndependentPhysicalTables)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksOriginalProvider (0.04s)",
+      "--- PASS: TestR9H2StoreHooksIndependentPhysicalTables (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-04-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainerPublicTable"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerPublicTable"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-04-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicTable (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-04-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicTable (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-04-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainerPublicTable"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerPublicTable"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-04-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicTable (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-04-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicTable (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-04-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainerPublicTable"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerPublicTable"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-04-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicTable (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-04-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerPublicTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerPublicTable (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-05-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportTable"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportTable",
+      "TestR9H2HostImportTableIndependentPhysical",
+      "TestR9H2HostImportTableOrdinaryAndGuards"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-05-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportTable (0.00s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-05-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportTable (0.01s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-05-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportTable"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportTable",
+      "TestR9H2HostImportTableIndependentPhysical",
+      "TestR9H2HostImportTableOrdinaryAndGuards"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-05-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportTable (0.00s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-05-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportTable (0.00s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-05-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportTable"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportTable",
+      "TestR9H2HostImportTableIndependentPhysical",
+      "TestR9H2HostImportTableOrdinaryAndGuards"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-05-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportTable (0.00s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-05-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportTable",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportTable (0.01s)",
+      "--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)",
+      "--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-06-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksBulk$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksBulk"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-06-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksBulk$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksBulk (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-06-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksBulk$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksBulk (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-06-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksBulk$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksBulk"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-06-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksBulk$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksBulk (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-06-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksBulk$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksBulk (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-06-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksBulk$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksBulk"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-06-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksBulk$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksBulk (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-06-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksBulk$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksBulk (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-07-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportBulk"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportBulk"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-07-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportBulk",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportBulk (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-07-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportBulk",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportBulk (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-07-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportBulk"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportBulk"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-07-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportBulk",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportBulk (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-07-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportBulk",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportBulk (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-07-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportBulk"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportBulk"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-07-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportBulk",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportBulk (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-07-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportBulk",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportBulk (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-08-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksActiveInitialization$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksActiveInitialization"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-08-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksActiveInitialization$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksActiveInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-08-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksActiveInitialization$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksActiveInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-08-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksActiveInitialization$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksActiveInitialization"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-08-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksActiveInitialization$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksActiveInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-08-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksActiveInitialization$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksActiveInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-08-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksActiveInitialization$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksActiveInitialization"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-08-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksActiveInitialization$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksActiveInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-08-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksActiveInitialization$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksActiveInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-09-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportInitialization"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportInitialization"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-09-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportInitialization",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-09-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportInitialization",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-09-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportInitialization"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportInitialization"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-09-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportInitialization",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-09-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportInitialization",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-09-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportInitialization"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportInitialization"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-09-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportInitialization",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportInitialization (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-09-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportInitialization",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportInitialization (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-10-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksDescriptorMigration$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksDescriptorMigration"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-10-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksDescriptorMigration$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksDescriptorMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-10-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksDescriptorMigration$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksDescriptorMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-10-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksDescriptorMigration$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksDescriptorMigration"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-10-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksDescriptorMigration$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksDescriptorMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-10-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksDescriptorMigration$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksDescriptorMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-10-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2StoreHooksDescriptorMigration$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2StoreHooksDescriptorMigration"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-10-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksDescriptorMigration$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksDescriptorMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-10-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooksDescriptorMigration$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2StoreHooksDescriptorMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-11-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainerMigration"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerMigration"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-11-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerMigration",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-11-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerMigration",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-11-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainerMigration"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerMigration"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-11-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerMigration",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-11-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerMigration",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-11-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainerMigration"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerMigration"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-11-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerMigration",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-11-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainerMigration",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerMigration (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-12-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2Receipt(ConvertedProducerCycle|PublisherRetirement|CloseOrders|FinalJournalRemainsCollectionAuthority)$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2ReceiptPublisherRetirement",
+      "TestR9H2ReceiptCloseOrders",
+      "TestR9H2ReceiptConvertedProducerCycle",
+      "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-12-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(ConvertedProducerCycle|PublisherRetirement|CloseOrders|FinalJournalRemainsCollectionAuthority)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptPublisherRetirement (0.00s)",
+      "--- PASS: TestR9H2ReceiptCloseOrders (0.00s)",
+      "--- PASS: TestR9H2ReceiptConvertedProducerCycle (0.00s)",
+      "--- PASS: TestR9H2ReceiptFinalJournalRemainsCollectionAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-12-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(ConvertedProducerCycle|PublisherRetirement|CloseOrders|FinalJournalRemainsCollectionAuthority)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptPublisherRetirement (0.01s)",
+      "--- PASS: TestR9H2ReceiptCloseOrders (0.01s)",
+      "--- PASS: TestR9H2ReceiptConvertedProducerCycle (0.02s)",
+      "--- PASS: TestR9H2ReceiptFinalJournalRemainsCollectionAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-12-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2Receipt(ConvertedProducerCycle|PublisherRetirement|CloseOrders|FinalJournalRemainsCollectionAuthority)$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2ReceiptPublisherRetirement",
+      "TestR9H2ReceiptCloseOrders",
+      "TestR9H2ReceiptConvertedProducerCycle",
+      "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-12-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(ConvertedProducerCycle|PublisherRetirement|CloseOrders|FinalJournalRemainsCollectionAuthority)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptPublisherRetirement (0.00s)",
+      "--- PASS: TestR9H2ReceiptCloseOrders (0.00s)",
+      "--- PASS: TestR9H2ReceiptConvertedProducerCycle (0.00s)",
+      "--- PASS: TestR9H2ReceiptFinalJournalRemainsCollectionAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-12-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(ConvertedProducerCycle|PublisherRetirement|CloseOrders|FinalJournalRemainsCollectionAuthority)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptPublisherRetirement (0.01s)",
+      "--- PASS: TestR9H2ReceiptCloseOrders (0.01s)",
+      "--- PASS: TestR9H2ReceiptConvertedProducerCycle (0.02s)",
+      "--- PASS: TestR9H2ReceiptFinalJournalRemainsCollectionAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-12-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2Receipt(ConvertedProducerCycle|PublisherRetirement|CloseOrders|FinalJournalRemainsCollectionAuthority)$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2ReceiptPublisherRetirement",
+      "TestR9H2ReceiptCloseOrders",
+      "TestR9H2ReceiptConvertedProducerCycle",
+      "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-12-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(ConvertedProducerCycle|PublisherRetirement|CloseOrders|FinalJournalRemainsCollectionAuthority)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptPublisherRetirement (0.00s)",
+      "--- PASS: TestR9H2ReceiptCloseOrders (0.00s)",
+      "--- PASS: TestR9H2ReceiptConvertedProducerCycle (0.00s)",
+      "--- PASS: TestR9H2ReceiptFinalJournalRemainsCollectionAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-12-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(ConvertedProducerCycle|PublisherRetirement|CloseOrders|FinalJournalRemainsCollectionAuthority)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptPublisherRetirement (0.01s)",
+      "--- PASS: TestR9H2ReceiptCloseOrders (0.01s)",
+      "--- PASS: TestR9H2ReceiptConvertedProducerCycle (0.02s)",
+      "--- PASS: TestR9H2ReceiptFinalJournalRemainsCollectionAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-13-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainer(Cycle|Close)"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerClose",
+      "TestR9H2HostContainerCycle"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-13-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainer(Cycle|Close)",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerClose (0.00s)",
+      "--- PASS: TestR9H2HostContainerCycle (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-13-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainer(Cycle|Close)",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerClose (0.01s)",
+      "--- PASS: TestR9H2HostContainerCycle (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-13-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainer(Cycle|Close)"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerClose",
+      "TestR9H2HostContainerCycle"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-13-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainer(Cycle|Close)",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerClose (0.00s)",
+      "--- PASS: TestR9H2HostContainerCycle (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-13-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainer(Cycle|Close)",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerClose (0.01s)",
+      "--- PASS: TestR9H2HostContainerCycle (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-13-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostContainer(Cycle|Close)"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerClose",
+      "TestR9H2HostContainerCycle"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-13-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainer(Cycle|Close)",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerClose (0.00s)",
+      "--- PASS: TestR9H2HostContainerCycle (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-13-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostContainer(Cycle|Close)",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerClose (0.01s)",
+      "--- PASS: TestR9H2HostContainerCycle (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-14-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportCycle"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportCycle"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-14-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportCycle",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportCycle (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-14-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportCycle",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportCycle (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-14-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportCycle"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportCycle"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-14-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportCycle",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportCycle (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-14-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportCycle",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportCycle (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-14-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImportCycle"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostImportCycle"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-14-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportCycle",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportCycle (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-14-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2HostImportCycle",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostImportCycle (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-15-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2Receipt(OnlyContention|IndependentContainersAndRollback|DomainKeepsPrivateTypeAdmission)$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2ReceiptIndependentContainersAndRollback",
+      "TestR9H2ReceiptOnlyContention",
+      "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-15-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(OnlyContention|IndependentContainersAndRollback|DomainKeepsPrivateTypeAdmission)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptIndependentContainersAndRollback (0.00s)",
+      "--- PASS: TestR9H2ReceiptOnlyContention (0.00s)",
+      "--- PASS: TestR9H2ReceiptDomainKeepsPrivateTypeAdmission (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-15-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(OnlyContention|IndependentContainersAndRollback|DomainKeepsPrivateTypeAdmission)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptIndependentContainersAndRollback (0.01s)",
+      "--- PASS: TestR9H2ReceiptOnlyContention (0.01s)",
+      "--- PASS: TestR9H2ReceiptDomainKeepsPrivateTypeAdmission (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-15-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2Receipt(OnlyContention|IndependentContainersAndRollback|DomainKeepsPrivateTypeAdmission)$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2ReceiptIndependentContainersAndRollback",
+      "TestR9H2ReceiptOnlyContention",
+      "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-15-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(OnlyContention|IndependentContainersAndRollback|DomainKeepsPrivateTypeAdmission)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptIndependentContainersAndRollback (0.00s)",
+      "--- PASS: TestR9H2ReceiptOnlyContention (0.00s)",
+      "--- PASS: TestR9H2ReceiptDomainKeepsPrivateTypeAdmission (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-15-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(OnlyContention|IndependentContainersAndRollback|DomainKeepsPrivateTypeAdmission)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptIndependentContainersAndRollback (0.01s)",
+      "--- PASS: TestR9H2ReceiptOnlyContention (0.01s)",
+      "--- PASS: TestR9H2ReceiptDomainKeepsPrivateTypeAdmission (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-15-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2Receipt(OnlyContention|IndependentContainersAndRollback|DomainKeepsPrivateTypeAdmission)$"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2ReceiptIndependentContainersAndRollback",
+      "TestR9H2ReceiptOnlyContention",
+      "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-15-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(OnlyContention|IndependentContainersAndRollback|DomainKeepsPrivateTypeAdmission)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptIndependentContainersAndRollback (0.00s)",
+      "--- PASS: TestR9H2ReceiptOnlyContention (0.00s)",
+      "--- PASS: TestR9H2ReceiptDomainKeepsPrivateTypeAdmission (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-15-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Receipt(OnlyContention|IndependentContainersAndRollback|DomainKeepsPrivateTypeAdmission)$",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2ReceiptIndependentContainersAndRollback (0.01s)",
+      "--- PASS: TestR9H2ReceiptOnlyContention (0.01s)",
+      "--- PASS: TestR9H2ReceiptDomainKeepsPrivateTypeAdmission (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-16-ordinary-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-list",
+      "^TestR9H2Host(Container|Import)Authority"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerAuthority",
+      "TestR9H2HostImportAuthority"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-16-ordinary-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Host(Container|Import)Authority",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerAuthority (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-16-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Host(Container|Import)Authority",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerAuthority (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-16-wagodebug-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2Host(Container|Import)Authority"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerAuthority",
+      "TestR9H2HostImportAuthority"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-16-wagodebug-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Host(Container|Import)Authority",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerAuthority (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-16-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Host(Container|Import)Authority",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerAuthority (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-16-wago_regalloccheck-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2Host(Container|Import)Authority"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestR9H2HostContainerAuthority",
+      "TestR9H2HostImportAuthority"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "cell-16-wago_regalloccheck-normal",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Host(Container|Import)Authority",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerAuthority (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "cell-16-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2Host(Container|Import)Authority",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestR9H2HostContainerAuthority (0.00s)",
+      "--- PASS: TestR9H2HostImportAuthority (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "ordinary-backend-amd64-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-list",
+      "^TestExternHostStoreContract"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestExternHostStoreContractRouting",
+      "TestExternHostStoreContractHelperABI",
+      "TestExternHostStoreContractCallFrames"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "ordinary-backend-amd64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestExternHostStoreContractRouting (0.00s)",
+      "--- PASS: TestExternHostStoreContractHelperABI (0.00s)",
+      "--- PASS: TestExternHostStoreContractCallFrames (0.01s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "ordinary-backend-arm64-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-list",
+      "^TestExternHostStoreContract"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestExternHostStoreContractRouting",
+      "TestExternHostStoreContractHelperABI",
+      "TestExternHostStoreContractCallFrames"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "ordinary-backend-arm64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestExternHostStoreContractRouting (0.00s)",
+      "--- PASS: TestExternHostStoreContractHelperABI (0.00s)",
+      "--- PASS: TestExternHostStoreContractCallFrames (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-backend-amd64-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-list",
+      "^TestExternHostStoreContract"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestExternHostStoreContractRouting",
+      "TestExternHostStoreContractHelperABI",
+      "TestExternHostStoreContractCallFrames"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-backend-amd64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestExternHostStoreContractRouting (0.00s)",
+      "--- PASS: TestExternHostStoreContractHelperABI (0.00s)",
+      "--- PASS: TestExternHostStoreContractCallFrames (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-backend-arm64-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-list",
+      "^TestExternHostStoreContract"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestExternHostStoreContractRouting",
+      "TestExternHostStoreContractHelperABI",
+      "TestExternHostStoreContractCallFrames"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-backend-arm64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestExternHostStoreContractRouting (0.00s)",
+      "--- PASS: TestExternHostStoreContractHelperABI (0.00s)",
+      "--- PASS: TestExternHostStoreContractCallFrames (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-backend-amd64-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-list",
+      "^TestExternHostStoreContract"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestExternHostStoreContractRouting",
+      "TestExternHostStoreContractHelperABI",
+      "TestExternHostStoreContractCallFrames"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-backend-amd64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestExternHostStoreContractRouting (0.00s)",
+      "--- PASS: TestExternHostStoreContractHelperABI (0.00s)",
+      "--- PASS: TestExternHostStoreContractCallFrames (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-backend-arm64-list",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-list",
+      "^TestExternHostStoreContract"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [
+      "TestExternHostStoreContractRouting",
+      "TestExternHostStoreContractHelperABI",
+      "TestExternHostStoreContractCallFrames"
+    ],
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-backend-arm64",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passes": [
+      "--- PASS: TestExternHostStoreContractRouting (0.00s)",
+      "--- PASS: TestExternHostStoreContractHelperABI (0.00s)",
+      "--- PASS: TestExternHostStoreContractCallFrames (0.00s)"
+    ],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "driver-integrated",
+    "command": [
+      "python3",
+      "/tmp/wago-h2-host-imports-committed-fitzripw/source/docs/rfwgc-evidence/r9-h2-production/qualify-integrated.py",
+      "--pin",
+      "3b04e68376024c689ec651adf1817955ea75d707",
+      "--out",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/r9-h2-host-imports/combined-3b04e6837/integrated"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "driver-targets",
+    "command": [
+      "python3",
+      "/tmp/wago-h2-host-imports-committed-fitzripw/source/docs/rfwgc-evidence/r9-h2-production/qualify-targets.py",
+      "--pin",
+      "3b04e68376024c689ec651adf1817955ea75d707",
+      "--out",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/r9-h2-host-imports/combined-3b04e6837/targets",
+      "--qemu-package",
+      "/tmp/qemu-user.deb"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  },
+  {
+    "label": "driver-tinygo",
+    "command": [
+      "python3",
+      "/tmp/wago-h2-host-imports-committed-fitzripw/source/docs/rfwgc-evidence/r9-h2-production/qualify-tinygo.py",
+      "--pin",
+      "3b04e68376024c689ec651adf1817955ea75d707",
+      "--out",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/r9-h2-host-imports/combined-3b04e6837/tinygo"
+    ],
+    "exit": 0,
+    "passes": [],
+    "skips": [],
+    "listed": [],
+    "accepted": true
+  }
+]
