@@ -1,16 +1,10 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 156,
+  "remaining_count": 149,
   "remaining": [
     {
       "suite": "full-root-replay-wago_regalloccheck",
       "receipt_suite": "full-root-replay-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "cli-wagodebug",
-      "receipt_suite": "cli-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "RUNNING"
     },
@@ -21,20 +15,8 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "installer-wagodebug",
-      "receipt_suite": "installer-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "installer-wago_regalloccheck",
       "receipt_suite": "installer-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "nested-wagodebug",
-      "receipt_suite": "nested-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -45,28 +27,10 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "collector-wago_regalloccheck",
-      "receipt_suite": "collector-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "race-wagodebug",
-      "receipt_suite": "race-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
       "suite": "race-wago_regalloccheck",
       "receipt_suite": "race-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "guard-wagodebug",
-      "receipt_suite": "guard-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "guard-wago_regalloccheck",
@@ -75,16 +39,10 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "corpus-ordinary",
-      "receipt_suite": "corpus-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
       "suite": "corpus-wagodebug",
       "receipt_suite": "corpus-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "corpus-wago_regalloccheck",
@@ -943,15 +901,22 @@
     "full-root-replay-ordinary",
     "full-root-replay-wagodebug",
     "cli-ordinary",
+    "cli-wagodebug",
     "installer-ordinary",
+    "installer-wagodebug",
     "nested-ordinary",
+    "nested-wagodebug",
     "collector-ordinary",
     "collector-wagodebug",
+    "collector-wago_regalloccheck",
     "race-ordinary",
+    "race-wagodebug",
     "parent-race-reduced-ordinary",
     "parent-race-reduced-wagodebug",
     "parent-race-reduced-wago_regalloccheck",
     "guard-ordinary",
+    "guard-wagodebug",
+    "corpus-ordinary",
     "catalog-ordinary",
     "catalog-wagodebug",
     "catalog-wago_regalloccheck",
