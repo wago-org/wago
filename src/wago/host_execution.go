@@ -345,6 +345,10 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 			panic(gcHelperFailuref("invalid overlapping GC/host dispatch index %#x", importIdx))
 		}
 		helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
+		if helper >= gcConversionTableSet && helper <= 58 {
+			active.dispatchConversionStoreInvocation(root, a.context(active).id, helper, args, results)
+			return
+		}
 		if helper == gcFuncRefTest && safepoint == 0 {
 			active.dispatchGCFunctionRefTest(root, args, results)
 			return

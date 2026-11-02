@@ -1,0 +1,9 @@
+{
+  "src/wago/reference_store.go": "488878698c07b1707a8c13603b4c10b62ea9f1e485c2b7b050060b3841d8dedf",
+  "src/wago/host_execution.go": "637fcdf80cd40d1daa02615b9c9da5dfdcae992c5b8161ff62aabb276136a739",
+  "src/wago/gc_conversion_store.go": "c0b508b3a58babee619e6638c87335e7fb91883f57cf6b9431691b17453bf234",
+  "src/wago/gc_conversion_store_host.go": "797f0eb54ae74caebb4c688d0e783727bdd65607798d33a13a683b5ad9ad0f62",
+  "src/wago/gc_conversion_store_other.go": "1dab0e903a580da76bfa2e516b0c3ca42342c5df5a688c01387eea155f7e26de",
+  "src/wago/design_recheck_adversary_test.go": "bff4fda592f19a525301193c73e6d32d3e03c8c5bde5e75e4f4d0a40d0b98b3c",
+  "src/wago/design_invocation_snapshot_test.go": "53d01ecc9fdb67f5257eeabe05800f2db55d4c33cbec46ec63ce66ff7fb5f218"
+}

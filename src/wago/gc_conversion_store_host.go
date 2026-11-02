@@ -24,9 +24,9 @@ func compiledConversionStoreHooks(c *Compiled) bool {
 	return false
 }
 
-// Invocation admission freezes topology and acquires the complete sorted domain
-// set, even for a collector-free provider. Never acquire invocation leases here.
-func (in *Instance) publishConversionStore(owner *Instance, storage []byte, index, word uint64, publish func() error) error {
+// Publication uses the authenticated native root and its acquired domain view.
+// Never acquire or upgrade invocation leases here.
+func (in *Instance) publishConversionStoreInvocation(authority gcConversionInvocation, owner *Instance, storage []byte, index, word uint64, publish func() error) error {
 	if in.refStore == nil {
 		if owner == nil {
 			return fmt.Errorf("host conversion storage has no current store")
@@ -42,8 +42,8 @@ func (in *Instance) publishConversionStore(owner *Instance, storage []byte, inde
 	if owner != nil && (!needed || ordinaryConversionReplacement(store, storage, index, []uint64{word})) {
 		return publish()
 	}
-	domains := in.gcInvocationDomains()
-	if !domains.ownedBy(in.currentInvocationID()) {
+	domains, admitted := in.conversionInvocationDomains(authority)
+	if !admitted {
 		return fmt.Errorf("conversion store lacks pre-admitted invocation domains")
 	}
 	// Domain mutation locks are below invocation/native authority, as for the
@@ -58,6 +58,9 @@ func (in *Instance) publishConversionStore(owner *Instance, storage []byte, inde
 	}()
 	container, err := conversionContainerForStore(store, owner, storage)
 	if err != nil {
+		return err
+	}
+	if err := validateConversionInvocation(domains, container, index, word, source); err != nil {
 		return err
 	}
 	tx, err := container.prepare(index, word, source)
@@ -186,6 +189,9 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 			lease.domains.at(i).mu.Unlock()
 		}
 	}()
+	if err := validateConversionInvocation(lease.domains, container, 0, word, owner.existingGCExternConversionState()); err != nil {
+		return true, err
+	}
 	tx, err := container.prepare(0, word, owner.existingGCExternConversionState())
 	if err != nil {
 		return true, err
@@ -193,7 +199,7 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 	return true, tx.commit(func() error { writeGlobalObject(g, ValExternRef, word); return nil })
 }
 
-func (in *Instance) publishConversionRange(owner *Instance, storage []byte, start, limit uint64, words []uint64, publish func()) error {
+func (in *Instance) publishConversionRangeInvocation(authority gcConversionInvocation, owner *Instance, storage []byte, start, limit uint64, words []uint64, publish func()) error {
 	if in.refStore == nil {
 		if owner == nil {
 			return fmt.Errorf("host conversion storage has no current store")
@@ -210,8 +216,8 @@ func (in *Instance) publishConversionRange(owner *Instance, storage []byte, star
 		publish()
 		return nil
 	}
-	domains := in.gcInvocationDomains()
-	if !domains.ownedBy(in.currentInvocationID()) {
+	domains, admitted := in.conversionInvocationDomains(authority)
+	if !admitted {
 		return fmt.Errorf("bulk store lacks complete invocation authority")
 	}
 	for i := 0; i < domains.len(); i++ {
@@ -233,6 +239,9 @@ func (in *Instance) publishConversionRange(owner *Instance, storage []byte, star
 		}
 	}()
 	for i, word := range words {
+		if e := validateConversionInvocation(domains, c, start+uint64(i), word, source); e != nil {
+			return e
+		}
 		tx, e := c.prepareLimit(start+uint64(i), word, limit, source)
 		if e != nil {
 			return e
@@ -300,6 +309,9 @@ func (in *Instance) initializeConversionReceipts(staged []conversionInitialTable
 		}
 		c, e := conversionContainerForStore(store, owner, storage)
 		if e != nil {
+			return e
+		}
+		if e := validateConversionInvocation(lease.domains, c, index, word, source); e != nil {
 			return e
 		}
 		tx, e := c.prepare(index, word, source)
@@ -401,6 +413,9 @@ func setConversionTablePublic(t *Table, index uint64, value Value) error {
 	if err != nil {
 		return err
 	}
+	if err := validateConversionInvocation(lease.domains, c, index, word, owner.existingGCExternConversionState()); err != nil {
+		return err
+	}
 	tx, err := c.prepare(index, word, owner.existingGCExternConversionState())
 	if err != nil {
 		return err
@@ -430,4 +445,48 @@ func ordinaryConversionReplacement(store *referenceStore, storage []byte, start 
 		}
 	}
 	return true
+}
+
+// Root identity comes from the native entry loop, never from the executing
+// callee's stale public ID or an arbitrary collector's current lease holder.
+func (in *Instance) conversionInvocationDomains(a gcConversionInvocation) (gcInvocationDomainView, bool) {
+	if a.root == nil || a.id == 0 || a.root.refStore != in.refStore {
+		return gcInvocationDomainView{}, false
+	}
+	if snapshot := a.root.conversionInvocationSnapshot(a.id); snapshot != nil {
+		return snapshot.domains, snapshot.domains.ownedBy(a.id)
+	}
+	domains := a.root.gcInvocationDomains()
+	if a.root.executionFlags.Load()&executionFlagDynamicGCDomain != 0 && !domains.dynamic {
+		return gcInvocationDomainView{}, false
+	}
+	return domains, domains.ownedBy(a.id)
+}
+
+// Both the displaced and incoming receipt must belong to the acquired view.
+// Registration may grow after conversion-only admission; that grants no new
+// heap authority to this invocation. Native serialization protects the slots.
+func validateConversionInvocation(domains gcInvocationDomainView, c *gcConversionContainer, index, word uint64, source *gcExternConversionState) error {
+	contains := func(d *gcStoreDomain) bool {
+		for i := 0; i < domains.len(); i++ {
+			if domains.at(i) == d {
+				return true
+			}
+		}
+		return false
+	}
+	if old := c.slots[index]; old != nil && !contains(old.identity.domain) {
+		return fmt.Errorf("old conversion receipt domain was not admitted")
+	}
+	c.store.mu.Lock()
+	identity := c.store.gcDomains.conversions[word]
+	c.store.mu.Unlock()
+	if identity != nil {
+		if !contains(identity.domain) {
+			return fmt.Errorf("new conversion receipt domain was not admitted")
+		}
+	} else if word != 0 && source != nil && source.core != nil && !contains(source.core.domain) {
+		return fmt.Errorf("conversion publisher domain was not admitted")
+	}
+	return nil
 }

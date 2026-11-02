@@ -1,0 +1,93 @@
+[
+  {
+    "label": "development-4-ordinary",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-count=1",
+      "-v",
+      "-timeout=3m",
+      "-run",
+      "^Test(Design|R9(H2|Ownership)|GCExternConversion|HostCallNeedsGCSuspension|GCAdmission|GC.*Invocation|GC.*Start)"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "development-4-ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-count=1",
+      "-v",
+      "-timeout=3m",
+      "-run",
+      "^Test(Design|R9(H2|Ownership)|GCExternConversion|HostCallNeedsGCSuspension|GCAdmission|GC.*Invocation|GC.*Start)",
+      "-race"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "development-4-wagodebug",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-count=1",
+      "-v",
+      "-timeout=3m",
+      "-run",
+      "^Test(Design|R9(H2|Ownership)|GCExternConversion|HostCallNeedsGCSuspension|GCAdmission|GC.*Invocation|GC.*Start)",
+      "-tags=wagodebug"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "development-4-wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-count=1",
+      "-v",
+      "-timeout=3m",
+      "-run",
+      "^Test(Design|R9(H2|Ownership)|GCExternConversion|HostCallNeedsGCSuspension|GCAdmission|GC.*Invocation|GC.*Start)",
+      "-tags=wagodebug",
+      "-race"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "development-4-wago_regalloccheck",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-count=1",
+      "-v",
+      "-timeout=3m",
+      "-run",
+      "^Test(Design|R9(H2|Ownership)|GCExternConversion|HostCallNeedsGCSuspension|GCAdmission|GC.*Invocation|GC.*Start)",
+      "-tags=wago_regalloccheck"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "development-4-wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "./src/wago",
+      "-count=1",
+      "-v",
+      "-timeout=3m",
+      "-run",
+      "^Test(Design|R9(H2|Ownership)|GCExternConversion|HostCallNeedsGCSuspension|GCAdmission|GC.*Invocation|GC.*Start)",
+      "-tags=wago_regalloccheck",
+      "-race"
+    ],
+    "exit": 0
+  }
+]

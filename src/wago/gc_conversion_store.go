@@ -12,9 +12,20 @@ import (
 const gcConversionTableSet uint32 = 53
 const gcConversionGlobalSet uint32 = 54
 
+// Direct test/construction dispatch has no authenticated native activation.
 func (in *Instance) dispatchConversionStore(helper uint32, args, results []uint64) bool {
+	return in.dispatchConversionStoreInvocation(nil, 0, helper, args, results)
+}
+
+type gcConversionInvocation struct {
+	root *Instance
+	id   invocationID
+}
+
+func (in *Instance) dispatchConversionStoreInvocation(root *Instance, id invocationID, helper uint32, args, results []uint64) bool {
+	authority := gcConversionInvocation{root: root, id: id}
 	if helper >= 55 && helper <= 58 {
-		in.dispatchConversionTableBulk(helper, args, results)
+		in.dispatchConversionTableBulk(authority, helper, args, results)
 		return true
 	}
 	if helper != gcConversionTableSet && helper != gcConversionGlobalSet {
@@ -66,7 +77,7 @@ func (in *Instance) dispatchConversionStore(helper uint32, args, results []uint6
 		binary.LittleEndian.PutUint64(storage[offset:], word)
 		return nil
 	}
-	if err := in.publishConversionStore(owner, storage, index, word, publish); err != nil {
+	if err := in.publishConversionStoreInvocation(authority, owner, storage, index, word, publish); err != nil {
 		panic(gcHelperFailure(err))
 	}
 	return true
@@ -98,7 +109,7 @@ func (in *Instance) conversionTableStorage(table uint64) ([]byte, *Instance) {
 	}
 	return desc, owner
 }
-func (in *Instance) dispatchConversionTableBulk(helper uint32, args, results []uint64) {
+func (in *Instance) dispatchConversionTableBulk(authority gcConversionInvocation, helper uint32, args, results []uint64) {
 	arity := 4
 	if helper == 56 || helper == 58 {
 		arity = 5
@@ -186,7 +197,7 @@ func (in *Instance) dispatchConversionTableBulk(helper uint32, args, results []u
 			results[0] = length
 		}
 	}
-	if err := in.publishConversionRange(owner, desc, start, limit, words, publish); err != nil {
+	if err := in.publishConversionRangeInvocation(authority, owner, desc, start, limit, words, publish); err != nil {
 		panic(gcHelperFailure(err))
 	}
 }
@@ -235,4 +246,12 @@ func stageConversionInitialTable(rows *[]conversionInitialTable, t *Table, start
 // physical receipt. The adapter resolves the canonical module or host authority.
 func (t *Table) SetValue(index uint64, value Value) error {
 	return setConversionTablePublic(t, index, value)
+}
+
+// Unauthenticated adapters remain available for unsupported-platform controls.
+func (in *Instance) publishConversionStore(owner *Instance, storage []byte, index, word uint64, publish func() error) error {
+	return in.publishConversionStoreInvocation(gcConversionInvocation{}, owner, storage, index, word, publish)
+}
+func (in *Instance) publishConversionRange(owner *Instance, storage []byte, start, limit uint64, words []uint64, publish func()) error {
+	return in.publishConversionRangeInvocation(gcConversionInvocation{}, owner, storage, start, limit, words, publish)
 }

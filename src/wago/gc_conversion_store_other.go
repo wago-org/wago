@@ -34,7 +34,7 @@ func unsupportedConversionWord(store *referenceStore, word uint64) error {
 	}
 	return fmt.Errorf("opaque converted publication is unsupported on this target")
 }
-func (in *Instance) publishConversionStore(_ *Instance, _ []byte, _, word uint64, publish func() error) error {
+func (in *Instance) publishConversionStoreInvocation(_ gcConversionInvocation, _ *Instance, _ []byte, _, word uint64, publish func() error) error {
 	if err := unsupportedConversionWord(in.refStore, word); err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 	}
 	return false, nil
 }
-func (in *Instance) publishConversionRange(_ *Instance, _ []byte, _, _ uint64, words []uint64, publish func()) error {
+func (in *Instance) publishConversionRangeInvocation(_ gcConversionInvocation, _ *Instance, _ []byte, _, _ uint64, words []uint64, publish func()) error {
 	for _, word := range words {
 		if err := unsupportedConversionWord(in.refStore, word); err != nil {
 			return err
