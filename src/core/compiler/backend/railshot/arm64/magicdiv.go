@@ -301,9 +301,12 @@ func (f *fn) magicMulHigh(res Reg, magic uint64, w, signed bool) Reg {
 // postShift is zero except for a proved unsigned 32-bit quotient without add
 // correction. That path can extract bits [63:32+postShift] in one instruction.
 func (f *fn) magicMulHighShift(res Reg, magic uint64, w, signed bool, postShift uint) Reg {
-	mr := f.allocReg(maskOf(res))
+	mr, ownMr := f.intConstReadReg(storage{kind: stConst, typ: mtI64, cval: int64(magic)}, maskOf(res))
+	mrWasPinned := f.pinned.has(mr)
 	f.pinned = f.pinned.add(mr)
-	f.a.MovImm64(mr, magic)
+	if !ownMr {
+		f.stats.peep("magic-loop-int-const")
+	}
 	hi := f.allocReg(maskOf(res, mr)) // clear of res and the magic
 	f.pinned = f.pinned.add(hi)
 	if w {
@@ -323,8 +326,12 @@ func (f *fn) magicMulHighShift(res Reg, magic uint64, w, signed bool, postShift 
 			f.shiftImm(shLSR, hi, byte(32+postShift), true) // logical: high quotient bits → low half
 		}
 	}
-	f.pinned = f.pinned.remove(mr)
-	f.release(mr)
+	if !mrWasPinned {
+		f.pinned = f.pinned.remove(mr)
+	}
+	if ownMr {
+		f.release(mr)
+	}
 	return hi
 }
 
