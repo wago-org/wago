@@ -12,7 +12,6 @@
         "-json",
         "-count=1",
         "-timeout=60m",
-        "-failfast",
         "./..."
       ],
       "environment": {
@@ -21,7 +20,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/full-root-replay-ordinary/command.json",
-      "receipt_sha256": "aa3c9155fc0b26982d1a2dd90f3dd843f390c056d6443d6dfe30dffbc9cb6494"
+      "receipt_sha256": "aa3c9155fc0b26982d1a2dd90f3dd843f390c056d6443d6dfe30dffbc9cb6494",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "full-root-replay-wagodebug",
@@ -34,7 +36,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wagodebug",
-        "-failfast",
         "./..."
       ],
       "environment": {
@@ -43,7 +44,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/full-root-replay-wagodebug/command.json",
-      "receipt_sha256": "e77478b5ba51f988b03f3644aaa90c49d57480c826a7fcc11041cab3a9d6c358"
+      "receipt_sha256": "e77478b5ba51f988b03f3644aaa90c49d57480c826a7fcc11041cab3a9d6c358",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "full-root-replay-wago_regalloccheck",
@@ -56,7 +60,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_regalloccheck",
-        "-failfast",
         "./..."
       ],
       "environment": {
@@ -65,7 +68,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/full-root-replay-wago_regalloccheck/command.json",
-      "receipt_sha256": "a9e2873fb81a6e521690531b2543786ec0032713d3739486e6e837e9a11fc881"
+      "receipt_sha256": "a9e2873fb81a6e521690531b2543786ec0032713d3739486e6e837e9a11fc881",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "collector-ordinary",
@@ -77,7 +83,6 @@
         "-json",
         "-count=1",
         "-timeout=60m",
-        "-failfast",
         "./src/core/runtime/gc/..."
       ],
       "environment": {
@@ -86,7 +91,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/collector-ordinary/command.json",
-      "receipt_sha256": "f104b727f9f0b4ea937ff61780b6d96a781f7b0af606a83932a29adede5211dd"
+      "receipt_sha256": "f104b727f9f0b4ea937ff61780b6d96a781f7b0af606a83932a29adede5211dd",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "collector-wagodebug",
@@ -99,7 +107,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wagodebug",
-        "-failfast",
         "./src/core/runtime/gc/..."
       ],
       "environment": {
@@ -108,7 +115,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/collector-wagodebug/command.json",
-      "receipt_sha256": "de5f414bd02547ffeb9427e3d36ea62462cf239e2414a1c31a3bd0840ca339bb"
+      "receipt_sha256": "de5f414bd02547ffeb9427e3d36ea62462cf239e2414a1c31a3bd0840ca339bb",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "collector-wago_regalloccheck",
@@ -121,7 +131,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_regalloccheck",
-        "-failfast",
         "./src/core/runtime/gc/..."
       ],
       "environment": {
@@ -130,7 +139,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/collector-wago_regalloccheck/command.json",
-      "receipt_sha256": "e2acd754212ac35c134bc6fab237a7c518fb68a20a2cab58ecc21ce128dbae93"
+      "receipt_sha256": "e2acd754212ac35c134bc6fab237a7c518fb68a20a2cab58ecc21ce128dbae93",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "race-ordinary",
@@ -142,7 +154,6 @@
         "-json",
         "-count=1",
         "-timeout=60m",
-        "-failfast",
         "-race",
         "./src/core/runtime/gc/...",
         "./src/core/runtime",
@@ -155,7 +166,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/race-ordinary/command.json",
-      "receipt_sha256": "19294e9c50a77c795d1687b72202e3696be9cab50b4fabf56d52c2264be32c59"
+      "receipt_sha256": "19294e9c50a77c795d1687b72202e3696be9cab50b4fabf56d52c2264be32c59",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "race-wagodebug",
@@ -168,7 +182,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wagodebug",
-        "-failfast",
         "-race",
         "./src/core/runtime/gc/...",
         "./src/core/runtime",
@@ -181,7 +194,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/race-wagodebug/command.json",
-      "receipt_sha256": "0b388cc419ace8a61cece63dbb29e8da0caaac708872341bb39950a85f08ca69"
+      "receipt_sha256": "0b388cc419ace8a61cece63dbb29e8da0caaac708872341bb39950a85f08ca69",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "race-wago_regalloccheck",
@@ -194,7 +210,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_regalloccheck",
-        "-failfast",
         "-race",
         "./src/core/runtime/gc/...",
         "./src/core/runtime",
@@ -207,7 +222,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/race-wago_regalloccheck/command.json",
-      "receipt_sha256": "dfab9a488237f4b4f0b79cf83dceccd8f9086d81ed3ad311a9bdb37d8ec9ad06"
+      "receipt_sha256": "dfab9a488237f4b4f0b79cf83dceccd8f9086d81ed3ad311a9bdb37d8ec9ad06",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "guard-ordinary",
@@ -220,7 +238,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_guardpage",
-        "-failfast",
         "./src/core/runtime",
         "./src/wago"
       ],
@@ -230,7 +247,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/guard-ordinary/command.json",
-      "receipt_sha256": "6d87c142c9e32e2f16a79c89d9e26c7f06efc8796386e69fdab22a8556ee1a0b"
+      "receipt_sha256": "6d87c142c9e32e2f16a79c89d9e26c7f06efc8796386e69fdab22a8556ee1a0b",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "guard-wagodebug",
@@ -243,7 +263,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wagodebug,wago_guardpage",
-        "-failfast",
         "./src/core/runtime",
         "./src/wago"
       ],
@@ -253,7 +272,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/guard-wagodebug/command.json",
-      "receipt_sha256": "a52028bcd847c5a6f29296656f16d812b518ec2991ee58c3eab9208053d99af6"
+      "receipt_sha256": "a52028bcd847c5a6f29296656f16d812b518ec2991ee58c3eab9208053d99af6",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "guard-wago_regalloccheck",
@@ -266,7 +288,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_regalloccheck,wago_guardpage",
-        "-failfast",
         "./src/core/runtime",
         "./src/wago"
       ],
@@ -276,7 +297,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/guard-wago_regalloccheck/command.json",
-      "receipt_sha256": "6bcf9c8aa659b364742087bf0bc2d81187e5f850e4998d321dcdc8298bb72c61"
+      "receipt_sha256": "6bcf9c8aa659b364742087bf0bc2d81187e5f850e4998d321dcdc8298bb72c61",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "backend-ordinary",
@@ -288,7 +312,6 @@
         "-json",
         "-count=1",
         "-timeout=60m",
-        "-failfast",
         "./src/core/compiler/backend/..."
       ],
       "environment": {
@@ -297,7 +320,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/backend-ordinary/command.json",
-      "receipt_sha256": "66ef43f8204c5911dbbbde8ce282f1660711908da7ae5ff0a4554c74c9262663"
+      "receipt_sha256": "66ef43f8204c5911dbbbde8ce282f1660711908da7ae5ff0a4554c74c9262663",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "backend-wagodebug",
@@ -310,7 +336,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wagodebug",
-        "-failfast",
         "./src/core/compiler/backend/..."
       ],
       "environment": {
@@ -319,7 +344,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/backend-wagodebug/command.json",
-      "receipt_sha256": "31678723a8e8091a96ec8931b743dbada3e40466c506fb39560afc8073769874"
+      "receipt_sha256": "31678723a8e8091a96ec8931b743dbada3e40466c506fb39560afc8073769874",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "backend-wago_regalloccheck",
@@ -332,7 +360,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_regalloccheck",
-        "-failfast",
         "./src/core/compiler/backend/..."
       ],
       "environment": {
@@ -341,7 +368,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/backend-wago_regalloccheck/command.json",
-      "receipt_sha256": "7e7002a4f40e354df865465d0a6b01e23616a00b55590a917e392a46e075d8fe"
+      "receipt_sha256": "7e7002a4f40e354df865465d0a6b01e23616a00b55590a917e392a46e075d8fe",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "cli-ordinary",
@@ -354,7 +384,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_runtime",
-        "-failfast",
         "./cli/..."
       ],
       "environment": {
@@ -363,7 +392,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/cli-ordinary/command.json",
-      "receipt_sha256": "1bc8abd2cc2b772f40936154dc06e9065314e1e303ae2aa95db22bb061eb29df"
+      "receipt_sha256": "1bc8abd2cc2b772f40936154dc06e9065314e1e303ae2aa95db22bb061eb29df",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "cli-wagodebug",
@@ -376,7 +408,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_runtime,wagodebug",
-        "-failfast",
         "./cli/..."
       ],
       "environment": {
@@ -385,7 +416,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/cli-wagodebug/command.json",
-      "receipt_sha256": "bbe9b8d6882f2f047f7c0b5f3e9c2071cc6e47c5a5f88a7bc62f140352df5c4b"
+      "receipt_sha256": "bbe9b8d6882f2f047f7c0b5f3e9c2071cc6e47c5a5f88a7bc62f140352df5c4b",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "cli-wago_regalloccheck",
@@ -398,7 +432,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_runtime,wago_regalloccheck",
-        "-failfast",
         "./cli/..."
       ],
       "environment": {
@@ -407,7 +440,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/cli-wago_regalloccheck/command.json",
-      "receipt_sha256": "670ba5da394bf1276b799748097fd3784a2d5155caa2805fa7ab31681eabaacb"
+      "receipt_sha256": "670ba5da394bf1276b799748097fd3784a2d5155caa2805fa7ab31681eabaacb",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "installer-ordinary",
@@ -419,7 +455,6 @@
         "-json",
         "-count=1",
         "-timeout=60m",
-        "-failfast",
         "./..."
       ],
       "environment": {
@@ -428,7 +463,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/installer-ordinary/command.json",
-      "receipt_sha256": "efd8f23f149db7caa34d13fcf24630f53bce7e49eb1e1610d82f605000a0d1f4"
+      "receipt_sha256": "efd8f23f149db7caa34d13fcf24630f53bce7e49eb1e1610d82f605000a0d1f4",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "installer-wagodebug",
@@ -441,7 +479,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wagodebug",
-        "-failfast",
         "./..."
       ],
       "environment": {
@@ -450,7 +487,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/installer-wagodebug/command.json",
-      "receipt_sha256": "1c45d65ac08614e23caa656896ab1a347b45c1f2e31d93361ee387ae1da4ce31"
+      "receipt_sha256": "1c45d65ac08614e23caa656896ab1a347b45c1f2e31d93361ee387ae1da4ce31",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "installer-wago_regalloccheck",
@@ -463,7 +503,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_regalloccheck",
-        "-failfast",
         "./..."
       ],
       "environment": {
@@ -472,7 +511,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/installer-wago_regalloccheck/command.json",
-      "receipt_sha256": "50705f0f9b4a73a97b7809755c30d28f8a2039ca5e573b20ef28fea17e75e9b5"
+      "receipt_sha256": "50705f0f9b4a73a97b7809755c30d28f8a2039ca5e573b20ef28fea17e75e9b5",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "corpus-ordinary",
@@ -484,7 +526,6 @@
         "-json",
         "-count=1",
         "-timeout=60m",
-        "-failfast",
         "-run",
         "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
         "./suite",
@@ -497,7 +538,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/corpus-ordinary/command.json",
-      "receipt_sha256": "0a37dc5b3e0e286448f491255c9df0193f74d68705f5efcda31fd7471315e219"
+      "receipt_sha256": "0a37dc5b3e0e286448f491255c9df0193f74d68705f5efcda31fd7471315e219",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "corpus-wagodebug",
@@ -510,7 +554,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wagodebug",
-        "-failfast",
         "-run",
         "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
         "./suite",
@@ -523,7 +566,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/corpus-wagodebug/command.json",
-      "receipt_sha256": "9ea5f788ba2bbd6909e2f62166de42205bdcd1bf692c711b1ff3ce20d1771b82"
+      "receipt_sha256": "9ea5f788ba2bbd6909e2f62166de42205bdcd1bf692c711b1ff3ce20d1771b82",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "corpus-wago_regalloccheck",
@@ -536,7 +582,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_regalloccheck",
-        "-failfast",
         "-run",
         "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
         "./suite",
@@ -549,7 +594,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/corpus-wago_regalloccheck/command.json",
-      "receipt_sha256": "9880f2f08f74a6158b90610bcca7f12fa34b943c4afb2c68038862b5c1986d4a"
+      "receipt_sha256": "9880f2f08f74a6158b90610bcca7f12fa34b943c4afb2c68038862b5c1986d4a",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "guard-corpus-ordinary",
@@ -562,7 +610,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_guardpage",
-        "-failfast",
         "-run",
         "^(TestCorpus|TestJsonAsGuardCorrect)$",
         "./suite",
@@ -576,7 +623,10 @@
         "WAGO_BOUNDS": "signals"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/guard-corpus-ordinary/command.json",
-      "receipt_sha256": "7c80092dc11f779973d92a8d1431bb1e20d2a6191e2f5b131f326a803b100a56"
+      "receipt_sha256": "7c80092dc11f779973d92a8d1431bb1e20d2a6191e2f5b131f326a803b100a56",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "guard-corpus-wagodebug",
@@ -589,7 +639,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_guardpage,wagodebug",
-        "-failfast",
         "-run",
         "^(TestCorpus|TestJsonAsGuardCorrect)$",
         "./suite",
@@ -603,7 +652,10 @@
         "WAGO_BOUNDS": "signals"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/guard-corpus-wagodebug/command.json",
-      "receipt_sha256": "a2b8db10018e7319a016fcb23bcfc213b6c6911f7bc46972615672a89dffe2c2"
+      "receipt_sha256": "a2b8db10018e7319a016fcb23bcfc213b6c6911f7bc46972615672a89dffe2c2",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "guard-corpus-wago_regalloccheck",
@@ -616,7 +668,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_guardpage,wago_regalloccheck",
-        "-failfast",
         "-run",
         "^(TestCorpus|TestJsonAsGuardCorrect)$",
         "./suite",
@@ -630,7 +681,10 @@
         "WAGO_BOUNDS": "signals"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/guard-corpus-wago_regalloccheck/command.json",
-      "receipt_sha256": "10e90cfa48f0a2755084f3aad02d913866494af70594db53ee1963becb7bc168"
+      "receipt_sha256": "10e90cfa48f0a2755084f3aad02d913866494af70594db53ee1963becb7bc168",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "host-transition-ordinary",
@@ -642,7 +696,6 @@
         "-json",
         "-count=1",
         "-timeout=60m",
-        "-failfast",
         "-count=3",
         "-run",
         "Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$",
@@ -655,7 +708,10 @@
         "WAGO_BOUNDS": "explicit"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/host-transition-ordinary/command.json",
-      "receipt_sha256": "409ca56e8347fdc76353bd679464abce6dcbc86655fe6c8997f3ad158757473b"
+      "receipt_sha256": "409ca56e8347fdc76353bd679464abce6dcbc86655fe6c8997f3ad158757473b",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "host-transition-wagodebug",
@@ -668,7 +724,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wagodebug",
-        "-failfast",
         "-count=3",
         "-run",
         "Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$",
@@ -681,7 +736,10 @@
         "WAGO_BOUNDS": "explicit"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/host-transition-wagodebug/command.json",
-      "receipt_sha256": "d603dc062f77f508b30093e528c3beb157478e8f048afdccaa447f8a2252cacf"
+      "receipt_sha256": "d603dc062f77f508b30093e528c3beb157478e8f048afdccaa447f8a2252cacf",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "host-transition-wago_regalloccheck",
@@ -694,7 +752,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_regalloccheck",
-        "-failfast",
         "-count=3",
         "-run",
         "Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$",
@@ -707,7 +764,10 @@
         "WAGO_BOUNDS": "explicit"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/host-transition-wago_regalloccheck/command.json",
-      "receipt_sha256": "b64fc5288c3d3c341f43618ab48aab871da236f57cef8650b10838adfb28f3ed"
+      "receipt_sha256": "b64fc5288c3d3c341f43618ab48aab871da236f57cef8650b10838adfb28f3ed",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "hardening-ordinary",
@@ -719,7 +779,6 @@
         "-json",
         "-count=1",
         "-timeout=60m",
-        "-failfast",
         "-count=3",
         "./src/core/runtime/gc/..."
       ],
@@ -730,7 +789,10 @@
         "WAGO_BOUNDS": "explicit"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/hardening-ordinary/command.json",
-      "receipt_sha256": "6c34f04623e9e595b414973b4f055910524eee7403bb7f162055bf6f403126a4"
+      "receipt_sha256": "6c34f04623e9e595b414973b4f055910524eee7403bb7f162055bf6f403126a4",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "hardening-wagodebug",
@@ -743,7 +805,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wagodebug",
-        "-failfast",
         "-count=3",
         "./src/core/runtime/gc/..."
       ],
@@ -754,7 +815,10 @@
         "WAGO_BOUNDS": "explicit"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/hardening-wagodebug/command.json",
-      "receipt_sha256": "f3ab4ea760602dd3ee661aba491e35431cae119c066e13240363d957922a46a1"
+      "receipt_sha256": "f3ab4ea760602dd3ee661aba491e35431cae119c066e13240363d957922a46a1",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "hardening-wago_regalloccheck",
@@ -767,7 +831,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_regalloccheck",
-        "-failfast",
         "-count=3",
         "./src/core/runtime/gc/..."
       ],
@@ -778,7 +841,10 @@
         "WAGO_BOUNDS": "explicit"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/hardening-wago_regalloccheck/command.json",
-      "receipt_sha256": "d8deb57e632ef0d359e01ce5a312b7747d710a98154e9bc60baebb3479c7c863"
+      "receipt_sha256": "d8deb57e632ef0d359e01ce5a312b7747d710a98154e9bc60baebb3479c7c863",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "profile-runtime-ordinary",
@@ -791,7 +857,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_profile",
-        "-failfast",
         "-run",
         "^Test(CodeProfile|Profile|AdapterUnwind)",
         "./src/wago",
@@ -803,7 +868,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/profile-runtime-ordinary/command.json",
-      "receipt_sha256": "46bc712e7af85afbce96a44ca4a4a5ba995b63e87ae3dc55ca702d9238655c8d"
+      "receipt_sha256": "46bc712e7af85afbce96a44ca4a4a5ba995b63e87ae3dc55ca702d9238655c8d",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "profile-runtime-wagodebug",
@@ -816,7 +884,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_profile,wagodebug",
-        "-failfast",
         "-run",
         "^Test(CodeProfile|Profile|AdapterUnwind)",
         "./src/wago",
@@ -828,7 +895,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/profile-runtime-wagodebug/command.json",
-      "receipt_sha256": "89c9aa6934b25e7de6df753ca120a30d930fd108ddd2c571b58e21321ecab729"
+      "receipt_sha256": "89c9aa6934b25e7de6df753ca120a30d930fd108ddd2c571b58e21321ecab729",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "profile-runtime-wago_regalloccheck",
@@ -841,7 +911,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_profile,wago_regalloccheck",
-        "-failfast",
         "-run",
         "^Test(CodeProfile|Profile|AdapterUnwind)",
         "./src/wago",
@@ -853,7 +922,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/profile-runtime-wago_regalloccheck/command.json",
-      "receipt_sha256": "313bc878c5b2e19bedc7f642ab43908b49d82787b5d96d8a93db8ce3a3ed0134"
+      "receipt_sha256": "313bc878c5b2e19bedc7f642ab43908b49d82787b5d96d8a93db8ce3a3ed0134",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "profile-metadata-ordinary",
@@ -866,7 +938,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_profile",
-        "-failfast",
         "./internal/jitprofile",
         "./profile",
         "./internal/profcapture",
@@ -879,7 +950,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/profile-metadata-ordinary/command.json",
-      "receipt_sha256": "e890ce1eef5a5bae87602a7132d18b435dfb8909334b874d521a7e37a2423137"
+      "receipt_sha256": "e890ce1eef5a5bae87602a7132d18b435dfb8909334b874d521a7e37a2423137",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "profile-metadata-wagodebug",
@@ -892,7 +966,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_profile,wagodebug",
-        "-failfast",
         "./internal/jitprofile",
         "./profile",
         "./internal/profcapture",
@@ -905,7 +978,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/profile-metadata-wagodebug/command.json",
-      "receipt_sha256": "5084b5e95c828006014d8ed4bdf7f0d8eceb52e77c979cd390a86ac2a6ff35b1"
+      "receipt_sha256": "5084b5e95c828006014d8ed4bdf7f0d8eceb52e77c979cd390a86ac2a6ff35b1",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "profile-metadata-wago_regalloccheck",
@@ -918,7 +994,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_profile,wago_regalloccheck",
-        "-failfast",
         "./internal/jitprofile",
         "./profile",
         "./internal/profcapture",
@@ -931,7 +1006,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/profile-metadata-wago_regalloccheck/command.json",
-      "receipt_sha256": "14d099fcdc1d5974f9344c8926a9ebad3e2c6fcff1f0e1e2d692d4c898e7e750"
+      "receipt_sha256": "14d099fcdc1d5974f9344c8926a9ebad3e2c6fcff1f0e1e2d692d4c898e7e750",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "diagnostics-default-ordinary",
@@ -944,7 +1022,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_codegenstats",
-        "-failfast",
         "./src/core/compiler/backend/...",
         "./src/wago"
       ],
@@ -954,7 +1031,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/diagnostics-default-ordinary/command.json",
-      "receipt_sha256": "17ba87f52acc4a7aac8f6ccbe9cf9bcfb6fe4d62ff8edfd2dfbed617a8573f24"
+      "receipt_sha256": "17ba87f52acc4a7aac8f6ccbe9cf9bcfb6fe4d62ff8edfd2dfbed617a8573f24",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "diagnostics-default-wagodebug",
@@ -967,7 +1047,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_codegenstats,wagodebug",
-        "-failfast",
         "./src/core/compiler/backend/...",
         "./src/wago"
       ],
@@ -977,7 +1056,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/diagnostics-default-wagodebug/command.json",
-      "receipt_sha256": "7460f2e43a5c9979d807d99e0aca4031b31ab20bebbe5831083564189c18a9f3"
+      "receipt_sha256": "7460f2e43a5c9979d807d99e0aca4031b31ab20bebbe5831083564189c18a9f3",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "diagnostics-default-wago_regalloccheck",
@@ -990,7 +1072,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_codegenstats,wago_regalloccheck",
-        "-failfast",
         "./src/core/compiler/backend/...",
         "./src/wago"
       ],
@@ -1000,7 +1081,10 @@
         "WAGO_CORPUS_TIMEOUT": "1m"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/diagnostics-default-wago_regalloccheck/command.json",
-      "receipt_sha256": "48da1af0eb5a7baae1b27afd6d931006d28049ea3be657aff5e429cc24b3d919"
+      "receipt_sha256": "48da1af0eb5a7baae1b27afd6d931006d28049ea3be657aff5e429cc24b3d919",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "diagnostics-established-ordinary",
@@ -1013,7 +1097,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_codegenstats",
-        "-failfast",
         "./src/core/compiler/backend/...",
         "./src/wago"
       ],
@@ -1024,7 +1107,10 @@
         "WAGO_SHARED_SCALAR": "0"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/diagnostics-established-ordinary/command.json",
-      "receipt_sha256": "a4e722b412fd9fa813302be338ba6e57d804228f825161501880da53b41f5cbc"
+      "receipt_sha256": "a4e722b412fd9fa813302be338ba6e57d804228f825161501880da53b41f5cbc",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "diagnostics-established-wagodebug",
@@ -1037,7 +1123,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_codegenstats,wagodebug",
-        "-failfast",
         "./src/core/compiler/backend/...",
         "./src/wago"
       ],
@@ -1048,7 +1133,10 @@
         "WAGO_SHARED_SCALAR": "0"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/diagnostics-established-wagodebug/command.json",
-      "receipt_sha256": "48b0b8110a50f240ae460dbde6deef28c6b5ebb0cd5a114d2c8c3b757749dbee"
+      "receipt_sha256": "48b0b8110a50f240ae460dbde6deef28c6b5ebb0cd5a114d2c8c3b757749dbee",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "diagnostics-established-wago_regalloccheck",
@@ -1061,7 +1149,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_codegenstats,wago_regalloccheck",
-        "-failfast",
         "./src/core/compiler/backend/...",
         "./src/wago"
       ],
@@ -1072,7 +1159,10 @@
         "WAGO_SHARED_SCALAR": "0"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/diagnostics-established-wago_regalloccheck/command.json",
-      "receipt_sha256": "04d4b1d26e77c87afcdeb12e42ee83a9ddecd27574e569544b81e97339f0a8f2"
+      "receipt_sha256": "04d4b1d26e77c87afcdeb12e42ee83a9ddecd27574e569544b81e97339f0a8f2",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "shared-scalar-ordinary",
@@ -1085,7 +1175,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_codegenstats",
-        "-failfast",
         "-run",
         "^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)",
         "./src/core/compiler/backend/railshot/...",
@@ -1098,7 +1187,10 @@
         "WAGO_SHARED_SCALAR": "1"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/shared-scalar-ordinary/command.json",
-      "receipt_sha256": "dfc4bb8e869bc4b356fb532aa52cb68b69ef102a951806756ba4707c45cc1097"
+      "receipt_sha256": "dfc4bb8e869bc4b356fb532aa52cb68b69ef102a951806756ba4707c45cc1097",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "shared-scalar-wagodebug",
@@ -1111,7 +1203,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_codegenstats,wagodebug",
-        "-failfast",
         "-run",
         "^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)",
         "./src/core/compiler/backend/railshot/...",
@@ -1124,7 +1215,10 @@
         "WAGO_SHARED_SCALAR": "1"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/shared-scalar-wagodebug/command.json",
-      "receipt_sha256": "401d0e92e9b8472616f52a50a65ac9c1f4ec9302da21fe886c317c3699762a05"
+      "receipt_sha256": "401d0e92e9b8472616f52a50a65ac9c1f4ec9302da21fe886c317c3699762a05",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "shared-scalar-wago_regalloccheck",
@@ -1137,7 +1231,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_codegenstats,wago_regalloccheck",
-        "-failfast",
         "-run",
         "^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)",
         "./src/core/compiler/backend/railshot/...",
@@ -1150,7 +1243,10 @@
         "WAGO_SHARED_SCALAR": "1"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/shared-scalar-wago_regalloccheck/command.json",
-      "receipt_sha256": "34a4397ad248bb16a4163396ab9f7e2dd932b35536e11ca8533af4cfa1748efb"
+      "receipt_sha256": "34a4397ad248bb16a4163396ab9f7e2dd932b35536e11ca8533af4cfa1748efb",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "seeded-concurrency-ordinary",
@@ -1162,7 +1258,6 @@
         "-json",
         "-count=1",
         "-timeout=60m",
-        "-failfast",
         "-run",
         "^TestRuntimeConcurrency",
         "./tests/integration/runtimeconcurrency"
@@ -1175,7 +1270,10 @@
         "WAGO_CONCURRENCY_ROUNDS": "24"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/seeded-concurrency-ordinary/command.json",
-      "receipt_sha256": "6c268bf03a6689b87408bce6eeecd09b05e92119262ac99f2b296e9fd9871e45"
+      "receipt_sha256": "6c268bf03a6689b87408bce6eeecd09b05e92119262ac99f2b296e9fd9871e45",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "seeded-concurrency-wagodebug",
@@ -1188,7 +1286,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wagodebug",
-        "-failfast",
         "-run",
         "^TestRuntimeConcurrency",
         "./tests/integration/runtimeconcurrency"
@@ -1201,7 +1298,10 @@
         "WAGO_CONCURRENCY_ROUNDS": "24"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/seeded-concurrency-wagodebug/command.json",
-      "receipt_sha256": "8d57c227395368590a4797679533a2d94488e8220762b6b1c6fc11ab4c9cac7d"
+      "receipt_sha256": "8d57c227395368590a4797679533a2d94488e8220762b6b1c6fc11ab4c9cac7d",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
     },
     {
       "id": "seeded-concurrency-wago_regalloccheck",
@@ -1214,7 +1314,6 @@
         "-count=1",
         "-timeout=60m",
         "-tags=wago_regalloccheck",
-        "-failfast",
         "-run",
         "^TestRuntimeConcurrency",
         "./tests/integration/runtimeconcurrency"
@@ -1227,7 +1326,381 @@
         "WAGO_CONCURRENCY_ROUNDS": "24"
       },
       "receipt": "docs/rfwgc-evidence/final-combined-5345/seeded-concurrency-wago_regalloccheck/command.json",
-      "receipt_sha256": "4ae195ad3b53a4051f5adc60d7ad184af7b8ab6718af23d62c6e15a44ab0b1b4"
+      "receipt_sha256": "4ae195ad3b53a4051f5adc60d7ad184af7b8ab6718af23d62c6e15a44ab0b1b4",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "spec-v1-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v1",
+        "WAGO_SPEC_VERSION": "1.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v1-ordinary/command.json",
+      "receipt_sha256": "d7f2fcc3ee96c094ddd63473002665c65a4fec22769c909119ed105443a42ca5",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v2-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v2",
+        "WAGO_SPEC_VERSION": "2.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v2-ordinary/command.json",
+      "receipt_sha256": "ea78c5602125a412f0c9480d75880a8de1faa90e1790305455e928904fc35127",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v3-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+        "WAGO_SPEC_VERSION": "3.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v3-ordinary/command.json",
+      "receipt_sha256": "2e8ea90e332e76fec78a09044c1d8dcd65b9e6341f8705ef26d0069fd235d001",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v3-signals-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_guardpage",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_BOUNDS": "signals",
+        "WAGO_SPEC_VERSION": "3.0",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v3-signals-ordinary/command.json",
+      "receipt_sha256": "4905f5c5d04256907ec13987867b545d80aac84c58611e73ae12cae7d1048023",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v1-wagodebug",
+      "mode": "wagodebug",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wagodebug",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v1",
+        "WAGO_SPEC_VERSION": "1.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v1-wagodebug/command.json",
+      "receipt_sha256": "a0780425a92e33a2dc728b3ec3ce4ce9c9e33cf31ff116ecb31abc2d5eaabb71",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v2-wagodebug",
+      "mode": "wagodebug",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wagodebug",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v2",
+        "WAGO_SPEC_VERSION": "2.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v2-wagodebug/command.json",
+      "receipt_sha256": "b3755f135dbe48e460469447f76b2558339bb1173a225440c14a9e6a1b440e8b",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v3-wagodebug",
+      "mode": "wagodebug",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wagodebug",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+        "WAGO_SPEC_VERSION": "3.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v3-wagodebug/command.json",
+      "receipt_sha256": "ced2025a40d91981025913bef3b2bb76f051e14a4e1365392de22a31cdcefe56",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v3-signals-wagodebug",
+      "mode": "wagodebug",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_guardpage,wagodebug",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_BOUNDS": "signals",
+        "WAGO_SPEC_VERSION": "3.0",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v3-signals-wagodebug/command.json",
+      "receipt_sha256": "03f4a6d4b150070f7f5aa0b1883f952728efebb192253519bca6d014d0f14578",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v1-wago_regalloccheck",
+      "mode": "wago_regalloccheck",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_regalloccheck",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v1",
+        "WAGO_SPEC_VERSION": "1.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v1-wago_regalloccheck/command.json",
+      "receipt_sha256": "4754af3b1caa1d43a6b40266ededadb15d638db8ff2fcf57239d98e5054346f4",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v2-wago_regalloccheck",
+      "mode": "wago_regalloccheck",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_regalloccheck",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v2",
+        "WAGO_SPEC_VERSION": "2.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v2-wago_regalloccheck/command.json",
+      "receipt_sha256": "823914fdc7f16b686c6b2a587ac6c0a586ce1f002141f5982e91fb4e31fa936b",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v3-wago_regalloccheck",
+      "mode": "wago_regalloccheck",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_regalloccheck",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+        "WAGO_SPEC_VERSION": "3.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v3-wago_regalloccheck/command.json",
+      "receipt_sha256": "465a19175bfc0eb57e6d78e156f30da0817115ff52bb02118c01c83f704ee43b",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v3-signals-wago_regalloccheck",
+      "mode": "wago_regalloccheck",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_guardpage,wago_regalloccheck",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_BOUNDS": "signals",
+        "WAGO_SPEC_VERSION": "3.0",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v3-signals-wago_regalloccheck/command.json",
+      "receipt_sha256": "a841733892c88311cd17658bdf00df822d6a597723289cd1f85cb792b2f3d540",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    }
+  ],
+  "scope": "51 replay commands plus 12 explicit official-spec commands; not complete Darwin qualification.",
+  "unmet_gaps": [
+    {
+      "id": "tinygo",
+      "status": "NOT_RUN",
+      "required": "Native Darwin ARM64 patched TinyGo 0.42.0 foreign-stack runtime, evacuation, joint and supported conversion lanes in all three modes. Stock scheduler patch alone is insufficient; port and hash the stage8 foreign-stack patch set and verify native compiler support before execution."
+    },
+    {
+      "id": "generated-gc-graphs",
+      "status": "NOT_RUN",
+      "required": "Port/baseline generated-graph/scalar/noGC fixtures and separate hashed overlays, 32 live objects and >=2048 allocations after 64 calls/collection; canonical corpus is not graph coverage."
+    },
+    {
+      "id": "h6-adapter",
+      "status": "NOT_RUN",
+      "required": "Audit the prior ARM64 adapter against Darwin build constraints, retain both ownership/wakeup test bodies and package/test census; QEMU Linux receipts do not qualify Darwin."
+    },
+    {
+      "id": "platform-exclusions",
+      "status": "REQUIRES_REVIEW",
+      "required": "Review every skipped test and ignored build file, notably Linux profiling clock/perf paths, target-specific TinyGo/host tests and external-runtime captured oracle references; never promote absent bodies to passes."
     }
   ]
 }

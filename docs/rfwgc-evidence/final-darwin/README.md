@@ -1,99 +1,144 @@
-# Darwin execution route investigation
+# Reviewed-dispatch Darwin correctness route
 
-Source: `5345bd365c13963f1bf60e26bb80789ab9ead4cc`. Prior combined evidence: `2c9f72744`.
-Investigation date: 2026-11-02. Target date: November 4; the deadline does not waive execution.
+**Activation requires parent review of this implementation. Darwin execution remains
+NOT_RUN in ordinary, wagodebug and wago_regalloccheck.** No push, dispatch, PR,
+benchmark or timing measurement was performed by the implementation child.
 
-**Darwin correctness remains NOT_RUN in ordinary, wagodebug and wago_regalloccheck.**
-No Darwin compilation or execution occurred during this task. Linux QEMU receipts
-in the prior evidence do not qualify Darwin. No performance measurements occurred.
+Immutable production source: `5345bd365c13963f1bf60e26bb80789ab9ead4cc`.
+`942fe6c7d` is the later comment-only source clarification, not the tested source.
+The harness is checked out at the dispatch's `github.sha` in `harness/`; source is
+checked out independently by exact SHA in `source/`, with recursive pinned
+submodules. Both identities are verified before tests. The driver records its
+commit and hashes, the source manifest (including submodules), and post-run
+integrity. No live developer workspace is used.
 
-## Discovery and blocker
+## Integration and activation
 
-`discovery.json` records read-only GitHub queries and the initial worktree/index state.
-Both connected T3 endpoint identities describe the same Linux x64 environment,
-not a second Mac. Device discovery returned “This MCP client signed in from
-outside a thread.” No SSH config exists. An existing private-key file is not
-evidence of an authorized Mac endpoint; its contents were not read. Tailscale
-status failed because no local tailscaled was running; no daemon was started.
-T3 settings expose no top-level runner/host configuration. No available connected
-tool exposes arbitrary remote shell execution on a Mac.
+The already registered `.github/workflows/ci.yml` accepts optional boolean
+`darwin_qualification` (default false) and string `source_sha`. Only an explicit
+true manual dispatch selects the three `macos-15` matrix jobs. The source input
+must equal the full reviewed SHA above; abbreviated SHAs, branches, arbitrary
+commits and shell text fail before source checkout. The normal `changes` planner
+is skipped for this special dispatch; its dependents and the draft-only smoke
+job consequently skip. The existing required `CI` summary explicitly requires
+Darwin matrix success and all normal jobs skipped. This summary attests command
+execution, not full CI qualification or closure of the remaining Darwin gaps.
+Normal push, PR, merge_group and manual dispatch retain their planner and summary
+contracts. The Darwin concurrency suffix prevents canceling ordinary CI on the
+same ref. No new workflow registration or default-branch change is needed.
+`workflow.proposal.yml` is now only a pointer to this integration.
 
-GitHub repository runner discovery succeeded with zero self-hosted runners.
-This does not rule out organization runners or GitHub-hosted runners. The exact
-source SHA has zero Actions runs. The named experiment branch has no matching
-remote branch. The repository is public; the authenticated repository response
-reports admin/push access, but that does not authorize this child to publish.
-The active CI workflow exists. Its source version selects `macos-15` for Darwin
-ARM64, but `just test unit`, corpus and guard recipes do not supply the required
-wagodebug matrix. A plain dispatch cannot close the three-mode requirement.
+After review, the parent must publish the port branch containing this harness,
+workflow and plan, and ensure the exact source commit is reachable from that
+repository (it is an ancestor of this local branch). Follow the parent's
+publication policy; this document grants no direct-main publication authority.
+Check the published branch head against the reviewed evidence commit and verify
+source availability before activating:
 
-## Concrete proposal for parent coordination
+```sh
+gh api repos/wago-org/wago/git/ref/heads/experiment/rfwgc-port --jq .object.sha
+gh api repos/wago-org/wago/commits/5345bd365c13963f1bf60e26bb80789ab9ead4cc --jq .sha
+gh workflow run ci.yml --repo wago-org/wago --ref experiment/rfwgc-port \
+  -f darwin_qualification=true \
+  -f source_sha=5345bd365c13963f1bf60e26bb80789ab9ead4cc
+```
 
-Use the standard GitHub-hosted `macos-15` ARM64 runner. GitHub documents that
-label as ARM64 and standard runner compute as free for public repositories:
-https://docs.github.com/en/actions/reference/runners/github-hosted-runners
-(checked 2026-11-02). Proposed compute cost is $0 on this public repository's
-standard runner; artifact storage is separate and no billing balance was queried.
-Use seven-day artifact retention. Three jobs each have a six-hour hard ceiling;
-this is a safety bound, not a measured runtime estimate or a November 4 guarantee.
+Do not activate an unreviewed later branch head. `host.json` must identify the
+reviewed harness commit; compare the run's `headSha` before accepting results.
+The parent downloads all three artifacts and complete Actions logs, including
+checkout/setup failures. A missing artifact, lane, final summary, canceled job or
+timeout is incomplete evidence, never a pass. Seven-day retention is configured.
 
-`workflow.proposal.yml` is an inactive, reviewable proposal under this evidence
-directory. It creates three Darwin ARM64 jobs, downloads pinned Go 1.27.1 and
-just 1.58.0, invokes the source's checksum-verified WABT bootstrap, executes the
-51-command plan, and uploads receipts. Node and PowerShell must already be
-available on the runner; missing tools fail setup rather than waive tests.
+## Executable setup and its limits
 
-Parent actions needed:
+`setup.sh` refuses Linux/x86/translated execution, checks exact source and Go
+identity, clean source/submodules, and cgo/Xcode availability. It provisions:
 
-1. Coordinate publishing the source and evidence on a non-main branch, and
-   install the proposed workflow through a reviewed PR. Do not bypass the
-   repository's PR-only upstream rule. Before dispatch, verify the full pinned
-   source can be fetched remotely and the selected workflow ref contains this
-   exact harness and plan. Workflow-dispatch registration may require the
-   workflow on the default branch; parent must choose/coordinate that route.
-2. Dispatch only after that coordination. The workflow checks out the source
-   SHA independently from the harness branch; it never substitutes latest main.
-3. Download the three artifacts and full setup/job logs. Account for every
-   planned lane, interruption, failure, skipped test and build-excluded file.
-   Resolve any unexpected exclusions before claiming qualification.
+- Go **1.27.1** and just **1.58.0**, via commit-pinned setup actions.
+- Native Node **24.22.2** and PowerShell **7.6.8**, using hardcoded archive SHA256
+  values from Node's release SHASUMS256 and PowerShell's GitHub release asset
+  digest. Missing runner installations are not silently accepted.
+- WABT **1.0.41**, via the source's checksum-verified native ARM64 bootstrap.
+- OCaml **4.14.3**, dune **3.22.1**, menhir **20260209**, via a fresh isolated opam
+  switch. The official Release 3 interpreter is built and verified from pinned
+  submodule revision `9d36019973201a19f9c9ebb0f10828b2fe2374aa` by the source script.
 
-No new secret is presently needed for this proposal: authenticated read APIs
-already work and Actions can use its built-in contents-read token. Dispatch/write
-permission must be verified by the parent at execution time. If choosing a private
-Mac instead, the missing inputs are an explicitly authorized hostname, username,
-verified SSH host-key fingerprint and existing authentication route. Only if that
-route lacks authentication would a scoped SSH credential be needed, delivered by
-the parent's private secret tool, never chat. No credential was requested here.
+Homebrew installs the opam bootstrap; Homebrew/opam, the opam repository metadata,
+macOS image, Xcode and Python are recorded infrastructure, **not hermetic pins**.
+Exact interpreter compiler/parser versions are requested; the installed opam
+package list and switch export are retained. Setup logs record native versions,
+image identity and tools; WABT/interpreter provenance and executable hashes are
+uploaded. Setup is implemented but has not executed on Darwin. Any installation,
+ABI or source-build failure fails the job and remains evidence. There is no
+fallback to stock/missing tools or skipped setup. TinyGo is deliberately not
+installed as an apparent substitute for the separately patched runtime.
 
-## Prepared harness and scope
+## Execution scope and census
 
-`plan.json` copies 17 command families in each of the three modes from the prior
-immutable evidence, retaining each original command receipt's SHA256. It covers
-root packages, collector, race, guard pages, backend, runtime CLI, installer,
-canonical and guard corpus, repeated host transitions and hardening, profile
-correctness, diagnostics, shared-scalar controls and seeded concurrency. These
-are `go test` correctness commands; none selects benchmarks.
+`plan.json` retains each prior command receipt and SHA256. The original 51
+commands cover root packages, collector/race/guard/backend/runtime CLI/installer,
+corpus, host transitions, hardening, profiling correctness, diagnostics,
+shared-scalar controls and seeded concurrency. Twelve additional commands run
+explicit official spec v1, v2, v3 and v3-signals gates in all three modes with
+zero gaps required. Absolute Linux tool/source paths are replaced by setup paths;
+`-failfast` is removed so failures do not suppress later test bodies. No command
+selects `-bench`, fuzz timing, native performance capture or measurement recipes.
+Framework durations in raw test output are incidental correctness data.
 
-`run.py SOURCE OUTPUT --mode MODE` refuses Linux, translated x86 macOS, a dirty
-tracked tree, the wrong SHA or wrong Go version/target. OUTPUT must be new and
-outside SOURCE. It records host identity, source file hashes before/after,
-command receipts, package build-file census, complete JSON test output, skips,
-failure events and test pass counts. Zero-test commands fail. Skips yield
-PASS_WITH_SKIPS and require review; the summary never automatically declares
-final qualification. Unexpected termination leaves a missing summary/lane and
-must be reported as incomplete. Preserve full Actions logs for setup failures.
+The environment audit retained `WAGO_APP_CORPUS_REFERENCE=all`: this means fresh
+supported wazero comparisons plus explicitly skipped, previously captured
+external-runtime oracles, not fresh wasmtime/V8 processes. `WAGO_CORPUS_TIMEOUT=1m`
+is a portable per-workload safety limit. Guard/signals support Darwin ARM64.
+Shared-scalar AMD64-only bodies and Linux profiling clock/perf paths can be
+excluded on Darwin; package census and skip logs must be reviewed. Linux-only
+semanticcorpus tests and Linux/QEMU adapters are not made portable by replaying
+this plan. The catalog platform census records allowlisted command omissions
+and captured oracle selections, which otherwise need not emit Go skip events.
 
-This proposed native matrix is not a claim that every prior Linux gate applies
-unchanged to Darwin. Official spec interpreters, patched TinyGo, generated graph
-overlays and target-specific H6 adapters are not installed by this proposal.
-The root package census and skip records expose the resulting platform boundary;
-the parent must decide and prepare any required Darwin supplements, not promote
-Linux passes or absent test bodies into Darwin passes. Keep all source overlays
-separately hashed and documented if supplements are subsequently authorized.
+Every lane retains effective command/environment, `go list -json -test` package
+build-file census (including race/tag selection), full JSON test output,
+structured failures/skips, passing-test counts and exit codes. Zero-test lanes
+fail. Progress is written before each lane; failures do not stop later lanes.
+A successful process with skips is `PASS_WITH_SKIPS`; the final qualification
+field always remains `REQUIRES_REVIEW`.
 
-Local validation is limited to harness syntax, plan integrity and rejection of
-this Linux host in all three modes. See `local-validation.json`. The harness has
-not run on Darwin and is not yet Darwin-qualified. Only evidence/harness files
-were changed; they cannot affect shipped performance. No CI configuration,
-production source, shared submodule, existing dirt or staged content was edited;
-no PR, push, dispatch, external setup or contact was performed.
+The plan and every final summary explicitly retain these unmet supplements:
+
+- **Patched TinyGo native ARM64:** reproduce the stage8 foreign-stack runtime
+  patch set and exact tree hashes on Darwin, then evacuation, joint/foreign-stack
+  and supported conversion commands in all modes. The ordinary CI scheduler
+  patch alone does not establish this prerequisite.
+- **Generated GC graph/scalar/noGC controls:** prepare separate hashed
+  port/baseline exports and overlays from final-combined-5345 fixtures. Verify
+  the graph oracle (32 live objects, at least 2,048 allocations after 64 calls
+  and collection). Historical corpus/spec passes do not cover these graphs.
+- **H6 ownership/wakeup adapter:** audit the prior ARM64 adapter's Darwin build
+  constraints and preserve both bodies with actual package/test census. Linux
+  QEMU execution and excluded host opaque receipts do not qualify Darwin.
+- **Platform exclusions:** reconcile every ignored file and skip with the
+  qualification owner. Count 63 commands as this route's scope, never “all Darwin.”
+
+These are explicit NOT_RUN/review gaps, not waived gates. The source remains
+unaltered; future overlays must be separately reviewed and hashed.
+
+## Local verification and cost bounds
+
+`python3 docs/rfwgc-evidence/final-darwin/validate_local.py` verifies receipt
+integrity, no benchmark flags, real Git source/driver input rejection and dirty
+harness rejection, Linux refusal in all three modes, unchanged normal CI job
+bodies/summary contracts, CI planner tests in all three modes, actionlint 1.7.7,
+and Python/Bash syntax. `local-validation.json` contains the receipts. This is
+Linux harness validation, not Darwin compilation or execution.
+
+Three Mac jobs each have a 360-minute hard ceiling: at most **1,080 Mac job-minutes
+per attempt**, excluding queue time and the unchanged lightweight Ubuntu summary
+job (its existing default timeout is unchanged). This is a safety bound, not a
+runtime estimate; there is no measured completion estimate or deadline guarantee.
+The public repository uses standard runners, whose compute is free under
+[GitHub's runner policy](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+Artifact retention is seven days; actual artifact bytes, account allowance and
+billing balance were not measured, so no total storage-cost guarantee is made.
+See [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+Reruns multiply the job ceilings. No measurement lease was acquired or needed:
+this changes only opt-in CI and evidence tooling, cannot affect shipped runtime
+performance, and provides no performance result.
