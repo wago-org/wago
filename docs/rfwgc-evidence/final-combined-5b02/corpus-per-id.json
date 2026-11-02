@@ -11860,18 +11860,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/sed-records/Decode": "NOT_RUN",
-      "TestCorpus/sed-records/Validate": "NOT_RUN",
-      "TestCorpus/sed-records/Compile": "NOT_RUN",
-      "TestCorpus/sed-records/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/sed-records/wago": "NOT_RUN"
+      "TestCorpus/sed-records/Decode": "pass",
+      "TestCorpus/sed-records/Validate": "pass",
+      "TestCorpus/sed-records/Compile": "pass",
+      "TestCorpus/sed-records/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sed-records/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "skip",
       "pinned_external_runtime": "v8",
-      "detail": ""
+      "detail": "=== RUN   TestApplicationCorpusRuns/sed-records/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/sed-records/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -11880,18 +11880,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/seqtk-fastq-to-fasta/Decode": "NOT_RUN",
-      "TestCorpus/seqtk-fastq-to-fasta/Validate": "NOT_RUN",
-      "TestCorpus/seqtk-fastq-to-fasta/Compile": "NOT_RUN",
-      "TestCorpus/seqtk-fastq-to-fasta/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wago": "NOT_RUN"
+      "TestCorpus/seqtk-fastq-to-fasta/Decode": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/Validate": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/Compile": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/CompileFull": "pass",
+      "TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "skip",
       "pinned_external_runtime": "v8",
-      "detail": ""
+      "detail": "=== RUN   TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -11900,18 +11900,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/lcs-substrings/Decode": "NOT_RUN",
-      "TestCorpus/lcs-substrings/Validate": "NOT_RUN",
-      "TestCorpus/lcs-substrings/Compile": "NOT_RUN",
-      "TestCorpus/lcs-substrings/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/lcs-substrings/wago": "NOT_RUN"
+      "TestCorpus/lcs-substrings/Decode": "pass",
+      "TestCorpus/lcs-substrings/Validate": "pass",
+      "TestCorpus/lcs-substrings/Compile": "pass",
+      "TestCorpus/lcs-substrings/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lcs-substrings/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "skip",
       "pinned_external_runtime": "v8",
-      "detail": ""
+      "detail": "=== RUN   TestApplicationCorpusRuns/lcs-substrings/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lcs-substrings/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -11920,18 +11920,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/needleman-wunsch-dna/Decode": "NOT_RUN",
-      "TestCorpus/needleman-wunsch-dna/Validate": "NOT_RUN",
-      "TestCorpus/needleman-wunsch-dna/Compile": "NOT_RUN",
-      "TestCorpus/needleman-wunsch-dna/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/needleman-wunsch-dna/wago": "NOT_RUN"
+      "TestCorpus/needleman-wunsch-dna/Decode": "pass",
+      "TestCorpus/needleman-wunsch-dna/Validate": "pass",
+      "TestCorpus/needleman-wunsch-dna/Compile": "pass",
+      "TestCorpus/needleman-wunsch-dna/CompileFull": "pass",
+      "TestApplicationCorpusRuns/needleman-wunsch-dna/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "skip",
       "pinned_external_runtime": "v8",
-      "detail": ""
+      "detail": "=== RUN   TestApplicationCorpusRuns/needleman-wunsch-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/needleman-wunsch-dna/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -11940,18 +11940,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/smith-waterman-dna/Decode": "NOT_RUN",
-      "TestCorpus/smith-waterman-dna/Validate": "NOT_RUN",
-      "TestCorpus/smith-waterman-dna/Compile": "NOT_RUN",
-      "TestCorpus/smith-waterman-dna/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/smith-waterman-dna/wago": "NOT_RUN"
+      "TestCorpus/smith-waterman-dna/Decode": "pass",
+      "TestCorpus/smith-waterman-dna/Validate": "pass",
+      "TestCorpus/smith-waterman-dna/Compile": "pass",
+      "TestCorpus/smith-waterman-dna/CompileFull": "pass",
+      "TestApplicationCorpusRuns/smith-waterman-dna/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "skip",
       "pinned_external_runtime": "v8",
-      "detail": ""
+      "detail": "=== RUN   TestApplicationCorpusRuns/smith-waterman-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/smith-waterman-dna/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -11960,10 +11960,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/fasttree-phylogeny/Decode": "NOT_RUN",
-      "TestCorpus/fasttree-phylogeny/Validate": "NOT_RUN",
-      "TestCorpus/fasttree-phylogeny/Compile": "NOT_RUN",
-      "TestCorpus/fasttree-phylogeny/CompileFull": "NOT_RUN",
+      "TestCorpus/fasttree-phylogeny/Decode": "pass",
+      "TestCorpus/fasttree-phylogeny/Validate": "pass",
+      "TestCorpus/fasttree-phylogeny/Compile": "pass",
+      "TestCorpus/fasttree-phylogeny/CompileFull": "pass",
       "TestApplicationCorpusRuns/fasttree-phylogeny/wago": "pass"
     },
     "reference": {
@@ -11971,7 +11971,7 @@
       "pinned_external_runtime": "v8",
       "detail": "=== RUN   TestApplicationCorpusRuns/fasttree-phylogeny/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/fasttree-phylogeny/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -11980,10 +11980,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/gnu-seq-range/Decode": "NOT_RUN",
-      "TestCorpus/gnu-seq-range/Validate": "NOT_RUN",
-      "TestCorpus/gnu-seq-range/Compile": "NOT_RUN",
-      "TestCorpus/gnu-seq-range/CompileFull": "NOT_RUN",
+      "TestCorpus/gnu-seq-range/Decode": "pass",
+      "TestCorpus/gnu-seq-range/Validate": "pass",
+      "TestCorpus/gnu-seq-range/Compile": "pass",
+      "TestCorpus/gnu-seq-range/CompileFull": "pass",
       "TestApplicationCorpusRuns/gnu-seq-range/wago": "pass"
     },
     "reference": {
@@ -11991,7 +11991,7 @@
       "pinned_external_runtime": "v8",
       "detail": "=== RUN   TestApplicationCorpusRuns/gnu-seq-range/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/gnu-seq-range/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12000,10 +12000,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/gnu-tr-uppercase/Decode": "NOT_RUN",
-      "TestCorpus/gnu-tr-uppercase/Validate": "NOT_RUN",
-      "TestCorpus/gnu-tr-uppercase/Compile": "NOT_RUN",
-      "TestCorpus/gnu-tr-uppercase/CompileFull": "NOT_RUN",
+      "TestCorpus/gnu-tr-uppercase/Decode": "pass",
+      "TestCorpus/gnu-tr-uppercase/Validate": "pass",
+      "TestCorpus/gnu-tr-uppercase/Compile": "pass",
+      "TestCorpus/gnu-tr-uppercase/CompileFull": "pass",
       "TestApplicationCorpusRuns/gnu-tr-uppercase/wago": "pass"
     },
     "reference": {
@@ -12011,7 +12011,7 @@
       "pinned_external_runtime": "v8",
       "detail": "=== RUN   TestApplicationCorpusRuns/gnu-tr-uppercase/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/gnu-tr-uppercase/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12020,18 +12020,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/php-buckets/Decode": "NOT_RUN",
-      "TestCorpus/php-buckets/Validate": "NOT_RUN",
-      "TestCorpus/php-buckets/Compile": "NOT_RUN",
-      "TestCorpus/php-buckets/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/php-buckets/wago": "NOT_RUN"
+      "TestCorpus/php-buckets/Decode": "pass",
+      "TestCorpus/php-buckets/Validate": "pass",
+      "TestCorpus/php-buckets/Compile": "pass",
+      "TestCorpus/php-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/php-buckets/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12040,18 +12040,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/ruby-buckets/Decode": "NOT_RUN",
-      "TestCorpus/ruby-buckets/Validate": "NOT_RUN",
-      "TestCorpus/ruby-buckets/Compile": "NOT_RUN",
-      "TestCorpus/ruby-buckets/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/ruby-buckets/wago": "NOT_RUN"
+      "TestCorpus/ruby-buckets/Decode": "pass",
+      "TestCorpus/ruby-buckets/Validate": "pass",
+      "TestCorpus/ruby-buckets/Compile": "pass",
+      "TestCorpus/ruby-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ruby-buckets/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12060,10 +12060,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/clang-cpp-kernels/Decode": "NOT_RUN",
-      "TestCorpus/clang-cpp-kernels/Validate": "NOT_RUN",
-      "TestCorpus/clang-cpp-kernels/Compile": "NOT_RUN",
-      "TestCorpus/clang-cpp-kernels/CompileFull": "NOT_RUN",
+      "TestCorpus/clang-cpp-kernels/Decode": "pass",
+      "TestCorpus/clang-cpp-kernels/Validate": "pass",
+      "TestCorpus/clang-cpp-kernels/Compile": "pass",
+      "TestCorpus/clang-cpp-kernels/CompileFull": "pass",
       "TestApplicationCorpusRuns/clang-cpp-kernels/wago": "pass"
     },
     "reference": {
@@ -12071,7 +12071,7 @@
       "pinned_external_runtime": "wasmtime",
       "detail": "=== RUN   TestApplicationCorpusRuns/clang-cpp-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-cpp-kernels/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12080,10 +12080,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/clang-c-kernels/Decode": "NOT_RUN",
-      "TestCorpus/clang-c-kernels/Validate": "NOT_RUN",
-      "TestCorpus/clang-c-kernels/Compile": "NOT_RUN",
-      "TestCorpus/clang-c-kernels/CompileFull": "NOT_RUN",
+      "TestCorpus/clang-c-kernels/Decode": "pass",
+      "TestCorpus/clang-c-kernels/Validate": "pass",
+      "TestCorpus/clang-c-kernels/Compile": "pass",
+      "TestCorpus/clang-c-kernels/CompileFull": "pass",
       "TestApplicationCorpusRuns/clang-c-kernels/wago": "pass"
     },
     "reference": {
@@ -12091,7 +12091,7 @@
       "pinned_external_runtime": "wasmtime",
       "detail": "=== RUN   TestApplicationCorpusRuns/clang-c-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-c-kernels/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12100,18 +12100,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/lua-cli-buckets/Decode": "NOT_RUN",
-      "TestCorpus/lua-cli-buckets/Validate": "NOT_RUN",
-      "TestCorpus/lua-cli-buckets/Compile": "NOT_RUN",
-      "TestCorpus/lua-cli-buckets/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/lua-cli-buckets/wago": "NOT_RUN"
+      "TestCorpus/lua-cli-buckets/Decode": "pass",
+      "TestCorpus/lua-cli-buckets/Validate": "pass",
+      "TestCorpus/lua-cli-buckets/Compile": "pass",
+      "TestCorpus/lua-cli-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lua-cli-buckets/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "skip",
       "pinned_external_runtime": "wasmtime",
-      "detail": ""
+      "detail": "=== RUN   TestApplicationCorpusRuns/lua-cli-buckets/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lua-cli-buckets/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12120,17 +12120,17 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/micropython-squares/Decode": "NOT_RUN",
-      "TestCorpus/micropython-squares/Validate": "NOT_RUN",
-      "TestCorpus/micropython-squares/Compile": "NOT_RUN",
-      "TestApplicationCorpusRuns/micropython-squares/wago": "NOT_RUN"
+      "TestCorpus/micropython-squares/Decode": "pass",
+      "TestCorpus/micropython-squares/Validate": "pass",
+      "TestCorpus/micropython-squares/Compile": "pass",
+      "TestApplicationCorpusRuns/micropython-squares/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "skip",
       "pinned_external_runtime": "wasmtime",
-      "detail": ""
+      "detail": "=== RUN   TestApplicationCorpusRuns/micropython-squares/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/micropython-squares/wazero (0.00s)\n"
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12139,10 +12139,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/ecpunpack-config/Decode": "NOT_RUN",
-      "TestCorpus/ecpunpack-config/Validate": "NOT_RUN",
-      "TestCorpus/ecpunpack-config/Compile": "NOT_RUN",
-      "TestCorpus/ecpunpack-config/CompileFull": "NOT_RUN",
+      "TestCorpus/ecpunpack-config/Decode": "pass",
+      "TestCorpus/ecpunpack-config/Validate": "pass",
+      "TestCorpus/ecpunpack-config/Compile": "pass",
+      "TestCorpus/ecpunpack-config/CompileFull": "pass",
       "TestApplicationCorpusRuns/ecpunpack-config/wago": "pass"
     },
     "reference": {
@@ -12150,7 +12150,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12159,10 +12159,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/ecppack-bitstream/Decode": "NOT_RUN",
-      "TestCorpus/ecppack-bitstream/Validate": "NOT_RUN",
-      "TestCorpus/ecppack-bitstream/Compile": "NOT_RUN",
-      "TestCorpus/ecppack-bitstream/CompileFull": "NOT_RUN",
+      "TestCorpus/ecppack-bitstream/Decode": "pass",
+      "TestCorpus/ecppack-bitstream/Validate": "pass",
+      "TestCorpus/ecppack-bitstream/Compile": "pass",
+      "TestCorpus/ecppack-bitstream/CompileFull": "pass",
       "TestApplicationCorpusRuns/ecppack-bitstream/wago": "pass"
     },
     "reference": {
@@ -12170,7 +12170,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12179,10 +12179,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/coreutils-sort/Decode": "NOT_RUN",
-      "TestCorpus/coreutils-sort/Validate": "NOT_RUN",
-      "TestCorpus/coreutils-sort/Compile": "NOT_RUN",
-      "TestCorpus/coreutils-sort/CompileFull": "NOT_RUN",
+      "TestCorpus/coreutils-sort/Decode": "pass",
+      "TestCorpus/coreutils-sort/Validate": "pass",
+      "TestCorpus/coreutils-sort/Compile": "pass",
+      "TestCorpus/coreutils-sort/CompileFull": "pass",
       "TestApplicationCorpusRuns/coreutils-sort/wago": "pass"
     },
     "reference": {
@@ -12190,7 +12190,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12199,10 +12199,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/coreutils-sha256sum/Decode": "NOT_RUN",
-      "TestCorpus/coreutils-sha256sum/Validate": "NOT_RUN",
-      "TestCorpus/coreutils-sha256sum/Compile": "NOT_RUN",
-      "TestCorpus/coreutils-sha256sum/CompileFull": "NOT_RUN",
+      "TestCorpus/coreutils-sha256sum/Decode": "pass",
+      "TestCorpus/coreutils-sha256sum/Validate": "pass",
+      "TestCorpus/coreutils-sha256sum/Compile": "pass",
+      "TestCorpus/coreutils-sha256sum/CompileFull": "pass",
       "TestApplicationCorpusRuns/coreutils-sha256sum/wago": "pass"
     },
     "reference": {
@@ -12210,7 +12210,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12219,10 +12219,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/coreutils-base64/Decode": "NOT_RUN",
-      "TestCorpus/coreutils-base64/Validate": "NOT_RUN",
-      "TestCorpus/coreutils-base64/Compile": "NOT_RUN",
-      "TestCorpus/coreutils-base64/CompileFull": "NOT_RUN",
+      "TestCorpus/coreutils-base64/Decode": "pass",
+      "TestCorpus/coreutils-base64/Validate": "pass",
+      "TestCorpus/coreutils-base64/Compile": "pass",
+      "TestCorpus/coreutils-base64/CompileFull": "pass",
       "TestApplicationCorpusRuns/coreutils-base64/wago": "pass"
     },
     "reference": {
@@ -12230,7 +12230,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12239,10 +12239,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/coreutils-wc/Decode": "NOT_RUN",
-      "TestCorpus/coreutils-wc/Validate": "NOT_RUN",
-      "TestCorpus/coreutils-wc/Compile": "NOT_RUN",
-      "TestCorpus/coreutils-wc/CompileFull": "NOT_RUN",
+      "TestCorpus/coreutils-wc/Decode": "pass",
+      "TestCorpus/coreutils-wc/Validate": "pass",
+      "TestCorpus/coreutils-wc/Compile": "pass",
+      "TestCorpus/coreutils-wc/CompileFull": "pass",
       "TestApplicationCorpusRuns/coreutils-wc/wago": "pass"
     },
     "reference": {
@@ -12250,7 +12250,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12259,18 +12259,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/ripgrep-source/Decode": "NOT_RUN",
-      "TestCorpus/ripgrep-source/Validate": "NOT_RUN",
-      "TestCorpus/ripgrep-source/Compile": "NOT_RUN",
-      "TestCorpus/ripgrep-source/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/ripgrep-source/wago": "NOT_RUN"
+      "TestCorpus/ripgrep-source/Decode": "pass",
+      "TestCorpus/ripgrep-source/Validate": "pass",
+      "TestCorpus/ripgrep-source/Compile": "pass",
+      "TestCorpus/ripgrep-source/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ripgrep-source/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12279,18 +12279,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/yosys-counter/Decode": "NOT_RUN",
-      "TestCorpus/yosys-counter/Validate": "NOT_RUN",
-      "TestCorpus/yosys-counter/Compile": "NOT_RUN",
-      "TestCorpus/yosys-counter/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/yosys-counter/wago": "NOT_RUN"
+      "TestCorpus/yosys-counter/Decode": "pass",
+      "TestCorpus/yosys-counter/Validate": "pass",
+      "TestCorpus/yosys-counter/Compile": "pass",
+      "TestCorpus/yosys-counter/CompileFull": "pass",
+      "TestApplicationCorpusRuns/yosys-counter/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12299,10 +12299,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/icemulti-image/Decode": "NOT_RUN",
-      "TestCorpus/icemulti-image/Validate": "NOT_RUN",
-      "TestCorpus/icemulti-image/Compile": "NOT_RUN",
-      "TestCorpus/icemulti-image/CompileFull": "NOT_RUN",
+      "TestCorpus/icemulti-image/Decode": "pass",
+      "TestCorpus/icemulti-image/Validate": "pass",
+      "TestCorpus/icemulti-image/Compile": "pass",
+      "TestCorpus/icemulti-image/CompileFull": "pass",
       "TestApplicationCorpusRuns/icemulti-image/wago": "pass"
     },
     "reference": {
@@ -12310,7 +12310,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12319,18 +12319,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/icepack-pack/Decode": "NOT_RUN",
-      "TestCorpus/icepack-pack/Validate": "NOT_RUN",
-      "TestCorpus/icepack-pack/Compile": "NOT_RUN",
-      "TestCorpus/icepack-pack/CompileFull": "NOT_RUN",
+      "TestCorpus/icepack-pack/Decode": "pass",
+      "TestCorpus/icepack-pack/Validate": "pass",
+      "TestCorpus/icepack-pack/Compile": "pass",
+      "TestCorpus/icepack-pack/CompileFull": "pass",
       "TestApplicationCorpusRuns/icepack-pack/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": "=== RUN   TestApplicationCorpusRuns/icepack-pack/wazero\n"
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12339,18 +12339,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/iceunpack-unpack/Decode": "NOT_RUN",
-      "TestCorpus/iceunpack-unpack/Validate": "NOT_RUN",
-      "TestCorpus/iceunpack-unpack/Compile": "NOT_RUN",
-      "TestCorpus/iceunpack-unpack/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/iceunpack-unpack/wago": "NOT_RUN"
+      "TestCorpus/iceunpack-unpack/Decode": "pass",
+      "TestCorpus/iceunpack-unpack/Validate": "pass",
+      "TestCorpus/iceunpack-unpack/Compile": "pass",
+      "TestCorpus/iceunpack-unpack/CompileFull": "pass",
+      "TestApplicationCorpusRuns/iceunpack-unpack/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12359,10 +12359,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/ecpbram-generate/Decode": "NOT_RUN",
-      "TestCorpus/ecpbram-generate/Validate": "NOT_RUN",
-      "TestCorpus/ecpbram-generate/Compile": "NOT_RUN",
-      "TestCorpus/ecpbram-generate/CompileFull": "NOT_RUN",
+      "TestCorpus/ecpbram-generate/Decode": "pass",
+      "TestCorpus/ecpbram-generate/Validate": "pass",
+      "TestCorpus/ecpbram-generate/Compile": "pass",
+      "TestCorpus/ecpbram-generate/CompileFull": "pass",
       "TestApplicationCorpusRuns/ecpbram-generate/wago": "pass"
     },
     "reference": {
@@ -12370,7 +12370,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12379,10 +12379,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/icebram-generate/Decode": "NOT_RUN",
-      "TestCorpus/icebram-generate/Validate": "NOT_RUN",
-      "TestCorpus/icebram-generate/Compile": "NOT_RUN",
-      "TestCorpus/icebram-generate/CompileFull": "NOT_RUN",
+      "TestCorpus/icebram-generate/Decode": "pass",
+      "TestCorpus/icebram-generate/Validate": "pass",
+      "TestCorpus/icebram-generate/Compile": "pass",
+      "TestCorpus/icebram-generate/CompileFull": "pass",
       "TestApplicationCorpusRuns/icebram-generate/wago": "pass"
     },
     "reference": {
@@ -12390,7 +12390,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12399,10 +12399,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/ecppll-clock/Decode": "NOT_RUN",
-      "TestCorpus/ecppll-clock/Validate": "NOT_RUN",
-      "TestCorpus/ecppll-clock/Compile": "NOT_RUN",
-      "TestCorpus/ecppll-clock/CompileFull": "NOT_RUN",
+      "TestCorpus/ecppll-clock/Decode": "pass",
+      "TestCorpus/ecppll-clock/Validate": "pass",
+      "TestCorpus/ecppll-clock/Compile": "pass",
+      "TestCorpus/ecppll-clock/CompileFull": "pass",
       "TestApplicationCorpusRuns/ecppll-clock/wago": "pass"
     },
     "reference": {
@@ -12410,7 +12410,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12419,18 +12419,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/icepll-clock/Decode": "NOT_RUN",
-      "TestCorpus/icepll-clock/Validate": "NOT_RUN",
-      "TestCorpus/icepll-clock/Compile": "NOT_RUN",
-      "TestCorpus/icepll-clock/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/icepll-clock/wago": "NOT_RUN"
+      "TestCorpus/icepll-clock/Decode": "pass",
+      "TestCorpus/icepll-clock/Validate": "pass",
+      "TestCorpus/icepll-clock/Compile": "pass",
+      "TestCorpus/icepll-clock/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icepll-clock/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12439,18 +12439,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/json2csv-people/Decode": "NOT_RUN",
-      "TestCorpus/json2csv-people/Validate": "NOT_RUN",
-      "TestCorpus/json2csv-people/Compile": "NOT_RUN",
-      "TestCorpus/json2csv-people/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/json2csv-people/wago": "NOT_RUN"
+      "TestCorpus/json2csv-people/Decode": "pass",
+      "TestCorpus/json2csv-people/Validate": "pass",
+      "TestCorpus/json2csv-people/Compile": "pass",
+      "TestCorpus/json2csv-people/CompileFull": "pass",
+      "TestApplicationCorpusRuns/json2csv-people/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12459,18 +12459,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/tree-ashell-list/Decode": "NOT_RUN",
-      "TestCorpus/tree-ashell-list/Validate": "NOT_RUN",
-      "TestCorpus/tree-ashell-list/Compile": "NOT_RUN",
-      "TestCorpus/tree-ashell-list/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/tree-ashell-list/wago": "NOT_RUN"
+      "TestCorpus/tree-ashell-list/Decode": "pass",
+      "TestCorpus/tree-ashell-list/Validate": "pass",
+      "TestCorpus/tree-ashell-list/Compile": "pass",
+      "TestCorpus/tree-ashell-list/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tree-ashell-list/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12479,18 +12479,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/tree-list/Decode": "NOT_RUN",
-      "TestCorpus/tree-list/Validate": "NOT_RUN",
-      "TestCorpus/tree-list/Compile": "NOT_RUN",
-      "TestCorpus/tree-list/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/tree-list/wago": "NOT_RUN"
+      "TestCorpus/tree-list/Decode": "pass",
+      "TestCorpus/tree-list/Validate": "pass",
+      "TestCorpus/tree-list/Compile": "pass",
+      "TestCorpus/tree-list/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tree-list/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12499,10 +12499,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/brotli-compress/Decode": "NOT_RUN",
-      "TestCorpus/brotli-compress/Validate": "NOT_RUN",
-      "TestCorpus/brotli-compress/Compile": "NOT_RUN",
-      "TestCorpus/brotli-compress/CompileFull": "NOT_RUN",
+      "TestCorpus/brotli-compress/Decode": "pass",
+      "TestCorpus/brotli-compress/Validate": "pass",
+      "TestCorpus/brotli-compress/Compile": "pass",
+      "TestCorpus/brotli-compress/CompileFull": "pass",
       "TestApplicationCorpusRuns/brotli-compress/wago": "pass"
     },
     "reference": {
@@ -12510,7 +12510,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12519,10 +12519,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/brotli-decompress/Decode": "NOT_RUN",
-      "TestCorpus/brotli-decompress/Validate": "NOT_RUN",
-      "TestCorpus/brotli-decompress/Compile": "NOT_RUN",
-      "TestCorpus/brotli-decompress/CompileFull": "NOT_RUN",
+      "TestCorpus/brotli-decompress/Decode": "pass",
+      "TestCorpus/brotli-decompress/Validate": "pass",
+      "TestCorpus/brotli-decompress/Compile": "pass",
+      "TestCorpus/brotli-decompress/CompileFull": "pass",
       "TestApplicationCorpusRuns/brotli-decompress/wago": "pass"
     },
     "reference": {
@@ -12530,7 +12530,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12539,18 +12539,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/jq-json-transform/Decode": "NOT_RUN",
-      "TestCorpus/jq-json-transform/Validate": "NOT_RUN",
-      "TestCorpus/jq-json-transform/Compile": "NOT_RUN",
-      "TestCorpus/jq-json-transform/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/jq-json-transform/wago": "NOT_RUN"
+      "TestCorpus/jq-json-transform/Decode": "pass",
+      "TestCorpus/jq-json-transform/Validate": "pass",
+      "TestCorpus/jq-json-transform/Compile": "pass",
+      "TestCorpus/jq-json-transform/CompileFull": "pass",
+      "TestApplicationCorpusRuns/jq-json-transform/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12559,10 +12559,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/age-decrypt/Decode": "NOT_RUN",
-      "TestCorpus/age-decrypt/Validate": "NOT_RUN",
-      "TestCorpus/age-decrypt/Compile": "NOT_RUN",
-      "TestCorpus/age-decrypt/CompileFull": "NOT_RUN",
+      "TestCorpus/age-decrypt/Decode": "pass",
+      "TestCorpus/age-decrypt/Validate": "pass",
+      "TestCorpus/age-decrypt/Compile": "pass",
+      "TestCorpus/age-decrypt/CompileFull": "pass",
       "TestApplicationCorpusRuns/age-decrypt/wago": "pass"
     },
     "reference": {
@@ -12570,7 +12570,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12579,10 +12579,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/age-keygen-public/Decode": "NOT_RUN",
-      "TestCorpus/age-keygen-public/Validate": "NOT_RUN",
-      "TestCorpus/age-keygen-public/Compile": "NOT_RUN",
-      "TestCorpus/age-keygen-public/CompileFull": "NOT_RUN",
+      "TestCorpus/age-keygen-public/Decode": "pass",
+      "TestCorpus/age-keygen-public/Validate": "pass",
+      "TestCorpus/age-keygen-public/Compile": "pass",
+      "TestCorpus/age-keygen-public/CompileFull": "pass",
       "TestApplicationCorpusRuns/age-keygen-public/wago": "pass"
     },
     "reference": {
@@ -12590,7 +12590,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12599,18 +12599,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/lzmainfo-header/Decode": "NOT_RUN",
-      "TestCorpus/lzmainfo-header/Validate": "NOT_RUN",
-      "TestCorpus/lzmainfo-header/Compile": "NOT_RUN",
-      "TestCorpus/lzmainfo-header/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/lzmainfo-header/wago": "NOT_RUN"
+      "TestCorpus/lzmainfo-header/Decode": "pass",
+      "TestCorpus/lzmainfo-header/Validate": "pass",
+      "TestCorpus/lzmainfo-header/Compile": "pass",
+      "TestCorpus/lzmainfo-header/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lzmainfo-header/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12619,18 +12619,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/lzmadec-decompress/Decode": "NOT_RUN",
-      "TestCorpus/lzmadec-decompress/Validate": "NOT_RUN",
-      "TestCorpus/lzmadec-decompress/Compile": "NOT_RUN",
-      "TestCorpus/lzmadec-decompress/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/lzmadec-decompress/wago": "NOT_RUN"
+      "TestCorpus/lzmadec-decompress/Decode": "pass",
+      "TestCorpus/lzmadec-decompress/Validate": "pass",
+      "TestCorpus/lzmadec-decompress/Compile": "pass",
+      "TestCorpus/lzmadec-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lzmadec-decompress/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12639,18 +12639,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/xzdec-decompress/Decode": "NOT_RUN",
-      "TestCorpus/xzdec-decompress/Validate": "NOT_RUN",
-      "TestCorpus/xzdec-decompress/Compile": "NOT_RUN",
-      "TestCorpus/xzdec-decompress/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/xzdec-decompress/wago": "NOT_RUN"
+      "TestCorpus/xzdec-decompress/Decode": "pass",
+      "TestCorpus/xzdec-decompress/Validate": "pass",
+      "TestCorpus/xzdec-decompress/Compile": "pass",
+      "TestCorpus/xzdec-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/xzdec-decompress/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12659,18 +12659,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/sqlite3-query/Decode": "NOT_RUN",
-      "TestCorpus/sqlite3-query/Validate": "NOT_RUN",
-      "TestCorpus/sqlite3-query/Compile": "NOT_RUN",
-      "TestCorpus/sqlite3-query/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/sqlite3-query/wago": "NOT_RUN"
+      "TestCorpus/sqlite3-query/Decode": "pass",
+      "TestCorpus/sqlite3-query/Validate": "pass",
+      "TestCorpus/sqlite3-query/Compile": "pass",
+      "TestCorpus/sqlite3-query/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sqlite3-query/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12679,10 +12679,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/duktape-script/Decode": "NOT_RUN",
-      "TestCorpus/duktape-script/Validate": "NOT_RUN",
-      "TestCorpus/duktape-script/Compile": "NOT_RUN",
-      "TestCorpus/duktape-script/CompileFull": "NOT_RUN",
+      "TestCorpus/duktape-script/Decode": "pass",
+      "TestCorpus/duktape-script/Validate": "pass",
+      "TestCorpus/duktape-script/Compile": "pass",
+      "TestCorpus/duktape-script/CompileFull": "pass",
       "TestApplicationCorpusRuns/duktape-script/wago": "pass"
     },
     "reference": {
@@ -12690,7 +12690,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12699,18 +12699,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/quickjs-script/Decode": "NOT_RUN",
-      "TestCorpus/quickjs-script/Validate": "NOT_RUN",
-      "TestCorpus/quickjs-script/Compile": "NOT_RUN",
-      "TestCorpus/quickjs-script/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/quickjs-script/wago": "NOT_RUN"
+      "TestCorpus/quickjs-script/Decode": "pass",
+      "TestCorpus/quickjs-script/Validate": "pass",
+      "TestCorpus/quickjs-script/Compile": "pass",
+      "TestCorpus/quickjs-script/CompileFull": "pass",
+      "TestApplicationCorpusRuns/quickjs-script/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12719,18 +12719,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/swift-format-source/Decode": "NOT_RUN",
-      "TestCorpus/swift-format-source/Validate": "NOT_RUN",
-      "TestCorpus/swift-format-source/Compile": "NOT_RUN",
-      "TestCorpus/swift-format-source/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/swift-format-source/wago": "NOT_RUN"
+      "TestCorpus/swift-format-source/Decode": "pass",
+      "TestCorpus/swift-format-source/Validate": "pass",
+      "TestCorpus/swift-format-source/Compile": "pass",
+      "TestCorpus/swift-format-source/CompileFull": "pass",
+      "TestApplicationCorpusRuns/swift-format-source/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12739,10 +12739,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/esbuild-minify/Decode": "NOT_RUN",
-      "TestCorpus/esbuild-minify/Validate": "NOT_RUN",
-      "TestCorpus/esbuild-minify/Compile": "NOT_RUN",
-      "TestCorpus/esbuild-minify/CompileFull": "NOT_RUN",
+      "TestCorpus/esbuild-minify/Decode": "pass",
+      "TestCorpus/esbuild-minify/Validate": "pass",
+      "TestCorpus/esbuild-minify/Compile": "pass",
+      "TestCorpus/esbuild-minify/CompileFull": "pass",
       "TestApplicationCorpusRuns/esbuild-minify/wago": "pass"
     },
     "reference": {
@@ -12750,7 +12750,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12759,15 +12759,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/tiny/Decode": "NOT_RUN",
-      "TestCorpus/tiny/Validate": "NOT_RUN",
-      "TestCorpus/tiny/Compile": "NOT_RUN",
-      "TestCorpus/tiny/CompileFull": "NOT_RUN",
-      "TestCorpus/tiny/Instantiate": "NOT_RUN",
-      "TestCorpus/tiny/Exec/add": "NOT_RUN"
+      "TestCorpus/tiny/Decode": "pass",
+      "TestCorpus/tiny/Validate": "pass",
+      "TestCorpus/tiny/Compile": "pass",
+      "TestCorpus/tiny/CompileFull": "pass",
+      "TestCorpus/tiny/Instantiate": "pass",
+      "TestCorpus/tiny/Exec/add": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12776,15 +12776,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/fib_rec/Decode": "NOT_RUN",
-      "TestCorpus/fib_rec/Validate": "NOT_RUN",
-      "TestCorpus/fib_rec/Compile": "NOT_RUN",
-      "TestCorpus/fib_rec/CompileFull": "NOT_RUN",
-      "TestCorpus/fib_rec/Instantiate": "NOT_RUN",
-      "TestCorpus/fib_rec/Exec/fib": "NOT_RUN"
+      "TestCorpus/fib_rec/Decode": "pass",
+      "TestCorpus/fib_rec/Validate": "pass",
+      "TestCorpus/fib_rec/Compile": "pass",
+      "TestCorpus/fib_rec/CompileFull": "pass",
+      "TestCorpus/fib_rec/Instantiate": "pass",
+      "TestCorpus/fib_rec/Exec/fib": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12793,15 +12793,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/memory/Decode": "NOT_RUN",
-      "TestCorpus/memory/Validate": "NOT_RUN",
-      "TestCorpus/memory/Compile": "NOT_RUN",
-      "TestCorpus/memory/CompileFull": "NOT_RUN",
-      "TestCorpus/memory/Instantiate": "NOT_RUN",
-      "TestCorpus/memory/Exec/sum": "NOT_RUN"
+      "TestCorpus/memory/Decode": "pass",
+      "TestCorpus/memory/Validate": "pass",
+      "TestCorpus/memory/Compile": "pass",
+      "TestCorpus/memory/CompileFull": "pass",
+      "TestCorpus/memory/Instantiate": "pass",
+      "TestCorpus/memory/Exec/sum": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12810,15 +12810,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/memory_tree/Decode": "NOT_RUN",
-      "TestCorpus/memory_tree/Validate": "NOT_RUN",
-      "TestCorpus/memory_tree/Compile": "NOT_RUN",
-      "TestCorpus/memory_tree/CompileFull": "NOT_RUN",
-      "TestCorpus/memory_tree/Instantiate": "NOT_RUN",
-      "TestCorpus/memory_tree/Exec/run": "NOT_RUN"
+      "TestCorpus/memory_tree/Decode": "pass",
+      "TestCorpus/memory_tree/Validate": "pass",
+      "TestCorpus/memory_tree/Compile": "pass",
+      "TestCorpus/memory_tree/CompileFull": "pass",
+      "TestCorpus/memory_tree/Instantiate": "pass",
+      "TestCorpus/memory_tree/Exec/run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12827,15 +12827,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/dispatch/Decode": "NOT_RUN",
-      "TestCorpus/dispatch/Validate": "NOT_RUN",
-      "TestCorpus/dispatch/Compile": "NOT_RUN",
-      "TestCorpus/dispatch/CompileFull": "NOT_RUN",
-      "TestCorpus/dispatch/Instantiate": "NOT_RUN",
-      "TestCorpus/dispatch/Exec/apply": "NOT_RUN"
+      "TestCorpus/dispatch/Decode": "pass",
+      "TestCorpus/dispatch/Validate": "pass",
+      "TestCorpus/dispatch/Compile": "pass",
+      "TestCorpus/dispatch/CompileFull": "pass",
+      "TestCorpus/dispatch/Instantiate": "pass",
+      "TestCorpus/dispatch/Exec/apply": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12844,15 +12844,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/many_funcs/Decode": "NOT_RUN",
-      "TestCorpus/many_funcs/Validate": "NOT_RUN",
-      "TestCorpus/many_funcs/Compile": "NOT_RUN",
-      "TestCorpus/many_funcs/CompileFull": "NOT_RUN",
-      "TestCorpus/many_funcs/Instantiate": "NOT_RUN",
-      "TestCorpus/many_funcs/Exec/run": "NOT_RUN"
+      "TestCorpus/many_funcs/Decode": "pass",
+      "TestCorpus/many_funcs/Validate": "pass",
+      "TestCorpus/many_funcs/Compile": "pass",
+      "TestCorpus/many_funcs/CompileFull": "pass",
+      "TestCorpus/many_funcs/Instantiate": "pass",
+      "TestCorpus/many_funcs/Exec/run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12861,15 +12861,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/linked_list/Decode": "NOT_RUN",
-      "TestCorpus/linked_list/Validate": "NOT_RUN",
-      "TestCorpus/linked_list/Compile": "NOT_RUN",
-      "TestCorpus/linked_list/CompileFull": "NOT_RUN",
-      "TestCorpus/linked_list/Instantiate": "NOT_RUN",
-      "TestCorpus/linked_list/Exec/sum": "NOT_RUN"
+      "TestCorpus/linked_list/Decode": "pass",
+      "TestCorpus/linked_list/Validate": "pass",
+      "TestCorpus/linked_list/Compile": "pass",
+      "TestCorpus/linked_list/CompileFull": "pass",
+      "TestCorpus/linked_list/Instantiate": "pass",
+      "TestCorpus/linked_list/Exec/sum": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12878,15 +12878,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/nbody/Decode": "NOT_RUN",
-      "TestCorpus/nbody/Validate": "NOT_RUN",
-      "TestCorpus/nbody/Compile": "NOT_RUN",
-      "TestCorpus/nbody/CompileFull": "NOT_RUN",
-      "TestCorpus/nbody/Instantiate": "NOT_RUN",
-      "TestCorpus/nbody/Exec/step": "NOT_RUN"
+      "TestCorpus/nbody/Decode": "pass",
+      "TestCorpus/nbody/Validate": "pass",
+      "TestCorpus/nbody/Compile": "pass",
+      "TestCorpus/nbody/CompileFull": "pass",
+      "TestCorpus/nbody/Instantiate": "pass",
+      "TestCorpus/nbody/Exec/step": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12895,15 +12895,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/fannkuch/Decode": "NOT_RUN",
-      "TestCorpus/fannkuch/Validate": "NOT_RUN",
-      "TestCorpus/fannkuch/Compile": "NOT_RUN",
-      "TestCorpus/fannkuch/CompileFull": "NOT_RUN",
-      "TestCorpus/fannkuch/Instantiate": "NOT_RUN",
-      "TestCorpus/fannkuch/Exec/run": "NOT_RUN"
+      "TestCorpus/fannkuch/Decode": "pass",
+      "TestCorpus/fannkuch/Validate": "pass",
+      "TestCorpus/fannkuch/Compile": "pass",
+      "TestCorpus/fannkuch/CompileFull": "pass",
+      "TestCorpus/fannkuch/Instantiate": "pass",
+      "TestCorpus/fannkuch/Exec/run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12912,15 +12912,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/matmul/Decode": "NOT_RUN",
-      "TestCorpus/matmul/Validate": "NOT_RUN",
-      "TestCorpus/matmul/Compile": "NOT_RUN",
-      "TestCorpus/matmul/CompileFull": "NOT_RUN",
-      "TestCorpus/matmul/Instantiate": "NOT_RUN",
-      "TestCorpus/matmul/Exec/run": "NOT_RUN"
+      "TestCorpus/matmul/Decode": "pass",
+      "TestCorpus/matmul/Validate": "pass",
+      "TestCorpus/matmul/Compile": "pass",
+      "TestCorpus/matmul/CompileFull": "pass",
+      "TestCorpus/matmul/Instantiate": "pass",
+      "TestCorpus/matmul/Exec/run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12929,15 +12929,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/sha256/Decode": "NOT_RUN",
-      "TestCorpus/sha256/Validate": "NOT_RUN",
-      "TestCorpus/sha256/Compile": "NOT_RUN",
-      "TestCorpus/sha256/CompileFull": "NOT_RUN",
-      "TestCorpus/sha256/Instantiate": "NOT_RUN",
-      "TestCorpus/sha256/Exec/hashN": "NOT_RUN"
+      "TestCorpus/sha256/Decode": "pass",
+      "TestCorpus/sha256/Validate": "pass",
+      "TestCorpus/sha256/Compile": "pass",
+      "TestCorpus/sha256/CompileFull": "pass",
+      "TestCorpus/sha256/Instantiate": "pass",
+      "TestCorpus/sha256/Exec/hashN": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12946,15 +12946,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/raytrace/Decode": "NOT_RUN",
-      "TestCorpus/raytrace/Validate": "NOT_RUN",
-      "TestCorpus/raytrace/Compile": "NOT_RUN",
-      "TestCorpus/raytrace/CompileFull": "NOT_RUN",
-      "TestCorpus/raytrace/Instantiate": "NOT_RUN",
-      "TestCorpus/raytrace/Exec/render": "NOT_RUN"
+      "TestCorpus/raytrace/Decode": "pass",
+      "TestCorpus/raytrace/Validate": "pass",
+      "TestCorpus/raytrace/Compile": "pass",
+      "TestCorpus/raytrace/CompileFull": "pass",
+      "TestCorpus/raytrace/Instantiate": "pass",
+      "TestCorpus/raytrace/Exec/render": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12963,16 +12963,16 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/json-as/Decode": "NOT_RUN",
-      "TestCorpus/json-as/Validate": "NOT_RUN",
-      "TestCorpus/json-as/Compile": "NOT_RUN",
-      "TestCorpus/json-as/CompileFull": "NOT_RUN",
-      "TestCorpus/json-as/Instantiate": "NOT_RUN",
-      "TestCorpus/json-as/Exec/serializeN": "NOT_RUN",
-      "TestCorpus/json-as/Exec/deserializeN": "NOT_RUN"
+      "TestCorpus/json-as/Decode": "pass",
+      "TestCorpus/json-as/Validate": "pass",
+      "TestCorpus/json-as/Compile": "pass",
+      "TestCorpus/json-as/CompileFull": "pass",
+      "TestCorpus/json-as/Instantiate": "pass",
+      "TestCorpus/json-as/Exec/serializeN": "pass",
+      "TestCorpus/json-as/Exec/deserializeN": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12981,15 +12981,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/blake-as/Decode": "NOT_RUN",
-      "TestCorpus/blake-as/Validate": "NOT_RUN",
-      "TestCorpus/blake-as/Compile": "NOT_RUN",
-      "TestCorpus/blake-as/CompileFull": "NOT_RUN",
-      "TestCorpus/blake-as/Instantiate": "NOT_RUN",
-      "TestCorpus/blake-as/Exec/hashN": "NOT_RUN"
+      "TestCorpus/blake-as/Decode": "pass",
+      "TestCorpus/blake-as/Validate": "pass",
+      "TestCorpus/blake-as/Compile": "pass",
+      "TestCorpus/blake-as/CompileFull": "pass",
+      "TestCorpus/blake-as/Instantiate": "pass",
+      "TestCorpus/blake-as/Exec/hashN": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -12998,15 +12998,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/utf-as/Decode": "NOT_RUN",
-      "TestCorpus/utf-as/Validate": "NOT_RUN",
-      "TestCorpus/utf-as/Compile": "NOT_RUN",
-      "TestCorpus/utf-as/CompileFull": "NOT_RUN",
-      "TestCorpus/utf-as/Instantiate": "NOT_RUN",
-      "TestCorpus/utf-as/Exec/convertN": "NOT_RUN"
+      "TestCorpus/utf-as/Decode": "pass",
+      "TestCorpus/utf-as/Validate": "pass",
+      "TestCorpus/utf-as/Compile": "pass",
+      "TestCorpus/utf-as/CompileFull": "pass",
+      "TestCorpus/utf-as/Instantiate": "pass",
+      "TestCorpus/utf-as/Exec/convertN": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13015,16 +13015,16 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/json-as-simd/Decode": "NOT_RUN",
-      "TestCorpus/json-as-simd/Validate": "NOT_RUN",
-      "TestCorpus/json-as-simd/Compile": "NOT_RUN",
-      "TestCorpus/json-as-simd/CompileFull": "NOT_RUN",
-      "TestCorpus/json-as-simd/Instantiate": "NOT_RUN",
-      "TestCorpus/json-as-simd/Exec/serializeN": "NOT_RUN",
-      "TestCorpus/json-as-simd/Exec/deserializeN": "NOT_RUN"
+      "TestCorpus/json-as-simd/Decode": "pass",
+      "TestCorpus/json-as-simd/Validate": "pass",
+      "TestCorpus/json-as-simd/Compile": "pass",
+      "TestCorpus/json-as-simd/CompileFull": "pass",
+      "TestCorpus/json-as-simd/Instantiate": "pass",
+      "TestCorpus/json-as-simd/Exec/serializeN": "pass",
+      "TestCorpus/json-as-simd/Exec/deserializeN": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13033,15 +13033,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/blake-as-simd/Decode": "NOT_RUN",
-      "TestCorpus/blake-as-simd/Validate": "NOT_RUN",
-      "TestCorpus/blake-as-simd/Compile": "NOT_RUN",
-      "TestCorpus/blake-as-simd/CompileFull": "NOT_RUN",
-      "TestCorpus/blake-as-simd/Instantiate": "NOT_RUN",
-      "TestCorpus/blake-as-simd/Exec/hashN": "NOT_RUN"
+      "TestCorpus/blake-as-simd/Decode": "pass",
+      "TestCorpus/blake-as-simd/Validate": "pass",
+      "TestCorpus/blake-as-simd/Compile": "pass",
+      "TestCorpus/blake-as-simd/CompileFull": "pass",
+      "TestCorpus/blake-as-simd/Instantiate": "pass",
+      "TestCorpus/blake-as-simd/Exec/hashN": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13050,16 +13050,16 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/utf-as-simd/Decode": "NOT_RUN",
-      "TestCorpus/utf-as-simd/Validate": "NOT_RUN",
-      "TestCorpus/utf-as-simd/Compile": "NOT_RUN",
-      "TestCorpus/utf-as-simd/CompileFull": "NOT_RUN",
-      "TestCorpus/utf-as-simd/Instantiate": "NOT_RUN",
-      "TestCorpus/utf-as-simd/Exec/convertN": "NOT_RUN",
-      "TestCorpus/utf-as-simd/Exec/validateN": "NOT_RUN"
+      "TestCorpus/utf-as-simd/Decode": "pass",
+      "TestCorpus/utf-as-simd/Validate": "pass",
+      "TestCorpus/utf-as-simd/Compile": "pass",
+      "TestCorpus/utf-as-simd/CompileFull": "pass",
+      "TestCorpus/utf-as-simd/Instantiate": "pass",
+      "TestCorpus/utf-as-simd/Exec/convertN": "pass",
+      "TestCorpus/utf-as-simd/Exec/validateN": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13068,11 +13068,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/coremark/Decode": "NOT_RUN",
-      "TestCorpus/coremark/Validate": "NOT_RUN",
-      "TestCorpus/coremark/Compile": "NOT_RUN",
-      "TestCorpus/coremark/CompileFull": "NOT_RUN",
-      "TestCorpus/coremark/Instantiate": "NOT_RUN",
+      "TestCorpus/coremark/Decode": "pass",
+      "TestCorpus/coremark/Validate": "pass",
+      "TestCorpus/coremark/Compile": "pass",
+      "TestCorpus/coremark/CompileFull": "pass",
+      "TestCorpus/coremark/Instantiate": "pass",
       "TestCorpusSemanticExec/coremark/2k-performance": "NOT_RUN"
     },
     "reference": null,
@@ -13085,11 +13085,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/blake3/Decode": "NOT_RUN",
-      "TestCorpus/blake3/Validate": "NOT_RUN",
-      "TestCorpus/blake3/Compile": "NOT_RUN",
-      "TestCorpus/blake3/CompileFull": "NOT_RUN",
-      "TestCorpus/blake3/Instantiate": "NOT_RUN",
+      "TestCorpus/blake3/Decode": "pass",
+      "TestCorpus/blake3/Validate": "pass",
+      "TestCorpus/blake3/Compile": "pass",
+      "TestCorpus/blake3/CompileFull": "pass",
+      "TestCorpus/blake3/Instantiate": "pass",
       "TestCorpusSemanticExec/blake3/hash": "NOT_RUN",
       "TestCorpusSemanticExec/blake3/keyed_hash": "NOT_RUN",
       "TestCorpusSemanticExec/blake3/derive_key": "NOT_RUN"
@@ -13104,11 +13104,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/qoi/Decode": "NOT_RUN",
-      "TestCorpus/qoi/Validate": "NOT_RUN",
-      "TestCorpus/qoi/Compile": "NOT_RUN",
-      "TestCorpus/qoi/CompileFull": "NOT_RUN",
-      "TestCorpus/qoi/Instantiate": "NOT_RUN",
+      "TestCorpus/qoi/Decode": "pass",
+      "TestCorpus/qoi/Validate": "pass",
+      "TestCorpus/qoi/Compile": "pass",
+      "TestCorpus/qoi/CompileFull": "pass",
+      "TestCorpus/qoi/Instantiate": "pass",
       "TestCorpusSemanticExec/qoi/encode": "NOT_RUN",
       "TestCorpusSemanticExec/qoi/decode": "NOT_RUN"
     },
@@ -13122,11 +13122,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/lz4/Decode": "NOT_RUN",
-      "TestCorpus/lz4/Validate": "NOT_RUN",
-      "TestCorpus/lz4/Compile": "NOT_RUN",
-      "TestCorpus/lz4/CompileFull": "NOT_RUN",
-      "TestCorpus/lz4/Instantiate": "NOT_RUN",
+      "TestCorpus/lz4/Decode": "pass",
+      "TestCorpus/lz4/Validate": "pass",
+      "TestCorpus/lz4/Compile": "pass",
+      "TestCorpus/lz4/CompileFull": "pass",
+      "TestCorpus/lz4/Instantiate": "pass",
       "TestCorpusSemanticExec/lz4/compress": "NOT_RUN",
       "TestCorpusSemanticExec/lz4/decompress": "NOT_RUN"
     },
@@ -13140,11 +13140,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/zlib/Decode": "NOT_RUN",
-      "TestCorpus/zlib/Validate": "NOT_RUN",
-      "TestCorpus/zlib/Compile": "NOT_RUN",
-      "TestCorpus/zlib/CompileFull": "NOT_RUN",
-      "TestCorpus/zlib/Instantiate": "NOT_RUN",
+      "TestCorpus/zlib/Decode": "pass",
+      "TestCorpus/zlib/Validate": "pass",
+      "TestCorpus/zlib/Compile": "pass",
+      "TestCorpus/zlib/CompileFull": "pass",
+      "TestCorpus/zlib/Instantiate": "pass",
       "TestCorpusSemanticExec/zlib/inflate": "NOT_RUN"
     },
     "reference": null,
@@ -13157,11 +13157,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/zstd/Decode": "NOT_RUN",
-      "TestCorpus/zstd/Validate": "NOT_RUN",
-      "TestCorpus/zstd/Compile": "NOT_RUN",
-      "TestCorpus/zstd/CompileFull": "NOT_RUN",
-      "TestCorpus/zstd/Instantiate": "NOT_RUN",
+      "TestCorpus/zstd/Decode": "pass",
+      "TestCorpus/zstd/Validate": "pass",
+      "TestCorpus/zstd/Compile": "pass",
+      "TestCorpus/zstd/CompileFull": "pass",
+      "TestCorpus/zstd/Instantiate": "pass",
       "TestCorpusSemanticExec/zstd/decompress": "NOT_RUN"
     },
     "reference": null,
@@ -13174,11 +13174,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/yyjson/Decode": "NOT_RUN",
-      "TestCorpus/yyjson/Validate": "NOT_RUN",
-      "TestCorpus/yyjson/Compile": "NOT_RUN",
-      "TestCorpus/yyjson/CompileFull": "NOT_RUN",
-      "TestCorpus/yyjson/Instantiate": "NOT_RUN",
+      "TestCorpus/yyjson/Decode": "pass",
+      "TestCorpus/yyjson/Validate": "pass",
+      "TestCorpus/yyjson/Compile": "pass",
+      "TestCorpus/yyjson/CompileFull": "pass",
+      "TestCorpus/yyjson/Instantiate": "pass",
       "TestCorpusSemanticExec/yyjson/parse-edit-write": "NOT_RUN"
     },
     "reference": null,
@@ -13191,11 +13191,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/utf8proc/Decode": "NOT_RUN",
-      "TestCorpus/utf8proc/Validate": "NOT_RUN",
-      "TestCorpus/utf8proc/Compile": "NOT_RUN",
-      "TestCorpus/utf8proc/CompileFull": "NOT_RUN",
-      "TestCorpus/utf8proc/Instantiate": "NOT_RUN",
+      "TestCorpus/utf8proc/Decode": "pass",
+      "TestCorpus/utf8proc/Validate": "pass",
+      "TestCorpus/utf8proc/Compile": "pass",
+      "TestCorpus/utf8proc/CompileFull": "pass",
+      "TestCorpus/utf8proc/Instantiate": "pass",
       "TestCorpusSemanticExec/utf8proc/normalize-casefold": "NOT_RUN"
     },
     "reference": null,
@@ -13208,11 +13208,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/xxhash/Decode": "NOT_RUN",
-      "TestCorpus/xxhash/Validate": "NOT_RUN",
-      "TestCorpus/xxhash/Compile": "NOT_RUN",
-      "TestCorpus/xxhash/CompileFull": "NOT_RUN",
-      "TestCorpus/xxhash/Instantiate": "NOT_RUN",
+      "TestCorpus/xxhash/Decode": "pass",
+      "TestCorpus/xxhash/Validate": "pass",
+      "TestCorpus/xxhash/Compile": "pass",
+      "TestCorpus/xxhash/CompileFull": "pass",
+      "TestCorpus/xxhash/Instantiate": "pass",
       "TestCorpusSemanticExec/xxhash/xxh64-boundaries": "NOT_RUN"
     },
     "reference": null,
@@ -13225,11 +13225,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/libtommath/Decode": "NOT_RUN",
-      "TestCorpus/libtommath/Validate": "NOT_RUN",
-      "TestCorpus/libtommath/Compile": "NOT_RUN",
-      "TestCorpus/libtommath/CompileFull": "NOT_RUN",
-      "TestCorpus/libtommath/Instantiate": "NOT_RUN",
+      "TestCorpus/libtommath/Decode": "pass",
+      "TestCorpus/libtommath/Validate": "pass",
+      "TestCorpus/libtommath/Compile": "pass",
+      "TestCorpus/libtommath/CompileFull": "pass",
+      "TestCorpus/libtommath/Instantiate": "pass",
       "TestCorpusSemanticExec/libtommath/modular-arithmetic": "NOT_RUN"
     },
     "reference": null,
@@ -13242,11 +13242,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/nanosvg/Decode": "NOT_RUN",
-      "TestCorpus/nanosvg/Validate": "NOT_RUN",
-      "TestCorpus/nanosvg/Compile": "NOT_RUN",
-      "TestCorpus/nanosvg/CompileFull": "NOT_RUN",
-      "TestCorpus/nanosvg/Instantiate": "NOT_RUN",
+      "TestCorpus/nanosvg/Decode": "pass",
+      "TestCorpus/nanosvg/Validate": "pass",
+      "TestCorpus/nanosvg/Compile": "pass",
+      "TestCorpus/nanosvg/CompileFull": "pass",
+      "TestCorpus/nanosvg/Instantiate": "pass",
       "TestCorpusSemanticExec/nanosvg/parse-structure": "NOT_RUN"
     },
     "reference": null,
@@ -13259,11 +13259,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/kissfft/Decode": "NOT_RUN",
-      "TestCorpus/kissfft/Validate": "NOT_RUN",
-      "TestCorpus/kissfft/Compile": "NOT_RUN",
-      "TestCorpus/kissfft/CompileFull": "NOT_RUN",
-      "TestCorpus/kissfft/Instantiate": "NOT_RUN",
+      "TestCorpus/kissfft/Decode": "pass",
+      "TestCorpus/kissfft/Validate": "pass",
+      "TestCorpus/kissfft/Compile": "pass",
+      "TestCorpus/kissfft/CompileFull": "pass",
+      "TestCorpus/kissfft/Instantiate": "pass",
       "TestCorpusSemanticExec/kissfft/complex-roundtrip": "NOT_RUN"
     },
     "reference": null,
@@ -13276,11 +13276,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/miniz/Decode": "NOT_RUN",
-      "TestCorpus/miniz/Validate": "NOT_RUN",
-      "TestCorpus/miniz/Compile": "NOT_RUN",
-      "TestCorpus/miniz/CompileFull": "NOT_RUN",
-      "TestCorpus/miniz/Instantiate": "NOT_RUN",
+      "TestCorpus/miniz/Decode": "pass",
+      "TestCorpus/miniz/Validate": "pass",
+      "TestCorpus/miniz/Compile": "pass",
+      "TestCorpus/miniz/CompileFull": "pass",
+      "TestCorpus/miniz/Instantiate": "pass",
       "TestCorpusSemanticExec/miniz/deflate-roundtrip": "NOT_RUN"
     },
     "reference": null,
@@ -13293,11 +13293,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/monocypher/Decode": "NOT_RUN",
-      "TestCorpus/monocypher/Validate": "NOT_RUN",
-      "TestCorpus/monocypher/Compile": "NOT_RUN",
-      "TestCorpus/monocypher/CompileFull": "NOT_RUN",
-      "TestCorpus/monocypher/Instantiate": "NOT_RUN",
+      "TestCorpus/monocypher/Decode": "pass",
+      "TestCorpus/monocypher/Validate": "pass",
+      "TestCorpus/monocypher/Compile": "pass",
+      "TestCorpus/monocypher/CompileFull": "pass",
+      "TestCorpus/monocypher/Instantiate": "pass",
       "TestCorpusSemanticExec/monocypher/aead-blake2b": "NOT_RUN"
     },
     "reference": null,
@@ -13310,11 +13310,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/drwav/Decode": "NOT_RUN",
-      "TestCorpus/drwav/Validate": "NOT_RUN",
-      "TestCorpus/drwav/Compile": "NOT_RUN",
-      "TestCorpus/drwav/CompileFull": "NOT_RUN",
-      "TestCorpus/drwav/Instantiate": "NOT_RUN",
+      "TestCorpus/drwav/Decode": "pass",
+      "TestCorpus/drwav/Validate": "pass",
+      "TestCorpus/drwav/Compile": "pass",
+      "TestCorpus/drwav/CompileFull": "pass",
+      "TestCorpus/drwav/Instantiate": "pass",
       "TestCorpusSemanticExec/drwav/pcm-decode-seek": "NOT_RUN"
     },
     "reference": null,
@@ -13327,11 +13327,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/fastfloat/Decode": "NOT_RUN",
-      "TestCorpus/fastfloat/Validate": "NOT_RUN",
-      "TestCorpus/fastfloat/Compile": "NOT_RUN",
-      "TestCorpus/fastfloat/CompileFull": "NOT_RUN",
-      "TestCorpus/fastfloat/Instantiate": "NOT_RUN",
+      "TestCorpus/fastfloat/Decode": "pass",
+      "TestCorpus/fastfloat/Validate": "pass",
+      "TestCorpus/fastfloat/Compile": "pass",
+      "TestCorpus/fastfloat/CompileFull": "pass",
+      "TestCorpus/fastfloat/Instantiate": "pass",
       "TestCorpusSemanticExec/fastfloat/decimal-parse": "NOT_RUN"
     },
     "reference": null,
@@ -13344,11 +13344,11 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/pcre2/Decode": "NOT_RUN",
-      "TestCorpus/pcre2/Validate": "NOT_RUN",
-      "TestCorpus/pcre2/Compile": "NOT_RUN",
-      "TestCorpus/pcre2/CompileFull": "NOT_RUN",
-      "TestCorpus/pcre2/Instantiate": "NOT_RUN",
+      "TestCorpus/pcre2/Decode": "pass",
+      "TestCorpus/pcre2/Validate": "pass",
+      "TestCorpus/pcre2/Compile": "pass",
+      "TestCorpus/pcre2/CompileFull": "pass",
+      "TestCorpus/pcre2/Instantiate": "pass",
       "TestCorpusSemanticExec/pcre2/compile-match": "NOT_RUN"
     },
     "reference": null,
@@ -13361,10 +13361,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/cjson/Decode": "NOT_RUN",
-      "TestCorpus/cjson/Validate": "NOT_RUN",
-      "TestCorpus/cjson/Compile": "NOT_RUN",
-      "TestCorpus/cjson/CompileFull": "NOT_RUN",
+      "TestCorpus/cjson/Decode": "pass",
+      "TestCorpus/cjson/Validate": "pass",
+      "TestCorpus/cjson/Compile": "pass",
+      "TestCorpus/cjson/CompileFull": "pass",
       "TestApplicationCorpusRuns/cjson/wago": "pass"
     },
     "reference": {
@@ -13372,7 +13372,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13381,18 +13381,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/lodepng/Decode": "NOT_RUN",
-      "TestCorpus/lodepng/Validate": "NOT_RUN",
-      "TestCorpus/lodepng/Compile": "NOT_RUN",
-      "TestCorpus/lodepng/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/lodepng/wago": "NOT_RUN"
+      "TestCorpus/lodepng/Decode": "pass",
+      "TestCorpus/lodepng/Validate": "pass",
+      "TestCorpus/lodepng/Compile": "pass",
+      "TestCorpus/lodepng/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lodepng/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13401,18 +13401,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/wren/Decode": "NOT_RUN",
-      "TestCorpus/wren/Validate": "NOT_RUN",
-      "TestCorpus/wren/Compile": "NOT_RUN",
-      "TestCorpus/wren/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/wren/wago": "NOT_RUN"
+      "TestCorpus/wren/Decode": "pass",
+      "TestCorpus/wren/Validate": "pass",
+      "TestCorpus/wren/Compile": "pass",
+      "TestCorpus/wren/CompileFull": "pass",
+      "TestApplicationCorpusRuns/wren/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13421,18 +13421,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/tinyxml2/Decode": "NOT_RUN",
-      "TestCorpus/tinyxml2/Validate": "NOT_RUN",
-      "TestCorpus/tinyxml2/Compile": "NOT_RUN",
-      "TestCorpus/tinyxml2/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/tinyxml2/wago": "NOT_RUN"
+      "TestCorpus/tinyxml2/Decode": "pass",
+      "TestCorpus/tinyxml2/Validate": "pass",
+      "TestCorpus/tinyxml2/Compile": "pass",
+      "TestCorpus/tinyxml2/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tinyxml2/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13441,18 +13441,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/lua/Decode": "NOT_RUN",
-      "TestCorpus/lua/Validate": "NOT_RUN",
-      "TestCorpus/lua/Compile": "NOT_RUN",
-      "TestCorpus/lua/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/lua/wago": "NOT_RUN"
+      "TestCorpus/lua/Decode": "pass",
+      "TestCorpus/lua/Validate": "pass",
+      "TestCorpus/lua/Compile": "pass",
+      "TestCorpus/lua/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lua/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13461,10 +13461,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/embench-crc32/Decode": "NOT_RUN",
-      "TestCorpus/embench-crc32/Validate": "NOT_RUN",
-      "TestCorpus/embench-crc32/Compile": "NOT_RUN",
-      "TestCorpus/embench-crc32/CompileFull": "NOT_RUN",
+      "TestCorpus/embench-crc32/Decode": "pass",
+      "TestCorpus/embench-crc32/Validate": "pass",
+      "TestCorpus/embench-crc32/Compile": "pass",
+      "TestCorpus/embench-crc32/CompileFull": "pass",
       "TestApplicationCorpusRuns/embench-crc32/wago": "pass"
     },
     "reference": {
@@ -13472,7 +13472,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13481,10 +13481,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/embench-huffbench/Decode": "NOT_RUN",
-      "TestCorpus/embench-huffbench/Validate": "NOT_RUN",
-      "TestCorpus/embench-huffbench/Compile": "NOT_RUN",
-      "TestCorpus/embench-huffbench/CompileFull": "NOT_RUN",
+      "TestCorpus/embench-huffbench/Decode": "pass",
+      "TestCorpus/embench-huffbench/Validate": "pass",
+      "TestCorpus/embench-huffbench/Compile": "pass",
+      "TestCorpus/embench-huffbench/CompileFull": "pass",
       "TestApplicationCorpusRuns/embench-huffbench/wago": "pass"
     },
     "reference": {
@@ -13492,7 +13492,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13501,10 +13501,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/embench-matmult-int/Decode": "NOT_RUN",
-      "TestCorpus/embench-matmult-int/Validate": "NOT_RUN",
-      "TestCorpus/embench-matmult-int/Compile": "NOT_RUN",
-      "TestCorpus/embench-matmult-int/CompileFull": "NOT_RUN",
+      "TestCorpus/embench-matmult-int/Decode": "pass",
+      "TestCorpus/embench-matmult-int/Validate": "pass",
+      "TestCorpus/embench-matmult-int/Compile": "pass",
+      "TestCorpus/embench-matmult-int/CompileFull": "pass",
       "TestApplicationCorpusRuns/embench-matmult-int/wago": "pass"
     },
     "reference": {
@@ -13512,7 +13512,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13521,10 +13521,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/embench-nettle-aes/Decode": "NOT_RUN",
-      "TestCorpus/embench-nettle-aes/Validate": "NOT_RUN",
-      "TestCorpus/embench-nettle-aes/Compile": "NOT_RUN",
-      "TestCorpus/embench-nettle-aes/CompileFull": "NOT_RUN",
+      "TestCorpus/embench-nettle-aes/Decode": "pass",
+      "TestCorpus/embench-nettle-aes/Validate": "pass",
+      "TestCorpus/embench-nettle-aes/Compile": "pass",
+      "TestCorpus/embench-nettle-aes/CompileFull": "pass",
       "TestApplicationCorpusRuns/embench-nettle-aes/wago": "pass"
     },
     "reference": {
@@ -13532,7 +13532,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13541,10 +13541,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/embench-nettle-sha256/Decode": "NOT_RUN",
-      "TestCorpus/embench-nettle-sha256/Validate": "NOT_RUN",
-      "TestCorpus/embench-nettle-sha256/Compile": "NOT_RUN",
-      "TestCorpus/embench-nettle-sha256/CompileFull": "NOT_RUN",
+      "TestCorpus/embench-nettle-sha256/Decode": "pass",
+      "TestCorpus/embench-nettle-sha256/Validate": "pass",
+      "TestCorpus/embench-nettle-sha256/Compile": "pass",
+      "TestCorpus/embench-nettle-sha256/CompileFull": "pass",
       "TestApplicationCorpusRuns/embench-nettle-sha256/wago": "pass"
     },
     "reference": {
@@ -13552,7 +13552,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13561,10 +13561,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/embench-qrduino/Decode": "NOT_RUN",
-      "TestCorpus/embench-qrduino/Validate": "NOT_RUN",
-      "TestCorpus/embench-qrduino/Compile": "NOT_RUN",
-      "TestCorpus/embench-qrduino/CompileFull": "NOT_RUN",
+      "TestCorpus/embench-qrduino/Decode": "pass",
+      "TestCorpus/embench-qrduino/Validate": "pass",
+      "TestCorpus/embench-qrduino/Compile": "pass",
+      "TestCorpus/embench-qrduino/CompileFull": "pass",
       "TestApplicationCorpusRuns/embench-qrduino/wago": "pass"
     },
     "reference": {
@@ -13572,7 +13572,7 @@
       "pinned_external_runtime": null,
       "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13581,18 +13581,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/sightglass-shootout-base64/Decode": "NOT_RUN",
-      "TestCorpus/sightglass-shootout-base64/Validate": "NOT_RUN",
-      "TestCorpus/sightglass-shootout-base64/Compile": "NOT_RUN",
-      "TestCorpus/sightglass-shootout-base64/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/sightglass-shootout-base64/wago": "NOT_RUN"
+      "TestCorpus/sightglass-shootout-base64/Decode": "pass",
+      "TestCorpus/sightglass-shootout-base64/Validate": "pass",
+      "TestCorpus/sightglass-shootout-base64/Compile": "pass",
+      "TestCorpus/sightglass-shootout-base64/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sightglass-shootout-base64/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13601,18 +13601,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/sightglass-libsodium-hash/Decode": "NOT_RUN",
-      "TestCorpus/sightglass-libsodium-hash/Validate": "NOT_RUN",
-      "TestCorpus/sightglass-libsodium-hash/Compile": "NOT_RUN",
-      "TestCorpus/sightglass-libsodium-hash/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/sightglass-libsodium-hash/wago": "NOT_RUN"
+      "TestCorpus/sightglass-libsodium-hash/Decode": "pass",
+      "TestCorpus/sightglass-libsodium-hash/Validate": "pass",
+      "TestCorpus/sightglass-libsodium-hash/Compile": "pass",
+      "TestCorpus/sightglass-libsodium-hash/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sightglass-libsodium-hash/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13621,18 +13621,18 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/tacle-bsort/Decode": "NOT_RUN",
-      "TestCorpus/tacle-bsort/Validate": "NOT_RUN",
-      "TestCorpus/tacle-bsort/Compile": "NOT_RUN",
-      "TestCorpus/tacle-bsort/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/tacle-bsort/wago": "NOT_RUN"
+      "TestCorpus/tacle-bsort/Decode": "pass",
+      "TestCorpus/tacle-bsort/Validate": "pass",
+      "TestCorpus/tacle-bsort/Compile": "pass",
+      "TestCorpus/tacle-bsort/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tacle-bsort/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13641,15 +13641,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-2mm/Decode": "NOT_RUN",
-      "TestCorpus/polybench-2mm/Validate": "NOT_RUN",
-      "TestCorpus/polybench-2mm/Compile": "NOT_RUN",
-      "TestCorpus/polybench-2mm/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-2mm/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-2mm/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-2mm/Decode": "pass",
+      "TestCorpus/polybench-2mm/Validate": "pass",
+      "TestCorpus/polybench-2mm/Compile": "pass",
+      "TestCorpus/polybench-2mm/CompileFull": "pass",
+      "TestCorpus/polybench-2mm/Instantiate": "pass",
+      "TestCorpus/polybench-2mm/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13658,15 +13658,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-3mm/Decode": "NOT_RUN",
-      "TestCorpus/polybench-3mm/Validate": "NOT_RUN",
-      "TestCorpus/polybench-3mm/Compile": "NOT_RUN",
-      "TestCorpus/polybench-3mm/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-3mm/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-3mm/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-3mm/Decode": "pass",
+      "TestCorpus/polybench-3mm/Validate": "pass",
+      "TestCorpus/polybench-3mm/Compile": "pass",
+      "TestCorpus/polybench-3mm/CompileFull": "pass",
+      "TestCorpus/polybench-3mm/Instantiate": "pass",
+      "TestCorpus/polybench-3mm/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13675,15 +13675,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-adi/Decode": "NOT_RUN",
-      "TestCorpus/polybench-adi/Validate": "NOT_RUN",
-      "TestCorpus/polybench-adi/Compile": "NOT_RUN",
-      "TestCorpus/polybench-adi/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-adi/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-adi/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-adi/Decode": "pass",
+      "TestCorpus/polybench-adi/Validate": "pass",
+      "TestCorpus/polybench-adi/Compile": "pass",
+      "TestCorpus/polybench-adi/CompileFull": "pass",
+      "TestCorpus/polybench-adi/Instantiate": "pass",
+      "TestCorpus/polybench-adi/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13692,15 +13692,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-atax/Decode": "NOT_RUN",
-      "TestCorpus/polybench-atax/Validate": "NOT_RUN",
-      "TestCorpus/polybench-atax/Compile": "NOT_RUN",
-      "TestCorpus/polybench-atax/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-atax/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-atax/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-atax/Decode": "pass",
+      "TestCorpus/polybench-atax/Validate": "pass",
+      "TestCorpus/polybench-atax/Compile": "pass",
+      "TestCorpus/polybench-atax/CompileFull": "pass",
+      "TestCorpus/polybench-atax/Instantiate": "pass",
+      "TestCorpus/polybench-atax/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13709,15 +13709,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-bicg/Decode": "NOT_RUN",
-      "TestCorpus/polybench-bicg/Validate": "NOT_RUN",
-      "TestCorpus/polybench-bicg/Compile": "NOT_RUN",
-      "TestCorpus/polybench-bicg/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-bicg/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-bicg/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-bicg/Decode": "pass",
+      "TestCorpus/polybench-bicg/Validate": "pass",
+      "TestCorpus/polybench-bicg/Compile": "pass",
+      "TestCorpus/polybench-bicg/CompileFull": "pass",
+      "TestCorpus/polybench-bicg/Instantiate": "pass",
+      "TestCorpus/polybench-bicg/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13726,15 +13726,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-cholesky/Decode": "NOT_RUN",
-      "TestCorpus/polybench-cholesky/Validate": "NOT_RUN",
-      "TestCorpus/polybench-cholesky/Compile": "NOT_RUN",
-      "TestCorpus/polybench-cholesky/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-cholesky/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-cholesky/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-cholesky/Decode": "pass",
+      "TestCorpus/polybench-cholesky/Validate": "pass",
+      "TestCorpus/polybench-cholesky/Compile": "pass",
+      "TestCorpus/polybench-cholesky/CompileFull": "pass",
+      "TestCorpus/polybench-cholesky/Instantiate": "pass",
+      "TestCorpus/polybench-cholesky/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13743,15 +13743,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-correlation/Decode": "NOT_RUN",
-      "TestCorpus/polybench-correlation/Validate": "NOT_RUN",
-      "TestCorpus/polybench-correlation/Compile": "NOT_RUN",
-      "TestCorpus/polybench-correlation/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-correlation/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-correlation/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-correlation/Decode": "pass",
+      "TestCorpus/polybench-correlation/Validate": "pass",
+      "TestCorpus/polybench-correlation/Compile": "pass",
+      "TestCorpus/polybench-correlation/CompileFull": "pass",
+      "TestCorpus/polybench-correlation/Instantiate": "pass",
+      "TestCorpus/polybench-correlation/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13760,15 +13760,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-covariance/Decode": "NOT_RUN",
-      "TestCorpus/polybench-covariance/Validate": "NOT_RUN",
-      "TestCorpus/polybench-covariance/Compile": "NOT_RUN",
-      "TestCorpus/polybench-covariance/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-covariance/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-covariance/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-covariance/Decode": "pass",
+      "TestCorpus/polybench-covariance/Validate": "pass",
+      "TestCorpus/polybench-covariance/Compile": "pass",
+      "TestCorpus/polybench-covariance/CompileFull": "pass",
+      "TestCorpus/polybench-covariance/Instantiate": "pass",
+      "TestCorpus/polybench-covariance/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13777,15 +13777,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-deriche/Decode": "NOT_RUN",
-      "TestCorpus/polybench-deriche/Validate": "NOT_RUN",
-      "TestCorpus/polybench-deriche/Compile": "NOT_RUN",
-      "TestCorpus/polybench-deriche/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-deriche/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-deriche/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-deriche/Decode": "pass",
+      "TestCorpus/polybench-deriche/Validate": "pass",
+      "TestCorpus/polybench-deriche/Compile": "pass",
+      "TestCorpus/polybench-deriche/CompileFull": "pass",
+      "TestCorpus/polybench-deriche/Instantiate": "pass",
+      "TestCorpus/polybench-deriche/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13794,15 +13794,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-doitgen/Decode": "NOT_RUN",
-      "TestCorpus/polybench-doitgen/Validate": "NOT_RUN",
-      "TestCorpus/polybench-doitgen/Compile": "NOT_RUN",
-      "TestCorpus/polybench-doitgen/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-doitgen/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-doitgen/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-doitgen/Decode": "pass",
+      "TestCorpus/polybench-doitgen/Validate": "pass",
+      "TestCorpus/polybench-doitgen/Compile": "pass",
+      "TestCorpus/polybench-doitgen/CompileFull": "pass",
+      "TestCorpus/polybench-doitgen/Instantiate": "pass",
+      "TestCorpus/polybench-doitgen/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13811,15 +13811,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-durbin/Decode": "NOT_RUN",
-      "TestCorpus/polybench-durbin/Validate": "NOT_RUN",
-      "TestCorpus/polybench-durbin/Compile": "NOT_RUN",
-      "TestCorpus/polybench-durbin/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-durbin/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-durbin/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-durbin/Decode": "pass",
+      "TestCorpus/polybench-durbin/Validate": "pass",
+      "TestCorpus/polybench-durbin/Compile": "pass",
+      "TestCorpus/polybench-durbin/CompileFull": "pass",
+      "TestCorpus/polybench-durbin/Instantiate": "pass",
+      "TestCorpus/polybench-durbin/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13828,15 +13828,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-fdtd-2d/Decode": "NOT_RUN",
-      "TestCorpus/polybench-fdtd-2d/Validate": "NOT_RUN",
-      "TestCorpus/polybench-fdtd-2d/Compile": "NOT_RUN",
-      "TestCorpus/polybench-fdtd-2d/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-fdtd-2d/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-fdtd-2d/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-fdtd-2d/Decode": "pass",
+      "TestCorpus/polybench-fdtd-2d/Validate": "pass",
+      "TestCorpus/polybench-fdtd-2d/Compile": "pass",
+      "TestCorpus/polybench-fdtd-2d/CompileFull": "pass",
+      "TestCorpus/polybench-fdtd-2d/Instantiate": "pass",
+      "TestCorpus/polybench-fdtd-2d/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13845,15 +13845,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-floyd-warshall/Decode": "NOT_RUN",
-      "TestCorpus/polybench-floyd-warshall/Validate": "NOT_RUN",
-      "TestCorpus/polybench-floyd-warshall/Compile": "NOT_RUN",
-      "TestCorpus/polybench-floyd-warshall/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-floyd-warshall/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-floyd-warshall/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-floyd-warshall/Decode": "pass",
+      "TestCorpus/polybench-floyd-warshall/Validate": "pass",
+      "TestCorpus/polybench-floyd-warshall/Compile": "pass",
+      "TestCorpus/polybench-floyd-warshall/CompileFull": "pass",
+      "TestCorpus/polybench-floyd-warshall/Instantiate": "pass",
+      "TestCorpus/polybench-floyd-warshall/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13862,15 +13862,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-gemm/Decode": "NOT_RUN",
-      "TestCorpus/polybench-gemm/Validate": "NOT_RUN",
-      "TestCorpus/polybench-gemm/Compile": "NOT_RUN",
-      "TestCorpus/polybench-gemm/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-gemm/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-gemm/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-gemm/Decode": "pass",
+      "TestCorpus/polybench-gemm/Validate": "pass",
+      "TestCorpus/polybench-gemm/Compile": "pass",
+      "TestCorpus/polybench-gemm/CompileFull": "pass",
+      "TestCorpus/polybench-gemm/Instantiate": "pass",
+      "TestCorpus/polybench-gemm/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13879,15 +13879,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-gemver/Decode": "NOT_RUN",
-      "TestCorpus/polybench-gemver/Validate": "NOT_RUN",
-      "TestCorpus/polybench-gemver/Compile": "NOT_RUN",
-      "TestCorpus/polybench-gemver/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-gemver/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-gemver/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-gemver/Decode": "pass",
+      "TestCorpus/polybench-gemver/Validate": "pass",
+      "TestCorpus/polybench-gemver/Compile": "pass",
+      "TestCorpus/polybench-gemver/CompileFull": "pass",
+      "TestCorpus/polybench-gemver/Instantiate": "pass",
+      "TestCorpus/polybench-gemver/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13896,15 +13896,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-gesummv/Decode": "NOT_RUN",
-      "TestCorpus/polybench-gesummv/Validate": "NOT_RUN",
-      "TestCorpus/polybench-gesummv/Compile": "NOT_RUN",
-      "TestCorpus/polybench-gesummv/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-gesummv/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-gesummv/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-gesummv/Decode": "pass",
+      "TestCorpus/polybench-gesummv/Validate": "pass",
+      "TestCorpus/polybench-gesummv/Compile": "pass",
+      "TestCorpus/polybench-gesummv/CompileFull": "pass",
+      "TestCorpus/polybench-gesummv/Instantiate": "pass",
+      "TestCorpus/polybench-gesummv/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13913,15 +13913,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-gramschmidt/Decode": "NOT_RUN",
-      "TestCorpus/polybench-gramschmidt/Validate": "NOT_RUN",
-      "TestCorpus/polybench-gramschmidt/Compile": "NOT_RUN",
-      "TestCorpus/polybench-gramschmidt/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-gramschmidt/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-gramschmidt/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-gramschmidt/Decode": "pass",
+      "TestCorpus/polybench-gramschmidt/Validate": "pass",
+      "TestCorpus/polybench-gramschmidt/Compile": "pass",
+      "TestCorpus/polybench-gramschmidt/CompileFull": "pass",
+      "TestCorpus/polybench-gramschmidt/Instantiate": "pass",
+      "TestCorpus/polybench-gramschmidt/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13930,15 +13930,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-heat-3d/Decode": "NOT_RUN",
-      "TestCorpus/polybench-heat-3d/Validate": "NOT_RUN",
-      "TestCorpus/polybench-heat-3d/Compile": "NOT_RUN",
-      "TestCorpus/polybench-heat-3d/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-heat-3d/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-heat-3d/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-heat-3d/Decode": "pass",
+      "TestCorpus/polybench-heat-3d/Validate": "pass",
+      "TestCorpus/polybench-heat-3d/Compile": "pass",
+      "TestCorpus/polybench-heat-3d/CompileFull": "pass",
+      "TestCorpus/polybench-heat-3d/Instantiate": "pass",
+      "TestCorpus/polybench-heat-3d/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13947,15 +13947,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-jacobi-1d/Decode": "NOT_RUN",
-      "TestCorpus/polybench-jacobi-1d/Validate": "NOT_RUN",
-      "TestCorpus/polybench-jacobi-1d/Compile": "NOT_RUN",
-      "TestCorpus/polybench-jacobi-1d/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-jacobi-1d/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-jacobi-1d/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-jacobi-1d/Decode": "pass",
+      "TestCorpus/polybench-jacobi-1d/Validate": "pass",
+      "TestCorpus/polybench-jacobi-1d/Compile": "pass",
+      "TestCorpus/polybench-jacobi-1d/CompileFull": "pass",
+      "TestCorpus/polybench-jacobi-1d/Instantiate": "pass",
+      "TestCorpus/polybench-jacobi-1d/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13964,15 +13964,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-jacobi-2d/Decode": "NOT_RUN",
-      "TestCorpus/polybench-jacobi-2d/Validate": "NOT_RUN",
-      "TestCorpus/polybench-jacobi-2d/Compile": "NOT_RUN",
-      "TestCorpus/polybench-jacobi-2d/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-jacobi-2d/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-jacobi-2d/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-jacobi-2d/Decode": "pass",
+      "TestCorpus/polybench-jacobi-2d/Validate": "pass",
+      "TestCorpus/polybench-jacobi-2d/Compile": "pass",
+      "TestCorpus/polybench-jacobi-2d/CompileFull": "pass",
+      "TestCorpus/polybench-jacobi-2d/Instantiate": "pass",
+      "TestCorpus/polybench-jacobi-2d/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13981,15 +13981,15 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-lu/Decode": "NOT_RUN",
-      "TestCorpus/polybench-lu/Validate": "NOT_RUN",
-      "TestCorpus/polybench-lu/Compile": "NOT_RUN",
-      "TestCorpus/polybench-lu/CompileFull": "NOT_RUN",
-      "TestCorpus/polybench-lu/Instantiate": "NOT_RUN",
-      "TestCorpus/polybench-lu/Exec/polybench_run": "NOT_RUN"
+      "TestCorpus/polybench-lu/Decode": "pass",
+      "TestCorpus/polybench-lu/Validate": "pass",
+      "TestCorpus/polybench-lu/Compile": "pass",
+      "TestCorpus/polybench-lu/CompileFull": "pass",
+      "TestCorpus/polybench-lu/Instantiate": "pass",
+      "TestCorpus/polybench-lu/Exec/polybench_run": "pass"
     },
     "reference": null,
-    "status": "INCOMPLETE",
+    "status": "PASS",
     "suite_completed": false
   },
   {
@@ -13998,10 +13998,10 @@
     "label": "baseline",
     "mode": "wago_regalloccheck",
     "checks": {
-      "TestCorpus/polybench-ludcmp/Decode": "NOT_RUN",
-      "TestCorpus/polybench-ludcmp/Validate": "NOT_RUN",
-      "TestCorpus/polybench-ludcmp/Compile": "NOT_RUN",
-      "TestCorpus/polybench-ludcmp/CompileFull": "NOT_RUN",
+      "TestCorpus/polybench-ludcmp/Decode": "pass",
+      "TestCorpus/polybench-ludcmp/Validate": "pass",
+      "TestCorpus/polybench-ludcmp/Compile": "pass",
+      "TestCorpus/polybench-ludcmp/CompileFull": "pass",
       "TestCorpus/polybench-ludcmp/Instantiate": "NOT_RUN",
       "TestCorpus/polybench-ludcmp/Exec/polybench_run": "NOT_RUN"
     },
@@ -14155,12 +14155,12 @@
       "TestCorpus/wren-modulo/Validate": "NOT_RUN",
       "TestCorpus/wren-modulo/Compile": "NOT_RUN",
       "TestCorpus/wren-modulo/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/wren-modulo/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/wren-modulo/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false

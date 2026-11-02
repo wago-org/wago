@@ -1,0 +1,187 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "driver_sha256": "ebf53a7c84acb70dec667a70e2a6b582516c238154f67e8ad7648668a83d3add",
+  "driver_unchanged": true,
+  "rows": [
+    {
+      "suite": "spec-v1-ordinary",
+      "modules": 629,
+      "assertions": 16026,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[1.0]: modules passed=629 failed=0 skipped=0 | assertions passed=16026 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v1-wagodebug",
+      "modules": 629,
+      "assertions": 16026,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[1.0]: modules passed=629 failed=0 skipped=0 | assertions passed=16026 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v1-wago_regalloccheck",
+      "modules": 629,
+      "assertions": 16026,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[1.0]: modules passed=629 failed=0 skipped=0 | assertions passed=16026 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v2-ordinary",
+      "modules": 1600,
+      "assertions": 48331,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[2.0]: modules passed=1600 failed=0 skipped=0 | assertions passed=48331 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v2-wagodebug",
+      "modules": 1600,
+      "assertions": 48331,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[2.0]: modules passed=1600 failed=0 skipped=0 | assertions passed=48331 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v2-wago_regalloccheck",
+      "modules": 1600,
+      "assertions": 48331,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[2.0]: modules passed=1600 failed=0 skipped=0 | assertions passed=48331 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v3-ordinary",
+      "modules": 2226,
+      "assertions": 58238,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v3-wagodebug",
+      "modules": 2226,
+      "assertions": 58238,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v3-wago_regalloccheck",
+      "modules": 2226,
+      "assertions": 58238,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v3-signals-ordinary",
+      "modules": 2226,
+      "assertions": 58238,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v3-signals-wagodebug",
+      "modules": 2226,
+      "assertions": 58238,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    },
+    {
+      "suite": "spec-v3-signals-wago_regalloccheck",
+      "modules": 2226,
+      "assertions": 58238,
+      "gaps": {
+        "compile-rejected": "0",
+        "instantiate-rejected": "0",
+        "module-unavailable": "0",
+        "absent-export": "0",
+        "reference-argument": "0",
+        "reference-result": "0",
+        "reference-global": "0"
+      },
+      "total": "spectest_exec_test.go:1676: TOTAL[3.0]: modules passed=2226 failed=0 skipped=0 | assertions passed=58238 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0"
+    }
+  ]
+}

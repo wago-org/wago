@@ -7,7 +7,13 @@
     "tinygo-34/host-ordinary.command": "558f786a625d6786d0ad24c285e76ecb496bbf02b10a5bffe65545828ea8bb90",
     "tinygo-34/host-ordinary.log": "54af8282396276b84b0c69ce29b61ec66eb3b699963ac82cfc748b349e1113cd",
     "tinygo-34/standalone-ordinary.command": "3ca49ced29adc3240d6009d54d7d39b9cc8b07cd7deb52407b05683e89aa9c56",
-    "tinygo-34/standalone-ordinary.log": "946081d0bfa8009240d0a08c8fb7f1f2ff55372b200c34399b820a57cb7a16ff"
+    "tinygo-34/standalone-ordinary.log": "946081d0bfa8009240d0a08c8fb7f1f2ff55372b200c34399b820a57cb7a16ff",
+    "tinygo-34/guest-threads-ordinary.command": "9278050126be071881d220d9dcf018a316366a7eb2e55da47291ac52a1c72e8e",
+    "tinygo-34/guest-threads-ordinary.log": "e8cbe01dcada3dd5a9f4244446090401f2506261a97cdf6653a4dca4621a7645",
+    "tinygo-34/host-wagodebug.command": "46fed8ee1449068960ddd316efdbfb8841173cf5d4ae20d54c93289f091db766",
+    "tinygo-34/host-wagodebug.log": "f3a20db72c6307c670c03218b7e7dadffb3734c3a9c35acb17abd554637da1e4",
+    "tinygo-34/standalone-wagodebug.command": "9350deb7772b23c4322c20c235b4fa66182bcdd15c5926ddcfc84ca31799527a",
+    "tinygo-34/standalone-wagodebug.log": "81014caf62b586a850ed39595880e63b4d8c26b3705784bef888544f9915bfcc"
   },
   "receipts": [
     {
@@ -23,6 +29,27 @@
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "command_sha256": "3ca49ced29adc3240d6009d54d7d39b9cc8b07cd7deb52407b05683e89aa9c56",
       "raw_sha256": "946081d0bfa8009240d0a08c8fb7f1f2ff55372b200c34399b820a57cb7a16ff"
+    },
+    {
+      "suite": "tinygo-34/guest-threads-ordinary",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "9278050126be071881d220d9dcf018a316366a7eb2e55da47291ac52a1c72e8e",
+      "raw_sha256": "e8cbe01dcada3dd5a9f4244446090401f2506261a97cdf6653a4dca4621a7645"
+    },
+    {
+      "suite": "tinygo-34/host-wagodebug",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "46fed8ee1449068960ddd316efdbfb8841173cf5d4ae20d54c93289f091db766",
+      "raw_sha256": "f3a20db72c6307c670c03218b7e7dadffb3734c3a9c35acb17abd554637da1e4"
+    },
+    {
+      "suite": "tinygo-34/standalone-wagodebug",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "9350deb7772b23c4322c20c235b4fa66182bcdd15c5926ddcfc84ca31799527a",
+      "raw_sha256": "81014caf62b586a850ed39595880e63b4d8c26b3705784bef888544f9915bfcc"
     }
   ],
   "previous_seals_verified": true
