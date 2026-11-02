@@ -1,0 +1,95 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "aliases": {
+    "replay-docs": "tooling-docs",
+    "replay-actionlint": "tooling-actionlint",
+    "replay-staticcheck": "tooling-staticcheck",
+    "replay-native-compare": "tooling-native-compare",
+    "replay-build-release-assets.sh": "tooling-script-build-release-assets.sh",
+    "replay-release-qualification.sh": "tooling-script-release-qualification.sh",
+    "replay-ci-download-go-modules.sh": "tooling-script-ci-download-go-modules.sh"
+  },
+  "proof": [
+    {
+      "required": "replay-docs",
+      "receipt": "tooling-docs",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "run",
+        "./tests/tools/docs-check"
+      ],
+      "raw_sha256": "ae3acfdb1304008917e40649bbb4e1116b1f49361d6ff2eaa26882ee44b8245b",
+      "reason": "Same pinned tool/command recipe and immutable tooling checkout; historical replay name only."
+    },
+    {
+      "required": "replay-actionlint",
+      "receipt": "tooling-actionlint",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "run",
+        "github.com/rhysd/actionlint/cmd/actionlint@v1.7.7",
+        ".github/workflows/canary.yml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/regression-stress.yml",
+        ".github/workflows/release.yml",
+        ".github/workflows/riscv64.yml",
+        ".github/workflows/sync-install.yml"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "Same pinned tool/command recipe and immutable tooling checkout; historical replay name only."
+    },
+    {
+      "required": "replay-staticcheck",
+      "receipt": "tooling-staticcheck",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "run",
+        "./tests/tools/staticcheck-baseline",
+        "verify"
+      ],
+      "raw_sha256": "3923a6248da777cf9fca85175567b63094fc9070b93543a0c950bba07fdee31a",
+      "reason": "Same pinned tool/command recipe and immutable tooling checkout; historical replay name only."
+    },
+    {
+      "required": "replay-native-compare",
+      "receipt": "tooling-native-compare",
+      "command": [
+        "/home/dev/.local/share/mise/installs/just/1.58.0/just",
+        "test",
+        "native-compare"
+      ],
+      "raw_sha256": "b4e708a814a2bc9ae3df4d2662f13c9b2f1ac7b5124b013fa64a84ce91b7ffc9",
+      "reason": "Same pinned tool/command recipe and immutable tooling checkout; historical replay name only."
+    },
+    {
+      "required": "replay-build-release-assets.sh",
+      "receipt": "tooling-script-build-release-assets.sh",
+      "command": [
+        "/usr/bin/bash",
+        "tests/scripts/build-release-assets.sh"
+      ],
+      "raw_sha256": "eab8f0669e2006e88ce6dee00a7c53cee18a689748396ad0aa2b14fb5127f68e",
+      "reason": "Same pinned tool/command recipe and immutable tooling checkout; historical replay name only."
+    },
+    {
+      "required": "replay-release-qualification.sh",
+      "receipt": "tooling-script-release-qualification.sh",
+      "command": [
+        "/usr/bin/bash",
+        "tests/scripts/release-qualification.sh"
+      ],
+      "raw_sha256": "eca5ba9639566b399ce64091f2b0589c179da019a4af1b5c93a0eea6718031c4",
+      "reason": "Same pinned tool/command recipe and immutable tooling checkout; historical replay name only."
+    },
+    {
+      "required": "replay-ci-download-go-modules.sh",
+      "receipt": "tooling-script-ci-download-go-modules.sh",
+      "command": [
+        "/usr/bin/bash",
+        "tests/scripts/ci-download-go-modules.sh"
+      ],
+      "raw_sha256": "137c26c8c1735afd784be23c1a570c9c92707325bd702023df0604c607bc5957",
+      "reason": "Same pinned tool/command recipe and immutable tooling checkout; historical replay name only."
+    }
+  ]
+}

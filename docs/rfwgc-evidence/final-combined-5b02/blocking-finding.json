@@ -1,0 +1,30 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "kind": "FORMATTING_QUALIFICATION_FAILURE",
+  "gate": "replay-format",
+  "command_exit": 1,
+  "files": [
+    "docs/rfwgc-evidence/darwin-final-codegen-recheck/_probes/branch19_repatch.go",
+    "src/wago/rr_recheck_flags_current_test.go"
+  ],
+  "cost": "One completed formatting command failed. No further qualification gates will start; active commands drain naturally. Repair requires parent-owned source changes, then a new qualification pin.",
+  "requested_utc": "2026-11-02T13:43:36.349760+00:00",
+  "runtime_defect_claim": false,
+  "prior_staticcheck_blocker": "Fresh four-profile verification passed at this pin.",
+  "disposition": "Formatting gate remains FAIL. Read-only diff proves whitespace-only changes; no unsafe runtime follow-through identified. Continue independent immutable qualification under full-scope authorization; parent owns source formatting repair.",
+  "whitespace_proof": [
+    {
+      "file": "docs/rfwgc-evidence/darwin-final-codegen-recheck/_probes/branch19_repatch.go",
+      "before_sha256": "02d5722f5234dd71b5cd8d0e2007b4b79a5a701936af7a4a899f91f5b236b3fb",
+      "formatted_sha256": "a8ce6b44356b2253c153f2004b3002b80ca414afa4962ccf2c5569baa5150ab2",
+      "non_whitespace_bytes_identical": true
+    },
+    {
+      "file": "src/wago/rr_recheck_flags_current_test.go",
+      "before_sha256": "146214b6ae828763c40f5dc1533d31a632591b16dfdcf4ab7ef150ba794e4a5b",
+      "formatted_sha256": "cab1e55afc73d062bc090d2893e3b5e3ac9a796b423b0264b1a2e61445b6db7b",
+      "non_whitespace_bytes_identical": true
+    }
+  ],
+  "classified_utc": "2026-11-02T13:46:35.674117+00:00"
+}

@@ -1,0 +1,12 @@
+{
+  "gofmt": "/home/dev/.local/share/mise/installs/go/1.27.1/bin/gofmt",
+  "gofmt_sha256": "86dd91f69254432a37ca365f964720677040fd6f049a412c23e25f8b3812f342",
+  "files": {
+    "docs/rfwgc-evidence/darwin-final-codegen-recheck/_probes/branch19_repatch.go": "02d5722f5234dd71b5cd8d0e2007b4b79a5a701936af7a4a899f91f5b236b3fb",
+    "src/wago/rr_recheck_flags_current_test.go": "146214b6ae828763c40f5dc1533d31a632591b16dfdcf4ab7ef150ba794e4a5b"
+  },
+  "diff_sha256": "ab2c89ca088e77d41034be7b6346df7fa9016569b2e2ef17c6d968a27f14c412",
+  "diagnostic_exit": 1,
+  "read_only": true,
+  "first_diagnostic_attempt": "check_output rejected gofmt -d exit 1; repeated as read-only diagnostic capturing expected nonzero exit. No qualification rerun."
+}

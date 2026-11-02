@@ -1,0 +1,14 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "kind": "FORMATTING_QUALIFICATION_FAILURE",
+  "gate": "replay-format",
+  "command_exit": 1,
+  "files": [
+    "docs/rfwgc-evidence/darwin-final-codegen-recheck/_probes/branch19_repatch.go",
+    "src/wago/rr_recheck_flags_current_test.go"
+  ],
+  "cost": "One completed formatting command failed. No further qualification gates will start; active commands drain naturally. Repair requires parent-owned source changes, then a new qualification pin.",
+  "requested_utc": "2026-11-02T13:43:36.349760+00:00",
+  "runtime_defect_claim": false,
+  "prior_staticcheck_blocker": "Fresh four-profile verification passed at this pin."
+}
