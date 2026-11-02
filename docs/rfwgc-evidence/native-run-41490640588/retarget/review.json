@@ -1,0 +1,18 @@
+{
+  "source": "889b46c45fc54e2fb4b4617eb0c5cc5f54de5db7",
+  "prior_source": "21d7be58952b64435110246f65d44e11046c5083",
+  "non_docs_diff_empty": true,
+  "commands_and_oracles_unchanged": true,
+  "workflow_unchanged": true,
+  "reviewer": "integration owner; bounded packaging/identity delta review",
+  "independent_review": "not newly performed; prior harness activation 6eb674f5225ebff4d78adc48b03e88900c15942b applies to unchanged executable driver/workflow",
+  "native_result": "NOT_RUN",
+  "source_and_fixture_hashes_verified": true,
+  "continuation_six_cases": "PASS",
+  "plan_changes": [
+    "source",
+    "evidence",
+    "supplement_revision"
+  ],
+  "failed_setup_attempt": "validate_broad_tags.py without required arguments exited 2; not a build result; redundant cross-build not performed because source and fixtures unchanged"
+}
