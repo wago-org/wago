@@ -1,0 +1,10 @@
+test_census (test_harness.HarnessContracts.test_census) ... ok
+test_exact_identity (test_harness.HarnessContracts.test_exact_identity) ... ok
+test_native_refusals (test_harness.HarnessContracts.test_native_refusals) ... ok
+test_required_originals (test_harness.HarnessContracts.test_required_originals) ... ok
+test_summary_states (test_harness.HarnessContracts.test_summary_states) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.001s
+
+OK

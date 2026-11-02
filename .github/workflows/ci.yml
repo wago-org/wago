@@ -21,8 +21,16 @@ on:
         description: 'Run reviewed Darwin correctness and Windows contracts (not full CI)'
         type: boolean
         default: false
+      native_arm64_rr3:
+        description: 'Run reviewed exact-pin native Linux ARM64 RR3 qualification only'
+        type: boolean
+        default: false
+      harness_sha:
+        description: 'Full reviewed workflow/harness SHA, required for native ARM64 RR3'
+        type: string
+        default: ''
       source_sha:
-        description: 'Exact reviewed source SHA; used only for non-Linux qualification'
+        description: 'Exact reviewed source SHA; used only for manual qualification'
         type: string
         default: 'f2bb27287220783e86a4ead41fee78693a5129de'
 
@@ -31,7 +39,7 @@ permissions:
 
 # Cancel superseded runs on the same ref (e.g. new pushes to a PR).
 concurrency:
-  group: ci-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && '-darwin-qualification' || '' }}
+  group: ci-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && '-darwin-qualification' || '' }}${{ github.event_name == 'workflow_dispatch' && inputs.native_arm64_rr3 && '-native-arm64-rr3' || '' }}
   cancel-in-progress: true
 
 env:
@@ -45,7 +53,7 @@ jobs:
   # a failed preflight, so it cannot turn an empty selection into a green check.
   changes:
     name: Plan CI profile
-    if: (github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification) && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    if: (github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3)) && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     outputs:
       profile: ${{ steps.plan.outputs.profile }}
@@ -1339,9 +1347,87 @@ jobs:
             ci-card/size-symbols.tsv
           if-no-files-found: error
 
+  native-arm64-rr3:
+    name: Pinned native Linux ARM64 RR3 / ${{ matrix.mode }}
+    if: github.event_name == 'workflow_dispatch' && inputs.native_arm64_rr3
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [ordinary, wagodebug, wago_regalloccheck]
+    env:
+      GOTOOLCHAIN: local
+      PYTHONDONTWRITEBYTECODE: '1'
+      QUALIFICATION_SOURCE: ${{ inputs.source_sha }}
+      QUALIFICATION_DRIVER: ${{ inputs.harness_sha }}
+      WORKFLOW_SHA: ${{ github.sha }}
+      OTHER_QUALIFICATION: ${{ inputs.darwin_qualification }}
+    steps:
+      - name: Require reviewed exact source and harness before checkout
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          mkdir -p setup-receipts
+          set -o pipefail
+          {
+            echo "source=$QUALIFICATION_SOURCE harness=$QUALIFICATION_DRIVER workflow=$WORKFLOW_SHA"
+            test "$OTHER_QUALIFICATION" = false
+            test "$QUALIFICATION_SOURCE" = 5847df30f1af15d10b743d90a24b1429b290d358
+            [[ "$QUALIFICATION_DRIVER" =~ ^[0-9a-f]{40}$ ]]
+            test "$QUALIFICATION_DRIVER" = "$WORKFLOW_SHA"
+          } 2>&1 | tee setup-receipts/identity.log
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: ${{ inputs.harness_sha }}
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          ref: '5847df30f1af15d10b743d90a24b1429b290d358'
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        timeout-minutes: 3
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Execute unchanged native RR3 qualification
+        timeout-minutes: 35
+        run: >-
+          python3 harness/docs/rfwgc-evidence/native-arm64-rr3/run.py
+          --source source --out receipts-${{ matrix.mode }} --mode ${{ matrix.mode }}
+      - name: Retain failed and partial native evidence
+        timeout-minutes: 2
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-arm64-rr3-5847df30f-${{ matrix.mode }}-${{ github.run_attempt }}
+          path: |
+            setup-receipts
+            receipts-${{ matrix.mode }}
+          if-no-files-found: error
+          retention-days: 14
+
+  native-arm64-rr3-summary:
+    name: Native Linux ARM64 RR3 qualification summary
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.native_arm64_rr3
+    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification, windows-qualification, darwin-qualification-summary, native-arm64-rr3]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Require all native modes and isolation from normal CI
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 -c 'import json, os; n=json.loads(os.environ["RESULTS"]); assert n["native-arm64-rr3"]["result"] == "success", n; assert all(v["result"] == "skipped" for k,v in n.items() if k != "native-arm64-rr3"), n'
+          echo 'Exact-pin native ARM64 focused qualification passed; full CI was not run. Parent review remains required.' >> "$GITHUB_STEP_SUMMARY"
+
   darwin-qualification:
     name: Pinned Darwin correctness / ${{ matrix.mode }}
-    if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification
+    if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && !inputs.native_arm64_rr3
     runs-on: macos-15
     timeout-minutes: 360
     strategy:
@@ -1406,7 +1492,7 @@ jobs:
 
   windows-qualification:
     name: Pinned Windows storage contracts / ${{ matrix.mode }}
-    if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification
+    if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && !inputs.native_arm64_rr3
     runs-on: windows-2025
     timeout-minutes: 30
     strategy:
@@ -1457,12 +1543,12 @@ jobs:
   # skipped jobs are accepted only when the profile did not expect them.
   darwin-qualification-summary:
     name: Non-Linux qualification summary
-    if: always() && github.event_name == 'workflow_dispatch' && inputs.darwin_qualification
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && !inputs.native_arm64_rr3
     needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification, windows-qualification]
     runs-on: ubuntu-latest
     steps:
       - name: Verify special Darwin matrix (does not qualify full CI)
-        if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification
+        if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && !inputs.native_arm64_rr3
         env:
           WINDOWS_RESULT: ${{ needs.windows-qualification.result }}
           DARWIN_RESULT: ${{ needs.darwin-qualification.result }}
@@ -1474,13 +1560,13 @@ jobs:
           echo 'Pinned non-Linux command execution succeeded; gaps and skips still require review.' >> "$GITHUB_STEP_SUMMARY"
 
   ci-ok:
-    name: ${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && 'Full CI not run (non-Linux dispatch)' || 'CI' }}
-    if: always() && (github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification)
-    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification, windows-qualification, darwin-qualification-summary]
+    name: ${{ github.event_name == 'workflow_dispatch' && (inputs.darwin_qualification || inputs.native_arm64_rr3) && 'Full CI not run (qualification dispatch)' || 'CI' }}
+    if: always() && (github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3))
+    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification, windows-qualification, darwin-qualification-summary, native-arm64-rr3, native-arm64-rr3-summary]
     runs-on: ubuntu-latest
     steps:
       - name: Identify qualification profile
-        if: github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification
+        if: github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3)
         env:
           CI_PROFILE: ${{ needs.changes.outputs.profile || needs.smoke.outputs.profile }}
           CI_EXPECTED_JOBS: ${{ needs.changes.outputs.expected_jobs || needs.smoke.outputs.expected_jobs }}
@@ -1488,11 +1574,11 @@ jobs:
           echo "::notice title=CI profile::$CI_PROFILE"
           echo "Expected jobs: $CI_EXPECTED_JOBS"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        if: github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification
+        if: github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3)
         with:
           ref: ${{ github.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        if: github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification
+        if: github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3)
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -1504,7 +1590,7 @@ jobs:
             bench/go.sum
             cli/wago-installer/go.mod
       - name: Verify every expected CI result
-        if: github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification
+        if: github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3)
         env:
           CI_PROFILE: ${{ needs.changes.outputs.profile || needs.smoke.outputs.profile }}
           CI_CODE: ${{ needs.changes.outputs.code || needs.smoke.outputs.code }}

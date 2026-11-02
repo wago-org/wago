@@ -1,0 +1,9 @@
+{
+  "syntax": "PASS",
+  "native_compiled_census_all3": "PASS",
+  "source_integrity": "PASS",
+  "commands_pass": true,
+  "source": "5847df30f1af15d10b743d90a24b1429b290d358",
+  "go": "go version go1.27.1 linux/amd64",
+  "native_execution": "NOT_RUN"
+}
