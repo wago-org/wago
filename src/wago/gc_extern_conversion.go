@@ -39,6 +39,7 @@ type gcExternConversionState struct {
 	entries   []gcExternConversionEntry
 	count     uint32
 	closed    bool
+	core      *gcConversionCore
 }
 
 func newGCExternConversionState(store *referenceStore, collector *gc.Collector) (*gcExternConversionState, error) {
@@ -453,11 +454,13 @@ func (s *gcExternConversionState) close() error {
 	if s.closed {
 		return nil
 	}
+	liveCollector := gcConversionCollectorRegistered(s)
 	s.closed = true
+	closeGCConversionCoreLocked(s)
 	var first error
 	for i := range s.entries {
 		entry := &s.entries[i]
-		if entry.hasRoot {
+		if entry.hasRoot && liveCollector {
 			if err := s.collector.SetTableSlot(entry.rootSlot, gc.Null()); err != nil && first == nil {
 				first = err
 			}

@@ -40,6 +40,7 @@ type referenceStore struct {
 	externSeed    uint32
 	externFree    uint32
 	externrefs    []externrefSlot
+	conversions   map[uint64]*gcConversionIdentity
 	gcDomains     *gcDomainTopology
 }
 
@@ -324,6 +325,7 @@ type gcStoreDomain struct {
 	id              uint64
 	collector       *gc.Collector
 	private         bool
+	conversionOwned bool // registered private type universe; lifetime belongs to receipts
 	config          gc.Config
 	types           []gc.TypeDesc
 	typeReps        []gcDomainTypeRepresentative
@@ -753,7 +755,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 	if r.domainHostRoots && (compiledArchitecture == 4 || gcNativeHostActivations.Load() != 0) && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
 		return false
 	}
-	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
+	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) && !gcConversionPrivateFrames(r.owner) {
 		return r.owner.refStore.rangeGCDomainPersistentRootsClassified(r.owner.gc, sink)
 	}
 	if r.owner != nil && managedFunctionOwnerRootsStrong(r.owner, r.owner.gc) {
@@ -824,7 +826,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 	}
 
 	domainRoots := false
-	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
+	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) && !gcConversionPrivateFrames(r.owner) {
 		domainRoots = true
 		if !r.owner.refStore.rangeGCDomainPersistentRoots(r.owner.gc, fn, sink) {
 			return false
@@ -1078,7 +1080,7 @@ func (r *gcNativeFrameRoots) rangeChainFrom(owner *Instance, fn func(gc.RootSlot
 						return true
 					}
 				}
-				if r.owner == nil || r.owner.refStore == nil || !r.owner.refStore.ownsGCCollector(r.owner.gc) {
+				if r.owner == nil || r.owner.refStore == nil || !r.owner.refStore.ownsGCCollector(r.owner.gc) || gcConversionPrivateFrames(r.owner) {
 					return true
 				}
 				foreign := r.owner.refStore.gcFrameOwner(retPC, owner.gc)
@@ -1983,14 +1985,15 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 		return
 	}
 	topology.Lock()
-	defer topology.Unlock()
 	s.mu.Lock()
 	domain = topology.domainForCollectorLocked(collector)
 	if domain == nil || domain.refs != 0 || domain.claims != 0 || !topology.unlinkDomainLocked(domain) {
 		s.mu.Unlock()
+		topology.Unlock()
 		return
 	}
 	s.mu.Unlock()
+	topology.Unlock()
 	collector.Close()
 }
 
@@ -2033,6 +2036,9 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 		}
 	} else {
 		for domain := topology.first; domain != nil; domain = domain.next {
+			if domain.conversionOwned {
+				continue
+			}
 			if !gcModuleFitsDomain(c, domain) {
 				continue
 			}
@@ -2395,8 +2401,16 @@ func (s *referenceStore) lockGCDomainTopology() *gcDomainTopology {
 }
 
 func (s *referenceStore) lockGCDomainTopologyForInstance(in *Instance) *gcDomainTopology {
-	if in == nil || in.gc == nil {
+	if in == nil {
 		return nil
+	}
+	if in.gc == nil {
+		s.mu.Lock()
+		receipts := len(s.conversions) != 0
+		s.mu.Unlock()
+		if !receipts {
+			return nil
+		}
 	}
 	return s.lockGCDomainTopology()
 }
@@ -3718,6 +3732,7 @@ type referenceTokenEntries struct {
 }
 
 func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
+	retireGCConversionStoreLocked(s)
 	var entries referenceTokenEntries
 	if len(s.byToken) != 0 {
 		entries.funcrefs = make([]*funcrefTokenEntry, 0, len(s.byToken))

@@ -8,7 +8,7 @@ import "sync"
 // joint scan after terminal close. Host contention arranges an independent
 // wakeup; Close never waits for another invocation or native execution lock.
 func managedFunctionAfterClose(in *Instance) {
-	if managedFunctionMemberCount.Load() == 0 || in == nil {
+	if in == nil {
 		return
 	}
 	if value, ok := managedFunctionGraphs.Load(in.refStore); ok {
@@ -44,7 +44,6 @@ func (g *managedFunctionGraph) tryCollectAfterGate() {
 	defer topology.RUnlock()
 	g.store.mu.Lock()
 	var domains gcInvocationDomainSet
-	var requester *Instance
 	mutexes := make([]*sync.Mutex, 0, len(g.store.instances)+1)
 	mutexes = append(mutexes, &nativeExecutionMu)
 	for owner, entry := range g.store.instances {
@@ -60,9 +59,6 @@ func (g *managedFunctionGraph) tryCollectAfterGate() {
 			return
 		}
 		domains.add(entry.gcDomain)
-		if owner.gc != nil {
-			requester = owner
-		}
 		var mu *sync.Mutex
 		if owner.usesIndependentExecution() {
 			mu = owner.independentNativeExecutionMu()
@@ -80,8 +76,9 @@ func (g *managedFunctionGraph) tryCollectAfterGate() {
 		}
 	}
 	compactExternAddClaimedDomainsLocked(g.store, &domains)
+	conversionAddClaimedDomainsLocked(g.store, &domains)
 	g.store.mu.Unlock()
-	if requester == nil {
+	if domains.len() == 0 {
 		g.pendingCollection.Store(false)
 		return
 	}
@@ -118,7 +115,7 @@ func (g *managedFunctionGraph) tryCollectAfterGate() {
 	// Consume only this request. A concurrent Close publishes a new request
 	// while this scan runs, and its later boundary can retry that work.
 	g.pendingCollection.Store(false)
-	if handled, err := collectManagedFunctionGraph(requester, requester.existingPublicGCState(), true); !handled || err != nil {
+	if handled, err := collectManagedFunctionStore(g.store, id); !handled || err != nil {
 		g.pendingCollection.Store(true)
 	}
 }

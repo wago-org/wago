@@ -218,7 +218,7 @@ func (m *managedFunctionMark) step(budget uint32) (uint32, bool, error) {
 			if kind == gc.SlotTable {
 				owners = d.state.tableOwners
 			}
-			if owners[*index] == nil && (kind != gc.SlotGlobal || d.state.hostEnvSlots[*index] == gc.Null() && compactExternHostRootIsStrong(d.state.collector, *index)) {
+			if !(kind == gc.SlotTable && d.state.conversionFloating[*index] != nil) && owners[*index] == nil && (kind != gc.SlotGlobal || d.state.hostEnvSlots[*index] == gc.Null() && compactExternHostRootIsStrong(d.state.collector, *index)) {
 				ref, err := d.state.collector.PersistentSlotRef(kind, *index)
 				if err != nil {
 					return used, false, err
@@ -389,6 +389,9 @@ func (m *managedFunctionMark) collect() error {
 			}
 			delete(d.state.hostEnvSlots, slot)
 			d.state.hostFreeSlots = append(d.state.hostFreeSlots, slot)
+		}
+		if err := clearUnreachableConversionRoots(d); err != nil {
+			return err
 		}
 		if err := d.clearUnreachableHostExternRoots(); err != nil {
 			return err

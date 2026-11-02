@@ -27,6 +27,7 @@ func (in *Instance) lockManagedFunctionCollectionInvocation(id invocationID) gcI
 		}
 	}
 	compactExternAddClaimedDomainsLocked(in.refStore, &set)
+	conversionAddClaimedDomainsLocked(in.refStore, &set)
 	in.refStore.mu.Unlock()
 	set.sort()
 	domains := gcInvocationDomainView{set: &set}
@@ -58,7 +59,20 @@ func collectManagedFunctionGraph(in *Instance, public *gcPublicState, topologyLe
 	if managedFunctionMemberCount.Load() == 0 || !topologyLeased {
 		return false, nil
 	}
-	value, ok := managedFunctionGraphs.Load(in.refStore)
+	current := in.gcInvocationDomain()
+	var id invocationID
+	if current != nil {
+		current.invocationState.Lock()
+		id = current.invocationOwner
+		current.invocationState.Unlock()
+	}
+	return collectManagedFunctionStore(in.refStore, id)
+}
+
+// Caller owns topology, all ordered invocation domains and native execution.
+// No publishing Instance is needed: receipt authority is independently registered.
+func collectManagedFunctionStore(store *referenceStore, id invocationID) (bool, error) {
+	value, ok := managedFunctionGraphs.Load(store)
 	if !ok {
 		return false, nil
 	}
@@ -66,29 +80,23 @@ func collectManagedFunctionGraph(in *Instance, public *gcPublicState, topologyLe
 	if !functionEnvironmentHostQuiescent(graph) {
 		return false, nil
 	}
-	in.refStore.mu.Lock()
+	store.mu.Lock()
 	var domains gcInvocationDomainSet
-	owners := make([]*Instance, 0, len(in.refStore.instances))
-	for owner, entry := range in.refStore.instances {
+	owners := make([]*Instance, 0, len(store.instances))
+	for owner, entry := range store.instances {
 		if entry == nil || entry.resourcesReleased {
 			continue
 		}
-		if !managedFunctionDomainRegisteredLocked(in.refStore, owner, entry.gcDomain) {
-			in.refStore.mu.Unlock()
+		if !managedFunctionDomainRegisteredLocked(store, owner, entry.gcDomain) {
+			store.mu.Unlock()
 			return false, nil
 		}
 		owners = append(owners, owner)
 		domains.add(entry.gcDomain)
 	}
-	current := in.refStore.instances[in]
-	var id invocationID
-	if current != nil && current.gcDomain != nil {
-		current.gcDomain.invocationState.Lock()
-		id = current.gcDomain.invocationOwner
-		current.gcDomain.invocationState.Unlock()
-	}
-	compactExternAddClaimedDomainsLocked(in.refStore, &domains)
-	in.refStore.mu.Unlock()
+	compactExternAddClaimedDomainsLocked(store, &domains)
+	conversionAddClaimedDomainsLocked(store, &domains)
+	store.mu.Unlock()
 	domains.sort()
 	view := gcInvocationDomainView{set: &domains}
 	// A borrowed partial invocation cannot upgrade its order inside collection.

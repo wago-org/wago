@@ -36,17 +36,18 @@ type gcRefTestTableSpec struct {
 type gcRefTestTableState struct {
 	// Descriptor, Slots and Count alias the first root table (RootTable), the
 	// one the single-table products and array element helpers address.
-	Descriptor    []byte
-	Descriptors   [][]byte
-	CanonicalType *gc.TypeCanonicalization
-	Conversion    *gcExternConversionState
-	Slots         []uint32
-	Count         uint32
-	TableCount    uint8
-	RootTable     uint8
-	kinds         []gcRefTableKind
-	entryBytes    []int
-	slots         [][]uint32
+	Descriptor           []byte
+	Descriptors          [][]byte
+	CanonicalType        *gc.TypeCanonicalization
+	Conversion           *gcExternConversionState
+	Slots                []uint32
+	Count                uint32
+	TableCount           uint8
+	RootTable            uint8
+	kinds                []gcRefTableKind
+	entryBytes           []int
+	slots                [][]uint32
+	conversionContainers []*gcConversionContainer
 }
 
 // newGCRefTestTableState builds the state for the historical fixed layouts:
@@ -216,7 +217,7 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 		}
 		off := 8 + int(index)*8
 		old := binary.LittleEndian.Uint64(descriptor[off : off+8])
-		return s.Conversion.publishExternReplacement(old, word, func() error {
+		return publishGCConversionTable(s, table, index, old, word, func() error {
 			binary.LittleEndian.PutUint64(descriptor[off:off+8], word)
 			return nil
 		})
@@ -274,16 +275,20 @@ func (s *gcRefTestTableState) drop(collector *gc.Collector) {
 	if s == nil || collector == nil {
 		return
 	}
+	liveCollector := gcConversionCollectorRegistered(s.Conversion)
 	for table, slots := range s.slots {
 		descriptor := s.Descriptors[table]
 		for i, slot := range slots {
-			_ = collector.SetTableSlot(slot, gc.Null())
+			if liveCollector {
+				_ = collector.SetTableSlot(slot, gc.Null())
+			}
 			off := 8 + i*8
 			if off+8 <= len(descriptor) {
 				binary.LittleEndian.PutUint64(descriptor[off:off+8], 0)
 			}
 		}
 	}
+	releaseGCConversionTables(s)
 	if s.Conversion != nil {
 		_ = s.Conversion.close()
 	}
