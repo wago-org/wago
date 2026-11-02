@@ -1,0 +1,3 @@
+make: Entering directory '/home/dev/Projects/wago-hostcall-record/tests/conformance/spec-v3/interpreter'
+dune clean
+make: Leaving directory '/home/dev/Projects/wago-hostcall-record/tests/conformance/spec-v3/interpreter'
