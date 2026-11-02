@@ -1,0 +1,10 @@
+{
+  "run_url": "https://github.com/wago-org/wago/actions/runs/41431926958",
+  "harness_sha": "336416d2a006bbefded9e5b0b8539199bd6b0e3b",
+  "source_sha": "da19f1a8d29fec7305d937a42622a198b8e79717",
+  "activation_review": "2bccd8713772af59d047810c9d915334e9b539d0",
+  "arm64_review": "db9bc97eee997d130a606241863e5302906f01ac",
+  "recorded_at": "2026-11-02T10:50:08.446532+00:00",
+  "status": "DISPATCHED; no results credited",
+  "scope": "Darwin/Windows diagnostics and correctness; RR-1/RR-2 remain open and later repairs are not covered"
+}
