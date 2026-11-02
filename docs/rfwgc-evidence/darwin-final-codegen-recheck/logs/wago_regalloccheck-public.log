@@ -1,0 +1,25 @@
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=0
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=0/pair=false
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=0/pair=true
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=1
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=1/pair=false
+=== RUN   TestNativeImportVariantSourceArtifactAndCalls/compact=1/pair=true
+--- PASS: TestNativeImportVariantSourceArtifactAndCalls (1.11s)
+    --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=0 (0.67s)
+        --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=0/pair=false (0.44s)
+        --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=0/pair=true (0.22s)
+    --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=1 (0.44s)
+        --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=1/pair=false (0.22s)
+        --- PASS: TestNativeImportVariantSourceArtifactAndCalls/compact=1/pair=true (0.22s)
+=== RUN   TestNativeImportVariantRespectsPolicies
+=== RUN   TestNativeImportVariantRespectsPolicies/native-leaf-host
+=== RUN   TestNativeImportVariantRespectsPolicies/reg-abi
+--- PASS: TestNativeImportVariantRespectsPolicies (0.09s)
+    --- PASS: TestNativeImportVariantRespectsPolicies/native-leaf-host (0.02s)
+    --- PASS: TestNativeImportVariantRespectsPolicies/reg-abi (0.07s)
+=== RUN   TestNativeImportVariantForeignFallback
+--- PASS: TestNativeImportVariantForeignFallback (0.06s)
+=== RUN   TestNativeImportVariantTrap
+--- PASS: TestNativeImportVariantTrap (0.04s)
+PASS
