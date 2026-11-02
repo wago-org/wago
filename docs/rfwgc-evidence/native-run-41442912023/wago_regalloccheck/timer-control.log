@@ -1,0 +1,6 @@
+arch=arm64 clock=1 notify=1 signo=35 tid=3338 size=64 errno=0 errno 0
+arch=arm64 clock=1 notify=1 signo=64 tid=3338 size=64 errno=0 errno 0
+arch=arm64 clock=1 notify=0 signo=35 tid=3338 size=64 errno=0 errno 0
+arch=arm64 clock=1 notify=0 signo=64 tid=3338 size=64 errno=0 errno 0
+arch=arm64 clock=1 notify=4 signo=35 tid=3338 size=64 errno=0 errno 0
+arch=arm64 clock=1 notify=4 signo=64 tid=3338 size=64 errno=0 errno 0
