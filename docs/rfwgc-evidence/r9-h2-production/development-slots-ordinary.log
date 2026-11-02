@@ -1,0 +1,5 @@
+--- FAIL: TestR9H2ConditionalSlotExplicitDomain (0.00s)
+    function_environment_slot_domain_host_test.go:72: STOP owning container did not seed its explicit collector
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.030s
+FAIL

@@ -1,0 +1,6 @@
+qualified-focused-ordinary exit=0
+qualified-race-ordinary exit=0
+qualified-focused-wagodebug exit=0
+qualified-race-wagodebug exit=0
+qualified-focused-wago_regalloccheck exit=0
+qualified-race-wago_regalloccheck exit=0
