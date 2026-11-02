@@ -71,6 +71,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Reuse an immediately preceding ARM64 zero-exit guard for one integer
   division or remainder assignment, retaining overflow checks and later traps.
   Unroll register-only unsigned-division loops while retaining each exit test.
+- Keep bounded ARM64 integer-pair loop continuations on the fallthrough path
+  and defer local-only exit results. Unroll these loops while preserving every
+  exit test, and exchange pair register roles across parallel additions when
+  all early exits can restore the original local homes.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.

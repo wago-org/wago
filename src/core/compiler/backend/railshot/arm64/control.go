@@ -1662,6 +1662,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else if op == 0x04 {
 		kind = cfIf
 	}
+	if kind == cfIf && !f.unreachable && pN == 0 && rN == 2 {
+		if done, err := f.tryColdTupleLoopExit(r, signature, resultTypes); done || err != nil {
+			return err
+		}
+	}
 	if kind == cfIf && !f.unreachable && pN == 0 && rN == 1 && res0 == mtI32 {
 		if done, err := f.tryAffineIfSelect(r); done || err != nil {
 			return err
@@ -2677,6 +2682,9 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		return nil
 	}
 
+	if fr.isColdTupleLoopExit() && !f.unreachable {
+		return fmt.Errorf("arm64: cold tuple loop continuation unexpectedly falls through")
+	}
 	fallthroughReachable := !f.unreachable
 	if fallthroughReachable {
 		f.recordGCBranchResults(&fr, fr.resultN)
@@ -2793,7 +2801,11 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	f.unreachable = !endReachable
 	if endReachable {
 		if fr.kind != cfLoop {
-			if fr.has(ctrlCallFreeRegion) {
+			if fr.isColdTupleLoopExit() {
+				for x := range f.locals {
+					f.locals[x].state = entryState.get(x)
+				}
+			} else if fr.has(ctrlCallFreeRegion) {
 				f.markPinnedLocalsDirty()
 			} else {
 				f.setLocalsState(branchState) // merge: what every edge guaranteed

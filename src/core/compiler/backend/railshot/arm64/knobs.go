@@ -26,6 +26,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("scalar-loop-unroll", &scalarLoopUnrollEnabled),
 	optimization.Bind("tuple-if-select", &tupleIfSelectEnabled),
 	optimization.Bind("guarded-div-rem", &guardedDivRemEnabled),
+	optimization.Bind("cold-tuple-loop-exit", &coldTupleLoopExitEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
 	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
 	optimization.Bind("regional-memory-read", &regionalMemoryReadEnabled),
@@ -131,6 +132,7 @@ var (
 	optScalarLoopUnroll     = optimizationBindings.Option("scalar-loop-unroll")
 	optTupleIfSelect        = optimizationBindings.Option("tuple-if-select")
 	optGuardedDivRem        = optimizationBindings.Option("guarded-div-rem")
+	optColdTupleLoopExit    = optimizationBindings.Option("cold-tuple-loop-exit")
 	optBulkFillVector       = optimizationBindings.Option("bulk-fill-vector")
 	optSIMDStoreLoadAddress = optimizationBindings.Option("simd-store-load-address")
 	optSIMDLoadExtract      = optimizationBindings.Option("simd-load-extract")

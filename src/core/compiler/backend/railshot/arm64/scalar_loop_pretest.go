@@ -5,11 +5,22 @@ package arm64
 import "encoding/binary"
 
 // unrollScalarPretest copies a bounded register-only loop with one exit. The
-// exit must be an unresolved conditional edge owned by an enclosing empty-arity
-// block. Every copied edge is registered with that same owner before its end
-// is resolved; no already-patched or unknown PC-relative instruction is copied.
+// exit must be a proved pending block edge or a local-only cold tuple exit.
+// Every copied edge is registered with that same owner before its end is
+// resolved; no already-patched or unknown PC-relative instruction is copied.
 func (f *fn) unrollScalarPretest(fr *ctrlFrame) bool {
-	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.stats != nil && f.stats.RecordSources || fr.paramN != 0 {
+	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.stats != nil && f.stats.RecordSources {
+		return false
+	}
+	loopIndex := len(f.ctrl)
+	for i := range f.ctrl {
+		if &f.ctrl[i] == fr {
+			loopIndex = i
+			break
+		}
+	}
+	directParams := loopIndex < len(f.ctrl) && f.loopLocalParams.depth == uint32(loopIndex+1)
+	if fr.paramN != 0 && !directParams {
 		return false
 	}
 	start, end := fr.controlSite, f.a.Len()
@@ -41,12 +52,22 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame) bool {
 	}
 	site := start + 4*exit
 	var owner *ctrlFrame
+	var coldCode []byte
+	coldExit := false
 	for i := range f.ctrl {
 		candidate := &f.ctrl[i]
-		if candidate == fr {
-			break
+		if i > loopIndex && directParams && candidate.isColdTupleLoopExit() {
+			for _, edge := range f.frameColdEdges(candidate) {
+				if edge.site == site {
+					if owner != nil {
+						return false
+					}
+					owner, coldCode, coldExit = candidate, edge.code, true
+				}
+			}
+			continue
 		}
-		if candidate.kind != cfBlock && candidate.kind != cfIf || candidate.branchN != 0 {
+		if i >= loopIndex || candidate.kind != cfBlock && candidate.kind != cfIf || candidate.branchN != 0 {
 			continue
 		}
 		first, second, overflow := f.frameEndSites(candidate)
@@ -64,24 +85,75 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame) bool {
 			owner = candidate
 		}
 	}
+
 	if owner == nil {
 		return false
 	}
-	if f.unrollScalarCounter(start, words[:n], exit, owner) {
+	if !coldExit && f.unrollScalarCounter(start, words[:n], exit, owner) {
 		return true
+	}
+	pair, rotate := coldLoopPair{}, false
+	if coldExit {
+		pair, rotate = f.findColdLoopPair(words[:n], exit)
 	}
 	// Retain the original body and its original pending edge. New copies use the
 	// same register homes and preserve an exit check in every iteration.
-	for phase := 1; phase < 4; phase++ {
+	firstPhase := 1
+	if rotate {
+		f.a.B = f.a.B[:start]
+		firstPhase = 0
+	}
+	for phase := firstPhase; phase < 4; phase++ {
+		a, b := pair.a, pair.b
+		if phase&1 != 0 {
+			a, b = b, a
+		}
 		for i := 0; i < n; i++ {
-			if i == exit {
-				f.appendFrameEnd(owner, f.a.Len(), true)
+			if i == exit && phase != 0 {
+				if coldExit {
+					code := coldCode
+					if rotate && phase&1 != 0 {
+						code = pair.coldRestore(code)
+					}
+					f.appendFrameColdEdge(owner, coldEdge{site: f.a.Len(), code: code})
+				} else {
+					f.appendFrameEnd(owner, f.a.Len(), true)
+				}
 			}
-			f.a.B = binary.LittleEndian.AppendUint32(f.a.B, words[i])
+			word := words[i]
+			if rotate {
+				if i == pair.save {
+					continue
+				}
+				if i == pair.assign {
+					a, b = b, a
+					continue
+				}
+				if i == exit && word&0x7e000000 == 0x34000000 {
+					reg := Reg(word & 31)
+					if reg == pair.a {
+						word = word&^31 | uint32(a)
+					} else if reg == pair.b {
+						word = word&^31 | uint32(b)
+					}
+				} else {
+					word = pair.rewriteReads(word, a, b)
+					if i == pair.sum {
+						word = word&^31 | uint32(a)
+					}
+				}
+			}
+			f.a.B = binary.LittleEndian.AppendUint32(f.a.B, word)
 		}
 	}
 	f.patchBranch26(f.a.Branch(), start)
 	f.stats.peep("scalar-loop-unroll-pretest")
+	if coldExit {
+		f.stats.peep("scalar-loop-unroll-cold")
+	}
+	if rotate {
+		f.stats.peep("scalar-loop-unroll-pair")
+	}
 	return true
 }
 
