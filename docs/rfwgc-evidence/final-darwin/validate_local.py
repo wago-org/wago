@@ -18,7 +18,7 @@ import discriminators
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 MODES = ['ordinary', 'wagodebug', 'wago_regalloccheck']
-BASE = '6c71c4d6747456578f55928e900e36bb2d1449a8'
+BASE = '8801252952255edf6ab6196250bd544873785328'
 
 
 def run(argv, **kwargs):
@@ -83,7 +83,10 @@ def main():
     def body(s):
         return re.sub(r'\n(?:  #.*\n|\s*\n)*\Z', '\n', s)
     for name in before.keys() - {'darwin-qualification', 'windows-qualification'}:
-        actual = after[name].replace('    timeout-minutes: 3\n', '', 1) if name == 'darwin-qualification-summary' else after[name]
+        actual = after[name]
+        if name == "native-arm64-rr3":
+            # Only the separately pinned source identity/artifact prefix changed.
+            actual = actual.replace("08f511fac41a77f4c0f9046f88ebc78ad05a5da6", "5847df30f1af15d10b743d90a24b1429b290d358").replace("native-arm64-rr3-08f511fac-", "native-arm64-rr3-5847df30f-")
         assert body(before[name]) == body(actual), name
     assert "default: 'f2bb" not in current
     assert "QUALIFICATION_HARNESS: ${{ inputs.harness_sha }}" in after['darwin-qualification']

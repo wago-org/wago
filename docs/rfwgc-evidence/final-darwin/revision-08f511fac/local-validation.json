@@ -1,0 +1,560 @@
+{
+  "darwin_execution": "NOT_RUN",
+  "darwin_compile_only": "NOT_RUN",
+  "source": "08f511fac41a77f4c0f9046f88ebc78ad05a5da6",
+  "driver_files_sha256": {
+    "docs/rfwgc-evidence/final-darwin/plan.json": "352513ab02b0934aa594c692f0dc40220dca08e87baa0481bfb5ae99e9cc8f92",
+    "docs/rfwgc-evidence/final-darwin/identity.py": "12956a735406a01a1bb6ef3d620e49cc6c8d9e352dab069756601532ad8e6507",
+    "docs/rfwgc-evidence/final-darwin/contracts.py": "26cc47cc182dfbd26458b3e3aac892c34c7c206af5b0f18a850736778438c21a",
+    "docs/rfwgc-evidence/final-darwin/run.py": "ad157bc25f276548c14589bcbf78cec06d0481e3ddfa9161e9fe490a0f1318aa",
+    "docs/rfwgc-evidence/final-darwin/setup.sh": "a78a774262af13311d66d54e7790349e9deb5ce9a8edaca336d78a098547f554",
+    "docs/rfwgc-evidence/final-darwin/tinygo_setup.py": "d31cc9adecad6965b4a11f26747c2e00689ca2e85b24cd952c50c2e52697f683",
+    "docs/rfwgc-evidence/final-darwin/discriminators.py": "e6fb6d4b945c30f94d27c01c4a448f556522eb5f6768baa7cf56400dbc490fdf",
+    "docs/rfwgc-evidence/final-darwin/validate_local.py": "73f651b884aeeeb759155983dd144e1687597101da913374a74432067180426c",
+    "docs/rfwgc-evidence/final-darwin/validate_exports.py": "ea460372d6d7d46ff34bbbce5cdb5b3dd0612d6540d964592e3d9014d9e848b5",
+    "docs/rfwgc-evidence/final-darwin/validate_broad_tags.py": "05c46f2798aad999ac18d0501a6300bd26d1a715ff1a41eacbf4bdc5b0eac744",
+    ".github/workflows/ci.yml": "f352281f3779615da24aa5ddf99a420d6007d94f2887f80352d48423f99ca0e6",
+    "tests/integration/cipolicy/workflows_test.go": "0e546f38ab110c6216fe95ca4d80b85f77d855f94cb990a1329664a106864f0c",
+    "docs/rfwgc-evidence/final-darwin/revision-08f511fac/contracts.json": "eb4bcdce4c430dd2befc35b7ce0875000a5270728920f490e6467ec5b51f2205"
+  },
+  "plan_integrity": "PASS: 63 exact receipt commands except Go executable and removed failfast",
+  "linux_refusal_all_three_modes": [
+    {
+      "mode": "ordinary",
+      "exit_code": 2,
+      "stderr": "usage: run.py [-h] --mode {ordinary,wagodebug,wago_regalloccheck}\n              source output\nrun.py: error: requires actual Darwin arm64; cross compilation and Linux QEMU do not qualify\n"
+    },
+    {
+      "mode": "wagodebug",
+      "exit_code": 2,
+      "stderr": "usage: run.py [-h] --mode {ordinary,wagodebug,wago_regalloccheck}\n              source output\nrun.py: error: requires actual Darwin arm64; cross compilation and Linux QEMU do not qualify\n"
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "exit_code": 2,
+      "stderr": "usage: run.py [-h] --mode {ordinary,wagodebug,wago_regalloccheck}\n              source output\nrun.py: error: requires actual Darwin arm64; cross compilation and Linux QEMU do not qualify\n"
+    }
+  ],
+  "identity_contracts": "PASS: exact source, driver HEAD and dirty driver rejection",
+  "explicit_summary_states": [
+    {
+      "darwin": "success",
+      "windows": "success",
+      "normal": "skipped",
+      "accepted": true
+    },
+    {
+      "darwin": "success",
+      "windows": "success",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "success",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "success",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "failure",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "failure",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "failure",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "failure",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "cancelled",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "cancelled",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "cancelled",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "cancelled",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "skipped",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "skipped",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "skipped",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "success",
+      "windows": "skipped",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "success",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "success",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "success",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "success",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "failure",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "failure",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "failure",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "failure",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "cancelled",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "cancelled",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "cancelled",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "cancelled",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "skipped",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "skipped",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "skipped",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "failure",
+      "windows": "skipped",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "success",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "success",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "success",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "success",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "failure",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "failure",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "failure",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "failure",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "cancelled",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "cancelled",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "cancelled",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "cancelled",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "skipped",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "skipped",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "skipped",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "cancelled",
+      "windows": "skipped",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "success",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "success",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "success",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "success",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "failure",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "failure",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "failure",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "failure",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "cancelled",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "cancelled",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "cancelled",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "cancelled",
+      "normal": "cancelled",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "skipped",
+      "normal": "skipped",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "skipped",
+      "normal": "success",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "skipped",
+      "normal": "failure",
+      "accepted": false
+    },
+    {
+      "darwin": "skipped",
+      "windows": "skipped",
+      "normal": "cancelled",
+      "accepted": false
+    }
+  ],
+  "special_summary_states": "PASS: only both native matrices successful with all normal jobs skipped accepted",
+  "workflow_contracts": "PASS: every normal and native ARM64 job and concurrency group unchanged from 6c71; Darwin source default requires explicit input; ARM 138, Mac 1080 and Windows 90 job-minute ceilings unchanged",
+  "planner_all_modes": [
+    {
+      "argv": [
+        "go",
+        "test",
+        "./tests/tools/ci-plan",
+        "-count=1"
+      ],
+      "exit_code": 0,
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.047s\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "run",
+        "./tests/tools/ci-plan",
+        "verify"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=wagodebug",
+        "./tests/tools/ci-plan",
+        "-count=1"
+      ],
+      "exit_code": 0,
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.046s\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "run",
+        "-tags=wagodebug",
+        "./tests/tools/ci-plan",
+        "verify"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=wago_regalloccheck",
+        "./tests/tools/ci-plan",
+        "-count=1"
+      ],
+      "exit_code": 0,
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.048s\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "run",
+        "-tags=wago_regalloccheck",
+        "./tests/tools/ci-plan",
+        "verify"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "aggregate_policy_all_modes": [
+    {
+      "argv": [
+        "go",
+        "test",
+        "./tests/integration/cipolicy",
+        "-count=1"
+      ],
+      "exit_code": 0,
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/integration/cipolicy\t0.004s\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=wagodebug",
+        "./tests/integration/cipolicy",
+        "-count=1"
+      ],
+      "exit_code": 0,
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/integration/cipolicy\t0.005s\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "go",
+        "test",
+        "-tags=wago_regalloccheck",
+        "./tests/integration/cipolicy",
+        "-count=1"
+      ],
+      "exit_code": 0,
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/integration/cipolicy\t0.004s\n",
+      "stderr": ""
+    }
+  ],
+  "workflow_lint": {
+    "argv": [
+      "go",
+      "run",
+      "github.com/rhysd/actionlint/cmd/actionlint@v1.7.7",
+      ".github/workflows/ci.yml"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "shell_syntax": {
+    "argv": [
+      "bash",
+      "-n",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/setup.sh"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "python_syntax": "PASS",
+  "discriminators": "PASS: all-mode exact census; missing/duplicate/wrong nonce/gapped child rejected; rejection source-site mapping; safe continuation retains failed step",
+  "native_contracts": "PASS: pinned hashes, exact/negative census, six Linux refusals; no native execution"
+}

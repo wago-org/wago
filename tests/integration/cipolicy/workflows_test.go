@@ -577,7 +577,7 @@ func TestPinnedQualificationIsolatedAndAcyclic(t *testing.T) {
 		"runs-on: ubuntu-24.04-arm", "timeout-minutes: 45",
 		"if: github.event_name == 'workflow_dispatch' && inputs.native_arm64_rr3",
 		"mode: [ordinary, wagodebug, wago_regalloccheck]",
-		"ref: '5847df30f1af15d10b743d90a24b1429b290d358'",
+		"ref: '08f511fac41a77f4c0f9046f88ebc78ad05a5da6'",
 		`test "$QUALIFICATION_DRIVER" = "$WORKFLOW_SHA"`,
 		`test "$OTHER_QUALIFICATION" = false`,
 		"go-version: '1.27.1'", "if: always()",

@@ -1,6 +1,6 @@
 {
-  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-  "evidence": "Exact committed source including namespace, validation-ordering and installer checksum repairs; native execution NOT_RUN.",
+  "source": "08f511fac41a77f4c0f9046f88ebc78ad05a5da6",
+  "evidence": "Exact source including test-only multi-table and TinyGo resume oracle repairs; this native rerun NOT_RUN.",
   "lanes": [
     {
       "id": "full-root-replay-ordinary",
@@ -1691,5 +1691,5 @@
       "status": "REQUIRES_REVIEW after execution"
     }
   ],
-  "supplement_revision": "revision-7e41"
+  "supplement_revision": "revision-08f511fac"
 }
