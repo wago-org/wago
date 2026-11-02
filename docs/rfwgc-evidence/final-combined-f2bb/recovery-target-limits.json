@@ -1,0 +1,194 @@
+{
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "local_race": "Full native Linux AMD64 collector/runtime/Wago/integration race; no ARM/RV race instrumentation claim.",
+  "native_graphs": "Generated real-GC/scalar/noGC graph controls execute natively on Linux AMD64. ARM/RV guest graph families are separately recorded.",
+  "ARM64": "Actual Linux ARM64 QEMU supported collector/facade/guest and H6 families, plus repair census. Build receipts alone never pass execution.",
+  "RV64": "Actual Linux RV64 QEMU supported compact/managed-function controls. Linux AMD64/ARM64-only DR/H2 opaque host receipt bodies are build-excluded, not passes.",
+  "TinyGo": "Actual patched TinyGo 0.42 Linux AMD64. Threads/conservative and configured tasks CI routes; supported conversion, ordinary public stores and explicit rejection tests. No opaque host-receipt support claim.",
+  "Darwin": "Remote verdict owned by parent; excluded from this local verdict.",
+  "Windows": "Remote verdict owned by parent; excluded from this local verdict.",
+  "baseline": "Only canonical checked preflight/execution and declared graph controls at a3c08365f531eb3c9003e3acf3e0a822c12c31f4; no unsafe noinline/lifetime clang-cpp baseline execution.",
+  "source_test_build_constraints": [
+    {
+      "path": "src/wago/design_repair_admission_test.go",
+      "constraint": "//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestDesignRepairWaitNotifier",
+        "TestDesignRepairConversionAdmissionLifecycle",
+        "TestDesignRepairScalarRelayOrdinaryStorageWithConversion",
+        "TestDesignRepairConcurrentPublicationRetirement"
+      ]
+    },
+    {
+      "path": "src/wago/design_repair_table_test.go",
+      "constraint": "unconstrained",
+      "tests": [
+        "TestDesignRepairPublicTableOrdinary"
+      ]
+    },
+    {
+      "path": "src/wago/design_repair_unsupported_test.go",
+      "constraint": "//go:build !linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestDesignRepairUnsupportedConvertedPublication",
+        "TestDesignRepairUnsupportedBulkAtomicity"
+      ]
+    },
+    {
+      "path": "src/wago/design_repair_unsupported_token_test.go",
+      "constraint": "//go:build !linux || riscv64 || tinygo || wago_target_tinygo",
+      "tests": [
+        "TestDesignRepairUnsupportedConvertedPublicToken"
+      ]
+    },
+    {
+      "path": "src/wago/design_review_cross_runtime_probe_test.go",
+      "constraint": "//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestDesignReviewExternStorageProducerCrossRuntimeImport"
+      ]
+    },
+    {
+      "path": "src/wago/design_review_probe_test.go",
+      "constraint": "//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestDesignReviewExternStorageImportsPrivateGCProducer"
+      ]
+    },
+    {
+      "path": "src/wago/function_environment_nested_owner_host_test.go",
+      "constraint": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestR9OwnershipStateH6FailedInitialization",
+        "TestR9OwnershipStateH6CallbackQuiescence",
+        "TestR9OwnershipStateH6CollectingMutations"
+      ]
+    },
+    {
+      "path": "src/wago/function_environment_slot_domain_host_test.go",
+      "constraint": "//go:build linux && !riscv64 && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestR9H2ConditionalSlotExplicitDomain",
+        "TestR9H2RetiredCollectorPreservesDeferredFinalizer"
+      ]
+    },
+    {
+      "path": "src/wago/function_environment_wakeup_host_test.go",
+      "constraint": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestR9OwnershipWakeupContention",
+        "TestR9OwnershipWakeupActiveBoundary",
+        "TestR9OwnershipWakeupExitCrossing",
+        "TestR9OwnershipWakeupProviderAndStoreClose",
+        "TestR9OwnershipWakeupConcurrentRequests",
+        "TestR9OwnershipWakeupRetiredDomainAdmission"
+      ]
+    },
+    {
+      "path": "src/wago/gc_conversion_host_container_host_test.go",
+      "constraint": "//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestR9H2HostContainerPublicGlobal",
+        "TestR9H2HostContainerPublicTable",
+        "TestR9H2HostContainerClose",
+        "TestR9H2HostContainerAuthority",
+        "TestR9H2HostContainerMigration",
+        "TestR9H2HostContainerCycle"
+      ]
+    },
+    {
+      "path": "src/wago/gc_conversion_host_import_host_test.go",
+      "constraint": "//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestR9H2HostImportGlobal",
+        "TestR9H2HostImportTable",
+        "TestR9H2HostImportBulk",
+        "TestR9H2HostImportInitialization",
+        "TestR9H2HostImportCycle",
+        "TestR9H2HostImportTableIndependentPhysical",
+        "TestR9H2HostImportAuthority",
+        "TestR9H2HostImportGlobalOrdinaryAndGuards",
+        "TestR9H2HostImportTableOrdinaryAndGuards"
+      ]
+    },
+    {
+      "path": "src/wago/gc_conversion_receipt_host_test.go",
+      "constraint": "//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestR9H2ReceiptPublisherRetirement",
+        "TestR9H2ReceiptIndependentContainersAndRollback",
+        "TestR9H2ReceiptCloseOrders",
+        "TestR9H2ReceiptConvertedProducerCycle",
+        "TestR9H2ReceiptOnlyContention",
+        "TestR9H2ReceiptDomainKeepsPrivateTypeAdmission",
+        "TestR9H2ReceiptFinalJournalRemainsCollectionAuthority"
+      ]
+    },
+    {
+      "path": "src/wago/gc_conversion_store_host_test.go",
+      "constraint": "//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestR9H2StoreHooksOriginalProvider",
+        "TestR9H2StoreHooksBulk",
+        "TestR9H2StoreHooksActiveInitialization",
+        "TestR9H2StoreHooksDescriptorMigration",
+        "TestR9H2StoreHooksIndependentPhysicalTables"
+      ]
+    },
+    {
+      "path": "src/wago/gc_extern_conversion_test.go",
+      "constraint": "unconstrained",
+      "tests": [
+        "TestGCExternConversionStableIdentityAndOwnership",
+        "TestGCExternConversionRejectsForeignForgedAndClosed",
+        "TestGCExternConversionCollectorFirstCloseFailsClosed"
+      ]
+    },
+    {
+      "path": "src/wago/gc_extern_conversion_transaction_test.go",
+      "constraint": "unconstrained",
+      "tests": [
+        "TestGCExternConversionRejectedReplacementPreservesRoot",
+        "TestGCExternConversionPublicationOrderingAndRollback"
+      ]
+    },
+    {
+      "path": "src/wago/gc_extern_function_table_test.go",
+      "constraint": "//go:build (((linux && amd64) || ((linux || darwin) && arm64)) && !tinygo && !wago_guardpage) || (linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_guardpage)",
+      "tests": [
+        "TestGCExternConversionWithFunctionTable"
+      ]
+    },
+    {
+      "path": "src/wago/gc_extern_local_roots_test.go",
+      "constraint": "//go:build linux && (amd64 || arm64) && !tinygo",
+      "tests": [
+        "TestGCExternConversionKeepsLocalRoots",
+        "TestGCExternConversionKeepsVectorAndLocalRoots",
+        "TestGCExternConversionForeignLocalRoots",
+        "TestGCExternConversionCheckedTableRoots",
+        "TestGCExternConversionMissingRootsDisableCollection",
+        "TestGCExternConversionWithoutHeapKeepsTinyProfile",
+        "TestGCExternConversionRejectsForgedFrameWords",
+        "TestGCExternConversionManyForeignLocals",
+        "TestGCExternConversionVoidImportCannotUseEmptyRoots"
+      ]
+    },
+    {
+      "path": "src/wago/gc_extern_multi_table_test.go",
+      "constraint": "//go:build (((linux && amd64) || ((linux || darwin) && arm64)) && !tinygo && !wago_guardpage) || (linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_guardpage)",
+      "tests": [
+        "TestGCExternConversionAcrossReferenceTables"
+      ]
+    },
+    {
+      "path": "src/wago/r9_h2_converted_admission_test.go",
+      "constraint": "//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo",
+      "tests": [
+        "TestR9H2ConvertedAggregateAdmission",
+        "TestR9H2ConvertedAggregateAdmissionControls",
+        "TestR9H2ConvertedAggregateCollectingLocalOwner"
+      ]
+    }
+  ]
+}
