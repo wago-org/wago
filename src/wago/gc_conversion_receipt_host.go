@@ -109,19 +109,20 @@ func newGCConversionContainer(owner *Instance, storage []byte) (*gcConversionCon
 		return nil, fmt.Errorf("conversion container does not belong to its physical owner")
 	}
 	store := owner.refStore
+	store.ensureGCTopology()
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	if c := store.conversionContainers[&storage[0]]; c != nil {
+	if c := store.gcDomains.conversionContainers[&storage[0]]; c != nil {
 		if c.owner != owner || c.closed {
 			return nil, fmt.Errorf("conversion container ownership mismatch")
 		}
 		return c, nil
 	}
 	c := &gcConversionContainer{owner: owner, store: store, storage: storage, slots: make(map[uint64]*gcConversionReceipt)}
-	if store.conversionContainers == nil {
-		store.conversionContainers = make(map[*byte]*gcConversionContainer)
+	if store.gcDomains.conversionContainers == nil {
+		store.gcDomains.conversionContainers = make(map[*byte]*gcConversionContainer)
 	}
-	store.conversionContainers[&storage[0]] = c
+	store.gcDomains.conversionContainers[&storage[0]] = c
 	return c, nil
 }
 
@@ -140,7 +141,7 @@ func (s *gcExternConversionState) conversionIdentity(word uint64) (*gcConversion
 	}
 	store := s.store
 	store.mu.Lock()
-	identity := store.conversions[word]
+	identity := store.gcDomains.conversions[word]
 	store.mu.Unlock()
 	if identity != nil {
 		return identity, nil
@@ -152,10 +153,10 @@ func (s *gcExternConversionState) conversionIdentity(word uint64) (*gcConversion
 		store.mu.Unlock()
 		return nil, fmt.Errorf("conversion domain retired")
 	}
-	if store.conversions == nil {
-		store.conversions = make(map[uint64]*gcConversionIdentity)
+	if store.gcDomains.conversions == nil {
+		store.gcDomains.conversions = make(map[uint64]*gcConversionIdentity)
 	}
-	store.conversions[word] = identity
+	store.gcDomains.conversions[word] = identity
 	store.mu.Unlock()
 	state.graph.epoch.Add(1)
 	return identity, nil
@@ -185,7 +186,7 @@ func (c *gcConversionContainer) prepare(index, word uint64, source *gcExternConv
 		return tx, nil
 	}
 	c.store.mu.Lock()
-	identity := c.store.conversions[word]
+	identity := c.store.gcDomains.conversions[word]
 	c.store.mu.Unlock()
 	if identity == nil && source != nil {
 		if source.store != c.store {
@@ -345,7 +346,7 @@ func (r *gcConversionReceipt) release() {
 	}
 	if len(identity.receipts) == 0 && identity.publisher == nil {
 		store.mu.Lock()
-		delete(store.conversions, identity.word)
+		delete(store.gcDomains.conversions, identity.word)
 		store.mu.Unlock()
 	}
 }
@@ -358,8 +359,8 @@ func (c *gcConversionContainer) release() {
 		receipt.release()
 	}
 	c.store.mu.Lock()
-	if len(c.storage) != 0 && c.store.conversionContainers[&c.storage[0]] == c {
-		delete(c.store.conversionContainers, &c.storage[0])
+	if len(c.storage) != 0 && c.store.gcDomains.conversionContainers[&c.storage[0]] == c {
+		delete(c.store.gcDomains.conversionContainers, &c.storage[0])
 	}
 	c.store.mu.Unlock()
 	c.storage = nil
@@ -375,7 +376,10 @@ func drainConversionClaims(g *managedFunctionGraph) {
 	}
 }
 func conversionAddClaimedDomainsLocked(store *referenceStore, set *gcInvocationDomainSet) {
-	for _, identity := range store.conversions {
+	if store.gcDomains == nil {
+		return
+	}
+	for _, identity := range store.gcDomains.conversions {
 		domain := identity.domain
 		if store.gcDomains.domainForCollectorLocked(domain.collector) == domain {
 			set.add(domain)
@@ -389,7 +393,7 @@ func closeGCConversionCoreLocked(s *gcExternConversionState) {
 	store := s.store
 	store.mu.Lock()
 	for _, entry := range s.entries {
-		identity := store.conversions[entry.externWord]
+		identity := store.gcDomains.conversions[entry.externWord]
 		if identity == nil || identity.publisher != s {
 			continue
 		}
@@ -398,7 +402,7 @@ func closeGCConversionCoreLocked(s *gcExternConversionState) {
 			delete(v.(*managedFunctionCollector).conversionFloating, identity.floating)
 		}
 		if len(identity.receipts) == 0 {
-			delete(store.conversions, identity.word)
+			delete(store.gcDomains.conversions, identity.word)
 		}
 	}
 	store.mu.Unlock()
@@ -438,7 +442,7 @@ func clearUnreachableConversionRoots(d *managedFunctionMarkDomain) error {
 	store := d.state.graph.store
 	store.mu.Lock()
 	var identities []*gcConversionIdentity
-	for _, identity := range store.conversions {
+	for _, identity := range store.gcDomains.conversions {
 		if identity.domain.collector == d.state.collector {
 			identities = append(identities, identity)
 		}
@@ -482,7 +486,7 @@ func clearUnreachableConversionRoots(d *managedFunctionMarkDomain) error {
 		}
 		if len(identity.receipts) == 0 {
 			store.mu.Lock()
-			delete(store.conversions, identity.word)
+			delete(store.gcDomains.conversions, identity.word)
 			store.mu.Unlock()
 		}
 	}
@@ -502,9 +506,14 @@ func releaseGCConversionOwner(owner *Instance) {
 		return
 	}
 	store := owner.refStore
+	store.ensureGCTopology()
 	store.mu.Lock()
+	if store.gcDomains == nil {
+		store.mu.Unlock()
+		return
+	}
 	var containers []*gcConversionContainer
-	for _, c := range store.conversionContainers {
+	for _, c := range store.gcDomains.conversionContainers {
 		if c.owner == owner {
 			containers = append(containers, c)
 		}
@@ -528,7 +537,7 @@ func lockGCConversionRetirement(in *Instance) func() {
 		return func() {}
 	}
 	in.refStore.mu.Lock()
-	needed := len(in.refStore.conversionContainers) != 0 || in.existingGCExternConversionState() != nil
+	needed := in.refStore.gcDomains != nil && (len(in.refStore.gcDomains.conversionContainers) != 0 || in.existingGCExternConversionState() != nil)
 	in.refStore.mu.Unlock()
 	if !needed {
 		return func() {}
@@ -541,7 +550,10 @@ func lockGCConversionRetirement(in *Instance) func() {
 // Store unlink owns terminal retirement; collector callbacks run after unlock.
 // Invalidate receipts as metadata before relinquishing registered heap authority.
 func retireGCConversionStoreLocked(store *referenceStore) {
-	for _, identity := range store.conversions {
+	if store.gcDomains == nil {
+		return
+	}
+	for _, identity := range store.gcDomains.conversions {
 		for receipt := range identity.receipts {
 			receipt.released = true
 			if receipt.container.slots[receipt.index] == receipt {
@@ -551,12 +563,12 @@ func retireGCConversionStoreLocked(store *referenceStore) {
 		clear(identity.receipts)
 		identity.publisher = nil
 	}
-	store.conversions = nil
-	for _, c := range store.conversionContainers {
+	store.gcDomains.conversions = nil
+	for _, c := range store.gcDomains.conversionContainers {
 		c.closed = true
 		c.owner = nil
 		c.storage = nil
 		clear(c.slots)
 	}
-	store.conversionContainers = nil
+	store.gcDomains.conversionContainers = nil
 }
