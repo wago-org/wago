@@ -1,0 +1,69 @@
+name: PDFium native checked discriminator
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact candidate SHA
+        required: true
+        type: string
+      harness_sha:
+        description: Exact diagnostic harness SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: pdfium-native-discriminator-${{ github.run_id }}
+  cancel-in-progress: false
+jobs:
+  pdfium:
+    name: PDFium baseline and candidate / native checked race
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      GOTOOLCHAIN: local
+      GOENV: 'off'
+      GOWORK: 'off'
+      PYTHONDONTWRITEBYTECODE: '1'
+      EXPECTED_HARNESS: ${{ inputs.harness_sha }}
+      EXPECTED_SOURCE: ${{ inputs.source_sha }}
+      WORKFLOW_SHA: ${{ github.sha }}
+    steps:
+      - name: Validate exact dispatch identity
+        shell: bash
+        run: |
+          test "$EXPECTED_SOURCE" = 889b46c45fc54e2fb4b4617eb0c5cc5f54de5db7
+          test "$EXPECTED_HARNESS" = "$WORKFLOW_SHA"
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 9713878ab452848f7eb7549a90be94b938a898be
+          path: baseline
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 889b46c45fc54e2fb4b4617eb0c5cc5f54de5db7
+          path: candidate
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Run strict checked baseline and candidate sequentially
+        run: python3 harness/docs/rfwgc-evidence/pdfium-native-discriminator/run.py baseline candidate receipts
+      - name: Preserve complete and partial diagnostic receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pdfium-native-checked-${{ github.run_attempt }}
+          path: receipts
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,8 @@
+{
+  "selftest": "PASS",
+  "reverse_overlay_exact": true,
+  "child_deadline_seconds": 60,
+  "oracle_changes": false,
+  "source_test_identical_baseline_candidate": true,
+  "initial_actionlint": "mise shim failed before execution; explicit pinned binary required"
+}
