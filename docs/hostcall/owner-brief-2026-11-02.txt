@@ -1,0 +1,27 @@
+BRIEF — Host-call specialization for Wago (owner-directed, 2026-11-02)
+
+You are the orchestrator (sol). Your workers are sol agents, at most 8 running at once, created and watched by you through the T3 MCP server: create each worker, watch it to completion, collect each result as it lands, nudge or replace a stalled worker, and only then write your consolidated report. An orchestrator that ends after merely delegating is a failure.
+
+MISSION
+Do for Wago what the unified host-call effort is doing for Slipstream: find where Wago host calls pay a generic boundary cost, classify the call surface, and build specialized fast paths for the classes that admit them, each as a verified candidate branch. Feasibility comes first: where Wago design does not admit a class, the verdict is NOT VIABLE with the reason recorded, never a forced fit.
+
+DESIGN AUTHORITY
+The Slipstream redesign study is the reference design: docs/host-call-boundary-redesign-2026-11-01.md at commit bd640ddf0 in the Slipstream repo (read it with git show from the Slipstream checkout). Its classes (SPECIALIZED, DIRECT, BOUNDARY), its effect-selected calling-convention idea, and its safety contract v2 are the model. Adapt them to Wago machinery; do not copy Slipstream code or assume Slipstream facts hold in Wago. The census decides what exists here.
+
+VENUE AND BASE
+- Work in the Wago project on fresh worktrees off current upstream main 90f2b57da. Campaign record branch: campaign/wago-hostcall-record (your reports and census live there).
+- HARD EXCLUSION: the GC port campaign owns branch experiment/rfwgc-port, its worktree, and its qualification machinery. Do not touch any of it, do not base work on it, and do not dispatch or interfere with its CI. If your candidates later need to sit on top of the landed port, that is a rebase step for a later direction, not this brief.
+
+PHASES
+1. CENSUS (parallelize across workers): map how Wago dispatches host calls today, end to end: registration, the call path from guest code to the Go host function, where reflection, boxing, slice copies, or generic trampolines sit, and which built-in host surfaces exist in this repo (the WASI snapshot preview 1 implementation and any other bundled host modules). Name the measured or code-evident cost of the generic path per call shape.
+2. CLASSIFICATION AND ADMISSION: sort the call surface into the redesign classes as adapted to Wago. For each class, an admission verdict with evidence: what the specialized or direct path would be, why it is safe under the adapted safety contract, and what test would prove it. Classes that fail admission get NOT VIABLE with the reason.
+3. IMPLEMENTATION (admitted classes only, staged order, one candidate branch per class): build the specialized path, keep the generic path as the fallback and oracle, and gate each candidate: focused tests for the new path, the package test suites the repo CI runs, race where the repo runs it, and a differential check that specialized and generic paths agree on results and traps. End each candidate as a pushed candidate branch with its evidence in the campaign record. Measurement is waived under the current correctness-first order; candidates end READY TO MEASURE in the record.
+4. REPORT one consolidated report in this thread: the census, the classification table with admission verdicts, per-candidate state (branch, head, gate results), and the NOT VIABLE list with reasons.
+
+HARD LIMITS
+- Open NO pull requests. Candidates are branches plus evidence; PRs are a later decision for Joshua.
+- Do not change public API shapes in Wago without flagging it as a design finding instead of a candidate; specialization should be invisible to host-function authors where the design admits it, and visible changes are reported, not shipped silently.
+- Keep each candidate scoped to its class; no unrelated cleanup.
+- Clean up build artifacts after every build (host disk discipline is standing).
+- Standard speed only (the fast-mode authorization covers the GC port, not this work).
+- Worker briefs carry: the class or census area, the exact files and call path in scope, the evidence to return, and the stop conditions above.
