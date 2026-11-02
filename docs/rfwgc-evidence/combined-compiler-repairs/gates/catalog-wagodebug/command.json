@@ -1,0 +1,23 @@
+{
+  "command": [
+    "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+    "test",
+    "-json",
+    "-count=1",
+    "-timeout=60m",
+    "-tags=wagodebug",
+    "-failfast",
+    "-run",
+    "^TestRFWStage3CorpusCompile$",
+    "./src/wago"
+  ],
+  "cwd": "/tmp/wago-compiler-repairs-probe/source",
+  "environment": {
+    "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+    "PATH": "/home/dev/.local/share/mise/installs/node/24.22.2/bin:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin",
+    "GOTOOLCHAIN": "local",
+    "GOMAXPROCS": "2",
+    "GOFLAGS": "-p=2",
+    "RFW_CATALOG": "/tmp/wago-compiler-repairs-probe/source/corpus/catalog.json"
+  }
+}

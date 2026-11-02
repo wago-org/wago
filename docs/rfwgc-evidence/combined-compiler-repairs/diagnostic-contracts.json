@@ -1,0 +1,291 @@
+{
+  "route_source": "src/core/compiler/backend/railshot/amd64/compile.go:4313-4315",
+  "tests": [
+    {
+      "test": "TestLonePredicateExecution",
+      "file": "src/core/compiler/backend/railshot/amd64/lone_predicate_linux_test.go",
+      "counters": {
+        "lone-predicate": [
+          "src/core/compiler/backend/railshot/amd64/lone_predicate.go:16: f.stats.peep(\"lone-predicate\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestTeeSlotPredicateExecution",
+      "file": "src/core/compiler/backend/railshot/amd64/tee_slot_predicate_test.go",
+      "counters": {
+        "tee-slot-predicate": [
+          "src/core/compiler/backend/railshot/amd64/driver.go:1338: f.stats.peep(\"tee-slot-predicate\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestCommuteSelfUpdate",
+      "file": "src/core/compiler/backend/railshot/amd64/commute_self_update_test.go",
+      "counters": {
+        "commute-self-update": [
+          "src/core/compiler/backend/railshot/amd64/knobs.go:76: optimization.Bind(\"commute-self-update\", &commuteSelfUpdateEnabled),",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:156: optCommuteSelfUpdate       = optimizationBindings.Option(\"commute-self-update\")",
+          "src/core/compiler/backend/railshot/amd64/emit.go:267: f.stats.peep(\"commute-self-update\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestIfPrefixRematExecution",
+      "file": "src/core/compiler/backend/railshot/amd64/if_prefix_remat_test.go",
+      "counters": {
+        "if-prefix-remat": [
+          "src/core/compiler/backend/railshot/amd64/if_prefix_remat.go:105: f.stats.peep(\"if-prefix-remat\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestAdjacentSetGetTeeFold",
+      "file": "src/core/compiler/backend/railshot/amd64/set_get_tee_test.go",
+      "counters": {
+        "local-set-get-tee": [
+          "src/core/compiler/backend/railshot/amd64/driver.go:317: f.stats.peep(\"local-set-get-tee\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestI64Mask32Lowering",
+      "file": "src/core/compiler/backend/railshot/amd64/i64_mask32_test.go",
+      "counters": {
+        "i64-mask32": [
+          "src/core/compiler/backend/railshot/amd64/knobs.go:78: optimization.Bind(\"i64-mask32\", &i64Mask32Enabled),",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:158: optI64Mask32               = optimizationBindings.Option(\"i64-mask32\")",
+          "src/core/compiler/backend/railshot/amd64/emit.go:1185: f.stats.peep(\"i64-mask32\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestLazyIntervalBorrowsPreserveCode",
+      "file": "src/core/compiler/backend/railshot/amd64/interval_compile_cost_test.go",
+      "counters": {
+        "interval-region": [
+          "src/core/compiler/backend/railshot/amd64/interval_region.go:157: f.stats.peep(\"interval-region\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestCodegenStatsPeepholes",
+      "file": "src/core/compiler/backend/railshot/amd64/stats_test.go",
+      "counters": {},
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestLeaScaledIndexFoldsNestedALU",
+      "file": "src/core/compiler/backend/railshot/amd64/stats_test.go",
+      "counters": {
+        "lea-scaled-index": [
+          "src/core/compiler/backend/railshot/amd64/emit.go:570: f.stats.peep(\"lea-scaled-index\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestIntervalRegionDynamicReuse",
+      "file": "src/core/compiler/backend/railshot/amd64/interval_region_test.go",
+      "counters": {
+        "interval-r8-lease": [
+          "src/core/compiler/backend/railshot/amd64/interval_region.go:165: f.stats.peep(\"interval-r8-lease\")",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:39: optimization.Bind(\"interval-r8-lease\", &intervalR8LeaseEnabled),",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:119: optIntervalR8Lease         = optimizationBindings.Option(\"interval-r8-lease\")"
+        ],
+        "interval-region": [
+          "src/core/compiler/backend/railshot/amd64/interval_region.go:157: f.stats.peep(\"interval-region\")"
+        ],
+        "interval-region-reactivate": [
+          "src/core/compiler/backend/railshot/amd64/interval_region.go:298: f.stats.peep(\"interval-region-reactivate\")"
+        ],
+        "interval-scratch-lease": [
+          "src/core/compiler/backend/railshot/amd64/interval_region.go:162: f.stats.peep(\"interval-scratch-lease\")",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:38: optimization.Bind(\"interval-scratch-lease\", &intervalScratchLeaseEnabled),",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:118: optIntervalScratchLease    = optimizationBindings.Option(\"interval-scratch-lease\")"
+        ],
+        "tree-order": [
+          "src/core/compiler/backend/railshot/amd64/knobs.go:54: optimization.Bind(\"tree-order\", &treeOrderEnabled),",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:134: optTreeOrder               = optimizationBindings.Option(\"tree-order\")",
+          "src/core/compiler/backend/railshot/amd64/emit.go:177: f.stats.peep(\"tree-order\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestIntervalRegionControlBoundaries",
+      "file": "src/core/compiler/backend/railshot/amd64/interval_region_test.go",
+      "counters": {
+        "interval-control": [
+          "src/core/compiler/backend/railshot/amd64/interval_region.go:159: f.stats.peep(\"interval-control\")",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:36: optimization.Bind(\"interval-control\", &intervalControlEnabled),",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:116: optIntervalControl         = optimizationBindings.Option(\"interval-control\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestIntervalRSILease",
+      "file": "src/core/compiler/backend/railshot/amd64/interval_region_test.go",
+      "counters": {
+        "interval-rsi-lease": [
+          "src/core/compiler/backend/railshot/amd64/interval_region.go:168: f.stats.peep(\"interval-rsi-lease\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestConstFoldPackPeep",
+      "file": "src/core/compiler/backend/railshot/amd64/constfold_test.go",
+      "counters": {
+        "compare-setcc": [
+          "src/core/compiler/backend/railshot/amd64/emit.go:766: f.stats.peep(\"compare-setcc\")",
+          "src/core/compiler/backend/railshot/amd64/emit.go:873: f.stats.peep(\"compare-setcc\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestAssociativeTreeCover",
+      "file": "src/core/compiler/backend/railshot/amd64/treecover_test.go",
+      "counters": {
+        "assoc-tree": [
+          "src/core/compiler/backend/railshot/amd64/treecover.go:86: f.stats.peep(\"assoc-tree\")",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:55: optimization.Bind(\"assoc-tree\", &associativeTreeEnabled),",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:135: optAssocTree               = optimizationBindings.Option(\"assoc-tree\")"
+        ],
+        "assoc-tree-candidate": [
+          "src/core/compiler/backend/railshot/amd64/treecover.go:54: f.stats.peep(\"assoc-tree-candidate\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestAssociativeTreeCoverBeyondEightLeaves",
+      "file": "src/core/compiler/backend/railshot/amd64/treecover_test.go",
+      "counters": {
+        "assoc-tree": [
+          "src/core/compiler/backend/railshot/amd64/treecover.go:86: f.stats.peep(\"assoc-tree\")",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:55: optimization.Bind(\"assoc-tree\", &associativeTreeEnabled),",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:135: optAssocTree               = optimizationBindings.Option(\"assoc-tree\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestAssociativeTreeCoverDestination",
+      "file": "src/core/compiler/backend/railshot/amd64/treecover_test.go",
+      "counters": {
+        "assoc-tree-dest": [
+          "src/core/compiler/backend/railshot/amd64/treecover.go:88: f.stats.peep(\"assoc-tree-dest\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestAssociativeTreeCoverNestedRepeatedDestination",
+      "file": "src/core/compiler/backend/railshot/amd64/treecover_test.go",
+      "counters": {
+        "assoc-tree-dest-repeat": [
+          "src/core/compiler/backend/railshot/amd64/treecover.go:84: f.stats.peep(\"assoc-tree-dest-repeat\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestSizePrefersLowRegisterForHotLeafLocalAMD64",
+      "file": "src/core/compiler/backend/railshot/amd64/compact_pin_test.go",
+      "counters": {
+        "compact-low-local-pin": [
+          "src/core/compiler/backend/railshot/amd64/compile.go:4501: f.stats.peep(\"compact-low-local-pin\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestExecDeferredRHSRelocation",
+      "file": "src/core/compiler/backend/railshot/amd64/rhs_relocate_test.go",
+      "counters": {
+        "rhs-relocate": [
+          "src/core/compiler/backend/railshot/amd64/emit.go:310: f.stats.peep(\"rhs-relocate\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestShiftOwnedDestination",
+      "file": "src/core/compiler/backend/railshot/amd64/shift_owned_destination_test.go",
+      "counters": {
+        "shift-owned-destination": [
+          "src/core/compiler/backend/railshot/amd64/emit.go:707: f.stats.peep(\"shift-owned-destination\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestLateFrameCommute",
+      "file": "src/core/compiler/backend/railshot/amd64/late_frame_commute_test.go",
+      "counters": {
+        "late-frame-commute": [
+          "src/core/compiler/backend/railshot/amd64/emit.go:354: f.stats.peep(\"late-frame-commute\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestValentTreeOrder",
+      "file": "src/core/compiler/backend/railshot/amd64/treeorder_test.go",
+      "counters": {
+        "tree-order": [
+          "src/core/compiler/backend/railshot/amd64/knobs.go:54: optimization.Bind(\"tree-order\", &treeOrderEnabled),",
+          "src/core/compiler/backend/railshot/amd64/knobs.go:134: optTreeOrder               = optimizationBindings.Option(\"tree-order\")",
+          "src/core/compiler/backend/railshot/amd64/emit.go:177: f.stats.peep(\"tree-order\")"
+        ],
+        "tree-order-candidate": [
+          "src/core/compiler/backend/railshot/amd64/emit.go:174: f.stats.peep(\"tree-order-candidate\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestEntryArgPinFires",
+      "file": "src/core/compiler/backend/railshot/amd64/entryargpin_test.go",
+      "counters": {
+        "entry-arg-local-pin": [
+          "src/core/compiler/backend/railshot/amd64/compile.go:4019: f.stats.peep(\"entry-arg-local-pin\") // hot local kept in a free incoming-arg register"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    },
+    {
+      "test": "TestSizeIncDecImmediateForms",
+      "file": "src/core/compiler/backend/railshot/amd64/incdec_test.go",
+      "counters": {
+        "inc-dec": [
+          "src/core/compiler/backend/railshot/amd64/emit.go:1182: f.stats.peep(\"inc-dec\")"
+        ]
+      },
+      "contract": "Established Valent/region emitter activation, machine shape or residency; shared scalarBody bypasses runBody established emission. Assertions unchanged."
+    }
+  ],
+  "retained_shared_coverage": [
+    "TestSharedEstablishedPathPairs",
+    "TestScalarRouteRegionAndSelfUpdateContracts",
+    "TestSharedScalarZeroLocalCodeAndExecution",
+    "TestSharedScalarZeroLocalAgreements"
+  ],
+  "existing_explicit_route_precedents": [
+    "src/core/compiler/backend/railshot/amd64/predicate_shift_test.go",
+    "src/core/compiler/backend/railshot/amd64/divrem_const_pair_test.go",
+    "src/core/compiler/backend/railshot/amd64/local_ref_scaling_test.go",
+    "src/core/compiler/backend/railshot/amd64/source_materialization_native_enabled_test.go"
+  ],
+  "scope": "Individual established-emitter tests only. No production route policy, statistics helper, expected counter, or shared-route matrix changed."
+}
