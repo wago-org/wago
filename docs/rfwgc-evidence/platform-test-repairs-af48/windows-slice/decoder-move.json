@@ -1,0 +1,6 @@
+{
+  "old": "src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go",
+  "new": "src/core/compiler/backend/railshot/amd64/extern_store_cold_decode_amd64_test.go",
+  "function_sha256": "9b584f51c3dee6ddc7af8fce63643844216c38fcd80ebd8a51e342973126f82f",
+  "function_unchanged": true
+}

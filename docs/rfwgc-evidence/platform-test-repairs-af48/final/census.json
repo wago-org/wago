@@ -1,0 +1,191 @@
+[
+  {
+    "label": "ordinary-decoder",
+    "exit": 0,
+    "top_level_passes": 4,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "ordinary-fallback",
+    "exit": 0,
+    "top_level_passes": 4,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "ordinary-linux-arm64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "ordinary-linux-riscv64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "ordinary-windows-amd64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "ordinary-windows-arm64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "ordinary-darwin-arm64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "ordinary-arm64-public-execution",
+    "exit": 0,
+    "top_level_passes": 4,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "ordinary-arm64-backend-execution",
+    "exit": 0,
+    "top_level_passes": 1,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wagodebug-decoder",
+    "exit": 0,
+    "top_level_passes": 4,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wagodebug-fallback",
+    "exit": 0,
+    "top_level_passes": 4,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wagodebug-linux-arm64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wagodebug-linux-riscv64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wagodebug-windows-amd64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wagodebug-windows-arm64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wagodebug-darwin-arm64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wagodebug-arm64-public-execution",
+    "exit": 0,
+    "top_level_passes": 4,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wagodebug-arm64-backend-execution",
+    "exit": 0,
+    "top_level_passes": 1,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wago_regalloccheck-decoder",
+    "exit": 0,
+    "top_level_passes": 4,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wago_regalloccheck-fallback",
+    "exit": 0,
+    "top_level_passes": 4,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wago_regalloccheck-linux-arm64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wago_regalloccheck-linux-riscv64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wago_regalloccheck-windows-amd64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wago_regalloccheck-windows-arm64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wago_regalloccheck-darwin-arm64",
+    "exit": 0,
+    "top_level_passes": 0,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wago_regalloccheck-arm64-public-execution",
+    "exit": 0,
+    "top_level_passes": 4,
+    "skip_lines": [],
+    "fail_lines": []
+  },
+  {
+    "label": "wago_regalloccheck-arm64-backend-execution",
+    "exit": 0,
+    "top_level_passes": 1,
+    "skip_lines": [],
+    "fail_lines": []
+  }
+]

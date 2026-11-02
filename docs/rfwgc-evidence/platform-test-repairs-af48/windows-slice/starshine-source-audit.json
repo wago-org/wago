@@ -1,0 +1,9 @@
+{
+  "repo": "/home/dev/Projects/starshine-master-base",
+  "pin": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+  "query": "CoreFeaturesV3|UnsupportedFeatureError|UnsupportedConvertedPublication",
+  "exit": 1,
+  "stdout": "",
+  "stderr": "",
+  "scope": "Wago configuration and test-specific API; no equivalent symbol found if exit1, not broad runtime absence proof"
+}

@@ -1,0 +1,34 @@
+=== RUN   TestCoreFeaturesV2ReleaseScope
+--- PASS: TestCoreFeaturesV2ReleaseScope (0.00s)
+=== RUN   TestCoreFeaturesV3ReleaseScopeAndAdmission
+--- PASS: TestCoreFeaturesV3ReleaseScopeAndAdmission (0.00s)
+=== RUN   TestDefaultCoreFeaturePolicy
+--- PASS: TestDefaultCoreFeaturePolicy (0.00s)
+=== RUN   TestCoreFeaturesBitset
+--- PASS: TestCoreFeaturesBitset (0.00s)
+=== RUN   TestDesignRepairPublicGlobalTokenClassification
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/local
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/foreign
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/forged
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/expired
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/foreign
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/forged
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/expired
+=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null
+--- PASS: TestDesignRepairPublicGlobalTokenClassification (0.00s)
+    --- PASS: TestDesignRepairPublicGlobalTokenClassification/local (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/local/foreign (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/local/forged (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/local/expired (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null (0.00s)
+    --- PASS: TestDesignRepairPublicGlobalTokenClassification/owned (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/foreign (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/forged (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/expired (0.00s)
+        --- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null (0.00s)
+=== RUN   TestCoreFeaturesV3ImportedTable64Copy
+--- PASS: TestCoreFeaturesV3ImportedTable64Copy (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.004s

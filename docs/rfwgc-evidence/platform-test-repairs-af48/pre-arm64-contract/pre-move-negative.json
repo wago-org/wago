@@ -1,0 +1,13 @@
+{
+  "source": "3fdb34d219230c81fceb91d14c85828a6e2275f2",
+  "argv": [
+    "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+    "test",
+    "./src/core/compiler/backend/railshot/amd64",
+    "-run",
+    "^$",
+    "-exec=true"
+  ],
+  "exit": 1,
+  "expected_failure": true
+}

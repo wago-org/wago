@@ -1,0 +1,12 @@
+{
+  "base": "c32ebece3674cc2a4c79099753f3238202c7226d",
+  "head": "af48e57b41cf4251459178ac0c1c2055edad8a72",
+  "paths": [
+    "src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go",
+    "src/core/compiler/backend/railshot/amd64/extern_store_cold_decode_amd64_test.go",
+    "src/wago/design_repair_unsupported_test.go",
+    "src/wago/native_import_variant_arm64_test.go",
+    "src/wago/native_import_variant_safety_arm64_test.go"
+  ],
+  "shipped_production_source_unchanged": true
+}

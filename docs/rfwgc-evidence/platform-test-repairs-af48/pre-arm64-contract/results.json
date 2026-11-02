@@ -1,0 +1,279 @@
+[
+  {
+    "label": "ordinary-decoder",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "^TestExtern(HostStoreContract|StoreColdDecode)",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0,
+    "GOOS": null,
+    "GOARCH": null
+  },
+  {
+    "label": "ordinary-fallback",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo",
+      "./src/wago",
+      "-run",
+      "^Test(UnsupportedConversion|DesignRepairUnsupportedConvertedPublicToken|DesignRepairPublicGlobalTokenClassification)",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0,
+    "GOOS": null,
+    "GOARCH": null
+  },
+  {
+    "label": "ordinary-linux-arm64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/core/compiler/backend/railshot/...",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "arm64"
+  },
+  {
+    "label": "ordinary-linux-riscv64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/core/compiler/backend/railshot/...",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "riscv64"
+  },
+  {
+    "label": "ordinary-windows-amd64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "windows",
+    "GOARCH": "amd64"
+  },
+  {
+    "label": "ordinary-darwin-arm64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "darwin",
+    "GOARCH": "arm64"
+  },
+  {
+    "label": "wagodebug-decoder",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "^TestExtern(HostStoreContract|StoreColdDecode)",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0,
+    "GOOS": null,
+    "GOARCH": null
+  },
+  {
+    "label": "wagodebug-fallback",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo,wagodebug",
+      "./src/wago",
+      "-run",
+      "^Test(UnsupportedConversion|DesignRepairUnsupportedConvertedPublicToken|DesignRepairPublicGlobalTokenClassification)",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0,
+    "GOOS": null,
+    "GOARCH": null
+  },
+  {
+    "label": "wagodebug-linux-arm64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/core/compiler/backend/railshot/...",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "arm64"
+  },
+  {
+    "label": "wagodebug-linux-riscv64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/core/compiler/backend/railshot/...",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "riscv64"
+  },
+  {
+    "label": "wagodebug-windows-amd64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "windows",
+    "GOARCH": "amd64"
+  },
+  {
+    "label": "wagodebug-darwin-arm64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "darwin",
+    "GOARCH": "arm64"
+  },
+  {
+    "label": "wago_regalloccheck-decoder",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "^TestExtern(HostStoreContract|StoreColdDecode)",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0,
+    "GOOS": null,
+    "GOARCH": null
+  },
+  {
+    "label": "wago_regalloccheck-fallback",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo,wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^Test(UnsupportedConversion|DesignRepairUnsupportedConvertedPublicToken|DesignRepairPublicGlobalTokenClassification)",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0,
+    "GOOS": null,
+    "GOARCH": null
+  },
+  {
+    "label": "wago_regalloccheck-linux-arm64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/...",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "arm64"
+  },
+  {
+    "label": "wago_regalloccheck-linux-riscv64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/...",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "linux",
+    "GOARCH": "riscv64"
+  },
+  {
+    "label": "wago_regalloccheck-windows-amd64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "windows",
+    "GOARCH": "amd64"
+  },
+  {
+    "label": "wago_regalloccheck-darwin-arm64",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "GOOS": "darwin",
+    "GOARCH": "arm64"
+  }
+]

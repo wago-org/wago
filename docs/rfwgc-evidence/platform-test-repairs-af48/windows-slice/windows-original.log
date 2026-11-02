@@ -1,0 +1,375 @@
+﻿2026-11-02T21:40:09.9312496Z Current runner version: '2.338.2'
+2026-11-02T21:40:09.9337496Z ##[group]Runner Image Provisioner
+2026-11-02T21:40:09.9338278Z Hosted Compute Agent
+2026-11-02T21:40:09.9338783Z Version: 20261021.618
+2026-11-02T21:40:09.9339363Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-11-02T21:40:09.9340003Z Build Date: 2026-10-21T00:45:21Z
+2026-11-02T21:40:09.9340614Z Worker ID: {6a54b2f4-d921-4aa4-8619-6fc242b7e9d4}
+2026-11-02T21:40:09.9341257Z Region: westcentralus
+2026-11-02T21:40:09.9341749Z Cloud: Azure
+2026-11-02T21:40:09.9342225Z ##[endgroup]
+2026-11-02T21:40:09.9343386Z ##[group]Operating System
+2026-11-02T21:40:09.9343943Z Microsoft Windows Server 2025
+2026-11-02T21:40:09.9344543Z 10.0.26100
+2026-11-02T21:40:09.9344983Z Datacenter
+2026-11-02T21:40:09.9345444Z ##[endgroup]
+2026-11-02T21:40:09.9345931Z ##[group]Runner Image
+2026-11-02T21:40:09.9346443Z Image: windows-2025-vs2026
+2026-11-02T21:40:09.9346992Z Version: 20261030.294.1
+2026-11-02T21:40:09.9348395Z Included Software: https://github.com/actions/runner-images/blob/win25-vs2026/20261030.294/images/windows/Windows2025-VS2026-Readme.md
+2026-11-02T21:40:09.9350521Z Image Release: https://github.com/actions/runner-images/releases/tag/win25-vs2026%2F20261030.294
+2026-11-02T21:40:09.9351428Z ##[endgroup]
+2026-11-02T21:40:09.9352486Z ##[group]GITHUB_TOKEN Permissions
+2026-11-02T21:40:09.9354257Z Contents: read
+2026-11-02T21:40:09.9354811Z Metadata: read
+2026-11-02T21:40:09.9355308Z ##[endgroup]
+2026-11-02T21:40:09.9357329Z Secret source: Actions
+2026-11-02T21:40:09.9358151Z Cache mode: write
+2026-11-02T21:40:09.9358861Z Prepare workflow directory
+2026-11-02T21:40:09.9759203Z Prepare all required actions
+2026-11-02T21:40:09.9806231Z Getting action download info
+2026-11-02T21:40:10.2989324Z Download action repository 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-11-02T21:40:10.4249973Z Download action repository 'extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3' (SHA:53165ef7e734c5c07cb06b3c8e7b647c5aa16db3)
+2026-11-02T21:40:10.6427558Z Download action repository 'actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff' (SHA:40f1582b2485089dde7abd97c1529aa768e1baff)
+2026-11-02T21:40:11.1887027Z Download action repository 'actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+2026-11-02T21:40:11.4537226Z Getting action download info
+2026-11-02T21:40:11.5978366Z Download action repository 'extractions/setup-crate@0551596312d4008a6dfbc4d3c38fa20eaef46d2d' (SHA:0551596312d4008a6dfbc4d3c38fa20eaef46d2d)
+2026-11-02T21:40:11.9992770Z Complete job name: Windows / amd64
+2026-11-02T21:40:12.2062676Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+2026-11-02T21:40:12.2064381Z with:
+2026-11-02T21:40:12.2065083Z   repository: wago-org/wago
+2026-11-02T21:40:12.2071720Z   token: ***
+2026-11-02T21:40:12.2072421Z   ssh-strict: true
+2026-11-02T21:40:12.2073114Z   ssh-user: git
+2026-11-02T21:40:12.2073859Z   persist-credentials: true
+2026-11-02T21:40:12.2074631Z   clean: true
+2026-11-02T21:40:12.2075348Z   sparse-checkout-cone-mode: true
+2026-11-02T21:40:12.2076192Z   fetch-depth: 1
+2026-11-02T21:40:12.2076884Z   fetch-tags: false
+2026-11-02T21:40:12.2077598Z   show-progress: true
+2026-11-02T21:40:12.2078301Z   lfs: false
+2026-11-02T21:40:12.2078952Z   submodules: false
+2026-11-02T21:40:12.2079664Z   set-safe-directory: true
+2026-11-02T21:40:12.2080471Z   allow-unsafe-pr-checkout: false
+2026-11-02T21:40:12.2081531Z env:
+2026-11-02T21:40:12.2082153Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:12.2082877Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:12.2083730Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:12.2084480Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:12.2085194Z ##[endgroup]
+2026-11-02T21:40:12.3576337Z Syncing repository: wago-org/wago
+2026-11-02T21:40:12.3578565Z ##[group]Getting Git version info
+2026-11-02T21:40:12.3579491Z Working directory is 'D:\a\wago\wago'
+2026-11-02T21:40:12.4302504Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-11-02T21:40:12.7747692Z git version 2.56.0.windows.4
+2026-11-02T21:40:12.7804978Z ##[endgroup]
+2026-11-02T21:40:12.7827134Z Temporarily overriding HOME='D:\a\_temp\e128c9b9-7f83-459e-92f4-4984fbee368e' before making global git config changes
+2026-11-02T21:40:12.7829936Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T21:40:12.7838743Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\wago\wago
+2026-11-02T21:40:12.8479254Z Deleting the contents of 'D:\a\wago\wago'
+2026-11-02T21:40:12.8485975Z ##[group]Initializing the repository
+2026-11-02T21:40:12.8494943Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\wago\wago
+2026-11-02T21:40:12.9686537Z Initialized empty Git repository in D:/a/wago/wago/.git/
+2026-11-02T21:40:12.9744067Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/wago-org/wago
+2026-11-02T21:40:13.0424746Z ##[endgroup]
+2026-11-02T21:40:13.0427230Z ##[group]Disabling automatic garbage collection
+2026-11-02T21:40:13.0437953Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-11-02T21:40:13.0916811Z ##[endgroup]
+2026-11-02T21:40:13.0918435Z ##[group]Setting up auth
+2026-11-02T21:40:13.0930311Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T21:40:13.1357492Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-11-02T21:40:14.6990474Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T21:40:14.7396565Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-11-02T21:40:15.3185924Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T21:40:15.3584100Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-11-02T21:40:15.9136256Z [command]"C:\Program Files\Git\bin\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-11-02T21:40:15.9505118Z ##[endgroup]
+2026-11-02T21:40:15.9505789Z ##[group]Fetching the repository
+2026-11-02T21:40:15.9520372Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +8c2460feb60b14acee77ffe3e081b3d2f9533f28:refs/remotes/pull/1048/merge
+2026-11-02T21:40:19.5510860Z From https://github.com/wago-org/wago
+2026-11-02T21:40:19.5511899Z  * [new ref]         8c2460feb60b14acee77ffe3e081b3d2f9533f28 -> pull/1048/merge
+2026-11-02T21:40:19.5549794Z ##[endgroup]
+2026-11-02T21:40:19.5553347Z ##[group]Determining the checkout info
+2026-11-02T21:40:19.5553942Z ##[endgroup]
+2026-11-02T21:40:19.5562892Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-11-02T21:40:19.6116637Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-11-02T21:40:19.6479273Z ##[group]Checking out the ref
+2026-11-02T21:40:19.6488356Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force refs/remotes/pull/1048/merge
+2026-11-02T21:40:20.8923878Z Updating files:  13% (1014/7551)
+2026-11-02T21:40:20.9113396Z Updating files:  14% (1058/7551)
+2026-11-02T21:40:20.9330106Z Updating files:  15% (1133/7551)
+2026-11-02T21:40:20.9491975Z Updating files:  16% (1209/7551)
+2026-11-02T21:40:20.9659419Z Updating files:  17% (1284/7551)
+2026-11-02T21:40:20.9828281Z Updating files:  18% (1360/7551)
+2026-11-02T21:40:21.0006915Z Updating files:  19% (1435/7551)
+2026-11-02T21:40:21.0200857Z Updating files:  20% (1511/7551)
+2026-11-02T21:40:21.0376094Z Updating files:  21% (1586/7551)
+2026-11-02T21:40:21.0595611Z Updating files:  22% (1662/7551)
+2026-11-02T21:40:21.0765227Z Updating files:  23% (1737/7551)
+2026-11-02T21:40:21.0935288Z Updating files:  24% (1813/7551)
+2026-11-02T21:40:21.1106464Z Updating files:  25% (1888/7551)
+2026-11-02T21:40:21.1280457Z Updating files:  26% (1964/7551)
+2026-11-02T21:40:21.1464859Z Updating files:  27% (2039/7551)
+2026-11-02T21:40:21.1632424Z Updating files:  28% (2115/7551)
+2026-11-02T21:40:21.1807542Z Updating files:  29% (2190/7551)
+2026-11-02T21:40:21.1975098Z Updating files:  30% (2266/7551)
+2026-11-02T21:40:21.2144516Z Updating files:  31% (2341/7551)
+2026-11-02T21:40:21.2535182Z Updating files:  32% (2417/7551)
+2026-11-02T21:40:21.2685834Z Updating files:  33% (2492/7551)
+2026-11-02T21:40:21.2846333Z Updating files:  34% (2568/7551)
+2026-11-02T21:40:21.3021632Z Updating files:  35% (2643/7551)
+2026-11-02T21:40:21.3207369Z Updating files:  36% (2719/7551)
+2026-11-02T21:40:21.3402803Z Updating files:  37% (2794/7551)
+2026-11-02T21:40:21.3573523Z Updating files:  38% (2870/7551)
+2026-11-02T21:40:21.3746562Z Updating files:  39% (2945/7551)
+2026-11-02T21:40:21.3914938Z Updating files:  40% (3021/7551)
+2026-11-02T21:40:21.4100426Z Updating files:  41% (3096/7551)
+2026-11-02T21:40:21.4273600Z Updating files:  42% (3172/7551)
+2026-11-02T21:40:21.4458417Z Updating files:  43% (3247/7551)
+2026-11-02T21:40:21.4631773Z Updating files:  44% (3323/7551)
+2026-11-02T21:40:21.4793919Z Updating files:  45% (3398/7551)
+2026-11-02T21:40:21.4966986Z Updating files:  46% (3474/7551)
+2026-11-02T21:40:21.5137380Z Updating files:  47% (3549/7551)
+2026-11-02T21:40:21.5303133Z Updating files:  48% (3625/7551)
+2026-11-02T21:40:21.5463520Z Updating files:  49% (3700/7551)
+2026-11-02T21:40:21.5621868Z Updating files:  50% (3776/7551)
+2026-11-02T21:40:21.5797422Z Updating files:  51% (3852/7551)
+2026-11-02T21:40:21.5981453Z Updating files:  52% (3927/7551)
+2026-11-02T21:40:21.6142115Z Updating files:  53% (4003/7551)
+2026-11-02T21:40:21.6317311Z Updating files:  54% (4078/7551)
+2026-11-02T21:40:21.6486329Z Updating files:  55% (4154/7551)
+2026-11-02T21:40:21.6671977Z Updating files:  56% (4229/7551)
+2026-11-02T21:40:21.6846885Z Updating files:  57% (4305/7551)
+2026-11-02T21:40:21.7021033Z Updating files:  58% (4380/7551)
+2026-11-02T21:40:21.7191177Z Updating files:  59% (4456/7551)
+2026-11-02T21:40:21.7200139Z Updating files:  59% (4527/7551)
+2026-11-02T21:40:21.7377609Z Updating files:  60% (4531/7551)
+2026-11-02T21:40:21.7551323Z Updating files:  61% (4607/7551)
+2026-11-02T21:40:21.7723483Z Updating files:  62% (4682/7551)
+2026-11-02T21:40:21.7899205Z Updating files:  63% (4758/7551)
+2026-11-02T21:40:21.8071221Z Updating files:  64% (4833/7551)
+2026-11-02T21:40:21.8251814Z Updating files:  65% (4909/7551)
+2026-11-02T21:40:21.8440543Z Updating files:  66% (4984/7551)
+2026-11-02T21:40:21.8636933Z Updating files:  67% (5060/7551)
+2026-11-02T21:40:21.8818839Z Updating files:  68% (5135/7551)
+2026-11-02T21:40:21.9016128Z Updating files:  69% (5211/7551)
+2026-11-02T21:40:21.9202190Z Updating files:  70% (5286/7551)
+2026-11-02T21:40:21.9375844Z Updating files:  71% (5362/7551)
+2026-11-02T21:40:21.9548527Z Updating files:  72% (5437/7551)
+2026-11-02T21:40:21.9726063Z Updating files:  73% (5513/7551)
+2026-11-02T21:40:21.9858250Z Updating files:  74% (5588/7551)
+2026-11-02T21:40:21.9984377Z Updating files:  75% (5664/7551)
+2026-11-02T21:40:22.0440518Z Updating files:  76% (5739/7551)
+2026-11-02T21:40:22.0640912Z Updating files:  77% (5815/7551)
+2026-11-02T21:40:22.0788228Z Updating files:  78% (5890/7551)
+2026-11-02T21:40:22.0945851Z Updating files:  79% (5966/7551)
+2026-11-02T21:40:22.1099201Z Updating files:  80% (6041/7551)
+2026-11-02T21:40:22.1246240Z Updating files:  81% (6117/7551)
+2026-11-02T21:40:22.1374471Z Updating files:  82% (6192/7551)
+2026-11-02T21:40:22.1514832Z Updating files:  83% (6268/7551)
+2026-11-02T21:40:22.1642295Z Updating files:  84% (6343/7551)
+2026-11-02T21:40:22.1772401Z Updating files:  85% (6419/7551)
+2026-11-02T21:40:22.1900219Z Updating files:  86% (6494/7551)
+2026-11-02T21:40:22.2030011Z Updating files:  87% (6570/7551)
+2026-11-02T21:40:22.2168879Z Updating files:  88% (6645/7551)
+2026-11-02T21:40:22.2294555Z Updating files:  89% (6721/7551)
+2026-11-02T21:40:22.2440303Z Updating files:  90% (6796/7551)
+2026-11-02T21:40:22.2617995Z Updating files:  91% (6872/7551)
+2026-11-02T21:40:22.2771153Z Updating files:  92% (6947/7551)
+2026-11-02T21:40:22.2917709Z Updating files:  93% (7023/7551)
+2026-11-02T21:40:22.3080189Z Updating files:  94% (7098/7551)
+2026-11-02T21:40:22.3234436Z Updating files:  95% (7174/7551)
+2026-11-02T21:40:22.3383463Z Updating files:  96% (7249/7551)
+2026-11-02T21:40:22.3539902Z Updating files:  97% (7325/7551)
+2026-11-02T21:40:22.3991904Z Updating files:  98% (7400/7551)
+2026-11-02T21:40:22.4180293Z Updating files:  99% (7476/7551)
+2026-11-02T21:40:22.4181134Z Updating files: 100% (7551/7551)
+2026-11-02T21:40:22.4181533Z Updating files: 100% (7551/7551), done.
+2026-11-02T21:40:22.4362865Z Note: switching to 'refs/remotes/pull/1048/merge'.
+2026-11-02T21:40:22.4363133Z 
+2026-11-02T21:40:22.4363373Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-11-02T21:40:22.4363836Z changes and commit them, and you can discard any commits you make in this
+2026-11-02T21:40:22.4364506Z state without impacting any branches by switching back to a branch.
+2026-11-02T21:40:22.4364919Z 
+2026-11-02T21:40:22.4365183Z If you want to create a new branch to retain commits you create, you may
+2026-11-02T21:40:22.4365678Z do so (now or later) by using -c with the switch command. Example:
+2026-11-02T21:40:22.4366348Z 
+2026-11-02T21:40:22.4366495Z   git switch -c <new-branch-name>
+2026-11-02T21:40:22.4366689Z 
+2026-11-02T21:40:22.4366782Z Or undo this operation with:
+2026-11-02T21:40:22.4366938Z 
+2026-11-02T21:40:22.4367038Z   git switch -
+2026-11-02T21:40:22.4367148Z 
+2026-11-02T21:40:22.4367355Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-11-02T21:40:22.4368053Z 
+2026-11-02T21:40:22.4368612Z HEAD is now at 8c2460f Merge c32ebece3674cc2a4c79099753f3238202c7226d into 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e
+2026-11-02T21:40:22.4529725Z ##[endgroup]
+2026-11-02T21:40:22.4986541Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-11-02T21:40:22.5322017Z 8c2460feb60b14acee77ffe3e081b3d2f9533f28
+2026-11-02T21:40:22.5773253Z ##[group]Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+2026-11-02T21:40:22.5773683Z with:
+2026-11-02T21:40:22.5773874Z   go-version: 1.27.1
+2026-11-02T21:40:22.5774074Z   cache: true
+2026-11-02T21:40:22.5774511Z   cache-dependency-path: go.work
+go.mod
+go.sum
+bench/go.mod
+bench/go.sum
+cli/wago-installer/go.mod
+
+2026-11-02T21:40:22.5800997Z   check-latest: false
+2026-11-02T21:40:22.5803415Z   token: ***
+2026-11-02T21:40:22.5803618Z env:
+2026-11-02T21:40:22.5803797Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:22.5803997Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:22.5804218Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:22.5804426Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:22.5804610Z ##[endgroup]
+2026-11-02T21:40:22.7407664Z Setup go version spec 1.27.1
+2026-11-02T21:40:22.7424485Z Attempting to download 1.27.1...
+2026-11-02T21:40:22.7671829Z (node:6176) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-02T21:40:22.7673387Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-02T21:40:23.7111558Z matching 1.27.1...
+2026-11-02T21:40:23.7143734Z Acquiring 1.27.1 from https://github.com/actions/go-versions/releases/download/1.27.1-33583469715/go-1.27.1-win32-x64.zip
+2026-11-02T21:40:24.5947975Z Extracting Go...
+2026-11-02T21:40:24.6844378Z [command]"C:\Program Files\PowerShell\7\pwsh.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -Command "$ErrorActionPreference = 'Stop' ; try { Add-Type -AssemblyName System.IO.Compression.ZipFile } catch { } ; try { [System.IO.Compression.ZipFile]::ExtractToDirectory('D:\a\_temp\go-1.27.1-win32-x64.zip', 'D:\a\_temp\5484f897-75ef-477f-ac18-f8f77281af8d', $true) } catch { if (($_.Exception.GetType().FullName -eq 'System.Management.Automation.MethodException') -or ($_.Exception.GetType().FullName -eq 'System.Management.Automation.RuntimeException') ){ Expand-Archive -LiteralPath 'D:\a\_temp\go-1.27.1-win32-x64.zip' -DestinationPath 'D:\a\_temp\5484f897-75ef-477f-ac18-f8f77281af8d' -Force } else { throw $_ } } ;"
+2026-11-02T21:40:29.1476342Z Successfully extracted go to D:\a\_temp\5484f897-75ef-477f-ac18-f8f77281af8d
+2026-11-02T21:40:29.1477019Z Adding to the cache ...
+2026-11-02T21:40:39.0413973Z Created link C:\hostedtoolcache\windows\go\1.27.1\x64 => D:\hostedtoolcache\windows\go\1.27.1\x64
+2026-11-02T21:40:39.0417360Z Created link C:\hostedtoolcache\windows\go\1.27.1\x64.complete => D:\hostedtoolcache\windows\go\1.27.1\x64.complete
+2026-11-02T21:40:39.0418108Z Successfully cached go to C:\hostedtoolcache\windows\go\1.27.1\x64
+2026-11-02T21:40:39.0423972Z Added go to the path
+2026-11-02T21:40:39.0426769Z Successfully set up Go version 1.27.1
+2026-11-02T21:40:39.3262979Z [command]C:\hostedtoolcache\windows\go\1.27.1\x64\bin\go.exe env GOMODCACHE
+2026-11-02T21:40:39.3313760Z [command]C:\hostedtoolcache\windows\go\1.27.1\x64\bin\go.exe env GOCACHE
+2026-11-02T21:40:39.3562817Z C:\Users\runneradmin\go\pkg\mod
+2026-11-02T21:40:39.3590391Z C:\Users\runneradmin\AppData\Local\go-build
+2026-11-02T21:40:39.6606450Z Cache hit for: setup-go-Windows-x64-go-1.27.1-d3df07694eb1e7ab5c5a06a176e89b7a74782bd039c3f115a1775be9028de6fe
+2026-11-02T21:40:39.6719085Z (node:6176) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-11-02T21:40:40.8717896Z Received 41943040 of 45107590 (93.0%), 40.0 MBs/sec
+2026-11-02T21:40:41.1393414Z Received 45107590 of 45107590 (100.0%), 33.9 MBs/sec
+2026-11-02T21:40:41.1395291Z Cache Size: ~43 MB (45107590 B)
+2026-11-02T21:40:41.1508442Z [command]"C:\Program Files\Git\usr\bin\tar.exe" -xf D:/a/_temp/56c37899-f047-40ce-a761-369fb85f598c/cache.tzst -P -C D:/a/wago/wago --force-local --use-compress-program "zstd -d"
+2026-11-02T21:40:51.6610556Z Cache restored successfully
+2026-11-02T21:40:51.6657749Z Cache restored from key: setup-go-Windows-x64-go-1.27.1-d3df07694eb1e7ab5c5a06a176e89b7a74782bd039c3f115a1775be9028de6fe
+2026-11-02T21:40:51.6684338Z go version go1.27.1 windows/amd64
+2026-11-02T21:40:51.6684630Z 
+2026-11-02T21:40:51.6685067Z ##[group]go env
+2026-11-02T21:40:52.0535982Z set AR=ar
+2026-11-02T21:40:52.0536266Z set CC=gcc
+2026-11-02T21:40:52.0537042Z set CGO_CFLAGS=-O2 -g
+2026-11-02T21:40:52.0537411Z set CGO_CPPFLAGS=
+2026-11-02T21:40:52.0537753Z set CGO_CXXFLAGS=-O2 -g
+2026-11-02T21:40:52.0538056Z set CGO_ENABLED=1
+2026-11-02T21:40:52.0538268Z set CGO_FFLAGS=-O2 -g
+2026-11-02T21:40:52.0538484Z set CGO_LDFLAGS=-O2 -g
+2026-11-02T21:40:52.0538694Z set CXX=g++
+2026-11-02T21:40:52.0538878Z set GCCGO=gccgo
+2026-11-02T21:40:52.0539083Z set GO111MODULE=
+2026-11-02T21:40:52.0539281Z set GOAMD64=v1
+2026-11-02T21:40:52.0539469Z set GOARCH=amd64
+2026-11-02T21:40:52.0539657Z set GOAUTH=netrc
+2026-11-02T21:40:52.0539872Z set GOBIN=C:\Users\runneradmin\go\bin
+2026-11-02T21:40:52.0540231Z set GOCACHE=C:\Users\runneradmin\AppData\Local\go-build
+2026-11-02T21:40:52.0540539Z set GOCACHEPROG=
+2026-11-02T21:40:52.0540727Z set GODEBUG=
+2026-11-02T21:40:52.0540968Z set GOENV=C:\Users\runneradmin\AppData\Roaming\go\env
+2026-11-02T21:40:52.0541264Z set GOEXE=.exe
+2026-11-02T21:40:52.0541453Z set GOEXPERIMENT=
+2026-11-02T21:40:52.0541662Z set GOFIPS140=off
+2026-11-02T21:40:52.0541845Z set GOFLAGS=
+2026-11-02T21:40:52.0542588Z set GOGCCFLAGS=-m64 -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=C:\Users\RUNNER~1\AppData\Local\Temp\go-build2644721502=/tmp/go-build -gno-record-gcc-switches
+2026-11-02T21:40:52.0544383Z set GOHOSTARCH=amd64
+2026-11-02T21:40:52.0544598Z set GOHOSTOS=windows
+2026-11-02T21:40:52.0544794Z set GOINSECURE=
+2026-11-02T21:40:52.0545004Z set GOMOD=D:\a\wago\wago\go.mod
+2026-11-02T21:40:52.0545277Z set GOMODCACHE=C:\Users\runneradmin\go\pkg\mod
+2026-11-02T21:40:52.0545551Z set GONOPROXY=
+2026-11-02T21:40:52.0545736Z set GONOSUMDB=
+2026-11-02T21:40:52.0545921Z set GOOS=windows
+2026-11-02T21:40:52.0546126Z set GOPACKAGESDRIVER=
+2026-11-02T21:40:52.0546355Z set GOPATH=C:\Users\runneradmin\go
+2026-11-02T21:40:52.0546616Z set GOPRIVATE=
+2026-11-02T21:40:52.0547134Z set GOPROXY=https://proxy.golang.org,direct
+2026-11-02T21:40:52.0547615Z set GOROOT=C:\hostedtoolcache\windows\go\1.27.1\x64
+2026-11-02T21:40:52.0548048Z set GOSUMDB=sum.golang.org
+2026-11-02T21:40:52.0548385Z set GOTELEMETRY=local
+2026-11-02T21:40:52.0548863Z set GOTELEMETRYDIR=C:\Users\runneradmin\AppData\Roaming\go\telemetry
+2026-11-02T21:40:52.0549431Z set GOTMPDIR=
+2026-11-02T21:40:52.0549719Z set GOTOOLCHAIN=auto
+2026-11-02T21:40:52.0550260Z set GOTOOLDIR=C:\hostedtoolcache\windows\go\1.27.1\x64\pkg\tool\windows_amd64
+2026-11-02T21:40:52.0550849Z set GOVCS=
+2026-11-02T21:40:52.0551142Z set GOVERSION=go1.27.1
+2026-11-02T21:40:52.0551477Z set GOWORK=D:\a\wago\wago\go.work
+2026-11-02T21:40:52.0551872Z set PKG_CONFIG=pkg-config
+2026-11-02T21:40:52.0552100Z 
+2026-11-02T21:40:52.0552555Z ##[endgroup]
+2026-11-02T21:40:52.0895851Z ##[group]Run ./tests/scripts/install-wabt-windows.ps1
+2026-11-02T21:40:52.0896361Z [36;1m./tests/scripts/install-wabt-windows.ps1[0m
+2026-11-02T21:40:52.1386911Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-11-02T21:40:52.1387287Z env:
+2026-11-02T21:40:52.1387500Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:52.1387704Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:52.1387931Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:52.1388155Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:52.1388354Z ##[endgroup]
+2026-11-02T21:40:53.5453218Z 1.0.41
+2026-11-02T21:40:53.6290168Z ##[group]Run if ($(go env GOOS) -ne 'windows') { throw 'wrong GOOS' }
+2026-11-02T21:40:53.6290720Z [36;1mif ($(go env GOOS) -ne 'windows') { throw 'wrong GOOS' }[0m
+2026-11-02T21:40:53.6291132Z [36;1mif ($(go env GOARCH) -ne 'amd64') { throw 'wrong GOARCH' }[0m
+2026-11-02T21:40:53.6291451Z [36;1mgo version[0m
+2026-11-02T21:40:53.6291752Z [36;1mGet-ComputerInfo | Select-Object OsName, OsArchitecture[0m
+2026-11-02T21:40:53.6361017Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-11-02T21:40:53.6361365Z env:
+2026-11-02T21:40:53.6361538Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:53.6361740Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:53.6361969Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:53.6362169Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:53.6362363Z ##[endgroup]
+2026-11-02T21:40:54.0088608Z go version go1.27.1 windows/amd64
+2026-11-02T21:40:58.3079043Z 
+2026-11-02T21:40:58.3126161Z [32;1mOsName                                  [0m[32;1m OsArchitecture[0m
+2026-11-02T21:40:58.3127389Z [32;1m------                                  [0m [32;1m--------------[0m
+2026-11-02T21:40:58.3127934Z Microsoft Windows Server 2025 Datacenter 64-bit
+2026-11-02T21:40:58.3128251Z 
+2026-11-02T21:40:58.3823892Z ##[group]Run go test -count=1 -tags=wago_regalloccheck ./internal/regalloccheck ./src/core/encoder/... ./src/core/compiler/backend/railshot/... ./src/wago
+2026-11-02T21:40:58.3824994Z [36;1mgo test -count=1 -tags=wago_regalloccheck ./internal/regalloccheck ./src/core/encoder/... ./src/core/compiler/backend/railshot/... ./src/wago[0m
+2026-11-02T21:40:58.3894344Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-11-02T21:40:58.3894751Z env:
+2026-11-02T21:40:58.3894962Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:58.3895191Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:58.3895464Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:58.3895944Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:58.3896173Z ##[endgroup]
+2026-11-02T21:40:59.0795831Z go: downloading golang.org/x/sys v0.30.0
+2026-11-02T21:41:03.2174983Z ok  	github.com/wago-org/wago/internal/regalloccheck	0.382s
+2026-11-02T21:41:04.1291870Z ok  	github.com/wago-org/wago/src/core/encoder/amd64	0.434s
+2026-11-02T21:41:04.1293024Z ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.060s
+2026-11-02T21:41:04.1294078Z ok  	github.com/wago-org/wago/src/core/encoder/riscv64	0.080s
+2026-11-02T21:41:05.5945528Z ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot	1.562s
+2026-11-02T21:41:30.8099657Z ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	8.797s
+2026-11-02T21:41:30.8102840Z ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.662s
+2026-11-02T21:41:30.8103760Z ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	0.877s
+2026-11-02T21:41:50.7032062Z --- FAIL: TestDesignRepairUnsupportedConvertedPublication (0.00s)
+2026-11-02T21:41:50.7034640Z     design_repair_unsupported_test.go:31: wago: unsupported feature(s) tail-call|typed-function-references|gc|exception-handling|multi-memory|memory64|table64; this windows/amd64 build supports bulk-memory-operations|multi-value|mutable-global|nontrapping-float-to-int-conversion|reference-types|sign-extension-ops|simd|extended-constant-expressions|extended-const-expressions|wide-arithmetic|compact-imports
+2026-11-02T21:41:50.7036560Z FAIL
+2026-11-02T21:41:50.7036789Z FAIL	github.com/wago-org/wago/src/wago	16.452s
+2026-11-02T21:41:50.7037068Z FAIL
+2026-11-02T21:41:51.1888708Z ##[error]Process completed with exit code 1.
+2026-11-02T21:41:51.2187729Z Post job cleanup.
+2026-11-02T21:41:51.3903415Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-11-02T21:41:51.4267865Z git version 2.56.0.windows.4
+2026-11-02T21:41:51.4346286Z Temporarily overriding HOME='D:\a\_temp\229596d6-ca44-4f6d-999b-ba5e6f11474d' before making global git config changes
+2026-11-02T21:41:51.4347482Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T21:41:51.4358500Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\wago\wago
+2026-11-02T21:41:51.4796660Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T21:41:51.5289049Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-11-02T21:41:52.1079499Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T21:41:52.1415611Z http.https://github.com/.extraheader
+2026-11-02T21:41:52.1461757Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-11-02T21:41:52.1847006Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-11-02T21:41:52.7344935Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T21:41:52.7717604Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-11-02T21:41:53.3453999Z Cleaning up orphan processes
+2026-11-02T21:41:53.3940073Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@11d5960a326750d5838078e36cf38b85af677262, actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+

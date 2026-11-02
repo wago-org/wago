@@ -1,0 +1,9 @@
+# github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64 [github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.test]
+src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:146:10: undefined: newFuncHints
+src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:147:13: undefined: newGlobalEligibilityTracker
+src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:150:17: undefined: scanBodyBytesIntoMemory64WithModuleCalls
+src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:154:22: undefined: hintHasCall
+src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:155:75: undefined: hintHasCall
+src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:158:22: undefined: scanLoopCallFreeDetails
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64 [build failed]
+FAIL

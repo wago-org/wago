@@ -1,0 +1,161 @@
+[
+  {
+    "label": "ordinary-host",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^Test(DesignRepairPublicGlobalTokenClassification|DefaultCoreFeaturePolicy|CoreFeature.*)$",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "ordinary-fallback",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo",
+      "./src/wago",
+      "-run",
+      "^Test(UnsupportedConversion|DesignRepairUnsupportedConvertedPublicToken|DesignRepairPublicGlobalTokenClassification)",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "ordinary-windows",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "ordinary-darwin",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wagodebug-host",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-run",
+      "^Test(DesignRepairPublicGlobalTokenClassification|DefaultCoreFeaturePolicy|CoreFeature.*)$",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wagodebug-fallback",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo,wagodebug",
+      "./src/wago",
+      "-run",
+      "^Test(UnsupportedConversion|DesignRepairUnsupportedConvertedPublicToken|DesignRepairPublicGlobalTokenClassification)",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wagodebug-windows",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wagodebug-darwin",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wago_regalloccheck-host",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^Test(DesignRepairPublicGlobalTokenClassification|DefaultCoreFeaturePolicy|CoreFeature.*)$",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wago_regalloccheck-fallback",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo,wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^Test(UnsupportedConversion|DesignRepairUnsupportedConvertedPublicToken|DesignRepairPublicGlobalTokenClassification)",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wago_regalloccheck-windows",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "wago_regalloccheck-darwin",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^$",
+      "-exec=true"
+    ],
+    "exit": 0
+  }
+]

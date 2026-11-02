@@ -1,0 +1,525 @@
+﻿2026-11-02T21:40:12.2845636Z Current runner version: '2.338.2'
+2026-11-02T21:40:12.2877943Z ##[group]Runner Image Provisioner
+2026-11-02T21:40:12.2879433Z Hosted Compute Agent
+2026-11-02T21:40:12.2880077Z Version: 20261021.618
+2026-11-02T21:40:12.2880890Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-11-02T21:40:12.2882073Z Build Date: 2026-10-21T00:45:21Z
+2026-11-02T21:40:12.2882875Z Worker ID: {a6e47906-51c7-4adf-a7ab-c7f2e92ede92}
+2026-11-02T21:40:12.2883986Z Region: centralus
+2026-11-02T21:40:12.2884595Z Cloud: Azure
+2026-11-02T21:40:12.2885267Z ##[endgroup]
+2026-11-02T21:40:12.2887382Z ##[group]Operating System
+2026-11-02T21:40:12.2888064Z Ubuntu
+2026-11-02T21:40:12.2888829Z 24.04.5
+2026-11-02T21:40:12.2889380Z LTS
+2026-11-02T21:40:12.2889989Z ##[endgroup]
+2026-11-02T21:40:12.2890588Z ##[group]Runner Image
+2026-11-02T21:40:12.2891240Z Image: ubuntu-24.04-arm
+2026-11-02T21:40:12.2892384Z Version: 20261025.165.1
+2026-11-02T21:40:12.2893898Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24-arm64/20261025.165/images/ubuntu/Ubuntu2404-Arm64-Readme.md
+2026-11-02T21:40:12.2895545Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24-arm64%2F20261025.165
+2026-11-02T21:40:12.2896660Z ##[endgroup]
+2026-11-02T21:40:12.2897925Z ##[group]GITHUB_TOKEN Permissions
+2026-11-02T21:40:12.2901393Z Contents: read
+2026-11-02T21:40:12.2902433Z Metadata: read
+2026-11-02T21:40:12.2903035Z ##[endgroup]
+2026-11-02T21:40:12.2906166Z Secret source: Actions
+2026-11-02T21:40:12.2907513Z Cache mode: write
+2026-11-02T21:40:12.2908811Z Prepare workflow directory
+2026-11-02T21:40:12.3397625Z Prepare all required actions
+2026-11-02T21:40:12.3452849Z Getting action download info
+2026-11-02T21:40:12.6564544Z Download action repository 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-11-02T21:40:12.7934463Z Download action repository 'extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3' (SHA:53165ef7e734c5c07cb06b3c8e7b647c5aa16db3)
+2026-11-02T21:40:12.9746464Z Download action repository 'actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff' (SHA:40f1582b2485089dde7abd97c1529aa768e1baff)
+2026-11-02T21:40:13.4054260Z Download action repository 'actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+2026-11-02T21:40:13.6189378Z Getting action download info
+2026-11-02T21:40:13.7321899Z Download action repository 'extractions/setup-crate@0551596312d4008a6dfbc4d3c38fa20eaef46d2d' (SHA:0551596312d4008a6dfbc4d3c38fa20eaef46d2d)
+2026-11-02T21:40:14.0171365Z Complete job name: Linux / arm64
+2026-11-02T21:40:14.1469049Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+2026-11-02T21:40:14.1470777Z with:
+2026-11-02T21:40:14.1471392Z   repository: wago-org/wago
+2026-11-02T21:40:14.1477554Z   token: ***
+2026-11-02T21:40:14.1478159Z   ssh-strict: true
+2026-11-02T21:40:14.1478742Z   ssh-user: git
+2026-11-02T21:40:14.1479335Z   persist-credentials: true
+2026-11-02T21:40:14.1479987Z   clean: true
+2026-11-02T21:40:14.1480658Z   sparse-checkout-cone-mode: true
+2026-11-02T21:40:14.1481370Z   fetch-depth: 1
+2026-11-02T21:40:14.1482320Z   fetch-tags: false
+2026-11-02T21:40:14.1482940Z   show-progress: true
+2026-11-02T21:40:14.1483547Z   lfs: false
+2026-11-02T21:40:14.1484121Z   submodules: false
+2026-11-02T21:40:14.1484760Z   set-safe-directory: true
+2026-11-02T21:40:14.1485453Z   allow-unsafe-pr-checkout: false
+2026-11-02T21:40:14.1486699Z env:
+2026-11-02T21:40:14.1487255Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:14.1487876Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:14.1488610Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:14.1489251Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:14.1489847Z ##[endgroup]
+2026-11-02T21:40:14.2451041Z Syncing repository: wago-org/wago
+2026-11-02T21:40:14.2454711Z ##[group]Getting Git version info
+2026-11-02T21:40:14.2455874Z Working directory is '/home/runner/work/wago/wago'
+2026-11-02T21:40:14.2457818Z [command]/usr/bin/git version
+2026-11-02T21:40:14.2583185Z git version 2.56.0
+2026-11-02T21:40:14.2597155Z ##[endgroup]
+2026-11-02T21:40:14.2610627Z Temporarily overriding HOME='/home/runner/work/_temp/f4cdd8f4-62bd-4bbe-b5ae-e772021973a5' before making global git config changes
+2026-11-02T21:40:14.2613702Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T21:40:14.2617032Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wago/wago
+2026-11-02T21:40:14.2668930Z Deleting the contents of '/home/runner/work/wago/wago'
+2026-11-02T21:40:14.2672069Z ##[group]Initializing the repository
+2026-11-02T21:40:14.2683554Z [command]/usr/bin/git init /home/runner/work/wago/wago
+2026-11-02T21:40:14.2817131Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-02T21:40:14.2819149Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-02T21:40:14.2820649Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-02T21:40:14.2822417Z hint: call:
+2026-11-02T21:40:14.2823165Z hint:
+2026-11-02T21:40:14.2824383Z hint: 	git config --global init.defaultBranch <name>
+2026-11-02T21:40:14.2825375Z hint:
+2026-11-02T21:40:14.2826285Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-02T21:40:14.2827857Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-02T21:40:14.2829023Z hint:
+2026-11-02T21:40:14.2829831Z hint: 	git branch -m <name>
+2026-11-02T21:40:14.2830623Z hint:
+2026-11-02T21:40:14.2831821Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-02T21:40:14.2833514Z Initialized empty Git repository in /home/runner/work/wago/wago/.git/
+2026-11-02T21:40:14.2836423Z [command]/usr/bin/git remote add origin https://github.com/wago-org/wago
+2026-11-02T21:40:14.2900615Z ##[endgroup]
+2026-11-02T21:40:14.2902309Z ##[group]Disabling automatic garbage collection
+2026-11-02T21:40:14.2903458Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-02T21:40:14.2935892Z ##[endgroup]
+2026-11-02T21:40:14.2937632Z ##[group]Setting up auth
+2026-11-02T21:40:14.2939365Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T21:40:14.2970968Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T21:40:14.3346432Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T21:40:14.3382925Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T21:40:14.3607477Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T21:40:14.3642277Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T21:40:14.3894746Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-02T21:40:14.3945652Z ##[endgroup]
+2026-11-02T21:40:14.3947027Z ##[group]Fetching the repository
+2026-11-02T21:40:14.3954325Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +8c2460feb60b14acee77ffe3e081b3d2f9533f28:refs/remotes/pull/1048/merge
+2026-11-02T21:40:16.9271507Z From https://github.com/wago-org/wago
+2026-11-02T21:40:16.9273574Z  * [new ref]         8c2460feb60b14acee77ffe3e081b3d2f9533f28 -> pull/1048/merge
+2026-11-02T21:40:16.9280026Z ##[endgroup]
+2026-11-02T21:40:16.9280892Z ##[group]Determining the checkout info
+2026-11-02T21:40:16.9282072Z ##[endgroup]
+2026-11-02T21:40:16.9291639Z [command]/usr/bin/git sparse-checkout disable
+2026-11-02T21:40:16.9342941Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-02T21:40:16.9376040Z ##[group]Checking out the ref
+2026-11-02T21:40:16.9379229Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/1048/merge
+2026-11-02T21:40:17.8618203Z Note: switching to 'refs/remotes/pull/1048/merge'.
+2026-11-02T21:40:17.8618677Z 
+2026-11-02T21:40:17.8618989Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-11-02T21:40:17.8620216Z changes and commit them, and you can discard any commits you make in this
+2026-11-02T21:40:17.8620885Z state without impacting any branches by switching back to a branch.
+2026-11-02T21:40:17.8621305Z 
+2026-11-02T21:40:17.8621868Z If you want to create a new branch to retain commits you create, you may
+2026-11-02T21:40:17.8622604Z do so (now or later) by using -c with the switch command. Example:
+2026-11-02T21:40:17.8622950Z 
+2026-11-02T21:40:17.8623183Z   git switch -c <new-branch-name>
+2026-11-02T21:40:17.8623396Z 
+2026-11-02T21:40:17.8623709Z Or undo this operation with:
+2026-11-02T21:40:17.8623964Z 
+2026-11-02T21:40:17.8624134Z   git switch -
+2026-11-02T21:40:17.8624418Z 
+2026-11-02T21:40:17.8624763Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-11-02T21:40:17.8643307Z 
+2026-11-02T21:40:17.8644029Z HEAD is now at 8c2460f Merge c32ebece3674cc2a4c79099753f3238202c7226d into 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e
+2026-11-02T21:40:17.8654057Z ##[endgroup]
+2026-11-02T21:40:17.8697579Z [command]/usr/bin/git log -1 --format=%H
+2026-11-02T21:40:17.8724375Z 8c2460feb60b14acee77ffe3e081b3d2f9533f28
+2026-11-02T21:40:17.9065162Z ##[group]Run extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3
+2026-11-02T21:40:17.9065920Z with:
+2026-11-02T21:40:17.9066203Z   just-version: 1.58.0
+2026-11-02T21:40:17.9068910Z   github-token: ***
+2026-11-02T21:40:17.9069264Z env:
+2026-11-02T21:40:17.9069506Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:17.9069882Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:17.9070245Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:17.9070587Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:17.9070903Z ##[endgroup]
+2026-11-02T21:40:17.9137711Z ##[start-action display=Run extractions/setup-crate@0551596312d4008a6dfbc4d3c38fa20eaef46d2d;id=__extractions_setup-just.__extractions_setup-crate]
+2026-11-02T21:40:17.9222706Z ##[group]Run extractions/setup-crate@0551596312d4008a6dfbc4d3c38fa20eaef46d2d
+2026-11-02T21:40:17.9223245Z with:
+2026-11-02T21:40:17.9223643Z   repo: casey/just
+2026-11-02T21:40:17.9223979Z   version: 1.58.0
+2026-11-02T21:40:17.9226515Z   github-token: ***
+2026-11-02T21:40:17.9227070Z env:
+2026-11-02T21:40:17.9227331Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:17.9227712Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:17.9228012Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:17.9228367Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:17.9228695Z ##[endgroup]
+2026-11-02T21:40:18.9311458Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/eff16efd-0516-4a67-b7b1-acc5714d7b05 -f /home/runner/work/_temp/fe3e3f92-2b88-4685-a562-3a3c958d4956
+2026-11-02T21:40:18.9794044Z Successfully setup just v1.58.0
+2026-11-02T21:40:18.9897829Z ##[end-action id=__extractions_setup-just.__extractions_setup-crate;outcome=success;conclusion=success;duration_ms=1075]
+2026-11-02T21:40:19.0131236Z ##[group]Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+2026-11-02T21:40:19.0132242Z with:
+2026-11-02T21:40:19.0132557Z   go-version: 1.27.1
+2026-11-02T21:40:19.0132883Z   cache: true
+2026-11-02T21:40:19.0133394Z   cache-dependency-path: go.work
+go.mod
+go.sum
+bench/go.mod
+bench/go.sum
+cli/wago-installer/go.mod
+
+2026-11-02T21:40:19.0133898Z   check-latest: false
+2026-11-02T21:40:19.0136384Z   token: ***
+2026-11-02T21:40:19.0136708Z env:
+2026-11-02T21:40:19.0136940Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:19.0137284Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:19.0137570Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:19.0137832Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:19.0138153Z ##[endgroup]
+2026-11-02T21:40:19.1310511Z Setup go version spec 1.27.1
+2026-11-02T21:40:19.1319641Z Attempting to download 1.27.1...
+2026-11-02T21:40:19.1428910Z (node:2249) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-02T21:40:19.1429884Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-02T21:40:19.9293281Z matching 1.27.1...
+2026-11-02T21:40:19.9324334Z Acquiring 1.27.1 from https://github.com/actions/go-versions/releases/download/1.27.1-33583469715/go-1.27.1-linux-arm64.tar.gz
+2026-11-02T21:40:20.5982520Z Extracting Go...
+2026-11-02T21:40:20.6097414Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/3fe82551-4361-4aec-a790-8628c4f5a461 -f /home/runner/work/_temp/04ad338a-0f01-49c8-af73-a525b4cc96b5
+2026-11-02T21:40:21.7953532Z Successfully extracted go to /home/runner/work/_temp/3fe82551-4361-4aec-a790-8628c4f5a461
+2026-11-02T21:40:21.7954268Z Adding to the cache ...
+2026-11-02T21:40:27.9142308Z Successfully cached go to /opt/hostedtoolcache/go/1.27.1/arm64
+2026-11-02T21:40:27.9145015Z Added go to the path
+2026-11-02T21:40:27.9148265Z Successfully set up Go version 1.27.1
+2026-11-02T21:40:27.9370363Z [command]/opt/hostedtoolcache/go/1.27.1/arm64/bin/go env GOMODCACHE
+2026-11-02T21:40:27.9413393Z [command]/opt/hostedtoolcache/go/1.27.1/arm64/bin/go env GOCACHE
+2026-11-02T21:40:27.9454351Z /home/runner/go/pkg/mod
+2026-11-02T21:40:27.9470104Z /home/runner/.cache/go-build
+2026-11-02T21:40:28.0912051Z Cache hit for: setup-go-Linux-arm64-ubuntu24-arm64-go-1.27.1-d3df07694eb1e7ab5c5a06a176e89b7a74782bd039c3f115a1775be9028de6fe
+2026-11-02T21:40:28.1009213Z (node:2249) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-11-02T21:40:28.9233588Z Received 43743557 of 43743557 (100.0%), 59.4 MBs/sec
+2026-11-02T21:40:28.9234087Z Cache Size: ~42 MB (43743557 B)
+2026-11-02T21:40:28.9336776Z [command]/usr/bin/tar -xf /home/runner/work/_temp/d9536669-fc03-4958-bc27-6c630b34a40c/cache.tzst -P -C /home/runner/work/wago/wago --use-compress-program unzstd
+2026-11-02T21:40:29.1354000Z Cache restored successfully
+2026-11-02T21:40:29.1378965Z Cache restored from key: setup-go-Linux-arm64-ubuntu24-arm64-go-1.27.1-d3df07694eb1e7ab5c5a06a176e89b7a74782bd039c3f115a1775be9028de6fe
+2026-11-02T21:40:29.1408356Z go version go1.27.1 linux/arm64
+2026-11-02T21:40:29.1408642Z 
+2026-11-02T21:40:29.1409288Z ##[group]go env
+2026-11-02T21:40:29.1548422Z AR='ar'
+2026-11-02T21:40:29.1549311Z CC='gcc'
+2026-11-02T21:40:29.1549793Z CGO_CFLAGS='-O2 -g'
+2026-11-02T21:40:29.1550148Z CGO_CPPFLAGS=''
+2026-11-02T21:40:29.1550593Z CGO_CXXFLAGS='-O2 -g'
+2026-11-02T21:40:29.1550929Z CGO_ENABLED='1'
+2026-11-02T21:40:29.1551235Z CGO_FFLAGS='-O2 -g'
+2026-11-02T21:40:29.1551513Z CGO_LDFLAGS='-O2 -g'
+2026-11-02T21:40:29.1551959Z CXX='g++'
+2026-11-02T21:40:29.1552310Z GCCGO='gccgo'
+2026-11-02T21:40:29.1552605Z GO111MODULE=''
+2026-11-02T21:40:29.1552888Z GOARCH='arm64'
+2026-11-02T21:40:29.1553142Z GOARM64='v8.0'
+2026-11-02T21:40:29.1553468Z GOAUTH='netrc'
+2026-11-02T21:40:29.1553802Z GOBIN='/home/runner/go/bin'
+2026-11-02T21:40:29.1554562Z GOCACHE='/home/runner/.cache/go-build'
+2026-11-02T21:40:29.1554981Z GOCACHEPROG=''
+2026-11-02T21:40:29.1555259Z GODEBUG=''
+2026-11-02T21:40:29.1555552Z GOENV='/home/runner/.config/go/env'
+2026-11-02T21:40:29.1555922Z GOEXE=''
+2026-11-02T21:40:29.1556200Z GOEXPERIMENT=''
+2026-11-02T21:40:29.1556515Z GOFIPS140='off'
+2026-11-02T21:40:29.1556764Z GOFLAGS=''
+2026-11-02T21:40:29.1557433Z GOGCCFLAGS='-fPIC -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=/tmp/go-build3585920436=/tmp/go-build -gno-record-gcc-switches'
+2026-11-02T21:40:29.1558229Z GOHOSTARCH='arm64'
+2026-11-02T21:40:29.1558518Z GOHOSTOS='linux'
+2026-11-02T21:40:29.1558862Z GOINSECURE=''
+2026-11-02T21:40:29.1559186Z GOMOD='/home/runner/work/wago/wago/go.mod'
+2026-11-02T21:40:29.1559578Z GOMODCACHE='/home/runner/go/pkg/mod'
+2026-11-02T21:40:29.1560031Z GONOPROXY=''
+2026-11-02T21:40:29.1560279Z GONOSUMDB=''
+2026-11-02T21:40:29.1560982Z GOOS='linux'
+2026-11-02T21:40:29.1561306Z GOPACKAGESDRIVER=''
+2026-11-02T21:40:29.1561979Z GOPATH='/home/runner/go'
+2026-11-02T21:40:29.1562358Z GOPRIVATE=''
+2026-11-02T21:40:29.1562697Z GOPROXY='https://proxy.golang.org,direct'
+2026-11-02T21:40:29.1563150Z GOROOT='/opt/hostedtoolcache/go/1.27.1/arm64'
+2026-11-02T21:40:29.1563510Z GOSUMDB='sum.golang.org'
+2026-11-02T21:40:29.1563903Z GOTELEMETRY='local'
+2026-11-02T21:40:29.1564245Z GOTELEMETRYDIR='/home/runner/.config/go/telemetry'
+2026-11-02T21:40:29.1564604Z GOTMPDIR=''
+2026-11-02T21:40:29.1564906Z GOTOOLCHAIN='auto'
+2026-11-02T21:40:29.1565327Z GOTOOLDIR='/opt/hostedtoolcache/go/1.27.1/arm64/pkg/tool/linux_arm64'
+2026-11-02T21:40:29.1565814Z GOVCS=''
+2026-11-02T21:40:29.1566082Z GOVERSION='go1.27.1'
+2026-11-02T21:40:29.1566386Z GOWORK='/home/runner/work/wago/wago/go.work'
+2026-11-02T21:40:29.1566792Z PKG_CONFIG='pkg-config'
+2026-11-02T21:40:29.1566951Z 
+2026-11-02T21:40:29.1567547Z ##[endgroup]
+2026-11-02T21:40:29.2376101Z ##[group]Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+2026-11-02T21:40:29.2376719Z with:
+2026-11-02T21:40:29.2376975Z   path: .tools/wabt-*
+2026-11-02T21:40:29.2377554Z   key: wabt-Linux-ARM64-1.0.41-773e181cb12dbc98f65b14d1b896c22fd62cf46018b9a0abd550899efae7c570
+2026-11-02T21:40:29.2378079Z   enableCrossOsArchive: false
+2026-11-02T21:40:29.2378445Z   fail-on-cache-miss: false
+2026-11-02T21:40:29.2378760Z   lookup-only: false
+2026-11-02T21:40:29.2379051Z   save-always: false
+2026-11-02T21:40:29.2379348Z env:
+2026-11-02T21:40:29.2379590Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:29.2379887Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:29.2380201Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:29.2380449Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:29.2380948Z ##[endgroup]
+2026-11-02T21:40:29.3354242Z (node:2319) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-02T21:40:29.3355188Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-02T21:40:29.5056334Z Cache hit for: wabt-Linux-ARM64-1.0.41-773e181cb12dbc98f65b14d1b896c22fd62cf46018b9a0abd550899efae7c570
+2026-11-02T21:40:29.5151652Z (node:2319) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-11-02T21:40:30.0552784Z Received 3975768 of 3975768 (100.0%), 10.2 MBs/sec
+2026-11-02T21:40:30.0553553Z Cache Size: ~4 MB (3975768 B)
+2026-11-02T21:40:30.0582129Z [command]/usr/bin/tar -xf /home/runner/work/_temp/b08843ca-6439-407a-812a-b071e387c5e8/cache.tzst -P -C /home/runner/work/wago/wago --use-compress-program unzstd
+2026-11-02T21:40:30.0841107Z Cache restored successfully
+2026-11-02T21:40:30.0925514Z Cache restored from key: wabt-Linux-ARM64-1.0.41-773e181cb12dbc98f65b14d1b896c22fd62cf46018b9a0abd550899efae7c570
+2026-11-02T21:40:30.1051318Z ##[group]Run scripts/bootstrap-wabt.sh --verify
+2026-11-02T21:40:30.1052281Z [36;1mscripts/bootstrap-wabt.sh --verify[0m
+2026-11-02T21:40:30.1052946Z [36;1mdirname "$(scripts/bootstrap-wabt.sh --print-path)" >> "$GITHUB_PATH"[0m
+2026-11-02T21:40:30.1240188Z shell: /usr/bin/bash -e {0}
+2026-11-02T21:40:30.1240594Z env:
+2026-11-02T21:40:30.1241038Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:30.1241324Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:30.1242028Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:30.1242510Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:30.1242772Z ##[endgroup]
+2026-11-02T21:40:30.1508491Z wast2json 1.0.41 (/home/runner/work/wago/wago/.tools/wabt-1.0.41-linux-arm64/bin/wast2json)
+2026-11-02T21:40:30.1816725Z ##[group]Run test "$(go env GOOS)" = "linux"
+2026-11-02T21:40:30.1817383Z [36;1mtest "$(go env GOOS)" = "linux"[0m
+2026-11-02T21:40:30.1817903Z [36;1mtest "$(go env GOARCH)" = "arm64"[0m
+2026-11-02T21:40:30.1818252Z [36;1mgo version[0m
+2026-11-02T21:40:30.1818559Z [36;1muname -a[0m
+2026-11-02T21:40:30.1872880Z shell: /usr/bin/bash -e {0}
+2026-11-02T21:40:30.1873509Z env:
+2026-11-02T21:40:30.1873763Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:30.1874114Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:30.1874445Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:30.1874771Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:30.1875032Z ##[endgroup]
+2026-11-02T21:40:30.2038907Z go version go1.27.1 linux/arm64
+2026-11-02T21:40:30.2052273Z Linux runnervm9u1px 7.0.0-1017-azure #17~24.04.1-Ubuntu SMP PREEMPT Thu Sep 24 19:06:39 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+2026-11-02T21:40:30.2123496Z ##[group]Run just test unit
+2026-11-02T21:40:30.2124099Z [36;1mjust test unit[0m
+2026-11-02T21:40:30.2176387Z shell: /usr/bin/bash -e {0}
+2026-11-02T21:40:30.2176929Z env:
+2026-11-02T21:40:30.2177163Z   GO_VERSION: 1.27.1
+2026-11-02T21:40:30.2177685Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:40:30.2177993Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:40:30.2178335Z   JUST_VERSION: 1.58.0
+2026-11-02T21:40:30.2178605Z ##[endgroup]
+2026-11-02T21:40:30.2319811Z go build ./...
+2026-11-02T21:40:49.6613861Z go build -tags wago_runtime ./cli/...
+2026-11-02T21:40:50.2077485Z go test -count=1 ./...
+2026-11-02T21:41:07.6343595Z ok  	github.com/wago-org/wago	12.647s
+2026-11-02T21:41:07.6383476Z ok  	github.com/wago-org/wago/cli/installer	1.203s
+2026-11-02T21:41:07.6418104Z ok  	github.com/wago-org/wago/cli/internal/automation	0.002s
+2026-11-02T21:41:07.6472849Z ok  	github.com/wago-org/wago/cli/internal/command	0.003s
+2026-11-02T21:41:07.6504014Z ok  	github.com/wago-org/wago/cli/internal/handoff	0.007s
+2026-11-02T21:41:07.6532631Z ?   	github.com/wago-org/wago/cli/internal/parallel	[no test files]
+2026-11-02T21:41:07.6559416Z ok  	github.com/wago-org/wago/cli/internal/pluginmenu	0.002s
+2026-11-02T21:41:07.6592744Z ok  	github.com/wago-org/wago/cli/internal/profiling	0.003s
+2026-11-02T21:41:24.7750219Z ok  	github.com/wago-org/wago/cli/internal/project	29.700s
+2026-11-02T21:41:24.7756196Z ok  	github.com/wago-org/wago/cli/internal/settings	0.656s
+2026-11-02T21:41:24.7757487Z ?   	github.com/wago-org/wago/cli/internal/settings/cmd/genschema	[no test files]
+2026-11-02T21:41:24.7758350Z ok  	github.com/wago-org/wago/cli/internal/tui	0.003s
+2026-11-02T21:41:24.7759035Z ?   	github.com/wago-org/wago/cli/internal/ui	[no test files]
+2026-11-02T21:41:24.7759794Z ok  	github.com/wago-org/wago/cli/internal/wasmcall	0.002s
+2026-11-02T21:41:24.7760445Z ok  	github.com/wago-org/wago/cli/internal/watchsupervisor	1.254s
+2026-11-02T21:41:26.6435609Z ok  	github.com/wago-org/wago/cli/manager	29.077s
+2026-11-02T21:41:26.6458048Z ok  	github.com/wago-org/wago/cli/manager/commands/auth	0.002s
+2026-11-02T21:41:26.6502172Z ok  	github.com/wago-org/wago/cli/manager/commands/auth/login	0.002s
+2026-11-02T21:41:26.6506561Z ?   	github.com/wago-org/wago/cli/manager/commands/auth/logout	[no test files]
+2026-11-02T21:41:26.6507377Z ?   	github.com/wago-org/wago/cli/manager/commands/auth/whoami	[no test files]
+2026-11-02T21:41:26.6508088Z ?   	github.com/wago-org/wago/cli/manager/commands/cache	[no test files]
+2026-11-02T21:41:26.6508711Z ok  	github.com/wago-org/wago/cli/manager/commands/cache/clean	0.002s
+2026-11-02T21:41:26.6509313Z ?   	github.com/wago-org/wago/cli/manager/commands/cache/dir	[no test files]
+2026-11-02T21:41:26.6509960Z ?   	github.com/wago-org/wago/cli/manager/commands/cache/options	[no test files]
+2026-11-02T21:41:26.6510541Z ok  	github.com/wago-org/wago/cli/manager/commands/cache/prune	0.003s
+2026-11-02T21:41:26.6511189Z ?   	github.com/wago-org/wago/cli/manager/commands/cache/size	[no test files]
+2026-11-02T21:41:26.6512062Z ok  	github.com/wago-org/wago/cli/manager/commands/compile	0.020s
+2026-11-02T21:41:26.6512649Z ok  	github.com/wago-org/wago/cli/manager/commands/config	0.002s
+2026-11-02T21:41:26.6513299Z ?   	github.com/wago-org/wago/cli/manager/commands/config/completions	[no test files]
+2026-11-02T21:41:26.6513952Z ?   	github.com/wago-org/wago/cli/manager/commands/config/diff	[no test files]
+2026-11-02T21:41:26.6514556Z ?   	github.com/wago-org/wago/cli/manager/commands/config/get	[no test files]
+2026-11-02T21:41:26.6515618Z ?   	github.com/wago-org/wago/cli/manager/commands/config/list	[no test files]
+2026-11-02T21:41:26.6516334Z ?   	github.com/wago-org/wago/cli/manager/commands/config/options	[no test files]
+2026-11-02T21:41:26.6516954Z ?   	github.com/wago-org/wago/cli/manager/commands/config/reset	[no test files]
+2026-11-02T21:41:26.6517596Z ?   	github.com/wago-org/wago/cli/manager/commands/config/set	[no test files]
+2026-11-02T21:41:26.6518415Z ok  	github.com/wago-org/wago/cli/manager/commands/init	0.026s
+2026-11-02T21:41:26.6519056Z ok  	github.com/wago-org/wago/cli/manager/commands/plugin	0.003s
+2026-11-02T21:41:26.6519587Z ok  	github.com/wago-org/wago/cli/manager/commands/plugin/add	0.010s
+2026-11-02T21:41:26.6520166Z ?   	github.com/wago-org/wago/cli/manager/commands/plugin/catalog	[no test files]
+2026-11-02T21:41:26.6520819Z ok  	github.com/wago-org/wago/cli/manager/commands/plugin/config	0.002s
+2026-11-02T21:41:26.6521420Z ?   	github.com/wago-org/wago/cli/manager/commands/plugin/deprecate	[no test files]
+2026-11-02T21:41:26.6522348Z ok  	github.com/wago-org/wago/cli/manager/commands/plugin/grant	0.005s
+2026-11-02T21:41:26.6522966Z ?   	github.com/wago-org/wago/cli/manager/commands/plugin/outdated	[no test files]
+2026-11-02T21:41:26.6523642Z ?   	github.com/wago-org/wago/cli/manager/commands/plugin/publish	[no test files]
+2026-11-02T21:41:26.6524277Z ?   	github.com/wago-org/wago/cli/manager/commands/plugin/rebuild	[no test files]
+2026-11-02T21:41:26.6524923Z ok  	github.com/wago-org/wago/cli/manager/commands/plugin/remove	0.007s
+2026-11-02T21:41:26.6525555Z ?   	github.com/wago-org/wago/cli/manager/commands/plugin/tree	[no test files]
+2026-11-02T21:41:26.6526189Z ?   	github.com/wago-org/wago/cli/manager/commands/plugin/unpublish	[no test files]
+2026-11-02T21:41:26.6526822Z ok  	github.com/wago-org/wago/cli/manager/commands/plugin/update	0.006s
+2026-11-02T21:41:26.6527358Z ?   	github.com/wago-org/wago/cli/manager/commands/self	[no test files]
+2026-11-02T21:41:26.6528010Z ?   	github.com/wago-org/wago/cli/manager/commands/self/uninstall	[no test files]
+2026-11-02T21:41:26.6528601Z ok  	github.com/wago-org/wago/cli/manager/commands/self/update	0.005s
+2026-11-02T21:41:26.6529159Z ?   	github.com/wago-org/wago/cli/manager/commands/status	[no test files]
+2026-11-02T21:41:26.6529755Z ok  	github.com/wago-org/wago/cli/manager/commands/update	0.011s
+2026-11-02T21:41:26.6530332Z ok  	github.com/wago-org/wago/cli/manager/commands/version	0.007s
+2026-11-02T21:41:26.6530958Z ?   	github.com/wago-org/wago/cli/manager/commands/version/current	[no test files]
+2026-11-02T21:41:26.6532215Z ok  	github.com/wago-org/wago/cli/manager/commands/version/install	0.008s
+2026-11-02T21:41:26.6532961Z ?   	github.com/wago-org/wago/cli/manager/commands/version/list	[no test files]
+2026-11-02T21:41:26.6533547Z ok  	github.com/wago-org/wago/cli/manager/commands/version/switch	0.009s
+2026-11-02T21:41:26.6534176Z ?   	github.com/wago-org/wago/cli/manager/commands/version/uninstall	[no test files]
+2026-11-02T21:41:26.6534810Z ok  	github.com/wago-org/wago/cli/manager/commands/version/update	0.004s
+2026-11-02T21:41:26.6535404Z ?   	github.com/wago-org/wago/cli/manager/commands/version/which	[no test files]
+2026-11-02T21:41:26.6535978Z ok  	github.com/wago-org/wago/cli/manager/internal/cache	0.291s
+2026-11-02T21:41:26.6536461Z ok  	github.com/wago-org/wago/cli/manager/internal/config	0.504s
+2026-11-02T21:41:29.1523549Z ok  	github.com/wago-org/wago/cli/manager/internal/plugin	21.285s
+2026-11-02T21:41:29.1642977Z ok  	github.com/wago-org/wago/cli/manager/internal/plugin/build	5.749s
+2026-11-02T21:41:29.1706862Z ok  	github.com/wago-org/wago/cli/manager/internal/plugin/gocommand	1.465s
+2026-11-02T21:41:29.1732728Z ok  	github.com/wago-org/wago/cli/manager/internal/progress	0.303s
+2026-11-02T21:41:29.1792835Z ok  	github.com/wago-org/wago/cli/manager/internal/registry	5.624s
+2026-11-02T21:41:29.1812753Z ok  	github.com/wago-org/wago/cli/manager/internal/self	0.273s
+2026-11-02T21:41:29.1923080Z ?   	github.com/wago-org/wago/cli/manager/internal/self/replace	[no test files]
+2026-11-02T21:41:43.1471118Z # github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64 [github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.test]
+2026-11-02T21:41:43.1727632Z ##[error]src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:146:10: undefined: newFuncHints
+2026-11-02T21:41:43.1738190Z ##[error]src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:147:13: undefined: newGlobalEligibilityTracker
+2026-11-02T21:41:43.1772613Z ##[error]src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:150:17: undefined: scanBodyBytesIntoMemory64WithModuleCalls
+2026-11-02T21:41:43.1843085Z ##[error]src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:154:22: undefined: hintHasCall
+2026-11-02T21:41:43.1863590Z ##[error]src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:155:75: undefined: hintHasCall
+2026-11-02T21:41:43.1922893Z ##[error]src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go:158:22: undefined: scanLoopCallFreeDetails
+2026-11-02T21:41:47.2498260Z ok  	github.com/wago-org/wago/cli/manager/internal/standalone	22.754s
+2026-11-02T21:41:47.2523122Z ok  	github.com/wago-org/wago/cli/manager/internal/status	0.037s
+2026-11-02T21:41:47.2553619Z ok  	github.com/wago-org/wago/cli/manager/internal/version	14.288s
+2026-11-02T21:41:47.2580775Z ok  	github.com/wago-org/wago/cli/runtime	0.008s
+2026-11-02T21:41:47.2582270Z ok  	github.com/wago-org/wago/cli/runtime/commands	0.006s
+2026-11-02T21:41:47.2583116Z ?   	github.com/wago-org/wago/cli/runtime/commands/module	[no test files]
+2026-11-02T21:41:47.2584146Z ?   	github.com/wago-org/wago/cli/runtime/commands/module/capabilities	[no test files]
+2026-11-02T21:41:47.2585031Z ok  	github.com/wago-org/wago/cli/runtime/commands/module/exports	0.006s
+2026-11-02T21:41:47.2585908Z ?   	github.com/wago-org/wago/cli/runtime/commands/module/imports	[no test files]
+2026-11-02T21:41:47.2586697Z ?   	github.com/wago-org/wago/cli/runtime/commands/plugin	[no test files]
+2026-11-02T21:41:47.2587569Z ok  	github.com/wago-org/wago/cli/runtime/commands/plugin/inspect	0.006s
+2026-11-02T21:41:47.2588387Z ok  	github.com/wago-org/wago/cli/runtime/commands/plugin/list	0.009s
+2026-11-02T21:41:47.2589231Z ok  	github.com/wago-org/wago/cli/runtime/commands/run	2.716s
+2026-11-02T21:41:47.2590007Z ok  	github.com/wago-org/wago/cli/runtime/commands/validate	0.004s
+2026-11-02T21:41:47.2590753Z ok  	github.com/wago-org/wago/cli/runtime/internal/module	0.003s
+2026-11-02T21:41:47.2591523Z ok  	github.com/wago-org/wago/cli/runtime/internal/modulefile	0.003s
+2026-11-02T21:41:47.2592557Z ok  	github.com/wago-org/wago/cli/runtime/internal/plugin	0.006s
+2026-11-02T21:41:47.2593337Z ?   	github.com/wago-org/wago/cli/runtime/internal/profile	[no test files]
+2026-11-02T21:41:47.2594181Z ok  	github.com/wago-org/wago/cli/runtime/internal/version	0.003s
+2026-11-02T21:41:47.2594852Z ok  	github.com/wago-org/wago/cli/standalone	0.212s
+2026-11-02T21:41:47.2595515Z ok  	github.com/wago-org/wago/cli/wago	0.734s
+2026-11-02T21:41:47.2596125Z ?   	github.com/wago-org/wago/codegen	[no test files]
+2026-11-02T21:41:47.2596816Z ?   	github.com/wago-org/wago/codegen/amd64	[no test files]
+2026-11-02T21:41:47.2597477Z ?   	github.com/wago-org/wago/codegen/arm64	[no test files]
+2026-11-02T21:41:47.2598177Z ?   	github.com/wago-org/wago/codegen/riscv64	[no test files]
+2026-11-02T21:41:47.2598907Z ok  	github.com/wago-org/wago/examples/01-hello	0.005s
+2026-11-02T21:41:47.2599624Z ok  	github.com/wago-org/wago/examples/02-runtime-typed	0.003s
+2026-11-02T21:41:47.2600351Z ok  	github.com/wago-org/wago/examples/03-host-import	0.003s
+2026-11-02T21:41:47.2601652Z ok  	github.com/wago-org/wago/examples/04-memory	0.008s
+2026-11-02T21:41:47.2602501Z ok  	github.com/wago-org/wago/examples/05-globals	0.003s
+2026-11-02T21:41:47.2603201Z ok  	github.com/wago-org/wago/examples/06-runtime-service	0.005s
+2026-11-02T21:41:47.2603922Z ok  	github.com/wago-org/wago/examples/07-runtime-limits	0.008s
+2026-11-02T21:41:47.2605147Z ok  	github.com/wago-org/wago/examples/08-custom-plugin	0.010s
+2026-11-02T21:41:47.2605953Z ok  	github.com/wago-org/wago/examples/09-plugin-config-lifecycle	0.007s
+2026-11-02T21:41:47.2606699Z ok  	github.com/wago-org/wago/examples/10-hooks	0.012s
+2026-11-02T21:41:47.2607342Z ok  	github.com/wago-org/wago/examples/11-source-transform	0.012s
+2026-11-02T21:41:47.2608152Z ok  	github.com/wago-org/wago/examples/12-caller-context	0.005s
+2026-11-02T21:41:47.2609095Z ok  	github.com/wago-org/wago/examples/13-plugin-contracts	0.004s
+2026-11-02T21:41:47.2610035Z ok  	github.com/wago-org/wago/examples/14-handles	0.006s
+2026-11-02T21:41:47.2610662Z ok  	github.com/wago-org/wago/examples/15-config	0.003s
+2026-11-02T21:41:47.2611347Z ok  	github.com/wago-org/wago/examples/17-managed-instances	0.003s
+2026-11-02T21:41:47.2612531Z ok  	github.com/wago-org/wago/examples/18-custom-instruction	0.003s
+2026-11-02T21:41:47.2613262Z ok  	github.com/wago-org/wago/examples/19-custom-type	0.003s
+2026-11-02T21:41:47.2614055Z ok  	github.com/wago-org/wago/examples/20-core-handles	0.004s
+2026-11-02T21:41:47.2614688Z ok  	github.com/wago-org/wago/examples/21-guest-storage	0.004s
+2026-11-02T21:41:47.2615407Z ok  	github.com/wago-org/wago/examples/22-language-guests	0.009s
+2026-11-02T21:41:47.2616138Z ok  	github.com/wago-org/wago/examples/23-public-api	0.005s
+2026-11-02T21:41:47.2616920Z ok  	github.com/wago-org/wago/examples/internal/exampleplugin	0.002s
+2026-11-02T21:41:47.2617638Z ok  	github.com/wago-org/wago/examples/internal/mods	0.004s
+2026-11-02T21:41:47.2618295Z ok  	github.com/wago-org/wago/internal/actionartifact	0.026s
+2026-11-02T21:41:47.2619092Z ok  	github.com/wago-org/wago/internal/atomicfile	0.022s
+2026-11-02T21:41:47.2619767Z ok  	github.com/wago-org/wago/internal/filelock	0.055s
+2026-11-02T21:41:47.2620482Z ok  	github.com/wago-org/wago/internal/functionworkers	0.002s
+2026-11-02T21:41:47.2621093Z ok  	github.com/wago-org/wago/internal/genfacade	0.123s
+2026-11-02T21:41:47.2622022Z ok  	github.com/wago-org/wago/internal/httpclient	0.159s
+2026-11-02T21:41:47.2622826Z ok  	github.com/wago-org/wago/internal/installbootstrap	0.003s
+2026-11-02T21:41:47.2623551Z ok  	github.com/wago-org/wago/internal/jitprofile	0.007s
+2026-11-02T21:41:47.2624188Z ok  	github.com/wago-org/wago/internal/jsonstrict	0.006s
+2026-11-02T21:41:47.2624808Z ok  	github.com/wago-org/wago/internal/managedrelease	1.233s
+2026-11-02T21:41:47.2625558Z ok  	github.com/wago-org/wago/internal/namecheck	0.228s
+2026-11-02T21:41:47.2626221Z ok  	github.com/wago-org/wago/internal/profcapture	0.255s
+2026-11-02T21:41:47.2626953Z ?   	github.com/wago-org/wago/internal/profilecmd	[no test files]
+2026-11-02T21:41:47.2627620Z ok  	github.com/wago-org/wago/internal/regalloccheck	0.012s
+2026-11-02T21:41:47.2628340Z ok  	github.com/wago-org/wago/internal/regularfile	0.012s
+2026-11-02T21:41:47.2629037Z ?   	github.com/wago-org/wago/internal/runtimebridge	[no test files]
+2026-11-02T21:41:47.2629748Z ok  	github.com/wago-org/wago/internal/sourcearchive	0.193s
+2026-11-02T21:41:47.2630739Z ?   	github.com/wago-org/wago/internal/standalonegen	[no test files]
+2026-11-02T21:41:47.2639083Z ok  	github.com/wago-org/wago/internal/wagopaths	0.006s
+2026-11-02T21:41:47.2640018Z ok  	github.com/wago-org/wago/plugin	0.010s
+2026-11-02T21:41:48.1032327Z ok  	github.com/wago-org/wago/profile	4.405s
+2026-11-02T21:41:48.1063541Z ?   	github.com/wago-org/wago/scripts/compilemem	[no test files]
+2026-11-02T21:41:48.1082906Z ?   	github.com/wago-org/wago/src/core/codeimage	[no test files]
+2026-11-02T21:41:48.1102898Z ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot	0.773s
+2026-11-02T21:41:48.1143237Z FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64 [build failed]
+2026-11-02T21:42:08.2954718Z ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	10.986s
+2026-11-02T21:42:08.2956388Z ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64	4.039s
+2026-11-02T21:42:08.2957673Z ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	0.031s
+2026-11-02T21:42:08.2959423Z ok  	github.com/wago-org/wago/src/core/compiler/codegen	0.005s
+2026-11-02T21:42:08.2960362Z ok  	github.com/wago-org/wago/src/core/compiler/frontend	0.016s
+2026-11-02T21:42:08.2961063Z ok  	github.com/wago-org/wago/src/core/compiler/ir	0.085s
+2026-11-02T21:42:08.2962063Z ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.008s
+2026-11-02T21:42:08.2963153Z ok  	github.com/wago-org/wago/src/core/compiler/wasm	0.726s
+2026-11-02T21:42:08.2964028Z ?   	github.com/wago-org/wago/src/core/compiler/wasm/internal/geninstrnames	[no test files]
+2026-11-02T21:42:08.2964985Z ok  	github.com/wago-org/wago/src/core/encoder/amd64	1.512s
+2026-11-02T21:42:08.2965627Z ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.034s
+2026-11-02T21:42:08.2966429Z ok  	github.com/wago-org/wago/src/core/encoder/riscv64	0.055s
+2026-11-02T21:42:08.2967129Z ok  	github.com/wago-org/wago/src/core/nativeabi	0.007s
+2026-11-02T21:42:08.2967861Z ok  	github.com/wago-org/wago/src/core/plugins	0.006s
+2026-11-02T21:42:08.2968542Z ok  	github.com/wago-org/wago/src/core/runtime	0.356s
+2026-11-02T21:42:08.2969289Z ok  	github.com/wago-org/wago/src/core/runtime/abi	0.005s
+2026-11-02T21:42:08.2970022Z ok  	github.com/wago-org/wago/src/core/runtime/arm64spike	0.004s
+2026-11-02T21:42:08.2970728Z ok  	github.com/wago-org/wago/src/core/runtime/gc	0.004s
+2026-11-02T21:42:20.7673456Z ok  	github.com/wago-org/wago/src/core/runtime/gc/native	17.572s
+2026-11-02T21:42:20.7713029Z ok  	github.com/wago-org/wago/src/core/runtime/hostthunk	0.008s
+2026-11-02T21:42:20.7714325Z ok  	github.com/wago-org/wago/src/core/runtime/riscv64	0.060s
+2026-11-02T21:42:20.7742751Z ok  	github.com/wago-org/wago/src/core/semver	0.004s
+2026-11-02T21:42:54.3088573Z ok  	github.com/wago-org/wago/src/wago	27.670s
+2026-11-02T21:42:54.3089320Z ok  	github.com/wago-org/wago/tests/conformance/spectest	0.070s
+2026-11-02T21:42:54.3090163Z ok  	github.com/wago-org/wago/tests/conformance/wasmtime	0.025s
+2026-11-02T21:42:54.3090744Z ok  	github.com/wago-org/wago/tests/fuzz/engine/oracle	0.005s
+2026-11-02T21:42:54.3091342Z ?   	github.com/wago-org/wago/tests/fuzz/engine/worker	[no test files]
+2026-11-02T21:42:54.3092202Z ok  	github.com/wago-org/wago/tests/integration/cipolicy	0.008s
+2026-11-02T21:42:54.3092781Z ok  	github.com/wago-org/wago/tests/integration/runtimeconcurrency	0.349s
+2026-11-02T21:42:54.3093406Z ok  	github.com/wago-org/wago/tests/support/compilerpair	0.109s
+2026-11-02T21:42:54.3093944Z ok  	github.com/wago-org/wago/tests/support/regressioncorpus	0.029s
+2026-11-02T21:42:54.3094546Z ok  	github.com/wago-org/wago/tests/support/regressiontest	0.011s
+2026-11-02T21:42:54.3095077Z ok  	github.com/wago-org/wago/tests/support/ruleguide	0.012s
+2026-11-02T21:42:54.3095560Z ok  	github.com/wago-org/wago/tests/support/simdfixture	0.005s
+2026-11-02T21:42:54.3096191Z ?   	github.com/wago-org/wago/tests/support/summaryfixtures	[no test files]
+2026-11-02T21:42:54.3096708Z ok  	github.com/wago-org/wago/tests/support/wasmtest	0.003s
+2026-11-02T21:42:54.3097306Z ok  	github.com/wago-org/wago/tests/tools/ci-plan	0.127s
+2026-11-02T21:42:54.3097801Z ok  	github.com/wago-org/wago/tests/tools/docs-check	0.007s
+2026-11-02T21:42:54.3098376Z ok  	github.com/wago-org/wago/tests/tools/regression-corpus	0.170s
+2026-11-02T21:42:54.3098934Z ?   	github.com/wago-org/wago/tests/tools/release-qualification	[no test files]
+2026-11-02T21:42:54.3099485Z ok  	github.com/wago-org/wago/tests/tools/staticcheck-baseline	0.008s
+2026-11-02T21:42:54.3100137Z ok  	github.com/wago-org/wago/tests/tools/tinygo-cache	0.022s
+2026-11-02T21:42:54.3100545Z FAIL
+2026-11-02T21:42:54.6433125Z error: recipe `unit` failed on line 16 with exit code 1
+2026-11-02T21:42:54.6445516Z ##[error]Process completed with exit code 1.
+2026-11-02T21:42:54.6982399Z Post job cleanup.
+2026-11-02T21:42:54.7824895Z [command]/usr/bin/git version
+2026-11-02T21:42:54.7869590Z git version 2.56.0
+2026-11-02T21:42:54.7911220Z Temporarily overriding HOME='/home/runner/work/_temp/ef0578d9-5474-4b2a-8a1f-4515b22043d3' before making global git config changes
+2026-11-02T21:42:54.7913289Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T21:42:54.7916416Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wago/wago
+2026-11-02T21:42:54.7966598Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T21:42:54.8009711Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T21:42:54.8302788Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T21:42:54.8337900Z http.https://github.com/.extraheader
+2026-11-02T21:42:54.8360671Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-02T21:42:54.8409323Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T21:42:54.8740347Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T21:42:54.8789294Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T21:42:54.9252604Z Cleaning up orphan processes
+2026-11-02T21:42:54.9725641Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830, actions/checkout@11d5960a326750d5838078e36cf38b85af677262, actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+

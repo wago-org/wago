@@ -1,0 +1,9 @@
+{
+  "repo": "/home/dev/Projects/slipstream",
+  "pin": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+  "query": "CoreFeaturesV3|UnsupportedFeatureError|UnsupportedConvertedPublication",
+  "exit": 1,
+  "stdout": "",
+  "stderr": "",
+  "scope": "Wago configuration and test-specific API; no equivalent symbol found if exit1, not broad runtime absence proof"
+}
