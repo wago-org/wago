@@ -18,6 +18,13 @@ PLAN = json.loads((HERE / 'plan.json').read_text())
 SOURCE = PLAN['source']
 
 
+def build_tags(mode, group):
+    tags = [] if mode == 'ordinary' else [mode]
+    if group == 'backend':
+        tags.append('wago_codegenstats')
+    return ['-tags=' + ','.join(tags)] if tags else []
+
+
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -202,7 +209,6 @@ def main():
         (out / 'wabt-provenance.txt').write_bytes((wabt.parent.parent / '.wago-provenance').read_bytes())
         run.env['PATH'] = str(go.parent) + ':' + str(wabt.parent) + ':/usr/bin:/bin'
         run.env.update(WAGO_WAST2JSON=str(wabt), WAGO_WABT_VERSION='1.0.41')
-        tags = [] if args.mode == 'ordinary' else ['-tags=' + args.mode]
         ok = True
         # Unarmed native clock/signal capability control, independent of original tests.
         timer_source = out / 'timer-capability.go'
@@ -228,7 +234,7 @@ def main():
             ('backend', './src/core/compiler/backend/railshot/arm64', False, ['backend']),
         ]:
             binary = out / (group + '.test')
-            code, _ = run.command(group + '-build', [go, 'test', '-c', *tags,
+            code, _ = run.command(group + '-build', [go, 'test', '-c', *build_tags(args.mode, group),
                                  *(['-race'] if race else []), '-o', binary, package])
             if code:
                 ok = False
