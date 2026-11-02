@@ -1,0 +1,1 @@
+["/home/dev/.local/share/mise/installs/go/1.27.1/bin/go", "test", "-tags", "wagodebug", "./src/wago", "-timeout=20m", "-count=1", "-v"]

@@ -1,0 +1,56 @@
+[
+  {
+    "mode": "ordinary",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wagodebug",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wagodebug",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags",
+      "wago_regalloccheck",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/actionlint/1.7.7/actionlint",
+      ".github/workflows/ci.yml"
+    ],
+    "exit": 1
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/actionlint/1.7.7/actionlint",
+      "-config-file",
+      ".github/actionlint.yaml",
+      ".github/workflows/ci.yml"
+    ],
+    "exit": 0,
+    "scope": "explicit repository runner labels; first unconfigured failure retained"
+  }
+]
