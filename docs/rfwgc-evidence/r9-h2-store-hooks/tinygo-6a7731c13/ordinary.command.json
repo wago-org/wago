@@ -1,0 +1,1 @@
+["/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo", "test", "-scheduler=threads", "-gc=conservative", "-tags=wago_runtime", "-run=^TestGCExternConversion", "-v", "./src/wago"]

@@ -1,0 +1,6 @@
+{
+  "status": "STOPPED",
+  "reason": "ARM64 extern-only guest table clear was compiled as a leaf despite helper call, leaving LR equal to return PC. Stopped runner; SIGQUIT captured guest diagnostic. No further execution of that pin requested. Replaced by corrected call-frame pin.",
+  "passed_commands": 2,
+  "remaining_commands": "not qualified"
+}

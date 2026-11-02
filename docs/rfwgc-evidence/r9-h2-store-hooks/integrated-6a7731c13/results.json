@@ -1,0 +1,61 @@
+[
+  {
+    "label": "ordinary-focused",
+    "exit": 0,
+    "skip": [],
+    "fail": []
+  },
+  {
+    "label": "ordinary-full",
+    "exit": 1,
+    "skip": [
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/typed/panicfalse (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/typed/panictrue (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/HostCall/panicfalse (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/HostCall/panictrue (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/Caller/panicfalse (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/instance/Caller/panictrue (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/typed/panicfalse (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/typed/panictrue (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/HostCall/panicfalse (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/HostCall/panictrue (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/Caller/panicfalse (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/prepared/Caller/panictrue (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/session/typed/panicfalse (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/session/typed/panictrue (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/session/HostCall/panicfalse (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/session/HostCall/panictrue (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/session/Caller/panicfalse (0.00s)",
+      "    --- SKIP: TestBoundedDirectGuardedNativeHandoff/session/Caller/panictrue (0.00s)",
+      "--- SKIP: TestDeferredEffectsGuardLoadPressure (0.00s)",
+      "    --- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=16 (0.00s)",
+      "    --- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=17 (0.00s)",
+      "    --- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=false/pins=19 (0.00s)",
+      "    --- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=16 (0.00s)",
+      "    --- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=17 (0.00s)",
+      "    --- SKIP: TestGCConditionalSnapshotBoundariesAndFallback/array=true/pins=19 (0.00s)",
+      "    --- SKIP: TestGCConditionalSnapshotRepeatedWideStores/array=false (0.00s)",
+      "    --- SKIP: TestGCConditionalSnapshotRepeatedWideStores/array=true (0.00s)",
+      "    --- SKIP: TestDynamicFunctionConditionalSnapshot/pins=16 (0.00s)",
+      "    --- SKIP: TestDynamicFunctionConditionalSnapshot/pins=17 (0.00s)",
+      "    --- SKIP: TestDynamicFunctionConditionalSnapshot/pins=19 (0.00s)",
+      "--- SKIP: TestGCNativeResolverTelemetryAttributesModuleStub (0.00s)",
+      "--- SKIP: TestCustomInstructionRecipeBudgetARM64 (0.00s)",
+      "--- SKIP: TestCustomInstructionRecipeInputOnlyARM64 (0.00s)",
+      "--- SKIP: TestModuleGlobalRegionalLeasePreservesResultSlotsAMD64 (0.00s)",
+      "--- SKIP: TestMoonBitStarshineWasmGCSmokeCompile (0.00s)",
+      "--- SKIP: TestMoonBitStarshineWasmGCSmokeInstantiate (0.00s)",
+      "--- SKIP: TestNativeIdleCacheResidencyDiagnostic (0.00s)",
+      "--- SKIP: TestRFWStage3CorpusCompile (0.00s)",
+      "--- SKIP: TestSIMDExtmulCorpusCensus (0.00s)",
+      "--- SKIP: TestSIMDFloorAverageCorpusCensus (0.00s)",
+      "--- SKIP: TestSIMDSourcePairSelectionAMD64 (0.00s)",
+      "--- SKIP: TestSpecSuiteExec (0.00s)",
+      "--- SKIP: TestThreadsOfficialAtomicSuite (0.00s)",
+      "--- SKIP: TestThreadsOfficialConcurrentScripts (0.00s)"
+    ],
+    "fail": [
+      "--- FAIL: TestActiveExternrefElementsPreserveDeclarationOrderOnFailedInstantiation (0.00s)"
+    ]
+  }
+]
