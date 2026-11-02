@@ -91,3 +91,59 @@ The inherited target-only portability adapter and architecture probe are hashed.
 TinyGo executes its supported conversion compatibility smoke; it does not claim
 host opaque receipt support. Darwin ARM64 and Windows AMD64 cross-builds are
 compile-only; the parent owns actual native runner qualification.
+
+## Immutable qualification at 9ad40bce4
+
+Source/test pin: `9ad40bce4a7397dbadf0b0528f2587ed59d7d441`.
+All 18 integrated, 14 target, six nonhost build and three TinyGo commands passed.
+`summarize.py` asserts every required new regression in each host-focused/race
+and ARM64 guest cell, zero skips in required cells, no DATA RACE, and unchanged
+source exports/drivers. It independently compares every tracked `src` blob in
+all four exports against the source commit. `summary.json` records the exact
+blob census and all skip entries; `SHA256SUMS` covers retained artifacts.
+
+| Lane (top-level passes / recorded skip entries) | ordinary | wagodebug | wago_regalloccheck |
+| --- | --- | --- | --- |
+| Linux AMD64 focused | 92 / 0 | 92 / 0 | 92 / 0 |
+| Linux AMD64 scoped race | 92 / 0 | 92 / 0 | 92 / 0 |
+| Full Wago | 2531 / 44 | 2525 / 50 | 2531 / 44 |
+| Backend/compiler | 1006 / 552 | 1004 / 554 | 1129 / 553 |
+| ARM64 QEMU execution | 67 / 0 | 67 / 0 | 67 / 0 |
+| RV64 QEMU controls | 48 / 0 | 48 / 0 | 48 / 0 |
+| TinyGo conversion compatibility | 5 / 0 | 5 / 0 | 5 / 0 |
+| Darwin ARM64 build only | PASS | PASS | PASS |
+| Windows AMD64 build only | PASS | PASS | PASS |
+
+Full Wago/backend skips are existing architecture/optional/diagnostic entries,
+retained verbatim; skip-entry counts include subtests. No required regression
+was skipped. ARM/RV cross-builds in the integrated lane also passed all modes.
+The architecture probe is included in target counts. Native Darwin/Windows
+execution, full-package race, and a separate complete conformance campaign were
+not run. TinyGo's five tests qualify only its supported conversion smoke.
+
+RR-1 implementation verdict: repaired and locally qualified at this pin. The
+original storage-only native global/table repro admits unrelated topology
+writers; acquired conversion domains are independently lifetime-pinned and
+cancellation unwinds them. Truly dynamic admission retains its original gate.
+RR-2 implementation verdict: repaired and locally qualified at this pin. The
+original valid nested programs pass; foreign/stale/late unauthorized single and
+bulk stores remain fail-closed. These are implementation findings, not reviewer
+approval, final inclusion, or final combined-head qualification.
+
+## Independent measurement handoff
+
+READY TO MEASURE (independent worker only, subject to the parent's remaining
+review/native-platform gates). Branch `experiment/rfwgc-port`, source commit
+`9ad40bce4a7397dbadf0b0528f2587ed59d7d441`.
+
+Performance-sensitive paths: conversion-only invocation admission, snapshot
+allocation/registry and collector pin release, callback suspend/resume, native
+helper root dispatch, single/bulk receipt membership checks, public module
+container writes/initialization, and terminal store retirement accounting.
+Proposed workloads: storage-only scalar calls with empty and populated publisher
+sets; disjoint GC instantiation while a storage-only guest runs; same-Runtime
+nested scalar and storage relays; ordinary cross-Runtime relays; single and bulk
+converted publication/clear; callback publisher replacement; repeated last-pin
+retirement. Measure independently under the global lease and CPU rules. This
+worker took no benchmarks or performance timings and acquired no measurement
+lease. Parent owns fresh review and final acceptance.
