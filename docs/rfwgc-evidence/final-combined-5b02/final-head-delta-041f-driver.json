@@ -3,6 +3,7 @@
   "sha256": "d6db96f2df17240e34e6432f526ac663362f6e5167113482ef8e3e7f1e5f4c47",
   "source": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
   "authorization": "Explicit parent approval: fresh041f immutable postdrain delta-only checks, multitableall3",
-  "execution_status": "NOT_RUN",
-  "prior_ca164_driver": "unexecuted historical preparation; not substituted"
+  "execution_status": "PASS:8 delta gates",
+  "prior_ca164_driver": "unexecuted historical preparation; not substituted",
+  "summary": "delta-041f/summary.json"
 }

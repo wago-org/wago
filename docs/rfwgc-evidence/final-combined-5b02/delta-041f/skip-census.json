@@ -1,0 +1,50 @@
+[
+  {
+    "suite": "actionlint",
+    "passed_test_events": 0,
+    "skips": [],
+    "exit": 0
+  },
+  {
+    "suite": "ci-policy-planner-ordinary",
+    "passed_test_events": 22,
+    "skips": [],
+    "exit": 0
+  },
+  {
+    "suite": "ci-policy-planner-wago_regalloccheck",
+    "passed_test_events": 22,
+    "skips": [],
+    "exit": 0
+  },
+  {
+    "suite": "ci-policy-planner-wagodebug",
+    "passed_test_events": 22,
+    "skips": [],
+    "exit": 0
+  },
+  {
+    "suite": "format",
+    "passed_test_events": 0,
+    "skips": [],
+    "exit": 0
+  },
+  {
+    "suite": "rr-and-multitable-ordinary",
+    "passed_test_events": 15,
+    "skips": [],
+    "exit": 0
+  },
+  {
+    "suite": "rr-and-multitable-wago_regalloccheck",
+    "passed_test_events": 15,
+    "skips": [],
+    "exit": 0
+  },
+  {
+    "suite": "rr-and-multitable-wagodebug",
+    "passed_test_events": 15,
+    "skips": [],
+    "exit": 0
+  }
+]

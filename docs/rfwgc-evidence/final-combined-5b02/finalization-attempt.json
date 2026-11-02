@@ -1,0 +1,5 @@
+{
+  "failure": "Driver registry scan matched a receipt directory ending .sh",
+  "effect": "Read-only IsADirectoryError before staging/commit; no qualification failure",
+  "fix": "Require is_file when hashing driver files"
+}

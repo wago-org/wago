@@ -1,0 +1,50 @@
+{
+  "source": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
+  "base": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "delta_verdict": "PASS",
+  "results": [
+    {
+      "suite": "actionlint",
+      "exit": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "ci-policy-planner-ordinary",
+      "exit": 0,
+      "raw_sha256": "953fa415f81c9a31f0dc4746d9bba9e89f88ebfa3b8ba189e49b42ec9678713e"
+    },
+    {
+      "suite": "ci-policy-planner-wago_regalloccheck",
+      "exit": 0,
+      "raw_sha256": "858b5cde9c8871623e740972d6682825d08cd25e116b414d1aec4971bed1b349"
+    },
+    {
+      "suite": "ci-policy-planner-wagodebug",
+      "exit": 0,
+      "raw_sha256": "dd5189d23e460f97c61e503284b3826730bc0bb5803498e171a3e30b716374e0"
+    },
+    {
+      "suite": "format",
+      "exit": 0,
+      "raw_sha256": "a0e64ec113ad4d13376b540be448306b67b9a63bb8f410da3be0b669dcbfc714"
+    },
+    {
+      "suite": "rr-and-multitable-ordinary",
+      "exit": 0,
+      "raw_sha256": "7dc04e4c5cf31518ea0ed208df31cd8f1ed1519ae859653a7898c2be89495cf2"
+    },
+    {
+      "suite": "rr-and-multitable-wago_regalloccheck",
+      "exit": 0,
+      "raw_sha256": "dc35d2f8b47d07837aeeccca7a4eb121d57e4bf6476bb94aa81ad8422c9a7af2"
+    },
+    {
+      "suite": "rr-and-multitable-wagodebug",
+      "exit": 0,
+      "raw_sha256": "e6b30b6de43f79a431418d3033c95b01d465936c3508eeef6525aad92e457b8e"
+    }
+  ],
+  "source_unchanged": true,
+  "full_suite_executed_on_final_pin": false,
+  "acceptance": "Requires separate full220 base result and parent native-platform decision"
+}
