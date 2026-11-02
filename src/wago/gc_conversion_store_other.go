@@ -51,6 +51,20 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 	if compiledArchitecture == 4 || g == nil || g.Type != ValExternRef || value.typ != ValExternRef {
 		return false, nil
 	}
+	// Preserve ordinary metadata/lifetime validation before token classification.
+	// These paths cannot publish; leave their established diagnostics to the API.
+	if !g.Mutable || access != nil && access.isLogicallyClosed() {
+		return false, nil
+	}
+	if g.owner != nil {
+		g.owner.mu.Lock()
+		invalid := g.owner.closed || !g.owner.mutable || g.owner.typ != g.Type
+		physical := g.owner.instance
+		g.owner.mu.Unlock()
+		if invalid || physical != nil && physical.isLogicallyClosed() {
+			return false, nil
+		}
+	}
 	var store *referenceStore
 	if g.owner != nil {
 		store = g.owner.store

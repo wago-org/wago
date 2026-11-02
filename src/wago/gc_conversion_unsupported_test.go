@@ -63,3 +63,74 @@ func TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory(t *testin
 	}
 	store.releaseExternref(token)
 }
+
+func TestUnsupportedConversionGlobalValidationOrdering(t *testing.T) {
+	store := newReferenceStore(false)
+	other := newReferenceStore(false)
+	ordinary, err := store.issueExternref("ordinary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := other.issueExternref("foreign")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.releaseExternref(ordinary)
+	defer other.releaseExternref(foreign)
+	const opaque = uint64(0x1234567800000042)
+	for _, tc := range []struct {
+		name              string
+		bits              uint64
+		immutable, closed bool
+		want              string
+	}{
+		{name: "ordinary", bits: ordinary}, {name: "null"},
+		{name: "invalid", bits: opaque, want: "invalid externref token"},
+		{name: "cross-store", bits: foreign, want: "invalid externref token"},
+		{name: "immutable-before-invalid", bits: opaque, immutable: true, want: "immutable"},
+		{name: "immutable-before-null", immutable: true, want: "immutable"},
+		{name: "closed-before-invalid", bits: opaque, closed: true, want: "metadata is invalid"},
+		{name: "closed-before-null", closed: true, want: "metadata is invalid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cell := make([]byte, 8)
+			binary.LittleEndian.PutUint64(cell, 99)
+			g := &Global{Type: ValExternRef, Mutable: !tc.immutable, cell: cell, owner: &globalOwner{store: store, typ: ValExternRef, mutable: !tc.immutable, closed: tc.closed}}
+			err := g.SetValue(Value{typ: ValExternRef, bits: tc.bits})
+			if tc.want == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if binary.LittleEndian.Uint64(cell) != tc.bits {
+					t.Fatal("ordinary/null write missing")
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("error = %v, want %q", err, tc.want)
+				}
+				if binary.LittleEndian.Uint64(cell) != 99 {
+					t.Fatal("rejection changed storage")
+				}
+			}
+		})
+	}
+	// A known opaque entry must not supersede immutable or closed diagnostics.
+	in := &Instance{refStore: store}
+	plugin := &instancePluginState{}
+	plugin.gcRefTestTable.Store(&gcRefTestTableState{Conversion: &gcExternConversionState{store: store, entries: []gcExternConversionEntry{{kind: gcExternConversionData, publicExternWord: opaque}}}})
+	in.pluginState.Store(plugin)
+	g := &Global{Type: ValExternRef, Mutable: false, cell: make([]byte, 8), owner: &globalOwner{instance: in, store: store, typ: ValExternRef, mutable: false}}
+	if handled, err := setConversionGlobalPublic(nil, g, Value{typ: ValExternRef, bits: opaque}); handled || err != nil {
+		t.Fatalf("immutable opaque precedence: %t %v", handled, err)
+	}
+	// Exercise the public closed-instance error without entering a fake engine.
+	g.Mutable = true
+	g.owner.mutable = true
+	in.invocationState.Store(instanceInvocationClosed)
+	if err := g.SetValue(Value{typ: ValExternRef, bits: opaque}); err == nil || !strings.Contains(err.Error(), "owner instance is closed") {
+		t.Fatalf("closed opaque precedence: %v", err)
+	}
+	if handled, err := setConversionGlobalPublic(in, g, Value{typ: ValExternRef, bits: opaque}); handled || err != nil {
+		t.Fatalf("closed accessing-instance precedence: %t %v", handled, err)
+	}
+}
