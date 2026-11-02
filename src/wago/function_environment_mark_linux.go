@@ -35,24 +35,6 @@ type managedFunctionMarkDomain struct {
 	transient     gc.RootSet
 }
 
-type managedFunctionMark struct {
-	graph              *managedFunctionGraph
-	epoch              uint64
-	domains            []*managedFunctionMarkDomain
-	byCollector        map[*gc.Collector]*managedFunctionMarkDomain
-	live               map[*managedFunctionMember]bool
-	owners             []*managedFunctionMember
-	ownerAt, ownerSlot int
-	edges              map[*managedFunctionMember][]*managedFunctionMember
-	incoming           map[*managedFunctionMember]int
-	err                error
-	complete           bool
-	members            []*managedFunctionMember
-	managedFunctionMarkTarget
-	nativeCursor managedFunctionNativeRootCursor
-	nativeDone   bool
-}
-
 // bindPersistentSlot transfers a private instance slot from the unconditional
 // collector roots to its physical owner's conditional roots. Public token and
 // host argument slots must never be bound here. Slot indexes are append-only.

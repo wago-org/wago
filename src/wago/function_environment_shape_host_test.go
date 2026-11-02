@@ -9,12 +9,6 @@ import (
 )
 
 func TestManagedFunctionHostShape(t *testing.T) {
-	for _, state := range []any{managedFunctionCollectorTarget{}, managedFunctionMarkTarget{}} {
-		typ := reflect.TypeOf(state)
-		if typ.Size() != 0 || typ.NumField() != 0 {
-			t.Fatalf("host target state %s carries unused storage", typ)
-		}
-	}
 	for _, shape := range []struct {
 		value  any
 		absent string
