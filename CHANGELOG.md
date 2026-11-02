@@ -68,6 +68,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   of a pure integer condition and local-only result arms.
 - Fold repeated ARM64 I32 local terms into one shifted add when their exact
   modular coefficients fit, preserving captured values and trapping operands.
+- Reuse an immediately preceding ARM64 zero-exit guard for one integer
+  division or remainder assignment, retaining overflow checks and later traps.
+  Unroll register-only unsigned-division loops while retaining each exit test.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.

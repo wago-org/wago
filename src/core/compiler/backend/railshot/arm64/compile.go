@@ -386,7 +386,9 @@ type fn struct {
 	// stubs) and around wrapper-ABI calls (whose callee's offset-0 prologue
 	// reloads). This is what makes the AssemblyScript shadow-stack pointer
 	// (touched in every function) free at call boundaries.
-	moduleGlobals []moduleGlobalPin
+	moduleGlobals         []moduleGlobalPin
+	guardedNonzeroDivisor *elem // one immediately guarded div/rem operand; never survives its assignment
+
 	// Control-flow state (Phase 3).
 	ctrl                []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
 	ehTryDepth          int         // live reachable try_table records; bounded by ehTryCap

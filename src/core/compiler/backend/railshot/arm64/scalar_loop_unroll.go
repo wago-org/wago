@@ -21,6 +21,7 @@ func scalarLoopWord(word uint32) (Reg, bool) {
 	case word&0x1f200000 == 0x0b000000: // ADD/SUB shifted register
 	case word&0x1f000000 == 0x0a000000: // logical shifted register, including MOV
 	case word&0x1f800000 == 0x12800000: // MOVN/MOVZ/MOVK
+	case word&0x7fe0fc00 == 0x1ac00800: // UDIV has no architectural trap; control checks are copied separately
 	case word&0x1f000000 == 0x1b000000: // integer multiply/add/subtract
 	default:
 		return regNone, false
@@ -37,7 +38,7 @@ func scalarLoopSources(word uint32) uint32 {
 	switch {
 	case word&0x1f800000 == 0x11000000:
 		return 1 << 5
-	case word&0x1f200000 == 0x0b000000, word&0x1f000000 == 0x0a000000:
+	case word&0x1f200000 == 0x0b000000, word&0x1f000000 == 0x0a000000, word&0x7fe0fc00 == 0x1ac00800:
 		return 1<<5 | 1<<16
 	case word&0x1f000000 == 0x1b000000:
 		return 1<<5 | 1<<10 | 1<<16
