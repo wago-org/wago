@@ -1,0 +1,11 @@
+{
+  "url": "https://api.github.com/repos/tinygo-org/tinygo/releases/tags/v0.42.0",
+  "tag": "v0.42.0",
+  "asset": {
+    "id": 539147844,
+    "name": "tinygo0.42.0.darwin-arm64.tar.gz",
+    "size": 163104695,
+    "digest": "sha256:493da3585e66c5da677a4be39402faf2041b4e45a61eb456e4547eca753a544e",
+    "browser_download_url": "https://github.com/tinygo-org/tinygo/releases/download/v0.42.0/tinygo0.42.0.darwin-arm64.tar.gz"
+  }
+}
