@@ -655,13 +655,13 @@
       "suite": "qemu-collector/arm64-ordinary-collector",
       "receipt_suite": "qemu-collector/arm64-ordinary-collector",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-collector/arm64-wagodebug-collector",
       "receipt_suite": "qemu-collector/arm64-wagodebug-collector",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-collector/arm64-wago_regalloccheck-collector",
@@ -949,19 +949,19 @@
       "suite": "tinygo-34/host-wago_regalloccheck",
       "receipt_suite": "tinygo-34/host-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-34/standalone-wago_regalloccheck",
       "receipt_suite": "tinygo-34/standalone-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-34/guest-threads-wago_regalloccheck",
       "receipt_suite": "tinygo-34/guest-threads-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/ci-checkers",
@@ -1123,43 +1123,43 @@
       "suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
       "receipt_suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "INTERRUPTED"
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
       "receipt_suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
       "receipt_suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
       "receipt_suite": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-30s-FuzzStructCardDifferential",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "fuzz-30s-FuzzStructCardDifferential",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-30s-FuzzValidateRelativePathAndRustScannerDoNotPanic",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "fuzz-30s-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "RUNNING"
     },
     {
       "suite": "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic",
@@ -1325,11 +1325,10 @@
     }
   ],
   "counts": {
-    "PASS": 95,
-    "NOT_RUN": 121,
+    "PASS": 105,
+    "NOT_RUN": 112,
     "FAIL": 1,
-    "RUNNING": 2,
-    "INTERRUPTED": 1
+    "RUNNING": 2
   },
   "attempts": [
     {
@@ -1565,12 +1564,52 @@
       "verdict": "PASS"
     },
     {
-      "suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
+      "suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": false,
       "driver": "run.py",
       "exit": null,
       "verdict": "RUNNING"
+    },
+    {
+      "suite": "fuzz-30s-FuzzStructCardDifferential",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-30s-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-FuzzStructCardDifferential",

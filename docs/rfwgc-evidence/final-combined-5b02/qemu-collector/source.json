@@ -1,0 +1,19 @@
+{
+  "pin": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "archive_sha256": "241ceede4c49ccb17986e6451236ea3bc213bf6128b020b3d744aa6277f5cc2c",
+  "driver_sha256": "0cd2bfe72826bec2f0b33cf7bf9d0f9fcdbda127cb54c9e1580a7e8342378485",
+  "go": "go version go1.27.3 linux/amd64",
+  "package": "/tmp/qemu-user.deb",
+  "package_sha256": "ca6ede739327a20ae5a3498230c8a3a9a072c586e131bc6bcc1201eb1725e336",
+  "export": "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-collector/source",
+  "adapter_original_sha256": "4bf13d4702fc2b5ef2bc2f12244727123f7f78c76660a60de19aaf9ccec41aa5",
+  "adapter_sha256": "835faf78232adfee5610954ee62e401393550b360e89d32b3ccc9d7111faab85",
+  "probe": "package wago\nimport(\"os\";\"runtime\";\"testing\")\nfunc TestPlatformExecutionArchitecture(t *testing.T) { want:=os.Getenv(\"WAGO_EXPECT_ARCH\"); if runtime.GOARCH!=want || runtime.GOOS!=\"linux\" { t.Fatalf(\"actual %s/%s expected linux/%s\",runtime.GOOS,runtime.GOARCH,want) }; t.Logf(\"EXECUTED linux/%s\",runtime.GOARCH) }\n",
+  "host": [
+    "Linux",
+    "t3",
+    "7.2.8-9-omarchy",
+    "#1 SMP PREEMPT_DYNAMIC Sat, 17 Oct 2026 22:09:33 +0000",
+    "x86_64"
+  ]
+}
