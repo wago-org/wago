@@ -307,7 +307,7 @@
       "suite": "spec-v3-signals-wago_regalloccheck",
       "receipt_suite": "spec-v3-signals-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "guard-corpus-ordinary",
@@ -319,13 +319,13 @@
       "suite": "guard-corpus-wagodebug",
       "receipt_suite": "guard-corpus-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "guard-corpus-wago_regalloccheck",
       "receipt_suite": "guard-corpus-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "backend-ordinary",
@@ -925,25 +925,25 @@
       "suite": "tinygo-34/guest-threads-ordinary",
       "receipt_suite": "tinygo-34/guest-threads-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-34/host-wagodebug",
       "receipt_suite": "tinygo-34/host-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-34/standalone-wagodebug",
       "receipt_suite": "tinygo-34/standalone-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-34/guest-threads-wagodebug",
       "receipt_suite": "tinygo-34/guest-threads-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/host-wago_regalloccheck",
@@ -1325,9 +1325,9 @@
     }
   ],
   "counts": {
-    "PASS": 86,
+    "PASS": 91,
     "RUNNING": 3,
-    "NOT_RUN": 130,
+    "NOT_RUN": 125,
     "FAIL": 1
   },
   "attempts": [
@@ -1572,12 +1572,20 @@
       "verdict": "PASS"
     },
     {
-      "suite": "guard-corpus-wagodebug",
+      "suite": "guard-corpus-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": false,
       "driver": "run.py",
       "exit": null,
       "verdict": "RUNNING"
+    },
+    {
+      "suite": "guard-corpus-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "guard-ordinary",
@@ -1797,6 +1805,14 @@
     },
     {
       "suite": "spec-v3-signals-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-signals-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",

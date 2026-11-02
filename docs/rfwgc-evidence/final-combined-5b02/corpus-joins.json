@@ -18,10 +18,10 @@
   {
     "id": "sed-records",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "seqtk-fastq-to-fasta",
@@ -42,10 +42,10 @@
   {
     "id": "seqtk-fastq-to-fasta",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "lcs-substrings",
@@ -66,10 +66,10 @@
   {
     "id": "lcs-substrings",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "needleman-wunsch-dna",
@@ -90,10 +90,10 @@
   {
     "id": "needleman-wunsch-dna",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "smith-waterman-dna",
@@ -114,10 +114,10 @@
   {
     "id": "smith-waterman-dna",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "fasttree-phylogeny",
@@ -138,10 +138,10 @@
   {
     "id": "fasttree-phylogeny",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "gnu-seq-range",
@@ -162,10 +162,10 @@
   {
     "id": "gnu-seq-range",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "gnu-tr-uppercase",
@@ -186,10 +186,10 @@
   {
     "id": "gnu-tr-uppercase",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "php-buckets",
@@ -210,10 +210,10 @@
   {
     "id": "php-buckets",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "ruby-buckets",
@@ -234,10 +234,10 @@
   {
     "id": "ruby-buckets",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "clang-cpp-kernels",
@@ -258,10 +258,10 @@
   {
     "id": "clang-cpp-kernels",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "clang-c-kernels",
@@ -282,10 +282,10 @@
   {
     "id": "clang-c-kernels",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "lua-cli-buckets",
@@ -306,10 +306,10 @@
   {
     "id": "lua-cli-buckets",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "micropython-squares",
@@ -330,10 +330,10 @@
   {
     "id": "micropython-squares",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "ecpunpack-config",
@@ -354,10 +354,10 @@
   {
     "id": "ecpunpack-config",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "ecppack-bitstream",
@@ -378,10 +378,10 @@
   {
     "id": "ecppack-bitstream",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "coreutils-sort",
@@ -402,10 +402,10 @@
   {
     "id": "coreutils-sort",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "coreutils-sha256sum",
@@ -426,10 +426,10 @@
   {
     "id": "coreutils-sha256sum",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "coreutils-base64",
@@ -450,10 +450,10 @@
   {
     "id": "coreutils-base64",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "coreutils-wc",
@@ -474,10 +474,10 @@
   {
     "id": "coreutils-wc",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "ripgrep-source",
@@ -498,10 +498,10 @@
   {
     "id": "ripgrep-source",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "yosys-counter",
@@ -522,10 +522,10 @@
   {
     "id": "yosys-counter",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "icemulti-image",
@@ -546,10 +546,10 @@
   {
     "id": "icemulti-image",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "icepack-pack",
@@ -570,10 +570,10 @@
   {
     "id": "icepack-pack",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "iceunpack-unpack",
@@ -594,10 +594,10 @@
   {
     "id": "iceunpack-unpack",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "ecpbram-generate",
@@ -618,10 +618,10 @@
   {
     "id": "ecpbram-generate",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "icebram-generate",
@@ -642,10 +642,10 @@
   {
     "id": "icebram-generate",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "ecppll-clock",
@@ -666,10 +666,10 @@
   {
     "id": "ecppll-clock",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "icepll-clock",
@@ -690,10 +690,10 @@
   {
     "id": "icepll-clock",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "json2csv-people",
@@ -714,10 +714,10 @@
   {
     "id": "json2csv-people",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "tree-ashell-list",
@@ -738,10 +738,10 @@
   {
     "id": "tree-ashell-list",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "tree-list",
@@ -762,10 +762,10 @@
   {
     "id": "tree-list",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "brotli-compress",
@@ -786,10 +786,10 @@
   {
     "id": "brotli-compress",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "brotli-decompress",
@@ -810,10 +810,10 @@
   {
     "id": "brotli-decompress",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "jq-json-transform",
@@ -834,10 +834,10 @@
   {
     "id": "jq-json-transform",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "age-decrypt",
@@ -858,10 +858,10 @@
   {
     "id": "age-decrypt",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "age-keygen-public",
@@ -882,10 +882,10 @@
   {
     "id": "age-keygen-public",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "lzmainfo-header",
@@ -906,10 +906,10 @@
   {
     "id": "lzmainfo-header",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "lzmadec-decompress",
@@ -930,10 +930,10 @@
   {
     "id": "lzmadec-decompress",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "xzdec-decompress",
@@ -954,10 +954,10 @@
   {
     "id": "xzdec-decompress",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "sqlite3-query",
@@ -978,10 +978,10 @@
   {
     "id": "sqlite3-query",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "duktape-script",
@@ -1002,10 +1002,10 @@
   {
     "id": "duktape-script",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "quickjs-script",
@@ -1026,10 +1026,10 @@
   {
     "id": "quickjs-script",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "swift-format-source",
@@ -1050,10 +1050,10 @@
   {
     "id": "swift-format-source",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "esbuild-minify",
@@ -1074,10 +1074,10 @@
   {
     "id": "esbuild-minify",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "tiny",
@@ -1098,10 +1098,10 @@
   {
     "id": "tiny",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "fib_rec",
@@ -1122,10 +1122,10 @@
   {
     "id": "fib_rec",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "memory",
@@ -1146,10 +1146,10 @@
   {
     "id": "memory",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "memory_tree",
@@ -1170,10 +1170,10 @@
   {
     "id": "memory_tree",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "dispatch",
@@ -1194,10 +1194,10 @@
   {
     "id": "dispatch",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "many_funcs",
@@ -1218,10 +1218,10 @@
   {
     "id": "many_funcs",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "linked_list",
@@ -1242,10 +1242,10 @@
   {
     "id": "linked_list",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "nbody",
@@ -1266,10 +1266,10 @@
   {
     "id": "nbody",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "fannkuch",
@@ -1290,10 +1290,10 @@
   {
     "id": "fannkuch",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "matmul",
@@ -1314,10 +1314,10 @@
   {
     "id": "matmul",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "sha256",
@@ -1338,10 +1338,10 @@
   {
     "id": "sha256",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "raytrace",
@@ -1362,10 +1362,10 @@
   {
     "id": "raytrace",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "json-as",
@@ -1386,10 +1386,10 @@
   {
     "id": "json-as",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "blake-as",
@@ -1410,10 +1410,10 @@
   {
     "id": "blake-as",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "utf-as",
@@ -1434,10 +1434,10 @@
   {
     "id": "utf-as",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "json-as-simd",
@@ -1458,10 +1458,10 @@
   {
     "id": "json-as-simd",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "blake-as-simd",
@@ -1482,10 +1482,10 @@
   {
     "id": "blake-as-simd",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "utf-as-simd",
@@ -1506,10 +1506,10 @@
   {
     "id": "utf-as-simd",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "coremark",
@@ -1938,10 +1938,10 @@
   {
     "id": "cjson",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "lodepng",
@@ -1962,10 +1962,10 @@
   {
     "id": "lodepng",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "wren",
@@ -1986,10 +1986,10 @@
   {
     "id": "wren",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "tinyxml2",
@@ -2010,10 +2010,10 @@
   {
     "id": "tinyxml2",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "lua",
@@ -2034,10 +2034,10 @@
   {
     "id": "lua",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "embench-crc32",
@@ -2058,10 +2058,10 @@
   {
     "id": "embench-crc32",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "embench-huffbench",
@@ -2082,10 +2082,10 @@
   {
     "id": "embench-huffbench",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "embench-matmult-int",
@@ -2106,10 +2106,10 @@
   {
     "id": "embench-matmult-int",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "embench-nettle-aes",
@@ -2130,10 +2130,10 @@
   {
     "id": "embench-nettle-aes",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "embench-nettle-sha256",
@@ -2154,10 +2154,10 @@
   {
     "id": "embench-nettle-sha256",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "embench-qrduino",
@@ -2178,10 +2178,10 @@
   {
     "id": "embench-qrduino",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "sightglass-shootout-base64",
@@ -2202,10 +2202,10 @@
   {
     "id": "sightglass-shootout-base64",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "sightglass-libsodium-hash",
@@ -2226,10 +2226,10 @@
   {
     "id": "sightglass-libsodium-hash",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "tacle-bsort",
@@ -2250,10 +2250,10 @@
   {
     "id": "tacle-bsort",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-2mm",
@@ -2274,10 +2274,10 @@
   {
     "id": "polybench-2mm",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-3mm",
@@ -2298,10 +2298,10 @@
   {
     "id": "polybench-3mm",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-adi",
@@ -2322,10 +2322,10 @@
   {
     "id": "polybench-adi",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-atax",
@@ -2346,10 +2346,10 @@
   {
     "id": "polybench-atax",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-bicg",
@@ -2370,10 +2370,10 @@
   {
     "id": "polybench-bicg",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-cholesky",
@@ -2394,10 +2394,10 @@
   {
     "id": "polybench-cholesky",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-correlation",
@@ -2418,10 +2418,10 @@
   {
     "id": "polybench-correlation",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-covariance",
@@ -2442,10 +2442,10 @@
   {
     "id": "polybench-covariance",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-deriche",
@@ -2466,10 +2466,10 @@
   {
     "id": "polybench-deriche",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-doitgen",
@@ -2490,10 +2490,10 @@
   {
     "id": "polybench-doitgen",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-durbin",
@@ -2514,10 +2514,10 @@
   {
     "id": "polybench-durbin",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-fdtd-2d",
@@ -2538,10 +2538,10 @@
   {
     "id": "polybench-fdtd-2d",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-floyd-warshall",
@@ -2562,10 +2562,10 @@
   {
     "id": "polybench-floyd-warshall",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-gemm",
@@ -2586,10 +2586,10 @@
   {
     "id": "polybench-gemm",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-gemver",
@@ -2610,10 +2610,10 @@
   {
     "id": "polybench-gemver",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-gesummv",
@@ -2634,10 +2634,10 @@
   {
     "id": "polybench-gesummv",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-gramschmidt",
@@ -2658,10 +2658,10 @@
   {
     "id": "polybench-gramschmidt",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-heat-3d",
@@ -2682,10 +2682,10 @@
   {
     "id": "polybench-heat-3d",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-jacobi-1d",
@@ -2706,10 +2706,10 @@
   {
     "id": "polybench-jacobi-1d",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-jacobi-2d",
@@ -2730,10 +2730,10 @@
   {
     "id": "polybench-jacobi-2d",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-lu",
@@ -2754,10 +2754,10 @@
   {
     "id": "polybench-lu",
     "mode": "wago_regalloccheck",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
     "both_suites_completed": false,
-    "matched_pass": false
+    "matched_pass": true
   },
   {
     "id": "polybench-ludcmp",

@@ -1,6 +1,6 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 134,
+  "remaining_count": 129,
   "remaining": [
     {
       "suite": "baseline-corpus-wago_regalloccheck",
@@ -45,22 +45,10 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "spec-v3-signals-wago_regalloccheck",
-      "receipt_suite": "spec-v3-signals-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "guard-corpus-wagodebug",
-      "receipt_suite": "guard-corpus-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
       "suite": "guard-corpus-wago_regalloccheck",
       "receipt_suite": "guard-corpus-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "backend-ordinary",
@@ -501,28 +489,10 @@
       "verdict": "FAIL"
     },
     {
-      "suite": "tinygo-34/guest-threads-ordinary",
-      "receipt_suite": "tinygo-34/guest-threads-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "tinygo-34/host-wagodebug",
-      "receipt_suite": "tinygo-34/host-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/standalone-wagodebug",
-      "receipt_suite": "tinygo-34/standalone-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "tinygo-34/guest-threads-wagodebug",
       "receipt_suite": "tinygo-34/guest-threads-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/host-wago_regalloccheck",
@@ -851,7 +821,9 @@
     "spec-v3-wago_regalloccheck",
     "spec-v3-signals-ordinary",
     "spec-v3-signals-wagodebug",
+    "spec-v3-signals-wago_regalloccheck",
     "guard-corpus-ordinary",
+    "guard-corpus-wagodebug",
     "tooling-build-ordinary",
     "tooling-build-wagodebug",
     "tooling-build-wago_regalloccheck",
@@ -878,6 +850,9 @@
     "tooling-script-check-regalloc-code.sh",
     "tinygo-34/host-ordinary",
     "tinygo-34/standalone-ordinary",
+    "tinygo-34/guest-threads-ordinary",
+    "tinygo-34/host-wagodebug",
+    "tinygo-34/standalone-wagodebug",
     "early-replay-discovery-ordinary",
     "early-replay-compile-ordinary",
     "early-replay-cipolicy-ordinary",

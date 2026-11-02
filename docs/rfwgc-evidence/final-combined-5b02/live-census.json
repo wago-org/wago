@@ -2,8 +2,8 @@
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
   "matches": [
     {
-      "suite": "tinygo-34/guest-threads-ordinary",
-      "pid": 1325094,
+      "suite": "tinygo-34/guest-threads-wagodebug",
+      "pid": 1356156,
       "cwd": "/home/dev/.cache/_wago_final_5b02_n61wfxab/tinygo-source",
       "argv": [
         "tinygo",
@@ -11,11 +11,11 @@
         "-v",
         "-scheduler=threads",
         "-gc=conservative",
-        "-tags=wago_runtime",
+        "-tags=wago_runtime,wagodebug",
         "./src/core/runtime",
         "./src/wago"
       ],
-      "start_ticks": "31451834"
+      "start_ticks": "31481107"
     }
   ]
 }
