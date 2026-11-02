@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/ecpbram-generate
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/ecpbram-generate
+--- PASS: TestFinalPreparationCompile (0.11s)
+    --- PASS: TestFinalPreparationCompile/ecpbram-generate (0.11s)
+PASS

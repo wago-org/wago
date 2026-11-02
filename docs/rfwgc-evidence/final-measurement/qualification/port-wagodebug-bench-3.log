@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/seqtk-fastq-to-fasta
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/seqtk-fastq-to-fasta
+--- PASS: TestFinalPreparationRuntime (0.02s)
+    --- PASS: TestFinalPreparationRuntime/seqtk-fastq-to-fasta (0.02s)
+PASS

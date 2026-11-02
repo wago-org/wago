@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/gnu-tr-uppercase
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/gnu-tr-uppercase
+--- PASS: TestFinalPreparationCompile (0.02s)
+    --- PASS: TestFinalPreparationCompile/gnu-tr-uppercase (0.01s)
+PASS

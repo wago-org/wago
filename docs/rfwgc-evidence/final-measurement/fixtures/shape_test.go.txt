@@ -1,0 +1,9 @@
+//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo
+package wago
+import ("testing";"unsafe";"os";"strconv")
+func TestFinalPreparationShapeSize(t *testing.T) {
+ collector,mark:=unsafe.Sizeof(managedFunctionCollector{}),unsafe.Sizeof(managedFunctionMark{})
+ wantCollector,_:=strconv.Atoi(os.Getenv("FM_EXPECT_COLLECTOR"));wantMark,_:=strconv.Atoi(os.Getenv("FM_EXPECT_MARK"))
+ t.Logf("collector_bytes=%d mark_bytes=%d pointer_bytes=%d",collector,mark,unsafe.Sizeof(uintptr(0)))
+ if int(collector)!=wantCollector||int(mark)!=wantMark {t.Fatalf("want %d/%d",wantCollector,wantMark)}
+}

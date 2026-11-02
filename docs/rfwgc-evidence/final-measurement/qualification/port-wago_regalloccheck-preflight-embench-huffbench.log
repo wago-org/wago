@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/embench-huffbench
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/embench-huffbench
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/embench-huffbench (0.00s)
+PASS

@@ -1,0 +1,9 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/lz4.lz4_compress_run
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/lz4.lz4_compress_run
+=== RUN   TestFinalPreparationRuntime/lz4.lz4_decompress_run
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/lz4.lz4_decompress_run
+--- PASS: TestFinalPreparationRuntime (0.02s)
+    --- PASS: TestFinalPreparationRuntime/lz4.lz4_compress_run (0.00s)
+    --- PASS: TestFinalPreparationRuntime/lz4.lz4_decompress_run (0.00s)
+PASS

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/wren
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/wren
+--- PASS: TestFinalPreparationRuntime (0.04s)
+    --- PASS: TestFinalPreparationRuntime/wren (0.04s)
+PASS

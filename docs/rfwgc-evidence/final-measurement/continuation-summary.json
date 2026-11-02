@@ -1,0 +1,180 @@
+{
+  "status": "INVALID_CANDIDATE_HISTORICAL_QUALIFICATION_ONLY",
+  "command_count": 2604,
+  "command_exit_counts": {
+    "0": 2604
+  },
+  "build_count": 30,
+  "configs": {
+    "native-linux-amd64/baseline/native": {
+      "ordinary": {
+        "PASS": 8
+      },
+      "wagodebug": {
+        "PASS": 8
+      },
+      "wago_regalloccheck": {
+        "PASS": 8
+      }
+    },
+    "native-linux-amd64/baseline/guest": {
+      "ordinary": {
+        "PASS": 6
+      },
+      "wagodebug": {
+        "PASS": 6
+      },
+      "wago_regalloccheck": {
+        "PASS": 6
+      }
+    },
+    "native-linux-amd64/baseline/bench": {
+      "ordinary": {
+        "PASS": 256
+      },
+      "wagodebug": {
+        "PASS": 256
+      },
+      "wago_regalloccheck": {
+        "PASS": 256
+      }
+    },
+    "native-linux-amd64/port/native": {
+      "ordinary": {
+        "PASS": 30
+      },
+      "wagodebug": {
+        "PASS": 30
+      },
+      "wago_regalloccheck": {
+        "PASS": 30
+      }
+    },
+    "native-linux-amd64/port/guest": {
+      "ordinary": {
+        "PASS": 26
+      },
+      "wagodebug": {
+        "PASS": 26
+      },
+      "wago_regalloccheck": {
+        "PASS": 26
+      }
+    },
+    "native-linux-amd64/port/bench": {
+      "ordinary": {
+        "PASS": 256
+      },
+      "wagodebug": {
+        "PASS": 256
+      },
+      "wago_regalloccheck": {
+        "PASS": 256
+      }
+    },
+    "tinygo-0.42-patched-linux-amd64-threads-conservative/port/native": {
+      "ordinary": {
+        "PASS": 4
+      },
+      "wagodebug": {
+        "PASS": 4
+      },
+      "wago_regalloccheck": {
+        "PASS": 4
+      }
+    },
+    "tinygo-0.42-patched-linux-amd64-threads-conservative/port/runtime": {
+      "ordinary": {
+        "PASS": 8
+      },
+      "wagodebug": {
+        "PASS": 8
+      },
+      "wago_regalloccheck": {
+        "PASS": 8
+      }
+    },
+    "native-linux-amd64/shape-before/guest": {
+      "ordinary": {
+        "PASS": 4
+      },
+      "wagodebug": {
+        "PASS": 4
+      },
+      "wago_regalloccheck": {
+        "PASS": 4
+      }
+    },
+    "native-linux-amd64/shape-after/guest": {
+      "ordinary": {
+        "PASS": 4
+      },
+      "wagodebug": {
+        "PASS": 4
+      },
+      "wago_regalloccheck": {
+        "PASS": 4
+      }
+    }
+  },
+  "corpus_ids": 128,
+  "fresh_corpus_id_revision_mode_stage_rows": 1536,
+  "fresh_canonical_compile_preflights": 768,
+  "benchmark_or_calibration_invocations": 0,
+  "flock_acquisitions": 0,
+  "families": {
+    "additions": {
+      "commands": 68,
+      "exits": {
+        "1": 9,
+        "0": 59
+      },
+      "pass_lines_including_parents": 112,
+      "fail_lines_including_parents": 16,
+      "skip_lines": 0
+    },
+    "additions-v2": {
+      "commands": 78,
+      "exits": {
+        "0": 78
+      },
+      "pass_lines_including_parents": 171,
+      "fail_lines_including_parents": 0,
+      "skip_lines": 3
+    },
+    "additions-v3": {
+      "commands": 90,
+      "exits": {
+        "0": 84,
+        "1": 6
+      },
+      "pass_lines_including_parents": 291,
+      "fail_lines_including_parents": 36,
+      "skip_lines": 3
+    },
+    "shape-sizes": {
+      "commands": 12,
+      "exits": {
+        "0": 12
+      },
+      "pass_lines_including_parents": 6,
+      "fail_lines_including_parents": 0,
+      "skip_lines": 0
+    },
+    "detailed-census": {
+      "commands": 36,
+      "exits": {
+        "0": 36
+      },
+      "pass_lines_including_parents": 114,
+      "fail_lines_including_parents": 0,
+      "skip_lines": 0
+    }
+  },
+  "failure_interpretation": {
+    "additions": "Superseded first adapter attempt: uint width error, baseline object-edge API absence, and wrong same-domain configuration. Raw evidence retained.",
+    "additions-v2": "Corrected all modes; baseline object-edge source remains explicit SKIP, not pass.",
+    "additions-v3": "Final additions: six negative commands (DR-1/DR-2 x3 modes) expected on defective historical port. Baseline passes these gates. Three baseline object-edge cases SKIP.",
+    "exports-incomplete-snapshot.json": "Read-only audit raced shape-after archive extraction, not a production drift finding. Final completed audit checks 70894 blobs with zero undeclared drift."
+  }
+}

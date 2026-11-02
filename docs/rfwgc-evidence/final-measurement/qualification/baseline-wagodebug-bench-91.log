@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/tiny.add
+    final_preparation_test.go:28: FM_LEAF BenchmarkExec/tiny.add
+--- PASS: TestFinalPreparationRuntime (0.00s)
+    --- PASS: TestFinalPreparationRuntime/tiny.add (0.00s)
+PASS

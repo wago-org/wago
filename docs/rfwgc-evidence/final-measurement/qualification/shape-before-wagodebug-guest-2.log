@@ -1,0 +1,15 @@
+=== RUN   TestR9H2ReceiptConvertedProducerCycle
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/direct/region=0
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/direct/region=6
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/callback/region=0
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/callback/region=6
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/contention/region=0
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/contention/region=6
+--- PASS: TestR9H2ReceiptConvertedProducerCycle (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/direct/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/direct/region=6 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/callback/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/callback/region=6 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/contention/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/contention/region=6 (0.00s)
+PASS

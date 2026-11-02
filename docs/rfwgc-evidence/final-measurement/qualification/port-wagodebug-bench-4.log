@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/lcs-substrings
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/lcs-substrings
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/lcs-substrings (0.00s)
+PASS

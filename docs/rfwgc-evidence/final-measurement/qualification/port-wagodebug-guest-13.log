@@ -1,0 +1,7 @@
+=== RUN   TestR9H2HostContainerCycle
+=== RUN   TestR9H2HostContainerCycle/6/clear
+=== RUN   TestR9H2HostContainerCycle/6/close
+--- PASS: TestR9H2HostContainerCycle (0.00s)
+    --- PASS: TestR9H2HostContainerCycle/6/clear (0.00s)
+    --- PASS: TestR9H2HostContainerCycle/6/close (0.00s)
+PASS

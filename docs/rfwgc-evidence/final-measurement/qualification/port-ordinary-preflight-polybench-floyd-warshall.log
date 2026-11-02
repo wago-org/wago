@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/polybench-floyd-warshall
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-floyd-warshall
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/polybench-floyd-warshall (0.00s)
+PASS

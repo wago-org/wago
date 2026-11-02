@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/json2csv-people
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/json2csv-people
+--- PASS: TestFinalPreparationRuntime (0.04s)
+    --- PASS: TestFinalPreparationRuntime/json2csv-people (0.04s)
+PASS

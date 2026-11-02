@@ -1,0 +1,4 @@
+=== RUN   TestFinalMeasurementLargeOldNurseryFill
+    final_review_native_test.go:19: object-edge source unavailable at pin
+--- SKIP: TestFinalMeasurementLargeOldNurseryFill (0.04s)
+PASS

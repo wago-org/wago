@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/polybench-heat-3d.polybench_run
+    final_preparation_test.go:28: FM_LEAF BenchmarkExec/polybench-heat-3d.polybench_run
+--- PASS: TestFinalPreparationRuntime (0.00s)
+    --- PASS: TestFinalPreparationRuntime/polybench-heat-3d.polybench_run (0.00s)
+PASS

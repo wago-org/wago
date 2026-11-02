@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/lzmadec-decompress
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/lzmadec-decompress
+--- PASS: TestFinalPreparationCompile (0.01s)
+    --- PASS: TestFinalPreparationCompile/lzmadec-decompress (0.01s)
+PASS

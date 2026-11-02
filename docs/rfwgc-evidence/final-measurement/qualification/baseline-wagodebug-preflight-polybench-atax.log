@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/polybench-atax
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-atax
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/polybench-atax (0.00s)
+PASS

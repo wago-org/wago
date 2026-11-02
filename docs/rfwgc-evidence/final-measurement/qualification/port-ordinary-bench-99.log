@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/dispatch.apply
+    final_preparation_test.go:28: FM_LEAF BenchmarkExec/dispatch.apply
+--- PASS: TestFinalPreparationRuntime (0.00s)
+    --- PASS: TestFinalPreparationRuntime/dispatch.apply (0.00s)
+PASS

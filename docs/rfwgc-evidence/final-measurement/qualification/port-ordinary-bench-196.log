@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/polybench-bicg
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-bicg
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/polybench-bicg (0.00s)
+PASS

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/tree-list
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/tree-list
+--- PASS: TestFinalPreparationRuntime (0.02s)
+    --- PASS: TestFinalPreparationRuntime/tree-list (0.02s)
+PASS

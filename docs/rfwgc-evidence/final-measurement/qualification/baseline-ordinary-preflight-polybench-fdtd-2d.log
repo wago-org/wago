@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/polybench-fdtd-2d
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-fdtd-2d
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/polybench-fdtd-2d (0.00s)
+PASS

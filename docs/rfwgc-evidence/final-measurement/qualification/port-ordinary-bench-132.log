@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/lz4
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/lz4
+--- PASS: TestFinalPreparationCompile (0.01s)
+    --- PASS: TestFinalPreparationCompile/lz4 (0.00s)
+PASS

@@ -1,0 +1,9 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/qoi.qoi_encode_run
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/qoi.qoi_encode_run
+=== RUN   TestFinalPreparationRuntime/qoi.qoi_decode_run
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/qoi.qoi_decode_run
+--- PASS: TestFinalPreparationRuntime (0.01s)
+    --- PASS: TestFinalPreparationRuntime/qoi.qoi_encode_run (0.00s)
+    --- PASS: TestFinalPreparationRuntime/qoi.qoi_decode_run (0.00s)
+PASS

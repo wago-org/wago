@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/utf-as-simd
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/utf-as-simd
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/utf-as-simd (0.00s)
+PASS

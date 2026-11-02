@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/polybench-deriche.polybench_run
+    final_preparation_test.go:28: FM_LEAF BenchmarkExec/polybench-deriche.polybench_run
+--- PASS: TestFinalPreparationRuntime (0.00s)
+    --- PASS: TestFinalPreparationRuntime/polybench-deriche.polybench_run (0.00s)
+PASS

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/blake3
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/blake3
+--- PASS: TestFinalPreparationCompile (0.01s)
+    --- PASS: TestFinalPreparationCompile/blake3 (0.01s)
+PASS

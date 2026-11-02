@@ -36,6 +36,7 @@ def main():
  for prefix in ['focused','corpus/compile/','corpus/runtime/']:
   group=[r for r in rows if (not r['id'].startswith('corpus/') if prefix=='focused' else r['id'].startswith(prefix))]
   rng.shuffle(group);ordered+=group
- result={'plan_sha256':digest(H/'plan.json'),'status':'UNBOUND' if unbound else 'NEEDS_LEAF_CENSUS_AND_OWNER_SEAL','cells':ordered,'unbound':unbound,'note':'This generator grants no lease and executes nothing. Check actual CPU topology and all leaf census/receipts before sealing.'}
+ candidate=json.loads((H/'candidate-status.json').read_text()) if (H/'candidate-status.json').exists() else {'status':'UNQUALIFIED'}
+ result={'candidate_status':candidate['status'],'plan_sha256':digest(H/'plan.json'),'status':'INVALID' if candidate['status']=='INVALID' else ('UNBOUND' if unbound else 'NEEDS_LEAF_CENSUS_AND_OWNER_SEAL'),'cells':ordered,'unbound':unbound,'note':'This generator grants no lease and executes nothing. Check actual CPU topology and all leaf census/receipts before sealing.'}
  with a.out.open('x') as f:json.dump(result,f,indent=2);f.write('\n')
 if __name__=='__main__':main()

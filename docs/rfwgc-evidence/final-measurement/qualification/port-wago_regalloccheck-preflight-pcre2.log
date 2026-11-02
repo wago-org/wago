@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/pcre2
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/pcre2
+--- PASS: TestFinalPreparationCompile (0.05s)
+    --- PASS: TestFinalPreparationCompile/pcre2 (0.04s)
+PASS

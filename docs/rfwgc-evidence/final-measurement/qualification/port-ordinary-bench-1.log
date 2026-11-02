@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/sed-records
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/sed-records
+--- PASS: TestFinalPreparationRuntime (0.03s)
+    --- PASS: TestFinalPreparationRuntime/sed-records (0.03s)
+PASS

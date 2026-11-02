@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/smith-waterman-dna
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/smith-waterman-dna
+--- PASS: TestFinalPreparationCompile (0.02s)
+    --- PASS: TestFinalPreparationCompile/smith-waterman-dna (0.02s)
+PASS

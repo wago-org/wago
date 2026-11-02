@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/quickjs-script
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/quickjs-script
+--- PASS: TestFinalPreparationCompile (0.05s)
+    --- PASS: TestFinalPreparationCompile/quickjs-script (0.05s)
+PASS

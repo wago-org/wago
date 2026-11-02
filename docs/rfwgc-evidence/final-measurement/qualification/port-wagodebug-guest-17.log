@@ -1,0 +1,6 @@
+=== RUN   TestR9H2HostImportTable
+=== RUN   TestR9H2HostImportTable/6
+    gc_conversion_host_import_host_test.go:132: actual collector region shift=6
+--- PASS: TestR9H2HostImportTable (0.00s)
+    --- PASS: TestR9H2HostImportTable/6 (0.00s)
+PASS

@@ -1,0 +1,6 @@
+=== RUN   TestFinalMeasurementGraph
+=== RUN   TestFinalMeasurementGraph/32
+    final_measurement_graph_test.go:36: {"Allocations":8193,"MinorCollections":0,"FullCollections":2,"MinorObjectsScanned":0,"MinorRememberedScanned":0,"YoungBytesCopied":0,"PromotedBytes":0,"LiveObjects":8193,"TenuringThreshold":2}
+--- PASS: TestFinalMeasurementGraph (0.01s)
+    --- PASS: TestFinalMeasurementGraph/32 (0.01s)
+PASS

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/smith-waterman-dna
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/smith-waterman-dna
+--- PASS: TestFinalPreparationRuntime (0.03s)
+    --- PASS: TestFinalPreparationRuntime/smith-waterman-dna (0.03s)
+PASS

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/icepll-clock
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/icepll-clock
+--- PASS: TestFinalPreparationCompile (0.01s)
+    --- PASS: TestFinalPreparationCompile/icepll-clock (0.01s)
+PASS

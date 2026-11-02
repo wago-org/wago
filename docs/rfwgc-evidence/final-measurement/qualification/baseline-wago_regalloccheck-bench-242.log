@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/polybench-syrk
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-syrk
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/polybench-syrk (0.00s)
+PASS
