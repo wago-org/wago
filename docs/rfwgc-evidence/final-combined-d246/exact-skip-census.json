@@ -1,5 +1,529 @@
 [
   {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:25.729749554Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/internal/parallel",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/internal/parallel\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:26.356024662Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/internal/settings",
+        "Test": "TestUnavailableFeaturesMayRemainDisabled",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestUnavailableFeaturesMayRemainDisabled\n    store_test.go:163: all features are available on this platform\n--- SKIP: TestUnavailableFeaturesMayRemainDisabled (0.00s)\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:26.386933515Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/internal/settings/cmd/genschema",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/internal/settings/cmd/genschema\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:26.389144426Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/internal/ui",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/internal/ui\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.299706114Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/auth/logout",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/auth/logout\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.299714921Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/auth/whoami",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/auth/whoami\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.299723347Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/cache",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.301339221Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/cache/dir",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache/dir\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.301348869Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/cache/options",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache/options\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.302971295Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/cache/size",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/cache/size\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.501666319Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/completions",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/completions\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.50167723Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/diff",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/diff\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.501685896Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/get",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/get\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.501693921Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/list",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/list\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.501704691Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/options",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/options\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.501713047Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/reset",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/reset\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.501721623Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/config/set",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/config/set\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.82301293Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/catalog",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/catalog\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.825240863Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/deprecate",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/deprecate\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.827240788Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/outdated",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/outdated\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.827251558Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/publish",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/publish\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.827263631Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/rebuild",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/rebuild\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.8293242Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/tree",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/tree\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.829332605Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/unpublish",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/plugin/unpublish\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.831318174Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/self",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/self\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.831326459Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/self/uninstall",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/self/uninstall\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.833138842Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/status",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/status\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.837253047Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/version/current",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/current\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.839271878Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/version/list",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/list\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.841454786Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/version/uninstall",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/uninstall\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:47.843638817Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/commands/version/which",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/commands/version/which\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:48.439491141Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/internal/config",
+        "Test": "TestInstalledZshCompletionCanBeSourced",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestInstalledZshCompletionCanBeSourced\n    completions_test.go:77: zsh is not installed\n--- SKIP: TestInstalledZshCompletionCanBeSourced (0.00s)\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:31:48.572617405Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/internal/config",
+        "Test": "TestZshCompletionPassesNestedCommandWords",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestZshCompletionPassesNestedCommandWords\n    completions_test.go:155: zsh is not installed\n--- SKIP: TestZshCompletionPassesNestedCommandWords (0.00s)\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:32:00.630105839Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/internal/self/replace",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/manager/internal/self/replace\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:32:11.127450963Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/manager/internal/version",
+        "Test": "TestRISCV64InstallBuildSelection",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestRISCV64InstallBuildSelection\n    lifecycle_test.go:720: native riscv64 build selection\n--- SKIP: TestRISCV64InstallBuildSelection (0.00s)\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:32:22.788000237Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/runtime/commands/module",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/module\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:32:22.788012911Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/runtime/commands/module/capabilities",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/module/capabilities\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:32:23.189464553Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/runtime/commands/module/imports",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/module/imports\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:32:23.189500591Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/runtime/commands/plugin",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/commands/plugin\t[no test files]\n"
+    }
+  },
+  {
+    "suite": "cli-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T10:32:28.441893646Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/cli/runtime/internal/profile",
+        "Elapsed": 0
+      },
+      "detail": "?   \tgithub.com/wago-org/wago/cli/runtime/internal/profile\t[no test files]\n"
+    }
+  },
+  {
     "suite": "early-replay-compile-ordinary",
     "kind": "go-json",
     "detail": {

@@ -25,7 +25,7 @@
       "suite": "cli-ordinary",
       "receipt_suite": "cli-ordinary",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "cli-wagodebug",
@@ -43,7 +43,7 @@
       "suite": "installer-ordinary",
       "receipt_suite": "installer-ordinary",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "installer-wagodebug",
@@ -61,7 +61,7 @@
       "suite": "nested-ordinary",
       "receipt_suite": "nested-ordinary",
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
-      "verdict": "NOT_RUN"
+      "verdict": "INTERRUPTED"
     },
     {
       "suite": "nested-wagodebug",
@@ -1307,8 +1307,9 @@
     }
   ],
   "counts": {
-    "PASS": 19,
-    "NOT_RUN": 198
+    "PASS": 21,
+    "NOT_RUN": 195,
+    "INTERRUPTED": 1
   },
   "attempts": [
     {
@@ -1332,6 +1333,14 @@
       "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
       "receipt_valid": true,
       "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "cli-ordinary",
+      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+      "receipt_valid": true,
+      "driver": "run-v4.py",
       "exit": 0,
       "verdict": "PASS"
     },
@@ -1454,6 +1463,22 @@
       "driver": "run.py",
       "exit": 1,
       "verdict": "FAIL"
+    },
+    {
+      "suite": "installer-ordinary",
+      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+      "receipt_valid": true,
+      "driver": "run-v4.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "nested-ordinary",
+      "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+      "receipt_valid": false,
+      "driver": "run-v4.py",
+      "exit": null,
+      "verdict": "INTERRUPTED"
     },
     {
       "suite": "parent-race-reduced-ordinary",
