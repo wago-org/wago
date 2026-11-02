@@ -50,6 +50,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Reuse proved ARM64 pinned-local entry guards at bounded loop backedges when
+  unrolling is unavailable, retaining zero-iteration checks and every body site.
 - Borrow immutable ARM64 loop constants directly for immediate read-only
   multiply-add inputs instead of reloading them inside the loop.
 - Reuse immutable ARM64 loop constants for unsigned I32 reciprocal multipliers,

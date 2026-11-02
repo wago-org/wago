@@ -1436,7 +1436,7 @@ func (f *fn) callFreeLoopExit(fi int) bool {
 func (f *fn) branchJump(fr *ctrlFrame) {
 	switch fr.kind {
 	case cfLoop:
-		if f.unrollScalarPretest(fr) {
+		if f.unrollScalarPretest(fr) || f.tryPretestLoopLatch(fr) {
 			return
 		}
 		// Backward unconditional branch to the loop top (imm26, ±128 MiB): emit a B
