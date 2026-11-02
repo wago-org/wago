@@ -1,0 +1,7 @@
+{
+  "original": "/home/dev/.cache/_wago_final_5b02_n61wfxab/source/src/wago/design_repair_unsupported_test.go",
+  "original_sha256": "691e7c0f8380391d7e147531d329b5be8e4d4784a195c44aaa7e924b5c0407f8",
+  "adapter": "/home/dev/.cache/_wago_final_5b02_n61wfxab/source/src/wago/final_combined_tinygo_rejection_test.go",
+  "adapter_sha256": "4a388fa8a9e17528d1d19ff0789e82f008862eb0478902ab4e724f9cbf0c7572",
+  "change": "Only build constraint; bodies preserved"
+}
