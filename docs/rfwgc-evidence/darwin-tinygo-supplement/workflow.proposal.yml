@@ -1,0 +1,109 @@
+# Proposed NEW workflow. Not installed; parent review/publication required.
+name: Native Darwin TinyGo supplement
+on:
+  workflow_dispatch:
+    inputs:
+      harness_sha:
+        description: Full reviewed workflow and supplement commit
+        required: true
+        type: string
+      source_sha:
+        description: Must equal 7e41fafbbcd737ed1edce11b94b43b4eda134dcf
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: darwin-tinygo-supplement-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native:
+    name: TinyGo Darwin ARM64 (${{ matrix.mode }})
+    runs-on: macos-15
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        mode: [ordinary, wagodebug, wago_regalloccheck]
+    env:
+      GOTOOLCHAIN: local
+      GOENV: 'off'
+      GOWORK: 'off'
+      EXPECTED_HARNESS: ${{ inputs.harness_sha }}
+      EXPECTED_SOURCE: ${{ inputs.source_sha }}
+      MODE: ${{ matrix.mode }}
+    steps:
+      - name: Identity and native platform gate
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/tinygo-setup-$MODE"
+          printf 'source=%s\nharness=%s\nworkflow=%s\n' "$EXPECTED_SOURCE" "$EXPECTED_HARNESS" "$GITHUB_SHA" > "$RUNNER_TEMP/tinygo-setup-$MODE/identity.log"
+          uname -a >> "$RUNNER_TEMP/tinygo-setup-$MODE/identity.log"
+          printf 'OUTPUT=%s/tinygo-supplement-%s\nARCHIVE=%s/tinygo0.42.0.darwin-arm64.tar.gz\n' "$RUNNER_TEMP" "$MODE" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          [[ "$EXPECTED_SOURCE" == 7e41fafbbcd737ed1edce11b94b43b4eda134dcf ]]
+          [[ "$EXPECTED_HARNESS" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_HARNESS" == "$GITHUB_SHA" ]]
+          [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]]
+          [[ "$(sysctl -in sysctl.proc_translated 2>/dev/null || true)" != 1 ]]
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.harness_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        timeout-minutes: 10
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Verified compiler release
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --max-time 300 --output "$ARCHIVE" https://github.com/tinygo-org/tinygo/releases/download/v0.42.0/tinygo0.42.0.darwin-arm64.tar.gz
+          printf '%s  %s\n' 493da3585e66c5da677a4be39402faf2041b4e45a61eb456e4547eca753a544e "$ARCHIVE" | shasum -a 256 -c -
+      - name: Native compiled-artifact qualification
+        timeout-minutes: 95
+        shell: bash
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          set -euo pipefail
+          python3 docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py native \
+            --repo "$GITHUB_WORKSPACE" --archive "$ARCHIVE" --output "$OUTPUT" \
+            --mode "$MODE" --harness "$EXPECTED_HARNESS" --go "$(command -v go)"
+      - name: Retain downloaded archive identity even on failure
+        if: always()
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/tinygo0.42.0.darwin-arm64.tar.gz" ]]; then
+            shasum -a 256 "$RUNNER_TEMP/tinygo0.42.0.darwin-arm64.tar.gz" > "$RUNNER_TEMP/tinygo-setup-$MODE/archive.sha256"
+          fi
+      - name: Preserve complete and failed attempts
+        if: always()
+        timeout-minutes: 5
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: darwin-tinygo-${{ matrix.mode }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/tinygo-setup-${{ matrix.mode }}/*
+            ${{ env.OUTPUT }}/*.json
+            ${{ env.OUTPUT }}/*.log
+            ${{ env.OUTPUT }}/*.test
+  summary:
+    name: Darwin TinyGo supplement complete
+    if: always()
+    needs: native
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      NATIVE_RESULT: ${{ needs.native.result }}
+    steps:
+      - shell: bash
+        run: test "$NATIVE_RESULT" = success

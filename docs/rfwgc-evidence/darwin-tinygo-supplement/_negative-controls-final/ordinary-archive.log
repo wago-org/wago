@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py", line 139, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py", line 88, in main
+    if sha(a.archive)!=PIN['archive_sha256']: raise ValueError('wrong release archive')
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: wrong release archive

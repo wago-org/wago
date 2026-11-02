@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "/usr/bin/python3",
+    "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/source/tests/scripts/patch-tinygo-foreign-stack.py",
+    "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/cache/tinygo"
+  ],
+  "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port",
+  "environment": {
+    "HOME": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/negative-controls",
+    "PATH": "/usr/bin:/bin"
+  },
+  "timeout_seconds": 60
+}

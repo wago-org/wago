@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "/usr/bin/python3",
+    "docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py",
+    "native",
+    "--repo",
+    ".",
+    "--archive",
+    "docs/rfwgc-evidence/darwin-tinygo-supplement/tinygo0.42.0.darwin-arm64.tar.gz",
+    "--output",
+    "docs/rfwgc-evidence/darwin-tinygo-supplement/refuse-linux-ordinary",
+    "--mode",
+    "ordinary",
+    "--harness",
+    "94e55d763ed99964834d9bb33210f5b190d282a5",
+    "--go",
+    "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go"
+  ],
+  "exit": 1,
+  "stderr": "Traceback (most recent call last):\n  File \"/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py\", line 132, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py\", line 75, in main\n    if a.action=='native': native_host()\n                           ~~~~~~~~~~~^^\n  File \"/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py\", line 16, in native_host\n    if (platform.system(),platform.machine())!=('Darwin','arm64'): raise ValueError('requires native Darwin arm64; cross compilation is not execution')\n                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: requires native Darwin arm64; cross compilation is not execution\n"
+}

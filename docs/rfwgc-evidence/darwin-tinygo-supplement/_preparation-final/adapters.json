@@ -1,0 +1,22 @@
+{
+  "src/core/runtime/supplement_foreign_stack_arm64_test.go": {
+    "adapter": "foreign_stack_arm64_test.go.in",
+    "sha256": "4afae25cbbf0bf0e8ff0da421178a3c7da251a5328bf8be6c0377642385128f9"
+  },
+  "src/wago/supplement_cancellation_test.go": {
+    "adapter": "cancellation_test.go.in",
+    "sha256": "0e8088312f759798a8603a7f9d485e9b7be96b42f04ff7d16b56c0e50b02d29b"
+  },
+  "src/wago/supplement_rejection_test.go": {
+    "change": "build constraint and filename only; body unchanged",
+    "original": "src/wago/design_repair_unsupported_test.go",
+    "original_sha256": "799a0ce7621ed4445fc4b877cd3d996152fa9b0dd0ec5662b8a01a813dd17047",
+    "sha256": "18f058975031b449b4c40bc5145871c1d8a4e50951967ea95d56cd8b416a4997"
+  },
+  "src/wago/supplement_stage8_test.go": {
+    "change": "build constraint and filename only; body unchanged",
+    "original": "src/wago/gc_stage8_tinygo_guest_amd64_test.go",
+    "original_sha256": "51a3247adb0551adfd7804ff9eee1dd746d195b041f75844e941936c35db6ef6",
+    "sha256": "a6f7700720d28ad96fbdcf84895ec5a84c7fa1de41161945c5e895695bb8927b"
+  }
+}
