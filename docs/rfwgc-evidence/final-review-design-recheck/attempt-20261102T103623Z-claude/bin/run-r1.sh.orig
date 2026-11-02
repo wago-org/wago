@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# usage: run.sh <label> <archive> <mode: ordinary|wagodebug|wago_regalloccheck> <run-regex> [extra go test flags...]
+# Never deletes; refuses to overwrite an existing log.
+set -u
+A=$(dirname "$(dirname "$(readlink -f "$0")")")
+label=$1 arch=$2 mode=$3 re=$4; shift 4
+GO=/home/dev/.local/share/mise/installs/go/1.27.1/bin/go
+log=$A/logs/$label-$mode.log
+if [ -e "$log" ]; then echo "refuse overwrite $log" >&2; exit 97; fi
+tags=""; [ "$mode" != ordinary ] && tags="-tags=$mode"
+export PATH=/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin
+export GOCACHE=$A/gocache GOTMPDIR=$A/gotmp GOFLAGS= GOTOOLCHAIN=local GOPROXY=off TMPDIR=$A/gotmp
+mkdir -p "$GOTMPDIR"
+start=$(date -u +%FT%TZ)
+( cd "$A/$arch" && $GO test -count=1 $tags "$@" -timeout 15m -run "$re" -v ./src/wago ) > "$log" 2>&1
+rc=$?
+bytes=$(wc -c < "$log")
+fails=$(grep -c -- '--- FAIL' "$log"); passes=$(grep -c -- '--- PASS' "$log")
+term=$(tail -n 1 "$log")
+printf '%s\t%s\t%s\tmode=%s\texit=%d\tbytes=%d\tpass=%d\tfail=%d\tstart=%s\tend=%s\textra=%s\tlast=%s\n' "$label" "$arch" "$(cat $A/$arch/.pin 2>/dev/null)" "$mode" $rc $bytes $passes $fails "$start" "$(date -u +%FT%TZ)" "$*" "$term" >> $A/logs/exits.tsv
+[ "$bytes" -eq 0 ] && echo "EMPTY LOG $log" >&2
+exit $rc
