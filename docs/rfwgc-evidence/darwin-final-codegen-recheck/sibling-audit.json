@@ -1,0 +1,20 @@
+[
+  {
+    "project": "Slipstream",
+    "path": "/home/dev/Projects/slipstream",
+    "head": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+    "dirty_before_audit": true,
+    "read_only_search": "PatchBranch19|native import router|guarded variant|imm19|CBNZ|STP.*FP|unwind.*second body",
+    "matching_code": [],
+    "verdict": "No equivalent guarded ARM64 router or imm19 repatch implementation found."
+  },
+  {
+    "project": "Starshine",
+    "path": "/home/dev/Projects/starshine-mb",
+    "head": "b28144a7c50f1dc360825f7f68220022101b9921",
+    "dirty_before_audit": true,
+    "read_only_search": "PatchBranch19|native import router|guarded variant|imm19|CBNZ|STP.*FP|unwind.*second body",
+    "matching_code": [],
+    "verdict": "No equivalent guarded ARM64 router or imm19 repatch implementation found; prose-only unrelated branch-wrapper matches were ignored."
+  }
+]
