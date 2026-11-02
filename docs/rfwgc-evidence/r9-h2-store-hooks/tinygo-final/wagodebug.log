@@ -1,0 +1,13 @@
+=== RUN   TestGCExternConversionStableIdentityAndOwnership
+    GC extern conversion layouts: state=64 entry=56 live=3
+--- PASS: TestGCExternConversionStableIdentityAndOwnership (0.00s)
+=== RUN   TestGCExternConversionRejectsForeignForgedAndClosed
+--- PASS: TestGCExternConversionRejectsForeignForgedAndClosed (0.00s)
+=== RUN   TestGCExternConversionCollectorFirstCloseFailsClosed
+--- PASS: TestGCExternConversionCollectorFirstCloseFailsClosed (0.00s)
+=== RUN   TestGCExternConversionRejectedReplacementPreservesRoot
+--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)
+=== RUN   TestGCExternConversionPublicationOrderingAndRollback
+--- PASS: TestGCExternConversionPublicationOrderingAndRollback (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.001s

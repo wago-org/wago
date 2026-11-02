@@ -1,0 +1,29 @@
+[
+  {
+    "label": "arm64-version",
+    "command": [
+      "/tmp/wago-platform-r2ickqy5/qemu/usr/bin/qemu-aarch64",
+      "--version"
+    ],
+    "exit": 0,
+    "pass": [],
+    "skip": [],
+    "fail": []
+  },
+  {
+    "label": "arm64-ordinary-guest-build",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "-p=2",
+      "-o",
+      "/tmp/wago-platform-r2ickqy5/arm64-ordinary-guest.test",
+      "./src/wago"
+    ],
+    "exit": 0,
+    "pass": [],
+    "skip": [],
+    "fail": []
+  }
+]
