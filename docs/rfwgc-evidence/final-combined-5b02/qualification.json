@@ -5,11 +5,68 @@
       "plain_passes": [],
       "plain_skips": [],
       "plain_failures": [],
+      "suite": "catalog-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "catalog-ordinary/command.json",
+      "pass_count": 129,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRFWStage3CorpusCompile"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
       "suite": "catalog-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "catalog-wago_regalloccheck/command.json",
+      "pass_count": 129,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRFWStage3CorpusCompile"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "catalog-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "catalog-wagodebug/command.json",
+      "pass_count": 129,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestRFWStage3CorpusCompile"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "collector-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "INTERRUPTED",
       "exit": null,
-      "command": "catalog-wago_regalloccheck/command.json",
+      "command": "collector-ordinary/command.json",
       "pass_count": 0,
       "top_level_passes": [],
       "failures": [],
@@ -1705,6 +1762,77 @@
       "plain_passes": [],
       "plain_skips": [],
       "plain_failures": [],
+      "suite": "full-root-replay-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "INTERRUPTED",
+      "exit": null,
+      "command": "full-root-replay-ordinary/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "parent-race-reduced-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "parent-race-reduced-ordinary/command.json",
+      "pass_count": 2,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestPreparedGCRevocableEntryExternalAccess"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "parent-race-reduced-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "parent-race-reduced-wago_regalloccheck/command.json",
+      "pass_count": 2,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestPreparedGCRevocableEntryExternalAccess"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "parent-race-reduced-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "parent-race-reduced-wagodebug/command.json",
+      "pass_count": 2,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/src/wago",
+          "test": "TestPreparedGCRevocableEntryExternalAccess"
+        }
+      ],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
       "suite": "repair-census-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "PASS",
@@ -2768,14 +2896,358 @@
       "skips": []
     },
     {
-      "plain_passes": [],
+      "plain_passes": [
+        "--- PASS: TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/ordinary (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/null (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/cross-store (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/immutable-before-invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/immutable-before-null (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/closed-before-invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/closed-before-null (0.00s)",
+        "--- PASS: TestUnsupportedConversionGlobalValidationOrdering (0.00s)"
+      ],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tinygo-unsupported-global-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tinygo-unsupported-global-wago_regalloccheck/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [
+        "--- PASS: TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/ordinary (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/null (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/cross-store (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/immutable-before-invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/immutable-before-null (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/closed-before-invalid (0.00s)",
+        "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/closed-before-null (0.00s)",
+        "--- PASS: TestUnsupportedConversionGlobalValidationOrdering (0.00s)"
+      ],
       "plain_skips": [],
       "plain_failures": [],
       "suite": "tinygo-unsupported-global-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tinygo-unsupported-global-wagodebug/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-actionlint",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-actionlint/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-build-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-build-ordinary/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-build-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-build-wago_regalloccheck/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-build-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-build-wagodebug/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-docs",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-docs/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-generate",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-generate/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-node-engine-state-oracle",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-node-engine-state-oracle/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-node-fuzz-engine-state",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-node-fuzz-engine-state/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-node-update-website-bench",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-node-update-website-bench/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-node-update-website-startup",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-node-update-website-startup/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-script-build-release-assets.sh",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-script-build-release-assets.sh/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-script-check-diagnostic-dce.sh",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-script-check-diagnostic-dce.sh/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-script-check-regalloc-code.sh",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-script-check-regalloc-code.sh/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-script-check-riscv64-diagnostics.sh",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-script-check-riscv64-diagnostics.sh/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-script-ci-download-go-modules.sh",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-script-ci-download-go-modules.sh/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-script-ci-riscv64",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-script-ci-riscv64/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-script-release-qualification.sh",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-script-release-qualification.sh/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-staticcheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "INTERRUPTED",
       "exit": null,
-      "command": "tinygo-unsupported-global-wagodebug/command.json",
+      "command": "tooling-staticcheck/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-staticcheck-bootstrap",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-staticcheck-bootstrap/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-vet-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-vet-ordinary/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-vet-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-vet-wago_regalloccheck/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tooling-vet-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "tooling-vet-wagodebug/command.json",
       "pass_count": 0,
       "top_level_passes": [],
       "failures": [],
@@ -3158,24 +3630,6 @@
       "failures": []
     },
     {
-      "suite": "catalog-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "parent-race-reduced-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "full-root-replay-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
       "suite": "cli-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN",
@@ -3189,12 +3643,6 @@
     },
     {
       "suite": "nested-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "collector-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN",
       "reason": "Not executed; no terminal pass evidence."
@@ -3357,30 +3805,6 @@
     },
     {
       "suite": "host-transition-wago_guardpage",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-build-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-vet-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "catalog-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "parent-race-reduced-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN",
       "reason": "Not executed; no terminal pass evidence."
@@ -3578,24 +4002,6 @@
       "reason": "Not executed; no terminal pass evidence."
     },
     {
-      "suite": "tooling-build-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-vet-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "parent-race-reduced-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
       "suite": "full-root-replay-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN",
@@ -3783,114 +4189,6 @@
     },
     {
       "suite": "host-transition-wago_regalloccheck,wago_guardpage",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-build-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-vet-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-generate",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-docs",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-node-update-website-bench",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-node-update-website-startup",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-node-engine-state-oracle",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-node-fuzz-engine-state",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-script-build-release-assets.sh",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-script-release-qualification.sh",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-script-ci-download-go-modules.sh",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-script-ci-riscv64",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-actionlint",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-script-check-diagnostic-dce.sh",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-script-check-riscv64-diagnostics.sh",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-script-check-regalloc-code.sh",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-staticcheck-bootstrap",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
-    },
-    {
-      "suite": "tooling-staticcheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN",
       "reason": "Not executed; no terminal pass evidence."
@@ -4281,8 +4579,8 @@
     }
   ],
   "counts": {
-    "INTERRUPTED": 2,
-    "PASS": 18,
-    "NOT_RUN": 221
+    "PASS": 47,
+    "INTERRUPTED": 3,
+    "NOT_RUN": 192
   }
 }

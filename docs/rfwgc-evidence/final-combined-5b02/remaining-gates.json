@@ -1,12 +1,12 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 207,
+  "remaining_count": 184,
   "remaining": [
     {
       "suite": "full-root-replay-ordinary",
       "receipt_suite": "full-root-replay-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "full-root-replay-wagodebug",
@@ -78,7 +78,7 @@
       "suite": "collector-ordinary",
       "receipt_suite": "collector-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "collector-wagodebug",
@@ -107,24 +107,6 @@
     {
       "suite": "race-wago_regalloccheck",
       "receipt_suite": "race-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "parent-race-reduced-ordinary",
-      "receipt_suite": "parent-race-reduced-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "parent-race-reduced-wagodebug",
-      "receipt_suite": "parent-race-reduced-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "parent-race-reduced-wago_regalloccheck",
-      "receipt_suite": "parent-race-reduced-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -181,24 +163,6 @@
       "receipt_suite": "baseline-corpus-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "catalog-ordinary",
-      "receipt_suite": "catalog-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "catalog-wagodebug",
-      "receipt_suite": "catalog-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "catalog-wago_regalloccheck",
-      "receipt_suite": "catalog-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
     },
     {
       "suite": "graphs-port-ordinary",
@@ -377,42 +341,6 @@
     {
       "suite": "diagnostics-established-wago_regalloccheck",
       "receipt_suite": "diagnostics-established-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-build-ordinary",
-      "receipt_suite": "tooling-build-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-build-wagodebug",
-      "receipt_suite": "tooling-build-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-build-wago_regalloccheck",
-      "receipt_suite": "tooling-build-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-vet-ordinary",
-      "receipt_suite": "tooling-vet-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-vet-wagodebug",
-      "receipt_suite": "tooling-vet-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-vet-wago_regalloccheck",
-      "receipt_suite": "tooling-vet-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -795,12 +723,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "tooling-generate",
-      "receipt_suite": "tooling-generate",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "replay-generated-diff",
       "receipt_suite": "replay-generated-diff",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -843,36 +765,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "tooling-script-ci-riscv64",
-      "receipt_suite": "tooling-script-ci-riscv64",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-node-update-website-bench",
-      "receipt_suite": "tooling-node-update-website-bench",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-node-update-website-startup",
-      "receipt_suite": "tooling-node-update-website-startup",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-node-engine-state-oracle",
-      "receipt_suite": "tooling-node-engine-state-oracle",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-node-fuzz-engine-state",
-      "receipt_suite": "tooling-node-fuzz-engine-state",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "replay-build-release-assets.sh",
       "receipt_suite": "replay-build-release-assets.sh",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -887,24 +779,6 @@
     {
       "suite": "replay-ci-download-go-modules.sh",
       "receipt_suite": "replay-ci-download-go-modules.sh",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-script-check-diagnostic-dce.sh",
-      "receipt_suite": "tooling-script-check-diagnostic-dce.sh",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-script-check-riscv64-diagnostics.sh",
-      "receipt_suite": "tooling-script-check-riscv64-diagnostics.sh",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-script-check-regalloc-code.sh",
-      "receipt_suite": "tooling-script-check-regalloc-code.sh",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -1231,21 +1105,30 @@
       "receipt_suite": null,
       "source": null,
       "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-unsupported-global-wagodebug",
-      "receipt_suite": "tinygo-unsupported-global-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "tinygo-unsupported-global-wago_regalloccheck",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
     }
   ],
   "completed": [
+    "parent-race-reduced-ordinary",
+    "parent-race-reduced-wagodebug",
+    "parent-race-reduced-wago_regalloccheck",
+    "catalog-ordinary",
+    "catalog-wagodebug",
+    "catalog-wago_regalloccheck",
+    "tooling-build-ordinary",
+    "tooling-build-wagodebug",
+    "tooling-build-wago_regalloccheck",
+    "tooling-vet-ordinary",
+    "tooling-vet-wagodebug",
+    "tooling-vet-wago_regalloccheck",
+    "tooling-generate",
+    "tooling-script-ci-riscv64",
+    "tooling-node-update-website-bench",
+    "tooling-node-update-website-startup",
+    "tooling-node-engine-state-oracle",
+    "tooling-node-fuzz-engine-state",
+    "tooling-script-check-diagnostic-dce.sh",
+    "tooling-script-check-riscv64-diagnostics.sh",
+    "tooling-script-check-regalloc-code.sh",
     "early-replay-discovery-ordinary",
     "early-replay-compile-ordinary",
     "early-replay-cipolicy-ordinary",
@@ -1258,6 +1141,8 @@
     "early-replay-compile-wago_regalloccheck",
     "early-replay-cipolicy-wago_regalloccheck",
     "repair-census-wago_regalloccheck",
-    "tinygo-unsupported-global-ordinary"
+    "tinygo-unsupported-global-ordinary",
+    "tinygo-unsupported-global-wagodebug",
+    "tinygo-unsupported-global-wago_regalloccheck"
   ]
 }
