@@ -1,0 +1,118 @@
+[
+  {
+    "name": "ordinary",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo",
+      "./src/wago",
+      "-run",
+      "^TestUnsupportedConversion",
+      "-count=1",
+      "-v",
+      "-timeout=2m"
+    ],
+    "expected_exit": 0,
+    "exit": 0
+  },
+  {
+    "name": "ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-race",
+      "-tags=wago_target_tinygo",
+      "./src/wago",
+      "-run",
+      "^TestUnsupportedConversion",
+      "-count=1",
+      "-v",
+      "-timeout=2m"
+    ],
+    "expected_exit": 0,
+    "exit": 0
+  },
+  {
+    "name": "wagodebug",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo,wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestUnsupportedConversion",
+      "-count=1",
+      "-v",
+      "-timeout=2m"
+    ],
+    "expected_exit": 0,
+    "exit": 0
+  },
+  {
+    "name": "wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-race",
+      "-tags=wago_target_tinygo,wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestUnsupportedConversion",
+      "-count=1",
+      "-v",
+      "-timeout=2m"
+    ],
+    "expected_exit": 0,
+    "exit": 0
+  },
+  {
+    "name": "wago_regalloccheck",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo,wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestUnsupportedConversion",
+      "-count=1",
+      "-v",
+      "-timeout=2m"
+    ],
+    "expected_exit": 0,
+    "exit": 0
+  },
+  {
+    "name": "wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-race",
+      "-tags=wago_target_tinygo,wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestUnsupportedConversion",
+      "-count=1",
+      "-v",
+      "-timeout=2m"
+    ],
+    "expected_exit": 0,
+    "exit": 0
+  },
+  {
+    "name": "previous-negative-control",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_target_tinygo",
+      "./src/wago",
+      "-run",
+      "^TestReviewImportedAccessNamespace$",
+      "-count=1",
+      "-v",
+      "-timeout=2m"
+    ],
+    "expected_exit": 1,
+    "exit": 0,
+    "unexpected": true
+  }
+]
