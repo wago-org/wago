@@ -1,0 +1,5 @@
+--- FAIL: TestPinnedQualificationIsolatedAndAcyclic (0.00s)
+    workflows_test.go:635: unknown dependency "gc-hardening"
+FAIL
+FAIL	github.com/wago-org/wago/tests/integration/cipolicy	0.005s
+FAIL

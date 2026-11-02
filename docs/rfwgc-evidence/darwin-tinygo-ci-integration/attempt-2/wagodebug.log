@@ -1,0 +1,5 @@
+--- FAIL: TestPinnedQualificationIsolatedAndAcyclic (0.00s)
+    workflows_test.go:621: TinyGo summary missing "n[\"darwin-tinygo-native\"][\"result\"] == \"success\""
+FAIL
+FAIL	github.com/wago-org/wago/tests/integration/cipolicy	0.004s
+FAIL
