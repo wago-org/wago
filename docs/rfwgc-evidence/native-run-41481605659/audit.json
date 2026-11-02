@@ -1,0 +1,102 @@
+{
+  "status": "AUDIT_VERIFIED_DARWIN_NOT_RUN",
+  "darwin": [
+    {
+      "name": "Pinned Darwin correctness / wagodebug",
+      "job_id": 125401073301,
+      "verdict": "NOT_RUN_RUNNER_ACQUISITION_CANCELLED",
+      "recorded_interval_seconds": 901.0,
+      "executed_steps": 0,
+      "runner_id": 0,
+      "messages": [
+        "The job was not acquired by Runner of type hosted even after multiple attempts",
+        "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+        "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+        "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+      ]
+    },
+    {
+      "name": "Pinned Darwin correctness / wago_regalloccheck",
+      "job_id": 125401073841,
+      "verdict": "NOT_RUN_RUNNER_ACQUISITION_CANCELLED",
+      "recorded_interval_seconds": 901.0,
+      "executed_steps": 0,
+      "runner_id": 0,
+      "messages": [
+        "The job was not acquired by Runner of type hosted even after multiple attempts",
+        "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+        "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+        "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+      ]
+    },
+    {
+      "name": "Pinned Darwin correctness / ordinary",
+      "job_id": 125401073879,
+      "verdict": "NOT_RUN_RUNNER_ACQUISITION_CANCELLED",
+      "recorded_interval_seconds": 901.0,
+      "executed_steps": 0,
+      "runner_id": 0,
+      "messages": [
+        "The job was not acquired by Runner of type hosted even after multiple attempts",
+        "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+        "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.",
+        "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+      ]
+    }
+  ],
+  "windows": [
+    {
+      "artifact": "windows-ownership-wagodebug-1",
+      "top_level_passes": [
+        "TestDesignRepairPublicTableOrdinary",
+        "TestDesignRepairUnsupportedBulkAtomicity",
+        "TestDesignRepairUnsupportedConvertedPublicToken",
+        "TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory",
+        "TestUnsupportedConversionGlobalValidationOrdering",
+        "TestQualificationWindowsGCAdmission"
+      ],
+      "failures": 0,
+      "skips": 0,
+      "source": "21d7be58952b64435110246f65d44e11046c5083",
+      "harness": "6d52c087f3136f0cb4d5457c733e1a92449df08b",
+      "scope": "storage/admission only, not Windows GC JIT"
+    },
+    {
+      "artifact": "windows-ownership-ordinary-1",
+      "top_level_passes": [
+        "TestDesignRepairPublicTableOrdinary",
+        "TestDesignRepairUnsupportedBulkAtomicity",
+        "TestDesignRepairUnsupportedConvertedPublicToken",
+        "TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory",
+        "TestUnsupportedConversionGlobalValidationOrdering",
+        "TestQualificationWindowsGCAdmission"
+      ],
+      "failures": 0,
+      "skips": 0,
+      "source": "21d7be58952b64435110246f65d44e11046c5083",
+      "harness": "6d52c087f3136f0cb4d5457c733e1a92449df08b",
+      "scope": "storage/admission only, not Windows GC JIT"
+    },
+    {
+      "artifact": "windows-ownership-wago_regalloccheck-1",
+      "top_level_passes": [
+        "TestDesignRepairPublicTableOrdinary",
+        "TestDesignRepairUnsupportedBulkAtomicity",
+        "TestDesignRepairUnsupportedConvertedPublicToken",
+        "TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory",
+        "TestUnsupportedConversionGlobalValidationOrdering",
+        "TestQualificationWindowsGCAdmission"
+      ],
+      "failures": 0,
+      "skips": 0,
+      "source": "21d7be58952b64435110246f65d44e11046c5083",
+      "harness": "6d52c087f3136f0cb4d5457c733e1a92449df08b",
+      "scope": "storage/admission only, not Windows GC JIT"
+    }
+  ],
+  "source": "21d7be58952b64435110246f65d44e11046c5083",
+  "harness": "6d52c087f3136f0cb4d5457c733e1a92449df08b",
+  "code_repair_indicated_by_attempt": false,
+  "queue_and_revalidation_estimate": "UNKNOWN",
+  "runtime_performance_measured": false
+}
