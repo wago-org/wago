@@ -19,7 +19,7 @@
       "suite": "full-root-replay-wago_regalloccheck",
       "receipt_suite": "full-root-replay-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "cli-ordinary",
@@ -31,7 +31,7 @@
       "suite": "cli-wagodebug",
       "receipt_suite": "cli-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "cli-wago_regalloccheck",
@@ -49,7 +49,7 @@
       "suite": "installer-wagodebug",
       "receipt_suite": "installer-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "installer-wago_regalloccheck",
@@ -67,7 +67,7 @@
       "suite": "nested-wagodebug",
       "receipt_suite": "nested-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "nested-wago_regalloccheck",
@@ -91,7 +91,7 @@
       "suite": "collector-wago_regalloccheck",
       "receipt_suite": "collector-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "race-ordinary",
@@ -103,13 +103,13 @@
       "suite": "race-wagodebug",
       "receipt_suite": "race-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "race-wago_regalloccheck",
       "receipt_suite": "race-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "parent-race-reduced-ordinary",
@@ -139,7 +139,7 @@
       "suite": "guard-wagodebug",
       "receipt_suite": "guard-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "guard-wago_regalloccheck",
@@ -151,13 +151,13 @@
       "suite": "corpus-ordinary",
       "receipt_suite": "corpus-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "corpus-wagodebug",
       "receipt_suite": "corpus-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "corpus-wago_regalloccheck",
@@ -1325,9 +1325,9 @@
     }
   ],
   "counts": {
-    "PASS": 64,
-    "NOT_RUN": 152,
+    "PASS": 71,
     "RUNNING": 3,
+    "NOT_RUN": 145,
     "FAIL": 1
   },
   "attempts": [
@@ -1374,13 +1374,21 @@
     {
       "suite": "cli-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "collector-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "collector-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",
@@ -1397,6 +1405,14 @@
     },
     {
       "suite": "corpus-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "corpus-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": false,
       "driver": "run.py",
@@ -1484,6 +1500,14 @@
       "verdict": "PASS"
     },
     {
+      "suite": "full-root-replay-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": false,
+      "driver": "run.py",
+      "exit": null,
+      "verdict": "RUNNING"
+    },
+    {
       "suite": "full-root-replay-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
@@ -1500,6 +1524,14 @@
       "verdict": "PASS"
     },
     {
+      "suite": "guard-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "installer-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
@@ -1508,7 +1540,23 @@
       "verdict": "PASS"
     },
     {
+      "suite": "installer-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "nested-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "nested-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",
@@ -1548,12 +1596,20 @@
       "verdict": "PASS"
     },
     {
-      "suite": "race-wagodebug",
+      "suite": "race-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": false,
       "driver": "run.py",
       "exit": null,
       "verdict": "RUNNING"
+    },
+    {
+      "suite": "race-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "repair-census-ordinary",
