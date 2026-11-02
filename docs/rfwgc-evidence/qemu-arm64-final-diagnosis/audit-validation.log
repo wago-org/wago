@@ -1,0 +1,122 @@
+{
+  "source_pin": "08f511fac41a77f4c0f9046f88ebc78ad05a5da6",
+  "exact_git_blobs": 7505,
+  "host": [
+    "Linux",
+    "t3",
+    "7.2.8-9-omarchy",
+    "#1 SMP PREEMPT_DYNAMIC Sat, 17 Oct 2026 22:09:33 +0000",
+    "x86_64",
+    ""
+  ],
+  "modes": {
+    "ordinary": {
+      "default-guard": {
+        "send_records": 1280,
+        "delivery_records": 0,
+        "timer_create": 0,
+        "exit": 86
+      },
+      "mapped-guard": {
+        "send_records": 12,
+        "delivery_records": 10,
+        "timer_create": 0,
+        "exit": 0
+      }
+    },
+    "wagodebug": {
+      "default-guard": {
+        "send_records": 1536,
+        "delivery_records": 0,
+        "timer_create": 0,
+        "exit": 86
+      },
+      "mapped-guard": {
+        "send_records": 5,
+        "delivery_records": 4,
+        "timer_create": 0,
+        "exit": 0
+      }
+    },
+    "wago_regalloccheck": {
+      "default-guard": {
+        "send_records": 1536,
+        "delivery_records": 0,
+        "timer_create": 0,
+        "exit": 86
+      },
+      "mapped-guard": {
+        "send_records": 10,
+        "delivery_records": 8,
+        "timer_create": 0,
+        "exit": 0
+      }
+    }
+  },
+  "timer": {
+    "default": [
+      [
+        "1",
+        "35",
+        "0"
+      ],
+      [
+        "1",
+        "64",
+        "0"
+      ],
+      [
+        "0",
+        "35",
+        "0"
+      ],
+      [
+        "0",
+        "64",
+        "22"
+      ],
+      [
+        "4",
+        "35",
+        "0"
+      ],
+      [
+        "4",
+        "64",
+        "22"
+      ]
+    ],
+    "mapped": [
+      [
+        "1",
+        "35",
+        "0"
+      ],
+      [
+        "1",
+        "64",
+        "0"
+      ],
+      [
+        "0",
+        "35",
+        "0"
+      ],
+      [
+        "0",
+        "64",
+        "0"
+      ],
+      [
+        "4",
+        "35",
+        "0"
+      ],
+      [
+        "4",
+        "64",
+        "0"
+      ]
+    ]
+  }
+}

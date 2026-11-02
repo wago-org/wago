@@ -1,0 +1,146 @@
+[
+  {
+    "raw": "ordinary-storage-default.log",
+    "raw_sha256": "863db01b81ef19b3025e2d1e32e79d271e6300a596e6b4785fa55dd0b47e1c86",
+    "gzip": "ordinary-storage-default.log.gz",
+    "gzip_sha256": "82d25a17ecfa9eeb813dd6eef66d0d2f3c11747a4b3091c0128b5708c8481f10"
+  },
+  {
+    "raw": "go-version.log",
+    "raw_sha256": "5707bf75dd54b4fdd5ac209444d48c9c4179ebf8510f80e2f7293dfbedc1012b",
+    "gzip": "go-version.log.gz",
+    "gzip_sha256": "543ad1366d6eeae889c71f2f1f19c31fc5dec8259c4a458a53d0ece8f8f4719f"
+  },
+  {
+    "raw": "ordinary-build-with-support.log",
+    "raw_sha256": "e04c4e19d739ede6edc242cf44f2e330c2ade1681f1aa8aa335976a742d1c8bd",
+    "gzip": "ordinary-build-with-support.log.gz",
+    "gzip_sha256": "249d27be5f895ad4ce638809ea608ebb6d1a5991ecda6c10fb4b6889f13516e5"
+  },
+  {
+    "raw": "ordinary-build.log",
+    "raw_sha256": "9743cea2f952f231e7dd1fb1a75159ce90f9367acbfdccba809cf15cb3120cdb",
+    "gzip": "ordinary-build.log.gz",
+    "gzip_sha256": "20a9adca33f54114fc646adef12441013d6ac7cf6a5146338214e80acd36999b"
+  },
+  {
+    "raw": "timer-build.log",
+    "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gzip": "timer-build.log.gz",
+    "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  {
+    "raw": "ordinary-guard-mapped.log",
+    "raw_sha256": "de1cfee815fdc1311299c8fc63b18b75a04c4ae2dd82395bb9c1d4f3bf27db4c",
+    "gzip": "ordinary-guard-mapped.log.gz",
+    "gzip_sha256": "2fa3c670729a233307053396af16ed8a51047debd65695411a15846cf2e85bcb"
+  },
+  {
+    "raw": "wagodebug-storage-default.log",
+    "raw_sha256": "4d9c6f6ed673b87078902fc0a883b4b488b26cd53afa5181d91a0abcdff9825d",
+    "gzip": "wagodebug-storage-default.log.gz",
+    "gzip_sha256": "b711b49804ce25e88038a545810aeeb3cec0cb4887c8cca0c0f1ffa98ae2079b"
+  },
+  {
+    "raw": "ordinary-storage-mapped.log",
+    "raw_sha256": "0b19f7951fc0e109cacc5ded4ad07d49fe8e1a214701c748f57d114498dcca05",
+    "gzip": "ordinary-storage-mapped.log.gz",
+    "gzip_sha256": "f1bcd111daf6fdc79f35d9a906739d7a8fb8206c4307149c9acf10703fd42ba1"
+  },
+  {
+    "raw": "qemu-version.log",
+    "raw_sha256": "1dd52d45967d042bf0bc462082f77a1c26e08ac5cfa44279c3c2eb21c7a614e6",
+    "gzip": "qemu-version.log.gz",
+    "gzip_sha256": "5d2f6a9af63ac9c3eab6f9e09e1834c046eb24eb607adb14ceb792a2ad7bd125"
+  },
+  {
+    "raw": "wago_regalloccheck-guard-default.log",
+    "raw_sha256": "afed37308165be04ba2547fb38efdf690223cb71a8a5cd0c7cf68f56c040a61f",
+    "gzip": "wago_regalloccheck-guard-default.log.gz",
+    "gzip_sha256": "2d70cef68d9ba3c43e11f5b42f006ea7a24661680373b72f317089c97666be2d"
+  },
+  {
+    "raw": "qemu-help.log",
+    "raw_sha256": "d700e0b06823a6d2567a912492bf90183c2f3d161ce208cf6b9fa7793ed09ffa",
+    "gzip": "qemu-help.log.gz",
+    "gzip_sha256": "2f45c086307a184ab05dc3f7538df1c1f754224738c06029b9e670025b17e6f1"
+  },
+  {
+    "raw": "timer-mapped.log",
+    "raw_sha256": "7d4dfc5430cb9676638084eed6ea67e50816ca5ed2300ab082488d0da75fdd0c",
+    "gzip": "timer-mapped.log.gz",
+    "gzip_sha256": "e5c8cf0f67aaf0e87b886467f3c980f68be865aa454f5ac6caa7e323fdd7441e"
+  },
+  {
+    "raw": "ordinary-build-complete-export.log",
+    "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gzip": "ordinary-build-complete-export.log.gz",
+    "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  {
+    "raw": "wago_regalloccheck-guard-mapped.log",
+    "raw_sha256": "6d12fe7ccdfb8e32ddd6d745372ca4c9f0a85f4777a6c83c06c29be05bb8ea31",
+    "gzip": "wago_regalloccheck-guard-mapped.log.gz",
+    "gzip_sha256": "3caabe595aa3195385b375d62b9c061d1e9141bcbc05e40c66435d03a387d7a1"
+  },
+  {
+    "raw": "wago_regalloccheck-storage-mapped.log",
+    "raw_sha256": "6b083821707d0b871224c73c9ec3e0a18eae8768ecccb0b95127e8129759ba4e",
+    "gzip": "wago_regalloccheck-storage-mapped.log.gz",
+    "gzip_sha256": "b3e09235a264003a8dde789937a23479ec6272c01e419dfc29774b86061a55c6"
+  },
+  {
+    "raw": "wago_regalloccheck-build-complete-export.log",
+    "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gzip": "wago_regalloccheck-build-complete-export.log.gz",
+    "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  {
+    "raw": "timer-default.log",
+    "raw_sha256": "84f8a3a5b42a21034be18a9599e85c59b6dd0c8c70be91c2b7b2f8470b489ce3",
+    "gzip": "timer-default.log.gz",
+    "gzip_sha256": "1edcdfa06de0c39f93367a5b3f8edc03e813deaadee5492a52ddd769cd7da2d3"
+  },
+  {
+    "raw": "wagodebug-build-complete-export.log",
+    "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gzip": "wagodebug-build-complete-export.log.gz",
+    "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+  },
+  {
+    "raw": "ordinary-guard-default.log",
+    "raw_sha256": "9a86e3efdbc0ae2625c3b1f41f5e6eeb457198514658afb7e0e2b5b1c1cb0fa6",
+    "gzip": "ordinary-guard-default.log.gz",
+    "gzip_sha256": "469946ad3450c7ae495110f29324c2cffa8e78d9cf3261f6a7ba76c155e3955b"
+  },
+  {
+    "raw": "wagodebug-storage-mapped.log",
+    "raw_sha256": "f2a60f04e47c042ff096b8f32eb8912a7602b64af77930b1a6a0807a1deb916a",
+    "gzip": "wagodebug-storage-mapped.log.gz",
+    "gzip_sha256": "7429d26bb3f4f86d5f7f771ddb1c92f218351d765e3f42cb82ad71490a63d065"
+  },
+  {
+    "raw": "wagodebug-guard-default.log",
+    "raw_sha256": "96fadf3b8367e29565dc480b2319f7a3bd6eef80a239546ec5be376e1507953e",
+    "gzip": "wagodebug-guard-default.log.gz",
+    "gzip_sha256": "59fd32fec8cd33d3467d7ebb4688787752370ab201d8358057b0d0ea5dd0b351"
+  },
+  {
+    "raw": "wago_regalloccheck-storage-default.log",
+    "raw_sha256": "befa68336be68f0a2c30363d8e2c818377d13164ec7a11a5f4a4b1483d02b31b",
+    "gzip": "wago_regalloccheck-storage-default.log.gz",
+    "gzip_sha256": "10282e7fcf2b6927eb04819468f3c4d7ba71b98e6ddc2cd5aa45237de30112f4"
+  },
+  {
+    "raw": "wagodebug-guard-mapped.log",
+    "raw_sha256": "03b3a82f284a9e26095cbc14c630510da051ab88b534998fe3dc06be2ee550ea",
+    "gzip": "wagodebug-guard-mapped.log.gz",
+    "gzip_sha256": "ef5bc73a5406bafcb8505b2d5d5c68ec8e70d43c10d4166cba6cfaabed797654"
+  },
+  {
+    "raw": "ordinary-build-with-tests.log",
+    "raw_sha256": "04b82e484ac803cc91a00122d501878d91c561edfab0a7090d1bd5be02e05a5f",
+    "gzip": "ordinary-build-with-tests.log.gz",
+    "gzip_sha256": "4d09f3fca05c9ee4f5d37926a0cbbd2d9956908c9805b53e2fa4a53d9d29e30d"
+  }
+]

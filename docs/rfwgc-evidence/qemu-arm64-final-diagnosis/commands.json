@@ -1,0 +1,387 @@
+[
+  {
+    "label": "qemu-version",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "--version"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 0,
+    "log_sha256": "1dd52d45967d042bf0bc462082f77a1c26e08ac5cfa44279c3c2eb21c7a614e6"
+  },
+  {
+    "label": "qemu-help",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-help"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 0,
+    "log_sha256": "d700e0b06823a6d2567a912492bf90183c2f3d161ce208cf6b9fa7793ed09ffa"
+  },
+  {
+    "label": "go-version",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "version"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 0,
+    "log_sha256": "5707bf75dd54b4fdd5ac209444d48c9c4179ebf8510f80e2f7293dfbedc1012b"
+  },
+  {
+    "label": "timer-build",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "build",
+      "-o",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/timer",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/timer.go"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "timer-default",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/timer"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 0,
+    "log_sha256": "84f8a3a5b42a21034be18a9599e85c59b6dd0c8c70be91c2b7b2f8470b489ce3"
+  },
+  {
+    "label": "timer-mapped",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-t",
+      "32 36 28,64 64 1",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/timer"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 0,
+    "log_sha256": "7d4dfc5430cb9676638084eed6ea67e50816ca5ed2300ab082488d0da75fdd0c"
+  },
+  {
+    "label": "ordinary-build",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "-overlay",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/overlay.json",
+      "-o",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/ordinary.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 1,
+    "log_sha256": "9743cea2f952f231e7dd1fb1a75159ce90f9367acbfdccba809cf15cb3120cdb"
+  },
+  {
+    "label": "ordinary-build-with-support",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "-overlay",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/overlay.json",
+      "-o",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/ordinary.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 1,
+    "log_sha256": "e04c4e19d739ede6edc242cf44f2e330c2ade1681f1aa8aa335976a742d1c8bd"
+  },
+  {
+    "label": "ordinary-build-with-tests",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "-overlay",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/overlay.json",
+      "-o",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/ordinary.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 1,
+    "log_sha256": "04b82e484ac803cc91a00122d501878d91c561edfab0a7090d1bd5be02e05a5f"
+  },
+  {
+    "label": "ordinary-build-complete-export",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "-overlay",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/overlay.json",
+      "-o",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/ordinary.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "ordinary-storage-default",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/ordinary.test",
+      "-test.run=^TestRRRecheckStorageOnlyReturnBehindDynamicReader$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 1,
+    "log_sha256": "863db01b81ef19b3025e2d1e32e79d271e6300a596e6b4785fa55dd0b47e1c86"
+  },
+  {
+    "label": "ordinary-storage-mapped",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-t",
+      "32 36 28,64 64 1",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/ordinary.test",
+      "-test.run=^TestRRRecheckStorageOnlyReturnBehindDynamicReader$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 0,
+    "log_sha256": "0b19f7951fc0e109cacc5ded4ad07d49fe8e1a214701c748f57d114498dcca05"
+  },
+  {
+    "label": "ordinary-guard-default",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/ordinary.test",
+      "-test.run=^TestSharedEntryGuardCancellationAndGC$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 86,
+    "log_sha256": "9a86e3efdbc0ae2625c3b1f41f5e6eeb457198514658afb7e0e2b5b1c1cb0fa6"
+  },
+  {
+    "label": "ordinary-guard-mapped",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-t",
+      "32 36 28,64 64 1",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/ordinary.test",
+      "-test.run=^TestSharedEntryGuardCancellationAndGC$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 0,
+    "log_sha256": "de1cfee815fdc1311299c8fc63b18b75a04c4ae2dd82395bb9c1d4f3bf27db4c"
+  },
+  {
+    "label": "wagodebug-build-complete-export",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "-overlay",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/overlay.json",
+      "-tags=wagodebug",
+      "-o",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wagodebug.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "wagodebug-storage-default",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wagodebug.test",
+      "-test.run=^TestRRRecheckStorageOnlyReturnBehindDynamicReader$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 1,
+    "log_sha256": "4d9c6f6ed673b87078902fc0a883b4b488b26cd53afa5181d91a0abcdff9825d"
+  },
+  {
+    "label": "wagodebug-storage-mapped",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-t",
+      "32 36 28,64 64 1",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wagodebug.test",
+      "-test.run=^TestRRRecheckStorageOnlyReturnBehindDynamicReader$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 0,
+    "log_sha256": "f2a60f04e47c042ff096b8f32eb8912a7602b64af77930b1a6a0807a1deb916a"
+  },
+  {
+    "label": "wagodebug-guard-default",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wagodebug.test",
+      "-test.run=^TestSharedEntryGuardCancellationAndGC$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 86,
+    "log_sha256": "96fadf3b8367e29565dc480b2319f7a3bd6eef80a239546ec5be376e1507953e"
+  },
+  {
+    "label": "wagodebug-guard-mapped",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-t",
+      "32 36 28,64 64 1",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wagodebug.test",
+      "-test.run=^TestSharedEntryGuardCancellationAndGC$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 0,
+    "log_sha256": "03b3a82f284a9e26095cbc14c630510da051ab88b534998fe3dc06be2ee550ea"
+  },
+  {
+    "label": "wago_regalloccheck-build-complete-export",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-c",
+      "-overlay",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/overlay.json",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wago_regalloccheck.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+    "exit": 0,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "label": "wago_regalloccheck-storage-default",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wago_regalloccheck.test",
+      "-test.run=^TestRRRecheckStorageOnlyReturnBehindDynamicReader$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 1,
+    "log_sha256": "befa68336be68f0a2c30363d8e2c818377d13164ec7a11a5f4a4b1483d02b31b"
+  },
+  {
+    "label": "wago_regalloccheck-storage-mapped",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-t",
+      "32 36 28,64 64 1",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wago_regalloccheck.test",
+      "-test.run=^TestRRRecheckStorageOnlyReturnBehindDynamicReader$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 0,
+    "log_sha256": "6b083821707d0b871224c73c9ec3e0a18eae8768ecccb0b95127e8129759ba4e"
+  },
+  {
+    "label": "wago_regalloccheck-guard-default",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wago_regalloccheck.test",
+      "-test.run=^TestSharedEntryGuardCancellationAndGC$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 86,
+    "log_sha256": "afed37308165be04ba2547fb38efdf690223cb71a8a5cd0c7cf68f56c040a61f"
+  },
+  {
+    "label": "wago_regalloccheck-guard-mapped",
+    "argv": [
+      "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+      "-cpu",
+      "max",
+      "-t",
+      "32 36 28,64 64 1",
+      "-strace",
+      "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wago_regalloccheck.test",
+      "-test.run=^TestSharedEntryGuardCancellationAndGC$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=30s"
+    ],
+    "cwd": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source/src/wago",
+    "exit": 0,
+    "log_sha256": "6d12fe7ccdfb8e32ddd6d745372ca4c9f0a85f4777a6c83c06c29be05bb8ea31"
+  }
+]
