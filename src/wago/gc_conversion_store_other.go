@@ -57,6 +57,32 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 	} else if access != nil {
 		store = access.refStore
 	}
+	// Staged conversions have their own opaque public-word namespace. They are
+	// deliberately absent from the ordinary externref directory; letting that
+	// miss fall through would let the legacy global setter publish them without
+	// a physical-container receipt. Inspect only this global's publishing state.
+	owner := access
+	if g.owner != nil {
+		owner = g.owner.instance
+	}
+	if value.bits != 0 {
+		if conversion := owner.existingGCExternConversionState(); conversion != nil {
+			conversion.mu.Lock()
+			converted := false
+			if !conversion.closed {
+				for _, entry := range conversion.entries {
+					if entry.kind == gcExternConversionData && entry.publicExternWord == value.bits {
+						converted = true
+						break
+					}
+				}
+			}
+			conversion.mu.Unlock()
+			if converted {
+				return true, fmt.Errorf("opaque converted publication is unsupported on this target")
+			}
+		}
+	}
 	// Public ingress authenticates tokens before classifying their payload.
 	// Leave invalid and cross-store words to the ordinary global validation,
 	// which preserves its invalid-token error and never publishes them.

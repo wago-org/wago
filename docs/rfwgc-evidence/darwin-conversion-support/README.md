@@ -94,3 +94,20 @@ collector/backend, cross-target and emulated execution receipts will identify
 an immutable source pin separately. No timings, benchmarks, push, dispatch, PR
 or child agents were used. Performance qualification requires an independent
 measurement lease; native Darwin and final conformance gates remain open.
+
+## Unsupported target guard
+
+The fallback `gc_conversion_store_other.go` now checks the physical owner's
+conversion namespace before deciding an ordinary-directory miss is unhandled.
+This rejects known opaque public converted words before the legacy setter can
+publish without a receipt. Null, ordinary tokens and invalid-token diagnostics
+retain their previous paths. RV64 returns through its existing compact gate.
+`TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory` is a
+metadata-only negative test selected only on unsupported non-RV64 adapters.
+Local `wago_target_tinygo` ordinary/debug/regalloccheck executions validate this
+adapter logic; they are not native TinyGo execution qualification.
+
+The first immutable full-suite attempt exposed missing gitlink fixture exports
+and mise tool shims requiring trust in the temporary source directory. Logs in
+`qualified-3f6161883` are retained as a failed setup attempt. The corrected runner
+uses explicit installed tool paths and pinned submodule fixture archives.

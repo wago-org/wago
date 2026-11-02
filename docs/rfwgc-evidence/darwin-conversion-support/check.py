@@ -4,7 +4,9 @@ import json, os, pathlib, subprocess, sys
 out=pathlib.Path(sys.argv[1]); out.mkdir(parents=True,exist_ok=True)
 go='/home/dev/.local/share/mise/installs/go/1.27.1/bin/go'
 env=dict(os.environ,GOROOT=str(pathlib.Path(go).parent.parent),GOWORK='off',GOMAXPROCS='4')
-env['PATH']=str(pathlib.Path(go).parent)+':'+env['PATH']
+tool_paths=[str(pathlib.Path(go).parent), '/home/dev/.local/share/mise/installs/github-web-assembly-wabt/1.0.42/bin', '/home/dev/.local/share/mise/installs/github-bytecodealliance-wasm-tools/1.251.0', '/home/dev/.local/share/mise/installs/node/24.22.2/bin']
+env['PATH']=':'.join(tool_paths)+':'+env['PATH']
+(out/'environment.json').write_text(json.dumps({k:env.get(k) for k in ['PATH','GOROOT','GOWORK','GOMAXPROCS','WAGO_BOUNDS']},indent=2)+'\n')
 regex='^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$'
 rows=[]
 for mode in ['ordinary','wagodebug','wago_regalloccheck']:
