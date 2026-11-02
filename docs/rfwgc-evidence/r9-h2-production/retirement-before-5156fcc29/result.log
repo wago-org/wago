@@ -1,0 +1,6 @@
+=== RUN   TestR9H2RetiredCollectorPreservesDeferredFinalizer
+    r9_h2_retirement_before_test.go:29: STOP collector retirement erased deferred finalizer
+--- FAIL: TestR9H2RetiredCollectorPreservesDeferredFinalizer (0.00s)
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.009s
+FAIL
