@@ -1,0 +1,1 @@
+Initial driver-manifest extension exited 1: glob *.sh also selected tooling-script-ci-download-go-modules.sh directory. Fixed by checking is_file before hashing. No gate or source was changed.

@@ -1,0 +1,38 @@
+pin=dcb45b56386327a1f71fb039ed02e13562e1e2d7
+
+PATH src/facts_scalar.goose
+9: // saved source_start before the ordinary emitter. Analyze emits baseline and
+155: fn scalar_cheap_eligible(r: Reader&, m: Module&, sig: Signature, p: ScalarPlanOwner&) -> bool {
+
+PATH src/jit.goose
+256:     let provider = registered_instance(store, module_name); if provider < 0 { return 128; }
+324: fn load_runtime_module<Register>(r: Reader&, m: Module&, rt: Runtime&, bodies: FunctionBody[>..]&,
+341:                 Register(r, store, m, rt);
+587:     emit(w, 0x41); emit(w, 0x57);
+589:     call_register(w, ax); emit(w, 0x41); emit(w, 0x5f); emit(w, 0xc3);
+601:     emit(w, 0x55); load(w, bp, r12, 600, true);
+610:     mov_imm(w, r11, ss_host_address(), true); call_register(w, r11);
+613:     store(w, r12, 112, ax, true); load(w, ax, r12, 80, true); jump_register(w, ax);
+618:         emit(w, 0xf3); emit(w, 0x48); emit(w, 0xa5); mov_reg(w, r14, di);
+620:     emit(w, 0x5d); emit(w, 0xc3);
+676: fn instantiate<Register>(store: Store&, path: const u8[:], id: u32, stack_forwarding: bool) -> i64 {
+728:             r, store, m, rt => Register(r, store, m, rt)
+1016: fn store_loop<Register>(store: Store&, r: Reader&) {
+1085:             let status = instantiate(store, path, id, stack_forwarding) { r, store, m, rt => Register(r, store, m, rt) };
+1089:             require(r, find_instance(store, id) >= 0, "unknown registered instance"); register_instance(store, id, name); print("registered");
+1133: fn run_store_session<Register>(path: const u8[:], target: const u8[:], explicit: bool, arguments: const i64[:], stack_forwarding: bool,
+1182:             r, store, m, rt => Register(r, store, m, rt)
+1187:         check_trap(status); register_instance(store, i as u32, imported_name);
+1190:         r, store, m, rt => Register(r, store, m, rt)
+1229:             let registered = register_module_gc_types(gc_owner, c, adapter, store, m, rt, r);
+1231:             require(r, registered, "garbage collector type registration failed");
+1244:         let registered = register_module_gc_types(gc_owner, c, adapter, store, m, rt, r);
+1246:         require(r, registered, "garbage collector type registration failed");
+1249: fn spec_store_session<Register>(path: const u8[:], buffer: u8[:], gc_runtime: u64) {
+1266:     store_loop(store, r) { r, store, m, rt => Register(r, store, m, rt) };
+1290:             let registered = register_module_gc_types(gc_owner, c, adapter, store, m, rt, r);
+1292:             require(r, registered, "garbage collector type registration failed");
+1302:         let registered = register_module_gc_types(gc_owner, c, adapter, store, m, rt, r);
+1304:         require(r, registered, "garbage collector type registration failed");
+
+Exact Wago mechanism search exit=1

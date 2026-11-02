@@ -1,0 +1,1 @@
+{"reason": "Isolate go generate from concurrently tested immutable source; initial build/vet retained, no production failure inferred.", "pid": 837795, "source": "/tmp/wago-combined-501e9-to2k8cyp/source", "replacement_source": "/tmp/wago-combined-501e9-to2k8cyp/tooling"}

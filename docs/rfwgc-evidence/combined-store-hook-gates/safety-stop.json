@@ -1,0 +1,340 @@
+{
+  "reason": "Stop combined-source execution following race in TestPreparedGCRevocableEntryExternalAccess/reference-store and regalloccheck deferred-load overwrite in explicitly enabled TestRFWStage3CorpusCompile/clang-cpp-kernels. No failed source is repaired or waived.",
+  "processes": [
+    {
+      "root": 796326,
+      "root_command": [
+        "python3",
+        "docs/rfwgc-evidence/combined-store-hook-gates/extra.py",
+        "root"
+      ],
+      "descendants": [
+        {
+          "pid": 1038688,
+          "args": [
+            "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+            "test",
+            "-json",
+            "-count=1",
+            "-timeout=60m",
+            "-tags=wagodebug",
+            "-failfast",
+            "./..."
+          ],
+          "parent": 796326
+        },
+        {
+          "pid": 1050445,
+          "args": [
+            "/tmp/go-build2497705029/b442/standalone.test",
+            "-test.paniconexit0",
+            "-test.v=test2json",
+            "-test.count=1",
+            "-test.timeout=1h0m0s",
+            "-test.failfast=true"
+          ],
+          "parent": 1038688
+        },
+        {
+          "pid": 1068324,
+          "args": [
+            "tinygo",
+            "build",
+            "-scheduler=threads",
+            "-gc=conservative",
+            "-tags=wago_standalone",
+            "-o",
+            "/tmp/TestTinyGoForeignStackGCInterruptionordinary837274656/001/runner",
+            "."
+          ],
+          "parent": 1050445
+        },
+        {
+          "pid": 1068528,
+          "args": [],
+          "parent": 1038688
+        }
+      ]
+    },
+    {
+      "root": 820970,
+      "root_command": [
+        "python3",
+        "docs/rfwgc-evidence/combined-store-hook-gates/run.py",
+        "corpus"
+      ],
+      "descendants": [
+        {
+          "pid": 1028727,
+          "args": [
+            "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+            "test",
+            "-json",
+            "-count=1",
+            "-timeout=60m",
+            "-tags=wago_regalloccheck",
+            "-failfast",
+            "-run",
+            "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
+            "./suite",
+            "-args",
+            "-wago.corpus=all"
+          ],
+          "parent": 820970
+        },
+        {
+          "pid": 1032784,
+          "args": [
+            "/tmp/go-build1315074707/b001/suite.test",
+            "-test.paniconexit0",
+            "-test.v=test2json",
+            "-test.count=1",
+            "-test.timeout=1h0m0s",
+            "-test.failfast=true",
+            "-test.run=^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
+            "-wago.corpus=all"
+          ],
+          "parent": 1028727
+        }
+      ]
+    },
+    {
+      "root": 875526,
+      "root_command": [
+        "bash",
+        "docs/rfwgc-evidence/combined-store-hook-gates/tinygo-34.sh"
+      ],
+      "descendants": [
+        {
+          "pid": 1038735,
+          "args": [
+            "timeout",
+            "30m",
+            "tinygo",
+            "test",
+            "-scheduler=threads",
+            "-gc=conservative",
+            "-tags=wago_runtime",
+            "./src/core/runtime",
+            "./src/wago"
+          ],
+          "parent": 875526
+        },
+        {
+          "pid": 1038736,
+          "args": [
+            "tinygo",
+            "test",
+            "-scheduler=threads",
+            "-gc=conservative",
+            "-tags=wago_runtime",
+            "./src/core/runtime",
+            "./src/wago"
+          ],
+          "parent": 1038735
+        },
+        {
+          "pid": 1068229,
+          "args": [
+            "tinygo",
+            "ld.lld",
+            "--gc-sections",
+            "-L",
+            "/home/dev/.local/share/wago-tinygo-investigation/tinygo",
+            "-o",
+            "/tmp/tinygo1979661991/main",
+            "/tmp/tinygo1979661991/main.o",
+            "/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/compiler-rt-x86_64-unknown-linux-musleabihf-x86-64/lib.a",
+            "/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/obj-2f571b5c6a659c7499f536b1b052b682bc86bd09ab120da23c9c6477.bc",
+            "/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/obj-53a519d8fc1530eca9db2dd333c3d7c95f80162e180c8fd265269a80.bc",
+            "/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/obj-aaee34248b4f7f43186ab813a416571c7998e5dcd93d7cab101720ef.bc",
+            "/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/obj-a508cc1b53614c8b9c95a69950f902c20dedd1ae5481a8404bbcc4cf.bc",
+            "/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/obj-b4724f022c6356c9f7b7e6b82de5721543ae11c28cbc606a77437f0f.bc",
+            "/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/obj-9fd6072fa8db30f20996886268266cc314e306df4f84e0def72b92eb.bc",
+            "/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/obj-26ed5751d23ef40d45e992e184e60fcedd01465ed827fbc7107ff3b0.bc",
+            "/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/musl-x86_64-unknown-linux-musleabihf-x86-64-v3/crt1.o",
+            "/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/musl-x86_64-unknown-linux-musleabihf-x86-64-v3/lib.a",
+            "-mllvm",
+            "-mcpu=x86-64",
+            "-mllvm",
+            "-mattr=+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87",
+            "--lto-O2",
+            "--thinlto-cache-dir=/tmp/wago-foreign-stack-cache.y0Snoh/tinygo/thinlto",
+            "-mllvm",
+            "--rotation-max-header-size=0"
+          ],
+          "parent": 1038736
+        }
+      ]
+    },
+    {
+      "root": 895087,
+      "root_command": [
+        "python3",
+        "docs/rfwgc-evidence/combined-store-hook-gates/lanes.py",
+        "baseline"
+      ],
+      "descendants": [
+        {
+          "pid": 1021678,
+          "args": [
+            "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+            "test",
+            "-json",
+            "-count=1",
+            "-timeout=60m",
+            "-tags=wagodebug",
+            "-failfast",
+            "-run",
+            "^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$",
+            "./suite",
+            "-args",
+            "-wago.corpus=all"
+          ],
+          "parent": 895087
+        },
+        {
+          "pid": 1022976,
+          "args": [
+            "/tmp/go-build4270614691/b001/suite.test",
+            "-test.paniconexit0",
+            "-test.v=test2json",
+            "-test.count=1",
+            "-test.timeout=1h0m0s",
+            "-test.failfast=true",
+            "-test.run=^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$",
+            "-wago.corpus=all"
+          ],
+          "parent": 1021678
+        },
+        {
+          "pid": 1068589,
+          "args": [
+            "/tmp/go-build4270614691/b001/suite.test",
+            "-test.run=^TestCorpusChild$",
+            "-test.v",
+            "-wago.corpus=all"
+          ],
+          "parent": 1022976
+        }
+      ]
+    },
+    {
+      "root": 917125,
+      "root_command": [
+        "python3",
+        "docs/rfwgc-evidence/combined-store-hook-gates/qemu-guest.py",
+        "--pin",
+        "501e9ab46c4f68090c7bbeb17a6ad14f4fadda6d",
+        "--qemu-package",
+        "/tmp/qemu-user.deb",
+        "--out",
+        "docs/rfwgc-evidence/combined-store-hook-gates/qemu-guest"
+      ],
+      "descendants": [
+        {
+          "pid": 1047694,
+          "args": [
+            "/tmp/wago-platform-tx7tumgi/qemu/usr/bin/qemu-aarch64",
+            "-cpu",
+            "max",
+            "/tmp/wago-platform-tx7tumgi/arm64-wago_regalloccheck-guest.test",
+            "-test.v",
+            "-test.failfast",
+            "-test.count=1",
+            "-test.timeout=12m",
+            "-test.run=^(TestPlatformExecutionArchitecture|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim|TestGCStage7.*|TestGC.*(Root|Reentr).*|TestRV64CompactExternPlainReentryPrivate|TestRV64PublicNativeInvocationSurvivesForeignHostReentry)$"
+          ],
+          "parent": 917125
+        }
+      ]
+    },
+    {
+      "root": 1021169,
+      "root_command": [
+        "python3",
+        "docs/rfwgc-evidence/combined-store-hook-gates/remaining.py"
+      ],
+      "descendants": [
+        {
+          "pid": 1021200,
+          "args": [
+            "python3",
+            "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/combined-store-hook-gates/lanes.py",
+            "hardening"
+          ],
+          "parent": 1021169
+        },
+        {
+          "pid": 1067739,
+          "args": [
+            "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+            "test",
+            "-json",
+            "-count=1",
+            "-timeout=60m",
+            "-tags=wagodebug,wago_guardpage",
+            "-failfast",
+            "-count=3",
+            "./src/core/runtime/gc/..."
+          ],
+          "parent": 1021200
+        },
+        {
+          "pid": 1067791,
+          "args": [
+            "/tmp/go-build2458265322/b137/native.test",
+            "-test.paniconexit0",
+            "-test.v=test2json",
+            "-test.count=1",
+            "-test.timeout=1h0m0s",
+            "-test.failfast=true",
+            "-test.count=3"
+          ],
+          "parent": 1067739
+        }
+      ]
+    },
+    {
+      "root": 1035168,
+      "root_command": [
+        "python3",
+        "docs/rfwgc-evidence/combined-store-hook-gates/default-diagnostics-complete.py"
+      ],
+      "descendants": [
+        {
+          "pid": 1054383,
+          "args": [
+            "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+            "test",
+            "-json",
+            "-count=1",
+            "-timeout=30m",
+            "-tags=wagodebug,wago_codegenstats",
+            "./src/core/compiler/backend/railshot/...",
+            "./src/wago"
+          ],
+          "parent": 1035168
+        },
+        {
+          "pid": 1065115,
+          "args": [
+            "/home/dev/.local/share/mise/installs/go/1.27.1/pkg/tool/linux_amd64/compile",
+            "@/tmp/args3239855909"
+          ],
+          "parent": 1054383
+        }
+      ]
+    }
+  ],
+  "unfinished_command_directories": [
+    "default-diagnostic-complete-wagodebug,wago_codegenstats",
+    "staticcheck-final",
+    "build-wagodebug",
+    "full-root-wagodebug",
+    "corpus-wago_regalloccheck",
+    "hardening-wagodebug,wago_guardpage",
+    "driver-hardening",
+    "baseline-corpus-wagodebug"
+  ]
+}
