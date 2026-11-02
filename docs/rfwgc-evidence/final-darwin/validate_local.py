@@ -140,6 +140,9 @@ def main():
         assert contracts.digest(contracts.REV/name) == sha, name
     original_graph = subprocess.check_output(['git', 'show', plan['source']+':src/wago/rfwgc_stage3_measurement_bench_test.go'], cwd=ROOT, text=True)
     excerpt = original_graph.split('func BenchmarkRFWStage3Guest', 1)[0].replace('//go:build linux && amd64 && !tinygo && !wago_guardpage', '//go:build darwin && arm64 && !tinygo && !wago_guardpage', 1)
+    # This optimization exists only on AMD64; preserve every other fixture byte.
+    assert excerpt.count('.WithOptimization("gc-lifetime-analyze", true)') == 1
+    excerpt = excerpt.replace('.WithOptimization("gc-lifetime-analyze", true)', '')
     assert (contracts.REV/'_fixtures/graph_test.go').read_text() == excerpt
     for target in ['darwin','windows']:
         events = [{'Test': name, 'Action': 'pass'} for name in spec['tests'][target]]

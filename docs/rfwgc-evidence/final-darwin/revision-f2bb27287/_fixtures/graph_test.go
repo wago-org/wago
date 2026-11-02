@@ -41,7 +41,7 @@ func rfw3Module(name string) []byte {
 	return wasmtest.Module(parts...)
 }
 func rfw3Config() *RuntimeConfig {
-	return NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("inline", false).WithOptimization("gc-lifetime-analyze", true)
+	return NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("inline", false)
 }
 func rfw3Instance(t testing.TB, name string, on bool) *Instance {
 	c, err := Compile(rfw3Config(), rfw3Module(name))
