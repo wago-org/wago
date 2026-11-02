@@ -92,7 +92,9 @@ type Config struct {
 	// Zero preserves the default; 6..30 selects 1<<shift bytes per region.
 	// Requires fixed divisible NurseryBytes and at most 65536 regions.
 	// Exhaustion first reclaims empty regions by exact tracing, then evacuates.
-	// Native allocation batches are disabled in this mode.
+	// Bounded region-owned native batches support small structs and arrays;
+	// cancellation returns only their unused owned tail. The baseline direct-bump
+	// and native large-array allocation paths remain disabled in this mode.
 	NurseryRegionShift uint8
 	// MatureEvacuation opts into pressure-triggered sparse old-space relocation.
 	MatureEvacuation bool
