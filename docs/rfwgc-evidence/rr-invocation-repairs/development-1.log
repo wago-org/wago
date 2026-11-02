@@ -1,0 +1,33 @@
+=== RUN   TestDesignRecheckForeignRelayAfterLatePublisher
+    design_recheck_adversary_test.go:152: foreign clear of converted slot: out=[] err=wago: WasmGC struct helper: conversion store lacks pre-admitted invocation domains
+    design_recheck_adversary_test.go:161: foreign copy of converted slot: out=[] err=wago: WasmGC struct helper: bulk store lacks complete invocation authority
+--- PASS: TestDesignRecheckForeignRelayAfterLatePublisher (0.00s)
+=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter
+=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter/none
+    design_recheck_adversary_test.go:295: storage=none dynamic=false instantiateBlocked=false unrelatedLeaseErr=<nil>
+=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter/global
+    design_recheck_adversary_test.go:295: storage=global dynamic=true instantiateBlocked=false unrelatedLeaseErr=<nil>
+=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter/table
+    design_recheck_adversary_test.go:295: storage=table dynamic=true instantiateBlocked=false unrelatedLeaseErr=<nil>
+--- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter (0.01s)
+    --- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter/none (0.00s)
+    --- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter/global (0.00s)
+    --- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter/table (0.00s)
+=== RUN   TestDesignRecheckCallbackChangesPublisherAuthority
+--- PASS: TestDesignRecheckCallbackChangesPublisherAuthority (0.00s)
+=== RUN   TestDesignRecheckNestedSameRuntimeClear
+=== RUN   TestDesignRecheckNestedSameRuntimeClear/direct
+    design_recheck_adversary_test.go:470: direct clear: out=[7] err=<nil>
+=== RUN   TestDesignRecheckNestedSameRuntimeClear/scalar-relay
+    design_recheck_adversary_test.go:470: scalar-relay clear: out=[7] err=<nil>
+=== RUN   TestDesignRecheckNestedSameRuntimeClear/storage-relay
+    design_recheck_adversary_test.go:470: storage-relay clear: out=[7] err=<nil>
+--- PASS: TestDesignRecheckNestedSameRuntimeClear (0.00s)
+    --- PASS: TestDesignRecheckNestedSameRuntimeClear/direct (0.00s)
+    --- PASS: TestDesignRecheckNestedSameRuntimeClear/scalar-relay (0.00s)
+    --- PASS: TestDesignRecheckNestedSameRuntimeClear/storage-relay (0.00s)
+=== RUN   TestDesignRecheckNestedPublish
+    design_recheck_adversary_test.go:512: relay publish: err=<nil> word=0xef07cdb7561ab7e1
+--- PASS: TestDesignRecheckNestedPublish (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.017s
