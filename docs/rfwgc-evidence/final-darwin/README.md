@@ -20,8 +20,10 @@ true manual dispatch selects the three `macos-15` matrix jobs. The source input
 must equal the full reviewed SHA above; abbreviated SHAs, branches, arbitrary
 commits and shell text fail before source checkout. The normal `changes` planner
 is skipped for this special dispatch; its dependents and the draft-only smoke
-job consequently skip. The existing required `CI` summary explicitly requires
-Darwin matrix success and all normal jobs skipped. This summary attests command
+job consequently skip. A separate `Darwin qualification summary` requires Darwin matrix success and
+all normal jobs skipped. The normal summary is disabled and renamed
+`Full CI not run (Darwin-only dispatch)` for this event, so even its skipped
+check cannot impersonate the required `CI` check. This summary attests command
 execution, not full CI qualification or closure of the remaining Darwin gaps.
 Normal push, PR, merge_group and manual dispatch retain their planner and summary
 contracts. The Darwin concurrency suffix prevents canceling ordinary CI on the

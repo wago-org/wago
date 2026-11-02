@@ -31,7 +31,7 @@
         "-count=1"
       ],
       "exit_code": 0,
-      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.048s\n",
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.049s\n",
       "stderr": ""
     },
     {
@@ -54,7 +54,7 @@
         "-count=1"
       ],
       "exit_code": 0,
-      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.048s\n",
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.051s\n",
       "stderr": ""
     },
     {
