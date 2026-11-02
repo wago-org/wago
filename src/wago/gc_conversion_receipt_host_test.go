@@ -150,7 +150,7 @@ func TestR9H2ReceiptPublisherRetirement(t *testing.T) {
 			h2TableSet(t, table, 0, 0)
 			h2AssertReceipt(t, c, 1)
 			h2TableSet(t, table, 1, 0)
-			if len(c.slots) != 0 || len(store.conversions) != 0 || store.gcDomainForCollector(a.identity.domain.collector) != nil {
+			if len(c.slots) != 0 || len(store.gcDomains.conversions) != 0 || store.gcDomainForCollector(a.identity.domain.collector) != nil {
 				t.Fatal("final receipt did not retire its domain")
 			}
 			if binary.LittleEndian.Uint64(table.Descriptors[0][8:]) != 0 {
@@ -258,7 +258,7 @@ func TestR9H2ReceiptIndependentContainersAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	drainManagedFunctionStoreReclaims(store)
-	if len(store.conversions) != 0 || store.gcDomains.n != 0 {
+	if len(store.gcDomains.conversions) != 0 || store.gcDomains.n != 0 {
 		t.Fatal("final container teardown retained domain")
 	}
 }
@@ -289,7 +289,7 @@ func TestR9H2ReceiptCloseOrders(t *testing.T) {
 			}
 			store.closeRuntime()
 			drainManagedFunctionStoreReclaims(store)
-			if len(store.conversions) != 0 || store.gcDomains.n != 0 {
+			if len(store.gcDomains.conversions) != 0 || store.gcDomains.n != 0 {
 				t.Fatal("closed store retained receipt authority")
 			}
 		})
@@ -441,7 +441,7 @@ func TestR9H2ReceiptConvertedProducerCycle(t *testing.T) {
 				if producer.hasPhysicalResources() || provider.hasPhysicalResources() || released.Load() != 2 || !r.released {
 					t.Fatalf("cycle survived final external edge: released=%d receipt=%t", released.Load(), r.released)
 				}
-				if len(store.conversions) != 0 || store.gcDomains.n != 0 {
+				if len(store.gcDomains.conversions) != 0 || store.gcDomains.n != 0 {
 					t.Fatal("cycle retained domain")
 				}
 			})
