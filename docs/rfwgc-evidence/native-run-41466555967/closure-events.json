@@ -1,0 +1,134 @@
+[
+  {
+    "mode": "wagodebug",
+    "lane": "repaired-contracts-wagodebug",
+    "event": {
+      "Time": "2026-11-02T15:11:08.874256Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    }
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "full-root-replay-wagodebug",
+    "event": {
+      "Time": "2026-11-02T15:13:19.377021Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    }
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "race-wagodebug",
+    "event": {
+      "Time": "2026-11-02T15:20:22.707227Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0.04
+    }
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "diagnostics-default-wagodebug",
+    "event": {
+      "Time": "2026-11-02T15:31:43.18035Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    }
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "diagnostics-established-wagodebug",
+    "event": {
+      "Time": "2026-11-02T15:32:20.370856Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    }
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "focused",
+    "event": {
+      "Time": "2026-11-02T15:09:25.383964Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    }
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "repaired-contracts-wago_regalloccheck",
+    "event": {
+      "Time": "2026-11-02T15:08:18.752359Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    }
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "full-root-replay-wago_regalloccheck",
+    "event": {
+      "Time": "2026-11-02T15:12:06.179581Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    }
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "race-wago_regalloccheck",
+    "event": {
+      "Time": "2026-11-02T15:19:05.499728Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0.05
+    }
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "diagnostics-default-wago_regalloccheck",
+    "event": {
+      "Time": "2026-11-02T15:35:50.426392Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    }
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "diagnostics-established-wago_regalloccheck",
+    "event": {
+      "Time": "2026-11-02T15:36:30.050291Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    }
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "focused",
+    "event": {
+      "Time": "2026-11-02T15:06:26.180897Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    }
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "dispatch_sha256": "f69f58be8254702f25286cc24dc2d8f2af103b833482184a835d4315660c9479",
+  "dispatch_matches_HEAD": true,
+  "preexisting_index_patch_unchanged_before_staging": true,
+  "owned_directory": "docs/rfwgc-evidence/native-run-41466555967",
+  "policy": "Commit owned paths only; preserve unrelated index, dirt and gitlinks."
+}

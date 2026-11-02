@@ -1,0 +1,13 @@
+[
+  "go",
+  "test",
+  "-mod=readonly",
+  "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+  "-json",
+  "-v",
+  "-count=1",
+  "-timeout=30s",
+  "-tags=wago_regalloccheck",
+  "-run=^(TestWasmtimeCore3Corpus)$",
+  "./src/wago"
+]

@@ -1,0 +1,38 @@
+﻿2026-11-02T15:33:23.9601370Z Post job cleanup.
+2026-11-02T15:33:24.0382390Z [command]/opt/homebrew/bin/git version
+2026-11-02T15:33:24.0439250Z git version 2.56.0
+2026-11-02T15:33:24.0456580Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/6a439b5e-be10-4558-aa91-f1fe0a0f3289/.gitconfig'
+2026-11-02T15:33:24.0463440Z Temporarily overriding HOME='/Users/runner/work/_temp/6a439b5e-be10-4558-aa91-f1fe0a0f3289' before making global git config changes
+2026-11-02T15:33:24.0464080Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T15:33:24.0466240Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/wago/wago/source
+2026-11-02T15:33:24.0526220Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T15:33:24.0579610Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T15:33:24.1310360Z Entering 'tests/conformance/spec-v1'
+2026-11-02T15:33:24.1495030Z Entering 'tests/conformance/spec-v2'
+2026-11-02T15:33:24.1676910Z Entering 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T15:33:24.1864020Z Entering 'tests/conformance/spec-v3'
+2026-11-02T15:33:24.2049710Z Entering 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T15:33:24.2264370Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T15:33:24.2324670Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T15:33:24.3011310Z Entering 'tests/conformance/spec-v1'
+2026-11-02T15:33:24.3186680Z Entering 'tests/conformance/spec-v2'
+2026-11-02T15:33:24.3355360Z Entering 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T15:33:24.3533250Z Entering 'tests/conformance/spec-v3'
+2026-11-02T15:33:24.3712750Z Entering 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T15:33:24.3898650Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:33:24.3952510Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T15:33:24.4646310Z Entering 'tests/conformance/spec-v1'
+2026-11-02T15:33:24.4728160Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v1/config	remote.origin.url
+2026-11-02T15:33:24.4782140Z Entering 'tests/conformance/spec-v2'
+2026-11-02T15:33:24.4864520Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/config	remote.origin.url
+2026-11-02T15:33:24.4917880Z Entering 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T15:33:24.4998670Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/modules/document/core/util/katex/config	remote.origin.url
+2026-11-02T15:33:24.5052710Z Entering 'tests/conformance/spec-v3'
+2026-11-02T15:33:24.5136650Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/config	remote.origin.url
+2026-11-02T15:33:24.5190200Z Entering 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T15:33:24.5274430Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/modules/document/core/util/katex/config	remote.origin.url
+2026-11-02T15:33:24.5343560Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v1/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:33:24.5395190Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:33:24.5445400Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/modules/document/core/util/katex/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:33:24.5493130Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:33:24.5543640Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/modules/document/core/util/katex/config --name-only --get-regexp ^includeIf\.gitdir:

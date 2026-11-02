@@ -1,0 +1,44 @@
+[
+  {
+    "artifact": "darwin-ownership-wagodebug-1",
+    "prefix": "contracts-wagodebug/",
+    "packages": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1",
+    "prefix": "baseline-wagodebug/",
+    "packages": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1",
+    "prefix": "contracts-wago_regalloccheck/",
+    "packages": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1",
+    "prefix": "baseline-wago_regalloccheck/",
+    "packages": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "artifact": "windows-ownership-wago_regalloccheck-1",
+    "prefix": "",
+    "packages": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "artifact": "windows-ownership-wagodebug-1",
+    "prefix": "",
+    "packages": 4,
+    "all_package_errors_absent": true
+  },
+  {
+    "artifact": "windows-ownership-ordinary-1",
+    "prefix": "",
+    "packages": 4,
+    "all_package_errors_absent": true
+  }
+]

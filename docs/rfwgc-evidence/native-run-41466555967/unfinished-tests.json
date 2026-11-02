@@ -1,0 +1,260 @@
+[
+  {
+    "mode": "wagodebug",
+    "lane": "cancellation-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "core3-child-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "repaired-contracts-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "full-root-replay-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "collector-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "race-wagodebug",
+    "started_without_terminal": [
+      {
+        "package": "github.com/wago-org/wago/src/wago",
+        "test": "TestGCARM64LiveStructDoesNotPrepareUnusedHandles",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "guard-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "backend-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "cli-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "installer-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "corpus-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "guard-corpus-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "host-transition-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "hardening-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "profile-runtime-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "profile-metadata-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "diagnostics-default-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "diagnostics-established-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "shared-scalar-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "seeded-concurrency-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v1-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v2-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v3-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v3-signals-wagodebug",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "cancellation-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "core3-child-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "repaired-contracts-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "full-root-replay-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "collector-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "race-wago_regalloccheck",
+    "started_without_terminal": [
+      {
+        "package": "github.com/wago-org/wago/src/wago",
+        "test": "TestGCARM64LiveStructDoesNotPrepareUnusedHandles",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "guard-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "backend-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "cli-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "installer-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "corpus-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "guard-corpus-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "host-transition-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "hardening-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "profile-runtime-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "profile-metadata-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "diagnostics-default-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "diagnostics-established-wago_regalloccheck",
+    "started_without_terminal": [
+      {
+        "package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64",
+        "test": "TestTwoIntegerResultRegisterCall",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "shared-scalar-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "seeded-concurrency-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v1-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v2-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v3-wago_regalloccheck",
+    "started_without_terminal": []
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v3-signals-wago_regalloccheck",
+    "started_without_terminal": []
+  }
+]

@@ -1,0 +1,44 @@
+{"Time":"2026-11-02T15:11:08.854679Z","Action":"start","Package":"github.com/wago-org/wago/src/wago"}
+{"Time":"2026-11-02T15:11:08.865658Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestExternrefGlobalHoldingConvertedGCReference"}
+{"Time":"2026-11-02T15:11:08.86576Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestExternrefGlobalHoldingConvertedGCReference","Output":"=== RUN   TestExternrefGlobalHoldingConvertedGCReference\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.868982Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestExternrefGlobalHoldingConvertedGCReference","Output":"--- PASS: TestExternrefGlobalHoldingConvertedGCReference (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.869088Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestExternrefGlobalHoldingConvertedGCReference","Elapsed":0}
+{"Time":"2026-11-02T15:11:08.869111Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoImport"}
+{"Time":"2026-11-02T15:11:08.869118Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoImport","Output":"=== RUN   TestFixedSharedDirectGoImport\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.870212Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoImport","Output":"--- PASS: TestFixedSharedDirectGoImport (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.870247Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoImport","Elapsed":0}
+{"Time":"2026-11-02T15:11:08.870253Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoCallerScope"}
+{"Time":"2026-11-02T15:11:08.870256Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoCallerScope","Output":"=== RUN   TestFixedSharedDirectGoCallerScope\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.87221Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoCallerScope","Output":"--- PASS: TestFixedSharedDirectGoCallerScope (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.872242Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoCallerScope","Elapsed":0}
+{"Time":"2026-11-02T15:11:08.872248Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoImportPolicy"}
+{"Time":"2026-11-02T15:11:08.872252Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoImportPolicy","Output":"=== RUN   TestFixedSharedDirectGoImportPolicy\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.872454Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoImportPolicy","Output":"--- PASS: TestFixedSharedDirectGoImportPolicy (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.872478Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestFixedSharedDirectGoImportPolicy","Elapsed":0}
+{"Time":"2026-11-02T15:11:08.872483Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestGCExternConversionAcrossReferenceTables"}
+{"Time":"2026-11-02T15:11:08.872489Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestGCExternConversionAcrossReferenceTables","Output":"=== RUN   TestGCExternConversionAcrossReferenceTables\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.874097Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestGCExternConversionAcrossReferenceTables","Output":"--- PASS: TestGCExternConversionAcrossReferenceTables (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.874256Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestGCExternConversionAcrossReferenceTables","Elapsed":0}
+{"Time":"2026-11-02T15:11:08.874269Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedSingleEntryGuardAndGoFallback"}
+{"Time":"2026-11-02T15:11:08.874273Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedSingleEntryGuardAndGoFallback","Output":"=== RUN   TestSharedSingleEntryGuardAndGoFallback\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.885577Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedSingleEntryGuardAndGoFallback","Output":"--- PASS: TestSharedSingleEntryGuardAndGoFallback (0.01s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.885602Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedSingleEntryGuardAndGoFallback","Elapsed":0.01}
+{"Time":"2026-11-02T15:11:08.88561Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryRegisterResultAndGoFallback"}
+{"Time":"2026-11-02T15:11:08.885614Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryRegisterResultAndGoFallback","Output":"=== RUN   TestSharedEntryRegisterResultAndGoFallback\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.898238Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryRegisterResultAndGoFallback","Output":"--- PASS: TestSharedEntryRegisterResultAndGoFallback (0.01s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.898317Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryRegisterResultAndGoFallback","Elapsed":0.01}
+{"Time":"2026-11-02T15:11:08.898333Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryRegisterArgumentAndGoFallback"}
+{"Time":"2026-11-02T15:11:08.898345Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryRegisterArgumentAndGoFallback","Output":"=== RUN   TestSharedEntryRegisterArgumentAndGoFallback\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.909243Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryRegisterArgumentAndGoFallback","Output":"--- PASS: TestSharedEntryRegisterArgumentAndGoFallback (0.01s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.909292Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryRegisterArgumentAndGoFallback","Elapsed":0.01}
+{"Time":"2026-11-02T15:11:08.909302Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryGuardForeignFallback"}
+{"Time":"2026-11-02T15:11:08.90932Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryGuardForeignFallback","Output":"=== RUN   TestSharedEntryGuardForeignFallback\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.929591Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryGuardForeignFallback","Output":"--- PASS: TestSharedEntryGuardForeignFallback (0.02s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.929635Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedEntryGuardForeignFallback","Elapsed":0.02}
+{"Time":"2026-11-02T15:11:08.929672Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedSingleNativePinsAndGoFallback"}
+{"Time":"2026-11-02T15:11:08.929676Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedSingleNativePinsAndGoFallback","Output":"=== RUN   TestSharedSingleNativePinsAndGoFallback\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.939966Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedSingleNativePinsAndGoFallback","Output":"--- PASS: TestSharedSingleNativePinsAndGoFallback (0.01s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.940076Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestSharedSingleNativePinsAndGoFallback","Elapsed":0.01}
+{"Time":"2026-11-02T15:11:08.940088Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Output":"PASS\n","OutputType":"frame"}
+{"Time":"2026-11-02T15:11:08.940464Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Output":"ok  \tgithub.com/wago-org/wago/src/wago\t0.085s\n"}
+{"Time":"2026-11-02T15:11:08.94049Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Elapsed":0.086}

@@ -1,0 +1,35 @@
+﻿2026-11-02T14:58:23.3077661Z ##[group]Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+2026-11-02T14:58:23.3078338Z with:
+2026-11-02T14:58:23.3078657Z   name: windows-ownership-ordinary-1
+2026-11-02T14:58:23.3079063Z   path: contracts-ordinary
+2026-11-02T14:58:23.3079403Z   if-no-files-found: error
+2026-11-02T14:58:23.3079715Z   retention-days: 7
+2026-11-02T14:58:23.3090551Z   compression-level: 6
+2026-11-02T14:58:23.3091205Z   overwrite: false
+2026-11-02T14:58:23.3091631Z   include-hidden-files: false
+2026-11-02T14:58:23.3092408Z env:
+2026-11-02T14:58:23.3092696Z   GO_VERSION: 1.27.1
+2026-11-02T14:58:23.3093044Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T14:58:23.3093430Z   TINYGO_VERSION: 0.42.0
+2026-11-02T14:58:23.3093777Z   JUST_VERSION: 1.58.0
+2026-11-02T14:58:23.3094110Z   GOTOOLCHAIN: local
+2026-11-02T14:58:23.3094390Z   GOENV: off
+2026-11-02T14:58:23.3094711Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T14:58:23.3095208Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:58:23.3096389Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:58:23.3097047Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:58:23.3097619Z ##[endgroup]
+2026-11-02T14:58:23.5011649Z (node:732) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-02T14:58:23.5013023Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-02T14:58:23.5112333Z With the provided path, there will be 8 files uploaded
+2026-11-02T14:58:23.5118369Z Artifact name is valid!
+2026-11-02T14:58:23.5120932Z Root directory input is valid!
+2026-11-02T14:58:23.7743019Z Beginning upload of artifact content to blob storage
+2026-11-02T14:58:23.9498878Z (node:732) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-11-02T14:58:24.4267766Z Uploaded bytes 1691154
+2026-11-02T14:58:24.4768655Z Finished uploading artifact content to blob storage!
+2026-11-02T14:58:24.4770158Z SHA256 digest of uploaded artifact zip is 067a66c0a7931660676539f2ca6733f9795b1d26648310b236a73196aefa2bc6
+2026-11-02T14:58:24.4774430Z Finalizing artifact upload
+2026-11-02T14:58:24.9646146Z Artifact windows-ownership-ordinary-1.zip successfully finalized. Artifact ID 13153386388
+2026-11-02T14:58:24.9648432Z Artifact windows-ownership-ordinary-1 has been successfully uploaded! Final size is 1691154 bytes. Artifact ID is 13153386388
+2026-11-02T14:58:24.9660574Z Artifact download URL: https://github.com/wago-org/wago/actions/runs/41466555967/artifacts/13153386388
