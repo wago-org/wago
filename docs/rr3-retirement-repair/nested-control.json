@@ -1,0 +1,15 @@
+{
+  "pin": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
+  "source": "/tmp/rr3-nested-control-l36qdcyz",
+  "command": [
+    "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+    "test",
+    "./src/wago",
+    "-run",
+    "^TestRRRetirementBorrowedRootLatePublisher$",
+    "-count=1",
+    "-v",
+    "-timeout=10s"
+  ],
+  "exit": 1
+}

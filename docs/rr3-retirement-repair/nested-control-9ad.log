@@ -1,0 +1,6 @@
+=== RUN   TestRRRetirementBorrowedRootLatePublisher
+    rr_nested_control_test.go:51: nested partial owner waited instead of rejecting
+--- FAIL: TestRRRetirementBorrowedRootLatePublisher (1.00s)
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	1.003s
+FAIL

@@ -1,0 +1,14 @@
+{
+  "review": "3b8732ad31098db5ea33a2f71a492d3fbcdcecf9",
+  "prior_source": "9ad40bce4a7397dbadf0b0528f2587ed59d7d441",
+  "probes_byte_identical": true,
+  "probe_sha256": {
+    "adversary": "0a7136ca75fc22c93f09868a0587a88760c93134c300dcba302294a14dcfda13",
+    "handoff": "77ef2c94d7f12dedf63aca1471e7e5befea61637105578f75e7d2f888f54141f",
+    "flags_current": "146214b6ae828763c40f5dc1533d31a632591b16dfdcf4ab7ef150ba794e4a5b",
+    "docs/rfwgc-evidence/final-review-design-recheck/_probes/design_recheck_adversary_test.go": "bff4fda592f19a525301193c73e6d32d3e03c8c5bde5e75e4f4d0a40d0b98b3c",
+    "src/wago/design_recheck_adversary_test.go": "bff4fda592f19a525301193c73e6d32d3e03c8c5bde5e75e4f4d0a40d0b98b3c"
+  },
+  "slipstream_pin": "d6802f5e389bded786f49b4c2a21df0efab7017c",
+  "initial_index_deletion_preserved": "docs/rfwgc-evidence/final-combined-9ad/__pycache__/run.cpython-313.pyc"
+}
