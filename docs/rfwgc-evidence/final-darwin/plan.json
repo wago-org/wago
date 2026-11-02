@@ -1,6 +1,6 @@
 {
-  "source": "21d7be58952b64435110246f65d44e11046c5083",
-  "evidence": "Exact test-only reservation/checkptr and two-result entry repairs; independent activation review required; native execution NOT_RUN.",
+  "source": "889b46c45fc54e2fb4b4617eb0c5cc5f54de5db7",
+  "evidence": "Packaging-only source retarget after run 41490640588; eight archived Go payloads renamed byte-identically. Command plan and all native oracles unchanged.",
   "lanes": [
     {
       "id": "full-root-replay-ordinary",
@@ -1691,5 +1691,5 @@
       "status": "REQUIRES_REVIEW after execution"
     }
   ],
-  "supplement_revision": "revision-21d7be589"
+  "supplement_revision": "revision-889b46c45"
 }
