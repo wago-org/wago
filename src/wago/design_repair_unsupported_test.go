@@ -5,6 +5,7 @@ package wago
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 )
@@ -12,6 +13,7 @@ import (
 // Execution on a non-Linux runner is required; cross-compilation is not a pass.
 func TestDesignRepairUnsupportedConvertedPublication(t *testing.T) {
 	rt := NewRuntime()
+	defer rt.Close()
 	g, err := rt.NewExternRefGlobal(NullExternRef(), true)
 	if err != nil {
 		t.Fatal(err)
@@ -27,6 +29,37 @@ func TestDesignRepairUnsupportedConvertedPublication(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("convert", 0, 0), wasmtest.ExportEntry("publish", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 1, 0, 0xfb, 0x1b, 0x0b}), wasmtest.Code([]byte{0xfb, 1, 0, 0xfb, 0x1b, 0x24, 0, 0x0b}))))
 	code, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), raw)
+	if !SupportedFeatures().IsEnabled(CoreFeatureGC) {
+		// Windows rejects GC at configuration admission. Prove that boundary
+		// instead of requiring it to execute an unsupported GC guest. Keep
+		// public publication rejection covered with authenticated metadata only;
+		// no managed object is constructed on this target.
+		var unsupported *UnsupportedFeatureError
+		if code != nil || !errors.As(err, &unsupported) || !unsupported.Requested.IsEnabled(CoreFeatureGC) {
+			t.Fatalf("GC admission: code=%v err=%v, want GC UnsupportedFeatureError", code, err)
+		}
+		token, err := rt.refStore.issueExternref(repairPublicGlobalWrapper{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rt.refStore.releaseExternref(token)
+		if _, ok := rt.refStore.resolveExternref(token); !ok {
+			t.Fatal("metadata wrapper must be authenticated")
+		}
+		value := ValueOf(ValExternRef, token)
+		if err := g.SetValue(value); err == nil {
+			t.Fatal("unsupported public global accepted converted wrapper")
+		}
+		if err := table.SetValue(0, value); err == nil {
+			t.Fatal("unsupported public table accepted converted wrapper")
+		}
+		if binary.LittleEndian.Uint64(g.cell) != 0 || binary.LittleEndian.Uint64(table.desc[8:]) != 0 {
+			t.Fatal("rejected metadata publication changed destination")
+		}
+		table.Close()
+		g.Close()
+		return
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
