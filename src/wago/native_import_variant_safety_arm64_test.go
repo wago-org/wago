@@ -69,6 +69,9 @@ func TestNativeImportVariantTrap(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
+		if roots := c.genericGCFrameRoots(); roots == nil || len(roots.callsites) == 0 {
+			t.Fatal("public trap caller lacks unwind return maps")
+		}
 		var image bytes.Buffer
 		if _, err = c.WriteCodeTo(&image); err != nil {
 			t.Fatal(err)
@@ -87,8 +90,8 @@ func TestNativeImportVariantTrap(t *testing.T) {
 		}
 		in.Close()
 	}
-	if !codeProfileEnabled && bytes.Equal(images[0], images[1]) {
-		t.Fatal("trap fixture did not exercise guarded body")
+	if !bytes.Equal(images[0], images[1]) {
+		t.Fatal("unwind-mapped trap caller admitted unchecked second body")
 	}
 }
 
