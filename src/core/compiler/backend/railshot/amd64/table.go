@@ -160,6 +160,15 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if tt, ok := f.m.TableType(tableIdx); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+		indexType := wasm.I32
+		if tt.Limits.Addr64 {
+			indexType = wasm.I64
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(tableIdx)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(elemIdx)})
+		return f.callGCStructHelper(58, []wasm.ValType{indexType, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
+	}
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
@@ -230,6 +239,22 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	dstTableIdx, srcTableIdx, err := readTablePairIndexes(r)
 	if err != nil {
 		return err
+	}
+	if tt, ok := f.m.TableType(dstTableIdx); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+		indexType := wasm.I32
+		if tt.Limits.Addr64 {
+			indexType = wasm.I64
+		}
+		sourceType, countType := wasm.I32, wasm.I32
+		if f.tableAddr64(srcTableIdx) {
+			sourceType = wasm.I64
+			if tt.Limits.Addr64 {
+				countType = wasm.I64
+			}
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dstTableIdx)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(srcTableIdx)})
+		return f.callGCStructHelper(56, []wasm.ValType{indexType, sourceType, countType, wasm.I32, wasm.I32}, nil)
 	}
 	f.materializePendingLoads()
 	f.flush()
@@ -304,6 +329,14 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
 		return err
+	}
+	if tt, ok := f.m.TableType(tableIdx); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+		indexType := wasm.I32
+		if tt.Limits.Addr64 {
+			indexType = wasm.I64
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(tableIdx)})
+		return f.callGCStructHelper(55, []wasm.ValType{indexType, wasm.RefVal(tt.Ref), indexType, wasm.I32}, nil)
 	}
 	if f.tableIsExternref(tableIdx) {
 		return f.externrefTableFill(tableIdx)
@@ -387,6 +420,14 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
 		return err
+	}
+	if tt, ok := f.m.TableType(tableIdx); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+		indexType := wasm.I32
+		if tt.Limits.Addr64 {
+			indexType = wasm.I64
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(tableIdx)})
+		return f.callGCStructHelper(57, []wasm.ValType{wasm.RefVal(tt.Ref), indexType, wasm.I32}, []wasm.ValType{indexType})
 	}
 	if f.tableIsExternref(tableIdx) {
 		return f.externrefTableGrow(tableIdx)
@@ -552,6 +593,15 @@ func (f *fn) tableSet(r *wasm.Reader) error {
 		return err
 	}
 	f.materializePendingTraps()
+	if tt, ok := f.m.TableType(tableIdx); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+		indexType := wasm.I32
+		if tt.Limits.Addr64 {
+			indexType = wasm.I64
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(tableIdx)})
+		return f.callGCStructHelper(53, []wasm.ValType{indexType, wasm.RefVal(tt.Ref), wasm.I32}, nil)
+	}
+
 	if f.gcStructHelpers && (f.tableIsGCObjectRef(tableIdx) || (f.m.TableCount() == 3 && tableIdx == 2 && f.tableIsExternref(tableIdx))) {
 		tt, ok := f.m.TableType(tableIdx)
 		if !ok {

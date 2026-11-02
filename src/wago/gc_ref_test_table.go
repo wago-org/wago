@@ -275,6 +275,7 @@ func (s *gcRefTestTableState) drop(collector *gc.Collector) {
 	if s == nil || collector == nil {
 		return
 	}
+	imported := conversionImportedTableCount(s)
 	liveCollector := gcConversionCollectorRegistered(s.Conversion)
 	for table, slots := range s.slots {
 		descriptor := s.Descriptors[table]
@@ -293,6 +294,9 @@ func (s *gcRefTestTableState) drop(collector *gc.Collector) {
 		_ = s.Conversion.close()
 	}
 	for table, descriptor := range s.Descriptors {
+		if table < imported {
+			continue
+		}
 		if len(descriptor) < 8 {
 			continue
 		}

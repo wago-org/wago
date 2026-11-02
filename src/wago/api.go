@@ -2132,7 +2132,7 @@ func asyncReplayable(sig FuncSig) bool {
 }
 
 func (c *Compiled) importsRequireSync(imports resolvedImports, force bool) bool {
-	if force || c.opaqueExternHelperSlots() != 0 || railshotRequiresNativeHostControl(c) || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
+	if force || compiledExternStoreHelperSlots(c) != 0 || c.opaqueExternHelperSlots() != 0 || railshotRequiresNativeHostControl(c) || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
 		return true
 	}
 	for i := range c.Imports {
@@ -3685,13 +3685,13 @@ func (c *Compiled) validateArenaFootprint() error {
 			maxParams = internalHelperSlots
 		}
 	}
-	if slots := c.opaqueExternHelperSlots(); slots > maxParams {
+	if slots := max(c.opaqueExternHelperSlots(), compiledExternStoreHelperSlots(c)); slots > maxParams {
 		maxParams = slots
 	}
 	if c.syncHostSlots != 0 && int(c.syncHostSlots) != syncHostSlots {
 		return fmt.Errorf("compiled metadata invalid: synchronous host slot capacity %d, want %d", c.syncHostSlots, syncHostSlots)
 	}
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
+	if compiledExternStoreHelperSlots(c) != 0 || c.opaqueExternHelperSlots() != 0 || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
 		hostCallBytes, err = wruntime.HostCtrlFrameBytesForSlots(syncHostSlots)
 		if err != nil {
 			return wrapContextError("compiled metadata invalid", err)

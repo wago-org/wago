@@ -128,17 +128,11 @@ func TestR9H2ConvertedAggregateCollectingLocalOwner(t *testing.T) {
 			if stats := in.gc.Stats(); stats.MinorCollections+stats.FullCollections == 0 {
 				t.Fatal("no collection")
 			}
-			// Consume the local conversion through the transactional receipt API before
-			// closing its owner; no unimplemented surviving-provider path is exercised.
-			if err = conversion.replaceExtern(0, entry.externWord); err != nil {
-				t.Fatal(err)
-			}
+			// The compiled clear consumes the physical global receipt.
 			if _, err = in.Invoke("clear"); err != nil {
 				t.Fatal(err)
 			}
-			if err = conversion.replaceExtern(entry.externWord, 0); err != nil {
-				t.Fatal(err)
-			}
+
 			if err = in.CollectGC(); err != nil {
 				t.Fatal(err)
 			}

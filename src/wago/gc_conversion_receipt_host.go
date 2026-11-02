@@ -13,13 +13,14 @@ import (
 // All heap/receipt operations require topology -> ordered domains -> native
 // authority. store.mu protects directory publication; graph.mu protects journals.
 type gcConversionIdentity struct {
-	store     *referenceStore
-	domain    *gcStoreDomain
-	word      uint64
-	ref       gc.Ref
-	floating  uint32
-	publisher *gcExternConversionState
-	receipts  map[*gcConversionReceipt]struct{}
+	store        *referenceStore
+	domain       *gcStoreDomain
+	word         uint64
+	publicExtern uint64
+	ref          gc.Ref
+	floating     uint32
+	publisher    *gcExternConversionState
+	receipts     map[*gcConversionReceipt]struct{}
 }
 type gcConversionCore struct {
 	owner  *Instance // cleared at publisher teardown
@@ -34,6 +35,7 @@ type gcConversionContainer struct {
 	store   *referenceStore
 	slots   map[uint64]*gcConversionReceipt
 	closed  bool
+	cell    bool // a physical global cell has exactly one slot
 }
 type gcConversionReceipt struct {
 	identity  *gcConversionIdentity
@@ -105,6 +107,18 @@ func newGCConversionContainer(owner *Instance, storage []byte) (*gcConversionCon
 			}
 		}
 	}
+	cell := false
+	if !physical && owner.c != nil {
+		for i, g := range owner.globalCells {
+			if i < len(owner.c.GlobalImports) || owner.c.Globals[i].Type != ValExternRef || g == nil || len(g.cell) < 8 {
+				continue
+			}
+			if &g.cell[0] == &storage[0] {
+				physical, cell = true, true
+				break
+			}
+		}
+	}
 	if !physical {
 		return nil, fmt.Errorf("conversion container does not belong to its physical owner")
 	}
@@ -118,7 +132,7 @@ func newGCConversionContainer(owner *Instance, storage []byte) (*gcConversionCon
 		}
 		return c, nil
 	}
-	c := &gcConversionContainer{owner: owner, store: store, storage: storage, slots: make(map[uint64]*gcConversionReceipt)}
+	c := &gcConversionContainer{owner: owner, store: store, storage: storage, cell: cell, slots: make(map[uint64]*gcConversionReceipt)}
 	if store.gcDomains.conversionContainers == nil {
 		store.gcDomains.conversionContainers = make(map[*byte]*gcConversionContainer)
 	}
@@ -147,7 +161,7 @@ func (s *gcExternConversionState) conversionIdentity(word uint64) (*gcConversion
 		return identity, nil
 	}
 	state := s.core.owner.managedFunctionCollector(s.core.domain)
-	identity = &gcConversionIdentity{store: store, domain: s.core.domain, word: word, ref: entry.ref, floating: entry.rootSlot, publisher: s, receipts: make(map[*gcConversionReceipt]struct{})}
+	identity = &gcConversionIdentity{store: store, domain: s.core.domain, word: word, publicExtern: entry.publicExternWord, ref: entry.ref, floating: entry.rootSlot, publisher: s, receipts: make(map[*gcConversionReceipt]struct{})}
 	store.mu.Lock()
 	if store.gcDomains.domainForCollectorLocked(identity.domain.collector) != identity.domain {
 		store.mu.Unlock()
@@ -165,6 +179,13 @@ func (s *gcExternConversionState) conversionIdentity(word uint64) (*gcConversion
 // prepare acquires a distinct root and domain claim before any visible write.
 // source may be nil for an identity already registered by another publisher.
 func (c *gcConversionContainer) prepare(index, word uint64, source *gcExternConversionState) (*gcConversionTransaction, error) {
+	limit := uint64(1)
+	if !c.cell {
+		limit = uint64(binary.LittleEndian.Uint32(c.storage))
+	}
+	return c.prepareLimit(index, word, limit, source)
+}
+func (c *gcConversionContainer) prepareLimit(index, word, limit uint64, source *gcExternConversionState) (*gcConversionTransaction, error) {
 	if c == nil || c.closed || c.owner == nil || managedFunctionOwnerClaimed(c.owner) {
 		return nil, fmt.Errorf("conversion container retired")
 	}
@@ -174,7 +195,7 @@ func (c *gcConversionContainer) prepare(index, word uint64, source *gcExternConv
 	if !live {
 		return nil, fmt.Errorf("conversion owner released")
 	}
-	if index >= uint64(binary.LittleEndian.Uint32(c.storage)) {
+	if index >= limit {
 		return nil, fmt.Errorf("conversion container slot out of bounds")
 	}
 	tx := &gcConversionTransaction{container: c, index: index, old: c.slots[index]}

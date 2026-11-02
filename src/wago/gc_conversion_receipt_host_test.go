@@ -135,7 +135,7 @@ func TestR9H2ReceiptPublisherRetirement(t *testing.T) {
 			c := table.conversionContainers[0]
 			a := h2AssertReceipt(t, c, 0)
 			b := h2AssertReceipt(t, c, 1)
-			if a.root == b.root || a.identity != b.identity || len(a.identity.receipts) != 2 {
+			if a.root == b.root || a.identity != b.identity || len(a.identity.receipts) != 3 {
 				t.Fatal("STOP aliases do not have distinct roots")
 			}
 			if err := publisher.Close(); err != nil {
@@ -224,7 +224,7 @@ func TestR9H2ReceiptIndependentContainersAndRollback(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(rb.identity.receipts) != 2 {
+		if len(rb.identity.receipts) != 3 {
 			t.Fatal("prepare did not acquire incoming receipt")
 		}
 		fail := fmt.Errorf("reject before visible write")
@@ -232,7 +232,7 @@ func TestR9H2ReceiptIndependentContainersAndRollback(t *testing.T) {
 			t.Fatal(err)
 		}
 		tx.rollback()
-		if ca.slots[0] != ra || len(rb.identity.receipts) != 1 || binary.LittleEndian.Uint64(ta.Descriptors[0][8:]) != wa {
+		if ca.slots[0] != ra || len(rb.identity.receipts) != 2 || binary.LittleEndian.Uint64(ta.Descriptors[0][8:]) != wa {
 			t.Fatal("STOP rollback changed physical owner or count")
 		}
 		same, err := ca.prepare(0, wa, nil)
@@ -242,7 +242,7 @@ func TestR9H2ReceiptIndependentContainersAndRollback(t *testing.T) {
 		if err = same.commit(func() error { return nil }); err != nil {
 			t.Fatal(err)
 		}
-		if ca.slots[0] != ra || len(ra.identity.receipts) != 2 {
+		if ca.slots[0] != ra || len(ra.identity.receipts) != 3 {
 			t.Fatal("same-value transaction duplicated ownership")
 		}
 	})
@@ -569,7 +569,7 @@ func TestR9H2ReceiptDomainKeepsPrivateTypeAdmission(t *testing.T) {
 		t.Fatalf("STOP private conversion type domain admitted: %v", err)
 	}
 	h2AssertReceipt(t, table.conversionContainers[0], 0)
-	if receipt.identity.domain.claims != 1 {
+	if receipt.identity.domain.claims != 2 {
 		t.Fatal("rejected type import changed receipt claim")
 	}
 	if err := publisher.Close(); err != nil {

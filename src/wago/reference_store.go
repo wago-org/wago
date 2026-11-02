@@ -2123,7 +2123,7 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 func (s *referenceStore) registerInstance(in *Instance) error {
 	managedFunctionPrepareRegistration(s, in)
 	var importedInvocationDomains gcInvocationDomainSet
-	dynamicInvocationDomains := in != nil && (compiledManagedFunctionReachability(in.c) || !s.private && compiledHasDynamicFuncrefReachability(in.c))
+	dynamicInvocationDomains := in != nil && (compiledConversionStoreHooks(in.c) || compiledManagedFunctionReachability(in.c) || !s.private && compiledHasDynamicFuncrefReachability(in.c))
 	importsPrivateInvocationDomain := false
 	if in != nil && in.c != nil {
 		for i, displayKey := range in.c.Imports {

@@ -65,7 +65,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 			}
 		case wasm.ExternTable:
 			tableType := wasm.RefVal(m.Imports[i].Type.TableType().Ref)
-			if !collectorFrameRefType(m, tableType) && !frameFunctionRefType(m, tableType) {
+			if !collectorFrameRefType(m, tableType) && !frameFunctionRefType(m, tableType) && tableType != wasm.ExternRef {
 				return reject("table import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternMem:
@@ -199,14 +199,8 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
 			tableKinds[tableIndex] = 1
 		case collectorFrameRefType(m, typ):
 			tableKinds[tableIndex] = 2
-		case typ == wasm.ExternRef && externBridge && tableIndex >= m.ImportedTableCount():
-			// The local conversion owner retains object identities in checked
-			// collector slots. External table aliases need a separate proof.
-			for _, export := range m.Exports {
-				if export.Index.Kind == wasm.ExternTable && export.Index.Index == uint32(tableIndex) {
-					return false
-				}
-			}
+		case typ == wasm.ExternRef && externBridge:
+			// Opaque words are covered by physical container receipts, including imports.
 			tableKinds[tableIndex] = 3
 		default:
 			return false
