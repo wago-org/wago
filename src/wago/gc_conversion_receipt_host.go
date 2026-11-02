@@ -523,12 +523,6 @@ func releaseGCConversionOwner(owner *Instance) {
 		c.release()
 	}
 }
-func gcConversionPrivateFrames(in *Instance) bool {
-	in.refStore.mu.Lock()
-	defer in.refStore.mu.Unlock()
-	d := in.refStore.gcDomains.domainForCollectorLocked(in.gc)
-	return d != nil && d.conversionOwned
-}
 
 // Physical teardown has no live invocation. Freeze all receipt-domain readers
 // while clearing roots; release before native resources or callbacks are retired.
