@@ -495,3 +495,89 @@ func TestR9H2StoreHooksDescriptorMigration(t *testing.T) {
 	_ = provider.Close()
 	_ = arena.Close()
 }
+
+func TestR9H2StoreHooksIndependentPhysicalTables(t *testing.T) {
+	store := newReferenceStore(false)
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	pc, e := Compile(cfg, r9ConvertedProvider(true, false))
+	if e != nil {
+		t.Fatal(e)
+	}
+	p1, e := instantiateCore(pc, InstantiateOptions{store: store})
+	if e != nil {
+		t.Fatal(e)
+	}
+	p2, e := instantiateCore(pc, InstantiateOptions{store: store})
+	if e != nil {
+		t.Fatal(e)
+	}
+	a, e := p1.ExportedTable("slot")
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := p2.ExportedTable("slot")
+	if e != nil {
+		t.Fatal(e)
+	}
+	imp := func(name string) []byte {
+		v := append(wasmtest.Name("p"), wasmtest.Name(name)...)
+		return append(v, 1, 0x6f, 0, 1)
+	}
+	cc, e := Compile(cfg, wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, []byte{0x60, 0, 0})),
+		wasmtest.Section(2, wasmtest.Vec(imp("a"), imp("b"))), wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("publish", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0, 0xfb, 1, 0, 0xfb, 0x1b, 0x26, 0, 0x41, 0, 0x41, 0, 0x41, 1, 0xfc, 14, 1, 0, 0x0b})))))
+	if e != nil {
+		t.Fatal(e)
+	}
+	publisher, e := instantiateCore(cc, InstantiateOptions{store: store, Imports: testImports("p.a", a, "p.b", b)})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = publisher.Invoke("publish"); e != nil {
+		t.Fatal(e)
+	}
+	store.mu.Lock()
+	ca, cb := store.gcDomains.conversionContainers[&a.desc[0]], store.gcDomains.conversionContainers[&b.desc[0]]
+	store.mu.Unlock()
+	if ca == nil || cb == nil || ca == cb {
+		t.Fatal("STOP independent table ownership missing")
+	}
+	ra, rb := h2AssertReceipt(t, ca, 0), h2AssertReceipt(t, cb, 0)
+	if ra.identity != rb.identity || ra.root == rb.root {
+		t.Fatal("STOP independent checked roots missing")
+	}
+	if e = publisher.Close(); e != nil {
+		t.Fatal(e)
+	}
+	h2AssertReceipt(t, ca, 0)
+	h2AssertReceipt(t, cb, 0)
+	foreign := newReferenceStore(false)
+	p3, e := instantiateCore(pc, InstantiateOptions{store: foreign})
+	if e != nil {
+		t.Fatal(e)
+	}
+	other, e := p3.ExportedTable("slot")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = other.SetValue(0, Value{typ: ValExternRef, bits: ra.identity.publicExtern}); e == nil {
+		t.Fatal("cross-Runtime public identity admitted")
+	}
+	if e = a.SetValue(0, Value{typ: ValExternRef}); e != nil {
+		t.Fatal(e)
+	}
+	h2AssertReceipt(t, cb, 0)
+	if e = b.SetValue(0, Value{typ: ValExternRef}); e != nil {
+		t.Fatal(e)
+	}
+	if store.gcDomainForCollector(ra.identity.domain.collector) != nil {
+		t.Fatal("final independent owner retained collector")
+	}
+	_ = p1.Close()
+	_ = p2.Close()
+	_ = p3.Close()
+	_ = cc.Close()
+	_ = pc.Close()
+}

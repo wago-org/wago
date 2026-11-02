@@ -54,6 +54,12 @@ func (in *Instance) publishConversionStore(owner *Instance, storage []byte, inde
 		}
 	}()
 	if owner == nil {
+		if word == 0 {
+			return publish()
+		}
+		if _, ok := store.resolveExternref(word); ok {
+			return publish()
+		}
 		return fmt.Errorf("converted host container has no physical owner")
 	}
 	container, err := newGCConversionContainer(owner, storage)
@@ -211,6 +217,17 @@ func (in *Instance) publishConversionRange(owner *Instance, storage []byte, star
 			domains.at(i).mu.Unlock()
 		}
 	}()
+	if owner == nil {
+		for _, word := range words {
+			if word != 0 {
+				if _, ok := store.resolveExternref(word); !ok {
+					return fmt.Errorf("converted host container has no physical owner")
+				}
+			}
+		}
+		publish()
+		return nil
+	}
 	c, err := newGCConversionContainer(owner, storage)
 	if err != nil {
 		return err
@@ -279,6 +296,14 @@ func (in *Instance) initializeConversionReceipts(staged []conversionInitialTable
 			c := store.gcDomains.conversionContainers[&storage[0]]
 			store.mu.Unlock()
 			if c == nil || c.slots[index] == nil {
+				return nil
+			}
+		}
+		if owner == nil {
+			if word == 0 {
+				return nil
+			}
+			if _, ok := store.resolveExternref(word); ok {
 				return nil
 			}
 		}
