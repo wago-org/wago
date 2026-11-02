@@ -321,20 +321,21 @@ type gcStoreDomain struct {
 	// and helper locks alone leave a window where another tenant can collect an
 	// as-yet-unrooted result from this shared collector. Arbitrary host callbacks
 	// suspend this lease while exact parked roots remain published.
-	invocationMu    invocationGate
-	invocationState sync.Mutex
-	invocationOwner invocationID
-	id              uint64
-	collector       *gc.Collector
-	private         bool
-	conversionOwned bool // registered private type universe; lifetime belongs to receipts
-	config          gc.Config
-	types           []gc.TypeDesc
-	typeReps        []gcDomainTypeRepresentative
-	refs            uint32
-	claims          uint32 // prepared instantiations not yet registered
-	prev            *gcStoreDomain
-	next            *gcStoreDomain
+	invocationMu     invocationGate
+	invocationState  sync.Mutex
+	invocationOwner  invocationID
+	id               uint64
+	collector        *gc.Collector
+	private          bool
+	conversionClaims uint32 // includes deferred receipt releases until post-gate drain
+	conversionOwned  bool   // registered private type universe; lifetime belongs to receipts
+	config           gc.Config
+	types            []gc.TypeDesc
+	typeReps         []gcDomainTypeRepresentative
+	refs             uint32
+	claims           uint32 // prepared instantiations not yet registered
+	prev             *gcStoreDomain
+	next             *gcStoreDomain
 }
 
 var nextGCDomainIdentity atomic.Uint64
