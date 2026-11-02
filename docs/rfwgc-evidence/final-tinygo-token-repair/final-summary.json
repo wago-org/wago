@@ -1,0 +1,21 @@
+{
+  "repair": "c786a9b84bb0298d5bbd6b9522ab611193440cfa",
+  "required_tinygo_gates": 46,
+  "required_tinygo_pass": 46,
+  "final_regression_tinygo_modes": 3,
+  "native_execution_gates": 9,
+  "additional_converted_global_execution_gates": 6,
+  "native_cross_build_gates": 6,
+  "total_successful_gate_receipts": 70,
+  "preserved_failed_test_authoring_attempts": 1,
+  "production_failures": 0,
+  "original_expectations_changed": false,
+  "final_approval": false,
+  "unrun": [
+    "actual Darwin",
+    "actual Windows",
+    "physical ARM64/RV64 hardware",
+    "TinyGo non-AMD64 platforms",
+    "historical broad f2bb suites"
+  ]
+}

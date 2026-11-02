@@ -1,0 +1,7 @@
+{
+  "reason": "New regression incorrectly imposed local/unsupported adapter wording on existing native owned-global adapter. Production correctly rejects invalid tokens as invalid or foreign externref token. No original test expectation changed.",
+  "evidence": "src/wago/gc_conversion_host_container_host.go:186; native owned-global dispatch src/wago/gc_conversion_store_host.go:111-122",
+  "native_files_diff_from_pre_repair": "",
+  "original_regression_sha256": "54a5f42b7ab9af4e543f3c7640e4a9156b135a75af3e1bb83cd0557f6ff1e9d3",
+  "action": "Preserve all original receipts and test source. Resume only with a fresh export and separately hashed corrected owned test."
+}
