@@ -114,6 +114,10 @@ func equalWorkerModuleStatsARM64(a, b *ModuleStats) bool {
 	bCopy.NativeSize.CompilerCodeArenaBytes = 0
 	aCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
 	bCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
+	// Scalar scratch is retained by sequential compilation and released by workers.
+	aCopy.Compile.ScalarScratchPeak, bCopy.Compile.ScalarScratchPeak = 0, 0
+	aCopy.Compile.ScalarScratchRetained, bCopy.Compile.ScalarScratchRetained = 0, 0
+	aCopy.Compile.ScalarScratchDiscarded, bCopy.Compile.ScalarScratchDiscarded = 0, 0
 	aCopy.Compile.NodeScratchReserved, bCopy.Compile.NodeScratchReserved = 0, 0
 	aCopy.Compile.NodeScratchPeak, bCopy.Compile.NodeScratchPeak = 0, 0
 	aCopy.Compile.NodeScratchRetained, bCopy.Compile.NodeScratchRetained = 0, 0
