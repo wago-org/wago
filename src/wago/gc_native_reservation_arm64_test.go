@@ -4,10 +4,9 @@ package wago
 
 import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"reflect"
 	"testing"
-	"unsafe"
 )
 
 func TestGCARM64LiveStructDoesNotPrepareUnusedHandles(t *testing.T) {
@@ -33,9 +32,7 @@ func TestGCARM64LiveStructDoesNotPrepareUnusedHandles(t *testing.T) {
 		if err != nil || len(got) != 1 || got[0] != i {
 			t.Fatalf("run=%v,%v", got, err)
 		}
-		view := in.gc.NativeView()
-		state := (*[gc.NativeStructAllocStateSize]byte)(unsafe.Pointer(view.StructAllocState))
-		if n := *(*uint32)(unsafe.Pointer(&state[gc.NativeStructAllocCountOffset])); n != 0 {
+		if n := nativeReservationCount(t, in, "nativeStructAlloc"); n != 0 {
 			t.Fatalf("live struct prepared %d unused handles after %d calls", n, i+1)
 		}
 	}
@@ -69,12 +66,28 @@ func TestGCARM64WideArrayDoesNotPrepareUnconsumableState(t *testing.T) {
 			t.Fatalf("run=%v,%v", got, err)
 		}
 	}
-	view := in.gc.NativeView()
-	state := (*[gc.NativeLargeArrayAllocStateSize]byte)(unsafe.Pointer(view.LargeArrayAllocState))
-	if n := *(*uint32)(unsafe.Pointer(&state[gc.NativeStructAllocCountOffset])); n != 0 {
+	if n := nativeReservationCount(t, in, "nativeLargeArrayAlloc"); n != 0 {
 		t.Fatalf("prepared %d large-array reservations without ARM64 consumer", n)
 	}
 	if got := in.gc.Stats().Allocations; got != 2000 {
 		t.Fatalf("allocations=%d", got)
 	}
+}
+
+// nativeReservationCount reads the collector-owned Count directly while the
+// instance is idle. Reflection permits reading this unexported scalar without
+// reconstructing a Go pointer from the native ABI's stored uintptr. The live
+// instance retains the collector for the entire read; no checkptr bypass or
+// production inspection API is needed.
+func nativeReservationCount(t *testing.T, in *Instance, field string) uint64 {
+	t.Helper()
+	state := reflect.ValueOf(in.gc).Elem().FieldByName(field)
+	if !state.IsValid() || state.Kind() != reflect.Struct {
+		t.Fatalf("collector reservation state %q is unavailable", field)
+	}
+	count := state.FieldByName("Count")
+	if !count.IsValid() || count.Kind() != reflect.Uint32 {
+		t.Fatalf("collector reservation state %q has no uint32 Count", field)
+	}
+	return count.Uint()
 }

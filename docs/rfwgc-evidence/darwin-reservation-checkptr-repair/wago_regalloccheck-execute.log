@@ -1,0 +1,5 @@
+=== RUN   TestGCARM64LiveStructDoesNotPrepareUnusedHandles
+--- PASS: TestGCARM64LiveStructDoesNotPrepareUnusedHandles (0.07s)
+=== RUN   TestGCARM64WideArrayDoesNotPrepareUnconsumableState
+--- PASS: TestGCARM64WideArrayDoesNotPrepareUnconsumableState (0.05s)
+PASS
