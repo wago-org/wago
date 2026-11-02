@@ -1,0 +1,36 @@
+{
+  "source_unchanged": true,
+  "comparison_consumed": "d6802f5e389bded786f49b4c2a21df0efab7017c",
+  "cells": [
+    {
+      "label": "post-comparison-ordinary",
+      "passes": 100,
+      "skips": 0
+    },
+    {
+      "label": "post-comparison-ordinary-race",
+      "passes": 100,
+      "skips": 0
+    },
+    {
+      "label": "post-comparison-wagodebug",
+      "passes": 100,
+      "skips": 0
+    },
+    {
+      "label": "post-comparison-wagodebug-race",
+      "passes": 100,
+      "skips": 0
+    },
+    {
+      "label": "post-comparison-wago_regalloccheck",
+      "passes": 100,
+      "skips": 0
+    },
+    {
+      "label": "post-comparison-wago_regalloccheck-race",
+      "passes": 100,
+      "skips": 0
+    }
+  ]
+}

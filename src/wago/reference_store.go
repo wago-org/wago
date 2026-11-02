@@ -213,6 +213,7 @@ type gcDomainTopology struct {
 	conversions          map[uint64]*gcConversionIdentity
 	conversionContainers map[*byte]*gcConversionContainer
 	invocations          map[invocationID]*gcInvocationSnapshot
+	retirement           *gcInvocationRetirement
 
 	gcTopologyGate
 	first           *gcStoreDomain
@@ -1492,6 +1493,69 @@ func (in *Instance) conversionInvocationSnapshot(owner invocationID) *gcInvocati
 	return nil
 }
 
+// A native nested entry cannot acquire a wider set while the root owns domain
+// gates. Inspect only store-protected metadata; never wait for another topology
+// reader, nor acquire a missing domain out of order. A callback's suspended
+// snapshots are excluded, so ordinary callback reentry still admits afresh.
+func (in *Instance) borrowConversionInvocation(owner invocationID) (gcInvocationLease, bool, error) {
+	if in == nil || in.refStore == nil {
+		return gcInvocationLease{}, false, nil
+	}
+	s := in.refStore
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gcDomains == nil {
+		return gcInvocationLease{}, false, nil
+	}
+	var root *gcInvocationSnapshot
+	for p := s.gcDomains.invocations[owner]; p != nil; p = p.previous {
+		if p.active {
+			root = p
+			break
+		}
+	}
+	if root == nil {
+		return gcInvocationLease{}, false, nil
+	}
+	contains := func(d *gcStoreDomain) bool {
+		if d == nil {
+			return true
+		}
+		for i := 0; i < root.domains.len(); i++ {
+			if root.domains.at(i) == d {
+				return true
+			}
+		}
+		return false
+	}
+	entry := s.instances[in]
+	if entry == nil || entry.dynamicInvocationDomains && !entry.conversionOnlyInvocationDomains {
+		return gcInvocationLease{}, true, fmt.Errorf("nested invocation exceeds conversion snapshot authority")
+	}
+	complete := contains(entry.gcDomain)
+	for i := 0; i < entry.invocationDomains.len(); i++ {
+		complete = complete && contains(entry.invocationDomains.at(i))
+	}
+	if entry.conversionOnlyInvocationDomains {
+		for d := s.gcDomains.first; d != nil; d = d.next {
+			if d.conversionPublishers != 0 || d.conversionClaims != 0 {
+				complete = complete && contains(d)
+			}
+		}
+	}
+	if !complete {
+		return gcInvocationLease{}, true, fmt.Errorf("nested invocation requires domains absent from the active root snapshot")
+	}
+	return gcInvocationLease{in: in, domains: root.domains, owner: owner}, true, nil
+}
+
+func (snapshot *gcInvocationSnapshot) setActive(active bool) {
+	s := snapshot.in.refStore
+	s.mu.Lock()
+	snapshot.active = active
+	s.mu.Unlock()
+}
+
 // Called with the topology reader, before waiting for any domain or native gate.
 func (in *Instance) pinConversionInvocation(domains gcInvocationDomainView, owner invocationID) (*gcInvocationSnapshot, error) {
 	s := in.refStore
@@ -1516,15 +1580,15 @@ func (in *Instance) pinConversionInvocation(domains gcInvocationDomainView, owne
 	return snapshot, nil
 }
 
-// Only after domain and native gates have been dropped. No heap Close or
-// finalizer is allowed under topology/store locks.
+// Pin release never waits for topology. Readers may continue using registered
+// zero-claim domains until the deferred writer atomically claims retirement.
 func (snapshot *gcInvocationSnapshot) unpin() {
 	if !snapshot.pinned {
 		return
 	}
 	s := snapshot.in.refStore
-	topology := s.lockGCDomainTopology()
 	s.mu.Lock()
+	topology := s.gcDomains
 	if topology.invocations[snapshot.owner] != snapshot {
 		panic("wago: conversion invocation release order")
 	}
@@ -1533,7 +1597,7 @@ func (snapshot *gcInvocationSnapshot) unpin() {
 	} else {
 		topology.invocations[snapshot.owner] = snapshot.previous
 	}
-	var collectors []*gc.Collector
+	var retire []*gcStoreDomain
 	for i := 0; i < snapshot.domains.len(); i++ {
 		d := snapshot.domains.at(i)
 		if d.private {
@@ -1543,20 +1607,16 @@ func (snapshot *gcInvocationSnapshot) unpin() {
 			panic("wago: conversion invocation pin lost")
 		}
 		d.claims--
-		if d.refs == 0 && d.claims == 0 && topology.unlinkDomainLocked(d) {
-			collectors = append(collectors, d.collector)
+		if d.refs == 0 && d.claims == 0 {
+			retire = append(retire, d)
 		}
 	}
 	snapshot.pinned = false
-	entries := s.maybeReleaseEntriesLocked()
+	start := s.queueInvocationRetirementLocked(retire, s.runtimeClosed)
 	s.mu.Unlock()
-	topology.Unlock()
-	var cleanup resourceCleanup
-	for _, c := range collectors {
-		cleanup.run(c.Close)
+	if start {
+		s.driveInvocationRetirement()
 	}
-	cleanup.run(func() { releaseLifetimeEntries(nil, entries) })
-	cleanup.finish()
 }
 
 type gcInvocationLease struct {
@@ -1685,6 +1745,9 @@ func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocatio
 		}
 		return gcInvocationLease{in: in, domains: existing.domains, owner: owner}, nil
 	}
+	if lease, borrowed, err := in.borrowConversionInvocation(owner); borrowed {
+		return lease, err
+	}
 	dynamic := in != nil && in.refStore != nil && in.executionFlags.Load()&executionFlagDynamicGCDomain != 0
 	var topology *gcDomainTopology
 	conversionOnly := false
@@ -1720,7 +1783,7 @@ func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocatio
 			return gcInvocationLease{}, err
 		}
 		domains.claim(owner)
-		snapshot.active = true
+		snapshot.setActive(true)
 		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, snapshot: snapshot}, nil
 	}
 	if domains.len() == 0 {
@@ -1765,7 +1828,7 @@ func (l gcInvocationLease) unlock() {
 	if l.snapshot != nil {
 		snapshot := l.snapshot
 		if snapshot.active {
-			snapshot.active = false
+			snapshot.setActive(false)
 			snapshot.domains.release(l.owner)
 			snapshot.domains.unlock()
 		}
@@ -1819,7 +1882,7 @@ func (in *Instance) suspendGCInvocation(owner invocationID) gcInvocationSuspensi
 		if !snapshot.domains.ownedBy(owner) {
 			panic("wago: partial conversion invocation suspension")
 		}
-		snapshot.active = false
+		snapshot.setActive(false)
 		snapshot.domains.release(owner)
 		snapshot.domains.unlock()
 		return gcInvocationSuspension{in: in, owner: owner, snapshot: snapshot, active: true}
@@ -1870,9 +1933,9 @@ func (s *gcInvocationSuspension) resume() {
 			panic("wago: conversion invocation classification changed")
 		}
 		next := lease.snapshot
-		*old = *next
 		store := s.in.refStore
 		store.mu.Lock()
+		*old = *next
 		store.gcDomains.invocations[s.owner] = old
 		store.mu.Unlock()
 		return
@@ -3284,7 +3347,7 @@ func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
 	var release referenceTokenEntries
 	topology := s.lockGCDomainTopology()
 	s.mu.Lock()
-	if s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 && len(s.gcByToken) == 0 {
+	if s.canReleaseEntriesLocked() {
 		release = s.releaseEntriesLocked()
 	}
 	s.mu.Unlock()

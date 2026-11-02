@@ -1,0 +1,8 @@
+{
+  "reference_store.go": "0c223fc7076a744e6e0ed59e829b92dc62fb8ab71fc4e875f74bfb22bed25964",
+  "gc_invocation_retirement.go": "bb88b4d83b636591f4103c78d7fe58ad12a3de365656621bdde528f836478f73",
+  "rr_retirement_test.go": "9ae3784be58274f4223f63f94c82319173c87de548f1501b6fb3626607e780c2",
+  "rr_recheck_adversary_test.go": "0a7136ca75fc22c93f09868a0587a88760c93134c300dcba302294a14dcfda13",
+  "rr_recheck_handoff_test.go": "77ef2c94d7f12dedf63aca1471e7e5befea61637105578f75e7d2f888f54141f",
+  "rr_recheck_flags_current_test.go": "146214b6ae828763c40f5dc1533d31a632591b16dfdcf4ab7ef150ba794e4a5b"
+}
