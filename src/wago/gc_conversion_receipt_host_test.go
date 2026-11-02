@@ -7,6 +7,7 @@ import (
 	"fmt"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -42,6 +43,9 @@ func h2ReceiptFixture(t *testing.T, store *referenceStore, shift uint8) (*Instan
 	}
 	if _, err = publisher.Invoke("run"); err != nil {
 		t.Fatal(err)
+	}
+	if actual := reflect.ValueOf(publisher.gc).Elem().FieldByName("edenRegions").Len() != 0; actual != (shift != 0) {
+		t.Fatal("STOP receipt fixture has wrong actual region policy")
 	}
 	conversion := publisher.existingGCExternConversionState()
 	if conversion == nil || conversion.core == nil || conversion.count != 1 || !publisher.hasPhysicalResources() {
@@ -85,7 +89,13 @@ func h2TableSet(t *testing.T, table *gcRefTestTableState, index, word uint64) {
 	id := newInvocationID()
 	view.claim(id)
 	nativeExecutionMu.Lock()
+	if table.conversionContainers[0].slots[index] != nil {
+		h2AssertReceipt(t, table.conversionContainers[0], index)
+	}
 	err := table.setTable(domains.at(0).collector, 0, index, word)
+	if err == nil && table.conversionContainers[0].slots[index] != nil {
+		h2AssertReceipt(t, table.conversionContainers[0], index)
+	}
 	nativeExecutionMu.Unlock()
 	view.release(id)
 	view.unlock()
@@ -408,6 +418,10 @@ func TestR9H2ReceiptConvertedProducerCycle(t *testing.T) {
 						provider.releaseResourceRoot()
 						graph.drainAfterGate(0)
 						h2WithAuthority(t, store, func() {
+							h2AssertReceipt(t, table.conversionContainers[0], 0)
+							if !producer.hasPhysicalResources() {
+								t.Fatal("STOP active callback lost producer before collection")
+							}
 							if err := r.identity.domain.collector.CollectFull(gc.EmptyRoots{}); err != nil {
 								t.Fatal(err)
 							}
