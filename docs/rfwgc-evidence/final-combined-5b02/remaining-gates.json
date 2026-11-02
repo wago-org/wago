@@ -1,30 +1,12 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 149,
+  "remaining_count": 145,
   "remaining": [
-    {
-      "suite": "full-root-replay-wago_regalloccheck",
-      "receipt_suite": "full-root-replay-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "cli-wago_regalloccheck",
-      "receipt_suite": "cli-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "installer-wago_regalloccheck",
-      "receipt_suite": "installer-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
     {
       "suite": "nested-wago_regalloccheck",
       "receipt_suite": "nested-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "race-wago_regalloccheck",
@@ -39,16 +21,10 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "corpus-wagodebug",
-      "receipt_suite": "corpus-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
       "suite": "corpus-wago_regalloccheck",
       "receipt_suite": "corpus-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "baseline-corpus-ordinary",
@@ -900,10 +876,13 @@
   "completed": [
     "full-root-replay-ordinary",
     "full-root-replay-wagodebug",
+    "full-root-replay-wago_regalloccheck",
     "cli-ordinary",
     "cli-wagodebug",
+    "cli-wago_regalloccheck",
     "installer-ordinary",
     "installer-wagodebug",
+    "installer-wago_regalloccheck",
     "nested-ordinary",
     "nested-wagodebug",
     "collector-ordinary",
@@ -917,6 +896,7 @@
     "guard-ordinary",
     "guard-wagodebug",
     "corpus-ordinary",
+    "corpus-wagodebug",
     "catalog-ordinary",
     "catalog-wagodebug",
     "catalog-wago_regalloccheck",

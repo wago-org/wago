@@ -19,7 +19,7 @@
       "suite": "full-root-replay-wago_regalloccheck",
       "receipt_suite": "full-root-replay-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "cli-ordinary",
@@ -37,7 +37,7 @@
       "suite": "cli-wago_regalloccheck",
       "receipt_suite": "cli-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "installer-ordinary",
@@ -55,7 +55,7 @@
       "suite": "installer-wago_regalloccheck",
       "receipt_suite": "installer-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "nested-ordinary",
@@ -73,7 +73,7 @@
       "suite": "nested-wago_regalloccheck",
       "receipt_suite": "nested-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "collector-ordinary",
@@ -157,13 +157,13 @@
       "suite": "corpus-wagodebug",
       "receipt_suite": "corpus-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "corpus-wago_regalloccheck",
       "receipt_suite": "corpus-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "baseline-corpus-ordinary",
@@ -1325,9 +1325,9 @@
     }
   ],
   "counts": {
-    "PASS": 71,
+    "PASS": 75,
     "RUNNING": 3,
-    "NOT_RUN": 145,
+    "NOT_RUN": 141,
     "FAIL": 1
   },
   "attempts": [
@@ -1365,6 +1365,14 @@
     },
     {
       "suite": "cli-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "cli-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",
@@ -1412,12 +1420,20 @@
       "verdict": "PASS"
     },
     {
-      "suite": "corpus-wagodebug",
+      "suite": "corpus-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": false,
       "driver": "run.py",
       "exit": null,
       "verdict": "RUNNING"
+    },
+    {
+      "suite": "corpus-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "early-replay-cipolicy-ordinary",
@@ -1502,10 +1518,10 @@
     {
       "suite": "full-root-replay-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "full-root-replay-wagodebug",
@@ -1540,6 +1556,14 @@
       "verdict": "PASS"
     },
     {
+      "suite": "installer-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "installer-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
@@ -1554,6 +1578,14 @@
       "driver": "run.py",
       "exit": 0,
       "verdict": "PASS"
+    },
+    {
+      "suite": "nested-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": false,
+      "driver": "run.py",
+      "exit": null,
+      "verdict": "RUNNING"
     },
     {
       "suite": "nested-wagodebug",

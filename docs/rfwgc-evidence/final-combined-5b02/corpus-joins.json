@@ -19,7 +19,7 @@
     "id": "sed-records",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -43,7 +43,7 @@
     "id": "seqtk-fastq-to-fasta",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -67,7 +67,7 @@
     "id": "lcs-substrings",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -91,7 +91,7 @@
     "id": "needleman-wunsch-dna",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -115,7 +115,7 @@
     "id": "smith-waterman-dna",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -139,7 +139,7 @@
     "id": "fasttree-phylogeny",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -163,7 +163,7 @@
     "id": "gnu-seq-range",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -187,7 +187,7 @@
     "id": "gnu-tr-uppercase",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -211,7 +211,7 @@
     "id": "php-buckets",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -235,7 +235,7 @@
     "id": "ruby-buckets",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -251,7 +251,7 @@
     "id": "clang-cpp-kernels",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -259,7 +259,7 @@
     "id": "clang-cpp-kernels",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -275,7 +275,7 @@
     "id": "clang-c-kernels",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -283,7 +283,7 @@
     "id": "clang-c-kernels",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -299,7 +299,7 @@
     "id": "lua-cli-buckets",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -307,7 +307,7 @@
     "id": "lua-cli-buckets",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -323,7 +323,7 @@
     "id": "micropython-squares",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -331,7 +331,7 @@
     "id": "micropython-squares",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -347,7 +347,7 @@
     "id": "ecpunpack-config",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -355,7 +355,7 @@
     "id": "ecpunpack-config",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -371,7 +371,7 @@
     "id": "ecppack-bitstream",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -379,7 +379,7 @@
     "id": "ecppack-bitstream",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -395,7 +395,7 @@
     "id": "coreutils-sort",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -403,7 +403,7 @@
     "id": "coreutils-sort",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -419,7 +419,7 @@
     "id": "coreutils-sha256sum",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -427,7 +427,7 @@
     "id": "coreutils-sha256sum",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -443,7 +443,7 @@
     "id": "coreutils-base64",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -451,7 +451,7 @@
     "id": "coreutils-base64",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -467,7 +467,7 @@
     "id": "coreutils-wc",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -475,7 +475,7 @@
     "id": "coreutils-wc",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -491,7 +491,7 @@
     "id": "ripgrep-source",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -499,7 +499,7 @@
     "id": "ripgrep-source",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -515,7 +515,7 @@
     "id": "yosys-counter",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -523,7 +523,7 @@
     "id": "yosys-counter",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -539,7 +539,7 @@
     "id": "icemulti-image",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -547,7 +547,7 @@
     "id": "icemulti-image",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -563,7 +563,7 @@
     "id": "icepack-pack",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -571,7 +571,7 @@
     "id": "icepack-pack",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -587,7 +587,7 @@
     "id": "iceunpack-unpack",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -595,7 +595,7 @@
     "id": "iceunpack-unpack",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -611,7 +611,7 @@
     "id": "ecpbram-generate",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -619,7 +619,7 @@
     "id": "ecpbram-generate",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -635,7 +635,7 @@
     "id": "icebram-generate",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -643,7 +643,7 @@
     "id": "icebram-generate",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -659,7 +659,7 @@
     "id": "ecppll-clock",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -667,7 +667,7 @@
     "id": "ecppll-clock",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -683,7 +683,7 @@
     "id": "icepll-clock",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -691,7 +691,7 @@
     "id": "icepll-clock",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -707,7 +707,7 @@
     "id": "json2csv-people",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -715,7 +715,7 @@
     "id": "json2csv-people",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -731,7 +731,7 @@
     "id": "tree-ashell-list",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -739,7 +739,7 @@
     "id": "tree-ashell-list",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -755,7 +755,7 @@
     "id": "tree-list",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -763,7 +763,7 @@
     "id": "tree-list",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -779,7 +779,7 @@
     "id": "brotli-compress",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -787,7 +787,7 @@
     "id": "brotli-compress",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -803,7 +803,7 @@
     "id": "brotli-decompress",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -811,7 +811,7 @@
     "id": "brotli-decompress",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -827,7 +827,7 @@
     "id": "jq-json-transform",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -835,7 +835,7 @@
     "id": "jq-json-transform",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -851,7 +851,7 @@
     "id": "age-decrypt",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -859,7 +859,7 @@
     "id": "age-decrypt",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -875,7 +875,7 @@
     "id": "age-keygen-public",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -883,7 +883,7 @@
     "id": "age-keygen-public",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -899,7 +899,7 @@
     "id": "lzmainfo-header",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -907,7 +907,7 @@
     "id": "lzmainfo-header",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -923,7 +923,7 @@
     "id": "lzmadec-decompress",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -931,7 +931,7 @@
     "id": "lzmadec-decompress",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -947,7 +947,7 @@
     "id": "xzdec-decompress",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -955,7 +955,7 @@
     "id": "xzdec-decompress",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -971,7 +971,7 @@
     "id": "sqlite3-query",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -979,7 +979,7 @@
     "id": "sqlite3-query",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -995,7 +995,7 @@
     "id": "duktape-script",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1003,7 +1003,7 @@
     "id": "duktape-script",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1019,7 +1019,7 @@
     "id": "quickjs-script",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1027,7 +1027,7 @@
     "id": "quickjs-script",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1043,7 +1043,7 @@
     "id": "swift-format-source",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1051,7 +1051,7 @@
     "id": "swift-format-source",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1067,7 +1067,7 @@
     "id": "esbuild-minify",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1075,7 +1075,7 @@
     "id": "esbuild-minify",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1091,7 +1091,7 @@
     "id": "tiny",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1099,7 +1099,7 @@
     "id": "tiny",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1115,7 +1115,7 @@
     "id": "fib_rec",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1123,7 +1123,7 @@
     "id": "fib_rec",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1139,7 +1139,7 @@
     "id": "memory",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1147,7 +1147,7 @@
     "id": "memory",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1163,7 +1163,7 @@
     "id": "memory_tree",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1171,7 +1171,7 @@
     "id": "memory_tree",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1187,7 +1187,7 @@
     "id": "dispatch",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1195,7 +1195,7 @@
     "id": "dispatch",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1211,7 +1211,7 @@
     "id": "many_funcs",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1219,7 +1219,7 @@
     "id": "many_funcs",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1235,7 +1235,7 @@
     "id": "linked_list",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1243,7 +1243,7 @@
     "id": "linked_list",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1259,7 +1259,7 @@
     "id": "nbody",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1267,7 +1267,7 @@
     "id": "nbody",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1283,7 +1283,7 @@
     "id": "fannkuch",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1291,7 +1291,7 @@
     "id": "fannkuch",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1307,7 +1307,7 @@
     "id": "matmul",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1315,7 +1315,7 @@
     "id": "matmul",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1331,7 +1331,7 @@
     "id": "sha256",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1339,7 +1339,7 @@
     "id": "sha256",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1355,7 +1355,7 @@
     "id": "raytrace",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1363,7 +1363,7 @@
     "id": "raytrace",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1379,7 +1379,7 @@
     "id": "json-as",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1387,7 +1387,7 @@
     "id": "json-as",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1403,7 +1403,7 @@
     "id": "blake-as",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1411,7 +1411,7 @@
     "id": "blake-as",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1427,7 +1427,7 @@
     "id": "utf-as",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1435,7 +1435,7 @@
     "id": "utf-as",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1451,7 +1451,7 @@
     "id": "json-as-simd",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1459,7 +1459,7 @@
     "id": "json-as-simd",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1475,7 +1475,7 @@
     "id": "blake-as-simd",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1483,7 +1483,7 @@
     "id": "blake-as-simd",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1499,7 +1499,7 @@
     "id": "utf-as-simd",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1507,7 +1507,7 @@
     "id": "utf-as-simd",
     "mode": "wago_regalloccheck",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1523,7 +1523,7 @@
     "id": "coremark",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1547,7 +1547,7 @@
     "id": "blake3",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1571,7 +1571,7 @@
     "id": "qoi",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1595,7 +1595,7 @@
     "id": "lz4",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1619,7 +1619,7 @@
     "id": "zlib",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1643,7 +1643,7 @@
     "id": "zstd",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1667,7 +1667,7 @@
     "id": "yyjson",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1691,7 +1691,7 @@
     "id": "utf8proc",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1715,7 +1715,7 @@
     "id": "xxhash",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1739,7 +1739,7 @@
     "id": "libtommath",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1763,7 +1763,7 @@
     "id": "nanosvg",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1787,7 +1787,7 @@
     "id": "kissfft",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1811,7 +1811,7 @@
     "id": "miniz",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1835,7 +1835,7 @@
     "id": "monocypher",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1859,7 +1859,7 @@
     "id": "drwav",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1883,7 +1883,7 @@
     "id": "fastfloat",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1907,7 +1907,7 @@
     "id": "pcre2",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1931,7 +1931,7 @@
     "id": "cjson",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1955,7 +1955,7 @@
     "id": "lodepng",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -1979,7 +1979,7 @@
     "id": "wren",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2003,7 +2003,7 @@
     "id": "tinyxml2",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2027,7 +2027,7 @@
     "id": "lua",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2051,7 +2051,7 @@
     "id": "embench-crc32",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2075,7 +2075,7 @@
     "id": "embench-huffbench",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2099,7 +2099,7 @@
     "id": "embench-matmult-int",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2123,7 +2123,7 @@
     "id": "embench-nettle-aes",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2147,7 +2147,7 @@
     "id": "embench-nettle-sha256",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2171,7 +2171,7 @@
     "id": "embench-qrduino",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2195,7 +2195,7 @@
     "id": "sightglass-shootout-base64",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2219,7 +2219,7 @@
     "id": "sightglass-libsodium-hash",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2243,7 +2243,7 @@
     "id": "tacle-bsort",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2267,7 +2267,7 @@
     "id": "polybench-2mm",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2291,7 +2291,7 @@
     "id": "polybench-3mm",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2315,7 +2315,7 @@
     "id": "polybench-adi",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2339,7 +2339,7 @@
     "id": "polybench-atax",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2363,7 +2363,7 @@
     "id": "polybench-bicg",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2387,7 +2387,7 @@
     "id": "polybench-cholesky",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2411,7 +2411,7 @@
     "id": "polybench-correlation",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2435,7 +2435,7 @@
     "id": "polybench-covariance",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2459,7 +2459,7 @@
     "id": "polybench-deriche",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2483,7 +2483,7 @@
     "id": "polybench-doitgen",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2507,7 +2507,7 @@
     "id": "polybench-durbin",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2531,7 +2531,7 @@
     "id": "polybench-fdtd-2d",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2555,7 +2555,7 @@
     "id": "polybench-floyd-warshall",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2579,7 +2579,7 @@
     "id": "polybench-gemm",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2603,7 +2603,7 @@
     "id": "polybench-gemver",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2627,7 +2627,7 @@
     "id": "polybench-gesummv",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2651,7 +2651,7 @@
     "id": "polybench-gramschmidt",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2675,7 +2675,7 @@
     "id": "polybench-heat-3d",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2699,7 +2699,7 @@
     "id": "polybench-jacobi-1d",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2723,7 +2723,7 @@
     "id": "polybench-jacobi-2d",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2747,7 +2747,7 @@
     "id": "polybench-lu",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2771,7 +2771,7 @@
     "id": "polybench-ludcmp",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2795,7 +2795,7 @@
     "id": "polybench-mvt",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2819,7 +2819,7 @@
     "id": "polybench-nussinov",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2843,7 +2843,7 @@
     "id": "polybench-seidel-2d",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2867,7 +2867,7 @@
     "id": "polybench-symm",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2891,7 +2891,7 @@
     "id": "polybench-syr2k",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2915,7 +2915,7 @@
     "id": "polybench-syrk",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2939,7 +2939,7 @@
     "id": "polybench-trisolv",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2963,7 +2963,7 @@
     "id": "polybench-trmm",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -2987,7 +2987,7 @@
     "id": "wren-modulo",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -3011,7 +3011,7 @@
     "id": "grain-stdlib-array",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -3035,7 +3035,7 @@
     "id": "grain-stdlib-string",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
@@ -3059,7 +3059,7 @@
     "id": "grain-stdlib-json-subset",
     "mode": "wagodebug",
     "baseline": "INCOMPLETE",
-    "port": "INCOMPLETE",
+    "port": "PASS",
     "both_suites_completed": false,
     "matched_pass": false
   },
