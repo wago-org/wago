@@ -25,6 +25,12 @@
       "raw_sha256": "2c3a1a2a3b131f0cdad14fc31d0912b431c2698ebfb89c37e636b281e5df9921"
     },
     {
+      "suite": "baseline-corpus-ordinary",
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "exit": 0,
+      "raw_sha256": "79d6952808f69b4e9bb8099cc8478e836d332167adde924c8c16ab217578c779"
+    },
+    {
       "suite": "catalog-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "exit": 0,
@@ -49,6 +55,12 @@
       "raw_sha256": "ef73fc9da24990c509ef2de4ec884a0e242f9dfd3c126fbdda7ca730a4cc66ed"
     },
     {
+      "suite": "cli-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "cd417c259d01dd6a301f7d3df610f8014d288777ca0d29729374adf0000e634e"
+    },
+    {
       "suite": "cli-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "exit": 0,
@@ -61,10 +73,34 @@
       "raw_sha256": "35a1d31384ae94765e073490799de4ea6fd7038fb217249434149eeac1b28e30"
     },
     {
+      "suite": "collector-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "3e9422342d766ddddf87274e27fd36b12cbf9df747768b8cf22f44b99dc9e80b"
+    },
+    {
       "suite": "collector-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "exit": 0,
       "raw_sha256": "cfa915927653bea25f0cda2092ef3d4d49f49a87e813cc023e055523933058a9"
+    },
+    {
+      "suite": "corpus-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "c7eb5b6da4195dc2849180d9d1ed6898a788314e600b7229248da65cd716d2b3"
+    },
+    {
+      "suite": "corpus-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "58b05f0acdac8eb7297bec0862accd93a1323bf52ace4de6261b9655781272e8"
+    },
+    {
+      "suite": "corpus-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "40cd7d54fc583c9150e1437a8e8eca5544f4d52dba88e459c3416072dfda9c64"
     },
     {
       "suite": "early-replay-cipolicy-ordinary",
@@ -127,6 +163,12 @@
       "raw_sha256": "b36a0c49b2069f82fa02b0549cd15ee253cf31879dc1c836e6b0a762f945c5c8"
     },
     {
+      "suite": "full-root-replay-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "751c1094aaa672c931db65b94e4890e20820d120f6249862ff1fb37cd40fc22a"
+    },
+    {
       "suite": "full-root-replay-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "exit": 0,
@@ -139,10 +181,28 @@
       "raw_sha256": "83af94d1c75212bc70f46831cfc1beda67dff580e1ef2218f915d884942feb31"
     },
     {
+      "suite": "guard-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "313e01a0c93524e638b6d2dead89a433350c3fdf89bfd7ee2cf30202975b5f3d"
+    },
+    {
+      "suite": "guard-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "91c451f21096c25e0090f6f8a9d166dce2079e852377c867e33c6eccc24ee4c7"
+    },
+    {
       "suite": "installer-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "exit": 0,
       "raw_sha256": "ddeb28a033ba51ae25026338415c697c0271794723b0426240ba27a85685455f"
+    },
+    {
+      "suite": "installer-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "6d9dcdbd87e1fb08c5324a539939470b0f7be58286383a4af84c0193f9a50d21"
     },
     {
       "suite": "installer-wagodebug",
@@ -155,6 +215,18 @@
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "exit": 0,
       "raw_sha256": "489fde0c83208e77318ddfc719aa226cf008e92d47e35158927817223a06890a"
+    },
+    {
+      "suite": "nested-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "38f141bc95cec87d5f30889d71abd4fa36c6d0f36e907b887900673b7750977e"
+    },
+    {
+      "suite": "nested-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "cd8249797aecc3be387bbc1f680e64f8fc0d7d03a8609ac8493148fc777f1873"
     },
     {
       "suite": "parent-race-reduced-ordinary",
@@ -179,6 +251,18 @@
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "exit": 0,
       "raw_sha256": "36d7e13380947109c976a7e4ebb769fb273cf465202f44ff51f70ed807e5fa5f"
+    },
+    {
+      "suite": "race-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "9a200a7b2ce46fa0ca794da7c0024ac92049d51172118e33bc47fa3e376558c5"
+    },
+    {
+      "suite": "race-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "1dc174612d06c1de31c3913fbd5c599e5ba23d05369cb722ac5c2debf31a7967"
     },
     {
       "suite": "repair-census-ordinary",
@@ -251,6 +335,12 @@
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "exit": 0,
       "raw_sha256": "1f4c6ad25831b3cdc5b201203621127b9010a2daa3690cd0b5f3b37e0d5a5690"
+    },
+    {
+      "suite": "spec-v3-signals-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "8215baa0bea40fef9891f70358fc9d72c1ef0a8de048e24eec21ddbe17a3ece6"
     },
     {
       "suite": "spec-v3-wago_regalloccheck",

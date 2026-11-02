@@ -109,7 +109,7 @@
       "suite": "race-wago_regalloccheck",
       "receipt_suite": "race-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "parent-race-reduced-ordinary",
@@ -145,7 +145,7 @@
       "suite": "guard-wago_regalloccheck",
       "receipt_suite": "guard-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "corpus-ordinary",
@@ -169,13 +169,13 @@
       "suite": "baseline-corpus-ordinary",
       "receipt_suite": "baseline-corpus-ordinary",
       "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "baseline-corpus-wagodebug",
       "receipt_suite": "baseline-corpus-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "verdict": "RUNNING"
     },
     {
       "suite": "baseline-corpus-wago_regalloccheck",
@@ -295,7 +295,7 @@
       "suite": "spec-v3-signals-ordinary",
       "receipt_suite": "spec-v3-signals-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v3-signals-wagodebug",
@@ -313,7 +313,7 @@
       "suite": "guard-corpus-ordinary",
       "receipt_suite": "guard-corpus-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "guard-corpus-wagodebug",
@@ -913,13 +913,13 @@
       "suite": "tinygo-34/host-ordinary",
       "receipt_suite": "tinygo-34/host-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "INTERRUPTED"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-34/standalone-ordinary",
       "receipt_suite": "tinygo-34/standalone-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/guest-threads-ordinary",
@@ -1325,11 +1325,10 @@
     }
   ],
   "counts": {
-    "PASS": 77,
-    "RUNNING": 2,
-    "NOT_RUN": 139,
-    "FAIL": 1,
-    "INTERRUPTED": 1
+    "PASS": 82,
+    "RUNNING": 3,
+    "NOT_RUN": 134,
+    "FAIL": 1
   },
   "attempts": [
     {
@@ -1342,6 +1341,14 @@
     },
     {
       "suite": "baseline-corpus-ordinary",
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "baseline-corpus-wagodebug",
       "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
       "receipt_valid": false,
       "driver": "run.py",
@@ -1549,7 +1556,23 @@
       "verdict": "PASS"
     },
     {
+      "suite": "guard-corpus-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": false,
+      "driver": "run.py",
+      "exit": null,
+      "verdict": "RUNNING"
+    },
+    {
       "suite": "guard-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "guard-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",
@@ -1647,10 +1670,10 @@
     {
       "suite": "race-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "race-wagodebug",
@@ -1750,6 +1773,14 @@
     },
     {
       "suite": "spec-v3-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-signals-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",

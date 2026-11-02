@@ -1,0 +1,23 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "matches": [
+    {
+      "suite": "tinygo-34/standalone-ordinary",
+      "pid": 1211425,
+      "cwd": "/home/dev/.cache/_wago_final_5b02_n61wfxab/tinygo-source",
+      "argv": [
+        "go",
+        "test",
+        "-v",
+        "-failfast",
+        "-count=1",
+        "-timeout=25m",
+        "-tags=wago_runtime",
+        "-run",
+        "^(TestBuildTinyGoLinksMachineCodeWithoutCompiler|TestBuildTinyGoStripsByDefault|TestTinyGoSupportsCooperativeInterruption|TestTinyGoForeignStackGCInterruption)$",
+        "./cli/manager/internal/standalone"
+      ],
+      "start_ticks": "31422982"
+    }
+  ]
+}

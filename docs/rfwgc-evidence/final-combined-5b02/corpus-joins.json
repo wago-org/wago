@@ -2,10 +2,10 @@
   {
     "id": "sed-records",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "sed-records",
@@ -26,10 +26,10 @@
   {
     "id": "seqtk-fastq-to-fasta",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "seqtk-fastq-to-fasta",
@@ -50,10 +50,10 @@
   {
     "id": "lcs-substrings",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "lcs-substrings",
@@ -74,10 +74,10 @@
   {
     "id": "needleman-wunsch-dna",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "needleman-wunsch-dna",
@@ -98,10 +98,10 @@
   {
     "id": "smith-waterman-dna",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "smith-waterman-dna",
@@ -122,10 +122,10 @@
   {
     "id": "fasttree-phylogeny",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "fasttree-phylogeny",
@@ -146,10 +146,10 @@
   {
     "id": "gnu-seq-range",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "gnu-seq-range",
@@ -170,10 +170,10 @@
   {
     "id": "gnu-tr-uppercase",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "gnu-tr-uppercase",
@@ -194,10 +194,10 @@
   {
     "id": "php-buckets",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "php-buckets",
@@ -218,10 +218,10 @@
   {
     "id": "ruby-buckets",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "ruby-buckets",
@@ -242,10 +242,10 @@
   {
     "id": "clang-cpp-kernels",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "clang-cpp-kernels",
@@ -266,10 +266,10 @@
   {
     "id": "clang-c-kernels",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "clang-c-kernels",
@@ -290,10 +290,10 @@
   {
     "id": "lua-cli-buckets",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "lua-cli-buckets",
@@ -314,10 +314,10 @@
   {
     "id": "micropython-squares",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "micropython-squares",
@@ -338,10 +338,10 @@
   {
     "id": "ecpunpack-config",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "ecpunpack-config",
@@ -362,10 +362,10 @@
   {
     "id": "ecppack-bitstream",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "ecppack-bitstream",
@@ -386,10 +386,10 @@
   {
     "id": "coreutils-sort",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "coreutils-sort",
@@ -410,10 +410,10 @@
   {
     "id": "coreutils-sha256sum",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "coreutils-sha256sum",
@@ -434,10 +434,10 @@
   {
     "id": "coreutils-base64",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "coreutils-base64",
@@ -458,10 +458,10 @@
   {
     "id": "coreutils-wc",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "coreutils-wc",
@@ -482,10 +482,10 @@
   {
     "id": "ripgrep-source",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "ripgrep-source",
@@ -506,10 +506,10 @@
   {
     "id": "yosys-counter",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "yosys-counter",
@@ -530,10 +530,10 @@
   {
     "id": "icemulti-image",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "icemulti-image",
@@ -554,10 +554,10 @@
   {
     "id": "icepack-pack",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "icepack-pack",
@@ -578,10 +578,10 @@
   {
     "id": "iceunpack-unpack",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "iceunpack-unpack",
@@ -602,10 +602,10 @@
   {
     "id": "ecpbram-generate",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "ecpbram-generate",
@@ -626,10 +626,10 @@
   {
     "id": "icebram-generate",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "icebram-generate",
@@ -650,10 +650,10 @@
   {
     "id": "ecppll-clock",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "ecppll-clock",
@@ -674,10 +674,10 @@
   {
     "id": "icepll-clock",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "icepll-clock",
@@ -698,10 +698,10 @@
   {
     "id": "json2csv-people",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "json2csv-people",
@@ -722,10 +722,10 @@
   {
     "id": "tree-ashell-list",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "tree-ashell-list",
@@ -746,10 +746,10 @@
   {
     "id": "tree-list",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "tree-list",
@@ -770,10 +770,10 @@
   {
     "id": "brotli-compress",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "brotli-compress",
@@ -794,10 +794,10 @@
   {
     "id": "brotli-decompress",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "brotli-decompress",
@@ -818,10 +818,10 @@
   {
     "id": "jq-json-transform",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "jq-json-transform",
@@ -842,10 +842,10 @@
   {
     "id": "age-decrypt",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "age-decrypt",
@@ -866,10 +866,10 @@
   {
     "id": "age-keygen-public",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "age-keygen-public",
@@ -890,10 +890,10 @@
   {
     "id": "lzmainfo-header",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "lzmainfo-header",
@@ -914,10 +914,10 @@
   {
     "id": "lzmadec-decompress",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "lzmadec-decompress",
@@ -938,10 +938,10 @@
   {
     "id": "xzdec-decompress",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "xzdec-decompress",
@@ -962,10 +962,10 @@
   {
     "id": "sqlite3-query",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "sqlite3-query",
@@ -986,10 +986,10 @@
   {
     "id": "duktape-script",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "duktape-script",
@@ -1010,10 +1010,10 @@
   {
     "id": "quickjs-script",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "quickjs-script",
@@ -1034,10 +1034,10 @@
   {
     "id": "swift-format-source",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "swift-format-source",
@@ -1058,10 +1058,10 @@
   {
     "id": "esbuild-minify",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "esbuild-minify",
@@ -1082,10 +1082,10 @@
   {
     "id": "tiny",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "tiny",
@@ -1106,10 +1106,10 @@
   {
     "id": "fib_rec",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "fib_rec",
@@ -1130,10 +1130,10 @@
   {
     "id": "memory",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "memory",
@@ -1154,10 +1154,10 @@
   {
     "id": "memory_tree",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "memory_tree",
@@ -1178,10 +1178,10 @@
   {
     "id": "dispatch",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "dispatch",
@@ -1202,10 +1202,10 @@
   {
     "id": "many_funcs",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "many_funcs",
@@ -1226,10 +1226,10 @@
   {
     "id": "linked_list",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "linked_list",
@@ -1250,10 +1250,10 @@
   {
     "id": "nbody",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "nbody",
@@ -1274,10 +1274,10 @@
   {
     "id": "fannkuch",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "fannkuch",
@@ -1298,10 +1298,10 @@
   {
     "id": "matmul",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "matmul",
@@ -1322,10 +1322,10 @@
   {
     "id": "sha256",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "sha256",
@@ -1346,10 +1346,10 @@
   {
     "id": "raytrace",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "raytrace",
@@ -1370,10 +1370,10 @@
   {
     "id": "json-as",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "json-as",
@@ -1394,10 +1394,10 @@
   {
     "id": "blake-as",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "blake-as",
@@ -1418,10 +1418,10 @@
   {
     "id": "utf-as",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "utf-as",
@@ -1442,10 +1442,10 @@
   {
     "id": "json-as-simd",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "json-as-simd",
@@ -1466,10 +1466,10 @@
   {
     "id": "blake-as-simd",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "blake-as-simd",
@@ -1490,10 +1490,10 @@
   {
     "id": "utf-as-simd",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "utf-as-simd",
@@ -1514,10 +1514,10 @@
   {
     "id": "coremark",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "coremark",
@@ -1538,10 +1538,10 @@
   {
     "id": "blake3",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "blake3",
@@ -1562,10 +1562,10 @@
   {
     "id": "qoi",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "qoi",
@@ -1586,10 +1586,10 @@
   {
     "id": "lz4",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "lz4",
@@ -1610,10 +1610,10 @@
   {
     "id": "zlib",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "zlib",
@@ -1634,10 +1634,10 @@
   {
     "id": "zstd",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "zstd",
@@ -1658,10 +1658,10 @@
   {
     "id": "yyjson",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "yyjson",
@@ -1682,10 +1682,10 @@
   {
     "id": "utf8proc",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "utf8proc",
@@ -1706,10 +1706,10 @@
   {
     "id": "xxhash",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "xxhash",
@@ -1730,10 +1730,10 @@
   {
     "id": "libtommath",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "libtommath",
@@ -1754,10 +1754,10 @@
   {
     "id": "nanosvg",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "nanosvg",
@@ -1778,10 +1778,10 @@
   {
     "id": "kissfft",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "kissfft",
@@ -1802,10 +1802,10 @@
   {
     "id": "miniz",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "miniz",
@@ -1826,10 +1826,10 @@
   {
     "id": "monocypher",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "monocypher",
@@ -1850,10 +1850,10 @@
   {
     "id": "drwav",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "drwav",
@@ -1874,10 +1874,10 @@
   {
     "id": "fastfloat",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "fastfloat",
@@ -1898,10 +1898,10 @@
   {
     "id": "pcre2",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "pcre2",
@@ -1922,10 +1922,10 @@
   {
     "id": "cjson",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "cjson",
@@ -1946,10 +1946,10 @@
   {
     "id": "lodepng",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "lodepng",
@@ -1970,10 +1970,10 @@
   {
     "id": "wren",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "wren",
@@ -1994,10 +1994,10 @@
   {
     "id": "tinyxml2",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "tinyxml2",
@@ -2018,10 +2018,10 @@
   {
     "id": "lua",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "lua",
@@ -2042,10 +2042,10 @@
   {
     "id": "embench-crc32",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "embench-crc32",
@@ -2066,10 +2066,10 @@
   {
     "id": "embench-huffbench",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "embench-huffbench",
@@ -2090,10 +2090,10 @@
   {
     "id": "embench-matmult-int",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "embench-matmult-int",
@@ -2114,10 +2114,10 @@
   {
     "id": "embench-nettle-aes",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "embench-nettle-aes",
@@ -2138,10 +2138,10 @@
   {
     "id": "embench-nettle-sha256",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "embench-nettle-sha256",
@@ -2162,10 +2162,10 @@
   {
     "id": "embench-qrduino",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "embench-qrduino",
@@ -2186,10 +2186,10 @@
   {
     "id": "sightglass-shootout-base64",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "sightglass-shootout-base64",
@@ -2210,10 +2210,10 @@
   {
     "id": "sightglass-libsodium-hash",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "sightglass-libsodium-hash",
@@ -2234,10 +2234,10 @@
   {
     "id": "tacle-bsort",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "tacle-bsort",
@@ -2258,10 +2258,10 @@
   {
     "id": "polybench-2mm",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-2mm",
@@ -2282,10 +2282,10 @@
   {
     "id": "polybench-3mm",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-3mm",
@@ -2306,10 +2306,10 @@
   {
     "id": "polybench-adi",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-adi",
@@ -2330,10 +2330,10 @@
   {
     "id": "polybench-atax",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-atax",
@@ -2354,10 +2354,10 @@
   {
     "id": "polybench-bicg",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-bicg",
@@ -2378,10 +2378,10 @@
   {
     "id": "polybench-cholesky",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-cholesky",
@@ -2402,10 +2402,10 @@
   {
     "id": "polybench-correlation",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-correlation",
@@ -2426,10 +2426,10 @@
   {
     "id": "polybench-covariance",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-covariance",
@@ -2450,10 +2450,10 @@
   {
     "id": "polybench-deriche",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-deriche",
@@ -2474,10 +2474,10 @@
   {
     "id": "polybench-doitgen",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-doitgen",
@@ -2498,10 +2498,10 @@
   {
     "id": "polybench-durbin",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-durbin",
@@ -2522,10 +2522,10 @@
   {
     "id": "polybench-fdtd-2d",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-fdtd-2d",
@@ -2546,10 +2546,10 @@
   {
     "id": "polybench-floyd-warshall",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-floyd-warshall",
@@ -2570,10 +2570,10 @@
   {
     "id": "polybench-gemm",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-gemm",
@@ -2594,10 +2594,10 @@
   {
     "id": "polybench-gemver",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-gemver",
@@ -2618,10 +2618,10 @@
   {
     "id": "polybench-gesummv",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-gesummv",
@@ -2642,10 +2642,10 @@
   {
     "id": "polybench-gramschmidt",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-gramschmidt",
@@ -2666,10 +2666,10 @@
   {
     "id": "polybench-heat-3d",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-heat-3d",
@@ -2690,10 +2690,10 @@
   {
     "id": "polybench-jacobi-1d",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-jacobi-1d",
@@ -2714,10 +2714,10 @@
   {
     "id": "polybench-jacobi-2d",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-jacobi-2d",
@@ -2738,10 +2738,10 @@
   {
     "id": "polybench-lu",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-lu",
@@ -2762,10 +2762,10 @@
   {
     "id": "polybench-ludcmp",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-ludcmp",
@@ -2786,10 +2786,10 @@
   {
     "id": "polybench-mvt",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-mvt",
@@ -2810,10 +2810,10 @@
   {
     "id": "polybench-nussinov",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-nussinov",
@@ -2834,10 +2834,10 @@
   {
     "id": "polybench-seidel-2d",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-seidel-2d",
@@ -2858,10 +2858,10 @@
   {
     "id": "polybench-symm",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-symm",
@@ -2882,10 +2882,10 @@
   {
     "id": "polybench-syr2k",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-syr2k",
@@ -2906,10 +2906,10 @@
   {
     "id": "polybench-syrk",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-syrk",
@@ -2930,10 +2930,10 @@
   {
     "id": "polybench-trisolv",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-trisolv",
@@ -2954,10 +2954,10 @@
   {
     "id": "polybench-trmm",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "polybench-trmm",
@@ -2978,10 +2978,10 @@
   {
     "id": "wren-modulo",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "wren-modulo",
@@ -3002,10 +3002,10 @@
   {
     "id": "grain-stdlib-array",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "grain-stdlib-array",
@@ -3026,10 +3026,10 @@
   {
     "id": "grain-stdlib-string",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "grain-stdlib-string",
@@ -3050,10 +3050,10 @@
   {
     "id": "grain-stdlib-json-subset",
     "mode": "ordinary",
-    "baseline": "INCOMPLETE",
+    "baseline": "PASS",
     "port": "PASS",
-    "both_suites_completed": false,
-    "matched_pass": false
+    "both_suites_completed": true,
+    "matched_pass": true
   },
   {
     "id": "grain-stdlib-json-subset",
