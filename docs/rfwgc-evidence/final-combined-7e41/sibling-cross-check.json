@@ -1,0 +1,30 @@
+[
+  {
+    "project": "Slipstream",
+    "repository": "/home/dev/Projects/slipstream",
+    "pin": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+    "config_blob_sha256": {
+      "README.md": "687d00e99d10ce803bb36ab52075ed911893adeec83255143a591911d06d3dfe"
+    },
+    "go_source_count": 1,
+    "symbol_search_exit": 1,
+    "symbol_matches": "",
+    "scope": "Read-only source/configuration search for these wrapper symbols and Staticcheck; no sibling build/test/mutation.",
+    "conclusion": "No matching wrapper or Staticcheck implementation found in searched paths; no sibling defect asserted."
+  },
+  {
+    "project": "Starshine",
+    "repository": "/home/dev/.t3/worktrees/starshine-mb/audit-xcheck-slip-r2-1-brif-liveness",
+    "pin": "f4ca0ce52baa2a51f0ad483fed1529dac153ae44",
+    "config_blob_sha256": {
+      ".github/workflows/ci.yml": "3a4bdbb5bc4884087da351530e776ca160b5dbb6d87f1deee75ad74dc4fa53a3",
+      "README.md": "034e54ae513173f7b1de5d5c5f5f739aa89a7848ee1ef41e0b9c819fb4c3ed30",
+      "package.json": "ae562fddde34a2006c58179893f3113f8674a92e7c16a70c7e5fe0d8bf0d09da"
+    },
+    "go_source_count": 2,
+    "symbol_search_exit": 1,
+    "symbol_matches": "",
+    "scope": "Read-only source/configuration search for these wrapper symbols and Staticcheck; no sibling build/test/mutation.",
+    "conclusion": "No matching wrapper or Staticcheck implementation found in searched paths; no sibling defect asserted."
+  }
+]

@@ -37,6 +37,12 @@
       "raw_sha256": "5f72d7eb5a83be49294098159b69154625557986b025526cc9f340b5be0eca40"
     },
     {
+      "suite": "cli-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "6278de7be7bf0eb34ad4d1d433d8042cf841f796bf8549cb5c3ddd10cc7bad92"
+    },
+    {
       "suite": "early-replay-cipolicy-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "exit": 0,
@@ -91,6 +97,12 @@
       "raw_sha256": "c38ca0304e58356eae64ff67fe62f31d76fdcd212241baadae8a65fbf6dc1e16"
     },
     {
+      "suite": "full-root-replay-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "a6a0da6d68f2df59bc294464ef2936811c97fdc155596ef09df9c9a7fe89c1b6"
+    },
+    {
       "suite": "parent-race-reduced-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "exit": 0,
@@ -127,6 +139,60 @@
       "raw_sha256": "76e87c0a63b5253d4e1616001a155f16eec55bd40d742eca12e2d0cbc4463bc8"
     },
     {
+      "suite": "spec-v1-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "8e130711eff0374bd53d521252586895446b3fe1c6e572a2312817b3b8e64584"
+    },
+    {
+      "suite": "spec-v1-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "d4b8aa46e67578d35749025366e0c2c73191845850ab481f3a4c7966e1c1bc38"
+    },
+    {
+      "suite": "spec-v1-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "ab98256dc8bbbf21ccdb57b15fe90c641e6a769b0d7391022ef9910192cdea89"
+    },
+    {
+      "suite": "spec-v2-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "b7c1005ffae340ae43292be13dfdb3e9837dddbbdcfd6235b23109e3f6cccd48"
+    },
+    {
+      "suite": "spec-v2-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "78855283e497810028e68a67f76904e5a5d69e9f774827c77fa0edca1c419b0c"
+    },
+    {
+      "suite": "spec-v2-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "a7314c00ac35c967b3f5e9beec34bb8da1c11ea3188c29e14ef710c56809b8dd"
+    },
+    {
+      "suite": "spec-v3-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "0c2804795f664cda3fc54a949df8c97213da7649df53e1e57865d06472df22c0"
+    },
+    {
+      "suite": "spec-v3-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "e26f82163be1548a3afeb608193300aae7255b0882eb4272531497ba5c042bd2"
+    },
+    {
+      "suite": "spec-v3-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "9ad32dc1bb696c50b95262eefc65f08ddb503bdd44a19a882c3e6e36f6047d99"
+    },
+    {
       "suite": "tinygo-unsupported-global-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "exit": 0,
@@ -143,6 +209,138 @@
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "exit": 0,
       "raw_sha256": "f71a940f278278451b1b3fc355d44308ed462041c0067c744e1b8f4a8579d2c4"
+    },
+    {
+      "suite": "tooling-actionlint",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "tooling-build-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "tooling-build-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "tooling-build-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "tooling-docs",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "1e8041a3a5b813a44348bbdd13c19dc8aec995c625efb0abdd6db15069ce86e4"
+    },
+    {
+      "suite": "tooling-generate",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "1dfab0c99c39dbd7d4e463b74e0f9a480cffb941b9a1203d05fc108496d02c44"
+    },
+    {
+      "suite": "tooling-node-engine-state-oracle",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "9fc03f0447633f5c8571e93c57581f20075c1fe79829216c7f94584afc3f50a2"
+    },
+    {
+      "suite": "tooling-node-fuzz-engine-state",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "e33a5417bb0945b6eac5e5bea45cbaba705d9040bbb4bad01864b5f0adea71c9"
+    },
+    {
+      "suite": "tooling-node-update-website-bench",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "1c1e5dde45412261ee521ac35e0c5a7acace611f34edab3a1c82a347669bdcee"
+    },
+    {
+      "suite": "tooling-node-update-website-startup",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "71f13a01800dfd83bbfb80fc60f3b5c8bca2ceb75a55580fc82be5b15bb55110"
+    },
+    {
+      "suite": "tooling-script-build-release-assets.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "eab8f0669e2006e88ce6dee00a7c53cee18a689748396ad0aa2b14fb5127f68e"
+    },
+    {
+      "suite": "tooling-script-check-diagnostic-dce.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "7659dc169a9a6586fd191b2ed017e24d970860afbbb723e6540f8a29287fde56"
+    },
+    {
+      "suite": "tooling-script-check-regalloc-code.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "845e85e924e969525c3b4b0835956b5a1be7fbebd104dde32f7e3eef25931421"
+    },
+    {
+      "suite": "tooling-script-check-riscv64-diagnostics.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "549e221b57279bb5c0a652b1d898a5fbb454d00a619d7593d1f918303e14b19c"
+    },
+    {
+      "suite": "tooling-script-ci-download-go-modules.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "137c26c8c1735afd784be23c1a570c9c92707325bd702023df0604c607bc5957"
+    },
+    {
+      "suite": "tooling-script-ci-riscv64",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "8d7056076795532259531b0f647f28d93a3f05b06e99f0493727954c879d62f0"
+    },
+    {
+      "suite": "tooling-script-release-qualification.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "eca5ba9639566b399ce64091f2b0589c179da019a4af1b5c93a0eea6718031c4"
+    },
+    {
+      "suite": "tooling-staticcheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 1,
+      "raw_sha256": "edd602534f5bba82cf09a951427cdccff84c3044c173aa413488424d4303414a"
+    },
+    {
+      "suite": "tooling-staticcheck-bootstrap",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "8b695a00341c521bfaa75f992ccc9bba69fe55335334a6367346d8959936ce1d"
+    },
+    {
+      "suite": "tooling-vet-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "tooling-vet-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "tooling-vet-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
       "suite": "version-go",

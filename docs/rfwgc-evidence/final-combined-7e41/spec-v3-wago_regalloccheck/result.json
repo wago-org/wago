@@ -1,0 +1,22 @@
+{
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T12:59:43.750932153Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestSpecSuiteExec",
+      "Elapsed": 2.53
+    },
+    {
+      "Time": "2026-11-02T12:59:43.752210876Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 2.534
+    }
+  ],
+  "raw_sha256": "e26f82163be1548a3afeb608193300aae7255b0882eb4272531497ba5c042bd2",
+  "driver_unchanged": true
+}

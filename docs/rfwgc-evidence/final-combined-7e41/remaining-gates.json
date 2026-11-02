@@ -1,13 +1,7 @@
 {
   "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-  "remaining_count": 199,
+  "remaining_count": 168,
   "remaining": [
-    {
-      "suite": "full-root-replay-ordinary",
-      "receipt_suite": "full-root-replay-ordinary",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
     {
       "suite": "full-root-replay-wagodebug",
       "receipt_suite": "full-root-replay-wagodebug",
@@ -17,12 +11,6 @@
     {
       "suite": "full-root-replay-wago_regalloccheck",
       "receipt_suite": "full-root-replay-wago_regalloccheck",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "cli-ordinary",
-      "receipt_suite": "cli-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "verdict": "NOT_RUN"
     },
@@ -201,60 +189,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "spec-v1-ordinary",
-      "receipt_suite": "spec-v1-ordinary",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "spec-v1-wagodebug",
-      "receipt_suite": "spec-v1-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "spec-v1-wago_regalloccheck",
-      "receipt_suite": "spec-v1-wago_regalloccheck",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "spec-v2-ordinary",
-      "receipt_suite": "spec-v2-ordinary",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "spec-v2-wagodebug",
-      "receipt_suite": "spec-v2-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "spec-v2-wago_regalloccheck",
-      "receipt_suite": "spec-v2-wago_regalloccheck",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "spec-v3-ordinary",
-      "receipt_suite": "spec-v3-ordinary",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "spec-v3-wagodebug",
-      "receipt_suite": "spec-v3-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "spec-v3-wago_regalloccheck",
-      "receipt_suite": "spec-v3-wago_regalloccheck",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "spec-v3-signals-ordinary",
       "receipt_suite": "spec-v3-signals-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
@@ -341,42 +275,6 @@
     {
       "suite": "diagnostics-established-wago_regalloccheck",
       "receipt_suite": "diagnostics-established-wago_regalloccheck",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-build-ordinary",
-      "receipt_suite": "tooling-build-ordinary",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-build-wagodebug",
-      "receipt_suite": "tooling-build-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-build-wago_regalloccheck",
-      "receipt_suite": "tooling-build-wago_regalloccheck",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-vet-ordinary",
-      "receipt_suite": "tooling-vet-ordinary",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-vet-wagodebug",
-      "receipt_suite": "tooling-vet-wagodebug",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-vet-wago_regalloccheck",
-      "receipt_suite": "tooling-vet-wago_regalloccheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "verdict": "NOT_RUN"
     },
@@ -759,12 +657,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "tooling-generate",
-      "receipt_suite": "tooling-generate",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "replay-generated-diff",
       "receipt_suite": "replay-generated-diff",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
@@ -777,22 +669,10 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "replay-docs",
-      "receipt_suite": "replay-docs",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "replay-actionlint",
-      "receipt_suite": "replay-actionlint",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "replay-staticcheck",
-      "receipt_suite": "replay-staticcheck",
+      "receipt_suite": "tooling-staticcheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "FAIL"
     },
     {
       "suite": "replay-native-compare",
@@ -803,72 +683,6 @@
     {
       "suite": "tooling-portable-386",
       "receipt_suite": "tooling-portable-386",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-script-ci-riscv64",
-      "receipt_suite": "tooling-script-ci-riscv64",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-node-update-website-bench",
-      "receipt_suite": "tooling-node-update-website-bench",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-node-update-website-startup",
-      "receipt_suite": "tooling-node-update-website-startup",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-node-engine-state-oracle",
-      "receipt_suite": "tooling-node-engine-state-oracle",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-node-fuzz-engine-state",
-      "receipt_suite": "tooling-node-fuzz-engine-state",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "replay-build-release-assets.sh",
-      "receipt_suite": "replay-build-release-assets.sh",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "replay-release-qualification.sh",
-      "receipt_suite": "replay-release-qualification.sh",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "replay-ci-download-go-modules.sh",
-      "receipt_suite": "replay-ci-download-go-modules.sh",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-script-check-diagnostic-dce.sh",
-      "receipt_suite": "tooling-script-check-diagnostic-dce.sh",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-script-check-riscv64-diagnostics.sh",
-      "receipt_suite": "tooling-script-check-riscv64-diagnostics.sh",
-      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tooling-script-check-regalloc-code.sh",
-      "receipt_suite": "tooling-script-check-regalloc-code.sh",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "verdict": "NOT_RUN"
     },
@@ -1198,12 +1012,43 @@
     }
   ],
   "completed": [
+    "full-root-replay-ordinary",
+    "cli-ordinary",
     "parent-race-reduced-ordinary",
     "parent-race-reduced-wagodebug",
     "parent-race-reduced-wago_regalloccheck",
     "catalog-ordinary",
     "catalog-wagodebug",
     "catalog-wago_regalloccheck",
+    "spec-v1-ordinary",
+    "spec-v1-wagodebug",
+    "spec-v1-wago_regalloccheck",
+    "spec-v2-ordinary",
+    "spec-v2-wagodebug",
+    "spec-v2-wago_regalloccheck",
+    "spec-v3-ordinary",
+    "spec-v3-wagodebug",
+    "spec-v3-wago_regalloccheck",
+    "tooling-build-ordinary",
+    "tooling-build-wagodebug",
+    "tooling-build-wago_regalloccheck",
+    "tooling-vet-ordinary",
+    "tooling-vet-wagodebug",
+    "tooling-vet-wago_regalloccheck",
+    "tooling-generate",
+    "replay-docs",
+    "replay-actionlint",
+    "tooling-script-ci-riscv64",
+    "tooling-node-update-website-bench",
+    "tooling-node-update-website-startup",
+    "tooling-node-engine-state-oracle",
+    "tooling-node-fuzz-engine-state",
+    "replay-build-release-assets.sh",
+    "replay-release-qualification.sh",
+    "replay-ci-download-go-modules.sh",
+    "tooling-script-check-diagnostic-dce.sh",
+    "tooling-script-check-riscv64-diagnostics.sh",
+    "tooling-script-check-regalloc-code.sh",
     "early-replay-discovery-ordinary",
     "early-replay-compile-ordinary",
     "early-replay-cipolicy-ordinary",
