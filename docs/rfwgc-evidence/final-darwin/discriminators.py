@@ -6,6 +6,9 @@ FIXTURE = 'gc/const-expr-gc.wast'
 NONCE = '00112233445566778899aabbccddeeff'
 MARKER = 'WAGO_REGRESSION_FIXTURE_OUTCOME='
 CANCELLATION = 'TestSharedEntryGuardCancellationAndGC'
+RESERVATION = ['TestGCARM64LiveStructDoesNotPrepareUnusedHandles',
+               'TestGCARM64WideArrayDoesNotPrepareUnconsumableState']
+TWO_RESULT = ['TestTwoIntegerResultRegisterCall']
 REPAIRED = [
     'TestExternrefGlobalHoldingConvertedGCReference',
     'TestGCExternConversionAcrossReferenceTables',
@@ -31,13 +34,26 @@ def lanes(mode):
             'argv': ['go', 'test', '-json', '-v', '-count=1', '-timeout=30s', *flags,
                      '-run=^('+'|'.join(tests)+')$', './src/wago'],
             'environment': env, 'expected_tests': tests, 'discriminator': name})
+    # Keep these independent from full race/diagnostics, which remain required.
+    for name, tests, package, extra, environment in [
+        ('reservation', RESERVATION, './src/wago', ['-race', *flags], {}),
+        ('two-result', TWO_RESULT, './src/core/compiler/backend/railshot/arm64',
+         ['-tags=wago_codegenstats'+('' if mode == 'ordinary' else ','+mode)],
+         {'WAGO_SHARED_SCALAR': '0'}),
+    ]:
+        result.append({'id': name+'-'+mode, 'mode': mode, 'cwd': '.',
+            'argv': ['go', 'test', '-json', '-v', '-count=1', '-timeout=30s', *extra,
+                     '-run=^('+'|'.join(tests)+')$', package],
+            'environment': environment, 'expected_tests': tests, 'discriminator': name})
     return result
 
 
 def evaluate(lane, events, commands):
     passed = [e['Test'] for e in events if e.get('Action') == 'pass' and e.get('Test') and '/' not in e['Test']]
     ok = sorted(passed) == sorted(lane['expected_tests']) and not any(e.get('Action') in ('fail', 'skip') for e in events)
-    result = {'exact_test_census': ok}
+    result = {'exact_test_census': ok, 'expected_tests': lane['expected_tests'],
+              'passing_top_level_tests': passed,
+              'terminal_events': [e for e in events if e.get('Action') in ('pass', 'fail', 'skip')]}
     if lane['discriminator'] != 'core3-child':
         return result, ok
     output = ''.join(e.get('Output', '') for e in events)

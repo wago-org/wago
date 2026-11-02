@@ -1,0 +1,19 @@
+{
+  "source": "21d7be58952b64435110246f65d44e11046c5083",
+  "head_at_audit": "9f58c68886b707e9384825f3013d65024b033148",
+  "comparison_base": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
+  "non_docs_delta": [
+    "src/core/compiler/backend/railshot/arm64/callexec_arm64_test.go",
+    "src/core/runtime/arm64spike/spike.go",
+    "src/wago/gc_native_reservation_arm64_test.go"
+  ],
+  "executable_production_delta": "NONE: two _test.go repairs and Call2 documentation only",
+  "source_to_current_head_code_delta": "NONE",
+  "workflow_sha256": "f352281f3779615da24aa5ddf99a420d6007d94f2887f80352d48423f99ca0e6",
+  "workflow_byte_identical_to_041f": true,
+  "native_arm_source": "08f511fac41a77f4c0f9046f88ebc78ad05a5da6",
+  "tinygo_source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "cross_pin_comparison": "NO equivalence or native result transfer claimed",
+  "reservation_review": "4f77ca9ce",
+  "two_result_review": "367c026239607fc621f219b88a52929f3354de00"
+}

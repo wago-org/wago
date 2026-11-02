@@ -1,3 +1,5 @@
+Current revision: [21d7be589 preparation](revision-21d7be589/README.md), execution source `21d7be58952b64435110246f65d44e11046c5083`. Parent activation review and native receipts required. Earlier sections below describe historical revisions.
+
 # Next native Darwin qualification: prepared, not dispatched
 
 Execution source: **7e41fafbbcd737ed1edce11b94b43b4eda134dcf**.
