@@ -914,3 +914,11 @@ them as final INCLUDED acceptance: owner's bucket requires combined gatesgreen,
 reviewzero unresolved; missing997421119d1d/100311bcf23fd provenance remains.
 Migration adapter stays regression/futureallocator obligation; no new production
 relocation requested because currentgrowthreservedcapacitydoesnotrelocate.
+
+## 2026-11-02 — current qualification and rollup checkpoint
+
+Candidate08f511fac, harness/delta041f7ed4c. Combined5b02 finished220 gates:216PASS/4FAIL, no unrun; fresh041f delta8PASS repairs formatting but does not relabel the three failed QEMU repair cells. Native current-source Linux ARM64 audit6a5d7272c passes192 per mode, including every failed substantive assertion normally/race; whole-gate/emulator equivalence is not established. QEMU timer and non-deadline cancellation are separately investigated. Darwin current-source run41466555967 remains active. Native Darwin TinyGo audit094558f99 passes33/36/33 plus23required children each at7e41 with reviewed test overlay/private compiler patch; no later-source/fullCI credit.
+
+All seven published PR heads were freshly queried and match the assessed sources. Parent retains intended INCLUDED scope for997/1003/1019/1020/1026/1027/1030; final INCLUDED remains pending green final gates. No SUPERSEDED or INCOMPATIBLE topic identified; no PR closed. Missing421119d1d/11bcf23fd objects are not claimed integrated; freshest verified published heads used. PR1003 includes current extent-validation topic, not retired abstract-array fusion. H2/H6F3/H6F2 final INCLUDED-FIX remains gated; H4F1 PRESENT-OUT-OF-SCOPE, exactH6F1 trigger ABSENT, H1F1 low32 protocol ABSENT as recorded.
+
+Updated single consolidated report: docs/rfwgc-evidence/final-review-consolidated/README.md. Initial four-reviewer fan and all scoped repair/re-review outcomes are reconciled without overwriting historical failures. RR1/2/3 andDR2 scoped closures retained; DarwinDR3 implementation/native-focused evidence distinguished from still-pending final platform acceptance. Performance preparation only; no lease/timings/PR readiness. November4 remains at risk. Existing unrelated four-line corpus mirror entry remains uncommitted and excluded from this checkpoint commit.
