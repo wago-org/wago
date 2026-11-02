@@ -1,0 +1,22 @@
+{
+  "source": "5847df30f1af15d10b743d90a24b1429b290d358",
+  "implementation_evidence": "0d460778c4a7c8e5d5fae5dbd7b093ed418776d1",
+  "independent_review": "5fda66aa4",
+  "review_verdict": {
+    "RR1": "CLOSED on Linux amd64",
+    "RR2": "CLOSED on Linux amd64",
+    "RR3": "CLOSED on Linux amd64",
+    "DR2": "retained; cross-Runtime safety controls pass"
+  },
+  "qualification": "INCOMPLETE; ARM64 QEMU fails timer_create signal64 EINVAL; native Linux ARM64 pending",
+  "darwin": "da19 native run41431926958 fails converted publication/Core3 and other gates; production portability work underway",
+  "provenance": "Implementer post-comparison and nested-control used Go1.27.3; independent reviewer Go1.27.1 reproduces closure. Do not conflate tool pins.",
+  "residual_review_risks": [
+    "Retirement may wait indefinitely under continuously overlapping dynamic readers",
+    "Internal background cleanup panic would terminate process",
+    "No production retirement-quiesce wait"
+  ],
+  "final_port_approval": false,
+  "measurement": "NOT_RUN; independent lease remains required",
+  "publication": "No port PR opened"
+}
