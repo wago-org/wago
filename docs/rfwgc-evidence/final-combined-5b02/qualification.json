@@ -24,6 +24,34 @@
       "plain_passes": [],
       "plain_skips": [],
       "plain_failures": [],
+      "suite": "baseline-corpus-ordinary",
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "verdict": "INTERRUPTED",
+      "exit": null,
+      "command": "baseline-corpus-ordinary/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "batch-tinygo-0",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "INTERRUPTED",
+      "exit": null,
+      "command": "batch-tinygo-0/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
       "suite": "catalog-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "PASS",
@@ -16323,13 +16351,187 @@
       "plain_failures": [],
       "suite": "corpus-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "INTERRUPTED",
-      "exit": null,
+      "verdict": "PASS",
+      "exit": 0,
       "command": "corpus-wago_regalloccheck/command.json",
-      "pass_count": 0,
-      "top_level_passes": [],
+      "pass_count": 880,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogContainsOnlyExecutableWorkloads"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestValidateCorpusModuleRequiresEndToEndOracle"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogSemanticLinks"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogSelection"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestValidateCorpusModuleStagesAndSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogCIGates"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestValidateCorpusModuleCommandOracles"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestApplicationCorpusRuns"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpus"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogGrainStdlibHostContract"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogGrainStdlibSourceBundle"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogGrainStdlibCore2Profile"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusSemanticExec"
+        }
+      ],
       "failures": [],
-      "skips": []
+      "skips": [
+        {
+          "event": {
+            "Time": "2026-11-02T14:04:30.47531502Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/clang-c-kernels/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/clang-c-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-c-kernels/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:04:38.106982841Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/clang-cpp-kernels/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/clang-cpp-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-cpp-kernels/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:05:14.323941404Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/fasttree-phylogeny/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/fasttree-phylogeny/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/fasttree-phylogeny/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:05:14.342942727Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/gnu-seq-range/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/gnu-seq-range/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/gnu-seq-range/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:05:14.358560069Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/gnu-tr-uppercase/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/gnu-tr-uppercase/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/gnu-tr-uppercase/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:05:18.693448567Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/lcs-substrings/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/lcs-substrings/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lcs-substrings/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:05:19.056958573Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/lua-cli-buckets/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/lua-cli-buckets/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lua-cli-buckets/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:05:19.776580982Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/micropython-squares/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/micropython-squares/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/micropython-squares/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:05:19.799404598Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/needleman-wunsch-dna/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/needleman-wunsch-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/needleman-wunsch-dna/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:05:33.300230079Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/sed-records/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/sed-records/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/sed-records/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:05:33.332092984Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:05:33.416531653Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/smith-waterman-dna/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/smith-waterman-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/smith-waterman-dna/wazero (0.00s)\n"
+        }
+      ]
     },
     {
       "plain_passes": [],
@@ -140033,13 +140235,434 @@
       "plain_failures": [],
       "suite": "nested-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "INTERRUPTED",
-      "exit": null,
+      "verdict": "PASS",
+      "exit": 0,
       "command": "nested-wago_regalloccheck/command.json",
-      "pass_count": 0,
-      "top_level_passes": [],
+      "pass_count": 505,
+      "top_level_passes": [
+        {
+          "package": "github.com/wago-org/wago/bench/cmd/benchpub",
+          "test": "TestSuiteRegexIncludesPublishedBoundaryBenchmarks"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/cmd/benchpub",
+          "test": "TestParseRunAcceptsOptionalProcessorSuffix"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/cmd/benchpub",
+          "test": "TestParseRunDropsContainerWithChildrenWithoutProcessorSuffix"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/cmd/corpus-shard",
+          "test": "TestPlanWritesSelectorAndCompletionReport"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/cmd/validatestats",
+          "test": "TestValidationStatsCommand"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/corpusplan",
+          "test": "TestGroupsAreDeterministicAndComplete"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/corpusplan",
+          "test": "TestWorkUnitsCountStagesAndSemanticRepetitions"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/corpusplan",
+          "test": "TestLoadCatalogFiltersCommandOnlyAndVerifiesDigests"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/corpusplan",
+          "test": "TestParseShard"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestApplicationCorpusShardPlanIsDeterministicAndComplete"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestApplicationCorpusWorkflowMatchesShardPlan"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestBLAKE3LegacyRotateRollback"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestCorpusReleasesCompiledMappings"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestLoadManifestRejectsMalformedDocuments"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestLoadManifestRejectsTrailingContent"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestBenchNativeMappingRelease"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestBenchMappingIdentityPredicate"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestBenchMappingIdentityAddressReuse"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestBenchCompiledOwner"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestLoadManifestContractMutations"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestBenchBackendRelease"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogContainsOnlyExecutableWorkloads"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandCorpusRunsOnLinuxAMD64"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestWebsiteProfileUsesCuratedPairedWorkloads"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestSightglassLibsodiumTuningInput"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusCandidatesStaySeparateFromExecutableCatalog"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestValidateCorpusModuleRequiresEndToEndOracle"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogSemanticLinks"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogSelection"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestValidateCorpusModuleStagesAndSource"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogCIGates"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestValidateCorpusModuleCommandOracles"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestAShellGetcwd"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestAShellGetenv"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandOracleStdout"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandArgsMulticall"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandTreeSHA256"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandSupportsPlatform"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCommandScratchPreopen"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestPointerExportsHonorExecutionTimeout"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestExecutionRejectsChangedOracle"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestSemanticCorpusManifest"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/internal/semanticcorpus",
+          "test": "TestSemanticCorpus"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestApplicationCorpusRuns"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestExplicitMemoryCopyForward12"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestExplicitMemoryCopyForward12Dynamic"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestExplicitMemoryCopyForward12DynamicHigh"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusCompletionWrappers"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusCompletionProtocol"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusChildOutputLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusCompletionDuplicateExports"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusCompletionExactSlots"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpus"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusChildTimeout"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusTimeoutRunner"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestExecBatchAllocationUnits"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestFirstPreparedIterationLimit"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestFirstPreparedCallState"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestFirstPreparedCallControls"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogGrainStdlibHostContract"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogGrainStdlibSourceBundle"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCatalogGrainStdlibCore2Profile"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestImportLifecycleIndependentCommands"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestImportLifecycleSetupFailure"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestMinimalWASICommand"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestCorpusSemanticExec"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestSharingFixtures"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestSharingMappedStorageUsesOwnerCapacity"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestSharingZeroLocals"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestWASIConstructionCopiesConfiguration"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestWASIRegistrationCopiesSignatures"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "TestWorkerDiagnosticConfiguration"
+        },
+        {
+          "package": "github.com/wago-org/wago/bench/suite",
+          "test": "FuzzWASIConstructionIsolation"
+        }
+      ],
       "failures": [],
-      "skips": []
+      "skips": [
+        {
+          "event": {
+            "Time": "2026-11-02T14:07:54.99771857Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/chart",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/bench/chart\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:07:55.116691667Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/cmd/explain",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/bench/cmd/explain\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:07:55.248794649Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/cmd/wagoprof",
+            "Elapsed": 0
+          },
+          "detail": "?   \tgithub.com/wago-org/wago/bench/cmd/wagoprof\t[no test files]\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:07:55.609719469Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestVerifyApplicationCorpusShardReports",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestVerifyApplicationCorpusShardReports\n    application_corpus_shards_test.go:122: application corpus shard report directory is not configured\n--- SKIP: TestVerifyApplicationCorpusShardReports (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:08:11.677968247Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/lua-cli-buckets/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/lua-cli-buckets/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lua-cli-buckets/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:08:12.33421656Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestApplicationCorpusRuns/micropython-squares/wazero",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestApplicationCorpusRuns/micropython-squares/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/micropython-squares/wazero (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:08:15.554936449Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestVerifyCorpusCorrectnessShardReports",
+            "Elapsed": 0.2
+          },
+          "detail": "=== RUN   TestVerifyCorpusCorrectnessShardReports\n    corpus_correctness_shards_test.go:36: corpus correctness shard report directory is not configured\n--- SKIP: TestVerifyCorpusCorrectnessShardReports (0.20s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:08:26.125455896Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestCorpusChild",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestCorpusChild\n    corpus_runner_test.go:123: parent-only helper\n--- SKIP: TestCorpusChild (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:08:26.373684859Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestJsonAsBench",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestJsonAsBench\n    jsonas_test.go:29: json-as module not present (set WAGO_JSON_MODULE): open corpus/json-as.wasm: no such file or directory\n--- SKIP: TestJsonAsBench (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:08:28.320607606Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestSharingGCObservation",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestSharingGCObservation\n    sharing_gc_observation_linux_test.go:16: diagnostic\n--- SKIP: TestSharingGCObservation (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:08:28.320620981Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestSharingMemory",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestSharingMemory\n    sharing_memory_linux_test.go:71: diagnostic\n--- SKIP: TestSharingMemory (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:08:28.320632453Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestSharingMappedMemory",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestSharingMappedMemory\n    sharing_memory_linux_test.go:123: diagnostic\n--- SKIP: TestSharingMappedMemory (0.00s)\n"
+        },
+        {
+          "event": {
+            "Time": "2026-11-02T14:08:28.321518177Z",
+            "Action": "skip",
+            "Package": "github.com/wago-org/wago/bench/suite",
+            "Test": "TestSqliCalibrate",
+            "Elapsed": 0
+          },
+          "detail": "=== RUN   TestSqliCalibrate\n    sqli_rule_test.go:74: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory\n--- SKIP: TestSqliCalibrate (0.00s)\n"
+        }
+      ]
     },
     {
       "plain_passes": [],
@@ -168114,6 +168737,20 @@
       "skips": []
     },
     {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "tinygo-complete-0",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "INTERRUPTED",
+      "exit": null,
+      "command": "tinygo-complete-0/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
       "plain_passes": [
         "--- PASS: TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory (0.00s)",
         "    --- PASS: TestUnsupportedConversionGlobalValidationOrdering/ordinary (0.00s)",
@@ -171072,8 +171709,162 @@
       "suite": "tinygo-34/host-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "exit": null,
-      "verdict": "NOT_RUN",
-      "passes": [],
+      "verdict": "INTERRUPTED",
+      "passes": [
+        "--- PASS: TestMunmapRangeReleasesAnonymousMapping (0.00s)",
+        "--- PASS: TestMadviseDontNeedMappedAndEmptyRanges (0.00s)",
+        "--- PASS: TestNormalizeMemorySizesBoundaries (0.00s)",
+        "--- PASS: TestJobMemoryRejectsNegativeSizes (0.00s)",
+        "    --- PASS: TestJobMemoryRejectsNegativeSizes/fixed (0.00s)",
+        "    --- PASS: TestJobMemoryRejectsNegativeSizes/growable_initial (0.00s)",
+        "    --- PASS: TestJobMemoryRejectsNegativeSizes/growable_maximum (0.00s)",
+        "    --- PASS: TestJobMemoryRejectsNegativeSizes/acquired_initial (0.00s)",
+        "    --- PASS: TestJobMemoryRejectsNegativeSizes/acquired_maximum (0.00s)",
+        "--- PASS: TestJobMemoryBasedataControl (0.00s)",
+        "--- PASS: TestJobMemoryHasTrapCellDetectsCrossInstanceOverwrite (0.00s)",
+        "--- PASS: TestJobMemoryRebindTrapCellPreservesInterruption (0.00s)",
+        "--- PASS: TestTrapMessagesStayCompactAndComplete (0.00s)",
+        "--- PASS: TestTrapAndSlotFormattingHelpers (0.00s)",
+        "--- PASS: TestEngineCacheMatchesRequestedStackCapacity (0.00s)",
+        "--- PASS: TestEngineAndArenaReuseMappings (0.00s)",
+        "--- PASS: TestRuntimeMappingBoundaryHelpers (0.00s)",
+        "--- PASS: TestInstantiateFootprintValidationEdges (0.00s)",
+        "--- PASS: TestBasedataOffsetsMatchWARP (0.00s)",
+        "--- PASS: TestJobMemoryMetadataPointers (0.00s)",
+        "--- PASS: TestJobMemoryMemSizeCache (0.00s)",
+        "--- PASS: TestAcquireJobMemoryGrowableReusesZeroedMemory (0.00s)",
+        "--- PASS: TestAcquireJobMemoryGrowableReusesLargeReservation (0.00s)",
+        "--- PASS: TestAcquireJobMemoryGrowableReuseZeroesGrownPages (0.00s)",
+        "--- PASS: TestHeapCodeBufferAdoptImage (0.00s)",
+        "--- PASS: TestCodeBufferAdoptImageDeclines (0.00s)",
+        "--- PASS: TestCodeBufferSealFailureRetainsCleanupOwnership (0.00s)",
+        "--- PASS: TestCodeBufferCloseFailureRetainsCleanupOwnership (0.00s)",
+        "--- PASS: TestCodeBufferGrowthFailureRetainsBothMappings (0.00s)",
+        "--- PASS: TestCodeBufferGrowSealClose (0.00s)",
+        "--- PASS: TestHeapCodeBufferGrowAndTransfer (0.00s)",
+        "--- PASS: TestCodeBufferAppendTail (0.00s)",
+        "--- PASS: TestCodeBufferTruncate (0.00s)",
+        "--- PASS: TestCodeBufferSelfAppend (0.00s)",
+        "    --- PASS: TestCodeBufferSelfAppend/heap/no_growth (0.00s)",
+        "    --- PASS: TestCodeBufferSelfAppend/heap/growth (0.00s)",
+        "    --- PASS: TestCodeBufferSelfAppend/heap/subslice_growth (0.00s)",
+        "    --- PASS: TestCodeBufferSelfAppend/heap/mapping_tail_growth (0.00s)",
+        "    --- PASS: TestCodeBufferSelfAppend/native/no_growth (0.00s)",
+        "    --- PASS: TestCodeBufferSelfAppend/native/growth (0.00s)",
+        "    --- PASS: TestCodeBufferSelfAppend/native/subslice_growth (0.00s)",
+        "    --- PASS: TestCodeBufferSelfAppend/native/mapping_tail_growth (0.00s)",
+        "--- PASS: TestCodeBufferAppendNoGrowthAllocations (0.00s)",
+        "--- PASS: TestCodePublicationFailureReturnsCleanupOwnership (0.00s)",
+        "    --- PASS: TestCodePublicationFailureReturnsCleanupOwnership/protect/released (0.00s)",
+        "    --- PASS: TestCodePublicationFailureReturnsCleanupOwnership/protect/retained (0.00s)",
+        "    --- PASS: TestCodePublicationFailureReturnsCleanupOwnership/flush/released (0.00s)",
+        "    --- PASS: TestCodePublicationFailureReturnsCleanupOwnership/flush/retained (0.00s)",
+        "    --- PASS: TestCodePublicationFailureReturnsCleanupOwnership/register/released (0.00s)",
+        "    --- PASS: TestCodePublicationFailureReturnsCleanupOwnership/register/retained (0.00s)",
+        "--- PASS: TestSealingMappedCodeDoesNotLeaveAnExecutableRange (0.00s)",
+        "--- PASS: TestDeadlineCapacityAdmission (0.00s)",
+        "--- PASS: TestInterruptRequestSharedOwnership (0.00s)",
+        "--- PASS: TestPrepareBoundedIntContextBindsStableReentryStackAMD64 (0.00s)",
+        "--- PASS: TestNativeStackRangeBoundsAndAlias (0.00s)",
+        "--- PASS: TestEngineRejectsIncompleteTrapBuffersBeforeNativeEntry (0.00s)",
+        "--- PASS: TestJobMemoryRejectsIncompleteTrapBuffers (0.00s)",
+        "--- PASS: TestPrepareHostScalarCallRejectsInvalidState (0.00s)",
+        "--- PASS: TestHostCallRoundtrip (0.00s)",
+        "--- PASS: TestHostCallDeepStack (0.00s)",
+        "--- PASS: TestIdleEngineColdPagesAndHotContents (0.00s)",
+        "--- PASS: TestIdleEngineFailedReclaimCloses (0.00s)",
+        "--- PASS: TestIdleArenaZeroReclaimedReuse (0.00s)",
+        "--- PASS: TestIdleArenaFailedReclaimCloses (0.00s)",
+        "--- PASS: TestIdleOversizedEngineBypassesCache (0.00s)",
+        "--- PASS: TestInstanceContextBytesReserveNativeTailMetadata (0.00s)",
+        "--- PASS: TestEHTagDirectoryLivesOutsideWrapperTailBank (0.00s)",
+        "--- PASS: TestBindInstanceContextBytesAcceptsUnalignedSource (0.00s)",
+        "--- PASS: TestInstanceContextRoundTripLeavesMemoryAndInvocationState (0.00s)",
+        "--- PASS: TestInstanceContextRoundTripRestoresEHTagDirectory (0.00s)",
+        "--- PASS: TestInstanceContextBytesRoundTripRestoresEHTagDirectory (0.00s)",
+        "--- PASS: TestAsyncInterruptRetainsQueuedDeliveryToken (0.00s)",
+        "--- PASS: TestProcessNativeMemoryStatsTracksLifecycle (0.00s)",
+        "--- PASS: TestProcessNativeMemoryStatsTracksCacheReuse (0.00s)",
+        "--- PASS: TestInterruptLinearMemoryCapacityReturnsTypedError (0.01s)",
+        "--- PASS: TestJobMemoryLifecycleRegistersInterruptLinearMemory (0.00s)",
+        "--- PASS: TestUnregisterWaitsForSignalReaders (0.00s)",
+        "--- PASS: TestInterruptLinearMemoryRegistrationScansPastHoles (0.00s)",
+        "--- PASS: TestInterruptSignalOwnership (0.00s)",
+        "--- PASS: TestInterruptTokenChangesOnTrapReuse (0.00s)",
+        "--- PASS: TestInterruptIdleGenerationRollover (0.00s)",
+        "--- PASS: TestInterruptRequestPublishesTokenBeforeTrap (0.01s)",
+        "--- PASS: TestInterruptRequestSharedOwnerRetainsToken (0.00s)",
+        "--- PASS: TestMmapExec (0.00s)",
+        "--- PASS: TestAdd1 (0.00s)",
+        "--- PASS: TestTrapReadback (0.00s)",
+        "--- PASS: TestLinearMemoryZeroCopy (0.00s)",
+        "--- PASS: TestInstantiateArenaNeedAccountsExplicitHostControlFrame (0.00s)",
+        "--- PASS: TestHostCtrlFrameWideCapacityKeepsInlineLayout (0.00s)",
+        "--- PASS: TestHostCtrlFrameRegistrationOnlyTracksWideLengths (0.00s)",
+        "--- PASS: TestInstantiateArenaNeedAccountsDynamicFuncrefTypeIDs (0.00s)",
+        "--- PASS: TestInstantiateArenaNeedAccountsV128GlobalCells (0.00s)",
+        "--- PASS: TestInstantiateArenaNeedZeroLengthTableDescriptor (0.00s)",
+        "--- PASS: TestInstantiateArenaNeedExcludesImportedTableDescriptors (0.00s)",
+        "--- PASS: TestFuncRefDescriptorLayout (0.00s)",
+        "--- PASS: TestInstantiateArenaNeedAllowsElementDropStateWithoutTable (0.00s)",
+        "--- PASS: TestInstantiateArenaNeedRejectsImpossibleTableShape (0.00s)",
+        "    --- PASS: TestInstantiateArenaNeedRejectsImpossibleTableShape/table_size_without_table (0.00s)",
+        "    --- PASS: TestInstantiateArenaNeedRejectsImpossibleTableShape/too_many_imported_tables (0.00s)",
+        "--- PASS: TestInstantiateArenaNeedPassiveElementOverflow (0.00s)",
+        "--- PASS: TestLiveBoundedEntryRejectsMalformedCtrlBeforeNativeEntry (0.00s)",
+        "--- PASS: TestLiveBoundedViewRejectsMalformedCtrlBeforeNativeEntry (0.00s)",
+        "--- PASS: TestLiveBoundedContextRejectsMalformedCtrlBeforeNativeEntry (0.00s)",
+        "--- PASS: TestLiveBoundedViewContextRejectsMalformedCtrlBeforeNativeEntry (0.00s)",
+        "--- PASS: TestClosedNativeOwnersDropMappings (0.00s)",
+        "    --- PASS: TestClosedNativeOwnersDropMappings/engine (0.00s)",
+        "    --- PASS: TestClosedNativeOwnersDropMappings/arena (0.00s)",
+        "    --- PASS: TestClosedNativeOwnersDropMappings/job-memory (0.00s)",
+        "--- PASS: TestArenaAllocatedRange (0.00s)",
+        "--- PASS: TestEnterNativeIntRawIsolatesMXCSRControl (0.00s)",
+        "--- PASS: TestScalarLeafRejectsUnsafeInstructions (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/memory_read (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/closure_read (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/rip_address (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/stack_address (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/stack_destination (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/frame_destination (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/native_pinned_destination (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/uninitialized_input (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/carry_input (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/rotate_through_carry (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/flags_select (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/flags_byte (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/call (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/indirect_call (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/indirect_jump (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/syscall (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/division (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/fp (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/partial_destination (0.00s)",
+        "    --- PASS: TestScalarLeafRejectsUnsafeInstructions/truncated_immediate (0.00s)",
+        "--- PASS: TestScalarLeafTracksDefinedScratch (0.00s)",
+        "--- PASS: TestScalarLeafBodyRequiresI32ABI (0.00s)",
+        "--- PASS: TestNativeLeafInstancesShareExecutableCode (0.00s)",
+        "--- PASS: TestNativeLeafConcurrentRegistrationsRetainSharedCode (0.00s)",
+        "--- PASS: TestForeignCallAllowsGoGCWithOneP (0.04s)",
+        "--- PASS: TestForeignCallRetainsBufferOwners (0.20s)",
+        "--- PASS: TestPreparedScalarHostAdmission (0.00s)",
+        "    --- PASS: TestPreparedScalarHostAdmission/access (0.00s)",
+        "    --- PASS: TestPreparedScalarHostAdmission/trap (0.00s)",
+        "    --- PASS: TestPreparedScalarHostAdmission/ctrl (0.00s)",
+        "    --- PASS: TestPreparedScalarHostAdmission/extension (0.00s)",
+        "    --- PASS: TestPreparedScalarHostAdmission/params (0.00s)",
+        "    --- PASS: TestPreparedScalarHostAdmission/results (0.00s)",
+        "--- PASS: TestPreparedScalarHostEngineRelease (0.00s)",
+        "--- PASS: TestPreparedScalarHostViewAdmissionAndMode (0.00s)",
+        "--- PASS: TestPreparedScalarHostIntegerModeRequiresDetachedProof (0.00s)",
+        "--- PASS: TestGCPreemptStressBounded (0.14s)",
+        "--- PASS: TestTrapNativeOriginConsumedOnceConcurrently (0.00s)",
+        "--- PASS: TestClearTrapUnlessInterrupted (0.00s)",
+        "--- PASS: TestPreparePreparedIntTrap (0.00s)",
+        "--- PASS: TestTrapResetPreservesConcurrentInterruption (0.00s)",
+        "--- PASS: TestEngineCallTrapResetAndBinding (0.00s)"
+      ],
       "skips": [],
       "failures": []
     },
@@ -171373,12 +172164,6 @@
       "passes": [],
       "skips": [],
       "failures": []
-    },
-    {
-      "suite": "baseline-corpus-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN",
-      "reason": "Not executed; no terminal pass evidence."
     },
     {
       "suite": "graphs-port-ordinary",
@@ -172120,9 +172905,9 @@
     }
   ],
   "counts": {
-    "PASS": 81,
-    "INTERRUPTED": 3,
+    "PASS": 83,
+    "INTERRUPTED": 5,
     "FAIL": 1,
-    "NOT_RUN": 158
+    "NOT_RUN": 156
   }
 }
