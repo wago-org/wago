@@ -1,0 +1,80 @@
+[
+  {
+    "label": "harness-final",
+    "command": [
+      "/usr/bin/python3",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/native-arm64-rr3",
+      "-p",
+      "test_harness.py",
+      "-v"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port",
+    "exit": 0
+  },
+  {
+    "label": "actionlint-final",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "run",
+      "github.com/rhysd/actionlint/cmd/actionlint@v1.7.7",
+      ".github/workflows/ci.yml"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port",
+    "exit": 0
+  },
+  {
+    "label": "ordinary-immutable-policy-final",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1"
+    ],
+    "cwd": "/tmp/rr3-native-local-i9wpykx6/source",
+    "exit": 0
+  },
+  {
+    "label": "wagodebug-immutable-policy-final",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1"
+    ],
+    "cwd": "/tmp/rr3-native-local-i9wpykx6/source",
+    "exit": 0
+  },
+  {
+    "label": "wago_regalloccheck-immutable-policy-final",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1"
+    ],
+    "cwd": "/tmp/rr3-native-local-i9wpykx6/source",
+    "exit": 0
+  },
+  {
+    "label": "diff-check-final",
+    "command": [
+      "git",
+      "diff",
+      "--check",
+      "--",
+      ".github/workflows/ci.yml",
+      "tests/integration/cipolicy/workflows_test.go"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port",
+    "exit": 0
+  }
+]

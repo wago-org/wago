@@ -551,8 +551,8 @@ func TestPinnedQualificationIsolatedAndAcyclic(t *testing.T) {
 	jobs := workflowJobBlocks(string(workflow))
 	aggregate := jobs["ci-ok"]
 	for _, required := range []string{
-		"name: ${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && 'Full CI not run (non-Linux dispatch)' || 'CI' }}",
-		"if: always() && (github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification)",
+		"name: ${{ github.event_name == 'workflow_dispatch' && (inputs.darwin_qualification || inputs.native_arm64_rr3) && 'Full CI not run (qualification dispatch)' || 'CI' }}",
+		"if: always() && (github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3))",
 	} {
 		if !strings.Contains(aggregate, required) {
 			t.Errorf("required-check isolation missing %q", required)
@@ -570,6 +570,41 @@ func TestPinnedQualificationIsolatedAndAcyclic(t *testing.T) {
 	} {
 		if !strings.Contains(summary, required) {
 			t.Errorf("special summary missing %q", required)
+		}
+	}
+	native := jobs["native-arm64-rr3"]
+	for _, required := range []string{
+		"runs-on: ubuntu-24.04-arm", "timeout-minutes: 45",
+		"if: github.event_name == 'workflow_dispatch' && inputs.native_arm64_rr3",
+		"mode: [ordinary, wagodebug, wago_regalloccheck]",
+		"ref: '5847df30f1af15d10b743d90a24b1429b290d358'",
+		`test "$QUALIFICATION_DRIVER" = "$WORKFLOW_SHA"`,
+		`test "$OTHER_QUALIFICATION" = false`,
+		"go-version: '1.27.1'", "if: always()",
+	} {
+		if !strings.Contains(native, required) {
+			t.Errorf("native ARM64 qualification missing %q", required)
+		}
+	}
+	for _, job := range []string{"darwin-qualification", "windows-qualification", "darwin-qualification-summary"} {
+		if !strings.Contains(jobs[job], "inputs.darwin_qualification && !inputs.native_arm64_rr3") {
+			t.Errorf("%s can run during native ARM64 dispatch", job)
+		}
+	}
+	if !strings.Contains(jobs["changes"], "!inputs.darwin_qualification && !inputs.native_arm64_rr3") {
+		t.Fatal("native ARM64 dispatch can start normal CI")
+	}
+	nativeSummary := jobs["native-arm64-rr3-summary"]
+	if _, exists := workflowJobNeeds(t, nativeSummary)["ci-ok"]; exists {
+		t.Fatal("native summary must not depend on ci-ok")
+	}
+	for _, required := range []string{
+		"if: always() && github.event_name == 'workflow_dispatch' && inputs.native_arm64_rr3",
+		`n["native-arm64-rr3"]["result"] == "success"`,
+		`v["result"] == "skipped"`, "timeout-minutes: 3",
+	} {
+		if !strings.Contains(nativeSummary, required) {
+			t.Errorf("native ARM64 summary missing %q", required)
 		}
 	}
 	visited, active := map[string]bool{}, map[string]bool{}

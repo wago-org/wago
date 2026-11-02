@@ -1,0 +1,43 @@
+[
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "run",
+      "github.com/rhysd/actionlint/cmd/actionlint@v1.7.7",
+      ".github/workflows/ci.yml"
+    ],
+    "exit": 0
+  }
+]
