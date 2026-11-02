@@ -1,0 +1,13 @@
+{
+  "id": "cancellation-wagodebug",
+  "exit_code": 0,
+  "census_exit_code": 0,
+  "passing_test_events": 1,
+  "failure_events": 0,
+  "failures": [],
+  "skips": [],
+  "status": "PASS",
+  "diagnostic": {
+    "exact_test_census": true
+  }
+}

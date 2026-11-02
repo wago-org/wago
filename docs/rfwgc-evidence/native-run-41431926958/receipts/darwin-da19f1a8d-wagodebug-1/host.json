@@ -1,0 +1,11 @@
+{
+  "source": "da19f1a8d29fec7305d937a42622a198b8e79717",
+  "driver": "336416d2a006bbefded9e5b0b8539199bd6b0e3b",
+  "target": "darwin",
+  "machine": "arm64",
+  "python": "3.15.2 (main, Oct 25 2026, 16:57:51) [Clang 17.0.0 (clang-1700.6.4.2)]",
+  "go": "go version go1.27.1 darwin/arm64",
+  "go_sha256": "132b69336a1f809932a8a20b0201dbbb980e86e3a323ae32e893639d83d71598",
+  "driver_sha256": "856b54a7bce1023913cfc4b99b37aeb63ed88376e9d4aaf4b07be5fddeb5813c",
+  "contracts_sha256": "9bc46bb3d7b77089cc6e7a9b4d49c75f30da5c37ce7b7f51b3aa775a46b6e045"
+}

@@ -1,0 +1,11 @@
+{
+  "source": "da19f1a8d29fec7305d937a42622a198b8e79717",
+  "driver": "336416d2a006bbefded9e5b0b8539199bd6b0e3b",
+  "target": "windows",
+  "machine": "AMD64",
+  "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "go": "go version go1.27.1 windows/amd64",
+  "go_sha256": "d3ccdb604eafa6031133aefe1a3db24f0bb7362b857bc2125ac4e4c178b4b490",
+  "driver_sha256": "856b54a7bce1023913cfc4b99b37aeb63ed88376e9d4aaf4b07be5fddeb5813c",
+  "contracts_sha256": "9bc46bb3d7b77089cc6e7a9b4d49c75f30da5c37ce7b7f51b3aa775a46b6e045"
+}

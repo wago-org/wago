@@ -1,0 +1,47 @@
+{
+  "id": "core3-child-ordinary",
+  "exit_code": 0,
+  "census_exit_code": 0,
+  "passing_test_events": 1,
+  "failure_events": 0,
+  "failures": [],
+  "skips": [],
+  "status": "FAIL",
+  "diagnostic": {
+    "exact_test_census": true,
+    "child_outcomes": [
+      {
+        "protocol": "2",
+        "fixture": "gc/const-expr-gc.wast",
+        "nonce": "00112233445566778899aabbccddeeff",
+        "modules_passed": 9,
+        "modules_skipped": 1,
+        "modules_failed": 0,
+        "assertions_passed": 17,
+        "assertions_skipped": 1,
+        "assertions_failed": 0
+      }
+    ],
+    "malformed_marker": false,
+    "exact_child_census": false,
+    "rejection_sites": [
+      {
+        "line": 96,
+        "phase": "instantiate",
+        "reason": "opaque converted publication is unsupported on this target",
+        "commands": [
+          {
+            "command": {
+              "line": 96,
+              "type": "module_instance"
+            },
+            "definition": "commands.5.wasm"
+          }
+        ],
+        "raw": "    spectest_exec_test.go:1833: gc/const-expr-gc.wast.wast:96 module instantiate rejected: opaque converted publication is unsupported on this target"
+      }
+    ],
+    "raw_child_output": "=== RUN   TestWasmtimeCore3Corpus\n    spectest_exec_test.go:1833: gc/const-expr-gc.wast.wast:96 module instantiate rejected: opaque converted publication is unsupported on this target\nWAGO_REGRESSION_FIXTURE_OUTCOME={\"protocol\":\"2\",\"fixture\":\"gc/const-expr-gc.wast\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"modules_passed\":9,\"modules_skipped\":1,\"modules_failed\":0,\"assertions_passed\":17,\"assertions_skipped\":1,\"assertions_failed\":0}\n--- PASS: TestWasmtimeCore3Corpus (0.10s)\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t0.123s\n",
+    "reason_ceiling": "Only emitted rejection lines are observed reasons; commands.json preserves all assertion sites. Missing assertion reasons are not inferred."
+  }
+}

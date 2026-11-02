@@ -1,0 +1,20 @@
+{"Time":"2026-11-02T10:52:05.6882959Z","Action":"start","Package":"github.com/wago-org/wago/src/wago"}
+{"Time":"2026-11-02T10:52:05.7088252Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairPublicTableOrdinary"}
+{"Time":"2026-11-02T10:52:05.709319Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairPublicTableOrdinary","Output":"=== RUN   TestDesignRepairPublicTableOrdinary\n","OutputType":"frame"}
+{"Time":"2026-11-02T10:52:05.709319Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairPublicTableOrdinary","Output":"--- PASS: TestDesignRepairPublicTableOrdinary (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T10:52:05.709319Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairPublicTableOrdinary","Elapsed":0}
+{"Time":"2026-11-02T10:52:05.709319Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairUnsupportedBulkAtomicity"}
+{"Time":"2026-11-02T10:52:05.709319Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairUnsupportedBulkAtomicity","Output":"=== RUN   TestDesignRepairUnsupportedBulkAtomicity\n","OutputType":"frame"}
+{"Time":"2026-11-02T10:52:05.709319Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairUnsupportedBulkAtomicity","Output":"--- PASS: TestDesignRepairUnsupportedBulkAtomicity (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T10:52:05.7099548Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairUnsupportedBulkAtomicity","Elapsed":0}
+{"Time":"2026-11-02T10:52:05.7099548Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairUnsupportedConvertedPublicToken"}
+{"Time":"2026-11-02T10:52:05.7099548Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairUnsupportedConvertedPublicToken","Output":"=== RUN   TestDesignRepairUnsupportedConvertedPublicToken\n","OutputType":"frame"}
+{"Time":"2026-11-02T10:52:05.7099548Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairUnsupportedConvertedPublicToken","Output":"--- PASS: TestDesignRepairUnsupportedConvertedPublicToken (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T10:52:05.7099548Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestDesignRepairUnsupportedConvertedPublicToken","Elapsed":0}
+{"Time":"2026-11-02T10:52:05.7099548Z","Action":"run","Package":"github.com/wago-org/wago/src/wago","Test":"TestQualificationWindowsGCAdmission"}
+{"Time":"2026-11-02T10:52:05.7099548Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestQualificationWindowsGCAdmission","Output":"=== RUN   TestQualificationWindowsGCAdmission\n","OutputType":"frame"}
+{"Time":"2026-11-02T10:52:05.7099548Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Test":"TestQualificationWindowsGCAdmission","Output":"--- PASS: TestQualificationWindowsGCAdmission (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T10:52:05.7099548Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Test":"TestQualificationWindowsGCAdmission","Elapsed":0}
+{"Time":"2026-11-02T10:52:05.7099548Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Output":"PASS\n","OutputType":"frame"}
+{"Time":"2026-11-02T10:52:05.7122195Z","Action":"output","Package":"github.com/wago-org/wago/src/wago","Output":"ok  \tgithub.com/wago-org/wago/src/wago\t0.023s\n"}
+{"Time":"2026-11-02T10:52:05.7122195Z","Action":"pass","Package":"github.com/wago-org/wago/src/wago","Elapsed":0.024}

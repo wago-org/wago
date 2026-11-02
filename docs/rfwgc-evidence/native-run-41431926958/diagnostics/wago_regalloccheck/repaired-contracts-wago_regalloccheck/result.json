@@ -1,0 +1,24 @@
+{
+  "id": "repaired-contracts-wago_regalloccheck",
+  "exit_code": 1,
+  "census_exit_code": 0,
+  "passing_test_events": 9,
+  "failure_events": 2,
+  "failures": [
+    {
+      "package": "github.com/wago-org/wago/src/wago",
+      "test": "TestExternrefGlobalHoldingConvertedGCReference",
+      "detail": "=== RUN   TestExternrefGlobalHoldingConvertedGCReference\n    externref_global_conversion_test.go:77: SetValue converted rejection: <nil>\n--- FAIL: TestExternrefGlobalHoldingConvertedGCReference (0.00s)\n"
+    },
+    {
+      "package": "github.com/wago-org/wago/src/wago",
+      "test": null,
+      "detail": "FAIL\nFAIL\tgithub.com/wago-org/wago/src/wago\t0.107s\n"
+    }
+  ],
+  "skips": [],
+  "status": "FAIL",
+  "diagnostic": {
+    "exact_test_census": false
+  }
+}

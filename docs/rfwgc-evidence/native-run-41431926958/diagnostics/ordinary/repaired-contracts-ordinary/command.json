@@ -1,0 +1,36 @@
+{
+  "id": "repaired-contracts-ordinary",
+  "mode": "ordinary",
+  "cwd": ".",
+  "argv": [
+    "go",
+    "test",
+    "-json",
+    "-v",
+    "-count=1",
+    "-timeout=30s",
+    "-run=^(TestExternrefGlobalHoldingConvertedGCReference|TestGCExternConversionAcrossReferenceTables|TestFixedSharedDirectGoImport|TestFixedSharedDirectGoCallerScope|TestFixedSharedDirectGoImportPolicy|TestSharedSingleEntryGuardAndGoFallback|TestSharedEntryRegisterResultAndGoFallback|TestSharedEntryRegisterArgumentAndGoFallback|TestSharedEntryGuardForeignFallback|TestSharedSingleNativePinsAndGoFallback)$",
+    "./src/wago"
+  ],
+  "environment": {},
+  "expected_tests": [
+    "TestExternrefGlobalHoldingConvertedGCReference",
+    "TestGCExternConversionAcrossReferenceTables",
+    "TestFixedSharedDirectGoImport",
+    "TestFixedSharedDirectGoCallerScope",
+    "TestFixedSharedDirectGoImportPolicy",
+    "TestSharedSingleEntryGuardAndGoFallback",
+    "TestSharedEntryRegisterResultAndGoFallback",
+    "TestSharedEntryRegisterArgumentAndGoFallback",
+    "TestSharedEntryGuardForeignFallback",
+    "TestSharedSingleNativePinsAndGoFallback"
+  ],
+  "discriminator": "repaired-contracts",
+  "effective_environment": {
+    "GOTOOLCHAIN": "local",
+    "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+    "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+    "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+    "GOMAXPROCS": "2"
+  }
+}

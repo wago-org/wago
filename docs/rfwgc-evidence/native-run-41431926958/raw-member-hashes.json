@@ -1,0 +1,1992 @@
+{
+  "full-job-logs.zip": {
+    "1_Non-Linux qualification summary.txt": {
+      "bytes": 4381,
+      "sha256": "134d741a14282ffc5f40774060cb176a7484942ddaff4c9613e378d5f7c72377"
+    },
+    "Non-Linux qualification summary/system.txt": {
+      "bytes": 782,
+      "sha256": "037889d6fd6219b434f73dab065527eb5d1a8da72632a1fa285dbebc499ae060"
+    },
+    "Non-Linux qualification summary/1_Set up job.txt": {
+      "bytes": 1737,
+      "sha256": "7e01eae4e850d7fc7f154412a2fc80211b99cd52271492da2ef93ea06a575caa"
+    },
+    "Non-Linux qualification summary/2_Verify special Darwin matrix (does not qualify full CI).txt": {
+      "bytes": 2589,
+      "sha256": "3b39d2e264eea622befab57b0ebb02fe2bd7c20657aeaa81cf3961cda1ae4953"
+    },
+    "Non-Linux qualification summary/3_Complete job.txt": {
+      "bytes": 61,
+      "sha256": "e8bc20437a22d6e71c7092c40334f76645600ce9e25c8ac7929397de8431531b"
+    },
+    "3_Pinned Darwin correctness _ wago_regalloccheck.txt": {
+      "bytes": 71512,
+      "sha256": "3013c86430c1667165676ce0d9616897cf2de4933f6ebdba5c56dad71b82b909"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/system.txt": {
+      "bytes": 1172,
+      "sha256": "dc842ab07bdcc231eb7004b443fa99ccaba8915dad2eec106227397b59420eec"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/1_Set up job.txt": {
+      "bytes": 2724,
+      "sha256": "cc1a8b6dbaf2080eb8d9e4ca14e4baee21606e78a7eba2c4762d36c63d5a7d68"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/2_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 14339,
+      "sha256": "5d930695d9d1a7b91a65b310a1ede74d62eb4f9fe523585878418a30c36f0069"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/3_Validate exact input before source checkout.txt": {
+      "bytes": 904,
+      "sha256": "e142edb3dc6029dda1386ae753295df507717f403bcb965555d7b80c758913ee"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/4_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 21417,
+      "sha256": "c31cce6cfcb9af936c8ee057a568cf4b3e1693ee932810c6d9b31d440ef0bcf2"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/5_Run actions_setup-go@40f1582b2485089dde7abd97c1529aa768e1baff.txt": {
+      "bytes": 4952,
+      "sha256": "82d5e3e39fc652a20c9db66f4bd19f5eed05e756ac979227381ed636a8d89971"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/6_Run extractions_setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3.txt": {
+      "bytes": 2275,
+      "sha256": "5b9d49fd78753fd5afe623a3340d11607a1d0572c0cb41d08e14b3cfc70fa765"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/7_Provision native tools and official interpreter.txt": {
+      "bytes": 10123,
+      "sha256": "7c8ca38891640df3b0584b1e58cc9579db453ec4a721b49e4917b2d55351617e"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/8_Execute exact new contracts and generated graphs.txt": {
+      "bytes": 1396,
+      "sha256": "5f5cdf0ff9fd2b69e705cce5cd34c7ee026ff873e65fe68598dde055cffe92e2"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/9_Execute correctness and retain census.txt": {
+      "bytes": 3055,
+      "sha256": "ec4d110456dd89dc816f82fcea35e5c19ed0a876ef2511038a2b8701fda4e861"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/10_Retain setup, failures and partial results.txt": {
+      "bytes": 3414,
+      "sha256": "0fe5e5ff7ba73629aedc60a0305604151a3dd73738c1df6b40dbf2e54ac37f63"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/19_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 4692,
+      "sha256": "4fa7cb31d25b6e941b264a731327c0ea1dc69f0c1d135bc46ab20859cccac174"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/20_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 1746,
+      "sha256": "1fa720e4221083165fe31eeaaba6729a96b17d05c5cd02520aeb2be526b138b5"
+    },
+    "Pinned Darwin correctness _ wago_regalloccheck/21_Complete job.txt": {
+      "bytes": 511,
+      "sha256": "956ec58243e2286a98c658b2e7cdba7763d9f781f76f0510af1b732fd67a6c2a"
+    },
+    "4_Pinned Darwin correctness _ wagodebug.txt": {
+      "bytes": 70650,
+      "sha256": "8153e0355b26508006e9e774ce90097a5cfbee85315dacdc464e5915795c76fe"
+    },
+    "Pinned Darwin correctness _ wagodebug/system.txt": {
+      "bytes": 776,
+      "sha256": "46f84cfb292ab87c0c05dab4706d35716daaf92c5cff7fd4d56173e80f3ad8ed"
+    },
+    "Pinned Darwin correctness _ wagodebug/1_Set up job.txt": {
+      "bytes": 2715,
+      "sha256": "72d87c5e32c486fa8a04979ed539575548387d932b4bb6393090778194470aad"
+    },
+    "Pinned Darwin correctness _ wagodebug/2_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 13772,
+      "sha256": "39e4c65a964dd7c9240d4583e3dfe47c2674848e56691833281a1a3e1c666ab0"
+    },
+    "Pinned Darwin correctness _ wagodebug/3_Validate exact input before source checkout.txt": {
+      "bytes": 904,
+      "sha256": "8dd8ef1554689eef0c4fb62708dd8a78e59ee285f70c8d5373b896b6e0ea52e5"
+    },
+    "Pinned Darwin correctness _ wagodebug/4_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 21227,
+      "sha256": "bd47aeb2038c9f8186576f0911414ada047bedcfdec5e55ad3ef6fd64820abdc"
+    },
+    "Pinned Darwin correctness _ wagodebug/5_Run actions_setup-go@40f1582b2485089dde7abd97c1529aa768e1baff.txt": {
+      "bytes": 4951,
+      "sha256": "ded1387e2191b068c0a9e083c272cf13d5b562c19e7c014ae574544de0ab0041"
+    },
+    "Pinned Darwin correctness _ wagodebug/6_Run extractions_setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3.txt": {
+      "bytes": 2275,
+      "sha256": "871ecdf192d0807bfde393b5897a29c72ff393c27c67cd0a22987e5e2a2c4ef3"
+    },
+    "Pinned Darwin correctness _ wagodebug/7_Provision native tools and official interpreter.txt": {
+      "bytes": 10339,
+      "sha256": "3d739928972431a953c4e3912038f6441b3dff05dd10bfae1190085f8b94dfd3"
+    },
+    "Pinned Darwin correctness _ wagodebug/8_Execute exact new contracts and generated graphs.txt": {
+      "bytes": 1360,
+      "sha256": "3d125d43e6a227d299fb7fff089ca640c7759af722a55b1913ff2fadfabd6b92"
+    },
+    "Pinned Darwin correctness _ wagodebug/9_Execute correctness and retain census.txt": {
+      "bytes": 2825,
+      "sha256": "ed5d22fee53efcfb4000ec79e014a6a478963c5bbfd5c001870055de345db0ae"
+    },
+    "Pinned Darwin correctness _ wagodebug/10_Retain setup, failures and partial results.txt": {
+      "bytes": 3369,
+      "sha256": "f671494923dcb5af9b71211f42735e131a2046ea1e6888dff138efe47bebf864"
+    },
+    "Pinned Darwin correctness _ wagodebug/19_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 4692,
+      "sha256": "915bd3b6e4e0b8236e28411c3af7c873a74d8a8b371ca222583e48a84f6ebb4f"
+    },
+    "Pinned Darwin correctness _ wagodebug/20_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 1746,
+      "sha256": "ac5d995bbdc1e3c086383decbbd623840f52dfd4f3af55c1e59e0d519084c335"
+    },
+    "Pinned Darwin correctness _ wagodebug/21_Complete job.txt": {
+      "bytes": 511,
+      "sha256": "8de612ddd3da8fa31504c4f97d87e6e8f4801cf25b7de70b123368c53792f809"
+    },
+    "5_Pinned Windows storage contracts _ wagodebug.txt": {
+      "bytes": 48496,
+      "sha256": "de81fd1931c11c3f4e7229db35ea9bd02c4153ac74e8d74b9bbd122ed74f50f3"
+    },
+    "Pinned Windows storage contracts _ wagodebug/system.txt": {
+      "bytes": 781,
+      "sha256": "6a89f28be5d9b973faf6aecd00c2b7682040bed36cbc67221be8589acaf29666"
+    },
+    "Pinned Windows storage contracts _ wagodebug/1_Set up job.txt": {
+      "bytes": 2392,
+      "sha256": "8babc7b5e3de2b0e007fa62ee7951e49f075e5e497e56779132b78411f717b5b"
+    },
+    "Pinned Windows storage contracts _ wagodebug/2_Preserve Git blob bytes for hash validation.txt": {
+      "bytes": 872,
+      "sha256": "604a08fd4c7d7d0d90c88b1c417e4544efe7f47a3633e5777b6b4310f6fd4a6b"
+    },
+    "Pinned Windows storage contracts _ wagodebug/3_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 15044,
+      "sha256": "a6186c1a02d4c5364a03a7f25704e68b5ea7badce267fccfc32429dc3465332a"
+    },
+    "Pinned Windows storage contracts _ wagodebug/4_Validate exact input before source checkout.txt": {
+      "bytes": 1051,
+      "sha256": "5c54ce0a5bfd26c30bb016630afc61b38a227187f71040c73f79c5ad65a963c8"
+    },
+    "Pinned Windows storage contracts _ wagodebug/5_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 15038,
+      "sha256": "6e2baba022f40420b5eba20ad2a4595477b6c16f986eb64055e8c72567567dca"
+    },
+    "Pinned Windows storage contracts _ wagodebug/6_Run actions_setup-go@40f1582b2485089dde7abd97c1529aa768e1baff.txt": {
+      "bytes": 5906,
+      "sha256": "8099d0878bef9bc2fb18017661cf8b9f939f34ce5f09415e461b62739ed4bd6c"
+    },
+    "Pinned Windows storage contracts _ wagodebug/7_Execute admitted native storage contracts.txt": {
+      "bytes": 1036,
+      "sha256": "cade6d119d192555ca828d3174bdf8f3540e295031aaa358a6e172bf7c06f4ec"
+    },
+    "Pinned Windows storage contracts _ wagodebug/8_Retain failures and exact census.txt": {
+      "bytes": 2674,
+      "sha256": "721217f30a95c4c3c1a9a61e63f819175bb1f2aaddfef41e4e03a572aa4a8e63"
+    },
+    "Pinned Windows storage contracts _ wagodebug/14_Post Run actions_setup-go@40f1582b2485089dde7abd97c1529aa768e1baff.txt": {
+      "bytes": 308,
+      "sha256": "e985cab8da7c025d3b35988a0d4119e2e0b2a6891030a25711a0b5311815b4db"
+    },
+    "Pinned Windows storage contracts _ wagodebug/15_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 1847,
+      "sha256": "64a9e5c808f13f594972fd1f01c14649e3692d84c102d4a8e247236e158a233e"
+    },
+    "Pinned Windows storage contracts _ wagodebug/16_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 1848,
+      "sha256": "ebca0aa4d8d1c402fea18715d3a7a644ebb8f978bc5186709569b144bd426f81"
+    },
+    "Pinned Windows storage contracts _ wagodebug/17_Complete job.txt": {
+      "bytes": 513,
+      "sha256": "e41e963a66e7e587443168f22815c7891e0e66f86f4df9edbd18db64048cfe8a"
+    },
+    "11_Pinned Darwin correctness _ ordinary.txt": {
+      "bytes": 71302,
+      "sha256": "c36febfefd1c8d32db3c185083e681b7cc9f149ce9e4d8480ded5680e9826595"
+    },
+    "Pinned Darwin correctness _ ordinary/system.txt": {
+      "bytes": 776,
+      "sha256": "05c10b2b5199e0d346b7b10c70fb92bb079f8d21386be8df5abb79386484348e"
+    },
+    "Pinned Darwin correctness _ ordinary/1_Set up job.txt": {
+      "bytes": 2714,
+      "sha256": "1787e7eaed23013e89169ac46021d72f68d0ea8018bfb15ed78a9bbff65c48b1"
+    },
+    "Pinned Darwin correctness _ ordinary/2_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 14402,
+      "sha256": "a24e192bd7dad30df29f48a367e21f017be5886b45dad0a8da9e2bdc613fbec5"
+    },
+    "Pinned Darwin correctness _ ordinary/3_Validate exact input before source checkout.txt": {
+      "bytes": 904,
+      "sha256": "0b58ea125ae149f1c34c97c4280da4ece75fdebfee00b0889df09abfc01baba0"
+    },
+    "Pinned Darwin correctness _ ordinary/4_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 21416,
+      "sha256": "50a3e4730b32b9ba7f45df88d79ee2ca8999f28fcca3f1170b67fabd440781d7"
+    },
+    "Pinned Darwin correctness _ ordinary/5_Run actions_setup-go@40f1582b2485089dde7abd97c1529aa768e1baff.txt": {
+      "bytes": 4952,
+      "sha256": "cdd3838456b1d6182f7a6e65dd20ca6a94cd29e0a6b54e5033c8c756eaea2542"
+    },
+    "Pinned Darwin correctness _ ordinary/6_Run extractions_setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3.txt": {
+      "bytes": 2275,
+      "sha256": "8d7b08ed3aead9c6a7d553dfc0314be76fe73dcda560636d44efe1b1ef70e5da"
+    },
+    "Pinned Darwin correctness _ ordinary/7_Provision native tools and official interpreter.txt": {
+      "bytes": 10231,
+      "sha256": "2d59aafbecc29e38afe3e92066969d46eeb5563d962142908233c95e02a39209"
+    },
+    "Pinned Darwin correctness _ ordinary/8_Execute exact new contracts and generated graphs.txt": {
+      "bytes": 1356,
+      "sha256": "c8e4cee3583e87d491d0b98b81fb7ba7cd705e85e499d9ff38b7d41cd6f48c23"
+    },
+    "Pinned Darwin correctness _ ordinary/9_Execute correctness and retain census.txt": {
+      "bytes": 2775,
+      "sha256": "114c429c7c3f499e635b931498807a4c15c8a4614df23100d3a2cb6cf9fed110"
+    },
+    "Pinned Darwin correctness _ ordinary/10_Retain setup, failures and partial results.txt": {
+      "bytes": 3364,
+      "sha256": "1584d242fa816192a4d052fdf322b4963ea2c71adfa5310e06443925e92f67ea"
+    },
+    "Pinned Darwin correctness _ ordinary/19_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 4692,
+      "sha256": "214a36c28d824f8c8a1e5cd592df35a4e63878b633d90c65c661010d9f2c61dd"
+    },
+    "Pinned Darwin correctness _ ordinary/20_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 1746,
+      "sha256": "5cb3d17f28fbe018db3a35c40a029771ef86738a5007939dbe2d8ce76dc783d5"
+    },
+    "Pinned Darwin correctness _ ordinary/21_Complete job.txt": {
+      "bytes": 511,
+      "sha256": "8a7964a6543bb1a49dbf66491b330a8bb18cce48c235f7519510da2d1dba6efc"
+    },
+    "12_Pinned Windows storage contracts _ wago_regalloccheck.txt": {
+      "bytes": 47552,
+      "sha256": "dd18ca03ac6239b334c26e1f62d2bb8e1c4e48f64e6185705e8674c0fffa354e"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/system.txt": {
+      "bytes": 781,
+      "sha256": "06886fb4bc2dc8b57732471090a62dc55f9850de657a0922134c1a7ce6f60f49"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/1_Set up job.txt": {
+      "bytes": 2404,
+      "sha256": "35436f7d5f06416fc0caf4d2c9112f9908c287f20eb95529976581eda672b61f"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/2_Preserve Git blob bytes for hash validation.txt": {
+      "bytes": 872,
+      "sha256": "5bf6bd79d56fdc0fedba2aea98ceeb3e479f80376baacd94ac0d63c556d82c95"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/3_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 14530,
+      "sha256": "a873c47df53c3708a6c1661dad9a0abdcc4d700ed7f2b469c89d3102384d975a"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/4_Validate exact input before source checkout.txt": {
+      "bytes": 1051,
+      "sha256": "1e385348f4db664ca49d78e39dd84c400ade66e1871b1969eee35375144753d1"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/5_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 14524,
+      "sha256": "7a31f0a437799d7b974141948874ddb0b0e25e57688796da09e862ca747704a9"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/6_Run actions_setup-go@40f1582b2485089dde7abd97c1529aa768e1baff.txt": {
+      "bytes": 5906,
+      "sha256": "cccf75720a7116f8cc45baee4e4b5f8e46183395124f27b58164ac7f6838baa0"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/7_Execute admitted native storage contracts.txt": {
+      "bytes": 1072,
+      "sha256": "bf06f09c651df28ac1344aa9484b4e8eb230a19e0d7ba1fd8b5d262d3e9b3a35"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/8_Retain failures and exact census.txt": {
+      "bytes": 2710,
+      "sha256": "a14e492647ab2a2c8b168ef635efabdd347c5dab146d2817623499ace388c777"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/14_Post Run actions_setup-go@40f1582b2485089dde7abd97c1529aa768e1baff.txt": {
+      "bytes": 308,
+      "sha256": "68f0c35d15fb05e247f211d6d29b954205e6a9c6e5f0414e7999c1ee0407b53c"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/15_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 1847,
+      "sha256": "86d3b6a5ca3bff16f095835d16c265deda61fb30eb401fc074b451808ed1aedd"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/16_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 1848,
+      "sha256": "ad2dc9ee5340926218463ba1e5f5319e88af590e27e44683d32552d51dd67d77"
+    },
+    "Pinned Windows storage contracts _ wago_regalloccheck/17_Complete job.txt": {
+      "bytes": 513,
+      "sha256": "52c743d4ab5e36f248dca32a34f507c2279b1d3c28cd3ae0103ea5472e9e12e1"
+    },
+    "13_Pinned Windows storage contracts _ ordinary.txt": {
+      "bytes": 48166,
+      "sha256": "d7d458b007814a9becd6b6cb7d90e3fd94936ffcd14f81709037ffeef817b218"
+    },
+    "Pinned Windows storage contracts _ ordinary/system.txt": {
+      "bytes": 781,
+      "sha256": "b72e2548067d44e874c908fd26e667e0d284a40f1d0f7674ced08e490cf6bea7"
+    },
+    "Pinned Windows storage contracts _ ordinary/1_Set up job.txt": {
+      "bytes": 2392,
+      "sha256": "67140e2a452619fc5ccc370917709f40a6d97152508f4f3f3da3363f5af4ea4e"
+    },
+    "Pinned Windows storage contracts _ ordinary/2_Preserve Git blob bytes for hash validation.txt": {
+      "bytes": 872,
+      "sha256": "eb903327edb1a344a55b2887aa4dff4dd8efc81b59665042644c24f8d73ec740"
+    },
+    "Pinned Windows storage contracts _ ordinary/3_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 14851,
+      "sha256": "36a3b62efd128a81cc0bfe70aabfd62fe6d0097cce7d5fd29891cb0c0ce727e7"
+    },
+    "Pinned Windows storage contracts _ ordinary/4_Validate exact input before source checkout.txt": {
+      "bytes": 1051,
+      "sha256": "3bb3a1c0eb3cab0f545076100b72de7e892990ca819b4d0434f48883883cad70"
+    },
+    "Pinned Windows storage contracts _ ordinary/5_Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 14909,
+      "sha256": "681a69539f3dacfc1c3954f3e0fe4eba79002f297b51fcbbd14e6551963adb4c"
+    },
+    "Pinned Windows storage contracts _ ordinary/6_Run actions_setup-go@40f1582b2485089dde7abd97c1529aa768e1baff.txt": {
+      "bytes": 5906,
+      "sha256": "a86036963f65000b85876095b884a1e01e6b80eba1a09049bd6be6e9d9a30aa4"
+    },
+    "Pinned Windows storage contracts _ ordinary/7_Execute admitted native storage contracts.txt": {
+      "bytes": 1032,
+      "sha256": "ce794b95addc5919b87d9b057c96aa6c80e8a795714349da459ba1e07e01c371"
+    },
+    "Pinned Windows storage contracts _ ordinary/8_Retain failures and exact census.txt": {
+      "bytes": 2670,
+      "sha256": "f0c87e9a8c3a4bf93a7ed61a5b133032c4762cbeedc25faeb0e08edb165effbd"
+    },
+    "Pinned Windows storage contracts _ ordinary/14_Post Run actions_setup-go@40f1582b2485089dde7abd97c1529aa768e1baff.txt": {
+      "bytes": 308,
+      "sha256": "d744b905a03bca21af41a5c8db59665cfed568e4116d9481f2f340f6f736918f"
+    },
+    "Pinned Windows storage contracts _ ordinary/15_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 1847,
+      "sha256": "64bb147ed11091e0318689b31fe21b91f2b35d76efb802d668bfc5fb2e540310"
+    },
+    "Pinned Windows storage contracts _ ordinary/16_Post Run actions_checkout@11d5960a326750d5838078e36cf38b85af677262.txt": {
+      "bytes": 1848,
+      "sha256": "b00c71c9ad709aa5d27962d8b430ed619ac4b418f99932a09c2ca8df4b4351a1"
+    },
+    "Pinned Windows storage contracts _ ordinary/17_Complete job.txt": {
+      "bytes": 513,
+      "sha256": "488795e7aac05d95f6e1c4d64dd6b4da7896d1ef933f0274f1566a80f4e0e07b"
+    }
+  },
+  "artifacts/darwin-da19f1a8d-ordinary-1.zip": {
+    "setup-receipts/opam-packages.txt": {
+      "bytes": 434,
+      "sha256": "0e7b159b356cbb7e99409e213f3ace5f2f0ec9041ce1a3759233f0815bcedf73"
+    },
+    "setup-receipts/setup.log": {
+      "bytes": 5768,
+      "sha256": "05739939aa720e5f27995df56e8b308f1c54c5d76e89f3756b22a96f78e6e468"
+    },
+    "setup-receipts/opam-switch.export": {
+      "bytes": 565,
+      "sha256": "a40cd0a6b934d63ad6e14500358d89c1a316a865f5b7a894b911a7a84d8c1f66"
+    },
+    "setup-receipts/identity.json": {
+      "bytes": 109,
+      "sha256": "6fac5c4222915ac920ab1a50ef82a21e510c3f5c22fc73d095206887db79efde"
+    },
+    "setup-receipts/spec-build-provenance.txt": {
+      "bytes": 267,
+      "sha256": "cd54e16c125fa9e2e4572a5891c1e4decb831dd50f318d916f21d70c5731fa70"
+    },
+    "setup-receipts/submodules.txt": {
+      "bytes": 440,
+      "sha256": "6c5c407d1b23824a91a5134aa23cdd22a81cebf6941f81b3491a936238555715"
+    },
+    "setup-receipts/tool-hashes.txt": {
+      "bytes": 793,
+      "sha256": "849dd48d06a951ad355757ae9bc960bd056e715e3d1b9cc077ffe35c1b8c6f07"
+    },
+    "setup-receipts/wabt-provenance.txt": {
+      "bytes": 296,
+      "sha256": "4cba5d38d66f0899957e42191d187869bdff6e613daab8d124293250347e6210"
+    },
+    "receipts-ordinary/backend-ordinary/command.json": {
+      "bytes": 1104,
+      "sha256": "ff69c150ed025fc88185d8d35db068332650beb331e77f3ded1b2a26baaf7952"
+    },
+    "receipts-ordinary/backend-ordinary/package-census.jsonl": {
+      "bytes": 120237,
+      "sha256": "4f8507696140bde6e908393201cc6b7e2a70c5375bdcaeb4dfa82767589fa94c"
+    },
+    "receipts-ordinary/backend-ordinary/raw.jsonl": {
+      "bytes": 9696552,
+      "sha256": "c6eab4881ca96ffc080f32c56180e768ff67675b2b6f81a147bea11ec349e250"
+    },
+    "receipts-ordinary/backend-ordinary/result.json": {
+      "bytes": 90449,
+      "sha256": "3ec345405b79ea2882d4e4681f3afb2e4e8bae9ec7e53b8a5bb89611b48ae549"
+    },
+    "receipts-ordinary/cancellation-ordinary/command.json": {
+      "bytes": 778,
+      "sha256": "3fd3aeb9c1680af9c2b3dded4be53ccfcea9f323e353c2d07cf5e41dca36b3fe"
+    },
+    "receipts-ordinary/cancellation-ordinary/package-census.jsonl": {
+      "bytes": 175159,
+      "sha256": "a5eeb2c6996d014a4db767a12449b2cd49c72822afeb61e022638a593ac9343f"
+    },
+    "receipts-ordinary/cancellation-ordinary/raw.jsonl": {
+      "bytes": 1307,
+      "sha256": "61003ed0a8468c176346a4e38f0603c8553c1b2b43279cbe2b3a167c98f0b90a"
+    },
+    "receipts-ordinary/cancellation-ordinary/result.json": {
+      "bytes": 236,
+      "sha256": "63aa7854d55dad2a3bf949291a8e9aadd655a5e0156b64d8b9b7099f9a1c3f61"
+    },
+    "receipts-ordinary/catalog-platform-census.json": {
+      "bytes": 21760,
+      "sha256": "317aec6491befb49e0fbe16764aca3700d8eb4b1960aac9a37e6a0c40524e386"
+    },
+    "receipts-ordinary/cli-ordinary/command.json": {
+      "bytes": 1100,
+      "sha256": "13b653c21b6b7581f5f19ffff7b080a70ebbd83d67bc0caa6fdd8b5cf41cc11f"
+    },
+    "receipts-ordinary/cli-ordinary/package-census.jsonl": {
+      "bytes": 979573,
+      "sha256": "fa26bc4f84b7a755679e369602f95125220fdc2d7e310c4906656c10844c4b1e"
+    },
+    "receipts-ordinary/cli-ordinary/raw.jsonl": {
+      "bytes": 993728,
+      "sha256": "5913765d829eafd9ef6f44812cca57c851487a25f10c89cf50243991b90d7bcb"
+    },
+    "receipts-ordinary/cli-ordinary/result.json": {
+      "bytes": 9319,
+      "sha256": "6b6586779cfd32505aa1d029de83ce2b4cefe1b45ddf8cf6db6198f9557b753a"
+    },
+    "receipts-ordinary/collector-ordinary/package-census.jsonl": {
+      "bytes": 38564,
+      "sha256": "d5e66908db479864b805652fdc75e29ac0983ecc1b0e6776eb7a62729d20d218"
+    },
+    "receipts-ordinary/collector-ordinary/command.json": {
+      "bytes": 1102,
+      "sha256": "1d57592b16285fc893b7fc540d7394abfb569cdb39e5f5ce2b3ba1e49dfa45bc"
+    },
+    "receipts-ordinary/collector-ordinary/raw.jsonl": {
+      "bytes": 2162882,
+      "sha256": "452f8ec293529cdfedcb0219bef1040aa5bd1bd67adfcabebb405cf0a774bf26"
+    },
+    "receipts-ordinary/core3-child-ordinary/command.json": {
+      "bytes": 1160,
+      "sha256": "263861db2be64bef3b70362342bafcf3bc5198802d39354a8e4661a48466ce53"
+    },
+    "receipts-ordinary/core3-child-ordinary/commands-source.json": {
+      "bytes": 6670,
+      "sha256": "520cbf98ea206317d17528ede9f0de78d64845694f0386848d5bbc7241de3527"
+    },
+    "receipts-ordinary/collector-ordinary/result.json": {
+      "bytes": 183,
+      "sha256": "59d8ed8c99b48958b336f8a1f65050b025b8e945afb0a735a33413431509ffa4"
+    },
+    "receipts-ordinary/core3-child-ordinary/fixture-manifest.json": {
+      "bytes": 1065,
+      "sha256": "05a4a587758d96f54faa1c4a020d829d6d3e5a1fc5d1c91963c8266671512636"
+    },
+    "receipts-ordinary/core3-child-ordinary/raw.jsonl": {
+      "bytes": 1945,
+      "sha256": "df2d0e758a829645bbd9fab142d6f91edf86a861289e6930a234af81c61ed660"
+    },
+    "receipts-ordinary/core3-child-ordinary/package-census.jsonl": {
+      "bytes": 174985,
+      "sha256": "66cdc93e49084bbe086f1b0e997a4e5c0ec9b02f8d7bf9b568244ffa8d6e19fa"
+    },
+    "receipts-ordinary/core3-child-ordinary/result.json": {
+      "bytes": 1961,
+      "sha256": "4183207c1f429ee1cbbdd7b3ef65351c360355c219491f5d6afa4337ac47c591"
+    },
+    "receipts-ordinary/corpus-ordinary/package-census.jsonl": {
+      "bytes": 27237,
+      "sha256": "729d8aa7f83cc829d267a24780a082ecbe2482669113ea7840049f5878699d37"
+    },
+    "receipts-ordinary/corpus-ordinary/raw.jsonl": {
+      "bytes": 712143,
+      "sha256": "0d236f8c67aad0f2155d7af89c807cfb4bd9da3e64c60b425f8ca055390db6f2"
+    },
+    "receipts-ordinary/corpus-ordinary/command.json": {
+      "bytes": 1243,
+      "sha256": "a7c9b3a2e3f7b5122e699b554955a496fb5251e79787475621507494336058f2"
+    },
+    "receipts-ordinary/corpus-ordinary/result.json": {
+      "bytes": 5076,
+      "sha256": "960ee40af5078f7f339e6265d9f4845f05964cdd7904fd78486e96dd84b7444a"
+    },
+    "receipts-ordinary/diagnostics-default-ordinary/command.json": {
+      "bytes": 1177,
+      "sha256": "4ef4077c93c593bb03358f6d079c5a62dcba34008f50878808a040810a0263f1"
+    },
+    "receipts-ordinary/diagnostics-default-ordinary/raw.jsonl": {
+      "bytes": 17894693,
+      "sha256": "530d670dba31d80d7f189e1caeadf2c4ef7acbbcedfa4cdef80d9631778e846c"
+    },
+    "receipts-ordinary/diagnostics-default-ordinary/result.json": {
+      "bytes": 30304,
+      "sha256": "473c2992b8bf72102921e28eb9a311498571ab2cdeaf120e1789848cb5d35eff"
+    },
+    "receipts-ordinary/diagnostics-default-ordinary/package-census.jsonl": {
+      "bytes": 295696,
+      "sha256": "d05a844ec6ad0a16b4bab2f6150e21f67aafcfadc8d81a9fc3e43bbb6d97a33a"
+    },
+    "receipts-ordinary/diagnostics-established-ordinary/command.json": {
+      "bytes": 1247,
+      "sha256": "4719aef8be198700700750cf233f73345394fe7ca9a077ac1ebdf250caba6e01"
+    },
+    "receipts-ordinary/diagnostics-established-ordinary/raw.jsonl": {
+      "bytes": 17888890,
+      "sha256": "b4552e6d589ff33e8dd3d774d940a5349266793706d48e81099b445ee06050fb"
+    },
+    "receipts-ordinary/diagnostics-established-ordinary/package-census.jsonl": {
+      "bytes": 295154,
+      "sha256": "8d47bb22a82fe36db44c8a8c274e147c3f150c080a39d5cacd6bd5ac059b6e98"
+    },
+    "receipts-ordinary/diagnostics-established-ordinary/result.json": {
+      "bytes": 22290,
+      "sha256": "f91a1d4530f8066085d4ddf861423028c89d3d3751cded33677140d1a9b66d3d"
+    },
+    "receipts-ordinary/driver-manifest.json": {
+      "bytes": 2586730,
+      "sha256": "4e9d470a64a91dd31915dbce28d4f0aa40fb33271b6f5501835f5190a0b5227e"
+    },
+    "receipts-ordinary/execution-plan.json": {
+      "bytes": 19865,
+      "sha256": "e1d54ff4e977ac6fde3bb9763a932eb84d85a9e9a6252b4f0afd5abcf574a263"
+    },
+    "receipts-ordinary/full-root-replay-ordinary/command.json": {
+      "bytes": 1096,
+      "sha256": "880f214d365e4f59c2828d5e46a86351e6cde5309af91cbb12f834edc8f033aa"
+    },
+    "receipts-ordinary/full-root-replay-ordinary/package-census.jsonl": {
+      "bytes": 2398006,
+      "sha256": "8076174c3a414adc7dcd4b431ccedd7874c641a650085bac1e0dc5a237c578d7"
+    },
+    "receipts-ordinary/full-root-replay-ordinary/raw.jsonl": {
+      "bytes": 26908057,
+      "sha256": "28802809307ec951b846324f59cdeba1af2819de3c86de59344eb612ab71bb62"
+    },
+    "receipts-ordinary/full-root-replay-ordinary/result.json": {
+      "bytes": 128678,
+      "sha256": "f6ebf4a291f2d4ef0af3892edf3bfbfe1642cad0d7616557503129d96eb4cf52"
+    },
+    "receipts-ordinary/guard-corpus-ordinary/command.json": {
+      "bytes": 1276,
+      "sha256": "290992b9f93588fd2a57c22b6e1ed3eb75678db0ee2be98facee019619e7a8dd"
+    },
+    "receipts-ordinary/guard-corpus-ordinary/package-census.jsonl": {
+      "bytes": 27212,
+      "sha256": "e9b030f470e93214ca9e12d5ae32649544f05e3ce000faf28bcb67a297bab031"
+    },
+    "receipts-ordinary/guard-corpus-ordinary/raw.jsonl": {
+      "bytes": 487826,
+      "sha256": "088bc5d50d42b8ddbd84584f35f8e518cfede7fef929f3c8c5e73ea3e778d008"
+    },
+    "receipts-ordinary/guard-corpus-ordinary/result.json": {
+      "bytes": 530,
+      "sha256": "5647e7eb3ca3b2e5f0d34838de2cb370c5541daeed65129cafcef1512d085375"
+    },
+    "receipts-ordinary/guard-ordinary/command.json": {
+      "bytes": 1133,
+      "sha256": "35a5a3006980564198b4ec368c48e2ad57340015d6582cfd5bfcda70b402493a"
+    },
+    "receipts-ordinary/guard-ordinary/package-census.jsonl": {
+      "bytes": 200014,
+      "sha256": "b81aa7f1f7ebe4ef9a61f064e020ce60654a940506faf2aa35bff255d18a72cf"
+    },
+    "receipts-ordinary/guard-ordinary/raw.jsonl": {
+      "bytes": 8671248,
+      "sha256": "7cbb08ff83dd658b528ad4e0a6bf24d5b17c9d9f85225d98f87c128a57900ff0"
+    },
+    "receipts-ordinary/hardening-ordinary/package-census.jsonl": {
+      "bytes": 38564,
+      "sha256": "d5e66908db479864b805652fdc75e29ac0983ecc1b0e6776eb7a62729d20d218"
+    },
+    "receipts-ordinary/guard-ordinary/result.json": {
+      "bytes": 20913,
+      "sha256": "60d724e6e883a59cba129d5aa640e71dd199d94138ef21251155aa1542fbaaee"
+    },
+    "receipts-ordinary/hardening-ordinary/command.json": {
+      "bytes": 1180,
+      "sha256": "ed4be4541b0f063cb6099b2ff221e9d99642be75e4f331e4bdfcaff8fa74245e"
+    },
+    "receipts-ordinary/hardening-ordinary/raw.jsonl": {
+      "bytes": 6486414,
+      "sha256": "10108b2750ed9942461934424426f7ad731b789dc258f1340909bc7e0cec27f6"
+    },
+    "receipts-ordinary/hardening-ordinary/result.json": {
+      "bytes": 183,
+      "sha256": "46df97c202dabf22bd3a0f88a3f244baa251188d3a82e2a4c5e279ab7b62d5d4"
+    },
+    "receipts-ordinary/host-transition-ordinary/command.json": {
+      "bytes": 1423,
+      "sha256": "70f372a7ce24a4e4d82dbb972217b6bf829399f940784d6d01757a97aaf60c4e"
+    },
+    "receipts-ordinary/host-transition-ordinary/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "8c159adda7b7db036b35bb47d3eb6a05fe2d5cda0c09c0866b0727d9d950efca"
+    },
+    "receipts-ordinary/host-transition-ordinary/raw.jsonl": {
+      "bytes": 42846,
+      "sha256": "cabe78fc69bd439db22c933a83a1e420d4d1990da8d131cd41a25f52bdec1b91"
+    },
+    "receipts-ordinary/host-transition-ordinary/result.json": {
+      "bytes": 187,
+      "sha256": "9a8b61bc3e5a69e7675e2afb116adbe7c77598449e2c8000d6faedb4911a9fec"
+    },
+    "receipts-ordinary/host.json": {
+      "bytes": 1098,
+      "sha256": "1ebdc2353307e53c99d5df166d6b86620d1bd1d0122a2e89dd5c9330e51bda45"
+    },
+    "receipts-ordinary/installer-ordinary/command.json": {
+      "bytes": 1099,
+      "sha256": "cbf091cea68db2720da8188f0ddfe968155321f23d2882a724dda85cd7e48d09"
+    },
+    "receipts-ordinary/installer-ordinary/package-census.jsonl": {
+      "bytes": 175,
+      "sha256": "d3ec8cabdc69ebf4458e6e8a22a8a0d3f1a6f835898d5e65e6c3b49034d64237"
+    },
+    "receipts-ordinary/installer-ordinary/raw.jsonl": {
+      "bytes": 1105,
+      "sha256": "14eb39c4585471de837059c40d8be9f736796c0aeeb84609cc3ed22fe8cf8139"
+    },
+    "receipts-ordinary/installer-ordinary/result.json": {
+      "bytes": 364,
+      "sha256": "246bc94a1b28ab546d664fd48cb07f83fc94fcf7996f0dd5af5f27f0688a48d6"
+    },
+    "receipts-ordinary/profile-metadata-ordinary/command.json": {
+      "bytes": 1246,
+      "sha256": "29dad4ea791221ebf2d3156de358d144262cc3d1261f86d5b1c9a7787f0709e2"
+    },
+    "receipts-ordinary/profile-metadata-ordinary/package-census.jsonl": {
+      "bytes": 75895,
+      "sha256": "ab3706cae9a598cfdd3087abfdf4620a9a5c9634653f01a788af114322535677"
+    },
+    "receipts-ordinary/profile-metadata-ordinary/raw.jsonl": {
+      "bytes": 139337,
+      "sha256": "999482cddb4995f41e35755a8496ba24c73c3f83793b8cf3b12ee1a07a5d337e"
+    },
+    "receipts-ordinary/profile-runtime-ordinary/command.json": {
+      "bytes": 1233,
+      "sha256": "7156763f3eb1210dc620054f9b1c392f21bc16dfb187d572f9d5783656dca851"
+    },
+    "receipts-ordinary/profile-metadata-ordinary/result.json": {
+      "bytes": 189,
+      "sha256": "0505929a3b3f770d12cb69869d25041a875e3c1b4c8f6dc9c26165df8aa38f96"
+    },
+    "receipts-ordinary/profile-runtime-ordinary/package-census.jsonl": {
+      "bytes": 296843,
+      "sha256": "c0e805855665012803cdc2e016dcd453306522e99bad3b88c3605a22e3b904c2"
+    },
+    "receipts-ordinary/profile-runtime-ordinary/raw.jsonl": {
+      "bytes": 61608,
+      "sha256": "488fde6c2b9571fb4c8c05988edb98a5c448a1526ac51311f2d28e36672006fa"
+    },
+    "receipts-ordinary/profile-runtime-ordinary/result.json": {
+      "bytes": 1208,
+      "sha256": "2b3783dd1c8fccdd628994a86fe4b0a601bb24c1cfa8f051d935ea4e5903ed3c"
+    },
+    "receipts-ordinary/progress.json": {
+      "bytes": 84,
+      "sha256": "df8e83f9c7521dc22addfe88a18563f91e8315a9ce029dc16d7b8d1c85627a9c"
+    },
+    "receipts-ordinary/race-ordinary/command.json": {
+      "bytes": 1180,
+      "sha256": "7c0520a33da5946df881fe4c83b6ba5ab09b3de94033284597d67a3ae97ed828"
+    },
+    "receipts-ordinary/race-ordinary/raw.jsonl": {
+      "bytes": 5498446,
+      "sha256": "8bd1cd259146b0250b8b0fc2657425ae8dda5bdf0ff94b5ba4fe563b96baaeb4"
+    },
+    "receipts-ordinary/race-ordinary/result.json": {
+      "bytes": 9320,
+      "sha256": "c79c79823e871f94c0f1d4513db0ccc26a896d4cabb660fdc65df42e03031c9e"
+    },
+    "receipts-ordinary/race-ordinary/package-census.jsonl": {
+      "bytes": 259598,
+      "sha256": "7607e658d986730afc1a642dadcca820278d0d5ed03a3636bf1d8dbe77269794"
+    },
+    "receipts-ordinary/repaired-contracts-ordinary/package-census.jsonl": {
+      "bytes": 174985,
+      "sha256": "66cdc93e49084bbe086f1b0e997a4e5c0ec9b02f8d7bf9b568244ffa8d6e19fa"
+    },
+    "receipts-ordinary/repaired-contracts-ordinary/raw.jsonl": {
+      "bytes": 8705,
+      "sha256": "277b901c16bf522000269959e25d56462c915ec6ee8145b44b07197f64dc20ab"
+    },
+    "receipts-ordinary/repaired-contracts-ordinary/command.json": {
+      "bytes": 1569,
+      "sha256": "5ac003f095c4e42bf67cd52f416745db58b5e1052090c6fef9f2716f38577912"
+    },
+    "receipts-ordinary/repaired-contracts-ordinary/result.json": {
+      "bytes": 761,
+      "sha256": "f30d4b15db614820db827802d853e54c284a8acd391799329fa803291e9aaa28"
+    },
+    "receipts-ordinary/results.json": {
+      "bytes": 495467,
+      "sha256": "a8e67f57c90b119c3c8815e2e999de3ffdda776298c9b2a6cafd58904a11374e"
+    },
+    "receipts-ordinary/seeded-concurrency-ordinary/command.json": {
+      "bytes": 1394,
+      "sha256": "8974b7ac9b23dab5982c1abb786dbe8d5c2263e4dd14ccaa16dab119a9f0856c"
+    },
+    "receipts-ordinary/seeded-concurrency-ordinary/package-census.jsonl": {
+      "bytes": 11925,
+      "sha256": "696485469b34a2c5d3061fd195100a4fa7183b6bef8471b6b3b96151bb0e4956"
+    },
+    "receipts-ordinary/seeded-concurrency-ordinary/raw.jsonl": {
+      "bytes": 24920,
+      "sha256": "2fe09af6fe17764ee7646c31dace4ce1c3bebd91fe91d7052f759e83ffde76fc"
+    },
+    "receipts-ordinary/shared-scalar-ordinary/command.json": {
+      "bytes": 1326,
+      "sha256": "3de21607a4111d5b6d0edc4bede19ff3429feecb6a602d36a714d4f926ddfee5"
+    },
+    "receipts-ordinary/seeded-concurrency-ordinary/result.json": {
+      "bytes": 190,
+      "sha256": "d0abd86a8a1710419982847b73e6e63efeeacb096665f9073b914bdba813c92d"
+    },
+    "receipts-ordinary/shared-scalar-ordinary/package-census.jsonl": {
+      "bytes": 295226,
+      "sha256": "4c9ce6ffc44982aab4f1730b6177fe00190ab28e16facd3382e5f535c0e6d6ad"
+    },
+    "receipts-ordinary/shared-scalar-ordinary/raw.jsonl": {
+      "bytes": 81581,
+      "sha256": "1c31676426ab90caafd9e8833faf4a5f648d4100502120a2411c3dffb9ff3c0b"
+    },
+    "receipts-ordinary/shared-scalar-ordinary/result.json": {
+      "bytes": 185,
+      "sha256": "bf4e7e404df867600c0abf67c00e1619a40201c88f70eb02b792a3a00e3af4c3"
+    },
+    "receipts-ordinary/source-before.json": {
+      "bytes": 3108518,
+      "sha256": "b03f386f0a7786cdecbdc7226cd266914c47a377b87abf85faa0a12656098720"
+    },
+    "receipts-ordinary/spec-v1-ordinary/command.json": {
+      "bytes": 1455,
+      "sha256": "eec911da7beef788776a563c20b63fbd388bcf6767552fc87424eb0bd0e0738d"
+    },
+    "receipts-ordinary/source-after.json": {
+      "bytes": 3108518,
+      "sha256": "b03f386f0a7786cdecbdc7226cd266914c47a377b87abf85faa0a12656098720"
+    },
+    "receipts-ordinary/spec-v1-ordinary/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "8c159adda7b7db036b35bb47d3eb6a05fe2d5cda0c09c0866b0727d9d950efca"
+    },
+    "receipts-ordinary/spec-v1-ordinary/raw.jsonl": {
+      "bytes": 23668,
+      "sha256": "7ba93a58153aa0de9df88165d3816205305475ba5a67905ba373a56de38636e8"
+    },
+    "receipts-ordinary/spec-v1-ordinary/result.json": {
+      "bytes": 178,
+      "sha256": "7e2a6817e05550a9751cffb17af9293507ed231ce5844d6ebc2e43ec7fb8abb9"
+    },
+    "receipts-ordinary/spec-v2-ordinary/command.json": {
+      "bytes": 1455,
+      "sha256": "1c2bfc26edf58cae37e947281bb945861c5f09ace97f8f07179ebadf97b10918"
+    },
+    "receipts-ordinary/spec-v2-ordinary/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "8c159adda7b7db036b35bb47d3eb6a05fe2d5cda0c09c0866b0727d9d950efca"
+    },
+    "receipts-ordinary/spec-v2-ordinary/raw.jsonl": {
+      "bytes": 63986,
+      "sha256": "539de5f5fe2511fa0d45371bc75da70f0699ec1d5136d91f26426f29a2a5d77c"
+    },
+    "receipts-ordinary/spec-v2-ordinary/result.json": {
+      "bytes": 178,
+      "sha256": "4d5f659a1c23c50123fca413178e04fdea15b8dd44f4f2c5b9ea71afa361a468"
+    },
+    "receipts-ordinary/spec-v3-ordinary/command.json": {
+      "bytes": 1455,
+      "sha256": "1ac3b161eae24416c6f302e52fb0dbddc582a55300e1da096c4ffc50bc9e4f9d"
+    },
+    "receipts-ordinary/spec-v3-ordinary/raw.jsonl": {
+      "bytes": 124099,
+      "sha256": "fe2a0cc57be0e3d0f26c1fa1dd18cdc40c8abe8453b36bbf36ec9d60968f6e84"
+    },
+    "receipts-ordinary/spec-v3-ordinary/result.json": {
+      "bytes": 81878,
+      "sha256": "485c30a23a8a4cb7691688c627616bd44db7a52e63ca57010d168ef353937387"
+    },
+    "receipts-ordinary/spec-v3-signals-ordinary/command.json": {
+      "bytes": 1559,
+      "sha256": "be15b3b1bfac31fc060f086b90b11dae7ee932edc5e158304e6a9e0349c3e7b9"
+    },
+    "receipts-ordinary/spec-v3-ordinary/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "8c159adda7b7db036b35bb47d3eb6a05fe2d5cda0c09c0866b0727d9d950efca"
+    },
+    "receipts-ordinary/spec-v3-signals-ordinary/package-census.jsonl": {
+      "bytes": 173387,
+      "sha256": "52769771639a71250efe7f714ad2a9f54c720f5a8e5bb0903b1f6924de223a2e"
+    },
+    "receipts-ordinary/spec-v3-signals-ordinary/raw.jsonl": {
+      "bytes": 124097,
+      "sha256": "89c20eb69cdb75772140f3f6806ea5ad27c2b5831fc5149dabe230d03bfaf84f"
+    },
+    "receipts-ordinary/spec-v3-signals-ordinary/result.json": {
+      "bytes": 81886,
+      "sha256": "e7178fe1b2613eb1b2dbf85b48c7cbfe2a8ce9e38b189e382a8047a036ae2d14"
+    },
+    "receipts-ordinary/summary.json": {
+      "bytes": 505075,
+      "sha256": "136b94cd988d71fc633de5c23636f947909fc44a03a148ed196b7ee16f5663a8"
+    },
+    "contracts-ordinary/commands.json": {
+      "bytes": 1068,
+      "sha256": "c706224a1fc7486d15311f4d68fb11bd9b6c32139fc9f6a9a03f7fb03056810a"
+    },
+    "contracts-ordinary/driver-manifest.json": {
+      "bytes": 2586730,
+      "sha256": "4e9d470a64a91dd31915dbce28d4f0aa40fb33271b6f5501835f5190a0b5227e"
+    },
+    "contracts-ordinary/generated/graph.wasm": {
+      "bytes": 357,
+      "sha256": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6"
+    },
+    "contracts-ordinary/generated/noGC.wasm": {
+      "bytes": 47,
+      "sha256": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0"
+    },
+    "contracts-ordinary/generated/scalar.wasm": {
+      "bytes": 54,
+      "sha256": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8"
+    },
+    "contracts-ordinary/overlay.json": {
+      "bytes": 223,
+      "sha256": "cc192af93c3039e4534660cf93db1ac5d2959a433a88dca960cfb27bf328de4b"
+    },
+    "contracts-ordinary/host.json": {
+      "bytes": 549,
+      "sha256": "5005875f27bababa6c89aa8c302ec395a17edada0ba06e284a0077fae0ab14df"
+    },
+    "contracts-ordinary/package-census.jsonl": {
+      "bytes": 175310,
+      "sha256": "ef9c868bfff63511ac471caf2df4e91cda04a566dacb9ed738a52d79280e182f"
+    },
+    "contracts-ordinary/source-manifest.json": {
+      "bytes": 3108518,
+      "sha256": "b03f386f0a7786cdecbdc7226cd266914c47a377b87abf85faa0a12656098720"
+    },
+    "contracts-ordinary/tests.jsonl": {
+      "bytes": 12666,
+      "sha256": "8fb13e568ec9655b16b9d55012542d60dc291dd28a636a811a13c4c15fe1e517"
+    },
+    "contracts-ordinary/summary.json": {
+      "bytes": 2947,
+      "sha256": "c8ab920366387173d3b2c1f91ff0d699a41b5a42a53e6cd7ea6aa1406ea8ba5a"
+    }
+  },
+  "artifacts/darwin-da19f1a8d-wago_regalloccheck-1.zip": {
+    "setup-receipts/identity.json": {
+      "bytes": 109,
+      "sha256": "6fac5c4222915ac920ab1a50ef82a21e510c3f5c22fc73d095206887db79efde"
+    },
+    "setup-receipts/setup.log": {
+      "bytes": 5689,
+      "sha256": "68b49e0afe284586f3ca4ee0bd14372cd818fd4a89d3cedfbbfdc4171ad8d7df"
+    },
+    "setup-receipts/opam-packages.txt": {
+      "bytes": 434,
+      "sha256": "0e7b159b356cbb7e99409e213f3ace5f2f0ec9041ce1a3759233f0815bcedf73"
+    },
+    "setup-receipts/opam-switch.export": {
+      "bytes": 565,
+      "sha256": "a40cd0a6b934d63ad6e14500358d89c1a316a865f5b7a894b911a7a84d8c1f66"
+    },
+    "setup-receipts/spec-build-provenance.txt": {
+      "bytes": 267,
+      "sha256": "34fdf1dc4f28551e71a94119d01878599f01a145b4efb30c4e319886fc9a4fdf"
+    },
+    "setup-receipts/submodules.txt": {
+      "bytes": 440,
+      "sha256": "6c5c407d1b23824a91a5134aa23cdd22a81cebf6941f81b3491a936238555715"
+    },
+    "setup-receipts/tool-hashes.txt": {
+      "bytes": 793,
+      "sha256": "c4c42bfbcfa83a72530732e88929331747eca917915bb0eedb07089b43d0fffd"
+    },
+    "setup-receipts/wabt-provenance.txt": {
+      "bytes": 296,
+      "sha256": "4cba5d38d66f0899957e42191d187869bdff6e613daab8d124293250347e6210"
+    },
+    "receipts-wago_regalloccheck/backend-wago_regalloccheck/command.json": {
+      "bytes": 1166,
+      "sha256": "7050fc1f92690df7b8d468a88b6373999304c92cf1ce5245d34b5b62d03f7fd7"
+    },
+    "receipts-wago_regalloccheck/backend-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 122844,
+      "sha256": "845bac33ad0d28d787ecd9d96836e854a6c2cd36a209b81b9326495956371628"
+    },
+    "receipts-wago_regalloccheck/backend-wago_regalloccheck/raw.jsonl": {
+      "bytes": 10411995,
+      "sha256": "0a48750c60f08b6aadc0d751823c0f8518a2567af013c36a345bb045520fcbb8"
+    },
+    "receipts-wago_regalloccheck/backend-wago_regalloccheck/result.json": {
+      "bytes": 90459,
+      "sha256": "68048ff74d3d4d9dbac29f2a358453691640868bd02a574613f9ecbbdaf0091f"
+    },
+    "receipts-wago_regalloccheck/cancellation-wago_regalloccheck/command.json": {
+      "bytes": 830,
+      "sha256": "c2e02501b679457e3fd090fc5e56dbb2ec95a596fd6b70c99b2bbc9abae9a1a6"
+    },
+    "receipts-wago_regalloccheck/cancellation-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 175159,
+      "sha256": "1ac858deee74161e70e8a0d4d54fa0ec52ed0230ba4c7ed3fa5826ca9c6c8273"
+    },
+    "receipts-wago_regalloccheck/cancellation-wago_regalloccheck/raw.jsonl": {
+      "bytes": 1307,
+      "sha256": "19e820ee8fae4096b003cbb937bd1ff2d84f78012a3fd6a289446be8696b689d"
+    },
+    "receipts-wago_regalloccheck/cancellation-wago_regalloccheck/result.json": {
+      "bytes": 246,
+      "sha256": "fde45780e2201670ff66e3f7526216820ddbaccb6ddc7bde979916437c8154c2"
+    },
+    "receipts-wago_regalloccheck/catalog-platform-census.json": {
+      "bytes": 21760,
+      "sha256": "317aec6491befb49e0fbe16764aca3700d8eb4b1960aac9a37e6a0c40524e386"
+    },
+    "receipts-wago_regalloccheck/cli-wago_regalloccheck/command.json": {
+      "bytes": 1149,
+      "sha256": "e967ce5deec8e02d187036b8d63fc7d9e0b7144bf558fac14a6e5b5f08b75795"
+    },
+    "receipts-wago_regalloccheck/cli-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 979573,
+      "sha256": "fa26bc4f84b7a755679e369602f95125220fdc2d7e310c4906656c10844c4b1e"
+    },
+    "receipts-wago_regalloccheck/cli-wago_regalloccheck/raw.jsonl": {
+      "bytes": 993714,
+      "sha256": "dafebfcb809f33a3d7194dd8221c210c1dc7f56bff16675f6671602baf2ee022"
+    },
+    "receipts-wago_regalloccheck/cli-wago_regalloccheck/result.json": {
+      "bytes": 9329,
+      "sha256": "af76a1780bfdf56ff46adbf580edd9dfbaf5fb0aec69c296666e23bceede8193"
+    },
+    "receipts-wago_regalloccheck/collector-wago_regalloccheck/command.json": {
+      "bytes": 1164,
+      "sha256": "cff1a4763d81dee1a718a228cfc9fbff0a152d7c2adbd50ecb0878f71da89c02"
+    },
+    "receipts-wago_regalloccheck/collector-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 38564,
+      "sha256": "d5e66908db479864b805652fdc75e29ac0983ecc1b0e6776eb7a62729d20d218"
+    },
+    "receipts-wago_regalloccheck/collector-wago_regalloccheck/raw.jsonl": {
+      "bytes": 2162895,
+      "sha256": "b752f1d0b991b089ec234e72277f6a49c5e2db7d2fca6ca927664b183d8d1efa"
+    },
+    "receipts-wago_regalloccheck/core3-child-wago_regalloccheck/command.json": {
+      "bytes": 1212,
+      "sha256": "c718170c3ed692062d8b48e93bfd7eb3f69ce36774d3494148f4a8b00fb71c09"
+    },
+    "receipts-wago_regalloccheck/collector-wago_regalloccheck/result.json": {
+      "bytes": 193,
+      "sha256": "3a58694d5ef83f91743088926e978bad51b6ab86f640eb06dc21900b1515f18c"
+    },
+    "receipts-wago_regalloccheck/core3-child-wago_regalloccheck/commands-source.json": {
+      "bytes": 6670,
+      "sha256": "520cbf98ea206317d17528ede9f0de78d64845694f0386848d5bbc7241de3527"
+    },
+    "receipts-wago_regalloccheck/core3-child-wago_regalloccheck/fixture-manifest.json": {
+      "bytes": 1065,
+      "sha256": "05a4a587758d96f54faa1c4a020d829d6d3e5a1fc5d1c91963c8266671512636"
+    },
+    "receipts-wago_regalloccheck/core3-child-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 174985,
+      "sha256": "42dd58f75b4191e22862807b8edeb99f923d8e7c17af00882c18ba20f8785518"
+    },
+    "receipts-wago_regalloccheck/core3-child-wago_regalloccheck/raw.jsonl": {
+      "bytes": 1946,
+      "sha256": "650fb758100ff5ec45b663dc687591b164166c2470317848a41e96eec84e3d45"
+    },
+    "receipts-wago_regalloccheck/core3-child-wago_regalloccheck/result.json": {
+      "bytes": 1971,
+      "sha256": "2b18490307a727e9afbf9df3cf1d46a4e9ba6cb0044e2407f574210a11897501"
+    },
+    "receipts-wago_regalloccheck/corpus-wago_regalloccheck/command.json": {
+      "bytes": 1305,
+      "sha256": "e62be29bace89678afd081c71f92bd1cd1c8df520e4242b403a5b54167c7c6bb"
+    },
+    "receipts-wago_regalloccheck/corpus-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 27237,
+      "sha256": "729d8aa7f83cc829d267a24780a082ecbe2482669113ea7840049f5878699d37"
+    },
+    "receipts-wago_regalloccheck/corpus-wago_regalloccheck/raw.jsonl": {
+      "bytes": 712194,
+      "sha256": "601cc0447aa9be50134ab3aa0283a0e45de00eb42ded503d49ea7e9881cc2c0c"
+    },
+    "receipts-wago_regalloccheck/corpus-wago_regalloccheck/result.json": {
+      "bytes": 5086,
+      "sha256": "fb8560cc3d04fcd2459e95e82c9983e26fa3d6cd7f64ce1eb97f6118bbf91ce5"
+    },
+    "receipts-wago_regalloccheck/diagnostics-default-wago_regalloccheck/command.json": {
+      "bytes": 1226,
+      "sha256": "a8520f729aef11189c07a4db1c165191bea9772f4906e2f0b1d5e77b623b1289"
+    },
+    "receipts-wago_regalloccheck/diagnostics-default-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 298303,
+      "sha256": "6957d2820de352ed0055569b054c3d28b0b17c66f9237bcb315bcfbbbdea0035"
+    },
+    "receipts-wago_regalloccheck/diagnostics-default-wago_regalloccheck/raw.jsonl": {
+      "bytes": 18610909,
+      "sha256": "31ff843d4d6f8922e78d552b50ac5d7ad491f1c2c1f44795d0fe764ddd4b38ed"
+    },
+    "receipts-wago_regalloccheck/diagnostics-default-wago_regalloccheck/result.json": {
+      "bytes": 30314,
+      "sha256": "8b80b4bd2de9a7ebe433c2eba1301c451dd1db97c0e7b29d8d8dbc876ca888c6"
+    },
+    "receipts-wago_regalloccheck/diagnostics-established-wago_regalloccheck/command.json": {
+      "bytes": 1296,
+      "sha256": "aca6cc00bedad1d8e8dcdf42785f2e1bb32bc9900a338c25677e623364b9abe1"
+    },
+    "receipts-wago_regalloccheck/diagnostics-established-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 297761,
+      "sha256": "90b1b5d252502f530b296f96e428d792e3ab4620ac55b423265909f1add34681"
+    },
+    "receipts-wago_regalloccheck/diagnostics-established-wago_regalloccheck/raw.jsonl": {
+      "bytes": 18605383,
+      "sha256": "065298eb167bd80e9363ccda0207f8cc06a41b16c66912cebc1dff6295db390c"
+    },
+    "receipts-wago_regalloccheck/diagnostics-established-wago_regalloccheck/result.json": {
+      "bytes": 22300,
+      "sha256": "383770eabc2580bbd88533f3daf8d0b44e4fb7a95430fb5deabeb4a4d19f9337"
+    },
+    "receipts-wago_regalloccheck/driver-manifest.json": {
+      "bytes": 2586730,
+      "sha256": "4e9d470a64a91dd31915dbce28d4f0aa40fb33271b6f5501835f5190a0b5227e"
+    },
+    "receipts-wago_regalloccheck/execution-plan.json": {
+      "bytes": 21266,
+      "sha256": "a6af22ecac96154a582f2c862f083d8f6f35382406bff143ca79ea933babe536"
+    },
+    "receipts-wago_regalloccheck/full-root-replay-wago_regalloccheck/command.json": {
+      "bytes": 1158,
+      "sha256": "9bd57d431a75e6ac8cfe011e079e9a13e159bbe23f702447a31deed05f834fa4"
+    },
+    "receipts-wago_regalloccheck/full-root-replay-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 2410412,
+      "sha256": "be3ff313f65e99d5f4545428b32f1122d121f4884e27f0a078998b035d27cfda"
+    },
+    "receipts-wago_regalloccheck/full-root-replay-wago_regalloccheck/raw.jsonl": {
+      "bytes": 32552463,
+      "sha256": "24bfc5d055c85c2a670dcfad86bc690a1da332c4a2d35e8b8096f1c4e7698f98"
+    },
+    "receipts-wago_regalloccheck/guard-corpus-wago_regalloccheck/command.json": {
+      "bytes": 1325,
+      "sha256": "f04b5aca5fe4e6c805e11299107afdebeb071339bd1e6a61c95e3d9401ec77ab"
+    },
+    "receipts-wago_regalloccheck/guard-corpus-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 27212,
+      "sha256": "e9b030f470e93214ca9e12d5ae32649544f05e3ce000faf28bcb67a297bab031"
+    },
+    "receipts-wago_regalloccheck/full-root-replay-wago_regalloccheck/result.json": {
+      "bytes": 128688,
+      "sha256": "6162e795103d11a9e54b5c28687ba0cefbea6e3c6ac60e4b407d481eb6341531"
+    },
+    "receipts-wago_regalloccheck/guard-corpus-wago_regalloccheck/raw.jsonl": {
+      "bytes": 487880,
+      "sha256": "d3fc6eeb44d93e88fb228b2fd33bbf03babae0c011afe0798132aafe5b120345"
+    },
+    "receipts-wago_regalloccheck/guard-corpus-wago_regalloccheck/result.json": {
+      "bytes": 540,
+      "sha256": "7a265371f702168613e407fe0676f9fed6738e7a60a060cdba460ee3e0da6561"
+    },
+    "receipts-wago_regalloccheck/guard-wago_regalloccheck/command.json": {
+      "bytes": 1182,
+      "sha256": "9578c52ebed63252c99fc6412edc5941baf4bfc3a448857e789a269863a443ac"
+    },
+    "receipts-wago_regalloccheck/guard-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 200014,
+      "sha256": "c5043a9b3f0d2d37f4e4c3f783d12961d9685cd9501fa0d23601e112303b944b"
+    },
+    "receipts-wago_regalloccheck/guard-wago_regalloccheck/raw.jsonl": {
+      "bytes": 8671447,
+      "sha256": "dd32f9949d1e8ea8ee97029be4ec17a49c52ba85fdcc84aae78b4f084ee01aaf"
+    },
+    "receipts-wago_regalloccheck/guard-wago_regalloccheck/result.json": {
+      "bytes": 20923,
+      "sha256": "e570dc5693e9ad39e960afe5cbe708c3bc17a0fb3aa3f731af66f686cc1b5bcd"
+    },
+    "receipts-wago_regalloccheck/hardening-wago_regalloccheck/command.json": {
+      "bytes": 1242,
+      "sha256": "c769b3eae7a2e5d51d707341e14c6bc3084839f81a9d8d7f89c3bf66ec92c501"
+    },
+    "receipts-wago_regalloccheck/hardening-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 38564,
+      "sha256": "d5e66908db479864b805652fdc75e29ac0983ecc1b0e6776eb7a62729d20d218"
+    },
+    "receipts-wago_regalloccheck/hardening-wago_regalloccheck/raw.jsonl": {
+      "bytes": 6486351,
+      "sha256": "0ea03ed540a1e6a5418cc25a5ea1c11e9071cbdd4986a3fd97e6ad01ec7bc8a2"
+    },
+    "receipts-wago_regalloccheck/hardening-wago_regalloccheck/result.json": {
+      "bytes": 193,
+      "sha256": "9ea56d825d98e76d2c5c5387fcec6eaa112cee002ff2c4bde994402919d62b13"
+    },
+    "receipts-wago_regalloccheck/host-transition-wago_regalloccheck/command.json": {
+      "bytes": 1485,
+      "sha256": "e0b40a5f3a4067171350dcc568e489d589041fca5da5a769a73c052da51706ef"
+    },
+    "receipts-wago_regalloccheck/host-transition-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "b8465a68ebdd31cde60e325941b8a8856cf43e05907947de6e80162baf9919bb"
+    },
+    "receipts-wago_regalloccheck/host-transition-wago_regalloccheck/raw.jsonl": {
+      "bytes": 42858,
+      "sha256": "df30552040117b733ebbd1f7de2c42b2b317becdb05fbd48282e31a96363679a"
+    },
+    "receipts-wago_regalloccheck/host-transition-wago_regalloccheck/result.json": {
+      "bytes": 197,
+      "sha256": "2aeb598445ae28815475bc6c612a3a2cad8c43e02a50ac042e35c23a7aa62857"
+    },
+    "receipts-wago_regalloccheck/host.json": {
+      "bytes": 1098,
+      "sha256": "ea33e27510e7670275bdd6b81ccfc996ab04faf99a94fda37ae398155038213f"
+    },
+    "receipts-wago_regalloccheck/installer-wago_regalloccheck/command.json": {
+      "bytes": 1161,
+      "sha256": "80ab45d35d2b15ecd871a0bcfc8a83d405aeb7a1740f94c03f0664187ae0dbaf"
+    },
+    "receipts-wago_regalloccheck/installer-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 175,
+      "sha256": "d3ec8cabdc69ebf4458e6e8a22a8a0d3f1a6f835898d5e65e6c3b49034d64237"
+    },
+    "receipts-wago_regalloccheck/installer-wago_regalloccheck/raw.jsonl": {
+      "bytes": 1106,
+      "sha256": "37b6a4f16e9a6a75ff87669ad1b95fbebc4cb33aa66035a03e894512ff6abaf9"
+    },
+    "receipts-wago_regalloccheck/profile-metadata-wago_regalloccheck/command.json": {
+      "bytes": 1295,
+      "sha256": "e165dd5286fc42ca306b7825e678addc2ddd832cfb7a2b0739afc664390d2c89"
+    },
+    "receipts-wago_regalloccheck/profile-metadata-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 75895,
+      "sha256": "ab3706cae9a598cfdd3087abfdf4620a9a5c9634653f01a788af114322535677"
+    },
+    "receipts-wago_regalloccheck/installer-wago_regalloccheck/result.json": {
+      "bytes": 374,
+      "sha256": "f3ce59305b51ebb6dd5ca5f431471d296ffa5b0d540838848cc671bcbadd0dd2"
+    },
+    "receipts-wago_regalloccheck/profile-metadata-wago_regalloccheck/raw.jsonl": {
+      "bytes": 139327,
+      "sha256": "43f188cc7265888ed990fa5161088ba9af84f00e8a9f002b7ad1d8b78e97fae3"
+    },
+    "receipts-wago_regalloccheck/profile-metadata-wago_regalloccheck/result.json": {
+      "bytes": 199,
+      "sha256": "e3315e6be0f94e73ea269e20c729db3fbc6ebc1f8470d5069c29886ccb37c858"
+    },
+    "receipts-wago_regalloccheck/profile-runtime-wago_regalloccheck/command.json": {
+      "bytes": 1282,
+      "sha256": "f363b2a6ab3c896e0da7e1c75db1f83bf70a62d2a8eedddf782bcd8b1f727911"
+    },
+    "receipts-wago_regalloccheck/profile-runtime-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 299309,
+      "sha256": "d406f11aebce884a621fdbbe6092ef610c1268e311339a625832110944b6ac6f"
+    },
+    "receipts-wago_regalloccheck/profile-runtime-wago_regalloccheck/raw.jsonl": {
+      "bytes": 61610,
+      "sha256": "b0b188aef207da469ae9831033e3a2e7bdc22efc027b35b91d113d1f39e2aa71"
+    },
+    "receipts-wago_regalloccheck/profile-runtime-wago_regalloccheck/result.json": {
+      "bytes": 1218,
+      "sha256": "5ebb107cd8948b3a4244be392f531016581556dfca9e5851d33f5f7f446ce0bf"
+    },
+    "receipts-wago_regalloccheck/progress.json": {
+      "bytes": 94,
+      "sha256": "347a13dffb52b459e1e9b47c67726444bb1e3d5eefffd8352672e3fefd332c99"
+    },
+    "receipts-wago_regalloccheck/race-wago_regalloccheck/command.json": {
+      "bytes": 1242,
+      "sha256": "a25134aedcb1949a8dc3ecfab8cd38ac643c19f930e9034ebb21494f01dc32b4"
+    },
+    "receipts-wago_regalloccheck/race-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 259598,
+      "sha256": "aa2ada2162d88294c935fafcaf0663a8c2392a7bf19f981844ddbbafd350ce18"
+    },
+    "receipts-wago_regalloccheck/race-wago_regalloccheck/raw.jsonl": {
+      "bytes": 5498573,
+      "sha256": "0988e5c519f6c351d2a3d681df99d08c633043581126e5d23d44fb62dd44520d"
+    },
+    "receipts-wago_regalloccheck/race-wago_regalloccheck/result.json": {
+      "bytes": 9330,
+      "sha256": "df45cbd045e7d0c88ab63482b8663c2254620c3d765b0cab9da52ba89452e009"
+    },
+    "receipts-wago_regalloccheck/repaired-contracts-wago_regalloccheck/command.json": {
+      "bytes": 1621,
+      "sha256": "c022d2d1ef4034a63970d560117795ce15aae81d044dce545c20e82068132a66"
+    },
+    "receipts-wago_regalloccheck/repaired-contracts-wago_regalloccheck/raw.jsonl": {
+      "bytes": 8700,
+      "sha256": "e3b43bbba9e4403df6f0afa420ceb68f1f61a2629a3df2b90834b09280e76c14"
+    },
+    "receipts-wago_regalloccheck/repaired-contracts-wago_regalloccheck/result.json": {
+      "bytes": 771,
+      "sha256": "083b40875f413ddb7dacc62861a6d57e5f5547ca5a5c011be3a370330aecf046"
+    },
+    "receipts-wago_regalloccheck/results.json": {
+      "bytes": 495707,
+      "sha256": "0106df98c6b4ec395b390a1d03c94da297ea8756846bb8f502730193c60e1cbf"
+    },
+    "receipts-wago_regalloccheck/repaired-contracts-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 174985,
+      "sha256": "42dd58f75b4191e22862807b8edeb99f923d8e7c17af00882c18ba20f8785518"
+    },
+    "receipts-wago_regalloccheck/seeded-concurrency-wago_regalloccheck/command.json": {
+      "bytes": 1456,
+      "sha256": "601a5a90ecda848b07af3cb9efa5047f1522c56a0e6267dba59b1731273f8a99"
+    },
+    "receipts-wago_regalloccheck/seeded-concurrency-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 11925,
+      "sha256": "696485469b34a2c5d3061fd195100a4fa7183b6bef8471b6b3b96151bb0e4956"
+    },
+    "receipts-wago_regalloccheck/seeded-concurrency-wago_regalloccheck/raw.jsonl": {
+      "bytes": 24920,
+      "sha256": "54d3bc05d17f51e6c70f03d0113e35eda5c509d6d41c4bfbdcccf9c39601f529"
+    },
+    "receipts-wago_regalloccheck/seeded-concurrency-wago_regalloccheck/result.json": {
+      "bytes": 200,
+      "sha256": "7e6672953c59bf6d80ed5fc06bd207fac6af57ece6ba20cbfb1ed4631191621d"
+    },
+    "receipts-wago_regalloccheck/shared-scalar-wago_regalloccheck/command.json": {
+      "bytes": 1375,
+      "sha256": "6517cf6a2ba936fe119307e522fdeccfbdb06e3546d921d1f41d8211e49cccff"
+    },
+    "receipts-wago_regalloccheck/shared-scalar-wago_regalloccheck/raw.jsonl": {
+      "bytes": 83524,
+      "sha256": "77dd62e026d93d2887bc000800ec8b48d5b6806ea08feb6638415a8bfb37d63e"
+    },
+    "receipts-wago_regalloccheck/shared-scalar-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 297833,
+      "sha256": "b1729559d6eef1e60c332a1c1aaf806c3843fde30c3c44207aec3582dfc84dcc"
+    },
+    "receipts-wago_regalloccheck/shared-scalar-wago_regalloccheck/result.json": {
+      "bytes": 195,
+      "sha256": "8c16f5e88798481155b7d7d14546b856d289f7ce37bf2af0fa6a77ef80751672"
+    },
+    "receipts-wago_regalloccheck/source-before.json": {
+      "bytes": 3108518,
+      "sha256": "b03f386f0a7786cdecbdc7226cd266914c47a377b87abf85faa0a12656098720"
+    },
+    "receipts-wago_regalloccheck/source-after.json": {
+      "bytes": 3108518,
+      "sha256": "b03f386f0a7786cdecbdc7226cd266914c47a377b87abf85faa0a12656098720"
+    },
+    "receipts-wago_regalloccheck/spec-v1-wago_regalloccheck/command.json": {
+      "bytes": 1517,
+      "sha256": "400973d70768f0cbfdcda47d31565d028da6eef8a13dfc6c8c68821d58739432"
+    },
+    "receipts-wago_regalloccheck/spec-v1-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "b8465a68ebdd31cde60e325941b8a8856cf43e05907947de6e80162baf9919bb"
+    },
+    "receipts-wago_regalloccheck/spec-v1-wago_regalloccheck/raw.jsonl": {
+      "bytes": 23663,
+      "sha256": "9d381bbc1b2441a7bf36ca634f071416908d9a0473fdffa3fe23acf3a7c3f0c3"
+    },
+    "receipts-wago_regalloccheck/spec-v1-wago_regalloccheck/result.json": {
+      "bytes": 188,
+      "sha256": "dc677b32baa1427c9e6da110152c829c9a7ce3d7e673c0ad6851ed236edb7d52"
+    },
+    "receipts-wago_regalloccheck/spec-v2-wago_regalloccheck/command.json": {
+      "bytes": 1517,
+      "sha256": "2ebec5d9e3a03f004934dbc7db6b59c87eb3e5e7654e5fc8c5a3f73862260ccd"
+    },
+    "receipts-wago_regalloccheck/spec-v2-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "b8465a68ebdd31cde60e325941b8a8856cf43e05907947de6e80162baf9919bb"
+    },
+    "receipts-wago_regalloccheck/spec-v2-wago_regalloccheck/raw.jsonl": {
+      "bytes": 63986,
+      "sha256": "781d0893847693c262431016b424b043dc4c6abe75f75e7b4d6e04a1da82ed4b"
+    },
+    "receipts-wago_regalloccheck/spec-v2-wago_regalloccheck/result.json": {
+      "bytes": 188,
+      "sha256": "7bdba3a58d8c02ffd3c224be8821827493ce6debba33ae24b1af239d15cf1195"
+    },
+    "receipts-wago_regalloccheck/spec-v3-signals-wago_regalloccheck/command.json": {
+      "bytes": 1608,
+      "sha256": "71494fad5ab73aca7fb7b3dd07e5184f8e7733296f11b38a4e0dc2a3ae382798"
+    },
+    "receipts-wago_regalloccheck/spec-v3-signals-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 173387,
+      "sha256": "71ab9e58f34e395cc58e5a23a4e3ee468a8521dda21b2f03ee770d18e4d0536f"
+    },
+    "receipts-wago_regalloccheck/spec-v3-signals-wago_regalloccheck/result.json": {
+      "bytes": 81896,
+      "sha256": "9bbf5f67e7349bd7fbdcd157103f767e3cff1fb60c00630b11b455da027894a3"
+    },
+    "receipts-wago_regalloccheck/spec-v3-signals-wago_regalloccheck/raw.jsonl": {
+      "bytes": 124085,
+      "sha256": "e8ee6fe65ecfe7c0d872fcae33dc8307f0562de8acab6c5425a7636463782d89"
+    },
+    "receipts-wago_regalloccheck/spec-v3-wago_regalloccheck/command.json": {
+      "bytes": 1517,
+      "sha256": "f55cab3d6486a4c5d2a6dfcebc46c821e457e7139756389e1223a685bfe12584"
+    },
+    "receipts-wago_regalloccheck/spec-v3-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "b8465a68ebdd31cde60e325941b8a8856cf43e05907947de6e80162baf9919bb"
+    },
+    "receipts-wago_regalloccheck/spec-v3-wago_regalloccheck/raw.jsonl": {
+      "bytes": 124100,
+      "sha256": "f16548a6130eb6441f052c91e6a8492d2c2e0c6b809f605c0c66f4fb6ea947ed"
+    },
+    "receipts-wago_regalloccheck/spec-v3-wago_regalloccheck/result.json": {
+      "bytes": 81888,
+      "sha256": "5e5a5732ce1dddb3ebcd451b0d4a7ca899d742984642bed88b493b77ecd0da48"
+    },
+    "receipts-wago_regalloccheck/summary.json": {
+      "bytes": 505315,
+      "sha256": "87fb3da5810c3616f87fdb212f9c932418f24892476652f59331fefcc4ba59bf"
+    },
+    "contracts-wago_regalloccheck/commands.json": {
+      "bytes": 1160,
+      "sha256": "1ee8d2f42105f01afdca2a413c3f674ceea0fa6605123fdcd7675390a8625a1c"
+    },
+    "contracts-wago_regalloccheck/driver-manifest.json": {
+      "bytes": 2586730,
+      "sha256": "4e9d470a64a91dd31915dbce28d4f0aa40fb33271b6f5501835f5190a0b5227e"
+    },
+    "contracts-wago_regalloccheck/generated/graph.wasm": {
+      "bytes": 357,
+      "sha256": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6"
+    },
+    "contracts-wago_regalloccheck/generated/noGC.wasm": {
+      "bytes": 47,
+      "sha256": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0"
+    },
+    "contracts-wago_regalloccheck/generated/scalar.wasm": {
+      "bytes": 54,
+      "sha256": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8"
+    },
+    "contracts-wago_regalloccheck/host.json": {
+      "bytes": 549,
+      "sha256": "5005875f27bababa6c89aa8c302ec395a17edada0ba06e284a0077fae0ab14df"
+    },
+    "contracts-wago_regalloccheck/package-census.jsonl": {
+      "bytes": 175310,
+      "sha256": "1cedc0b2dbee5de203d2529ab5522d33c6b57f042c820d0829e24fbc47add0e0"
+    },
+    "contracts-wago_regalloccheck/source-manifest.json": {
+      "bytes": 3108518,
+      "sha256": "b03f386f0a7786cdecbdc7226cd266914c47a377b87abf85faa0a12656098720"
+    },
+    "contracts-wago_regalloccheck/summary.json": {
+      "bytes": 2947,
+      "sha256": "badb0842af3e87ab528aae563a7bb24ee4bd77d684a72d94bb7cb0fe8fc21243"
+    },
+    "contracts-wago_regalloccheck/overlay.json": {
+      "bytes": 223,
+      "sha256": "cc192af93c3039e4534660cf93db1ac5d2959a433a88dca960cfb27bf328de4b"
+    },
+    "contracts-wago_regalloccheck/tests.jsonl": {
+      "bytes": 12669,
+      "sha256": "1373e2249ecbdb64e3ef8597ac6d523ded52272f86e8f52956a5098f58a2cbaf"
+    }
+  },
+  "artifacts/darwin-da19f1a8d-wagodebug-1.zip": {
+    "setup-receipts/opam-packages.txt": {
+      "bytes": 434,
+      "sha256": "0e7b159b356cbb7e99409e213f3ace5f2f0ec9041ce1a3759233f0815bcedf73"
+    },
+    "setup-receipts/opam-switch.export": {
+      "bytes": 565,
+      "sha256": "a40cd0a6b934d63ad6e14500358d89c1a316a865f5b7a894b911a7a84d8c1f66"
+    },
+    "setup-receipts/setup.log": {
+      "bytes": 5847,
+      "sha256": "d995e531687c23da967ee00d833f1dbcabab54d39f12f6b0ec029888f5221bec"
+    },
+    "setup-receipts/identity.json": {
+      "bytes": 109,
+      "sha256": "6fac5c4222915ac920ab1a50ef82a21e510c3f5c22fc73d095206887db79efde"
+    },
+    "setup-receipts/spec-build-provenance.txt": {
+      "bytes": 267,
+      "sha256": "c579c8d936c54a4833cc23b7e50e6ca921465d75ce381c3143a2d50fa539df97"
+    },
+    "setup-receipts/submodules.txt": {
+      "bytes": 440,
+      "sha256": "6c5c407d1b23824a91a5134aa23cdd22a81cebf6941f81b3491a936238555715"
+    },
+    "setup-receipts/tool-hashes.txt": {
+      "bytes": 793,
+      "sha256": "552e825f2aa9265afcf572c852722e7246425e4825016693551e5c39d4be0ba9"
+    },
+    "setup-receipts/wabt-provenance.txt": {
+      "bytes": 296,
+      "sha256": "4cba5d38d66f0899957e42191d187869bdff6e613daab8d124293250347e6210"
+    },
+    "receipts-wagodebug/backend-wagodebug/command.json": {
+      "bytes": 1130,
+      "sha256": "58c00c230399b75ce718602316bbb1b4cffb04d59813db7764d5a6beab3fec7b"
+    },
+    "receipts-wagodebug/backend-wagodebug/package-census.jsonl": {
+      "bytes": 120237,
+      "sha256": "4f8507696140bde6e908393201cc6b7e2a70c5375bdcaeb4dfa82767589fa94c"
+    },
+    "receipts-wagodebug/backend-wagodebug/raw.jsonl": {
+      "bytes": 9696407,
+      "sha256": "7f157f8c55433548c72f4d5a0233472542e8c82092e034d0a64ee3aba0874323"
+    },
+    "receipts-wagodebug/backend-wagodebug/result.json": {
+      "bytes": 90450,
+      "sha256": "f4d59a7afe6f386375e2bb65af619392b56d3194357bb5b00b8facd9c3e4cae5"
+    },
+    "receipts-wagodebug/cancellation-wagodebug/command.json": {
+      "bytes": 803,
+      "sha256": "beb65e1ee00a46b515ba0bd756eb4023c3997ce49fc26752d3b2195179fed248"
+    },
+    "receipts-wagodebug/cancellation-wagodebug/package-census.jsonl": {
+      "bytes": 175159,
+      "sha256": "98490c57742c2f88415084787d64c15c2330029934935f505954f77955c16546"
+    },
+    "receipts-wagodebug/cancellation-wagodebug/raw.jsonl": {
+      "bytes": 1306,
+      "sha256": "5b1d0f69eb79b21c4e0137c779377b5fd46f8ef434edaf2d3dea5aa4667f2671"
+    },
+    "receipts-wagodebug/cancellation-wagodebug/result.json": {
+      "bytes": 237,
+      "sha256": "2ec997d93d00872e44791f606489be9fbd32c97a2fc7395d594d32d1d80cafd2"
+    },
+    "receipts-wagodebug/catalog-platform-census.json": {
+      "bytes": 21760,
+      "sha256": "317aec6491befb49e0fbe16764aca3700d8eb4b1960aac9a37e6a0c40524e386"
+    },
+    "receipts-wagodebug/cli-wagodebug/command.json": {
+      "bytes": 1113,
+      "sha256": "ba88bed66f8a33f4c34cc25d36549531a8465293fc908afaf5471efe3a78836f"
+    },
+    "receipts-wagodebug/cli-wagodebug/package-census.jsonl": {
+      "bytes": 979573,
+      "sha256": "fa26bc4f84b7a755679e369602f95125220fdc2d7e310c4906656c10844c4b1e"
+    },
+    "receipts-wagodebug/cli-wagodebug/raw.jsonl": {
+      "bytes": 993769,
+      "sha256": "b9c9a07049a318c554c754d14ac1231baa5e3d7e4201fdac086695763a377312"
+    },
+    "receipts-wagodebug/cli-wagodebug/result.json": {
+      "bytes": 9320,
+      "sha256": "3b34cfe3b69d1199bd95a6f89612b2456c972ad978fa631cab5d78d0385a466e"
+    },
+    "receipts-wagodebug/collector-wagodebug/package-census.jsonl": {
+      "bytes": 39222,
+      "sha256": "4b5a4d6d192b46840bb6211052bca919278b8857cb525e7540da889ca8d16555"
+    },
+    "receipts-wagodebug/collector-wagodebug/raw.jsonl": {
+      "bytes": 2242627,
+      "sha256": "822700e49053dff165c26983be9b68728007fd250562d0b6c0a7920616558774"
+    },
+    "receipts-wagodebug/collector-wagodebug/command.json": {
+      "bytes": 1128,
+      "sha256": "03f2db3d07c33e8286d61f65bc6005d33491287d39e07bd36064a1ef98fa9e35"
+    },
+    "receipts-wagodebug/collector-wagodebug/result.json": {
+      "bytes": 1181,
+      "sha256": "c8d021f1878190493864605b527662cdde3ba1a00c0007a4632370e790e11612"
+    },
+    "receipts-wagodebug/core3-child-wagodebug/command.json": {
+      "bytes": 1185,
+      "sha256": "1f1d164b0204cbda48ab75582336b2b9ee10a21712d7655fd01dfe5f06c82e37"
+    },
+    "receipts-wagodebug/core3-child-wagodebug/commands-source.json": {
+      "bytes": 6670,
+      "sha256": "520cbf98ea206317d17528ede9f0de78d64845694f0386848d5bbc7241de3527"
+    },
+    "receipts-wagodebug/core3-child-wagodebug/fixture-manifest.json": {
+      "bytes": 1065,
+      "sha256": "05a4a587758d96f54faa1c4a020d829d6d3e5a1fc5d1c91963c8266671512636"
+    },
+    "receipts-wagodebug/core3-child-wagodebug/package-census.jsonl": {
+      "bytes": 174985,
+      "sha256": "7c18d05797200e43c04e2e0a84250d418fe736560c5448db7ff362719a5c8e6b"
+    },
+    "receipts-wagodebug/core3-child-wagodebug/raw.jsonl": {
+      "bytes": 1947,
+      "sha256": "cd79fae1d43c0fd2656b2deb35b54f314e9503de33a3d0baa690fc972096e23a"
+    },
+    "receipts-wagodebug/core3-child-wagodebug/result.json": {
+      "bytes": 1962,
+      "sha256": "ef999483535a7ddd674006acbbbd02099cb88fb93858c6aa7d36079cd16866e9"
+    },
+    "receipts-wagodebug/corpus-wagodebug/command.json": {
+      "bytes": 1269,
+      "sha256": "0eda724482953be241933f34489581ecbf9124fde49325f64d23be238c55de17"
+    },
+    "receipts-wagodebug/corpus-wagodebug/package-census.jsonl": {
+      "bytes": 27237,
+      "sha256": "729d8aa7f83cc829d267a24780a082ecbe2482669113ea7840049f5878699d37"
+    },
+    "receipts-wagodebug/corpus-wagodebug/raw.jsonl": {
+      "bytes": 712166,
+      "sha256": "e4f1e788caba6c10e9b3876108c90421dd5609c2219dd9163d353f2b39aff289"
+    },
+    "receipts-wagodebug/corpus-wagodebug/result.json": {
+      "bytes": 5077,
+      "sha256": "6119d1117e1b14551f38d3c902e1250d24d4827c46ab9b95224634b6c18a502d"
+    },
+    "receipts-wagodebug/diagnostics-default-wagodebug/package-census.jsonl": {
+      "bytes": 295696,
+      "sha256": "a4c37505bc1e4cef350c4ef534ff6e1ce7d15d8099515dae20b6d84b32df56e0"
+    },
+    "receipts-wagodebug/diagnostics-default-wagodebug/command.json": {
+      "bytes": 1190,
+      "sha256": "0f4cd159123f9e65371db0c79e94b29c1f0844cb0c22b513775d18c2a661002f"
+    },
+    "receipts-wagodebug/diagnostics-default-wagodebug/result.json": {
+      "bytes": 32302,
+      "sha256": "cb362132a85bd822ea84101c70492388690f522c7987ec478df150a28a31b97d"
+    },
+    "receipts-wagodebug/diagnostics-established-wagodebug/command.json": {
+      "bytes": 1260,
+      "sha256": "2856baff9e9a9a187382de7bd8bfea9db04c19f2c0b069a8144c49b325da6d21"
+    },
+    "receipts-wagodebug/diagnostics-established-wagodebug/package-census.jsonl": {
+      "bytes": 295154,
+      "sha256": "9d91cb90b7f357beaf4b0d56a35723c842872b9e4828fcb5fdb572ff55d9d1bc"
+    },
+    "receipts-wagodebug/diagnostics-default-wagodebug/raw.jsonl": {
+      "bytes": 17894197,
+      "sha256": "5df5549ec986d5b23e4d15ec33fcaac5f418c5340646df45c8950fa97f4d4dbf"
+    },
+    "receipts-wagodebug/diagnostics-established-wagodebug/raw.jsonl": {
+      "bytes": 17888729,
+      "sha256": "395a8b46a4645423bfcb776d23eeed058a85bca0d729492572b04901bb84041d"
+    },
+    "receipts-wagodebug/diagnostics-established-wagodebug/result.json": {
+      "bytes": 24288,
+      "sha256": "8ed013fbacbd9d033e85868d3704b161662101e6387d9714616ce09c7ad08400"
+    },
+    "receipts-wagodebug/driver-manifest.json": {
+      "bytes": 2586730,
+      "sha256": "4e9d470a64a91dd31915dbce28d4f0aa40fb33271b6f5501835f5190a0b5227e"
+    },
+    "receipts-wagodebug/execution-plan.json": {
+      "bytes": 20429,
+      "sha256": "9aaa3dbaa4199abf5ce33a1ba7bd3fe27d4e65e8841daceacfe648c206a224fd"
+    },
+    "receipts-wagodebug/full-root-replay-wagodebug/package-census.jsonl": {
+      "bytes": 2398664,
+      "sha256": "346e1eaec99d2a5739fa3bc8276dea035f8f7eb55c559164ce193e00017e5d5f"
+    },
+    "receipts-wagodebug/full-root-replay-wagodebug/raw.jsonl": {
+      "bytes": 26985550,
+      "sha256": "de1169c37d9d7c00c70dbcbe95ded4241301c3041185f9b515b0c4e6ebec123d"
+    },
+    "receipts-wagodebug/full-root-replay-wagodebug/command.json": {
+      "bytes": 1122,
+      "sha256": "2c67a80b254269cda4d3870bd5c179f3447110b5da9a2c6a43bd415c00eac341"
+    },
+    "receipts-wagodebug/full-root-replay-wagodebug/result.json": {
+      "bytes": 131660,
+      "sha256": "bb66f14d15ad8701635f9da0133e805011e0218c3b8f1d48bf2099287d28c5e2"
+    },
+    "receipts-wagodebug/guard-corpus-wagodebug/command.json": {
+      "bytes": 1289,
+      "sha256": "e1d90f9906441b342c4a3d75323f97d1a73b539e44e8e123ae404e1b3aa9fcc1"
+    },
+    "receipts-wagodebug/guard-corpus-wagodebug/package-census.jsonl": {
+      "bytes": 27212,
+      "sha256": "e9b030f470e93214ca9e12d5ae32649544f05e3ce000faf28bcb67a297bab031"
+    },
+    "receipts-wagodebug/guard-corpus-wagodebug/raw.jsonl": {
+      "bytes": 487843,
+      "sha256": "738ec48650c233d0a24de3ec70fc3bb1682fd28baaff5d5749109fe0f3f4eecf"
+    },
+    "receipts-wagodebug/guard-corpus-wagodebug/result.json": {
+      "bytes": 531,
+      "sha256": "f7a97a9c61b1c28d0cdff140a9974a6274c72f083b8b26f1cb9b40a24c3ad29b"
+    },
+    "receipts-wagodebug/guard-wagodebug/command.json": {
+      "bytes": 1146,
+      "sha256": "497926071146d8806f9cd6418037d626270e883ba399bff4bbe09410a96f6863"
+    },
+    "receipts-wagodebug/guard-wagodebug/raw.jsonl": {
+      "bytes": 8670847,
+      "sha256": "7eb4861f05cdf51b45b164139c4c4989815162973587f45e5817bec28e7427c7"
+    },
+    "receipts-wagodebug/guard-wagodebug/package-census.jsonl": {
+      "bytes": 200014,
+      "sha256": "f8d7fc5a54de6505481194df7518de32802ece02d20d1af15322501d76b60e2b"
+    },
+    "receipts-wagodebug/guard-wagodebug/result.json": {
+      "bytes": 20914,
+      "sha256": "5a51cdaeed1e6b64a9154e6db54051a9f532e87ec9f69e645b0c7919190bf94b"
+    },
+    "receipts-wagodebug/hardening-wagodebug/command.json": {
+      "bytes": 1206,
+      "sha256": "49be0064f35cc0fee43645a069845d51859bc9f180a6271cefb74af45f98c3b2"
+    },
+    "receipts-wagodebug/hardening-wagodebug/package-census.jsonl": {
+      "bytes": 39222,
+      "sha256": "4b5a4d6d192b46840bb6211052bca919278b8857cb525e7540da889ca8d16555"
+    },
+    "receipts-wagodebug/hardening-wagodebug/raw.jsonl": {
+      "bytes": 6725663,
+      "sha256": "1ab8547e7736e315576f7e99500605775661717e263c9c63491be9a2df9a85ff"
+    },
+    "receipts-wagodebug/hardening-wagodebug/result.json": {
+      "bytes": 4694,
+      "sha256": "3bc20f04c5421a97e900787cf94d6ad7627a4a27ea42b35a470e464c5cf62348"
+    },
+    "receipts-wagodebug/host-transition-wagodebug/command.json": {
+      "bytes": 1449,
+      "sha256": "c56ef63e47f47834afb1c92408f00852b894095451e73745d1d2442cda5a825c"
+    },
+    "receipts-wagodebug/host-transition-wagodebug/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "e7375972530a35d65e61aca936e6e23f680cc43fd2163e257c99965674820468"
+    },
+    "receipts-wagodebug/host-transition-wagodebug/raw.jsonl": {
+      "bytes": 42856,
+      "sha256": "18adec8c54d03805b7a8cd4186953ca50ed63950551af53bfe727c583e9081e1"
+    },
+    "receipts-wagodebug/host-transition-wagodebug/result.json": {
+      "bytes": 188,
+      "sha256": "7c7b2d76c4afb236a0474774faf02fce45461fe078a2de2ab1d5ff92ce285bc7"
+    },
+    "receipts-wagodebug/host.json": {
+      "bytes": 1098,
+      "sha256": "f44d59ef77df34fc69be165f7775777b2f0a9faf7d4fe44cdb000ea1eed443f5"
+    },
+    "receipts-wagodebug/installer-wagodebug/command.json": {
+      "bytes": 1125,
+      "sha256": "9b9c5725e5828361541f5db25b72893d70fc6d24d01a18f883360c24568745af"
+    },
+    "receipts-wagodebug/installer-wagodebug/package-census.jsonl": {
+      "bytes": 175,
+      "sha256": "d3ec8cabdc69ebf4458e6e8a22a8a0d3f1a6f835898d5e65e6c3b49034d64237"
+    },
+    "receipts-wagodebug/installer-wagodebug/raw.jsonl": {
+      "bytes": 1106,
+      "sha256": "053f342aaa5eab36ec36a5e56fe12058feca39a8015491f60dd37a4964bd009a"
+    },
+    "receipts-wagodebug/installer-wagodebug/result.json": {
+      "bytes": 365,
+      "sha256": "a23d7ec0c357d6c34db9c9db215629cff5c13916d30080aa47a2dc1dc951d8c4"
+    },
+    "receipts-wagodebug/profile-metadata-wagodebug/command.json": {
+      "bytes": 1259,
+      "sha256": "384152b29c035a1df63172e38e5d914e7ce33d78cfc5ce2700687e6e6746b5b7"
+    },
+    "receipts-wagodebug/profile-metadata-wagodebug/package-census.jsonl": {
+      "bytes": 75895,
+      "sha256": "ab3706cae9a598cfdd3087abfdf4620a9a5c9634653f01a788af114322535677"
+    },
+    "receipts-wagodebug/profile-metadata-wagodebug/raw.jsonl": {
+      "bytes": 139317,
+      "sha256": "42e71309419e821cf602b12d2ad63e82cabc8510dd8233ebe2d3b8b92cccb4c6"
+    },
+    "receipts-wagodebug/profile-metadata-wagodebug/result.json": {
+      "bytes": 190,
+      "sha256": "6a58fa14c7a33fc80dbfced3aa16560d1f3eef875b157dea744bf9952b6d4f1f"
+    },
+    "receipts-wagodebug/profile-runtime-wagodebug/command.json": {
+      "bytes": 1246,
+      "sha256": "dacc34bbaac872054241159f802702d291dc74a3e4fa47544baefaa05bb7ff8f"
+    },
+    "receipts-wagodebug/profile-runtime-wagodebug/package-census.jsonl": {
+      "bytes": 296843,
+      "sha256": "e52d86a00f156caa75aef3d09a41380593c709cdb4372b4cf5e49ecc8419407d"
+    },
+    "receipts-wagodebug/profile-runtime-wagodebug/raw.jsonl": {
+      "bytes": 61597,
+      "sha256": "72ee08956d801a8efd43fc157d1b719ade94e608fb1845ffffc24892f5e7e7f7"
+    },
+    "receipts-wagodebug/profile-runtime-wagodebug/result.json": {
+      "bytes": 1209,
+      "sha256": "b09faa01187638f551690247d93d77893a5743d979fe30beb461f2b606c7523b"
+    },
+    "receipts-wagodebug/progress.json": {
+      "bytes": 85,
+      "sha256": "5c6878c7e841e3cbdcd98f4bf7de173a8e6df2ef4ea32216ab24517c2c9587c7"
+    },
+    "receipts-wagodebug/race-wagodebug/command.json": {
+      "bytes": 1206,
+      "sha256": "167259b5bf44795d517068adb56a2f2f5839945d0cf6e1715f7fa875b0419265"
+    },
+    "receipts-wagodebug/race-wagodebug/package-census.jsonl": {
+      "bytes": 260256,
+      "sha256": "78bbd49afdc55e4bdb65e2d64303cea322ef10cf84290ef15f2496b907aeef5f"
+    },
+    "receipts-wagodebug/race-wagodebug/raw.jsonl": {
+      "bytes": 5581068,
+      "sha256": "fe32c01d8fc5e14d0ddcc3ef3b34780b6345adff6fda0899dc8fcc277f71270d"
+    },
+    "receipts-wagodebug/race-wagodebug/result.json": {
+      "bytes": 10305,
+      "sha256": "2e530f727fb094fdba33c4175d337faaa43b36ec3ad171f7b06bde5736c3fb59"
+    },
+    "receipts-wagodebug/repaired-contracts-wagodebug/command.json": {
+      "bytes": 1594,
+      "sha256": "5053c2bca6874fc9bc8b2ac709bdc83f02639eb194658ccd73eac137015280f1"
+    },
+    "receipts-wagodebug/repaired-contracts-wagodebug/package-census.jsonl": {
+      "bytes": 174985,
+      "sha256": "7c18d05797200e43c04e2e0a84250d418fe736560c5448db7ff362719a5c8e6b"
+    },
+    "receipts-wagodebug/repaired-contracts-wagodebug/raw.jsonl": {
+      "bytes": 8699,
+      "sha256": "ecc3b26461371389bbf6083c0ea15e4d34d84df684a6fd1baaf0536ed13e599f"
+    },
+    "receipts-wagodebug/repaired-contracts-wagodebug/result.json": {
+      "bytes": 762,
+      "sha256": "216aa1cf7bf2381075aceb9f429b2a3275977916d4137cedb9e8389fcd2fdbf2"
+    },
+    "receipts-wagodebug/results.json": {
+      "bytes": 509321,
+      "sha256": "da1b7db218bb44cf108b5c4d01469af3ec2e9a743357ea3642847cdccbeaba72"
+    },
+    "receipts-wagodebug/seeded-concurrency-wagodebug/command.json": {
+      "bytes": 1420,
+      "sha256": "65656d855278c81870ab3382b21ccbc6d94da341c1a068a73d32e1a3661e392b"
+    },
+    "receipts-wagodebug/seeded-concurrency-wagodebug/package-census.jsonl": {
+      "bytes": 11925,
+      "sha256": "696485469b34a2c5d3061fd195100a4fa7183b6bef8471b6b3b96151bb0e4956"
+    },
+    "receipts-wagodebug/seeded-concurrency-wagodebug/raw.jsonl": {
+      "bytes": 24926,
+      "sha256": "04a9181cbad18f9eb3c966bcb4b79b241a729c2a8cce2048e2a9e4b6b6f228d3"
+    },
+    "receipts-wagodebug/seeded-concurrency-wagodebug/result.json": {
+      "bytes": 191,
+      "sha256": "fe10c7f3e3fd768f5e842e4b57da4dbeca8c67e26f2e630feb209003164793cf"
+    },
+    "receipts-wagodebug/shared-scalar-wagodebug/command.json": {
+      "bytes": 1339,
+      "sha256": "9c09943e12d4353cccf6ea98c95e68c5e1008150a62f843c531e9d07fa57656a"
+    },
+    "receipts-wagodebug/shared-scalar-wagodebug/package-census.jsonl": {
+      "bytes": 295226,
+      "sha256": "bde8a5277d6760a0c98d6e3da4f6d1542ac696fb3f01dbfe1cbd293c6a0b5961"
+    },
+    "receipts-wagodebug/shared-scalar-wagodebug/raw.jsonl": {
+      "bytes": 81574,
+      "sha256": "c79f259588af9a3f219c0f303e6f5ae54945e141a3f9f653f4f20c2d11f36430"
+    },
+    "receipts-wagodebug/shared-scalar-wagodebug/result.json": {
+      "bytes": 186,
+      "sha256": "a48674d0d4c40d5d891b2657b12ba45b0654a4495bad544a174a365b20c5cdad"
+    },
+    "receipts-wagodebug/source-after.json": {
+      "bytes": 3108518,
+      "sha256": "b03f386f0a7786cdecbdc7226cd266914c47a377b87abf85faa0a12656098720"
+    },
+    "receipts-wagodebug/source-before.json": {
+      "bytes": 3108518,
+      "sha256": "b03f386f0a7786cdecbdc7226cd266914c47a377b87abf85faa0a12656098720"
+    },
+    "receipts-wagodebug/spec-v1-wagodebug/command.json": {
+      "bytes": 1481,
+      "sha256": "2d5b5d14f763fbfd7aff339bda8328b30880fa4c7de09967ce943a993f108c1a"
+    },
+    "receipts-wagodebug/spec-v1-wagodebug/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "e7375972530a35d65e61aca936e6e23f680cc43fd2163e257c99965674820468"
+    },
+    "receipts-wagodebug/spec-v1-wagodebug/raw.jsonl": {
+      "bytes": 23666,
+      "sha256": "eb45f369027623f82a5326882c6fa78a539af2ef73ba70a364cb7e2a49f64631"
+    },
+    "receipts-wagodebug/spec-v1-wagodebug/result.json": {
+      "bytes": 179,
+      "sha256": "52b16658e1b7c8d7d0441714884940bd57700058469c6e2a71a14c3d98f4b090"
+    },
+    "receipts-wagodebug/spec-v2-wagodebug/command.json": {
+      "bytes": 1481,
+      "sha256": "ae03a3445f0c6fdeb285aaaebe0d8a6a4dace3374d6b0d9a98b141a9dfa0ec38"
+    },
+    "receipts-wagodebug/spec-v2-wagodebug/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "e7375972530a35d65e61aca936e6e23f680cc43fd2163e257c99965674820468"
+    },
+    "receipts-wagodebug/spec-v2-wagodebug/raw.jsonl": {
+      "bytes": 63990,
+      "sha256": "d962b3324301c9f0acfc50a24996c3904f82196206a269d7a852b750638130dc"
+    },
+    "receipts-wagodebug/spec-v2-wagodebug/result.json": {
+      "bytes": 179,
+      "sha256": "d720b703af70a18e6950e550a4bebb8af9c96254c85a40f488c4a8cfd9eaca2c"
+    },
+    "receipts-wagodebug/spec-v3-signals-wagodebug/command.json": {
+      "bytes": 1572,
+      "sha256": "a0cb7c478291dbee600bb6a4a2d4568d5e09834929c45906035f29cff7a063b4"
+    },
+    "receipts-wagodebug/spec-v3-signals-wagodebug/package-census.jsonl": {
+      "bytes": 173387,
+      "sha256": "77dd92a9dc489b13f57afff8a308dcca8fcd4554abd8ca133ea63523a513a53c"
+    },
+    "receipts-wagodebug/spec-v3-signals-wagodebug/raw.jsonl": {
+      "bytes": 124092,
+      "sha256": "e67e1341f1c7e744c59f6ea47be72c5268b7315d58f9a49294e1d550fcb2463b"
+    },
+    "receipts-wagodebug/spec-v3-signals-wagodebug/result.json": {
+      "bytes": 81887,
+      "sha256": "f614092e5dcffcdac4d8de79d29df2a322e6d8b402e5796299f936d372198fc7"
+    },
+    "receipts-wagodebug/spec-v3-wagodebug/command.json": {
+      "bytes": 1481,
+      "sha256": "22ae7830dba270069e199af272cc4581ac8d25f2066aa65065d7b184b20f6ad4"
+    },
+    "receipts-wagodebug/spec-v3-wagodebug/package-census.jsonl": {
+      "bytes": 174932,
+      "sha256": "e7375972530a35d65e61aca936e6e23f680cc43fd2163e257c99965674820468"
+    },
+    "receipts-wagodebug/spec-v3-wagodebug/raw.jsonl": {
+      "bytes": 124085,
+      "sha256": "76f248317bdf3c6b558388abaf9a36f447693116f6da5cb9693d333abdb17178"
+    },
+    "receipts-wagodebug/spec-v3-wagodebug/result.json": {
+      "bytes": 81879,
+      "sha256": "69944702084bb6d8c869b0da8b5ebbc125a229b8c487188e1a19a4e07e1fef95"
+    },
+    "receipts-wagodebug/summary.json": {
+      "bytes": 519293,
+      "sha256": "242fb4c880082c452866728b724c55f1693989fd5883862fec5eeadfb0ca744c"
+    },
+    "contracts-wagodebug/commands.json": {
+      "bytes": 1124,
+      "sha256": "c075df21c38932f2923eec0d61be3544ee81bbd8871095c598d413bca57d2607"
+    },
+    "contracts-wagodebug/driver-manifest.json": {
+      "bytes": 2586730,
+      "sha256": "4e9d470a64a91dd31915dbce28d4f0aa40fb33271b6f5501835f5190a0b5227e"
+    },
+    "contracts-wagodebug/generated/graph.wasm": {
+      "bytes": 357,
+      "sha256": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6"
+    },
+    "contracts-wagodebug/generated/noGC.wasm": {
+      "bytes": 47,
+      "sha256": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0"
+    },
+    "contracts-wagodebug/generated/scalar.wasm": {
+      "bytes": 54,
+      "sha256": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8"
+    },
+    "contracts-wagodebug/host.json": {
+      "bytes": 549,
+      "sha256": "5005875f27bababa6c89aa8c302ec395a17edada0ba06e284a0077fae0ab14df"
+    },
+    "contracts-wagodebug/overlay.json": {
+      "bytes": 223,
+      "sha256": "cc192af93c3039e4534660cf93db1ac5d2959a433a88dca960cfb27bf328de4b"
+    },
+    "contracts-wagodebug/package-census.jsonl": {
+      "bytes": 175310,
+      "sha256": "302159b9d37cb5145fad9096a142beb75dfe0a63d6b30688363a5afe852af6be"
+    },
+    "contracts-wagodebug/source-manifest.json": {
+      "bytes": 3108518,
+      "sha256": "b03f386f0a7786cdecbdc7226cd266914c47a377b87abf85faa0a12656098720"
+    },
+    "contracts-wagodebug/summary.json": {
+      "bytes": 2947,
+      "sha256": "a5873385aa189e20da63b82bb8e1363a8fc4e0369554ea1ece7ba462f8155f6e"
+    },
+    "contracts-wagodebug/tests.jsonl": {
+      "bytes": 12667,
+      "sha256": "87b682551fbf576c91df7e95c635d258e95a91f58bfebfbf64d39ced5faa42d3"
+    }
+  },
+  "artifacts/windows-da19f1a8d-ordinary-1.zip": {
+    "commands.json": {
+      "bytes": 998,
+      "sha256": "0332432547d036dceb5824d3f50285dd1dfdeeec495a4bbaebc7749a0eac5f63"
+    },
+    "host.json": {
+      "bytes": 574,
+      "sha256": "4735192759698009af6b32bac885205beaddfad2a7bb505404fb7e623517a9a6"
+    },
+    "driver-manifest.json": {
+      "bytes": 2604660,
+      "sha256": "a44a5fb3e3ddcfbc940a059316421559d13da8636f179cacdc07c037031db678"
+    },
+    "overlay.json": {
+      "bytes": 229,
+      "sha256": "add13f2c7be1f022eb6d106d75330e821fdfe5d5079f065f9d69cd7603240d76"
+    },
+    "package-census.jsonl": {
+      "bytes": 168970,
+      "sha256": "8ce76ee7325df650fc003f1234b1237f42348a15ff75db40d04f6d3d454bfd41"
+    },
+    "source-manifest.json": {
+      "bytes": 2599786,
+      "sha256": "0107c0d7cc969926346a5ed71559a540b54df7fc7bbc0caa5fe2c17ceda78c15"
+    },
+    "summary.json": {
+      "bytes": 1506,
+      "sha256": "d248785e81e34d11ec9349a5904ba2a5feed48b9fcefa035c2399dade6532357"
+    },
+    "tests.jsonl": {
+      "bytes": 3714,
+      "sha256": "8229ab5891168b064a9cd74de7e34d51f3cd524a944070f9780cc87a6716701f"
+    }
+  },
+  "artifacts/windows-da19f1a8d-wago_regalloccheck-1.zip": {
+    "commands.json": {
+      "bytes": 1092,
+      "sha256": "11e77ef9ef9aba019da0b295c39d02d4d94320c1a6dc7055f21df109c5702b4e"
+    },
+    "host.json": {
+      "bytes": 574,
+      "sha256": "4735192759698009af6b32bac885205beaddfad2a7bb505404fb7e623517a9a6"
+    },
+    "driver-manifest.json": {
+      "bytes": 2604660,
+      "sha256": "a44a5fb3e3ddcfbc940a059316421559d13da8636f179cacdc07c037031db678"
+    },
+    "overlay.json": {
+      "bytes": 229,
+      "sha256": "add13f2c7be1f022eb6d106d75330e821fdfe5d5079f065f9d69cd7603240d76"
+    },
+    "package-census.jsonl": {
+      "bytes": 168970,
+      "sha256": "09ac82004e96b747729b5a000bf2234e3675c379b02d5c534e012660a2679a0a"
+    },
+    "source-manifest.json": {
+      "bytes": 2599786,
+      "sha256": "0107c0d7cc969926346a5ed71559a540b54df7fc7bbc0caa5fe2c17ceda78c15"
+    },
+    "summary.json": {
+      "bytes": 1507,
+      "sha256": "3047ae494fc7d222f8c2f3b9c9d6b0d852b34266cce232c28a6cfe24b1fc979d"
+    },
+    "tests.jsonl": {
+      "bytes": 3715,
+      "sha256": "652d97fa345fe33644cbb662e6cdb01ffbd1045d6173ad5117439e75394aa923"
+    }
+  },
+  "artifacts/windows-da19f1a8d-wagodebug-1.zip": {
+    "commands.json": {
+      "bytes": 1056,
+      "sha256": "4405c42c353b42fcf8e548abacfe498db4e7e011454a441350605b0ef1faf227"
+    },
+    "driver-manifest.json": {
+      "bytes": 2604660,
+      "sha256": "a44a5fb3e3ddcfbc940a059316421559d13da8636f179cacdc07c037031db678"
+    },
+    "host.json": {
+      "bytes": 574,
+      "sha256": "4735192759698009af6b32bac885205beaddfad2a7bb505404fb7e623517a9a6"
+    },
+    "overlay.json": {
+      "bytes": 229,
+      "sha256": "add13f2c7be1f022eb6d106d75330e821fdfe5d5079f065f9d69cd7603240d76"
+    },
+    "package-census.jsonl": {
+      "bytes": 168970,
+      "sha256": "abdde09aeb55f5be037a6bf496cfd41ab4a5a55e625074206eb9048aacf35d67"
+    },
+    "source-manifest.json": {
+      "bytes": 2599786,
+      "sha256": "0107c0d7cc969926346a5ed71559a540b54df7fc7bbc0caa5fe2c17ceda78c15"
+    },
+    "summary.json": {
+      "bytes": 1506,
+      "sha256": "a8e0e91d1239f3248e866f472c21d44c8350afe2815bbddda613739b8ab60087"
+    },
+    "tests.jsonl": {
+      "bytes": 3709,
+      "sha256": "a172ced367fc3602583102e8d89ab81919ac13d22253a764b9a45dacc3e6b12c"
+    }
+  }
+}
