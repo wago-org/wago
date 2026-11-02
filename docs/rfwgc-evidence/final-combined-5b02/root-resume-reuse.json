@@ -1,0 +1,12 @@
+[
+  {
+    "suite": "full-root-replay-ordinary",
+    "raw_sha256": "b36a0c49b2069f82fa02b0549cd15ee253cf31879dc1c836e6b0a762f945c5c8",
+    "command_identical": true
+  },
+  {
+    "suite": "cli-ordinary",
+    "raw_sha256": "ef73fc9da24990c509ef2de4ec884a0e242f9dfd3c126fbdda7ca730a4cc66ed",
+    "command_identical": true
+  }
+]
