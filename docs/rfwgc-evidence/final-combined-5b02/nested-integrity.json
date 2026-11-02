@@ -136,7 +136,38 @@
     "qemu-guest/riscv64-wago_regalloccheck-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "qemu-guest/riscv64-ordinary-guest-binary.sha256": "90542625e0ba3c67524fa844dd87d4174e4ea5dae5415db02dc6b37dd305666d",
     "qemu-guest/riscv64-wago_regalloccheck-guest-binary.sha256": "713c0a35858195cc9786889577190f25495b4398bad0ffa0063d329b728d3967",
-    "qemu-guest/riscv64-wagodebug-guest-binary.sha256": "c3efe9ead23526ff4694247e40b50ce4bb4f3150c888ead2fd126d628621ee42"
+    "qemu-guest/riscv64-wagodebug-guest-binary.sha256": "c3efe9ead23526ff4694247e40b50ce4bb4f3150c888ead2fd126d628621ee42",
+    "qemu-guest/riscv64-wago_regalloccheck-guest.log": "b5dc95b5826c8ff7f4dc8094cd209a2593c52af1091320c78fbc1c34784e1cf3",
+    "qemu-h6/source.json": "af7707b650539045e01e852889870b56a0890b33cb53897bb801c1c152bb1f04",
+    "qemu-h6.py": "3391d1c5c05a7e19861d4fd3bc9a8ee37d3cbdc9961f4caa3dfe21dfae264afe",
+    "qemu-h6/arm64-version.log": "1dd52d45967d042bf0bc462082f77a1c26e08ac5cfa44279c3c2eb21c7a614e6",
+    "qemu-h6/arm64-ordinary-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qemu-h6/arm64-ordinary-guest.log": "09b5d0248f3536359ff3fb426b42dd1349dd4ac5029eeaee2581b939a3925e45",
+    "qemu-h6/arm64-wagodebug-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qemu-h6/arm64-wagodebug-guest.log": "e9a1c2cbed53dafc5b95c11c6afca7c0b9ee29cbdb3b60cd28fcc10f83536b25",
+    "qemu-h6/arm64-wago_regalloccheck-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qemu-h6/arm64-wago_regalloccheck-guest.log": "5d0ba43328e146344894bffced07500a6106ce7100464fbb0cdd63950f5f78f8",
+    "qemu-h6/arm64-ordinary-guest-binary.sha256": "c5cca09438df9bad94ef464fe769d5c3e9062ec358580d978b27a121d784b86d",
+    "qemu-h6/arm64-wago_regalloccheck-guest-binary.sha256": "f64e5bda0f480ac0f4ff0586b844451426400b052c4fa7f19e0d23a0041e20bb",
+    "qemu-h6/arm64-wagodebug-guest-binary.sha256": "aca5ee9d38303eff4355cdad855535e52db370c96c4434ae16748b9de8b9b554",
+    "qemu-repairs/source.json": "ac6a9779fc7c1fb107b0068567e2bf63528f0f722e721ede7fe18b6829f46647",
+    "target-repairs.py": "e3030b23724683e644189b5028b405cf95a1063f74481e222bcc842a22aa387d",
+    "qemu-repairs/arm64-version.log": "1dd52d45967d042bf0bc462082f77a1c26e08ac5cfa44279c3c2eb21c7a614e6",
+    "qemu-repairs/arm64-ordinary-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qemu-repairs/arm64-ordinary-guest.log": "42713d74c57512dab50356613d3dd018f7b06aedbee864926f99fd533b97bee0",
+    "qemu-repairs/arm64-ordinary-guest-binary.sha256": "d345ce2540a6261aaf1902a025a40902300d66d8ffa4ce61a48c02b0ed99b3bc",
+    "qemu-rv64-controls/source.json": "07a87a3fa352668f8b47750835ab07e2e302f89a9d05a2eafef7f1658bdece52",
+    "qemu-rv64-controls.py": "76629ef49895bd98d3d3ea4aa7e9d935818f3118bd2d2a0880f35a0cc1f75de8",
+    "qemu-rv64-controls/riscv64-version.log": "e011deaed4e0bb6d37ebae0bc160687013fe79ebf76d7c9e3d503ce68790ddee",
+    "qemu-rv64-controls/riscv64-ordinary-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qemu-rv64-controls/riscv64-ordinary-guest.log": "825e878cbb93b69e958eb2e9f574d4aded1ad51abde0773b1110fd5760b54494",
+    "qemu-rv64-controls/riscv64-wagodebug-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qemu-rv64-controls/riscv64-wagodebug-guest.log": "0c97a8d57963288469a98e775ac19ce6d9557d5763b56123453a570804a509eb",
+    "qemu-rv64-controls/riscv64-wago_regalloccheck-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qemu-rv64-controls/riscv64-wago_regalloccheck-guest.log": "09789f4e0c79d2ee326e44e7f8e320a1e11ea8b50cf479e80aac40a1dfdf6f19",
+    "qemu-rv64-controls/riscv64-ordinary-guest-binary.sha256": "42761fbe8f3c7a3f83484ebff2e81ad2b7e6863face5b981d6b9ea16f1eb973a",
+    "qemu-rv64-controls/riscv64-wago_regalloccheck-guest-binary.sha256": "3fef11277c65ede9efdfe4dfe746ae4bf89c1a2611eca053f19469d9f026e0f5",
+    "qemu-rv64-controls/riscv64-wagodebug-guest-binary.sha256": "619f0adddf1d6b39da1b9032dec2addddd47c2396905ecc67ca04f0881889709"
   },
   "receipts": [
     {
@@ -1007,6 +1038,280 @@
         "./src/wago"
       ],
       "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "qemu-guest/riscv64-wago_regalloccheck-guest",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-guest/qemu/usr/bin/qemu-riscv64",
+        "-cpu",
+        "rv64,zba=false,zbb=false,zbc=false,zbs=false,v=false",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-guest/riscv64-wago_regalloccheck-guest.test",
+        "-test.v",
+        "-test.failfast",
+        "-test.count=1",
+        "-test.timeout=12m",
+        "-test.run=^(TestPlatformExecutionArchitecture|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim|TestGCStage7.*|TestGC.*(Root|Reentr).*|TestRV64CompactExternPlainReentryPrivate|TestRV64PublicNativeInvocationSurvivesForeignHostReentry)$"
+      ],
+      "raw_sha256": "b5dc95b5826c8ff7f4dc8094cd209a2593c52af1091320c78fbc1c34784e1cf3"
+    },
+    {
+      "suite": "qemu-h6/arm64-version",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-h6/qemu/usr/bin/qemu-aarch64",
+        "--version"
+      ],
+      "raw_sha256": "1dd52d45967d042bf0bc462082f77a1c26e08ac5cfa44279c3c2eb21c7a614e6"
+    },
+    {
+      "suite": "qemu-h6/arm64-ordinary-guest-build",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-h6/arm64-ordinary-guest.test",
+        "./src/wago"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "qemu-h6/arm64-ordinary-guest",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-h6/qemu/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-h6/arm64-ordinary-guest.test",
+        "-test.v",
+        "-test.failfast",
+        "-test.count=1",
+        "-test.timeout=12m",
+        "-test.run=^(TestPlatformExecutionArchitecture|TestR9Ownership.*)$"
+      ],
+      "raw_sha256": "09b5d0248f3536359ff3fb426b42dd1349dd4ac5029eeaee2581b939a3925e45"
+    },
+    {
+      "suite": "qemu-h6/arm64-wagodebug-guest-build",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-tags=wagodebug",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-h6/arm64-wagodebug-guest.test",
+        "./src/wago"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "qemu-h6/arm64-wagodebug-guest",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-h6/qemu/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-h6/arm64-wagodebug-guest.test",
+        "-test.v",
+        "-test.failfast",
+        "-test.count=1",
+        "-test.timeout=12m",
+        "-test.run=^(TestPlatformExecutionArchitecture|TestR9Ownership.*)$"
+      ],
+      "raw_sha256": "e9a1c2cbed53dafc5b95c11c6afca7c0b9ee29cbdb3b60cd28fcc10f83536b25"
+    },
+    {
+      "suite": "qemu-h6/arm64-wago_regalloccheck-guest-build",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-tags=wago_regalloccheck",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-h6/arm64-wago_regalloccheck-guest.test",
+        "./src/wago"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "qemu-h6/arm64-wago_regalloccheck-guest",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-h6/qemu/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-h6/arm64-wago_regalloccheck-guest.test",
+        "-test.v",
+        "-test.failfast",
+        "-test.count=1",
+        "-test.timeout=12m",
+        "-test.run=^(TestPlatformExecutionArchitecture|TestR9Ownership.*)$"
+      ],
+      "raw_sha256": "5d0ba43328e146344894bffced07500a6106ce7100464fbb0cdd63950f5f78f8"
+    },
+    {
+      "suite": "qemu-repairs/arm64-version",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+        "--version"
+      ],
+      "raw_sha256": "1dd52d45967d042bf0bc462082f77a1c26e08ac5cfa44279c3c2eb21c7a614e6"
+    },
+    {
+      "suite": "qemu-repairs/arm64-ordinary-guest-build",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/arm64-ordinary-guest.test",
+        "./src/wago"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "qemu-repairs/arm64-ordinary-guest",
+      "exit": 1,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/arm64-ordinary-guest.test",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=12m",
+        "-test.run=^(TestPlatformExecutionArchitecture|TestRR.*|TestSharedEntryGuardCancellationAndGC|TestDesign.*|TestR9H2.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+      ],
+      "raw_sha256": "42713d74c57512dab50356613d3dd018f7b06aedbee864926f99fd533b97bee0"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-version",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-rv64-controls/qemu/usr/bin/qemu-riscv64",
+        "--version"
+      ],
+      "raw_sha256": "e011deaed4e0bb6d37ebae0bc160687013fe79ebf76d7c9e3d503ce68790ddee"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-ordinary-guest-build",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-rv64-controls/riscv64-ordinary-guest.test",
+        "./src/wago"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-ordinary-guest",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-rv64-controls/qemu/usr/bin/qemu-riscv64",
+        "-cpu",
+        "rv64,zba=false,zbb=false,zbc=false,zbs=false,v=false",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-rv64-controls/riscv64-ordinary-guest.test",
+        "-test.v",
+        "-test.failfast",
+        "-test.count=1",
+        "-test.timeout=12m",
+        "-test.run=^(TestPlatformExecutionArchitecture|TestRV64ManagedFunction.*|TestManagedFunctionRV64Shape|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+      ],
+      "raw_sha256": "825e878cbb93b69e958eb2e9f574d4aded1ad51abde0773b1110fd5760b54494"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wagodebug-guest-build",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-tags=wagodebug",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-rv64-controls/riscv64-wagodebug-guest.test",
+        "./src/wago"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wagodebug-guest",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-rv64-controls/qemu/usr/bin/qemu-riscv64",
+        "-cpu",
+        "rv64,zba=false,zbb=false,zbc=false,zbs=false,v=false",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-rv64-controls/riscv64-wagodebug-guest.test",
+        "-test.v",
+        "-test.failfast",
+        "-test.count=1",
+        "-test.timeout=12m",
+        "-test.run=^(TestPlatformExecutionArchitecture|TestRV64ManagedFunction.*|TestManagedFunctionRV64Shape|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+      ],
+      "raw_sha256": "0c97a8d57963288469a98e775ac19ce6d9557d5763b56123453a570804a509eb"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wago_regalloccheck-guest-build",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-tags=wago_regalloccheck",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-rv64-controls/riscv64-wago_regalloccheck-guest.test",
+        "./src/wago"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wago_regalloccheck-guest",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-rv64-controls/qemu/usr/bin/qemu-riscv64",
+        "-cpu",
+        "rv64,zba=false,zbb=false,zbc=false,zbs=false,v=false",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-rv64-controls/riscv64-wago_regalloccheck-guest.test",
+        "-test.v",
+        "-test.failfast",
+        "-test.count=1",
+        "-test.timeout=12m",
+        "-test.run=^(TestPlatformExecutionArchitecture|TestRV64ManagedFunction.*|TestManagedFunctionRV64Shape|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim)$"
+      ],
+      "raw_sha256": "09789f4e0c79d2ee326e44e7f8e320a1e11ea8b50cf479e80aac40a1dfdf6f19"
     }
   ],
   "previous_seals_verified": true

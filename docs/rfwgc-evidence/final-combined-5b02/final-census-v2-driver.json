@@ -1,0 +1,5 @@
+{
+  "path": "final-census-v2.py",
+  "sha256": "441b183534b59e48def2205838425d7610244dbf5ffed7b63247a74e56cce5e8",
+  "reason": "ARM64-only shared-entry guard remains mandatory on ARM64; absent by build constraint on AMD64. Nonzero target exits remain FAIL, not waived. Original frozen census retained unmodified."
+}

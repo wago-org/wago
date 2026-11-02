@@ -1,0 +1,12 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "suite": "qemu-repairs/arm64-ordinary-guest",
+  "exit": 1,
+  "failures": [
+    "RRRecheckStorageOnlyReturnBehindDynamicReader none/table: create native deadline timer: invalid argument",
+    "SharedEntryGuardCancellationAndGC: native loop did not cancel"
+  ],
+  "classification": "Both previously documented; guard mechanism unresolved, no claim of QEMU defect or new proven production defect",
+  "cost_uncertainty": "No runtime repair estimate established. Native final-pin discrimination remains parent-owned; remaining unchanged QEMU cells are bounded at900s each. Existing native5847 evidence is not credited as current-pin execution.",
+  "continuation": "Exact known controlled failures may be retained while completing remaining cells; stop on any additional failure."
+}
