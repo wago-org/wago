@@ -891,3 +891,26 @@ caller is not itself a missing production path: do not invent allocator changes
 solely to create a parallel slice. Any future relocating caller must use migration
 contract. Await exact support definitions; final buckets/adoptions/disagreements
 and reasons belong to integration owner. Seven PRs remain pending final gates.
+
+## Support documents adopted and parallel ownership assigned — 2026-11-02
+
+Received advisory docs throughd01193139 and integrated all six docs commits.
+Assessed source35c36bc59/production501e9ab46 unchanged by these documentation
+updates. Verified prior hook worker released all files, current source clean,
+and exact15-pathA/24-pathB sets have empty intersection. Only other active worker
+is combinedqualification10ea28d4 with separate evidence ownership.
+
+ADOPT A host-container authority/public adapters and B guest imports/bulk map
+exact allowlists/newtest/evidencedirs in h2-parallel-slices.md. ADOPT nilInstance
+meaning authenticated host physical owner resolved via current store/storage;
+never fabricate publisherInstance. Freeze typed signatures/helperIDs/arities and
+opaque representation; any required APIchange returns to parent for serialized
+prerequisite. ADOPT h2-qualification-matrix.md and realhostroot lifecycle. Develop
+inparallel; A commits first, B waits for parent's A-landing notification before
+committing, then combined immutable acceptance. No cross-allowlist edits.
+
+Adopt all seven advisory INCLUDED scope recommendations, but REJECT interpreting
+them as final INCLUDED acceptance: owner's bucket requires combined gatesgreen,
+reviewzero unresolved; missing997421119d1d/100311bcf23fd provenance remains.
+Migration adapter stays regression/futureallocator obligation; no new production
+relocation requested because currentgrowthreservedcapacitydoesnotrelocate.
