@@ -2,7 +2,11 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot"
+import (
+	"math/bits"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot"
+)
 
 // Constant-divisor strength reduction. A div/rem by a constant is replaced with
 // cheap shifts (power-of-2 divisors) or a multiply-high + shift (the Granlund–
@@ -213,7 +217,17 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 		W = 64
 	}
 	magic, shift, add := railshot.MagicU(d, W)
-	q := f.magicMulHigh(res, magic, w, false) // q = high(res * magic), pinned
+	var q Reg
+	if !w && !add && shift > 0 && shift < 32 {
+		// ((uint64(uint32(n))*magic)>>32)>>shift is one 64-bit
+		// logical shift. An add-corrected quotient needs its unshifted high
+		// half first, and signed/64-bit division keeps the existing lowering.
+		q = f.magicMulHighShift(res, magic, false, false, shift)
+		shift = 0
+		f.stats.peep("magic-u32-shift")
+	} else {
+		q = f.magicMulHigh(res, magic, w, false)
+	}
 	if add {
 		// q = ((n - q) >> 1) + q  (an overflow-free way to add n before the shift).
 		t := f.allocReg(maskOf(res, q))
@@ -281,6 +295,12 @@ func (f *fn) divConstSignedMagic(res Reg, d int64, w, wantRem bool) {
 // one-operand MUL/IMUL there is no RDX:RAX pair to spill and pin, and res is left
 // untouched. The caller unpins the result.
 func (f *fn) magicMulHigh(res Reg, magic uint64, w, signed bool) Reg {
+	return f.magicMulHighShift(res, magic, w, signed, 0)
+}
+
+// postShift is zero except for a proved unsigned 32-bit quotient without add
+// correction. That path can extract bits [63:32+postShift] in one instruction.
+func (f *fn) magicMulHighShift(res Reg, magic uint64, w, signed bool, postShift uint) Reg {
 	mr := f.allocReg(maskOf(res))
 	f.pinned = f.pinned.add(mr)
 	f.a.MovImm64(mr, magic)
@@ -299,8 +319,8 @@ func (f *fn) magicMulHigh(res Reg, magic uint64, w, signed bool) Reg {
 			f.a.Smull(hi, res, mr)          // hi = (int64)res_lo32 * (int64)magic_lo32
 			f.shiftImm(shASR, hi, 32, true) // arithmetic: high 32 bits → low half
 		} else {
-			f.a.Umull(hi, res, mr)          // hi = (uint64)res_lo32 * (uint64)magic_lo32
-			f.shiftImm(shLSR, hi, 32, true) // logical: high 32 bits → low half
+			f.a.Umull(hi, res, mr)                          // hi = (uint64)res_lo32 * (uint64)magic_lo32
+			f.shiftImm(shLSR, hi, byte(32+postShift), true) // logical: high quotient bits → low half
 		}
 	}
 	f.pinned = f.pinned.remove(mr)
@@ -314,8 +334,16 @@ func (f *fn) magicMulHigh(res Reg, magic uint64, w, signed bool) Reg {
 func (f *fn) remFromQuot(nreg, q Reg, d int64, w bool) {
 	t := f.allocReg(maskOf(nreg, q))
 	f.pinned = f.pinned.add(t)
-	f.a.MovImm64(t, uint64(d))
-	f.msub(nreg, q, t, nreg, w)
+	if d > 1 && uint64(d-1)&uint64(d-2) == 0 {
+		// q*(1+2^k) is one shifted add. Both instructions preserve the
+		// low-W-bit arithmetic used by signed and unsigned remainders.
+		f.a.AddShifted(t, q, q, uint8(bits.TrailingZeros64(uint64(d-1))), !w)
+		f.aluRR(opSub, nreg, t, w)
+		f.stats.peep("magic-rem-shifted-product")
+	} else {
+		f.a.MovImm64(t, uint64(d))
+		f.msub(nreg, q, t, nreg, w)
+	}
 	f.pinned = f.pinned.remove(t)
 	f.release(t)
 }

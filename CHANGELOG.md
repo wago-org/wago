@@ -50,6 +50,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Shorten ARM64 constant integer division/remainder and multiply-add sequences
+  with exact-width shifted arithmetic, preserving signed, overflow and alias
+  behavior.
 - Keep ARM64 integer block parameters and surrounding operands resident through
   bounded nested straight-line blocks.
 - Return bounded ARM64 straight-line integer pairs directly in result registers.
