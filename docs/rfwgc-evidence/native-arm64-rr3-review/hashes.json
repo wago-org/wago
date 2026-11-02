@@ -1,0 +1,10 @@
+{
+  "src/wago/rr_recheck_adversary_test.go": true,
+  "src/wago/rr_recheck_handoff_test.go": true,
+  "src/wago/design_recheck_adversary_test.go": true,
+  "src/wago/rr_retirement_test.go": true,
+  "src/wago/shared_entry_guard_arm64_test.go": true,
+  "src/wago/rr_recheck_flags_current_test.go": true,
+  "bootstrap": true,
+  "timer": true
+}
