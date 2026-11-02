@@ -1,0 +1,17 @@
+{
+  "attempts": [
+    {
+      "scope": "main repository manifests and all six native receipts",
+      "result": "PASS"
+    },
+    {
+      "scope": "additional recursive submodule object validation",
+      "result": "BLOCKED",
+      "reason": "Missing local tests/conformance/spec-v2/document/core/util/katex checkout; no checkout or source modification performed."
+    },
+    {
+      "scope": "main repository manifests, all six receipts, three-way submodule manifest comparison",
+      "result": "PASS"
+    }
+  ]
+}
