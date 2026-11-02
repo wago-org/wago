@@ -1,0 +1,122 @@
+[
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "receipt": "receipts-ordinary/diagnostics-default-ordinary/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 0.87,
+    "margin_to_60_seconds": 59.13,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "receipt": "receipts-ordinary/diagnostics-established-ordinary/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 0.76,
+    "margin_to_60_seconds": 59.24,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "receipt": "receipts-ordinary/full-root-replay-ordinary/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 1.15,
+    "margin_to_60_seconds": 58.85,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "receipt": "receipts-ordinary/guard-ordinary/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 0.94,
+    "margin_to_60_seconds": 59.06,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-ordinary-1.zip",
+    "receipt": "receipts-ordinary/race-ordinary/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 24.23,
+    "margin_to_60_seconds": 35.77,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "receipt": "receipts-wago_regalloccheck/diagnostics-default-wago_regalloccheck/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 3.18,
+    "margin_to_60_seconds": 56.82,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "receipt": "receipts-wago_regalloccheck/diagnostics-established-wago_regalloccheck/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 4.37,
+    "margin_to_60_seconds": 55.63,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "receipt": "receipts-wago_regalloccheck/full-root-replay-wago_regalloccheck/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 4.64,
+    "margin_to_60_seconds": 55.36,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "receipt": "receipts-wago_regalloccheck/guard-wago_regalloccheck/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 3.35,
+    "margin_to_60_seconds": 56.65,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-wago_regalloccheck-1.zip",
+    "receipt": "receipts-wago_regalloccheck/race-wago_regalloccheck/raw.jsonl",
+    "verdict": "fail",
+    "elapsed_seconds": 60.01,
+    "margin_to_60_seconds": null,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "receipt": "receipts-wagodebug/diagnostics-default-wagodebug/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 0.94,
+    "margin_to_60_seconds": 59.06,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "receipt": "receipts-wagodebug/diagnostics-established-wagodebug/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 0.83,
+    "margin_to_60_seconds": 59.17,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "receipt": "receipts-wagodebug/full-root-replay-wagodebug/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 1.09,
+    "margin_to_60_seconds": 58.91,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "receipt": "receipts-wagodebug/guard-wagodebug/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 0.9,
+    "margin_to_60_seconds": 59.1,
+    "data_race_warnings_in_receipt": 0
+  },
+  {
+    "artifact": "darwin-ownership-wagodebug-1.zip",
+    "receipt": "receipts-wagodebug/race-wagodebug/raw.jsonl",
+    "verdict": "pass",
+    "elapsed_seconds": 24.72,
+    "margin_to_60_seconds": 35.28,
+    "data_race_warnings_in_receipt": 0
+  }
+]
