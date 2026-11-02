@@ -58,6 +58,7 @@ func compileZeroBranchStats(t *testing.T, m *wasm.Module, enabled, compact bool)
 }
 
 func TestZeroBranchIfArm64(t *testing.T) {
+	establishedScalarRoute(t)
 	i32 := []wasm.ValType{wasm.I32}
 	// local.get 0; if (result i32) 11 else 22 end
 	body := []byte{0x00, 0x20, 0x00, 0x04, 0x7f, 0x41, 0x0b, 0x05, 0x41, 0x16, 0x0b, 0x0b}
