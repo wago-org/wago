@@ -1,0 +1,27 @@
+{
+  "source": "6eb6d75946264c06930676f94b34c5a74a8e2b73",
+  "argv": [
+    "/tmp/qemu-x/usr/bin/qemu-aarch64",
+    "-cpu",
+    "max",
+    "/tmp/wago-staticcheck-repair-86br67aw/arm64-wago_regalloccheck.test",
+    "-test.v",
+    "-test.count=1",
+    "-test.timeout=35m",
+    "-test.failfast",
+    "-test.run=^(TestManagedFunction.*|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunction.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim|Test.*Dependency.*)$"
+  ],
+  "cwd": "/tmp/wago-staticcheck-repair-86br67aw/after/src/wago",
+  "environment": {
+    "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+    "GOTOOLCHAIN": "local",
+    "GOMAXPROCS": "2",
+    "GOFLAGS": "-p=2",
+    "PATH": "/tmp/wago-staticcheck-repair-86br67aw/after/.tools/staticcheck:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+    "GOOS": "linux",
+    "GOARCH": "arm64",
+    "CGO_ENABLED": "0",
+    "WAGO_RV64_TEST_RUNNER": "qemu"
+  },
+  "driver_sha256": "c8827c97b28f1d688c1b8ab319aeafd2620978329e366179f224211836376267"
+}
