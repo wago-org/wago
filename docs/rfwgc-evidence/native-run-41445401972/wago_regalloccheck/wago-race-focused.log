@@ -1,0 +1,916 @@
+{"Action":"start","Package":"./src/wago"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation","Output":"=== RUN   TestDesignInvocationSnapshotCancellation\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation/partial-lock-cancel"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation/partial-lock-cancel","Output":"=== RUN   TestDesignInvocationSnapshotCancellation/partial-lock-cancel\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation/partial-lock-cancel","Output":"--- PASS: TestDesignInvocationSnapshotCancellation/partial-lock-cancel (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation/partial-lock-cancel"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation/pin-overflow"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation/pin-overflow","Output":"=== RUN   TestDesignInvocationSnapshotCancellation/pin-overflow\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation/pin-overflow","Output":"--- PASS: TestDesignInvocationSnapshotCancellation/pin-overflow (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation/pin-overflow"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation","Output":"--- PASS: TestDesignInvocationSnapshotCancellation (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCancellation"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignInvocationSnapshotLatePublisher"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotLatePublisher","Output":"=== RUN   TestDesignInvocationSnapshotLatePublisher\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotLatePublisher","Output":"--- PASS: TestDesignInvocationSnapshotLatePublisher (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignInvocationSnapshotLatePublisher"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignInvocationSnapshotRetirement"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotRetirement","Output":"=== RUN   TestDesignInvocationSnapshotRetirement\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotRetirement","Output":"--- PASS: TestDesignInvocationSnapshotRetirement (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignInvocationSnapshotRetirement"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignInvocationSnapshotAuthenticatedDispatch"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotAuthenticatedDispatch","Output":"=== RUN   TestDesignInvocationSnapshotAuthenticatedDispatch\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotAuthenticatedDispatch","Output":"--- PASS: TestDesignInvocationSnapshotAuthenticatedDispatch (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignInvocationSnapshotAuthenticatedDispatch"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap","Output":"=== RUN   TestDesignInvocationSnapshotCallbackTrap\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap/return"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap/return","Output":"=== RUN   TestDesignInvocationSnapshotCallbackTrap/return\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap/return","Output":"--- PASS: TestDesignInvocationSnapshotCallbackTrap/return (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap/return"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap/trap"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap/trap","Output":"=== RUN   TestDesignInvocationSnapshotCallbackTrap/trap\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap/trap","Output":"--- PASS: TestDesignInvocationSnapshotCallbackTrap/trap (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap/trap"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap","Output":"--- PASS: TestDesignInvocationSnapshotCallbackTrap (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignInvocationSnapshotCallbackTrap"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckForeignRelayAfterLatePublisher"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckForeignRelayAfterLatePublisher","Output":"=== RUN   TestDesignRecheckForeignRelayAfterLatePublisher\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckForeignRelayAfterLatePublisher","Output":"    design_recheck_adversary_test.go:152: foreign clear of converted slot: out=[] err=wago: WasmGC struct helper: conversion store lacks pre-admitted invocation domains\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckForeignRelayAfterLatePublisher","Output":"    design_recheck_adversary_test.go:161: foreign copy of converted slot: out=[] err=wago: WasmGC struct helper: bulk store lacks complete invocation authority\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckForeignRelayAfterLatePublisher","Output":"--- PASS: TestDesignRecheckForeignRelayAfterLatePublisher (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckForeignRelayAfterLatePublisher"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter","Output":"=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/none"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/none","Output":"=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter/none\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/none","Output":"    design_recheck_adversary_test.go:295: storage=none dynamic=false instantiateBlocked=false unrelatedLeaseErr=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/none","Output":"--- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter/none (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/none"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/global"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/global","Output":"=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter/global\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/global","Output":"    design_recheck_adversary_test.go:295: storage=global dynamic=true instantiateBlocked=false unrelatedLeaseErr=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/global","Output":"--- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter/global (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/global"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/table"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/table","Output":"=== RUN   TestDesignRecheckStorageOnlyCallTopologyWriter/table\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/table","Output":"    design_recheck_adversary_test.go:295: storage=table dynamic=true instantiateBlocked=false unrelatedLeaseErr=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/table","Output":"--- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter/table (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter/table"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter","Output":"--- PASS: TestDesignRecheckStorageOnlyCallTopologyWriter (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckStorageOnlyCallTopologyWriter"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckCallbackChangesPublisherAuthority"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckCallbackChangesPublisherAuthority","Output":"=== RUN   TestDesignRecheckCallbackChangesPublisherAuthority\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckCallbackChangesPublisherAuthority","Output":"--- PASS: TestDesignRecheckCallbackChangesPublisherAuthority (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckCallbackChangesPublisherAuthority"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear","Output":"=== RUN   TestDesignRecheckNestedSameRuntimeClear\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/direct"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/direct","Output":"=== RUN   TestDesignRecheckNestedSameRuntimeClear/direct\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/direct","Output":"    design_recheck_adversary_test.go:470: direct clear: out=[7] err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/direct","Output":"--- PASS: TestDesignRecheckNestedSameRuntimeClear/direct (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/direct"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/scalar-relay"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/scalar-relay","Output":"=== RUN   TestDesignRecheckNestedSameRuntimeClear/scalar-relay\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/scalar-relay","Output":"    design_recheck_adversary_test.go:470: scalar-relay clear: out=[7] err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/scalar-relay","Output":"--- PASS: TestDesignRecheckNestedSameRuntimeClear/scalar-relay (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/scalar-relay"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/storage-relay"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/storage-relay","Output":"=== RUN   TestDesignRecheckNestedSameRuntimeClear/storage-relay\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/storage-relay","Output":"    design_recheck_adversary_test.go:470: storage-relay clear: out=[7] err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/storage-relay","Output":"--- PASS: TestDesignRecheckNestedSameRuntimeClear/storage-relay (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear/storage-relay"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear","Output":"--- PASS: TestDesignRecheckNestedSameRuntimeClear (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckNestedSameRuntimeClear"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRecheckNestedPublish"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedPublish","Output":"=== RUN   TestDesignRecheckNestedPublish\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedPublish","Output":"    design_recheck_adversary_test.go:512: relay publish: err=\u003cnil\u003e word=0x2648e1224892c41\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRecheckNestedPublish","Output":"--- PASS: TestDesignRecheckNestedPublish (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRecheckNestedPublish"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairWaitNotifier"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairWaitNotifier","Output":"=== RUN   TestDesignRepairWaitNotifier\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairWaitNotifier","Output":"--- PASS: TestDesignRepairWaitNotifier (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairWaitNotifier"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairConversionAdmissionLifecycle"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairConversionAdmissionLifecycle","Output":"=== RUN   TestDesignRepairConversionAdmissionLifecycle\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairConversionAdmissionLifecycle","Output":"--- PASS: TestDesignRepairConversionAdmissionLifecycle (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairConversionAdmissionLifecycle"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairScalarRelayOrdinaryStorageWithConversion"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairScalarRelayOrdinaryStorageWithConversion","Output":"=== RUN   TestDesignRepairScalarRelayOrdinaryStorageWithConversion\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairScalarRelayOrdinaryStorageWithConversion","Output":"--- PASS: TestDesignRepairScalarRelayOrdinaryStorageWithConversion (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairScalarRelayOrdinaryStorageWithConversion"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairConcurrentPublicationRetirement"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairConcurrentPublicationRetirement","Output":"=== RUN   TestDesignRepairConcurrentPublicationRetirement\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairConcurrentPublicationRetirement","Output":"--- PASS: TestDesignRepairConcurrentPublicationRetirement (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairConcurrentPublicationRetirement"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification/local\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/foreign"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/foreign","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/foreign\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/foreign","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification/local/foreign (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/foreign"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/forged"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/forged","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/forged\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/forged","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification/local/forged (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/forged"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/expired"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/expired","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/expired\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/expired","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification/local/expired (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/expired"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification/local (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/local"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/foreign"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/foreign","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/foreign\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/foreign","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/foreign (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/foreign"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/forged"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/forged","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/forged\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/forged","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/forged (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/forged"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/expired"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/expired","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/expired\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/expired","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/expired (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/expired"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null","Output":"=== RUN   TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification/owned (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification/owned"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification","Output":"--- PASS: TestDesignRepairPublicGlobalTokenClassification (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicGlobalTokenClassification"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignRepairPublicTableOrdinary"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicTableOrdinary","Output":"=== RUN   TestDesignRepairPublicTableOrdinary\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignRepairPublicTableOrdinary","Output":"--- PASS: TestDesignRepairPublicTableOrdinary (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignRepairPublicTableOrdinary"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport","Output":"=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone","Output":"=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone","Output":"    design_review_cross_runtime_probe_test.go:63: producer dynamic=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone","Output":"--- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime","Output":"=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime","Output":"    design_review_cross_runtime_probe_test.go:63: producer dynamic=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime","Output":"--- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone","Output":"=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone","Output":"    design_review_cross_runtime_probe_test.go:63: producer dynamic=true\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone","Output":"--- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime","Output":"=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime","Output":"    design_review_cross_runtime_probe_test.go:63: producer dynamic=true\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime","Output":"--- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone","Output":"=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone","Output":"    design_review_cross_runtime_probe_test.go:63: producer dynamic=true\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone","Output":"--- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime","Output":"=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime","Output":"    design_review_cross_runtime_probe_test.go:63: producer dynamic=true\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime","Output":"--- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport","Output":"--- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageProducerCrossRuntimeImport"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none","Output":"    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global","Output":"    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global","Output":"    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table","Output":"    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table","Output":"    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none","Output":"    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global","Output":"    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table","Output":"    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none","Output":"    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global","Output":"    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global","Output":"    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table","Output":"    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table","Output":"    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none","Output":"    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global","Output":"    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global","Output":"    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table","Output":"    design_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table","Output":"    design_review_probe_test.go:125: consumer dynamic=true imported=true leasedDomains=1\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table","Output":"    design_review_probe_test.go:135: unrelated lease while consumer lease held: err=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none","Output":"    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global","Output":"    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global"}
+{"Action":"run","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table","Output":"=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table","Output":"    design_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table","Output":"    design_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table"}
+{"Action":"output","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer","Output":"--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer (0.04s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestDesignReviewExternStorageImportsPrivateGCProducer"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ConditionalSlotExplicitDomain"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConditionalSlotExplicitDomain","Output":"=== RUN   TestR9H2ConditionalSlotExplicitDomain\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConditionalSlotExplicitDomain","Output":"--- PASS: TestR9H2ConditionalSlotExplicitDomain (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ConditionalSlotExplicitDomain"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2RetiredCollectorPreservesDeferredFinalizer"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2RetiredCollectorPreservesDeferredFinalizer","Output":"=== RUN   TestR9H2RetiredCollectorPreservesDeferredFinalizer\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2RetiredCollectorPreservesDeferredFinalizer","Output":"--- PASS: TestR9H2RetiredCollectorPreservesDeferredFinalizer (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2RetiredCollectorPreservesDeferredFinalizer"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation","Output":"=== RUN   TestGCAdmissionOrderedCancellation\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation/static"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation/static","Output":"=== RUN   TestGCAdmissionOrderedCancellation/static\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation/static","Output":"--- PASS: TestGCAdmissionOrderedCancellation/static (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation/static"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation/dynamic"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation/dynamic","Output":"=== RUN   TestGCAdmissionOrderedCancellation/dynamic\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation/dynamic","Output":"--- PASS: TestGCAdmissionOrderedCancellation/dynamic (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation/dynamic"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation","Output":"--- PASS: TestGCAdmissionOrderedCancellation (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAdmissionOrderedCancellation"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAdmissionSameOwnerBorrowing"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionSameOwnerBorrowing","Output":"=== RUN   TestGCAdmissionSameOwnerBorrowing\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionSameOwnerBorrowing","Output":"--- PASS: TestGCAdmissionSameOwnerBorrowing (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAdmissionSameOwnerBorrowing"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAdmissionUncontendedAllocations"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionUncontendedAllocations","Output":"=== RUN   TestGCAdmissionUncontendedAllocations\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionUncontendedAllocations","Output":"--- PASS: TestGCAdmissionUncontendedAllocations (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAdmissionUncontendedAllocations"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationNoDomainFastPathPreservesDynamicTopology"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationNoDomainFastPathPreservesDynamicTopology","Output":"=== RUN   TestGCInvocationNoDomainFastPathPreservesDynamicTopology\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationNoDomainFastPathPreservesDynamicTopology","Output":"--- PASS: TestGCInvocationNoDomainFastPathPreservesDynamicTopology (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationNoDomainFastPathPreservesDynamicTopology"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal","Output":"=== RUN   TestR9H2HostContainerPublicGlobal\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal/0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal/0","Output":"=== RUN   TestR9H2HostContainerPublicGlobal/0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal/0","Output":"--- PASS: TestR9H2HostContainerPublicGlobal/0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal/0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal/6","Output":"=== RUN   TestR9H2HostContainerPublicGlobal/6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal/6","Output":"--- PASS: TestR9H2HostContainerPublicGlobal/6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal","Output":"--- PASS: TestR9H2HostContainerPublicGlobal (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerPublicGlobal"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable","Output":"=== RUN   TestR9H2HostContainerPublicTable\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable/0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable/0","Output":"=== RUN   TestR9H2HostContainerPublicTable/0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable/0","Output":"--- PASS: TestR9H2HostContainerPublicTable/0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable/0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable/6","Output":"=== RUN   TestR9H2HostContainerPublicTable/6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable/6","Output":"--- PASS: TestR9H2HostContainerPublicTable/6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable","Output":"--- PASS: TestR9H2HostContainerPublicTable (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerPublicTable"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerClose"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerClose","Output":"=== RUN   TestR9H2HostContainerClose\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerClose/container-first"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerClose/container-first","Output":"=== RUN   TestR9H2HostContainerClose/container-first\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerClose/container-first","Output":"--- PASS: TestR9H2HostContainerClose/container-first (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerClose/container-first"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerClose/publisher-first"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerClose/publisher-first","Output":"=== RUN   TestR9H2HostContainerClose/publisher-first\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerClose/publisher-first","Output":"--- PASS: TestR9H2HostContainerClose/publisher-first (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerClose/publisher-first"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerClose/runtime-first"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerClose/runtime-first","Output":"=== RUN   TestR9H2HostContainerClose/runtime-first\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerClose/runtime-first","Output":"--- PASS: TestR9H2HostContainerClose/runtime-first (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerClose/runtime-first"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerClose","Output":"--- PASS: TestR9H2HostContainerClose (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerClose"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerAuthority"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerAuthority","Output":"=== RUN   TestR9H2HostContainerAuthority\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerAuthority","Output":"--- PASS: TestR9H2HostContainerAuthority (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerAuthority"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerMigration"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerMigration","Output":"=== RUN   TestR9H2HostContainerMigration\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerMigration","Output":"--- PASS: TestR9H2HostContainerMigration (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerMigration"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerCycle"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerCycle","Output":"=== RUN   TestR9H2HostContainerCycle\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/0/clear"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/0/clear","Output":"=== RUN   TestR9H2HostContainerCycle/0/clear\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/0/clear","Output":"--- PASS: TestR9H2HostContainerCycle/0/clear (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/0/clear"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/0/close"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/0/close","Output":"=== RUN   TestR9H2HostContainerCycle/0/close\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/0/close","Output":"--- PASS: TestR9H2HostContainerCycle/0/close (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/0/close"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/6/clear"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/6/clear","Output":"=== RUN   TestR9H2HostContainerCycle/6/clear\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/6/clear","Output":"--- PASS: TestR9H2HostContainerCycle/6/clear (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/6/clear"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/6/close"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/6/close","Output":"=== RUN   TestR9H2HostContainerCycle/6/close\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/6/close","Output":"--- PASS: TestR9H2HostContainerCycle/6/close (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerCycle/6/close"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostContainerCycle","Output":"--- PASS: TestR9H2HostContainerCycle (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostContainerCycle"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportGlobal"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportGlobal","Output":"=== RUN   TestR9H2HostImportGlobal\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportGlobal/0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportGlobal/0","Output":"=== RUN   TestR9H2HostImportGlobal/0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportGlobal/0","Output":"    gc_conversion_host_import_host_test.go:132: actual collector region shift=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportGlobal/0","Output":"--- PASS: TestR9H2HostImportGlobal/0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportGlobal/0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportGlobal/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportGlobal/6","Output":"=== RUN   TestR9H2HostImportGlobal/6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportGlobal/6","Output":"    gc_conversion_host_import_host_test.go:132: actual collector region shift=6\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportGlobal/6","Output":"--- PASS: TestR9H2HostImportGlobal/6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportGlobal/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportGlobal","Output":"--- PASS: TestR9H2HostImportGlobal (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportGlobal"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportTable"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTable","Output":"=== RUN   TestR9H2HostImportTable\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportTable/0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTable/0","Output":"=== RUN   TestR9H2HostImportTable/0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTable/0","Output":"    gc_conversion_host_import_host_test.go:132: actual collector region shift=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTable/0","Output":"--- PASS: TestR9H2HostImportTable/0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportTable/0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportTable/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTable/6","Output":"=== RUN   TestR9H2HostImportTable/6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTable/6","Output":"    gc_conversion_host_import_host_test.go:132: actual collector region shift=6\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTable/6","Output":"--- PASS: TestR9H2HostImportTable/6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportTable/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTable","Output":"--- PASS: TestR9H2HostImportTable (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportTable"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportBulk"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportBulk","Output":"=== RUN   TestR9H2HostImportBulk\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportBulk/0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportBulk/0","Output":"=== RUN   TestR9H2HostImportBulk/0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportBulk/0","Output":"    gc_conversion_host_import_host_test.go:235: actual collector region shift=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportBulk/0","Output":"--- PASS: TestR9H2HostImportBulk/0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportBulk/0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportBulk/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportBulk/6","Output":"=== RUN   TestR9H2HostImportBulk/6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportBulk/6","Output":"    gc_conversion_host_import_host_test.go:235: actual collector region shift=6\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportBulk/6","Output":"--- PASS: TestR9H2HostImportBulk/6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportBulk/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportBulk","Output":"--- PASS: TestR9H2HostImportBulk (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportBulk"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportInitialization"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportInitialization","Output":"=== RUN   TestR9H2HostImportInitialization\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportInitialization/0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportInitialization/0","Output":"=== RUN   TestR9H2HostImportInitialization/0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportInitialization/0","Output":"    gc_conversion_host_import_host_test.go:362: actual collector region shift=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportInitialization/0","Output":"--- PASS: TestR9H2HostImportInitialization/0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportInitialization/0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportInitialization/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportInitialization/6","Output":"=== RUN   TestR9H2HostImportInitialization/6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportInitialization/6","Output":"    gc_conversion_host_import_host_test.go:362: actual collector region shift=6\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportInitialization/6","Output":"--- PASS: TestR9H2HostImportInitialization/6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportInitialization/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportInitialization","Output":"--- PASS: TestR9H2HostImportInitialization (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportInitialization"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportCycle"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportCycle","Output":"=== RUN   TestR9H2HostImportCycle\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportCycle/0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportCycle/0","Output":"=== RUN   TestR9H2HostImportCycle/0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportCycle/0","Output":"    gc_conversion_host_import_host_test.go:436: actual collector region shift=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportCycle/0","Output":"--- PASS: TestR9H2HostImportCycle/0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportCycle/0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportCycle/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportCycle/6","Output":"=== RUN   TestR9H2HostImportCycle/6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportCycle/6","Output":"    gc_conversion_host_import_host_test.go:436: actual collector region shift=6\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportCycle/6","Output":"--- PASS: TestR9H2HostImportCycle/6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportCycle/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportCycle","Output":"--- PASS: TestR9H2HostImportCycle (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportCycle"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportTableIndependentPhysical"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTableIndependentPhysical","Output":"=== RUN   TestR9H2HostImportTableIndependentPhysical\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTableIndependentPhysical","Output":"    gc_conversion_host_import_host_test.go:525: actual collector region shift=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTableIndependentPhysical","Output":"--- PASS: TestR9H2HostImportTableIndependentPhysical (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportTableIndependentPhysical"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportAuthority"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportAuthority","Output":"=== RUN   TestR9H2HostImportAuthority\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportAuthority","Output":"--- PASS: TestR9H2HostImportAuthority (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportAuthority"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportGlobalOrdinaryAndGuards"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportGlobalOrdinaryAndGuards","Output":"=== RUN   TestR9H2HostImportGlobalOrdinaryAndGuards\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportGlobalOrdinaryAndGuards","Output":"--- PASS: TestR9H2HostImportGlobalOrdinaryAndGuards (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportGlobalOrdinaryAndGuards"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2HostImportTableOrdinaryAndGuards"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTableOrdinaryAndGuards","Output":"=== RUN   TestR9H2HostImportTableOrdinaryAndGuards\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2HostImportTableOrdinaryAndGuards","Output":"--- PASS: TestR9H2HostImportTableOrdinaryAndGuards (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2HostImportTableOrdinaryAndGuards"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement","Output":"=== RUN   TestR9H2ReceiptPublisherRetirement\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement/region=0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement/region=0","Output":"=== RUN   TestR9H2ReceiptPublisherRetirement/region=0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement/region=0","Output":"--- PASS: TestR9H2ReceiptPublisherRetirement/region=0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement/region=0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement/region=6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement/region=6","Output":"=== RUN   TestR9H2ReceiptPublisherRetirement/region=6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement/region=6","Output":"--- PASS: TestR9H2ReceiptPublisherRetirement/region=6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement/region=6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement","Output":"--- PASS: TestR9H2ReceiptPublisherRetirement (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptPublisherRetirement"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptIndependentContainersAndRollback"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptIndependentContainersAndRollback","Output":"=== RUN   TestR9H2ReceiptIndependentContainersAndRollback\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptIndependentContainersAndRollback","Output":"--- PASS: TestR9H2ReceiptIndependentContainersAndRollback (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptIndependentContainersAndRollback"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders","Output":"=== RUN   TestR9H2ReceiptCloseOrders\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/provider-first"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/provider-first","Output":"=== RUN   TestR9H2ReceiptCloseOrders/provider-first\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/provider-first","Output":"--- PASS: TestR9H2ReceiptCloseOrders/provider-first (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/provider-first"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/publisher-first"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/publisher-first","Output":"=== RUN   TestR9H2ReceiptCloseOrders/publisher-first\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/publisher-first","Output":"--- PASS: TestR9H2ReceiptCloseOrders/publisher-first (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/publisher-first"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/store-first"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/store-first","Output":"=== RUN   TestR9H2ReceiptCloseOrders/store-first\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/store-first","Output":"--- PASS: TestR9H2ReceiptCloseOrders/store-first (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders/store-first"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders","Output":"--- PASS: TestR9H2ReceiptCloseOrders (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptCloseOrders"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle","Output":"=== RUN   TestR9H2ReceiptConvertedProducerCycle\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/direct/region=0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/direct/region=0","Output":"=== RUN   TestR9H2ReceiptConvertedProducerCycle/direct/region=0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/direct/region=0","Output":"--- PASS: TestR9H2ReceiptConvertedProducerCycle/direct/region=0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/direct/region=0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/direct/region=6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/direct/region=6","Output":"=== RUN   TestR9H2ReceiptConvertedProducerCycle/direct/region=6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/direct/region=6","Output":"--- PASS: TestR9H2ReceiptConvertedProducerCycle/direct/region=6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/direct/region=6"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/callback/region=0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/callback/region=0","Output":"=== RUN   TestR9H2ReceiptConvertedProducerCycle/callback/region=0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/callback/region=0","Output":"--- PASS: TestR9H2ReceiptConvertedProducerCycle/callback/region=0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/callback/region=0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/callback/region=6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/callback/region=6","Output":"=== RUN   TestR9H2ReceiptConvertedProducerCycle/callback/region=6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/callback/region=6","Output":"--- PASS: TestR9H2ReceiptConvertedProducerCycle/callback/region=6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/callback/region=6"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/contention/region=0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/contention/region=0","Output":"=== RUN   TestR9H2ReceiptConvertedProducerCycle/contention/region=0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/contention/region=0","Output":"--- PASS: TestR9H2ReceiptConvertedProducerCycle/contention/region=0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/contention/region=0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/contention/region=6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/contention/region=6","Output":"=== RUN   TestR9H2ReceiptConvertedProducerCycle/contention/region=6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/contention/region=6","Output":"--- PASS: TestR9H2ReceiptConvertedProducerCycle/contention/region=6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle/contention/region=6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle","Output":"--- PASS: TestR9H2ReceiptConvertedProducerCycle (0.02s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptConvertedProducerCycle"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention","Output":"=== RUN   TestR9H2ReceiptOnlyContention\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/native"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/native","Output":"=== RUN   TestR9H2ReceiptOnlyContention/native\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/native","Output":"--- PASS: TestR9H2ReceiptOnlyContention/native (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/native"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/foreign-runtime"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/foreign-runtime","Output":"=== RUN   TestR9H2ReceiptOnlyContention/foreign-runtime\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/foreign-runtime","Output":"--- PASS: TestR9H2ReceiptOnlyContention/foreign-runtime (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/foreign-runtime"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/topology"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/topology","Output":"=== RUN   TestR9H2ReceiptOnlyContention/topology\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/topology","Output":"--- PASS: TestR9H2ReceiptOnlyContention/topology (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/topology"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/domain"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/domain","Output":"=== RUN   TestR9H2ReceiptOnlyContention/domain\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/domain","Output":"--- PASS: TestR9H2ReceiptOnlyContention/domain (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/domain"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/driver"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/driver","Output":"=== RUN   TestR9H2ReceiptOnlyContention/driver\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/driver","Output":"--- PASS: TestR9H2ReceiptOnlyContention/driver (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention/driver"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention","Output":"--- PASS: TestR9H2ReceiptOnlyContention (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptOnlyContention"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptDomainKeepsPrivateTypeAdmission"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptDomainKeepsPrivateTypeAdmission","Output":"=== RUN   TestR9H2ReceiptDomainKeepsPrivateTypeAdmission\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptDomainKeepsPrivateTypeAdmission","Output":"--- PASS: TestR9H2ReceiptDomainKeepsPrivateTypeAdmission (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptDomainKeepsPrivateTypeAdmission"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ReceiptFinalJournalRemainsCollectionAuthority"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptFinalJournalRemainsCollectionAuthority","Output":"=== RUN   TestR9H2ReceiptFinalJournalRemainsCollectionAuthority\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ReceiptFinalJournalRemainsCollectionAuthority","Output":"--- PASS: TestR9H2ReceiptFinalJournalRemainsCollectionAuthority (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ReceiptFinalJournalRemainsCollectionAuthority"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider","Output":"=== RUN   TestR9H2StoreHooksOriginalProvider\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false","Output":"=== RUN   TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false","Output":"    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false","Output":"--- PASS: TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=false"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true","Output":"=== RUN   TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true","Output":"    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true","Output":"--- PASS: TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=false/type=true"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false","Output":"=== RUN   TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false","Output":"    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false","Output":"--- PASS: TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=false"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true","Output":"=== RUN   TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true","Output":"    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true","Output":"--- PASS: TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=false/table=true/type=true"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false","Output":"=== RUN   TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false","Output":"    gc_conversion_store_host_test.go:113: actual collector region shift=6\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false","Output":"    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false","Output":"--- PASS: TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=false"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true","Output":"=== RUN   TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true","Output":"    gc_conversion_store_host_test.go:113: actual collector region shift=6\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true","Output":"    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true","Output":"--- PASS: TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=false/type=true"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false","Output":"=== RUN   TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false","Output":"    gc_conversion_store_host_test.go:113: actual collector region shift=6\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false","Output":"    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false","Output":"--- PASS: TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=false"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true","Output":"=== RUN   TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true","Output":"    gc_conversion_store_host_test.go:113: actual collector region shift=6\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true","Output":"    gc_conversion_store_host_test.go:147: publication: conversion entries=1 uses=0 checkedRoot=true providerCollector=false storeOwned=false persistentSlots=0\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true","Output":"--- PASS: TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider/region=true/table=true/type=true"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider","Output":"--- PASS: TestR9H2StoreHooksOriginalProvider (0.04s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksOriginalProvider"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk","Output":"=== RUN   TestR9H2StoreHooksBulk\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk/0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk/0","Output":"=== RUN   TestR9H2StoreHooksBulk/0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk/0","Output":"--- PASS: TestR9H2StoreHooksBulk/0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk/0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk/6","Output":"=== RUN   TestR9H2StoreHooksBulk/6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk/6","Output":"--- PASS: TestR9H2StoreHooksBulk/6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk/6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk","Output":"--- PASS: TestR9H2StoreHooksBulk (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksBulk"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksActiveInitialization"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksActiveInitialization","Output":"=== RUN   TestR9H2StoreHooksActiveInitialization\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksActiveInitialization","Output":"--- PASS: TestR9H2StoreHooksActiveInitialization (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksActiveInitialization"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksDescriptorMigration"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksDescriptorMigration","Output":"=== RUN   TestR9H2StoreHooksDescriptorMigration\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksDescriptorMigration","Output":"--- PASS: TestR9H2StoreHooksDescriptorMigration (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksDescriptorMigration"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2StoreHooksIndependentPhysicalTables"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksIndependentPhysicalTables","Output":"=== RUN   TestR9H2StoreHooksIndependentPhysicalTables\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2StoreHooksIndependentPhysicalTables","Output":"--- PASS: TestR9H2StoreHooksIndependentPhysicalTables (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2StoreHooksIndependentPhysicalTables"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease","Output":"=== RUN   TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease","Output":"--- PASS: TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease (0.05s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAtomicWaitPrivateCollectorUsesCompleteInvocationLease"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionStableIdentityAndOwnership"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionStableIdentityAndOwnership","Output":"=== RUN   TestGCExternConversionStableIdentityAndOwnership\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionStableIdentityAndOwnership","Output":"    gc_extern_conversion_test.go:115: GC extern conversion layouts: state=64 entry=56 live=3\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionStableIdentityAndOwnership","Output":"--- PASS: TestGCExternConversionStableIdentityAndOwnership (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionStableIdentityAndOwnership"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionRejectsForeignForgedAndClosed"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionRejectsForeignForgedAndClosed","Output":"=== RUN   TestGCExternConversionRejectsForeignForgedAndClosed\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionRejectsForeignForgedAndClosed","Output":"--- PASS: TestGCExternConversionRejectsForeignForgedAndClosed (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionRejectsForeignForgedAndClosed"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionCollectorFirstCloseFailsClosed"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionCollectorFirstCloseFailsClosed","Output":"=== RUN   TestGCExternConversionCollectorFirstCloseFailsClosed\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionCollectorFirstCloseFailsClosed","Output":"--- PASS: TestGCExternConversionCollectorFirstCloseFailsClosed (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionCollectorFirstCloseFailsClosed"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionRejectedReplacementPreservesRoot"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionRejectedReplacementPreservesRoot","Output":"=== RUN   TestGCExternConversionRejectedReplacementPreservesRoot\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionRejectedReplacementPreservesRoot","Output":"--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionRejectedReplacementPreservesRoot"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionPublicationOrderingAndRollback"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionPublicationOrderingAndRollback","Output":"=== RUN   TestGCExternConversionPublicationOrderingAndRollback\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionPublicationOrderingAndRollback","Output":"--- PASS: TestGCExternConversionPublicationOrderingAndRollback (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionPublicationOrderingAndRollback"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionWithFunctionTable"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionWithFunctionTable","Output":"=== RUN   TestGCExternConversionWithFunctionTable\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionWithFunctionTable","Output":"--- PASS: TestGCExternConversionWithFunctionTable (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionWithFunctionTable"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots","Output":"=== RUN   TestGCExternConversionKeepsLocalRoots\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op26/throughput"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op26/throughput","Output":"=== RUN   TestGCExternConversionKeepsLocalRoots/op26/throughput\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op26/throughput","Output":"--- PASS: TestGCExternConversionKeepsLocalRoots/op26/throughput (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op26/throughput"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op26/tiny"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op26/tiny","Output":"=== RUN   TestGCExternConversionKeepsLocalRoots/op26/tiny\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op26/tiny","Output":"--- PASS: TestGCExternConversionKeepsLocalRoots/op26/tiny (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op26/tiny"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op27/throughput"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op27/throughput","Output":"=== RUN   TestGCExternConversionKeepsLocalRoots/op27/throughput\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op27/throughput","Output":"--- PASS: TestGCExternConversionKeepsLocalRoots/op27/throughput (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op27/throughput"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op27/tiny"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op27/tiny","Output":"=== RUN   TestGCExternConversionKeepsLocalRoots/op27/tiny\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op27/tiny","Output":"--- PASS: TestGCExternConversionKeepsLocalRoots/op27/tiny (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots/op27/tiny"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots","Output":"--- PASS: TestGCExternConversionKeepsLocalRoots (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionKeepsLocalRoots"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionKeepsVectorAndLocalRoots"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsVectorAndLocalRoots","Output":"=== RUN   TestGCExternConversionKeepsVectorAndLocalRoots\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionKeepsVectorAndLocalRoots","Output":"--- PASS: TestGCExternConversionKeepsVectorAndLocalRoots (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionKeepsVectorAndLocalRoots"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionForeignLocalRoots"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionForeignLocalRoots","Output":"=== RUN   TestGCExternConversionForeignLocalRoots\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionForeignLocalRoots","Output":"--- PASS: TestGCExternConversionForeignLocalRoots (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionForeignLocalRoots"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionCheckedTableRoots"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionCheckedTableRoots","Output":"=== RUN   TestGCExternConversionCheckedTableRoots\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionCheckedTableRoots","Output":"--- PASS: TestGCExternConversionCheckedTableRoots (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionCheckedTableRoots"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionMissingRootsDisableCollection"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionMissingRootsDisableCollection","Output":"=== RUN   TestGCExternConversionMissingRootsDisableCollection\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionMissingRootsDisableCollection","Output":"--- PASS: TestGCExternConversionMissingRootsDisableCollection (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionMissingRootsDisableCollection"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionWithoutHeapKeepsTinyProfile"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionWithoutHeapKeepsTinyProfile","Output":"=== RUN   TestGCExternConversionWithoutHeapKeepsTinyProfile\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionWithoutHeapKeepsTinyProfile","Output":"--- PASS: TestGCExternConversionWithoutHeapKeepsTinyProfile (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionWithoutHeapKeepsTinyProfile"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionRejectsForgedFrameWords"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionRejectsForgedFrameWords","Output":"=== RUN   TestGCExternConversionRejectsForgedFrameWords\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionRejectsForgedFrameWords","Output":"--- PASS: TestGCExternConversionRejectsForgedFrameWords (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionRejectsForgedFrameWords"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionManyForeignLocals"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionManyForeignLocals","Output":"=== RUN   TestGCExternConversionManyForeignLocals\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionManyForeignLocals","Output":"--- PASS: TestGCExternConversionManyForeignLocals (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionManyForeignLocals"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionVoidImportCannotUseEmptyRoots"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionVoidImportCannotUseEmptyRoots","Output":"=== RUN   TestGCExternConversionVoidImportCannotUseEmptyRoots\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionVoidImportCannotUseEmptyRoots","Output":"--- PASS: TestGCExternConversionVoidImportCannotUseEmptyRoots (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionVoidImportCannotUseEmptyRoots"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCExternConversionAcrossReferenceTables"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionAcrossReferenceTables","Output":"=== RUN   TestGCExternConversionAcrossReferenceTables\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCExternConversionAcrossReferenceTables","Output":"--- PASS: TestGCExternConversionAcrossReferenceTables (0.04s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCExternConversionAcrossReferenceTables"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAdmissionPublicCancellation"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionPublicCancellation","Output":"=== RUN   TestGCAdmissionPublicCancellation\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionPublicCancellation","Output":"--- PASS: TestGCAdmissionPublicCancellation (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAdmissionPublicCancellation"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAdmissionPublicDeadline"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionPublicDeadline","Output":"=== RUN   TestGCAdmissionPublicDeadline\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionPublicDeadline","Output":"--- PASS: TestGCAdmissionPublicDeadline (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAdmissionPublicDeadline"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation","Output":"=== RUN   TestGCAdmissionInstantiationCancellation\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation/collector"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation/collector","Output":"=== RUN   TestGCAdmissionInstantiationCancellation/collector\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation/collector","Output":"--- PASS: TestGCAdmissionInstantiationCancellation/collector (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation/collector"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation/start"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation/start","Output":"=== RUN   TestGCAdmissionInstantiationCancellation/start\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation/start","Output":"--- PASS: TestGCAdmissionInstantiationCancellation/start (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation/start"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation","Output":"--- PASS: TestGCAdmissionInstantiationCancellation (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCAdmissionInstantiationCancellation"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmission"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmission","Output":"=== RUN   TestR9H2ConvertedAggregateAdmission\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmission","Output":"    r9_h2_converted_admission_test.go:29: product=12 generic=false conversion=true managed=true frameRoots=true sharedSafe=true\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmission","Output":"--- PASS: TestR9H2ConvertedAggregateAdmission (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmission"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls","Output":"=== RUN   TestR9H2ConvertedAggregateAdmissionControls\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls/numeric"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls/numeric","Output":"=== RUN   TestR9H2ConvertedAggregateAdmissionControls/numeric\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls/numeric","Output":"--- PASS: TestR9H2ConvertedAggregateAdmissionControls/numeric (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls/numeric"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls/unused-function-type"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls/unused-function-type","Output":"=== RUN   TestR9H2ConvertedAggregateAdmissionControls/unused-function-type\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls/unused-function-type","Output":"--- PASS: TestR9H2ConvertedAggregateAdmissionControls/unused-function-type (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls/unused-function-type"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls","Output":"--- PASS: TestR9H2ConvertedAggregateAdmissionControls (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateAdmissionControls"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner","Output":"=== RUN   TestR9H2ConvertedAggregateCollectingLocalOwner\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner/region=0"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner/region=0","Output":"=== RUN   TestR9H2ConvertedAggregateCollectingLocalOwner/region=0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner/region=0","Output":"--- PASS: TestR9H2ConvertedAggregateCollectingLocalOwner/region=0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner/region=0"}
+{"Action":"run","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner/region=6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner/region=6","Output":"=== RUN   TestR9H2ConvertedAggregateCollectingLocalOwner/region=6\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner/region=6","Output":"--- PASS: TestR9H2ConvertedAggregateCollectingLocalOwner/region=6 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner/region=6"}
+{"Action":"output","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner","Output":"--- PASS: TestR9H2ConvertedAggregateCollectingLocalOwner (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestR9H2ConvertedAggregateCollectingLocalOwner"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainUsesRegisteredAssociation"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainUsesRegisteredAssociation","Output":"=== RUN   TestGCInvocationDomainUsesRegisteredAssociation\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainUsesRegisteredAssociation","Output":"--- PASS: TestGCInvocationDomainUsesRegisteredAssociation (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainUsesRegisteredAssociation"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader","Output":"=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader/none"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader/none","Output":"=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader/none\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader/none","Output":"    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader/none","Output":"--- PASS: TestRRRecheckStorageOnlyReturnBehindDynamicReader/none (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader/none"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader/table"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader/table","Output":"=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader/table\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader/table","Output":"    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=true conversionOnly=true) storageReturnBlocked=false secondAdmissionErr=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader/table","Output":"--- PASS: TestRRRecheckStorageOnlyReturnBehindDynamicReader/table (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader/table"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader","Output":"--- PASS: TestRRRecheckStorageOnlyReturnBehindDynamicReader (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRecheckStorageOnlyReturnBehindDynamicReader"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRecheckCanceledAdmissionBehindDynamicReader"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckCanceledAdmissionBehindDynamicReader","Output":"=== RUN   TestRRRecheckCanceledAdmissionBehindDynamicReader\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckCanceledAdmissionBehindDynamicReader","Output":"    rr_recheck_adversary_test.go:211: storage(dynamic=true conversionOnly=true) canceledReturnBlocked=false err=context deadline exceeded\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckCanceledAdmissionBehindDynamicReader","Output":"--- PASS: TestRRRecheckCanceledAdmissionBehindDynamicReader (0.30s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRecheckCanceledAdmissionBehindDynamicReader"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRecheckSharedMemoryHandoff"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckSharedMemoryHandoff","Output":"=== RUN   TestRRRecheckSharedMemoryHandoff\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckSharedMemoryHandoff","Output":"    rr_recheck_handoff_test.go:84: handoffCompleted=true s1=\u003cnil\u003e s2=\u003cnil\u003e\n"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRecheckSharedMemoryHandoff","Output":"--- PASS: TestRRRecheckSharedMemoryHandoff (0.50s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRecheckSharedMemoryHandoff"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival","Output":"=== RUN   TestRRRetirementLastPinAndRevival\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/none"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/none","Output":"=== RUN   TestRRRetirementLastPinAndRevival/none\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/none","Output":"--- PASS: TestRRRetirementLastPinAndRevival/none (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/none"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/claim"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/claim","Output":"=== RUN   TestRRRetirementLastPinAndRevival/claim\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/claim","Output":"--- PASS: TestRRRetirementLastPinAndRevival/claim (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/claim"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/registration"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/registration","Output":"=== RUN   TestRRRetirementLastPinAndRevival/registration\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/registration","Output":"--- PASS: TestRRRetirementLastPinAndRevival/registration (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/registration"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/store-close"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/store-close","Output":"=== RUN   TestRRRetirementLastPinAndRevival/store-close\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/store-close","Output":"--- PASS: TestRRRetirementLastPinAndRevival/store-close (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival/store-close"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival","Output":"--- PASS: TestRRRetirementLastPinAndRevival (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRetirementLastPinAndRevival"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRetirementCallbackAndExitWakeups"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementCallbackAndExitWakeups","Output":"=== RUN   TestRRRetirementCallbackAndExitWakeups\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementCallbackAndExitWakeups","Output":"--- PASS: TestRRRetirementCallbackAndExitWakeups (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRetirementCallbackAndExitWakeups"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRetirementBorrowedRootLatePublisher"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementBorrowedRootLatePublisher","Output":"=== RUN   TestRRRetirementBorrowedRootLatePublisher\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementBorrowedRootLatePublisher","Output":"--- PASS: TestRRRetirementBorrowedRootLatePublisher (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRetirementBorrowedRootLatePublisher"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRetirementCanceledPartialLastPins"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementCanceledPartialLastPins","Output":"=== RUN   TestRRRetirementCanceledPartialLastPins\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementCanceledPartialLastPins","Output":"--- PASS: TestRRRetirementCanceledPartialLastPins (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRetirementCanceledPartialLastPins"}
+{"Action":"run","Package":"./src/wago","Test":"TestRRRetirementCallbackRefreshBehindReader"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementCallbackRefreshBehindReader","Output":"=== RUN   TestRRRetirementCallbackRefreshBehindReader\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestRRRetirementCallbackRefreshBehindReader","Output":"--- PASS: TestRRRetirementCallbackRefreshBehindReader (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestRRRetirementCallbackRefreshBehindReader"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs\n","OutputType":"frame"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=0"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=0","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=0\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=0","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=0 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=0"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=1"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=1","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=1\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=1","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=1 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=1"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=2"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=2","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=2\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=2","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=2 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=2"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=3"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=3","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=3\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=3","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=3 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=3"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=4"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=4","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=4\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=4","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=4 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=4"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=5"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=5","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=5\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=5","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=5 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=5"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=8"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=8","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=8\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=8","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=8 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=8"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=9"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=9","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=9\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=9","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=9 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=9"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=16"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=16","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=16\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=16","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=16 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=16"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=32"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=32","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=32\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=32","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=32 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=32"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=64"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=64","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=64\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=64","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=64 (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=64"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=129"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=129","Output":"=== RUN   TestGCInvocationDomainSetSortMatchesOrderedIDs/N=129\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=129","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs/N=129 (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs/N=129"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs","Output":"--- PASS: TestGCInvocationDomainSetSortMatchesOrderedIDs (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetSortMatchesOrderedIDs"}
+{"Action":"run","Package":"./src/wago","Test":"TestGCInvocationDomainSetInlineSortDoesNotAllocate"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetInlineSortDoesNotAllocate","Output":"=== RUN   TestGCInvocationDomainSetInlineSortDoesNotAllocate\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/wago","Test":"TestGCInvocationDomainSetInlineSortDoesNotAllocate","Output":"--- PASS: TestGCInvocationDomainSetInlineSortDoesNotAllocate (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago","Test":"TestGCInvocationDomainSetInlineSortDoesNotAllocate"}
+{"Action":"output","Package":"./src/wago","Output":"PASS\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/wago"}
