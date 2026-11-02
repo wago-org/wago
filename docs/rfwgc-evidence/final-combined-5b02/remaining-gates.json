@@ -1,6 +1,6 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 84,
+  "remaining_count": 42,
   "remaining": [
     {
       "suite": "graphs-port-ordinary",
@@ -39,12 +39,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "backend-ordinary",
-      "receipt_suite": "backend-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "backend-wagodebug",
       "receipt_suite": "backend-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -60,7 +54,7 @@
       "suite": "diagnostics-default-ordinary",
       "receipt_suite": "diagnostics-default-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "diagnostics-default-wagodebug",
@@ -93,102 +87,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "runtime-cli-build-wagodebug",
-      "receipt_suite": "runtime-cli-build-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "runtime-cli-build-wago_regalloccheck",
-      "receipt_suite": "runtime-cli-build-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "profile-metadata-wagodebug",
-      "receipt_suite": "profile-metadata-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "profile-metadata-wago_regalloccheck",
-      "receipt_suite": "profile-metadata-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "profile-runtime-wagodebug",
-      "receipt_suite": "profile-runtime-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "profile-runtime-wago_regalloccheck",
-      "receipt_suite": "profile-runtime-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "shared-scalar-ordinary",
-      "receipt_suite": "shared-scalar-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "shared-scalar-wagodebug",
-      "receipt_suite": "shared-scalar-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "shared-scalar-wago_regalloccheck",
-      "receipt_suite": "shared-scalar-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "native-join-ordinary",
-      "receipt_suite": "native-join-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "native-join-wagodebug",
-      "receipt_suite": "native-join-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "native-join-wago_regalloccheck",
-      "receipt_suite": "native-join-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "seeded-concurrency-ordinary",
-      "receipt_suite": "seeded-concurrency-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "seeded-concurrency-wagodebug",
-      "receipt_suite": "seeded-concurrency-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "seeded-concurrency-wago_regalloccheck",
-      "receipt_suite": "seeded-concurrency-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-evacuation-ordinary",
-      "receipt_suite": "tinygo-evacuation-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "tinygo-evacuation-wagodebug",
       "receipt_suite": "tinygo-evacuation-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -204,7 +102,7 @@
       "suite": "tinygo-joint-ordinary",
       "receipt_suite": "tinygo-joint-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-joint-wagodebug",
@@ -233,18 +131,6 @@
     {
       "suite": "tinygo-conversion-wago_regalloccheck",
       "receipt_suite": "tinygo-conversion-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-guest/arm64-ordinary-guest",
-      "receipt_suite": "qemu-guest/arm64-ordinary-guest",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-guest/arm64-wagodebug-guest",
-      "receipt_suite": "qemu-guest/arm64-wagodebug-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -313,144 +199,6 @@
       "receipt_suite": "replay-format",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "FAIL"
-    },
-    {
-      "suite": "tinygo-34/ci-cli",
-      "receipt_suite": "tinygo-34/ci-cli",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "tinygo-34/ci-cli-smoke",
-      "receipt_suite": "tinygo-34/ci-cli-smoke",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release",
-      "receipt_suite": "tinygo-34/ci-release",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-version-1",
-      "receipt_suite": "tinygo-34/ci-release-version-1",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-fib-1",
-      "receipt_suite": "tinygo-34/ci-release-fib-1",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-version-2",
-      "receipt_suite": "tinygo-34/ci-release-version-2",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-fib-2",
-      "receipt_suite": "tinygo-34/ci-release-fib-2",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-version-3",
-      "receipt_suite": "tinygo-34/ci-release-version-3",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-fib-3",
-      "receipt_suite": "tinygo-34/ci-release-fib-3",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-version-4",
-      "receipt_suite": "tinygo-34/ci-release-version-4",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-fib-4",
-      "receipt_suite": "tinygo-34/ci-release-fib-4",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-version-5",
-      "receipt_suite": "tinygo-34/ci-release-version-5",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-fib-5",
-      "receipt_suite": "tinygo-34/ci-release-fib-5",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-version-6",
-      "receipt_suite": "tinygo-34/ci-release-version-6",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-fib-6",
-      "receipt_suite": "tinygo-34/ci-release-fib-6",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-version-7",
-      "receipt_suite": "tinygo-34/ci-release-version-7",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-fib-7",
-      "receipt_suite": "tinygo-34/ci-release-fib-7",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-version-8",
-      "receipt_suite": "tinygo-34/ci-release-version-8",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-fib-8",
-      "receipt_suite": "tinygo-34/ci-release-fib-8",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-version-9",
-      "receipt_suite": "tinygo-34/ci-release-version-9",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-fib-9",
-      "receipt_suite": "tinygo-34/ci-release-fib-9",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-version-10",
-      "receipt_suite": "tinygo-34/ci-release-version-10",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "tinygo-34/ci-release-fib-10",
-      "receipt_suite": "tinygo-34/ci-release-fib-10",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
     },
     {
       "suite": "tinygo-repair-ordinary",
@@ -556,6 +304,7 @@
     "guard-corpus-ordinary",
     "guard-corpus-wagodebug",
     "guard-corpus-wago_regalloccheck",
+    "backend-ordinary",
     "tooling-build-ordinary",
     "tooling-build-wagodebug",
     "tooling-build-wago_regalloccheck",
@@ -563,8 +312,24 @@
     "tooling-vet-wagodebug",
     "tooling-vet-wago_regalloccheck",
     "runtime-cli-build-ordinary",
+    "runtime-cli-build-wagodebug",
+    "runtime-cli-build-wago_regalloccheck",
     "profile-metadata-ordinary",
+    "profile-metadata-wagodebug",
+    "profile-metadata-wago_regalloccheck",
     "profile-runtime-ordinary",
+    "profile-runtime-wagodebug",
+    "profile-runtime-wago_regalloccheck",
+    "shared-scalar-ordinary",
+    "shared-scalar-wagodebug",
+    "shared-scalar-wago_regalloccheck",
+    "native-join-ordinary",
+    "native-join-wagodebug",
+    "native-join-wago_regalloccheck",
+    "seeded-concurrency-ordinary",
+    "seeded-concurrency-wagodebug",
+    "seeded-concurrency-wago_regalloccheck",
+    "tinygo-evacuation-ordinary",
     "hardening-ordinary",
     "hardening-wagodebug",
     "hardening-wago_regalloccheck",
@@ -583,6 +348,8 @@
     "qemu-facade/arm64-ordinary-facade",
     "qemu-facade/arm64-wagodebug-facade",
     "qemu-facade/arm64-wago_regalloccheck-facade",
+    "qemu-guest/arm64-ordinary-guest",
+    "qemu-guest/arm64-wagodebug-guest",
     "qemu-collector/riscv64-ordinary-collector",
     "qemu-collector/riscv64-wagodebug-collector",
     "qemu-collector/riscv64-wago_regalloccheck-collector",
@@ -618,6 +385,29 @@
     "tinygo-34/guest-threads-wago_regalloccheck",
     "tinygo-34/ci-checkers",
     "tinygo-34/ci-runtime",
+    "tinygo-34/ci-cli",
+    "tinygo-34/ci-cli-smoke",
+    "tinygo-34/ci-release",
+    "tinygo-34/ci-release-version-1",
+    "tinygo-34/ci-release-fib-1",
+    "tinygo-34/ci-release-version-2",
+    "tinygo-34/ci-release-fib-2",
+    "tinygo-34/ci-release-version-3",
+    "tinygo-34/ci-release-fib-3",
+    "tinygo-34/ci-release-version-4",
+    "tinygo-34/ci-release-fib-4",
+    "tinygo-34/ci-release-version-5",
+    "tinygo-34/ci-release-fib-5",
+    "tinygo-34/ci-release-version-6",
+    "tinygo-34/ci-release-fib-6",
+    "tinygo-34/ci-release-version-7",
+    "tinygo-34/ci-release-fib-7",
+    "tinygo-34/ci-release-version-8",
+    "tinygo-34/ci-release-fib-8",
+    "tinygo-34/ci-release-version-9",
+    "tinygo-34/ci-release-fib-9",
+    "tinygo-34/ci-release-version-10",
+    "tinygo-34/ci-release-fib-10",
     "fuzz-FuzzStructCardDifferential",
     "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
     "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",

@@ -1,0 +1,183 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T14:34:47.128023066Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000001/threads-shared-memory-wait-close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.134240319Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000001/host-reentry-close",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:47.135820747Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000001/gc-shared-domain-close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.135833481Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000001",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:47.136792061Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000019/threads-shared-memory-wait-close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.146079891Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000019/host-reentry-close",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:47.147002112Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000019/gc-shared-domain-close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.147014586Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000019",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:47.147867126Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000043/threads-shared-memory-wait-close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.159444225Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000043/host-reentry-close",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:47.160582101Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000043/gc-shared-domain-close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.160592631Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000043",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:47.161252881Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000081/threads-shared-memory-wait-close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.168254307Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000081/host-reentry-close",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:47.170261476Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000081/gc-shared-domain-close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.170269541Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness/seed-439000081",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:34:47.170278678Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyHarness",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-11-02T14:34:47.221134771Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyGCAtomicWaitNotify",
+      "Elapsed": 0.05
+    },
+    {
+      "Time": "2026-11-02T14:34:47.222057383Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyCrossInstanceHostCollectGC",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.22285442Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencySameDomainHostReentry",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.223380477Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencySameDomainReexportedHostReentry",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.224849927Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyCollectGCWithInvoke",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.229014647Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyPreparedGCResultOwnership",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.229638338Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Test": "TestRuntimeConcurrencyParkedSameDomainTargetDoesNotDeadlock",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:34:47.230381944Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Elapsed": 0.105
+    }
+  ],
+  "raw_sha256": "a6c58838d37d4c769e796f733050781936bfb951644758865536c3fc53c9fc93",
+  "driver_unchanged": true
+}

@@ -74,7 +74,59 @@
     "qemu-guest.py": "1e016cda4b6e4e25ef490401fcacd9168a8c2a398c3a58574c767cf76de1b43f",
     "qemu-guest/arm64-version.log": "1dd52d45967d042bf0bc462082f77a1c26e08ac5cfa44279c3c2eb21c7a614e6",
     "qemu-guest/arm64-ordinary-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "qemu-guest/arm64-ordinary-guest-binary.sha256": "515dcda69bdf479e2b8c4108702dece83ea920ee37079aee9c97df77645502dc"
+    "qemu-guest/arm64-ordinary-guest-binary.sha256": "515dcda69bdf479e2b8c4108702dece83ea920ee37079aee9c97df77645502dc",
+    "tinygo-34/ci-cli.command": "fe11f9931de9d64d40ef47aa0372224b03f7a41708b55569b2f5445f7ae0eab7",
+    "tinygo-34/ci-cli.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tinygo-34/ci-cli-smoke.command": "cd106001de2c169c37e7e21d4109d4671379870417c54e00260ba26d6526a001",
+    "tinygo-34/ci-cli-smoke.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "tinygo-34/ci-release.command": "49bdfa7978d677308d83c8e2c19632e06be502a17b347fefa8f161e4a28dce41",
+    "tinygo-34/ci-release.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tinygo-34/ci-release-version-1.command": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+    "tinygo-34/ci-release-version-1.log": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2",
+    "tinygo-34/ci-release-fib-1.command": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+    "tinygo-34/ci-release-fib-1.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "tinygo-34/ci-release-version-2.command": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+    "tinygo-34/ci-release-version-2.log": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2",
+    "tinygo-34/ci-release-fib-2.command": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+    "tinygo-34/ci-release-fib-2.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "tinygo-34/ci-release-version-3.command": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+    "tinygo-34/ci-release-version-3.log": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2",
+    "tinygo-34/ci-release-fib-3.command": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+    "tinygo-34/ci-release-fib-3.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "tinygo-34/ci-release-version-4.command": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+    "tinygo-34/ci-release-version-4.log": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2",
+    "tinygo-34/ci-release-fib-4.command": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+    "tinygo-34/ci-release-fib-4.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "tinygo-34/ci-release-version-5.command": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+    "tinygo-34/ci-release-version-5.log": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2",
+    "tinygo-34/ci-release-fib-5.command": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+    "tinygo-34/ci-release-fib-5.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "tinygo-34/ci-release-version-6.command": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+    "tinygo-34/ci-release-version-6.log": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2",
+    "tinygo-34/ci-release-fib-6.command": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+    "tinygo-34/ci-release-fib-6.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "tinygo-34/ci-release-version-7.command": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+    "tinygo-34/ci-release-version-7.log": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2",
+    "tinygo-34/ci-release-fib-7.command": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+    "tinygo-34/ci-release-fib-7.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "tinygo-34/ci-release-version-8.command": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+    "tinygo-34/ci-release-version-8.log": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2",
+    "tinygo-34/ci-release-fib-8.command": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+    "tinygo-34/ci-release-fib-8.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "tinygo-34/ci-release-version-9.command": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+    "tinygo-34/ci-release-version-9.log": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2",
+    "tinygo-34/ci-release-fib-9.command": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+    "tinygo-34/ci-release-fib-9.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "tinygo-34/ci-release-version-10.command": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+    "tinygo-34/ci-release-version-10.log": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2",
+    "tinygo-34/ci-release-fib-10.command": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+    "tinygo-34/ci-release-fib-10.log": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da",
+    "qemu-guest/arm64-ordinary-guest.log": "c02136e54664952c432921ea875c2e1aa0482d60601d90e9c608437145056a7a",
+    "qemu-guest/arm64-wagodebug-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qemu-guest/arm64-wagodebug-guest.log": "456b566eb2dedc780a31236595602a1f7b2e7a572b357aad1b0d976888b12796",
+    "qemu-guest/arm64-wago_regalloccheck-guest-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "qemu-guest/arm64-wago_regalloccheck-guest-binary.sha256": "2d0baf77d92a436c8190e47a97a4446c68aa20a3460d771597268e2bde4f8d26",
+    "qemu-guest/arm64-wagodebug-guest-binary.sha256": "3f53bb9f1545c5ce263dcf2f91c9d2bec21199cff2063dc4a459713f238a62ea"
   },
   "receipts": [
     {
@@ -153,6 +205,167 @@
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "command_sha256": "ca0bb5f92d6410a3f5ce52b36a95c30d11ca596d5a517dd0c86ad3ca6cf3449b",
       "raw_sha256": "1498f08a0537f6ef6692474fd104075cba24b82d936cfb6a78b5530d93370e83"
+    },
+    {
+      "suite": "tinygo-34/ci-cli",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "fe11f9931de9d64d40ef47aa0372224b03f7a41708b55569b2f5445f7ae0eab7",
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "tinygo-34/ci-cli-smoke",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "cd106001de2c169c37e7e21d4109d4671379870417c54e00260ba26d6526a001",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
+    },
+    {
+      "suite": "tinygo-34/ci-release",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "49bdfa7978d677308d83c8e2c19632e06be502a17b347fefa8f161e4a28dce41",
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-1",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+      "raw_sha256": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-1",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-2",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+      "raw_sha256": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-2",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-3",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+      "raw_sha256": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-3",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-4",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+      "raw_sha256": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-4",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-5",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+      "raw_sha256": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-5",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-6",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+      "raw_sha256": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-6",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-7",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+      "raw_sha256": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-7",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-8",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+      "raw_sha256": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-8",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-9",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+      "raw_sha256": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-9",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-10",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "e33aa5533521a5d1c9c6b55bff1a582f3c4312c4aea9f54a189b3bc49e5cd012",
+      "raw_sha256": "8485855f8a1f1c5ced75bc9814906f8839272646509e19344bf83aed03d45ed2"
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-10",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "command_sha256": "a0db100dce273e5328e91df972517fc74dcde3d119b347b94a6cdcbac6e2b35a",
+      "raw_sha256": "a82da06df2e8b6f6db88f38375189ce0a5ad63030970f671fc82f5dbfd6f30da"
     },
     {
       "suite": "qemu-collector/arm64-version",
@@ -607,6 +820,72 @@
         "-p=2",
         "-o",
         "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-guest/arm64-ordinary-guest.test",
+        "./src/wago"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "qemu-guest/arm64-ordinary-guest",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-guest/qemu/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-guest/arm64-ordinary-guest.test",
+        "-test.v",
+        "-test.failfast",
+        "-test.count=1",
+        "-test.timeout=12m",
+        "-test.run=^(TestPlatformExecutionArchitecture|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim|TestGCStage7.*|TestGC.*(Root|Reentr).*|TestRV64CompactExternPlainReentryPrivate|TestRV64PublicNativeInvocationSurvivesForeignHostReentry)$"
+      ],
+      "raw_sha256": "c02136e54664952c432921ea875c2e1aa0482d60601d90e9c608437145056a7a"
+    },
+    {
+      "suite": "qemu-guest/arm64-wagodebug-guest-build",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-tags=wagodebug",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-guest/arm64-wagodebug-guest.test",
+        "./src/wago"
+      ],
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "suite": "qemu-guest/arm64-wagodebug-guest",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-guest/qemu/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-guest/arm64-wagodebug-guest.test",
+        "-test.v",
+        "-test.failfast",
+        "-test.count=1",
+        "-test.timeout=12m",
+        "-test.run=^(TestPlatformExecutionArchitecture|TestR9H2.*|TestR9Ownership.*|TestGCExternConversion.*|TestRV64ManagedFunctionJoint.*|TestRV64CompactExtern.*|TestRV64CompactConvertedExternShellReclamation|TestRV64CompactForeignExternPinAndReclaim|TestGCStage7.*|TestGC.*(Root|Reentr).*|TestRV64CompactExternPlainReentryPrivate|TestRV64PublicNativeInvocationSurvivesForeignHostReentry)$"
+      ],
+      "raw_sha256": "456b566eb2dedc780a31236595602a1f7b2e7a572b357aad1b0d976888b12796"
+    },
+    {
+      "suite": "qemu-guest/arm64-wago_regalloccheck-guest-build",
+      "exit": 0,
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+        "test",
+        "-c",
+        "-p=2",
+        "-tags=wago_regalloccheck",
+        "-o",
+        "/home/dev/.cache/_wago_final_5b02_n61wfxab/qemu-guest/arm64-wago_regalloccheck-guest.test",
         "./src/wago"
       ],
       "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
