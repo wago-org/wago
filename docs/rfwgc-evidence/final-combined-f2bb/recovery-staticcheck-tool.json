@@ -1,0 +1,5 @@
+{
+  "path": "/tmp/wago-final-f2bb-n11khnr8/tooling/.tools/staticcheck/staticcheck",
+  "sha256": "cbcc31757cdf8e2ab61eb70f132c13de0a53d6310a9968284179ef83855885f6",
+  "verified_installer_provenance": "module=honnef.co/go/tools/cmd/staticcheck@2026.2.1\ngo=go version go1.27.1 linux/amd64\nbootstrap_sha256=70db8dc201537b20901476208f2e27131d270ed789c01228989c11348263e891\nbinary_sha256=cbcc31757cdf8e2ab61eb70f132c13de0a53d6310a9968284179ef83855885f6"
+}
