@@ -1,0 +1,301 @@
+[
+  {
+    "label": "ordinary-host-census",
+    "args": [
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImport"
+    ],
+    "exit": 0,
+    "passed": 0,
+    "listed": [
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportTable",
+      "TestR9H2HostImportBulk",
+      "TestR9H2HostImportInitialization",
+      "TestR9H2HostImportCycle",
+      "TestR9H2HostImportTableIndependentPhysical",
+      "TestR9H2HostImportAuthority",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards",
+      "TestR9H2HostImportTableOrdinaryAndGuards"
+    ],
+    "skips": [],
+    "expected": 9,
+    "accepted": true
+  },
+  {
+    "label": "ordinary-baseline",
+    "args": [
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passed": 5,
+    "listed": [],
+    "skips": [],
+    "expected": 5,
+    "accepted": true
+  },
+  {
+    "label": "ordinary-race",
+    "args": [
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passed": 5,
+    "listed": [],
+    "skips": [],
+    "expected": 5,
+    "accepted": true
+  },
+  {
+    "label": "ordinary-backend-amd64",
+    "args": [
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passed": 3,
+    "listed": [],
+    "skips": [],
+    "expected": 3,
+    "accepted": true
+  },
+  {
+    "label": "ordinary-backend-arm64",
+    "args": [
+      "./src/core/compiler/backend/railshot/arm64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passed": 3,
+    "listed": [],
+    "skips": [],
+    "expected": 3,
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-host-census",
+    "args": [
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImport"
+    ],
+    "exit": 0,
+    "passed": 0,
+    "listed": [
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportTable",
+      "TestR9H2HostImportBulk",
+      "TestR9H2HostImportInitialization",
+      "TestR9H2HostImportCycle",
+      "TestR9H2HostImportTableIndependentPhysical",
+      "TestR9H2HostImportAuthority",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards",
+      "TestR9H2HostImportTableOrdinaryAndGuards"
+    ],
+    "skips": [],
+    "expected": 9,
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-baseline",
+    "args": [
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passed": 5,
+    "listed": [],
+    "skips": [],
+    "expected": 5,
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-race",
+    "args": [
+      "-tags",
+      "wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passed": 5,
+    "listed": [],
+    "skips": [],
+    "expected": 5,
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-backend-amd64",
+    "args": [
+      "-tags",
+      "wagodebug",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passed": 3,
+    "listed": [],
+    "skips": [],
+    "expected": 3,
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-backend-arm64",
+    "args": [
+      "-tags",
+      "wagodebug",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passed": 3,
+    "listed": [],
+    "skips": [],
+    "expected": 3,
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-host-census",
+    "args": [
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImport"
+    ],
+    "exit": 0,
+    "passed": 0,
+    "listed": [
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportTable",
+      "TestR9H2HostImportBulk",
+      "TestR9H2HostImportInitialization",
+      "TestR9H2HostImportCycle",
+      "TestR9H2HostImportTableIndependentPhysical",
+      "TestR9H2HostImportAuthority",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards",
+      "TestR9H2HostImportTableOrdinaryAndGuards"
+    ],
+    "skips": [],
+    "expected": 9,
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-baseline",
+    "args": [
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passed": 5,
+    "listed": [],
+    "skips": [],
+    "expected": 5,
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-race",
+    "args": [
+      "-tags",
+      "wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^TestR9H2StoreHooks",
+      "-count=1",
+      "-v",
+      "-timeout=3m"
+    ],
+    "exit": 0,
+    "passed": 5,
+    "listed": [],
+    "skips": [],
+    "expected": 5,
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-backend-amd64",
+    "args": [
+      "-tags",
+      "wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passed": 3,
+    "listed": [],
+    "skips": [],
+    "expected": 3,
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-backend-arm64",
+    "args": [
+      "-tags",
+      "wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/arm64",
+      "-run",
+      "^TestExternHostStoreContract",
+      "-count=1",
+      "-v",
+      "-timeout=10m"
+    ],
+    "exit": 0,
+    "passed": 3,
+    "listed": [],
+    "skips": [],
+    "expected": 3,
+    "accepted": true
+  }
+]

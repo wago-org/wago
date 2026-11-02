@@ -1,0 +1,8 @@
+{
+  "removed_owned_temporary_roots": [
+    "/tmp/wago-h2-host-imports-overlay-kext8rdh",
+    "/tmp/wago-h2-host-imports-overlay-35hvrv3d",
+    "/tmp/wago-h2-host-imports-overlay-4hjmivh4"
+  ],
+  "shared_caches_untouched": true
+}
