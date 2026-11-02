@@ -3,10 +3,13 @@
 package arm64
 
 import (
+	"encoding/binary"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -61,6 +64,7 @@ func TestDynamicImportUnwindLocalJoinARM64(t *testing.T) {
 	}) {
 		t.Fatal("invalid callsite stream")
 	}
+	executeDynamicImportJoinARM64(t, cm.Code, cm.Entry[0])
 }
 
 func TestNativeLeafContextShortcutGCPolicyARM64(t *testing.T) {
@@ -80,5 +84,82 @@ func TestNativeLeafContextShortcutGCPolicyARM64(t *testing.T) {
 	f.gcFrameRoots.Candidate = false
 	if !f.nativeLeafContextShortcut(b, ft, false) {
 		t.Fatal("noncandidate native shortcut disabled")
+	}
+}
+
+// Execute both exclusive branches with the same compiled body. The fallback
+// uses a different linear memory and instance context, not just a cleared tag.
+func executeDynamicImportJoinARM64(t *testing.T, code []byte, offset int) {
+	t.Helper()
+	eng, err := runtime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	caller, err := runtime.NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caller.Close()
+	callee, err := runtime.NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer callee.Close()
+	arena, err := runtime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer arena.Close()
+	mapped, entry, err := runtime.MapCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Unmap(mapped)
+	thunk, thunkEntry, err := runtime.MapCode(HostIndirectSyncThunk(0, 1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Unmap(thunk)
+	args, out := arena.Alloc(8), arena.Alloc(8)
+	trap, ctrl := arena.Alloc(runtime.TrapBufferBytes), arena.Alloc(runtime.HostCtrlFrameBytes)
+	ptr := func(b []byte) uintptr { return uintptr(unsafe.Pointer(&b[0])) }
+	caller.SetCustomCtx(ptr(ctrl))
+	callee.SetCustomCtx(ptr(ctrl))
+	dispatch := arena.Alloc(2 * runtime.ImportDispatchEntryBytes)
+	caller.SetImportDispatchPtr(ptr(dispatch))
+	callerCtx, calleeCtx := arena.Alloc(runtime.InstanceContextBytes), arena.Alloc(runtime.InstanceContextBytes)
+	caller.CaptureInstanceContextBytes(callerCtx)
+	callee.CaptureInstanceContextBytes(calleeCtx)
+	for _, direct := range []bool{true, false} {
+		name := "cross-instance"
+		tag := uint64(ptr(callerCtx))
+		if direct {
+			name = "go-host"
+			tag |= runtime.ImportDispatchCallerGoHostTag
+		}
+		t.Run(name, func(t *testing.T) {
+			binary.LittleEndian.PutUint64(dispatch[runtime.ImportDispatchCallerContextOffset:], tag)
+			binary.LittleEndian.PutUint64(dispatch[runtime.ImportDispatchTargetContextOffset:], uint64(ptr(calleeCtx)))
+			binary.LittleEndian.PutUint64(dispatch[runtime.ImportDispatchHomeLinMemOffset:], uint64(ptr(callee.LinearMemory())))
+			binary.LittleEndian.PutUint64(dispatch[runtime.ImportDispatchCodePtrOffset:], uint64(thunkEntry))
+			for _, value := range []uint32{0, 7, 0x7fffffff, 0xffffffff} {
+				calls := 0
+				binary.LittleEndian.PutUint64(args, uint64(value))
+				host := func(_ uintptr, index uint32, in, result []uint64) {
+					if index != 0 || len(in) != 1 || len(result) != 1 || in[0] != uint64(value) {
+						t.Fatalf("host ABI: index=%d args=%v results=%v", index, in, result)
+					}
+					result[0] = uint64(value * 3)
+					calls++
+				}
+				if err := eng.CallWithHost(entry+uintptr(offset), args, caller.LinearMemory(), trap, out, ctrl, host); err != nil {
+					t.Fatal(err)
+				}
+				if got := binary.LittleEndian.Uint32(out); calls != 1 || got != value*4 {
+					t.Fatalf("local continuation: input=%d got=%d calls=%d", value, got, calls)
+				}
+			}
+		})
 	}
 }
