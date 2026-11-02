@@ -1,0 +1,19 @@
+{
+  "pin": "d2464100f1945d38f9d1e25196855fe9699d9875",
+  "evidence_head": "d2464100f1945d38f9d1e25196855fe9699d9875",
+  "source": "/tmp/wago-final-d246-m9h4zboi/source",
+  "scratch": "/tmp/wago-final-d246-m9h4zboi",
+  "archive_sha256": "13171524faabc9a342ab26736ff395c54085d4304aca64e85819ef550eec7322",
+  "v1": {
+    "pin": "a8bcbafe6d2fb191ce0188de0e18fdc107fa2598",
+    "archive_sha256": "9fdb20a38cc44eea2185cbd4770681c84a38f9ec25db4423d4a5b38f620c7e61"
+  },
+  "v2": {
+    "pin": "05ca4182176763112561ae20153975c12bd689e4",
+    "archive_sha256": "0e32b8c1ceaf635fa69bc0844506adf750e035dff6b4c8f0c1373d5462eaf3c1"
+  },
+  "v3": {
+    "pin": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+    "archive_sha256": "790a5674b5a59c743a8d96c22d064211357bc68037f25eceaf820234094b89aa"
+  }
+}

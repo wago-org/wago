@@ -1,0 +1,266 @@
+{
+  "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+  "archive_sha256": "13171524faabc9a342ab26736ff395c54085d4304aca64e85819ef550eec7322",
+  "receipts": [
+    {
+      "suite": "catalog-ordinary",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "95470d33484d84cd098bd3db8b9600d807a4af42c963d531c09cb39f7667e3a4",
+      "command_sha256": "f63b43d9b34c3a4d42d9d07670e3bb6985c2f1813dbea8f6b81224eff0483bd1"
+    },
+    {
+      "suite": "catalog-wago_regalloccheck",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "e9b8fe33387b9673a6634cfde51f32914cfa1b1a09d05ed97b56391051f361de",
+      "command_sha256": "a1c88a82e0d0d41ecd83f6dde4681969372690fef10e14046d8ca4fc30cc8c16"
+    },
+    {
+      "suite": "catalog-wagodebug",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "11c379840fba4e3212b24998b667787f84db50f099cfd2840d85e007f2a4de35",
+      "command_sha256": "e6f1b52cf517f66aa0d749f7abae20153ea385ea6f3ce6b999c6e8e94fd9ae6c"
+    },
+    {
+      "suite": "continued-step-2",
+      "valid": false,
+      "verdict": "INTERRUPTED",
+      "driver": "run-v2.py",
+      "raw_sha256": "59d98094b3f9535c8985f44b781da2646fe3406b2bc1a3260744533328849a70",
+      "command_sha256": "83c79d5da6a75f4501fcf8e935e641540fc65e7dc01142472ae20719ed138814"
+    },
+    {
+      "suite": "corrected-full-root-replay-ordinary",
+      "valid": false,
+      "verdict": "INTERRUPTED",
+      "driver": "run-v2.py",
+      "raw_sha256": "ce43dafc61e27ab99304cc982ffc204f516e5d03594a93cb1442be1ec309ffdb",
+      "command_sha256": "32718790353e7aba092135c511b6518ff5d2d712c44df80cf29ebb789c11e2a8"
+    },
+    {
+      "suite": "early-replay-cipolicy-ordinary",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "76626be3899289b1c42fc767deedcdfd6a4c3b6081e1c3a6724278985900fedc",
+      "command_sha256": "3e11293f74c40135cab4cf54247dd460d4ba36224f6bf4c73cb8ae1ad77ee4b4"
+    },
+    {
+      "suite": "early-replay-cipolicy-wago_regalloccheck",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "c076f0d33e7d6f4b1d93ef839e33f5fa92bab36296a721b0f8254bd56741c373",
+      "command_sha256": "afe0d10b7a7a84721facb14b6d660df857cbc993c06f02736e2410ce7e3594d3"
+    },
+    {
+      "suite": "early-replay-cipolicy-wagodebug",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "a3071ae160a71f8e39550466c26b5788b2fa6cfedcd3233e1f5b59d7e9a19740",
+      "command_sha256": "c83d39b91f29826928fbe37b972690eeba986b1b8232f28cf1251e18286b3b88"
+    },
+    {
+      "suite": "early-replay-compile-ordinary",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "f55abbd79dc86b3c4272e97605f2d89b03dc1bd16d722da671c14307f589b900",
+      "command_sha256": "9e52a7a243b381f6d8660b2fde26d9166c096a2175dc14db0c68617ce7a9befd"
+    },
+    {
+      "suite": "early-replay-compile-wago_regalloccheck",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "dca1aad94bf4f05218872b4a9d69831c1f5a3c8652bfc43150b69e3a5886bb4e",
+      "command_sha256": "46ff820a494dc047c61b01f01cda23c3a39c8f606546a4c53897f10c917e7aa8"
+    },
+    {
+      "suite": "early-replay-compile-wagodebug",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "638016817af958615b7ab27c5b9e25714216f794e4adfc91bb45e96ff59b596b",
+      "command_sha256": "fea8730c56dd55b2017fb49fa219c8378d18f5510b551982018c307dcab96122"
+    },
+    {
+      "suite": "early-replay-discovery-ordinary",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "be682555b37947fe858e947efb8a32c2557268cf3ec17b59cd71e6fc907c3f54",
+      "command_sha256": "7cf65b05e52c700037fac973e441a6134a8c32571e2f3b728eb033168346bb42"
+    },
+    {
+      "suite": "early-replay-discovery-wago_regalloccheck",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "84b592e65b514386ce998889ccec099bc4c4d7cad81a5be78f3b422070726203",
+      "command_sha256": "c17280f250c7e55863166ff3c7c4eb2f205aeb738737d75109a01b69ee257ef2"
+    },
+    {
+      "suite": "early-replay-discovery-wagodebug",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "d520e47e94a2b880eab2710c9fc229901b4eafaabc06ee91b5a193f1e9be8a75",
+      "command_sha256": "63544765eae1847955967334b821bbccfa2bfec8d984c0e2bd20673b812e096c"
+    },
+    {
+      "suite": "full-root-replay-ordinary",
+      "valid": true,
+      "verdict": "FAIL",
+      "driver": "run.py",
+      "raw_sha256": "23681bc4de5b36e7b994a97db687b85d45855c8116221aafe5861e1fea631dcc",
+      "command_sha256": "917d0222189e333ccb2b3d25f8dc431cb32a1e59409571a1fef96fd6eee85a05"
+    },
+    {
+      "suite": "full-step-0",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "8c86b89a137ec4fbe08c60337219de57af461bdfff30090eeabd5df8a3320276",
+      "command_sha256": "b04e4f4d582b2d68c7f961131935af86d6b54b46bd281458c203f49d8392ac87"
+    },
+    {
+      "suite": "full-step-1",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "7a5b03a04b0dca77e73abd53190c8fb0957068bff3295cff563e703c6024fa06",
+      "command_sha256": "dd5916283a721dc7375966ee1fca06de6035185ba98e4ef0959824dcfb5a7bbc"
+    },
+    {
+      "suite": "full-step-2",
+      "valid": true,
+      "verdict": "FAIL",
+      "driver": "run.py",
+      "raw_sha256": "22f456b5b6e36e9d1f856679e57b1c3310ce24839422de17432edd750f09110a",
+      "command_sha256": "b3b329fe8bf9aaafec81dd368babd868ad12569c520159d0a1fdf761d3fed331"
+    },
+    {
+      "suite": "parent-race-reduced-ordinary",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "09489be2ad3f053ea0ce6b57fe099b8760571a08cb28fa5b7a0e7489b118a15f",
+      "command_sha256": "2d0c0b30bc595529b5d4467b6c359ecfe377a2e667988bc5956b3036fd574029"
+    },
+    {
+      "suite": "parent-race-reduced-wago_regalloccheck",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "8abc551323b937590839ce5d2f909e22fb7c0743848a650b9bceca24eda904f6",
+      "command_sha256": "0ebab5ce6e534d043c415ca925a033583c37a5b1edbb7604241ad672b0cdfe21"
+    },
+    {
+      "suite": "parent-race-reduced-wagodebug",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "ce684638392dd3236fa144a24d5145874a83a6c90006ec3fe02bfd31c4ef2e8c",
+      "command_sha256": "7579b418664bd1d6452f1932d922a7ee2df32f383aa02fe14f6b23e90da89e99"
+    },
+    {
+      "suite": "repair-census-ordinary",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "298b3ef8d9cfed64b9283001b84c242df2d7acd1a257e21d37023b8b0505e877",
+      "command_sha256": "c9bf693ffa6fc4d0f07cedfeaf51799602247841bb996f89cf25849b5a386406"
+    },
+    {
+      "suite": "repair-census-wago_regalloccheck",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "7b1298d4b27ed7a1a0764403a562aed2b269e8676d903003d97051fec1abd080",
+      "command_sha256": "e802c4ae84c793d53bebed6ac31cf2dc31fc527faad3205755a2a78e22851e62"
+    },
+    {
+      "suite": "repair-census-wagodebug",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "42e7c1fd3f37b200ce6a2a19b91e8c6712702bb94e8a0d0bf3e582b9e27d5de6",
+      "command_sha256": "19d8dd23f0674e85da82ede59b792c43246f6bb0b3b3434980b86078553d94ec"
+    },
+    {
+      "suite": "tmp-resume-continued-step-2",
+      "valid": false,
+      "verdict": "INTERRUPTED",
+      "driver": "run-v3.py",
+      "raw_sha256": "b26cbe719788885f74650ce86e197d6ffce2448c2109dcddfca5485d03e897e9",
+      "command_sha256": "a9991e95f3427572f3379324981ead7a58745f705b5077a0cd84c5fcfc92753a"
+    },
+    {
+      "suite": "tmp-resume-full-root-replay-ordinary",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run-v3.py",
+      "raw_sha256": "a059668d62b36fc16cdc82acac2b6cfa9c5dd10fd43fb88b18d205bc9911cca7",
+      "command_sha256": "16e040256d0a423425fc1f76d9bbf20b9b954d2d48ec6335631c20b87947ecd2"
+    },
+    {
+      "suite": "version-go",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+      "command_sha256": "d8811bbc9bd018bce7d04f001302c28b66d3eac9fd53c3c42c4d8219b7c87c49"
+    },
+    {
+      "suite": "version-node",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "6a0cec2e157365c1a8ac6d1715733b7c3321a7c5565862a701ca71ef00359d04",
+      "command_sha256": "faf61283c59f05467df2110a8bb20e3e48cdc27db61c82232c572d2119e81e3c"
+    },
+    {
+      "suite": "version-ocaml",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "18ac9b658e25d14212772d36407e0faf612281f83d6d1aa3b698bb6a1f59e52c",
+      "command_sha256": "b03f7dbf4cc1d82d23ecae8460120a266e16a8d6a9be7099ceda51d6ac944df0"
+    },
+    {
+      "suite": "version-tinygo",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "ba20ab3c07a98ec81ee682d57218300d755e14a480ec11129a55714c78c0af02",
+      "command_sha256": "48a2a405d951471e2591494c21ec4cd6ffee652df11457aa9278a45dd40c76b2"
+    },
+    {
+      "suite": "version-wabt",
+      "valid": true,
+      "verdict": "PASS",
+      "driver": "run.py",
+      "raw_sha256": "c2601ed6a60da949eef7fe69539703c387aa3b41544dd15f574763471b0bd26e",
+      "command_sha256": "36d980aca8625df5c7c07035b78585c9b45e82926fdaceda4dadb7bce70a23a0"
+    }
+  ],
+  "counts": {
+    "PASS": 26,
+    "INTERRUPTED": 3,
+    "FAIL": 2
+  },
+  "processes": [
+    {
+      "pid": 2709770,
+      "cmd": "/bin/bash -lc cat > docs/rfwgc-evidence/final-combined-d246/recovery-verify.py <<'PY'\n\"\"\"Read-only provenance census, before reuse; does not execute qualification.\"\"\"\nimport pathlib,json,hashlib,gzip,subprocess,collections\nE=pathlib.Path(__file__).resolve().parent; R=E.parents[2];M=json.loads((E/'source.json').read_text())\ndef sha(p):\n h=hashlib.sha256()\n with p.open('rb') as f:\n  for b in iter(lambda:f.read(1048576),b''):h.update(b)\n return h.hexdigest()\np=subprocess.Popen(['git','archive',M['pin']],cwd=R,stdout=subprocess.PIPE);h=hashlib.sha256()\nfor b in iter(lambda:p.stdout.read(1048576),b''):h.update(b)\nassert p.wait()==0 and h.hexdigest()==M['archive_sha256']\nknown={sha(E/n):n for n in ['run.py','run-v2.py','run-v3.py']}; rows=[]\nfor p in sorted(E.glob('*/command.json')):\n c=json.loads(p.read_text());d=p.parent;rpath=d/'result.json';r=json.loads(rpath.read_text()) if rpath.exists() else {}\n raw=d/'raw.log';z=d/'raw.log.gz';hh=hashlib.sha256()\n if raw.exists() or z.exists():\n  with (raw.open('rb') if raw.exists() else gzip.open(z,'rb')) as f:\n   for b in iter(lambda:f.read(1048576),b''):hh.update(b)\n valid=bool(r and c.get('source')==r.get('source')==M['pin'] and r.get('driver_unchanged') and c.get('driver_sha256') in known and hh.hexdigest()==r.get('raw_sha256'))\n rows.append(dict(suite=d.name,valid=valid,verdict=r.get('verdict','INTERRUPTED'),driver=known.get(c.get('driver_sha256')),raw_sha256=hh.hexdigest(),command_sha256=sha(p)))\nprocesses=[]\nfor p in pathlib.Path('/proc').glob('[0-9]*'):\n try:\n  cmd=(p/'cmdline').read_bytes().replace(b'\\0',b' ').decode(errors='replace');cwd=str((p/'cwd').resolve())\n  if ('wago-final-d246' in cmd or M['scratch'] in cwd or str(E) in cmd) and int(p.name)!=__import__('os').getpid():processes.append(dict(pid=int(p.name),cmd=cmd,cwd=cwd))\n except (OSError,ProcessLookupError):pass\nout=dict(source=M['pin'],archive_sha256=h.hexdigest(),receipts=rows,counts=dict(collections.Counter((r['verdict'] if r['valid'] else 'INTERRUPTED' if r['verdict']=='INTERRUPTED' else 'INVALID') for r in rows)),processes=processes)\n(E/'recovery-integrity-census.json').write_text(json.dumps(out,indent=2)+'\\n');print(json.dumps(out['counts']));print('processes',processes)\nassert all(r['valid'] for r in rows if r['verdict']!='INTERRUPTED')\nPY\npython3 docs/rfwgc-evidence/final-combined-d246/recovery-verify.py\npython3 docs/rfwgc-evidence/final-combined-d246/report.py\npython3 docs/rfwgc-evidence/final-combined-d246/ledger-v3.py ",
+      "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port"
+    }
+  ]
+}
