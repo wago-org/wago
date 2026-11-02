@@ -1,0 +1,167 @@
+[
+  {
+    "suite": "tinygo-evacuation-ordinary",
+    "passes": [
+      "--- PASS: TestEdenRegionsCrossRegionEdgeAndEvacuation (0.00s)",
+      "--- PASS: TestEvacuationStage7RunCredit (0.00s)",
+      "--- PASS: TestEvacuationStage7PolicyAndOptionalRefusal (0.00s)",
+      "--- PASS: TestEvacuationStage7Selection (0.00s)",
+      "--- PASS: TestEvacuationStage7CrossingPhysicalMove (0.00s)",
+      "--- PASS: TestEvacuationStage7AbsorbedTail (0.00s)",
+      "--- PASS: TestEvacuationStage7LargeYoungPlan (1.00s)",
+      "--- PASS: TestEvacuationTinyGoPolicy (0.00s)",
+      "--- PASS: TestEvacuationTinyGoExactAdmissionEdges (0.00s)",
+      "--- PASS: TestEvacuationTinyGoCheckedGeneration (0.00s)",
+      "--- PASS: TestEvacuationTinyGoCardsLOSAndYoung (0.00s)",
+      "--- PASS: TestEvacuationTinyGoRequiredPressure (0.00s)",
+      "--- PASS: TestCollectMinorRunsRememberedShadowBeforeEvacuation (0.00s)",
+      "--- PASS: TestDenseMinorEvacuationFinishesDuringCommit (0.00s)",
+      "--- PASS: TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects (0.00s)"
+    ],
+    "skips": [],
+    "expected_pass_events": 15
+  },
+  {
+    "suite": "tinygo-joint-ordinary",
+    "passes": [
+      "    --- PASS: TestTinyGoForeignStackConcurrentGC/return (0.00s)",
+      "    --- PASS: TestTinyGoForeignStackConcurrentGC/trap-unwind (0.00s)",
+      "    --- PASS: TestTinyGoForeignStackConcurrentGC/interrupt (0.00s)",
+      "--- PASS: TestTinyGoForeignStackConcurrentGC (0.01s)",
+      "--- PASS: TestTinyGoForeignStackGCHostReentry (0.00s)",
+      "--- PASS: TestTinyGoForeignStackGCPreparedEntry (0.00s)",
+      "--- PASS: TestTinyGoForeignStackGCCloseThunkFailure (0.00s)",
+      "--- PASS: TestGCStage8TinyGoGuestRelocatedRead (1.99s)",
+      "--- PASS: TestGCStage8TinyGoControls (0.15s)"
+    ],
+    "skips": [],
+    "expected_pass_events": 9
+  },
+  {
+    "suite": "tinygo-conversion-ordinary",
+    "passes": [
+      "--- PASS: TestGCExternConversionStableIdentityAndOwnership (0.00s)",
+      "--- PASS: TestGCExternConversionRejectsForeignForgedAndClosed (0.00s)",
+      "--- PASS: TestGCExternConversionCollectorFirstCloseFailsClosed (0.00s)",
+      "--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)",
+      "--- PASS: TestGCExternConversionPublicationOrderingAndRollback (0.00s)"
+    ],
+    "skips": [],
+    "expected_pass_events": 5
+  },
+  {
+    "suite": "tinygo-evacuation-wagodebug",
+    "passes": [
+      "--- PASS: TestEdenRegionsFailedEvacuationPreservesRegions (0.00s)",
+      "--- PASS: TestEdenRegionsCrossRegionEdgeAndEvacuation (0.00s)",
+      "    --- PASS: TestEvacuationStage7AdmissionFaults/k (0.00s)",
+      "    --- PASS: TestEvacuationStage7AdmissionFaults/j (0.00s)",
+      "    --- PASS: TestEvacuationStage7AdmissionFaults/c (0.00s)",
+      "    --- PASS: TestEvacuationStage7AdmissionFaults/d (0.00s)",
+      "--- PASS: TestEvacuationStage7AdmissionFaults (0.00s)",
+      "--- PASS: TestEvacuationStage7CommittedMaintenance (0.00s)",
+      "--- PASS: TestEvacuationStage7SerialPartialCopyRollback (0.00s)",
+      "--- PASS: TestEvacuationStage7RunCredit (0.00s)",
+      "--- PASS: TestEvacuationStage7PolicyAndOptionalRefusal (0.00s)",
+      "--- PASS: TestEvacuationStage7Selection (0.00s)",
+      "--- PASS: TestEvacuationStage7CrossingPhysicalMove (0.00s)",
+      "--- PASS: TestEvacuationStage7AbsorbedTail (0.00s)",
+      "--- PASS: TestEvacuationStage7LargeYoungPlan (1.26s)",
+      "--- PASS: TestEvacuationTinyGoPolicy (0.00s)",
+      "--- PASS: TestEvacuationTinyGoExactAdmissionEdges (0.00s)",
+      "--- PASS: TestEvacuationTinyGoCheckedGeneration (0.00s)",
+      "--- PASS: TestEvacuationTinyGoCardsLOSAndYoung (0.00s)",
+      "--- PASS: TestEvacuationTinyGoRequiredPressure (0.00s)",
+      "--- PASS: TestCollectMinorRunsRememberedShadowBeforeEvacuation (0.00s)",
+      "    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=0/point=4 (0.00s)",
+      "    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=0/point=5 (0.00s)",
+      "    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=6/point=4 (0.00s)",
+      "    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=6/point=5 (0.00s)",
+      "    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=12/point=4 (0.00s)",
+      "    --- PASS: TestRollupEvacuationFailureKeepsCards/shift=12/point=5 (0.00s)",
+      "--- PASS: TestRollupEvacuationFailureKeepsCards (0.01s)",
+      "--- PASS: TestDenseMinorEvacuationFinishesDuringCommit (0.00s)",
+      "--- PASS: TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects (0.00s)"
+    ],
+    "skips": [],
+    "expected_pass_events": 30
+  },
+  {
+    "suite": "tinygo-joint-wagodebug",
+    "passes": [
+      "    --- PASS: TestTinyGoForeignStackConcurrentGC/return (0.00s)",
+      "    --- PASS: TestTinyGoForeignStackConcurrentGC/trap-unwind (0.00s)",
+      "    --- PASS: TestTinyGoForeignStackConcurrentGC/interrupt (0.00s)",
+      "--- PASS: TestTinyGoForeignStackConcurrentGC (0.01s)",
+      "--- PASS: TestTinyGoForeignStackGCHostReentry (0.00s)",
+      "--- PASS: TestTinyGoForeignStackGCPreparedEntry (0.00s)",
+      "--- PASS: TestTinyGoForeignStackGCCloseThunkFailure (0.00s)",
+      "--- PASS: TestGCStage8TinyGoGuestRelocatedRead (2.14s)",
+      "--- PASS: TestGCStage8TinyGoControls (0.14s)"
+    ],
+    "skips": [],
+    "expected_pass_events": 9
+  },
+  {
+    "suite": "tinygo-conversion-wagodebug",
+    "passes": [
+      "--- PASS: TestGCExternConversionStableIdentityAndOwnership (0.00s)",
+      "--- PASS: TestGCExternConversionRejectsForeignForgedAndClosed (0.00s)",
+      "--- PASS: TestGCExternConversionCollectorFirstCloseFailsClosed (0.00s)",
+      "--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)",
+      "--- PASS: TestGCExternConversionPublicationOrderingAndRollback (0.00s)"
+    ],
+    "skips": [],
+    "expected_pass_events": 5
+  },
+  {
+    "suite": "tinygo-evacuation-wago_regalloccheck",
+    "passes": [
+      "--- PASS: TestEdenRegionsCrossRegionEdgeAndEvacuation (0.00s)",
+      "--- PASS: TestEvacuationStage7RunCredit (0.00s)",
+      "--- PASS: TestEvacuationStage7PolicyAndOptionalRefusal (0.00s)",
+      "--- PASS: TestEvacuationStage7Selection (0.00s)",
+      "--- PASS: TestEvacuationStage7CrossingPhysicalMove (0.00s)",
+      "--- PASS: TestEvacuationStage7AbsorbedTail (0.00s)",
+      "--- PASS: TestEvacuationStage7LargeYoungPlan (0.97s)",
+      "--- PASS: TestEvacuationTinyGoPolicy (0.00s)",
+      "--- PASS: TestEvacuationTinyGoExactAdmissionEdges (0.00s)",
+      "--- PASS: TestEvacuationTinyGoCheckedGeneration (0.00s)",
+      "--- PASS: TestEvacuationTinyGoCardsLOSAndYoung (0.00s)",
+      "--- PASS: TestEvacuationTinyGoRequiredPressure (0.00s)",
+      "--- PASS: TestCollectMinorRunsRememberedShadowBeforeEvacuation (0.00s)",
+      "--- PASS: TestDenseMinorEvacuationFinishesDuringCommit (0.00s)",
+      "--- PASS: TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects (0.00s)"
+    ],
+    "skips": [],
+    "expected_pass_events": 15
+  },
+  {
+    "suite": "tinygo-joint-wago_regalloccheck",
+    "passes": [
+      "    --- PASS: TestTinyGoForeignStackConcurrentGC/return (0.00s)",
+      "    --- PASS: TestTinyGoForeignStackConcurrentGC/trap-unwind (0.00s)",
+      "    --- PASS: TestTinyGoForeignStackConcurrentGC/interrupt (0.00s)",
+      "--- PASS: TestTinyGoForeignStackConcurrentGC (0.01s)",
+      "--- PASS: TestTinyGoForeignStackGCHostReentry (0.00s)",
+      "--- PASS: TestTinyGoForeignStackGCPreparedEntry (0.00s)",
+      "--- PASS: TestTinyGoForeignStackGCCloseThunkFailure (0.00s)",
+      "--- PASS: TestGCStage8TinyGoGuestRelocatedRead (1.81s)",
+      "--- PASS: TestGCStage8TinyGoControls (0.13s)"
+    ],
+    "skips": [],
+    "expected_pass_events": 9
+  },
+  {
+    "suite": "tinygo-conversion-wago_regalloccheck",
+    "passes": [
+      "--- PASS: TestGCExternConversionStableIdentityAndOwnership (0.00s)",
+      "--- PASS: TestGCExternConversionRejectsForeignForgedAndClosed (0.00s)",
+      "--- PASS: TestGCExternConversionCollectorFirstCloseFailsClosed (0.00s)",
+      "--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)",
+      "--- PASS: TestGCExternConversionPublicationOrderingAndRollback (0.00s)"
+    ],
+    "skips": [],
+    "expected_pass_events": 5
+  }
+]

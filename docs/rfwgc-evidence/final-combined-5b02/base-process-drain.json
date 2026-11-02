@@ -1,0 +1,15 @@
+{
+  "owned_roots": [
+    "/home/dev/.cache/_wago_final_5b02_n61wfxab",
+    "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-combined-5b02"
+  ],
+  "processes": [],
+  "drained": true,
+  "excluded_inspection_ancestors": [
+    7,
+    31,
+    1625494,
+    2694519,
+    2694527
+  ]
+}

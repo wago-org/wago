@@ -229,13 +229,13 @@
       "suite": "graphs-baseline-wagodebug",
       "receipt_suite": "graphs-baseline-wagodebug",
       "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-      "verdict": "INTERRUPTED"
+      "verdict": "PASS"
     },
     {
       "suite": "graphs-baseline-wago_regalloccheck",
       "receipt_suite": "graphs-baseline-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v1-ordinary",
@@ -541,7 +541,7 @@
       "suite": "tinygo-evacuation-wago_regalloccheck",
       "receipt_suite": "tinygo-evacuation-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-joint-ordinary",
@@ -553,13 +553,13 @@
       "suite": "tinygo-joint-wagodebug",
       "receipt_suite": "tinygo-joint-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-joint-wago_regalloccheck",
       "receipt_suite": "tinygo-joint-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-conversion-ordinary",
@@ -571,13 +571,13 @@
       "suite": "tinygo-conversion-wagodebug",
       "receipt_suite": "tinygo-conversion-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-conversion-wago_regalloccheck",
       "receipt_suite": "tinygo-conversion-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "hardening-ordinary",
@@ -757,43 +757,43 @@
       "suite": "qemu-guest/riscv64-wago_regalloccheck-guest",
       "receipt_suite": "qemu-guest/riscv64-wago_regalloccheck-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-h6/arm64-ordinary-guest",
       "receipt_suite": "qemu-h6/arm64-ordinary-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-h6/arm64-wagodebug-guest",
       "receipt_suite": "qemu-h6/arm64-wagodebug-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-h6/arm64-wago_regalloccheck-guest",
       "receipt_suite": "qemu-h6/arm64-wago_regalloccheck-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-rv64-controls/riscv64-ordinary-guest",
       "receipt_suite": "qemu-rv64-controls/riscv64-ordinary-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-rv64-controls/riscv64-wagodebug-guest",
       "receipt_suite": "qemu-rv64-controls/riscv64-wagodebug-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-rv64-controls/riscv64-wago_regalloccheck-guest",
       "receipt_suite": "qemu-rv64-controls/riscv64-wago_regalloccheck-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-generate",
@@ -1199,21 +1199,21 @@
     },
     {
       "suite": "tinygo-repair-ordinary",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "tinygo-repair-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-repairs/arm64-ordinary-guest",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "qemu-repairs/arm64-ordinary-guest",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "FAIL"
     },
     {
       "suite": "qemu-repairs/riscv64-ordinary-guest",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "qemu-repairs/riscv64-ordinary-guest",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS"
     },
     {
       "suite": "early-replay-discovery-wagodebug",
@@ -1241,21 +1241,21 @@
     },
     {
       "suite": "tinygo-repair-wagodebug",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "tinygo-repair-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-repairs/arm64-wagodebug-guest",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "qemu-repairs/arm64-wagodebug-guest",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "FAIL"
     },
     {
       "suite": "qemu-repairs/riscv64-wagodebug-guest",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "qemu-repairs/riscv64-wagodebug-guest",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS"
     },
     {
       "suite": "early-replay-discovery-wago_regalloccheck",
@@ -1283,21 +1283,21 @@
     },
     {
       "suite": "tinygo-repair-wago_regalloccheck",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "tinygo-repair-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-repairs/arm64-wago_regalloccheck-guest",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "qemu-repairs/arm64-wago_regalloccheck-guest",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "FAIL"
     },
     {
       "suite": "qemu-repairs/riscv64-wago_regalloccheck-guest",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "qemu-repairs/riscv64-wago_regalloccheck-guest",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS"
     },
     {
       "suite": "baseline-canonical-checked-preflight",
@@ -1325,11 +1325,8 @@
     }
   ],
   "counts": {
-    "PASS": 196,
-    "INTERRUPTED": 1,
-    "RUNNING": 2,
-    "NOT_RUN": 20,
-    "FAIL": 1
+    "PASS": 216,
+    "FAIL": 4
   },
   "attempts": [
     {
@@ -1399,10 +1396,10 @@
     {
       "suite": "batch-tinygo-1",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "catalog-ordinary",
@@ -1735,10 +1732,10 @@
     {
       "suite": "graphs-baseline-wago_regalloccheck",
       "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "graphs-baseline-wagodebug",
@@ -2311,18 +2308,50 @@
     {
       "suite": "target-family-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "target-family-h6",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "target-family-rv64-controls",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "target-repairs-original",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 1,
+      "verdict": "FAIL"
     },
     {
       "suite": "tinygo-complete-0",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-complete-1",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-conversion-ordinary",
@@ -2333,7 +2362,31 @@
       "verdict": "PASS"
     },
     {
+      "suite": "tinygo-conversion-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-conversion-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "tinygo-evacuation-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-evacuation-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",
@@ -2357,12 +2410,44 @@
       "verdict": "PASS"
     },
     {
+      "suite": "tinygo-joint-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "tinygo-joint-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-repair-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-repair-wago_regalloccheck",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tinygo-repair-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-unsupported-global-ordinary",
