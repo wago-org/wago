@@ -2,27 +2,136 @@
 
 package wago
 
-import "fmt"
+import (
+	"encoding/binary"
+	"fmt"
+)
 
 func compiledConversionStoreHooks(*Compiled) bool { return false }
-func (*Instance) publishConversionStore(_ *Instance, _ []byte, _, _ uint64, publish func() error) error {
+
+// Opaque identities require publisher-independent receipts. Targets without
+// that adapter accept only null and authenticated ordinary externrefs. RV64
+// uses its separate compact publication protocol, not host opaque identities.
+func unsupportedConversionWord(store *referenceStore, word uint64) error {
+	if word == 0 {
+		return nil
+	}
+	if store != nil {
+		if _, ok := store.resolveExternref(word); ok {
+			return nil
+		}
+	}
+	return fmt.Errorf("opaque converted publication is unsupported on this target")
+}
+func (in *Instance) publishConversionStore(_ *Instance, _ []byte, _, word uint64, publish func() error) error {
+	if err := unsupportedConversionWord(in.refStore, word); err != nil {
+		return err
+	}
 	return publish()
 }
-
-func conversionImportedTableCount(*gcRefTestTableState) int { return 0 }
-
-func conversionBoundaryWord(*Instance, uint64, bool) (uint64, bool)     { return 0, false }
-func setConversionGlobalPublic(*Instance, *Global, Value) (bool, error) { return false, nil }
-
-func (*Instance) publishConversionRange(_ *Instance, _ []byte, _, _ uint64, _ []uint64, publish func()) error {
+func conversionImportedTableCount(*gcRefTestTableState) int         { return 0 }
+func conversionBoundaryWord(*Instance, uint64, bool) (uint64, bool) { return 0, false }
+func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, error) {
+	if compiledArchitecture == 4 || g == nil || g.Type != ValExternRef || value.typ != ValExternRef {
+		return false, nil
+	}
+	var store *referenceStore
+	if g.owner != nil {
+		store = g.owner.store
+	} else if access != nil {
+		store = access.refStore
+	}
+	if err := unsupportedConversionWord(store, value.bits); err != nil {
+		return true, err
+	}
+	return false, nil
+}
+func (in *Instance) publishConversionRange(_ *Instance, _ []byte, _, _ uint64, words []uint64, publish func()) error {
+	for _, word := range words {
+		if err := unsupportedConversionWord(in.refStore, word); err != nil {
+			return err
+		}
+	}
 	publish()
 	return nil
 }
 
-const conversionInitializationEnabled = false
+const conversionInitializationEnabled = compiledArchitecture != 4
 
-func (*Instance) initializeConversionReceipts([]conversionInitialTable) error { return nil }
-
-func setConversionTablePublic(*Table, uint64, Value) error {
-	return fmt.Errorf("public extern table receipts are unsupported on this target")
+func (in *Instance) initializeConversionReceipts(staged []conversionInitialTable) error {
+	if compiledArchitecture == 4 {
+		return nil
+	} // compact RV64 owns its initialization protocol
+	for i, g := range in.globalCells {
+		if i >= len(in.c.GlobalImports) && in.c.Globals[i].Type == ValExternRef {
+			if err := unsupportedConversionWord(in.refStore, readGlobalObject(g, ValExternRef)); err != nil {
+				return err
+			}
+		}
+	}
+	if in.c != nil {
+		for i := in.c.tableImportCount(); i < in.c.tableCount(); i++ {
+			if in.c.tableElementType(i) != ValExternRef {
+				continue
+			}
+			storage := in.tableDescriptor(i)
+			for j := uint32(0); j < binary.LittleEndian.Uint32(storage); j++ {
+				if err := unsupportedConversionWord(in.refStore, binary.LittleEndian.Uint64(storage[8+uint64(j)*8:])); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for _, row := range staged {
+		for j, touched := range row.touched {
+			if touched {
+				if err := unsupportedConversionWord(in.refStore, binary.LittleEndian.Uint64(row.staged[8+j*8:])); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for _, row := range staged {
+		for j, touched := range row.touched {
+			if touched {
+				copy(row.original[8+j*8:16+j*8], row.staged[8+j*8:16+j*8])
+			}
+		}
+	}
+	return nil
+}
+func setConversionTablePublic(t *Table, index uint64, value Value) error {
+	if t == nil || t.owner == nil || value.typ != ValExternRef {
+		return fmt.Errorf("invalid extern table value")
+	}
+	owner := t.instanceOwner()
+	if owner != nil {
+		if err := owner.beginInvocation(); err != nil {
+			return err
+		}
+		defer owner.endInvocation()
+	}
+	if owner != nil {
+		unlock := owner.lockInstanceNativeStateForHostAccess()
+		defer unlock()
+	} else {
+		nativeExecutionMu.Lock()
+		defer nativeExecutionMu.Unlock()
+	}
+	t.owner.mu.Lock()
+	defer t.owner.mu.Unlock()
+	if t.owner.closed || t.owner.elementType != ValExternRef || len(t.desc) < 8 || index >= uint64(binary.LittleEndian.Uint32(t.desc)) || index >= uint64((len(t.desc)-8)/8) {
+		return fmt.Errorf("extern table metadata or index is invalid")
+	}
+	if value.bits == 0 && t.owner.hasValueType && !t.owner.valueType.Ref.Nullable {
+		return fmt.Errorf("table requires non-null reference")
+	}
+	if err := unsupportedConversionWord(t.owner.store, value.bits); err != nil {
+		return err
+	}
+	if err := unsupportedConversionWord(t.owner.store, binary.LittleEndian.Uint64(t.desc[8+index*8:])); err != nil {
+		return err
+	}
+	binary.LittleEndian.PutUint64(t.desc[8+index*8:], value.bits)
+	return nil
 }
