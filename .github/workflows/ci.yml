@@ -1399,9 +1399,9 @@ jobs:
 
   # This is the sole required status check. It validates the selected plan, so
   # skipped jobs are accepted only when the profile did not expect them.
-  ci-ok:
-    name: CI
-    if: always()
+  darwin-qualification-summary:
+    name: Darwin qualification summary
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.darwin_qualification
     needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification]
     runs-on: ubuntu-latest
     steps:
@@ -1414,6 +1414,13 @@ jobs:
           test "$DARWIN_RESULT" = success
           python3 -c 'import json, os; n=json.loads(os.environ["NORMAL_RESULTS"]); assert all(v["result"] == "skipped" for k,v in n.items() if k != "darwin-qualification"), n'
           echo 'Pinned Darwin command execution succeeded; gaps and skips still require review.' >> "$GITHUB_STEP_SUMMARY"
+
+  ci-ok:
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && 'Full CI not run (Darwin-only dispatch)' || 'CI' }}
+    if: always() && (github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification)
+    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size]
+    runs-on: ubuntu-latest
+    steps:
       - name: Identify qualification profile
         if: github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification
         env:

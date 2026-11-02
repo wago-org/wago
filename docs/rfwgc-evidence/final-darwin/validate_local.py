@@ -87,9 +87,10 @@ def main():
     assert "group: ci-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && '-darwin-qualification' || '' }}" in current
     # Remove special summary step/guards/dependency to recover the exact old contract.
     summary = after['ci-ok']
-    start = summary.index('      - name: Verify special Darwin')
-    end = summary.index('      - name: Identify qualification profile', start)
-    special = summary[start:end]
+    special = after['darwin-qualification-summary'].split('    steps:\n', 1)[1]
+    assert 'name: Darwin qualification summary' in after['darwin-qualification-summary']
+    assert "'Full CI not run (Darwin-only dispatch)' || 'CI'" in summary
+    assert f'if: always() && ({normal})' in summary
     script = textwrap.dedent(special.split('        run: |\n', 1)[1])
     with tempfile.TemporaryDirectory() as tmp:
         for state in ['success', 'failure', 'cancelled', 'skipped']:
@@ -104,7 +105,7 @@ def main():
         result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], env=env, text=True, capture_output=True)
         assert result.returncode != 0, 'unexpected normal job execution accepted'
     report['special_summary_states'] = 'PASS: only successful Darwin with all normal jobs skipped accepted'
-    summary = summary[:start] + summary[end:]
+    summary = re.sub(r"    name: .*\n    if: always\(\) && .*\n", "    name: CI\n    if: always()\n", summary, count=1)
     summary = summary.replace('        if: ' + normal + '\n', '').replace(', darwin-qualification]', ']')
     assert summary == before['ci-ok']
     report['workflow_contracts'] = 'PASS: unchanged normal job bodies, summary and planner; dispatch-only isolation and concurrency suffix'
