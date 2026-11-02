@@ -321,21 +321,22 @@ type gcStoreDomain struct {
 	// and helper locks alone leave a window where another tenant can collect an
 	// as-yet-unrooted result from this shared collector. Arbitrary host callbacks
 	// suspend this lease while exact parked roots remain published.
-	invocationMu     invocationGate
-	invocationState  sync.Mutex
-	invocationOwner  invocationID
-	id               uint64
-	collector        *gc.Collector
-	private          bool
-	conversionClaims uint32 // includes deferred receipt releases until post-gate drain
-	conversionOwned  bool   // registered private type universe; lifetime belongs to receipts
-	config           gc.Config
-	types            []gc.TypeDesc
-	typeReps         []gcDomainTypeRepresentative
-	refs             uint32
-	claims           uint32 // prepared instantiations not yet registered
-	prev             *gcStoreDomain
-	next             *gcStoreDomain
+	invocationMu         invocationGate
+	invocationState      sync.Mutex
+	invocationOwner      invocationID
+	id                   uint64
+	collector            *gc.Collector
+	private              bool
+	conversionClaims     uint32 // includes deferred receipt releases until post-gate drain
+	conversionPublishers uint32 // topology-protected live opaque conversion authority
+	conversionOwned      bool   // registered private type universe; lifetime belongs to receipts
+	config               gc.Config
+	types                []gc.TypeDesc
+	typeReps             []gcDomainTypeRepresentative
+	refs                 uint32
+	claims               uint32 // prepared instantiations not yet registered
+	prev                 *gcStoreDomain
+	next                 *gcStoreDomain
 }
 
 var nextGCDomainIdentity atomic.Uint64
@@ -356,8 +357,9 @@ type referenceStoreInstance struct {
 	// invocationDomains is allocated only when direct/transitive function imports
 	// reach a GC domain other than this instance's own domain. The common local-GC
 	// case uses gcDomain directly and pays no sidecar allocation.
-	invocationDomains        *gcInvocationDomainSet
-	dynamicInvocationDomains bool
+	invocationDomains               *gcInvocationDomainSet
+	dynamicInvocationDomains        bool
+	conversionOnlyInvocationDomains bool
 }
 
 const inlineGCInvocationDomains = 4
@@ -1516,7 +1518,22 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 	entry := store.instances[in]
 	var domains gcInvocationDomainView
 	if entry != nil {
-		if entry.dynamicInvocationDomains {
+		if entry.dynamicInvocationDomains && entry.conversionOnlyInvocationDomains {
+			set := new(gcInvocationDomainSet)
+			set.add(entry.gcDomain)
+			for i := 0; i < entry.invocationDomains.len(); i++ {
+				set.add(entry.invocationDomains.at(i))
+			}
+			if topology := store.gcDomains; topology != nil {
+				for domain := topology.first; domain != nil; domain = domain.next {
+					if domain.conversionPublishers != 0 || domain.conversionClaims != 0 {
+						set.add(domain)
+					}
+				}
+			}
+			set.sort()
+			domains.set = set
+		} else if entry.dynamicInvocationDomains {
 			if entry.gcDomain != nil && entry.gcDomain.private {
 				domains.local = entry.gcDomain
 			}
@@ -2123,7 +2140,8 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 func (s *referenceStore) registerInstance(in *Instance) error {
 	managedFunctionPrepareRegistration(s, in)
 	var importedInvocationDomains gcInvocationDomainSet
-	dynamicInvocationDomains := in != nil && (compiledConversionStoreHooks(in.c) || compiledManagedFunctionReachability(in.c) || !s.private && compiledHasDynamicFuncrefReachability(in.c))
+	fullDynamic := in != nil && (compiledManagedFunctionReachability(in.c) || !s.private && compiledHasDynamicFuncrefReachability(in.c))
+	dynamicInvocationDomains := fullDynamic || in != nil && compiledConversionStoreHooks(in.c)
 	importsPrivateInvocationDomain := false
 	if in != nil && in.c != nil {
 		for i, displayKey := range in.c.Imports {
@@ -2133,10 +2151,33 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 			}
 			if export.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 || compiledManagedFunctionReachability(export.inst.c) {
 				if export.inst.refStore != s {
-					return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", displayKey)
+					if export.inst.requiresSameRuntimeInvocation() {
+						return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", displayKey)
+					}
+					export.inst.refStore.mu.Lock()
+					producer := export.inst.refStore.instances[export.inst]
+					if producer != nil {
+						importedInvocationDomains.add(producer.gcDomain)
+						for j := 0; j < producer.invocationDomains.len(); j++ {
+							importedInvocationDomains.add(producer.invocationDomains.at(j))
+						}
+					}
+					export.inst.refStore.mu.Unlock()
+					continue
+				} else {
+					dynamicInvocationDomains = true
+					export.inst.refStore.mu.Lock()
+					producer := export.inst.refStore.instances[export.inst]
+					fullDynamic = fullDynamic || producer == nil || !producer.conversionOnlyInvocationDomains
+					if producer != nil && producer.conversionOnlyInvocationDomains {
+						importedInvocationDomains.add(producer.gcDomain)
+						for j := 0; j < producer.invocationDomains.len(); j++ {
+							importedInvocationDomains.add(producer.invocationDomains.at(j))
+						}
+					}
+					export.inst.refStore.mu.Unlock()
+					continue
 				}
-				dynamicInvocationDomains = true
-				continue
 			}
 			domains := export.inst.gcInvocationDomains()
 			for i := 0; i < domains.len(); i++ {
@@ -2148,7 +2189,7 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 			}
 		}
 	}
-	if dynamicInvocationDomains && importsPrivateInvocationDomain {
+	if fullDynamic && importsPrivateInvocationDomain {
 		return fmt.Errorf("wago: dynamic funcref imports cannot reach a private GC invocation domain")
 	}
 	if in != nil && in.c != nil {
@@ -2274,7 +2315,7 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	invocationDomains.add(domain)
 	invocationDomains.sort()
 	var storedInvocationDomains *gcInvocationDomainSet
-	if !dynamicInvocationDomains && invocationDomains.len() != 0 && (invocationDomains.len() != 1 || invocationDomains.at(0) != domain) {
+	if !fullDynamic && invocationDomains.len() != 0 && (invocationDomains.len() != 1 || invocationDomains.at(0) != domain) {
 		storedInvocationDomains = new(gcInvocationDomainSet)
 		*storedInvocationDomains = invocationDomains
 	}
@@ -2297,7 +2338,8 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	s.instanceTypes[in] = keys
 	s.instances[in] = &referenceStoreInstance{
 		gcDomain: domain, invocationDomains: storedInvocationDomains,
-		dynamicInvocationDomains: dynamicInvocationDomains,
+		dynamicInvocationDomains:        dynamicInvocationDomains,
+		conversionOnlyInvocationDomains: dynamicInvocationDomains && !fullDynamic,
 	}
 	s.registerGCFrameCodeRangeLocked(in)
 	s.liveInstances++
@@ -4216,4 +4258,31 @@ func (in *Instance) hasPhysicalResources() bool {
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
 	return !in.resourcesClosed
+}
+
+// Storage alone is not cross-Runtime conversion authority. A scalar-only
+// collector-free producer remains importable; converted publications still
+// require the complete current invocation's authority before changing storage.
+func (in *Instance) requiresSameRuntimeInvocation() bool {
+	if in.executionFlags.Load()&executionFlagDynamicGCDomain == 0 {
+		return false
+	}
+	in.refStore.mu.Lock()
+	defer in.refStore.mu.Unlock()
+	entry := in.refStore.instances[in]
+	if entry == nil || !entry.conversionOnlyInvocationDomains {
+		return true
+	}
+	hasConversionAuthority := func(d *gcStoreDomain) bool {
+		return d != nil && (d.conversionPublishers != 0 || d.conversionClaims != 0)
+	}
+	if hasConversionAuthority(entry.gcDomain) {
+		return true
+	}
+	for i := 0; i < entry.invocationDomains.len(); i++ {
+		if hasConversionAuthority(entry.invocationDomains.at(i)) {
+			return true
+		}
+	}
+	return false
 }

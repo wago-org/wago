@@ -394,7 +394,7 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 	// while arbitrary host code runs. A non-GC relay may have pre-acquired more
 	// imported GC domains than the active producer whose frame parked here.
 	leaseOwner := active
-	if root != nil && root.hostCallNeedsGCSuspension() {
+	if root != nil {
 		leaseOwner = root
 	}
 	id := invocation.id
@@ -589,7 +589,7 @@ func (a *hostLoopActivation) dispatchSharedAtomicWait(active *Instance, ctrl uin
 	activation := active.pushGCHostActivation(ctrl, helper|shared.AtomicWaitDispatchBit, physicalStack, a.root)
 	defer active.popGCHostActivation(activation)
 	leaseOwner := active
-	if a.root != nil && a.root.hostCallNeedsGCSuspension() {
+	if a.root != nil {
 		leaseOwner = a.root
 	}
 	var gcSuspension *gcInvocationSuspension

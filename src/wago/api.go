@@ -2267,7 +2267,7 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports resolvedImports, s
 		if compiledArchitecture == 4 && c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) && (ehExternPayloads || ex.inst.c.exceptionExternPayloads()) && (store == nil || ex.inst.refStore != store) {
 			return fmt.Errorf("exception-handler transfer import %q requires the same reference store", key)
 		}
-		if ex.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 && ex.inst.refStore != store {
+		if ex.inst.requiresSameRuntimeInvocation() && ex.inst.refStore != store {
 			return fmt.Errorf("cross-instance import %q from a dynamic funcref producer requires the same Runtime", key)
 		}
 		if dynamicFuncrefReachability && ex.inst.refStore != store && (ex.inst.gc != nil || ex.inst.executionFlags.Load()&executionFlagImportedGCDomain != 0) {

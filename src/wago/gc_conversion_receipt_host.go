@@ -81,6 +81,11 @@ func bindGCConversionCore(in *Instance) error {
 			}
 		}
 	}
+	if domain.conversionPublishers == ^uint32(0) {
+		store.mu.Unlock()
+		return fmt.Errorf("too many conversion publishers")
+	}
+	domain.conversionPublishers++
 	store.mu.Unlock()
 	s.core = &gcConversionCore{owner: in, domain: domain}
 	return nil
@@ -253,12 +258,9 @@ func (c *gcConversionContainer) prepareLimit(index, word, limit uint64, source *
 			c.store.mu.Unlock()
 			return nil, fmt.Errorf("conversion physical owner is unregistered")
 		}
-		registration.dynamicInvocationDomains = true
-		for {
-			old := c.owner.executionFlags.Load()
-			if c.owner.executionFlags.CompareAndSwap(old, old|executionFlagDynamicGCDomain|executionFlagImportedGCDomain) {
-				break
-			}
+		if !registration.dynamicInvocationDomains {
+			c.store.mu.Unlock()
+			return nil, fmt.Errorf("conversion physical owner lacks pre-admission")
 		}
 	}
 	domain.claims++
@@ -465,6 +467,10 @@ func closeGCConversionCoreLocked(s *gcExternConversionState) {
 	}
 	store := s.store
 	store.mu.Lock()
+	if s.core.domain.conversionPublishers == 0 {
+		panic("conversion publisher authority underflow")
+	}
+	s.core.domain.conversionPublishers--
 	for _, entry := range s.entries {
 		identity := store.gcDomains.conversions[entry.externWord]
 		if identity == nil || identity.publisher != s {

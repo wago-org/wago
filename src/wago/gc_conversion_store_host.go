@@ -39,7 +39,7 @@ func (in *Instance) publishConversionStore(owner *Instance, storage []byte, inde
 	topology := store.gcDomains
 	needed := topology != nil && (len(topology.conversions) != 0 || len(topology.conversionContainers) != 0) || source != nil && source.core != nil
 	store.mu.Unlock()
-	if !needed && owner != nil {
+	if owner != nil && (!needed || ordinaryConversionReplacement(store, storage, index, []uint64{word})) {
 		return publish()
 	}
 	domains := in.gcInvocationDomains()
@@ -206,7 +206,7 @@ func (in *Instance) publishConversionRange(owner *Instance, storage []byte, star
 	store.mu.Lock()
 	needed := store.gcDomains != nil && (len(store.gcDomains.conversions) != 0 || len(store.gcDomains.conversionContainers) != 0) || source != nil && source.core != nil
 	store.mu.Unlock()
-	if !needed && owner != nil {
+	if owner != nil && (!needed || ordinaryConversionReplacement(store, storage, start, words)) {
 		publish()
 		return nil
 	}
@@ -406,4 +406,28 @@ func setConversionTablePublic(t *Table, index uint64, value Value) error {
 		return err
 	}
 	return tx.commit(func() error { binary.LittleEndian.PutUint64(t.desc[8+index*8:], word); return nil })
+}
+
+// Ordinary tokens cannot name opaque identities. This allows a collector-free
+// scalar producer called from another Runtime to update ordinary storage even
+// when an unrelated conversion publisher lives in its Runtime. Both outgoing
+// and incoming slots must be ordinary: clearing a receipt is never bypassed.
+func ordinaryConversionReplacement(store *referenceStore, storage []byte, start uint64, words []uint64) bool {
+	ordinary := func(word uint64) bool {
+		if word == 0 {
+			return true
+		}
+		_, ok := store.resolveExternref(word)
+		return ok
+	}
+	for i, word := range words {
+		offset := 8 + (start+uint64(i))*8
+		if len(storage) == 8 {
+			offset = 0
+		}
+		if offset+8 > uint64(len(storage)) || !ordinary(word) || !ordinary(binary.LittleEndian.Uint64(storage[offset:])) {
+			return false
+		}
+	}
+	return true
 }

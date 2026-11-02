@@ -9,6 +9,9 @@ type gcConversionContainer struct{}
 func bindGCConversionCore(*Instance) error                 { return nil }
 func closeGCConversionCoreLocked(*gcExternConversionState) {}
 func publishGCConversionTable(s *gcRefTestTableState, table, index, old, word uint64, publish func() error) error {
+	if err := unsupportedConversionWord(s.Conversion.store, word); err != nil {
+		return err
+	}
 	return s.Conversion.publishExternReplacement(old, word, publish)
 }
 func releaseGCConversionTables(*gcRefTestTableState)                {}
