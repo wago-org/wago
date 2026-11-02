@@ -1,0 +1,49 @@
+{
+  "activation": "YES",
+  "census": {
+    "ordinary": 33,
+    "wago_regalloccheck": 33,
+    "wagodebug": 36
+  },
+  "gaps": [
+    "native Darwin ARM64 TinyGo execution has not run",
+    "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc remains outside the execution source pin",
+    "this is activation review, not final platform approval"
+  ],
+  "graph_jobs": 27,
+  "harness": "8801252952255edf6ab6196250bd544873785328",
+  "harness_py_sha256": "583192e4f217ff8ea2fc56eb16a0ed23f60df05ec679ff1a553a62d9890ffe82",
+  "job_minutes": {
+    "native_matrix": 330,
+    "summary": 3,
+    "total": 333
+  },
+  "native_execution": "NOT_RUN",
+  "native_harness_invocations_per_matrix_cell": 1,
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "suite_plan_sha256": "edd3b84ce2db47a8ce49daa7a7058ca4bdbdd04c2b9518a6341492fb42d1b83b",
+  "summary_controls": {
+    "native_cancelled": {
+      "expected_class": 1,
+      "returncode": 1
+    },
+    "native_failure": {
+      "expected_class": 1,
+      "returncode": 1
+    },
+    "positive": {
+      "expected_class": 0,
+      "returncode": 0
+    },
+    "unexpected_normal_failure": {
+      "expected_class": 1,
+      "returncode": 1
+    },
+    "unexpected_normal_success": {
+      "expected_class": 1,
+      "returncode": 1
+    }
+  },
+  "toolchain_sha256": "724df0f9a355b453a65b81fe170f9a65de32963b77b683ecdb084f1fbe3a5105",
+  "workflow_sha256": "ec245e6453c125fbc3e2618957108bb6bdc9c87288951a6dcebe713e565e3882"
+}
