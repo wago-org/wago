@@ -1,0 +1,121 @@
+{
+  "prior_amd64_count": 100,
+  "native_focused_count": 85,
+  "excluded": {
+    "TestGCAllocatingLocalStartWaitsForInvocationLease": [
+      {
+        "file": "gc_start_invocation_amd64_test.go",
+        "build": "//go:build linux && amd64"
+      }
+    ],
+    "TestGCLocalStartUsesExactNativeFrameRoots": [
+      {
+        "file": "gc_frame_roots_amd64_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_guardpage"
+      }
+    ],
+    "TestGCMutableGlobalRootsInsideInvocation": [
+      {
+        "file": "gc_frame_roots_amd64_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_guardpage"
+      }
+    ],
+    "TestGCNativeSubtypeIntervalAppendWaitsForInvocationLease": [
+      {
+        "file": "gc_native_defined_type_amd64_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_guardpage"
+      }
+    ],
+    "TestGCSingleNativeFrameRootsCollectInsideInvocation": [
+      {
+        "file": "gc_frame_roots_amd64_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_guardpage"
+      }
+    ],
+    "TestGCTableRootsInsideInvocation": [
+      {
+        "file": "gc_frame_roots_amd64_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_guardpage"
+      }
+    ],
+    "TestR9OwnershipStateH6CallbackQuiescence": [
+      {
+        "file": "function_environment_nested_owner_host_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+      }
+    ],
+    "TestR9OwnershipStateH6CollectingMutations": [
+      {
+        "file": "function_environment_nested_owner_host_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+      }
+    ],
+    "TestR9OwnershipStateH6FailedInitialization": [
+      {
+        "file": "function_environment_nested_owner_host_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+      }
+    ],
+    "TestR9OwnershipWakeupActiveBoundary": [
+      {
+        "file": "function_environment_wakeup_host_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+      }
+    ],
+    "TestR9OwnershipWakeupConcurrentRequests": [
+      {
+        "file": "function_environment_wakeup_host_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+      }
+    ],
+    "TestR9OwnershipWakeupContention": [
+      {
+        "file": "function_environment_wakeup_host_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+      }
+    ],
+    "TestR9OwnershipWakeupExitCrossing": [
+      {
+        "file": "function_environment_wakeup_host_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+      }
+    ],
+    "TestR9OwnershipWakeupProviderAndStoreClose": [
+      {
+        "file": "function_environment_wakeup_host_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+      }
+    ],
+    "TestR9OwnershipWakeupRetiredDomainAdmission": [
+      {
+        "file": "function_environment_wakeup_host_test.go",
+        "build": "//go:build linux && amd64 && !tinygo && !wago_target_tinygo"
+      }
+    ]
+  },
+  "added": [],
+  "modes": [
+    {
+      "mode": "ordinary",
+      "expected_count": 85,
+      "missing": [],
+      "extra": [],
+      "old_unavailable": []
+    },
+    {
+      "mode": "wagodebug",
+      "expected_count": 85,
+      "missing": [],
+      "extra": [],
+      "old_unavailable": []
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "expected_count": 85,
+      "missing": [],
+      "extra": [],
+      "old_unavailable": []
+    }
+  ],
+  "timer_byte_identical": true
+}

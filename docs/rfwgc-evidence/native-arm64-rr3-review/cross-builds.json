@@ -1,0 +1,56 @@
+[
+  {
+    "label": "ordinary-wago-cross-build",
+    "exit": 0,
+    "elf_machine": 183,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "ordinary-runtime-cross-build",
+    "exit": 0,
+    "elf_machine": 183,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "ordinary-backend-cross-build",
+    "exit": 0,
+    "elf_machine": 183,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "wagodebug-wago-cross-build",
+    "exit": 0,
+    "elf_machine": 183,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "wagodebug-runtime-cross-build",
+    "exit": 0,
+    "elf_machine": 183,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "wagodebug-backend-cross-build",
+    "exit": 0,
+    "elf_machine": 183,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "wago_regalloccheck-wago-cross-build",
+    "exit": 0,
+    "elf_machine": 183,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "wago_regalloccheck-runtime-cross-build",
+    "exit": 0,
+    "elf_machine": 183,
+    "execution": "NOT_RUN"
+  },
+  {
+    "label": "wago_regalloccheck-backend-cross-build",
+    "exit": 0,
+    "elf_machine": 183,
+    "execution": "NOT_RUN"
+  }
+]
