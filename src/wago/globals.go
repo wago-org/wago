@@ -763,6 +763,9 @@ func (g *Global) getValueNoLease() (Value, error) {
 
 // SetValue updates a mutable reference global after exact token validation.
 func (g *Global) SetValue(v Value) (err error) {
+	if handled, e := setConversionGlobalPublic(nil, g, v); handled {
+		return e
+	}
 	if g == nil {
 		return fmt.Errorf("global owner instance is closed")
 	}

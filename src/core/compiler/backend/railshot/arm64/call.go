@@ -1268,6 +1268,17 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 // module routes ALL host calls through the synchronous control frame, so the
 // async host-call log and the control frame never both occupy offCustomCtx.
 func moduleUsesSyncHostCalls(m *wasm.Module, bindings []ImportBinding) bool {
+	for i := 0; i < m.TableCount(); i++ {
+		if tt, ok := m.TableType(uint32(i)); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+			return true
+		}
+	}
+	for i := 0; i < m.GlobalCount(); i++ {
+		if gt, ok := m.GlobalTypeByIndex(uint32(i)); ok && wasm.EqualValType(wasm.GlobalValueType(gt), wasm.ExternRef) {
+			return true
+		}
+	}
+
 	imported := m.ImportedFuncCount()
 	for i := 0; i < imported; i++ {
 		if bindings != nil && i < len(bindings) && bindings[i].CrossInstance {
