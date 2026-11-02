@@ -1,0 +1,54 @@
+{
+  "/tmp/qemu-user.deb": {
+    "resolved": "/tmp/qemu-user.deb",
+    "sha256": "ca6ede739327a20ae5a3498230c8a3a9a072c586e131bc6bcc1201eb1725e336"
+  },
+  "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go": {
+    "resolved": "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+    "sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b"
+  },
+  "/home/dev/.local/share/mise/installs/just/1.58.0/just": {
+    "resolved": "/home/dev/.local/share/mise/installs/just/1.58.0/just",
+    "sha256": "3ad66571feae522db2cad31b9613bf21035b8a06d2738d6fc8fe6089856f2042"
+  },
+  "/home/dev/.local/share/mise/installs/powershell/7.6.8/pwsh": {
+    "resolved": "/home/dev/.local/share/mise/installs/powershell/7.6.8/pwsh",
+    "sha256": "873de21f04b6a0269c220f9c8396ff5cd639e8deb058a32cc26df54b69bbff8d"
+  },
+  "/home/dev/.local/share/mise/installs/github-bytecodealliance-wasm-tools/1.251.0/wasm-tools": {
+    "resolved": "/home/dev/.local/share/mise/installs/github-bytecodealliance-wasm-tools/1.251.0/wasm-tools",
+    "sha256": "fd12b0ed2358741f9ad1cd0e762a22376dcff6130a1a3a32ad0f8b528db240df"
+  },
+  "/home/dev/Projects/wago/.tools/wabt-1.0.41-linux-x64/bin/wast2json": {
+    "resolved": "/home/dev/Projects/wago/.tools/wabt-1.0.41-linux-x64/bin/wast2json",
+    "sha256": "5a1201dca94d1901369005930f3081b67ad97493e4ce1cc017faf415c4dc09c8"
+  },
+  "/home/dev/Projects/wago/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm": {
+    "resolved": "/home/dev/Projects/wago/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+    "sha256": "0f20f49c1153d30993235d5959cac5941328e32e0eac279cbb44b5b3dbd17e4b"
+  },
+  "/usr/bin/cc": {
+    "resolved": "/usr/bin/x86_64-linux-gnu-gcc-14",
+    "sha256": "a23ecab8ff08f09ad8c80602c2c5df7f49e09c25905cb8975902e101bf72635f"
+  },
+  "/home/dev/.local/share/mise/shims/clang": {
+    "resolved": "/usr/local/bin/mise",
+    "sha256": "2b8ce21f550872807bcaabf45b6bc5c64bfbd6dc3bf49dd4e67de700ef3ceb75"
+  },
+  "/usr/bin/gcc": {
+    "resolved": "/usr/bin/x86_64-linux-gnu-gcc-14",
+    "sha256": "a23ecab8ff08f09ad8c80602c2c5df7f49e09c25905cb8975902e101bf72635f"
+  },
+  "/usr/bin/python3": {
+    "resolved": "/usr/bin/python3.13",
+    "sha256": "889c603f0d17cb54060951bcf4c4f9b8c9ebd9e52b392c70209bbb9755d797d9"
+  },
+  "/usr/bin/bash": {
+    "resolved": "/usr/bin/bash",
+    "sha256": "223fe8564b60636bc738b6178d3ba9a50ef7d791266b0efae6363bb716e4c47f"
+  },
+  "/home/dev/.local/share/mise/shims/node": {
+    "resolved": "/usr/local/bin/mise",
+    "sha256": "2b8ce21f550872807bcaabf45b6bc5c64bfbd6dc3bf49dd4e67de700ef3ceb75"
+  }
+}
