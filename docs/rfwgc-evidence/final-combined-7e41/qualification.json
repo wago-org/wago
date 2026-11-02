@@ -1,0 +1,1513 @@
+{
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "rows": [
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "version-go",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "version-go/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "version-node",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "version-node/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "version-ocaml",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "version-ocaml/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "version-tinygo",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "version-tinygo/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "plain_passes": [],
+      "plain_skips": [],
+      "plain_failures": [],
+      "suite": "version-wabt",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "PASS",
+      "exit": 0,
+      "command": "version-wabt/command.json",
+      "pass_count": 0,
+      "top_level_passes": [],
+      "failures": [],
+      "skips": []
+    },
+    {
+      "suite": "tinygo-34/host-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/standalone-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/guest-threads-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/host-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/standalone-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/guest-threads-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/host-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/standalone-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-checkers",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-runtime",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-cli",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-cli-smoke",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-1",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-1",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-2",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-2",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-3",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-3",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-4",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-4",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-5",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-5",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-6",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-6",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-7",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-7",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-8",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-8",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-9",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-9",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-version-10",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "tinygo-34/ci-release-fib-10",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "exit": null,
+      "verdict": "NOT_RUN",
+      "passes": [],
+      "skips": [],
+      "failures": []
+    },
+    {
+      "suite": "catalog-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "parent-race-reduced-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "full-root-replay-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "cli-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "installer-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "nested-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "collector-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "race-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "guard-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "corpus-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "baseline-corpus-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "graphs-port-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "graphs-baseline-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "backend-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "diagnostics-default-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "diagnostics-established-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tinygo-evacuation-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tinygo-joint-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tinygo-conversion-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v3-signals-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "guard-corpus-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "runtime-cli-build-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "profile-metadata-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "profile-runtime-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "shared-scalar-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "native-join-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "seeded-concurrency-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v1-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v2-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v3-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "hardening-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "host-transition-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "hardening-wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "host-transition-wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-build-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-vet-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "catalog-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "parent-race-reduced-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "full-root-replay-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "cli-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "installer-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "nested-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "collector-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "race-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "guard-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "corpus-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "baseline-corpus-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "graphs-port-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "graphs-baseline-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "backend-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "diagnostics-default-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "diagnostics-established-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tinygo-evacuation-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tinygo-joint-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tinygo-conversion-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v3-signals-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "guard-corpus-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "runtime-cli-build-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "profile-metadata-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "profile-runtime-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "shared-scalar-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "native-join-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "seeded-concurrency-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v1-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v2-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v3-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "hardening-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "host-transition-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "hardening-wagodebug,wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "host-transition-wagodebug,wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-build-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-vet-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "catalog-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "parent-race-reduced-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "full-root-replay-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "cli-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "installer-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "nested-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "collector-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "race-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "guard-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "corpus-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "baseline-corpus-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "graphs-port-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "graphs-baseline-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "backend-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "diagnostics-default-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "diagnostics-established-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tinygo-evacuation-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tinygo-joint-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tinygo-conversion-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v3-signals-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "guard-corpus-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "runtime-cli-build-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "profile-metadata-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "profile-runtime-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "shared-scalar-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "native-join-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "seeded-concurrency-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v1-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v2-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "spec-v3-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "hardening-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "host-transition-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "hardening-wago_regalloccheck,wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "host-transition-wago_regalloccheck,wago_guardpage",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-build-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-vet-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-generate",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-docs",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-node-update-website-bench",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-node-update-website-startup",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-node-engine-state-oracle",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-node-fuzz-engine-state",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-script-build-release-assets.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-script-release-qualification.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-script-ci-download-go-modules.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-script-ci-riscv64",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-actionlint",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-script-check-diagnostic-dce.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-script-check-riscv64-diagnostics.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-script-check-regalloc-code.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-staticcheck-bootstrap",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-staticcheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-native-compare",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "tooling-portable-386",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "replay-docs",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "replay-generated-diff",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "replay-format",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "replay-build-release-assets.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "replay-release-qualification.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "replay-ci-download-go-modules.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "replay-actionlint",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "replay-staticcheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "fuzz-FuzzStructCardDifferential",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "fuzz-FuzzSpecTrapMatchingDoesNotPanic",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/arm64-ordinary-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/arm64-ordinary-collector-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/arm64-wagodebug-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/arm64-wagodebug-collector-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/arm64-wago_regalloccheck-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/arm64-wago_regalloccheck-collector-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/riscv64-ordinary-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/riscv64-ordinary-collector-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/riscv64-wagodebug-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/riscv64-wagodebug-collector-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/riscv64-wago_regalloccheck-collector",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-collector/riscv64-wago_regalloccheck-collector-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/arm64-ordinary-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/arm64-ordinary-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/arm64-wagodebug-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/arm64-wagodebug-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/arm64-wago_regalloccheck-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/arm64-wago_regalloccheck-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/riscv64-ordinary-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/riscv64-ordinary-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/riscv64-wagodebug-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/riscv64-wagodebug-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/riscv64-wago_regalloccheck-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-guest/riscv64-wago_regalloccheck-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/arm64-ordinary-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/arm64-ordinary-facade-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/arm64-wagodebug-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/arm64-wagodebug-facade-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/arm64-wago_regalloccheck-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/arm64-wago_regalloccheck-facade-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/riscv64-ordinary-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/riscv64-ordinary-facade-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/riscv64-wagodebug-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/riscv64-wagodebug-facade-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/riscv64-wago_regalloccheck-facade",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-facade/riscv64-wago_regalloccheck-facade-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-h6/arm64-ordinary-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-h6/arm64-ordinary-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-h6/arm64-wagodebug-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-h6/arm64-wagodebug-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-h6/arm64-wago_regalloccheck-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-h6/arm64-wago_regalloccheck-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-ordinary-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-ordinary-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wagodebug-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wagodebug-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wago_regalloccheck-guest",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "qemu-rv64-controls/riscv64-wago_regalloccheck-guest-build",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "Not executed; no terminal pass evidence."
+    },
+    {
+      "suite": "native-Darwin",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "verdict": "NOT_RUN",
+      "reason": "No established native or remote Darwin runner. Acquisition cost unknown."
+    }
+  ],
+  "counts": {
+    "PASS": 5,
+    "NOT_RUN": 222
+  }
+}
