@@ -34,11 +34,20 @@
         "fuzz"
       ],
       "exit": 0
+    },
+    {
+      "argv": [
+        "/usr/bin/python3",
+        "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-combined-5b02/bootstrap.py",
+        "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-combined-5b02/fuzz-extended.py"
+      ],
+      "exit": 0
     }
   ],
   "current": [
     "/usr/bin/python3",
     "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-combined-5b02/bootstrap.py",
-    "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-combined-5b02/fuzz-extended.py"
+    "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-combined-5b02/lanes.py",
+    "hardening"
   ]
 }

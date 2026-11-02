@@ -1,6 +1,6 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 115,
+  "remaining_count": 102,
   "remaining": [
     {
       "suite": "graphs-port-ordinary",
@@ -255,26 +255,8 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "hardening-ordinary",
-      "receipt_suite": "hardening-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "hardening-wagodebug",
-      "receipt_suite": "hardening-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "hardening-wago_regalloccheck",
       "receipt_suite": "hardening-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "hardening-wago_guardpage",
-      "receipt_suite": "hardening-wago_guardpage",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -282,17 +264,11 @@
       "suite": "hardening-wagodebug,wago_guardpage",
       "receipt_suite": "hardening-wagodebug,wago_guardpage",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "hardening-wago_regalloccheck,wago_guardpage",
       "receipt_suite": "hardening-wago_regalloccheck,wago_guardpage",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "host-transition-ordinary",
-      "receipt_suite": "host-transition-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -309,12 +285,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "host-transition-wago_guardpage",
-      "receipt_suite": "host-transition-wago_guardpage",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "host-transition-wagodebug,wago_guardpage",
       "receipt_suite": "host-transition-wagodebug,wago_guardpage",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -323,12 +293,6 @@
     {
       "suite": "host-transition-wago_regalloccheck,wago_guardpage",
       "receipt_suite": "host-transition-wago_regalloccheck,wago_guardpage",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-collector/arm64-wago_regalloccheck-collector",
-      "receipt_suite": "qemu-collector/arm64-wago_regalloccheck-collector",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -365,18 +329,6 @@
     {
       "suite": "qemu-guest/arm64-wago_regalloccheck-guest",
       "receipt_suite": "qemu-guest/arm64-wago_regalloccheck-guest",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-collector/riscv64-ordinary-collector",
-      "receipt_suite": "qemu-collector/riscv64-ordinary-collector",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-collector/riscv64-wagodebug-collector",
-      "receipt_suite": "qemu-collector/riscv64-wagodebug-collector",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -465,22 +417,10 @@
       "verdict": "FAIL"
     },
     {
-      "suite": "tinygo-34/guest-threads-wago_regalloccheck",
-      "receipt_suite": "tinygo-34/guest-threads-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "tinygo-34/ci-checkers",
-      "receipt_suite": "tinygo-34/ci-checkers",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "tinygo-34/ci-runtime",
       "receipt_suite": "tinygo-34/ci-runtime",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/ci-cli",
@@ -621,24 +561,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
-      "receipt_suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "fuzz-30s-FuzzDecodeValidateByteBackedDifferentialGenerated",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "tinygo-repair-ordinary",
       "receipt_suite": null,
       "source": null,
@@ -748,8 +670,16 @@
     "tooling-vet-ordinary",
     "tooling-vet-wagodebug",
     "tooling-vet-wago_regalloccheck",
+    "hardening-ordinary",
+    "hardening-wagodebug",
+    "hardening-wago_guardpage",
+    "host-transition-ordinary",
+    "host-transition-wago_guardpage",
     "qemu-collector/arm64-ordinary-collector",
     "qemu-collector/arm64-wagodebug-collector",
+    "qemu-collector/arm64-wago_regalloccheck-collector",
+    "qemu-collector/riscv64-ordinary-collector",
+    "qemu-collector/riscv64-wagodebug-collector",
     "tooling-generate",
     "replay-generated-diff",
     "replay-docs",
@@ -776,6 +706,8 @@
     "tinygo-34/guest-threads-wagodebug",
     "tinygo-34/host-wago_regalloccheck",
     "tinygo-34/standalone-wago_regalloccheck",
+    "tinygo-34/guest-threads-wago_regalloccheck",
+    "tinygo-34/ci-checkers",
     "fuzz-FuzzStructCardDifferential",
     "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
     "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
@@ -783,6 +715,9 @@
     "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated",
     "fuzz-30s-FuzzStructCardDifferential",
     "fuzz-30s-FuzzValidateRelativePathAndRustScannerDoNotPanic",
+    "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
+    "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic",
+    "fuzz-30s-FuzzDecodeValidateByteBackedDifferentialGenerated",
     "early-replay-discovery-ordinary",
     "early-replay-compile-ordinary",
     "early-replay-cipolicy-ordinary",

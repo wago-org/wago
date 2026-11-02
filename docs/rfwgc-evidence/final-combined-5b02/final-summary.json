@@ -583,13 +583,13 @@
       "suite": "hardening-ordinary",
       "receipt_suite": "hardening-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "hardening-wagodebug",
       "receipt_suite": "hardening-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "hardening-wago_regalloccheck",
@@ -601,13 +601,13 @@
       "suite": "hardening-wago_guardpage",
       "receipt_suite": "hardening-wago_guardpage",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "hardening-wagodebug,wago_guardpage",
       "receipt_suite": "hardening-wagodebug,wago_guardpage",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "hardening-wago_regalloccheck,wago_guardpage",
@@ -619,7 +619,7 @@
       "suite": "host-transition-ordinary",
       "receipt_suite": "host-transition-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "host-transition-wagodebug",
@@ -637,7 +637,7 @@
       "suite": "host-transition-wago_guardpage",
       "receipt_suite": "host-transition-wago_guardpage",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "host-transition-wagodebug,wago_guardpage",
@@ -667,7 +667,7 @@
       "suite": "qemu-collector/arm64-wago_regalloccheck-collector",
       "receipt_suite": "qemu-collector/arm64-wago_regalloccheck-collector",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-facade/arm64-ordinary-facade",
@@ -709,13 +709,13 @@
       "suite": "qemu-collector/riscv64-ordinary-collector",
       "receipt_suite": "qemu-collector/riscv64-ordinary-collector",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-collector/riscv64-wagodebug-collector",
       "receipt_suite": "qemu-collector/riscv64-wagodebug-collector",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "qemu-collector/riscv64-wago_regalloccheck-collector",
@@ -961,19 +961,19 @@
       "suite": "tinygo-34/guest-threads-wago_regalloccheck",
       "receipt_suite": "tinygo-34/guest-threads-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-34/ci-checkers",
       "receipt_suite": "tinygo-34/ci-checkers",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-34/ci-runtime",
       "receipt_suite": "tinygo-34/ci-runtime",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/ci-cli",
@@ -1159,19 +1159,19 @@
       "suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
       "receipt_suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-30s-FuzzDecodeValidateByteBackedDifferentialGenerated",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "fuzz-30s-FuzzDecodeValidateByteBackedDifferentialGenerated",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "PASS"
     },
     {
       "suite": "early-replay-discovery-ordinary",
@@ -1325,10 +1325,10 @@
     }
   ],
   "counts": {
-    "PASS": 105,
-    "NOT_RUN": 112,
-    "FAIL": 1,
-    "RUNNING": 2
+    "PASS": 118,
+    "NOT_RUN": 99,
+    "RUNNING": 2,
+    "FAIL": 1
   },
   "attempts": [
     {
@@ -1564,12 +1564,28 @@
       "verdict": "PASS"
     },
     {
+      "suite": "fuzz-30s-FuzzDecodeValidateByteBackedDifferentialGenerated",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "fuzz-30s-FuzzStructCardDifferential",
@@ -1669,6 +1685,62 @@
     },
     {
       "suite": "guard-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "hardening-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "hardening-wago_guardpage",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "hardening-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "hardening-wagodebug,wago_guardpage",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": false,
+      "driver": "run.py",
+      "exit": null,
+      "verdict": "RUNNING"
+    },
+    {
+      "suite": "host-transition-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "host-transition-wago_guardpage",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "host-transition-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",

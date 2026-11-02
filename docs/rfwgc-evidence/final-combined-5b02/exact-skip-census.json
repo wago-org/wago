@@ -38652,6 +38652,132 @@
     }
   },
   {
+    "suite": "hardening-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:28:38.801813624Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+        "Test": "TestTryReserveDeadAllocationBatch",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestTryReserveDeadAllocationBatch\n    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)\n=== RUN   TestTryReserveDeadAllocationBatch\n    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)\n=== RUN   TestTryReserveDeadAllocationBatch\n    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)\n"
+    }
+  },
+  {
+    "suite": "hardening-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:28:38.801835024Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+        "Test": "TestPreparedDeadAllocationBatchLiveState",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestPreparedDeadAllocationBatchLiveState\n    dead_batch_try_test.go:52: ordinary allocation profile\n--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)\n=== RUN   TestPreparedDeadAllocationBatchLiveState\n    dead_batch_try_test.go:52: ordinary allocation profile\n--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)\n=== RUN   TestPreparedDeadAllocationBatchLiveState\n    dead_batch_try_test.go:52: ordinary allocation profile\n--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)\n"
+    }
+  },
+  {
+    "suite": "hardening-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:28:38.801881011Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+        "Test": "TestPreparedDeadBatchEndBounds",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)\n=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)\n=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)\n"
+    }
+  },
+  {
+    "suite": "hardening-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:28:47.055035234Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+        "Test": "TestTryReserveDeadAllocationBatch",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestTryReserveDeadAllocationBatch\n    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)\n=== RUN   TestTryReserveDeadAllocationBatch\n    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)\n=== RUN   TestTryReserveDeadAllocationBatch\n    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)\n"
+    }
+  },
+  {
+    "suite": "hardening-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:28:47.055052306Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+        "Test": "TestPreparedDeadAllocationBatchLiveState",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestPreparedDeadAllocationBatchLiveState\n    dead_batch_try_test.go:52: ordinary allocation profile\n--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)\n=== RUN   TestPreparedDeadAllocationBatchLiveState\n    dead_batch_try_test.go:52: ordinary allocation profile\n--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)\n=== RUN   TestPreparedDeadAllocationBatchLiveState\n    dead_batch_try_test.go:52: ordinary allocation profile\n--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)\n"
+    }
+  },
+  {
+    "suite": "hardening-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:28:47.05508652Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+        "Test": "TestPreparedDeadBatchEndBounds",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)\n=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)\n=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)\n"
+    }
+  },
+  {
+    "suite": "hardening-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:28:55.417016727Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+        "Test": "TestTryReserveDeadAllocationBatch",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestTryReserveDeadAllocationBatch\n    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)\n=== RUN   TestTryReserveDeadAllocationBatch\n    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)\n=== RUN   TestTryReserveDeadAllocationBatch\n    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)\n"
+    }
+  },
+  {
+    "suite": "hardening-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:28:55.417030213Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+        "Test": "TestPreparedDeadAllocationBatchLiveState",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestPreparedDeadAllocationBatchLiveState\n    dead_batch_try_test.go:52: ordinary allocation profile\n--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)\n=== RUN   TestPreparedDeadAllocationBatchLiveState\n    dead_batch_try_test.go:52: ordinary allocation profile\n--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)\n=== RUN   TestPreparedDeadAllocationBatchLiveState\n    dead_batch_try_test.go:52: ordinary allocation profile\n--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)\n"
+    }
+  },
+  {
+    "suite": "hardening-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:28:55.417077061Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+        "Test": "TestPreparedDeadBatchEndBounds",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)\n=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)\n=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)\n"
+    }
+  },
+  {
     "suite": "nested-ordinary",
     "kind": "go-json",
     "detail": {
@@ -41374,6 +41500,96 @@
     "detail": "=== RUN   TestPreparedDeadAllocationBatchPolicy\n--- PASS: TestPreparedDeadAllocationBatchPolicy (0.00s)\n=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)"
   },
   {
+    "suite": "qemu-collector/riscv64-ordinary-collector",
+    "kind": "target-with-reason",
+    "detail": "    nursery_growth_test.go:18: automatic nursery sizing is measured on AMD64\n=== RUN   TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true\n    nursery_growth_test.go:18: automatic nursery sizing is measured on AMD64\n--- PASS: TestDefaultNurseryGrowsForRollingLiveGraph (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=false (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-ordinary-collector",
+    "kind": "target-with-reason",
+    "detail": "=== RUN   TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true\n    nursery_growth_test.go:18: automatic nursery sizing is measured on AMD64\n--- PASS: TestDefaultNurseryGrowsForRollingLiveGraph (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=false (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-ordinary-collector",
+    "kind": "target-with-reason",
+    "detail": "    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=false (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true (0.00s)\n=== RUN   TestNurseryGrowthClearsOldPressureAfterQuietPeriod\n    nursery_growth_test.go:83: automatic nursery sizing is measured on AMD64\n--- SKIP: TestNurseryGrowthClearsOldPressureAfterQuietPeriod (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-ordinary-collector",
+    "kind": "target-with-reason",
+    "detail": "=== RUN   TestThroughputFullCollectionHandlesActiveSurvivor\n--- PASS: TestThroughputFullCollectionHandlesActiveSurvivor (0.00s)\n=== RUN   TestDenseMinorEvacuationFinishesDuringCommit\n    survivor_test.go:325: dense small-object evacuation is AMD64-specific\n--- SKIP: TestDenseMinorEvacuationFinishesDuringCommit (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-ordinary-collector",
+    "kind": "target-with-reason",
+    "detail": "=== RUN   TestMinorMarkClearRepairsLazyMarksAndFullCollectionState\n--- PASS: TestMinorMarkClearRepairsLazyMarksAndFullCollectionState (0.00s)\n=== RUN   TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects\n    survivor_test.go:408: dead nursery evacuation is AMD64-specific\n--- SKIP: TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wagodebug-collector",
+    "kind": "target-with-reason",
+    "detail": "=== RUN   TestReserveDeadArrayAllocationsRejectsUnprovenStorage\n--- PASS: TestReserveDeadArrayAllocationsRejectsUnprovenStorage (0.00s)\n=== RUN   TestTryReserveDeadAllocationBatch\n    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wagodebug-collector",
+    "kind": "target-with-reason",
+    "detail": "    dead_batch_try_test.go:7: injected allocation failures use ordinary path\n--- SKIP: TestTryReserveDeadAllocationBatch (0.00s)\n=== RUN   TestPreparedDeadAllocationBatchLiveState\n    dead_batch_try_test.go:52: ordinary allocation profile\n--- SKIP: TestPreparedDeadAllocationBatchLiveState (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wagodebug-collector",
+    "kind": "target-with-reason",
+    "detail": "=== RUN   TestPreparedDeadAllocationBatchPolicy\n--- PASS: TestPreparedDeadAllocationBatchPolicy (0.00s)\n=== RUN   TestPreparedDeadBatchEndBounds\n    dead_batch_try_test.go:133: injected failures use ordinary allocation\n--- SKIP: TestPreparedDeadBatchEndBounds (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wagodebug-collector",
+    "kind": "target-with-reason",
+    "detail": "    --- PASS: TestNativeInstanceViewPublishesImmutableTypeMap/type_pointer (0.00s)\n    --- PASS: TestNativeInstanceViewPublishesImmutableTypeMap/type_count (0.00s)\n=== RUN   TestNurseryGrowthWaitsForSuccessfulPromotion\n    nursery_growth_debug_test.go:13: automatic nursery sizing is measured on AMD64\n--- SKIP: TestNurseryGrowthWaitsForSuccessfulPromotion (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wagodebug-collector",
+    "kind": "target-with-reason",
+    "detail": "    nursery_growth_test.go:18: automatic nursery sizing is measured on AMD64\n=== RUN   TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true\n    nursery_growth_test.go:18: automatic nursery sizing is measured on AMD64\n--- PASS: TestDefaultNurseryGrowsForRollingLiveGraph (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=false (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wagodebug-collector",
+    "kind": "target-with-reason",
+    "detail": "=== RUN   TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true\n    nursery_growth_test.go:18: automatic nursery sizing is measured on AMD64\n--- PASS: TestDefaultNurseryGrowsForRollingLiveGraph (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=false (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wagodebug-collector",
+    "kind": "target-with-reason",
+    "detail": "    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=false (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true (0.00s)\n=== RUN   TestNurseryGrowthClearsOldPressureAfterQuietPeriod\n    nursery_growth_test.go:83: automatic nursery sizing is measured on AMD64\n--- SKIP: TestNurseryGrowthClearsOldPressureAfterQuietPeriod (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wagodebug-collector",
+    "kind": "target-with-reason",
+    "detail": "=== RUN   TestThroughputFullCollectionHandlesActiveSurvivor\n--- PASS: TestThroughputFullCollectionHandlesActiveSurvivor (0.00s)\n=== RUN   TestDenseMinorEvacuationFinishesDuringCommit\n    survivor_test.go:325: dense small-object evacuation is AMD64-specific\n--- SKIP: TestDenseMinorEvacuationFinishesDuringCommit (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wagodebug-collector",
+    "kind": "target-with-reason",
+    "detail": "=== RUN   TestMinorMarkClearRepairsLazyMarksAndFullCollectionState\n--- PASS: TestMinorMarkClearRepairsLazyMarksAndFullCollectionState (0.00s)\n=== RUN   TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects\n    survivor_test.go:408: dead nursery evacuation is AMD64-specific\n--- SKIP: TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects (0.00s)"
+  },
+  {
+    "suite": "tinygo-34/ci-runtime",
+    "kind": "plain-with-reason",
+    "detail": "=== RUN   TestArenaAllocatedRange\n--- PASS: TestArenaAllocatedRange (0.00s)\n=== RUN   TestPreparedScalarHostAdmission\n    live bridge unavailable\n--- SKIP: TestPreparedScalarHostAdmission (0.00s)"
+  },
+  {
+    "suite": "tinygo-34/ci-runtime",
+    "kind": "plain-with-reason",
+    "detail": "    live bridge unavailable\n--- SKIP: TestPreparedScalarHostAdmission (0.00s)\n=== RUN   TestPreparedScalarHostEngineRelease\n    live bridge unavailable\n--- SKIP: TestPreparedScalarHostEngineRelease (0.00s)"
+  },
+  {
+    "suite": "tinygo-34/ci-runtime",
+    "kind": "plain-with-reason",
+    "detail": "    live bridge unavailable\n--- SKIP: TestPreparedScalarHostEngineRelease (0.00s)\n=== RUN   TestPreparedScalarHostViewAdmissionAndMode\n    live bridge unavailable\n--- SKIP: TestPreparedScalarHostViewAdmissionAndMode (0.00s)"
+  },
+  {
+    "suite": "tinygo-34/ci-runtime",
+    "kind": "plain-with-reason",
+    "detail": "    live bridge unavailable\n--- SKIP: TestPreparedScalarHostViewAdmissionAndMode (0.00s)\n=== RUN   TestPreparedScalarHostIntegerModeRequiresDetachedProof\n    live bridge unavailable\n--- SKIP: TestPreparedScalarHostIntegerModeRequiresDetachedProof (0.00s)"
+  },
+  {
     "suite": "tinygo-34/guest-threads-ordinary",
     "kind": "plain-with-reason",
     "detail": "=== RUN   TestArenaAllocatedRange\n--- PASS: TestArenaAllocatedRange (0.00s)\n=== RUN   TestPreparedScalarHostAdmission\n    live bridge unavailable\n--- SKIP: TestPreparedScalarHostAdmission (0.00s)"
@@ -42634,6 +42850,21 @@
     "detail": "    threads_official_test.go:25: set WAGO_THREADS_SPEC_DIR to the pinned WebAssembly/threads checkout\n--- SKIP: TestThreadsOfficialAtomicSuite (0.00s)\n=== RUN   TestThreadsOfficialConcurrentScripts\n    threads_official_test.go:67: set WAGO_THREADS_SPEC_DIR to the pinned WebAssembly/threads checkout\n--- SKIP: TestThreadsOfficialConcurrentScripts (0.00s)"
   },
   {
+    "suite": "qemu-collector/riscv64-wago_regalloccheck-collector",
+    "kind": "plain-with-reason",
+    "detail": "    nursery_growth_test.go:18: automatic nursery sizing is measured on AMD64\n=== RUN   TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true\n    nursery_growth_test.go:18: automatic nursery sizing is measured on AMD64\n--- PASS: TestDefaultNurseryGrowsForRollingLiveGraph (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=false (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wago_regalloccheck-collector",
+    "kind": "plain-with-reason",
+    "detail": "=== RUN   TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true\n    nursery_growth_test.go:18: automatic nursery sizing is measured on AMD64\n--- PASS: TestDefaultNurseryGrowsForRollingLiveGraph (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=false (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true (0.00s)"
+  },
+  {
+    "suite": "qemu-collector/riscv64-wago_regalloccheck-collector",
+    "kind": "plain-with-reason",
+    "detail": "    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=false (0.00s)\n    --- SKIP: TestDefaultNurseryGrowsForRollingLiveGraph/replace_root=true (0.00s)\n=== RUN   TestNurseryGrowthClearsOldPressureAfterQuietPeriod\n    nursery_growth_test.go:83: automatic nursery sizing is measured on AMD64\n--- SKIP: TestNurseryGrowthClearsOldPressureAfterQuietPeriod (0.00s)"
+  },
+  {
     "suite": "tinygo-34/guest-threads-ordinary",
     "kind": "excluded-body-despite-terminal-PASS",
     "test": "TestCompilerCompiledStateUsesOneFixedOwnerAllocation",
@@ -42883,6 +43114,262 @@
   },
   {
     "suite": "tinygo-34/guest-threads-ordinary",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestResolveTypeFuncCorpusAllocationReduction",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestResolveTypeFuncCorpusAllocationReduction\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestResolveTypeFuncCorpusAllocationReduction (0.00s)\n=== RUN   TestTypeDescriptorsPreserveRecursiveReferenceStructure",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestCompilerCompiledStateUsesOneFixedOwnerAllocation",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestCompilerCompiledStateUsesOneFixedOwnerAllocation\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestCompilerCompiledStateUsesOneFixedOwnerAllocation (0.00s)\n=== RUN   TestPublicCompileFixedMetadataPreservesCodeIdentity",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestEngineBehaviorFixtures/unreachable_host_panic",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestEngineBehaviorFixtures/unreachable_host_panic\n        test depends on standard Go testing control flow or struct layout\n    --- PASS: TestEngineBehaviorFixtures/unreachable_host_panic (0.00s)\n=== RUN   TestEngineBehaviorFixtures/reftype_imports",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestRelease2ExternrefGlobalSourceGuard",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestRelease2ExternrefGlobalSourceGuard\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestRelease2ExternrefGlobalSourceGuard (0.00s)\n=== RUN   TestExternrefParamsResultsLocalsAndControlFlow",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestExternrefFeatureGateAndOfficialSourceSites",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestExternrefFeatureGateAndOfficialSourceSites\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestExternrefFeatureGateAndOfficialSourceSites (0.00s)\n=== RUN   TestFailedInstantiationTransfersImportedGlobalRoots",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestFailedInstantiationTransfersTableProducerToImportedGlobal",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestFailedInstantiationTransfersTableProducerToImportedGlobal\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestFailedInstantiationTransfersTableProducerToImportedGlobal (0.00s)\n=== RUN   TestFailedImportedStartKeepsActiveTableFuncref",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestFailedImportedStartKeepsActiveTableFuncref",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestFailedImportedStartKeepsActiveTableFuncref\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestFailedImportedStartKeepsActiveTableFuncref (0.00s)\n=== RUN   TestAnalyzeModuleRequirementsFusesModuleFacts",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestFuncrefReferenceStoreStructFootprint",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestFuncrefReferenceStoreStructFootprint\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestFuncrefReferenceStoreStructFootprint (0.00s)\n=== RUN   TestRuntimeFuncrefTokenRejectsForgedAndCrossRuntimeBeforeExecution",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestRelease2NullableFuncrefGlobalSourceGuard",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestRelease2NullableFuncrefGlobalSourceGuard\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestRelease2NullableFuncrefGlobalSourceGuard (0.00s)\n=== RUN   TestFuzzRegressionFixtureManifest",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestReferenceGlobalPersistenceAndFootprintsStayBounded",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestReferenceGlobalPersistenceAndFootprintsStayBounded\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestReferenceGlobalPersistenceAndFootprintsStayBounded (0.00s)\n=== RUN   TestRelease2ImportedReferenceGlobalSourceGuard",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestRelease2ImportedReferenceGlobalSourceGuard",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestRelease2ImportedReferenceGlobalSourceGuard\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestRelease2ImportedReferenceGlobalSourceGuard (0.00s)\n=== RUN   TestImportedStartCanInvokeAnotherInstance",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestInstantiateCloseAllocationBudget",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestInstantiateCloseAllocationBudget\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestInstantiateCloseAllocationBudget (0.00s)\n=== RUN   TestInstantiateHostImportAllocationBudget",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestInstantiateHostImportAllocationBudget",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestInstantiateHostImportAllocationBudget\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestInstantiateHostImportAllocationBudget (0.00s)\n=== RUN   TestFailedInstantiationReleasesCodeAndImportState",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestManagedTableReentryCleanup/host-panic",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestManagedTableReentryCleanup/host-panic\n        test depends on standard Go testing control flow or struct layout\n    --- PASS: TestManagedTableReentryCleanup/host-panic (0.00s)\n--- PASS: TestManagedTableReentryCleanup (0.00s)",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestManagedInvokeVoidTableContextInterruptsNativeLoop",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestManagedInvokeVoidTableContextInterruptsNativeLoop\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestManagedInvokeVoidTableContextInterruptsNativeLoop (0.00s)\n=== RUN   TestManagedCapabilityGuardHelpers",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestMemoryOwnershipSidecarPreservesScalarHandleFootprint",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestMemoryOwnershipSidecarPreservesScalarHandleFootprint\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestMemoryOwnershipSidecarPreservesScalarHandleFootprint (0.00s)\n=== RUN   TestSharedHostMemoryPreservesStateAndCloseOrdering",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestCallArityAndPreparedStack",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestCallArityAndPreparedStack\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestCallArityAndPreparedStack (0.00s)\n=== RUN   TestImportedMutableGlobalUpdate",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestImportedMutableGlobalUpdate",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestImportedMutableGlobalUpdate\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestImportedMutableGlobalUpdate (0.00s)\n=== RUN   TestCallImportedHostFunctionIndirectly",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestCallImportedHostFunctionIndirectly",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestCallImportedHostFunctionIndirectly\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestCallImportedHostFunctionIndirectly (0.00s)\n=== RUN   TestMemoryGrowThroughHostReentry",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestNestedHostPanicDoesNotCorruptRuntime",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestNestedHostPanicDoesNotCorruptRuntime\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestNestedHostPanicDoesNotCorruptRuntime (0.00s)\n=== RUN   TestCloseTableOwnerOrWriterKeepsEntriesCallable",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestCloseTableOwnerOrWriterKeepsEntriesCallable",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestCloseTableOwnerOrWriterKeepsEntriesCallable\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestCloseTableOwnerOrWriterKeepsEntriesCallable (0.00s)\n=== RUN   TestCloseInterruptsInfiniteInvocation",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestCloseInterruptsInfiniteInvocation",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestCloseInterruptsInfiniteInvocation\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestCloseInterruptsInfiniteInvocation (0.00s)\n=== RUN   TestHostCallbackClosesCallingModules",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestRuntimeFailedRetainedInstanceKeepsAggregateReservation",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestRuntimeFailedRetainedInstanceKeepsAggregateReservation\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestRuntimeFailedRetainedInstanceKeepsAggregateReservation (0.00s)\n=== RUN   TestRuntimeCountOnlyInstanceLimitSkipsMemoryAccounting",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestImportedThenLocalFuncrefTablesExecuteAndExportExactly",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestImportedThenLocalFuncrefTablesExecuteAndExportExactly\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestImportedThenLocalFuncrefTablesExecuteAndExportExactly (0.00s)\n=== RUN   TestMultipleImportedFuncrefTablesExecuteAndExportExactly",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestMultipleImportedFuncrefTablesExecuteAndExportExactly",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestMultipleImportedFuncrefTablesExecuteAndExportExactly\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestMultipleImportedFuncrefTablesExecuteAndExportExactly (0.00s)\n=== RUN   TestMultipleImportedFuncrefTablesMayAliasOneHandle",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestMultipleImportedFuncrefTablesMayAliasOneHandle",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestMultipleImportedFuncrefTablesMayAliasOneHandle\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestMultipleImportedFuncrefTablesMayAliasOneHandle (0.00s)\n=== RUN   TestMultipleImportedTablesCheckEveryLimit",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestMultipleImportedTablesCheckEveryLimit",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestMultipleImportedTablesCheckEveryLimit\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestMultipleImportedTablesCheckEveryLimit (0.00s)\n=== RUN   TestImportedThenLocalTablesRebindSharedMemoryContext",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestImportedThenLocalTablesRebindSharedMemoryContext",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestImportedThenLocalTablesRebindSharedMemoryContext\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestImportedThenLocalTablesRebindSharedMemoryContext (0.00s)\n=== RUN   TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites (0.00s)\n=== RUN   TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle (0.00s)\n=== RUN   TestMinOnlyTableExportCapacityIsPerTable",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestSharedTableFailedInstanceRootsStayCapacityBounded",
+    "reason": "wat2wasm-backed test is unavailable under TinyGo",
+    "detail": "=== RUN   TestSharedTableFailedInstanceRootsStayCapacityBounded\n    wat2wasm-backed test is unavailable under TinyGo\n--- PASS: TestSharedTableFailedInstanceRootsStayCapacityBounded (0.00s)\n=== RUN   TestImportedTableActiveElementOOBDoesNotMutateHostTable",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
+    "kind": "excluded-body-despite-terminal-PASS",
+    "test": "TestTypeDescriptorCorpusAllocations",
+    "reason": "test depends on standard Go testing control flow or struct layout",
+    "detail": "=== RUN   TestTypeDescriptorCorpusAllocations\n    test depends on standard Go testing control flow or struct layout\n--- PASS: TestTypeDescriptorCorpusAllocations (0.00s)\n=== RUN   TestResolveTypeFuncCorpusAllocationReduction",
+    "body_execution_claim": false
+  },
+  {
+    "suite": "tinygo-34/guest-threads-wago_regalloccheck",
     "kind": "excluded-body-despite-terminal-PASS",
     "test": "TestResolveTypeFuncCorpusAllocationReduction",
     "reason": "test depends on standard Go testing control flow or struct layout",
