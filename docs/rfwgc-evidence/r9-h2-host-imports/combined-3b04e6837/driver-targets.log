@@ -1,0 +1,14 @@
+arm64-version 0
+arm64-ordinary-guest-build 0
+arm64-ordinary-guest 0
+arm64-wagodebug-guest-build 0
+arm64-wagodebug-guest 0
+arm64-wago_regalloccheck-guest-build 0
+arm64-wago_regalloccheck-guest 0
+riscv64-version 0
+riscv64-ordinary-guest-build 0
+riscv64-ordinary-guest 0
+riscv64-wagodebug-guest-build 0
+riscv64-wagodebug-guest 0
+riscv64-wago_regalloccheck-guest-build 0
+riscv64-wago_regalloccheck-guest 0

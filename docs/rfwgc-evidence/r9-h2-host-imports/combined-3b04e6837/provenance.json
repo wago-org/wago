@@ -1,0 +1,12 @@
+{
+  "pin": "3b04e68376024c689ec651adf1817955ea75d707",
+  "source": "/tmp/wago-h2-host-imports-committed-fitzripw/source",
+  "archive_sha256": "fd3a97eed70c9a762328454952336fb98a993ac64180e4d978f92dac4faff213",
+  "go": "go version go1.27.3 linux/amd64",
+  "source_hashes": {
+    "src/wago/gc_conversion_store.go": "e4f017b67a10b821cab52af1d820524fc0574b4452aa2725ce6b120d2ac76fd7",
+    "src/wago/gc_conversion_host_import_host_test.go": "120e0355f388acade09946730a23e6a33c40a54ab2ed4cb61b3240bfe9e82751",
+    "src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go": "17698fd884b3e088e02d0674ad6e6226c414f61ba7937ab18899803acf252337",
+    "src/core/compiler/backend/railshot/arm64/extern_host_store_contract_test.go": "4f67805281795e4d357770b1f79778f33edd96c2d114fe1c329aa0f6044ae411"
+  }
+}
