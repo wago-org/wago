@@ -1,5 +1,7 @@
 # H2 qualification matrix
 
+Coordination checkpoint: assessed production/source head `35c36bc594d2a027317cfcd321379f2d40c6b219`; observed port head `8a3defbcc1027b6c4afdd37e2fec5de5c54e0425` adds only the coordination log, with no `src` changes. Source conclusions remain pinned to the assessed head. The port orchestrator is the sole implementation authority; this document is advisory integration input, not a landing decision.
+
 Base `35c36bc594d2a027317cfcd321379f2d40c6b219`, production `501e9ab46`. Commands below qualify implementation commits on immutable source exports. This support branch contains documents only. Existing tests are distinguished from tests the two proposed slices must add; a zero-match or skipped required test is never a pass.
 
 The current baseline already has module-owned publication hooks. Host-created Table/Global support needs new acceptance tests. Migration remains adapter regression coverage, not a requirement to add production relocation. Final combined qualification remains the parent's responsibility, including zero unresolved review findings.
