@@ -111,3 +111,69 @@ The first immutable full-suite attempt exposed missing gitlink fixture exports
 and mise tool shims requiring trust in the temporary source directory. Logs in
 `qualified-3f6161883` are retained as a failed setup attempt. The corrected runner
 uses explicit installed tool paths and pinned submodule fixture archives.
+
+## Final local gates and exact pins
+
+Production slices: `3f6161883` (coherent Darwin ARM64 ownership), `3242c18a1`
+(unsupported opaque ingress), `15d7b24b7` (access-instance namespace), and
+`7e41fafbb` (metadata/lifetime error ordering and requested negative controls).
+The last two commits affect the unsupported adapter only. **Earlier 3242 results
+are not qualification of those follow-ups.**
+
+Immutable source `3242c18a1`:
+
+| Gate | ordinary | wagodebug | wago_regalloccheck |
+| --- | --- | --- | --- |
+| Focused ownership | PASS | PASS | PASS |
+| Full src/wago | PASS | PASS | PASS |
+| Collector | PASS | PASS | PASS |
+| AMD64/ARM64 backend + Wasm | PASS | PASS | PASS |
+| Ownership race | PASS | PASS | PASS |
+| Darwin ARM64 cross-build only | PASS | PASS | PASS |
+| Linux ARM64 QEMU execution | PASS | PASS | PASS |
+| Linux RV64 QEMU execution | PASS | PASS | PASS |
+
+`qualified-3242c18a1-tools/` records the 15 host command receipts, exact tool
+paths/hashes, raw logs and event census. Focused and race suites each produce
+158 PASS events and zero FAIL/SKIP in every mode. Full/backend suites have
+existing architecture/feature skips listed individually in `event-census.json`;
+this is not an assertion that skipped paths passed. `qualified-3242c18a1/`
+contains the 4,166-blob source manifest and pinned gitlink archive provenance;
+all manifested source bytes match Git objects before and after the successful run.
+
+`targets-3242c18a1/` records nine cross-builds and six QEMU executions. ARM64
+has 106 PASS events and RV64 158 per mode, each with zero FAIL/SKIP. QEMU
+10.0.13 executable hashes and test-binary hashes are recorded. Linux emulation
+is not native hardware or Darwin evidence. `targets.py` runs from an immutable
+export and does not inject/replace production code or test fixtures.
+
+The first two incomplete full-suite attempts remain in `qualified-3f6161883/`
+and `qualified-3242c18a1/`: missing gitlink exports/mise trust, then incorrect
+WABT 1.0.42 versus the required 1.0.41. STOP receipts identify canceled work.
+Corrected runs use WABT 1.0.41 and the existing pinned Core 3 interpreter. No
+expectations, censuses or fixtures were lowered, skipped or rewritten to pass.
+
+`fallback-7e41fafbb/` separately records the immutable unsupported-adapter
+controls in all three modes with `wago_target_tinygo`. This is a Go build-tag
+adapter test, not TinyGo native execution. Tests:
+`TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory` and
+`TestUnsupportedConversionGlobalValidationOrdering`. The latter preserves
+ordinary/null admission and invalid/cross-store, immutable and closed rejection
+ordering, including known opaque words; both direct and accessing/imported
+physical-owner paths are covered without constructing an unsupported heap.
+
+Native Darwin harness must run the committed `TestConvertedMake42ClassificationAndReceipt`,
+`TestConvertedInitializer55PersistentRoot`, `TestExternrefGlobalHoldingConvertedGCReference`,
+`TestR9H2*`, `TestR9Ownership*` and `TestManagedFunctionHostShape`, plus the
+unchanged Core 3 child and spec-v3 gates. **Native Darwin remains unqualified.**
+Core 3 expectations remain 215/690 and child 10/18. No independent measurement,
+native TinyGo or final combined-platform qualification is claimed.
+
+Performance-sensitive paths: conversion publication/receipt release, owner-graph
+collection, deferred reclaim/retry and public unsupported-adapter validation.
+Proposed independent workloads: converted initializer/global/table publication,
+public and imported bulk replacement/clear, publisher Close with surviving roots,
+conditional producer cycles and nested failed-initializer retention/release.
+The implementation worker did not benchmark. Branch `experiment/rfwgc-port`;
+implementation head `7e41fafbb`. **READY TO MEASURE**, subject to the parent’s
+single measurement lease and correctness/platform gates.

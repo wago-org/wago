@@ -1,0 +1,213 @@
+[
+  {
+    "name": "ordinary-focused",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-timeout=3m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "ordinary-full",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/wago",
+      "-timeout=20m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "ordinary-collector",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/core/runtime/gc/native",
+      "-timeout=10m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "ordinary-backend",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/core/compiler/backend/railshot/arm64",
+      "./src/core/compiler/wasm",
+      "-timeout=10m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "ordinary-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-timeout=5m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "wagodebug-focused",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-timeout=3m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "wagodebug-full",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/wago",
+      "-timeout=20m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "wagodebug-collector",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/core/runtime/gc/native",
+      "-timeout=10m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "wagodebug-backend",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/core/compiler/backend/railshot/arm64",
+      "./src/core/compiler/wasm",
+      "-timeout=10m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "wagodebug-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wagodebug",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-timeout=5m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "wago_regalloccheck-focused",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-timeout=3m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "wago_regalloccheck-full",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "-timeout=20m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "wago_regalloccheck-collector",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime/gc/native",
+      "-timeout=10m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "wago_regalloccheck-backend",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/core/compiler/backend/railshot/arm64",
+      "./src/core/compiler/wasm",
+      "-timeout=10m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "wago_regalloccheck-race",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "-race",
+      "./src/wago",
+      "-run",
+      "^(TestConverted.*|TestExternrefGlobalHoldingConvertedGCReference|TestR9H2.*|TestR9Ownership.*|TestManagedFunctionHostShape)$",
+      "-timeout=5m",
+      "-count=1",
+      "-v"
+    ],
+    "exit": 0
+  }
+]

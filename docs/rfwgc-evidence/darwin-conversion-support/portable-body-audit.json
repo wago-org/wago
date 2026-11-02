@@ -1,0 +1,57 @@
+[
+  {
+    "old": "src/wago/function_environment_reclaims_linux.go",
+    "new": "src/wago/function_environment_reclaims_native.go",
+    "body_unchanged": true
+  },
+  {
+    "old": "src/wago/function_environment_collection_linux.go",
+    "new": "src/wago/function_environment_collection_native.go",
+    "body_unchanged": true
+  },
+  {
+    "old": "src/wago/function_environment_construction_linux.go",
+    "new": "src/wago/function_environment_construction_native.go",
+    "body_unchanged": true
+  },
+  {
+    "old": "src/wago/function_environment_aggregate_linux.go",
+    "new": "src/wago/function_environment_aggregate_native.go",
+    "body_unchanged": true
+  },
+  {
+    "old": "src/wago/function_environment_schedule_linux.go",
+    "new": "src/wago/function_environment_schedule_native.go",
+    "body_unchanged": true
+  },
+  {
+    "old": "src/wago/function_environment_linux.go",
+    "new": "src/wago/function_environment_native.go",
+    "body_unchanged": true
+  },
+  {
+    "old": "src/wago/function_environment_mark_linux.go",
+    "new": "src/wago/function_environment_mark_native.go",
+    "body_unchanged": true
+  },
+  {
+    "old": "src/wago/function_environment_aggregate_dispatch_linux.go",
+    "new": "src/wago/function_environment_aggregate_dispatch_native.go",
+    "body_unchanged": true
+  },
+  {
+    "old": "src/core/runtime/gc/native/reclaim_linux.go",
+    "new": "src/core/runtime/gc/native/reclaim_native.go",
+    "body_unchanged": true
+  },
+  {
+    "old": "src/core/runtime/gc/native/object_trace_linux.go",
+    "new": "src/core/runtime/gc/native/object_trace_native.go",
+    "body_unchanged": true
+  },
+  {
+    "old": "src/core/runtime/gc/native/object_edges_linux.go",
+    "new": "src/core/runtime/gc/native/object_edges_native.go",
+    "body_unchanged": true
+  }
+]
