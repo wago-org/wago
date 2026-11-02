@@ -1,0 +1,8 @@
+{
+  "pin": "5847df30f1af15d10b743d90a24b1429b290d358",
+  "source": "/tmp/wago-h2-tinygo-1d9a_07q",
+  "archive_sha256": "d843431294a312f48e30b704c3d8af14e18e6a88930172acdff315c0723d268b",
+  "driver_sha256": "aee18835c737fe025228854e1ecec66d67157a48fbdf8ac209d2a5bed8d1786f",
+  "tinygo_sha256": "cdd520d062bc2624584f6fc9046929dea9c800af63b791be6cc9d06402c72130",
+  "version": "tinygo version 0.42.0 linux/amd64 (using go version go1.27.1 and LLVM version 22.1.4)"
+}
