@@ -1,0 +1,7 @@
+{
+  "status": "PASS",
+  "cross_builds": 15,
+  "native_execution": "NOT_RUN",
+  "native_race": "NOT_RUN: Darwin CGO required",
+  "toolchain": "go version go1.27.1 linux/amd64"
+}

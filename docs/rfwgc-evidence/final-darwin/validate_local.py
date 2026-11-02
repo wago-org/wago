@@ -18,7 +18,7 @@ import discriminators
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 MODES = ['ordinary', 'wagodebug', 'wago_regalloccheck']
-BASE = '8801252952255edf6ab6196250bd544873785328'
+BASE = '041f7ed4c376e2a33ce21b22075cd617ddca6597'
 
 
 def run(argv, **kwargs):
@@ -51,7 +51,7 @@ def main():
         head = run(['git', '-C', tmp, 'rev-parse', 'HEAD'])['stdout'].strip()
         with patch.object(identity, 'HERE', folder):
             assert identity.validate(plan['source'], head, head)['driver'] == head
-            for source, driver in [('main', head), (plan['source'][:9], head), ('0'*40, head), (plan['source'], 'main'), (plan['source'], '0'*40)]:
+            for source, driver in [('08f511fac41a77f4c0f9046f88ebc78ad05a5da6', head), ('main', head), (plan['source'][:9], head), ('0'*40, head), (plan['source'], 'main'), (plan['source'], '0'*40)]:
                 try:
                     identity.validate(source, driver)
                 except ValueError:
@@ -84,10 +84,8 @@ def main():
         return re.sub(r'\n(?:  #.*\n|\s*\n)*\Z', '\n', s)
     for name in before.keys() - {'darwin-qualification', 'windows-qualification'}:
         actual = after[name]
-        if name == "native-arm64-rr3":
-            # Only the separately pinned source identity/artifact prefix changed.
-            actual = actual.replace("08f511fac41a77f4c0f9046f88ebc78ad05a5da6", "5847df30f1af15d10b743d90a24b1429b290d358").replace("native-arm64-rr3-08f511fac-", "native-arm64-rr3-5847df30f-")
         assert body(before[name]) == body(actual), name
+    assert current == baseline, 'workflow including native ARM/TinyGo contracts must remain bytewise unchanged'
     assert "default: 'f2bb" not in current
     assert "QUALIFICATION_HARNESS: ${{ inputs.harness_sha }}" in after['darwin-qualification']
     concurrency = lambda text: text.split('concurrency:\n', 1)[1].split('\nenv:',1)[0]
@@ -114,7 +112,7 @@ def main():
                     checked.append({'darwin': darwin, 'windows': windows, 'normal': normal_state, 'accepted': expected})
         report['explicit_summary_states'] = checked
     report['special_summary_states'] = 'PASS: only both native matrices successful with all normal jobs skipped accepted'
-    report['workflow_contracts'] = 'PASS: every normal and native ARM64 job and concurrency group unchanged from 6c71; Darwin source default requires explicit input; ARM 138, Mac 1080 and Windows 90 job-minute ceilings unchanged'
+    report['workflow_contracts'] = 'PASS: every normal and native ARM64 job and concurrency group bytewise unchanged from 041f (no source-pin normalization); Darwin source default requires explicit input; ARM 138, Mac 1080 and Windows 90 job-minute ceilings unchanged'
     report['planner_all_modes'] = []
     for mode in MODES:
         tags = [] if mode == 'ordinary' else ['-tags=' + mode]
@@ -185,7 +183,11 @@ def main():
                 assert proc.returncode == 2 and 'requires actual native' in proc.stderr and not out.exists()
     for mode in MODES:
         narrow = discriminators.lanes(mode)
-        assert len(narrow) == 3
+        assert len(narrow) == 5
+        assert [len(x['expected_tests']) for x in narrow] == [1, 1, 10, 2, 1]
+        assert '-race' in narrow[3]['argv']
+        assert narrow[4]['environment'] == {'WAGO_SHARED_SCALAR': '0'}
+        assert any(x.startswith('-tags=wago_codegenstats') for x in narrow[4]['argv'])
         for lane in narrow:
             assert '-count=1' in lane['argv'] and not any(x.startswith('-bench') for x in lane['argv'])
             events = [{'Test': n, 'Action': 'pass'} for n in lane['expected_tests']]
@@ -207,6 +209,7 @@ def main():
                 events.append(event)
             assert discriminators.evaluate(lane, events, {'commands': []})[1]
             assert not discriminators.evaluate(lane, events[1:], {'commands': []})[1]
+            assert not discriminators.evaluate(lane, events+[events[0]], {'commands': []})[1]
             assert not discriminators.evaluate(lane, events+[{'Action':'skip','Test':'unexpected'}], {'commands': []})[1]
     assert "if: ${{ !cancelled() && steps.darwin-setup.outcome == 'success' }}" in after['darwin-qualification']
     assert 'continue-on-error' not in after['darwin-qualification']

@@ -1,6 +1,6 @@
 {
-  "source": "08f511fac41a77f4c0f9046f88ebc78ad05a5da6",
-  "evidence": "Exact source including test-only multi-table and TinyGo resume oracle repairs; this native rerun NOT_RUN.",
+  "source": "21d7be58952b64435110246f65d44e11046c5083",
+  "evidence": "Exact test-only reservation/checkptr and two-result entry repairs; independent activation review required; native execution NOT_RUN.",
   "lanes": [
     {
       "id": "full-root-replay-ordinary",
@@ -1680,7 +1680,7 @@
       ]
     }
   ],
-  "scope": "63 unchanged broad recipes + 9 narrow commands + 3 expanded Darwin focused commands + 3 baseline graph commands + 3 Windows contract commands = 81 go test commands (81 paired census commands), all within existing 1080 Mac + 90 Windows job-minute ceilings; ARM lane unchanged at 138.",
+  "scope": "63 unchanged broad recipes + 15 narrow discriminators + 3 Darwin focus + 3 matched baseline graphs + 3 Windows contracts = 87 test commands with paired censuses. Mac 1080 + Windows 90 + summary 3 = 1173 job-minute ceiling. Runtime and cost unknown. Native ARM and TinyGo pins remain separate and unchanged.",
   "unmet_gaps": [
     {
       "gap": "TinyGo Darwin patched runtime",
@@ -1691,5 +1691,5 @@
       "status": "REQUIRES_REVIEW after execution"
     }
   ],
-  "supplement_revision": "revision-08f511fac"
+  "supplement_revision": "revision-21d7be589"
 }
