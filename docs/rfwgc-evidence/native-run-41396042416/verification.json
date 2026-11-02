@@ -1,0 +1,786 @@
+{
+  "run": 41396042416,
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "harness": "1fe8aab8edc8451731f3534f59b37a4fcca42640",
+  "verification": "PASS",
+  "full_job_log_count": 7,
+  "log_archive_entry_count": 14,
+  "broad": [
+    {
+      "mode": "ordinary",
+      "commands": 21,
+      "lanes": [
+        {
+          "id": "full-root-replay-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 27297,
+          "failure_events": 68,
+          "status": "FAIL",
+          "skip_events": 327
+        },
+        {
+          "id": "collector-ordinary",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 2210,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "race-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 5837,
+          "failure_events": 11,
+          "status": "FAIL",
+          "skip_events": 19
+        },
+        {
+          "id": "guard-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 9083,
+          "failure_events": 54,
+          "status": "FAIL",
+          "skip_events": 35
+        },
+        {
+          "id": "backend-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 9284,
+          "failure_events": 9,
+          "status": "FAIL",
+          "skip_events": 225
+        },
+        {
+          "id": "cli-ordinary",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 999,
+          "failure_events": 0,
+          "status": "PASS_WITH_SKIPS",
+          "skip_events": 41
+        },
+        {
+          "id": "installer-ordinary",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 10,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "corpus-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 833,
+          "failure_events": 48,
+          "status": "FAIL",
+          "skip_events": 12
+        },
+        {
+          "id": "guard-corpus-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 612,
+          "failure_events": 17,
+          "status": "FAIL",
+          "skip_events": 1
+        },
+        {
+          "id": "host-transition-ordinary",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 48,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "hardening-ordinary",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 6630,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "profile-runtime-ordinary",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 62,
+          "failure_events": 0,
+          "status": "PASS_WITH_SKIPS",
+          "skip_events": 3
+        },
+        {
+          "id": "profile-metadata-ordinary",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 157,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "diagnostics-default-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 18050,
+          "failure_events": 97,
+          "status": "FAIL",
+          "skip_events": 38
+        },
+        {
+          "id": "diagnostics-established-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 18081,
+          "failure_events": 66,
+          "status": "FAIL",
+          "skip_events": 38
+        },
+        {
+          "id": "shared-scalar-ordinary",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 83,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "seeded-concurrency-ordinary",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 24,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v1-ordinary",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 1,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v2-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 0,
+          "failure_events": 2,
+          "status": "FAIL",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v3-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 0,
+          "failure_events": 2,
+          "status": "FAIL",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v3-signals-ordinary",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 0,
+          "failure_events": 2,
+          "status": "FAIL",
+          "skip_events": 0
+        }
+      ]
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "commands": 21,
+      "lanes": [
+        {
+          "id": "full-root-replay-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 33320,
+          "failure_events": 68,
+          "status": "FAIL",
+          "skip_events": 327
+        },
+        {
+          "id": "collector-wago_regalloccheck",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 2210,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "race-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 5837,
+          "failure_events": 11,
+          "status": "FAIL",
+          "skip_events": 19
+        },
+        {
+          "id": "guard-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 9083,
+          "failure_events": 54,
+          "status": "FAIL",
+          "skip_events": 35
+        },
+        {
+          "id": "backend-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 9963,
+          "failure_events": 9,
+          "status": "FAIL",
+          "skip_events": 225
+        },
+        {
+          "id": "cli-wago_regalloccheck",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 999,
+          "failure_events": 0,
+          "status": "PASS_WITH_SKIPS",
+          "skip_events": 41
+        },
+        {
+          "id": "installer-wago_regalloccheck",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 10,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "corpus-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 833,
+          "failure_events": 48,
+          "status": "FAIL",
+          "skip_events": 12
+        },
+        {
+          "id": "guard-corpus-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 612,
+          "failure_events": 17,
+          "status": "FAIL",
+          "skip_events": 1
+        },
+        {
+          "id": "host-transition-wago_regalloccheck",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 48,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "hardening-wago_regalloccheck",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 6630,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "profile-runtime-wago_regalloccheck",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 62,
+          "failure_events": 0,
+          "status": "PASS_WITH_SKIPS",
+          "skip_events": 3
+        },
+        {
+          "id": "profile-metadata-wago_regalloccheck",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 157,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "diagnostics-default-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 18729,
+          "failure_events": 97,
+          "status": "FAIL",
+          "skip_events": 38
+        },
+        {
+          "id": "diagnostics-established-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 18760,
+          "failure_events": 66,
+          "status": "FAIL",
+          "skip_events": 38
+        },
+        {
+          "id": "shared-scalar-wago_regalloccheck",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 85,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "seeded-concurrency-wago_regalloccheck",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 24,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v1-wago_regalloccheck",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 1,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v2-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 0,
+          "failure_events": 2,
+          "status": "FAIL",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v3-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 0,
+          "failure_events": 2,
+          "status": "FAIL",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v3-signals-wago_regalloccheck",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 0,
+          "failure_events": 2,
+          "status": "FAIL",
+          "skip_events": 0
+        }
+      ]
+    },
+    {
+      "mode": "wagodebug",
+      "commands": 21,
+      "lanes": [
+        {
+          "id": "full-root-replay-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 27370,
+          "failure_events": 68,
+          "status": "FAIL",
+          "skip_events": 336
+        },
+        {
+          "id": "collector-wagodebug",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 2292,
+          "failure_events": 0,
+          "status": "PASS_WITH_SKIPS",
+          "skip_events": 3
+        },
+        {
+          "id": "race-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 5919,
+          "failure_events": 11,
+          "status": "FAIL",
+          "skip_events": 22
+        },
+        {
+          "id": "guard-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 9083,
+          "failure_events": 54,
+          "status": "FAIL",
+          "skip_events": 35
+        },
+        {
+          "id": "backend-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 9284,
+          "failure_events": 9,
+          "status": "FAIL",
+          "skip_events": 225
+        },
+        {
+          "id": "cli-wagodebug",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 999,
+          "failure_events": 0,
+          "status": "PASS_WITH_SKIPS",
+          "skip_events": 41
+        },
+        {
+          "id": "installer-wagodebug",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 10,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "corpus-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 833,
+          "failure_events": 48,
+          "status": "FAIL",
+          "skip_events": 12
+        },
+        {
+          "id": "guard-corpus-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 612,
+          "failure_events": 17,
+          "status": "FAIL",
+          "skip_events": 1
+        },
+        {
+          "id": "host-transition-wagodebug",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 48,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "hardening-wagodebug",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 6876,
+          "failure_events": 0,
+          "status": "PASS_WITH_SKIPS",
+          "skip_events": 9
+        },
+        {
+          "id": "profile-runtime-wagodebug",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 62,
+          "failure_events": 0,
+          "status": "PASS_WITH_SKIPS",
+          "skip_events": 3
+        },
+        {
+          "id": "profile-metadata-wagodebug",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 157,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "diagnostics-default-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 18041,
+          "failure_events": 97,
+          "status": "FAIL",
+          "skip_events": 44
+        },
+        {
+          "id": "diagnostics-established-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 18072,
+          "failure_events": 66,
+          "status": "FAIL",
+          "skip_events": 44
+        },
+        {
+          "id": "shared-scalar-wagodebug",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 83,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "seeded-concurrency-wagodebug",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 24,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v1-wagodebug",
+          "exit_code": 0,
+          "census_exit_code": 0,
+          "passing_test_events": 1,
+          "failure_events": 0,
+          "status": "PASS",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v2-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 0,
+          "failure_events": 2,
+          "status": "FAIL",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v3-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 0,
+          "failure_events": 2,
+          "status": "FAIL",
+          "skip_events": 0
+        },
+        {
+          "id": "spec-v3-signals-wagodebug",
+          "exit_code": 1,
+          "census_exit_code": 0,
+          "passing_test_events": 0,
+          "failure_events": 2,
+          "status": "FAIL",
+          "skip_events": 0
+        }
+      ]
+    }
+  ],
+  "jobs": {
+    "failure": 4,
+    "success": 3,
+    "skipped": 20
+  },
+  "cells": [
+    {
+      "artifact": "darwin-f2bb27287-ordinary-1",
+      "archive_sha256": "6b063182155dd33d94a05b652bb58637194dc44ee2821687b485d2f865c86ae4",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedConvertedPublication",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken",
+          "TestRFWStage3MeasurementGuest"
+        ],
+        "fail": [],
+        "skip": []
+      },
+      "failed_leaf_count": 0,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 3614
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16238,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {
+        "graph.wasm": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+        "scalar.wasm": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+        "noGC.wasm": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0"
+      },
+      "go_sha256": "132b69336a1f809932a8a20b0201dbbb980e86e3a323ae32e893639d83d71598"
+    },
+    {
+      "artifact": "darwin-f2bb27287-wago_regalloccheck-1",
+      "archive_sha256": "d546da33b80bb143edf95d6571dff57dd70783c17bb0b12047bd0266d187710c",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedConvertedPublication",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken",
+          "TestRFWStage3MeasurementGuest"
+        ],
+        "fail": [],
+        "skip": []
+      },
+      "failed_leaf_count": 0,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 3614
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16238,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {
+        "graph.wasm": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+        "scalar.wasm": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+        "noGC.wasm": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0"
+      },
+      "go_sha256": "132b69336a1f809932a8a20b0201dbbb980e86e3a323ae32e893639d83d71598"
+    },
+    {
+      "artifact": "darwin-f2bb27287-wagodebug-1",
+      "archive_sha256": "01ee5662fe17c433fdbf7ecb35079000e6bbef325ce8b35ad2c899112f376097",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedConvertedPublication",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken",
+          "TestRFWStage3MeasurementGuest"
+        ],
+        "fail": [],
+        "skip": []
+      },
+      "failed_leaf_count": 0,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 3614
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16238,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {
+        "graph.wasm": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+        "scalar.wasm": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+        "noGC.wasm": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0"
+      },
+      "go_sha256": "132b69336a1f809932a8a20b0201dbbb980e86e3a323ae32e893639d83d71598"
+    },
+    {
+      "artifact": "windows-f2bb27287-ordinary-1",
+      "archive_sha256": "ab81b1adb6ae33ecaf128ae2bca87eab684035c0b18743fea724a153169311a3",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken",
+          "TestQualificationWindowsGCAdmission"
+        ],
+        "fail": [],
+        "skip": []
+      },
+      "failed_leaf_count": 0,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 0
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16238,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {},
+      "go_sha256": "d3ccdb604eafa6031133aefe1a3db24f0bb7362b857bc2125ac4e4c178b4b490"
+    },
+    {
+      "artifact": "windows-f2bb27287-wago_regalloccheck-1",
+      "archive_sha256": "a11debb9f14b97279a8bd5992138c7569173b85796ff34ce8e0d1d44a3b3d6ae",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken",
+          "TestQualificationWindowsGCAdmission"
+        ],
+        "fail": [],
+        "skip": []
+      },
+      "failed_leaf_count": 0,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 0
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16238,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {},
+      "go_sha256": "d3ccdb604eafa6031133aefe1a3db24f0bb7362b857bc2125ac4e4c178b4b490"
+    },
+    {
+      "artifact": "windows-f2bb27287-wagodebug-1",
+      "archive_sha256": "aa9f1e58b57d55239226f310b40f93f7dcedbd8777f93431236518b5e3f8da78",
+      "top_level": {
+        "pass": [
+          "TestDesignRepairPublicTableOrdinary",
+          "TestDesignRepairUnsupportedBulkAtomicity",
+          "TestDesignRepairUnsupportedConvertedPublicToken",
+          "TestQualificationWindowsGCAdmission"
+        ],
+        "fail": [],
+        "skip": []
+      },
+      "failed_leaf_count": 0,
+      "skip_event_count": 0,
+      "manifests": {
+        "source": {
+          "main_repository_blobs_verified": 16184,
+          "submodule_entries_cross_compared_only": 0
+        },
+        "driver": {
+          "main_repository_blobs_verified": 16238,
+          "submodule_entries_cross_compared_only": 0
+        }
+      },
+      "generated_hashes": {},
+      "go_sha256": "d3ccdb604eafa6031133aefe1a3db24f0bb7362b857bc2125ac4e4c178b4b490"
+    }
+  ],
+  "scope": "Offline evidence validation only. No runtime execution or timing performed."
+}
