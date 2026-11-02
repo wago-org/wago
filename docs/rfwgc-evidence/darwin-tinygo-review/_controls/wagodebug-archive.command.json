@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "/usr/bin/python3",
+    "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-supplement/harness.py",
+    "prepare",
+    "--repo",
+    "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port",
+    "--archive",
+    "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-review/_controls/wrong-archive",
+    "--output",
+    "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-review/_controls/wagodebug-archive",
+    "--mode",
+    "wagodebug",
+    "--harness",
+    "8a91f426a24d466bbd5012fdca3c4903f83f2f68",
+    "--go",
+    "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go"
+  ],
+  "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port",
+  "environment": {
+    "HOME": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/darwin-tinygo-review/_controls",
+    "PATH": "/usr/bin:/bin"
+  },
+  "timeout_seconds": 60
+}

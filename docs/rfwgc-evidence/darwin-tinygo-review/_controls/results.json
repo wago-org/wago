@@ -1,0 +1,56 @@
+[
+  {
+    "control": "harness",
+    "exit": 1,
+    "mode": "ordinary",
+    "output_preserved": true
+  },
+  {
+    "control": "archive",
+    "exit": 1,
+    "mode": "ordinary",
+    "output_preserved": true
+  },
+  {
+    "control": "platform",
+    "exit": 1,
+    "mode": "ordinary",
+    "output_preserved": true
+  },
+  {
+    "control": "harness",
+    "exit": 1,
+    "mode": "wagodebug",
+    "output_preserved": true
+  },
+  {
+    "control": "archive",
+    "exit": 1,
+    "mode": "wagodebug",
+    "output_preserved": true
+  },
+  {
+    "control": "platform",
+    "exit": 1,
+    "mode": "wagodebug",
+    "output_preserved": true
+  },
+  {
+    "control": "harness",
+    "exit": 1,
+    "mode": "wago_regalloccheck",
+    "output_preserved": true
+  },
+  {
+    "control": "archive",
+    "exit": 1,
+    "mode": "wago_regalloccheck",
+    "output_preserved": true
+  },
+  {
+    "control": "platform",
+    "exit": 1,
+    "mode": "wago_regalloccheck",
+    "output_preserved": true
+  }
+]
