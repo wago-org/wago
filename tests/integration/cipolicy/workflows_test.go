@@ -551,8 +551,8 @@ func TestPinnedQualificationIsolatedAndAcyclic(t *testing.T) {
 	jobs := workflowJobBlocks(string(workflow))
 	aggregate := jobs["ci-ok"]
 	for _, required := range []string{
-		"name: ${{ github.event_name == 'workflow_dispatch' && (inputs.darwin_qualification || inputs.native_arm64_rr3) && 'Full CI not run (qualification dispatch)' || 'CI' }}",
-		"if: always() && (github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3))",
+		"name: ${{ github.event_name == 'workflow_dispatch' && (inputs.darwin_qualification || inputs.native_arm64_rr3 || inputs.darwin_tinygo_supplement) && 'Full CI not run (qualification dispatch)' || 'CI' }}",
+		"if: always() && (github.event_name != 'workflow_dispatch' || (!inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement))",
 	} {
 		if !strings.Contains(aggregate, required) {
 			t.Errorf("required-check isolation missing %q", required)
@@ -605,6 +605,20 @@ func TestPinnedQualificationIsolatedAndAcyclic(t *testing.T) {
 	} {
 		if !strings.Contains(nativeSummary, required) {
 			t.Errorf("native ARM64 summary missing %q", required)
+		}
+	}
+	for _, job := range []string{"changes", "native-arm64-rr3", "native-arm64-rr3-summary", "darwin-qualification", "windows-qualification", "darwin-qualification-summary"} {
+		if !strings.Contains(jobs[job], "!inputs.darwin_tinygo_supplement") {
+			t.Errorf("%s can run during TinyGo supplement dispatch", job)
+		}
+	}
+	tinySummary := jobs["darwin-tinygo-summary"]
+	if _, exists := workflowJobNeeds(t, tinySummary)["ci-ok"]; exists {
+		t.Fatal("TinyGo summary must not depend on ci-ok")
+	}
+	for _, required := range []string{`n["darwin-tinygo-native"]["result"] == "success"`, `v["result"] == "skipped"`, "timeout-minutes: 3"} {
+		if !strings.Contains(tinySummary, required) {
+			t.Errorf("TinyGo summary missing %q", required)
 		}
 	}
 	visited, active := map[string]bool{}, map[string]bool{}

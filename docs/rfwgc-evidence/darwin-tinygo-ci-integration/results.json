@@ -1,0 +1,46 @@
+[
+  {
+    "mode": "ordinary",
+    "command": [
+      "go",
+      "test",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wagodebug",
+    "command": [
+      "go",
+      "test",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1",
+      "-tags=wagodebug"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "command": [
+      "go",
+      "test",
+      "./tests/integration/cipolicy",
+      "./tests/tools/ci-plan",
+      "-count=1",
+      "-tags=wago_regalloccheck"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "go",
+      "run",
+      "github.com/rhysd/actionlint/cmd/actionlint@v1.7.7",
+      ".github/workflows/ci.yml"
+    ],
+    "exit": 0
+  }
+]
