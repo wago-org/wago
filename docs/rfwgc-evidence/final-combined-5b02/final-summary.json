@@ -13,7 +13,7 @@
       "suite": "full-root-replay-wagodebug",
       "receipt_suite": "full-root-replay-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "full-root-replay-wago_regalloccheck",
@@ -31,7 +31,7 @@
       "suite": "cli-wagodebug",
       "receipt_suite": "cli-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "cli-wago_regalloccheck",
@@ -85,7 +85,7 @@
       "suite": "collector-wagodebug",
       "receipt_suite": "collector-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "collector-wago_regalloccheck",
@@ -103,7 +103,7 @@
       "suite": "race-wagodebug",
       "receipt_suite": "race-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "race-wago_regalloccheck",
@@ -133,7 +133,7 @@
       "suite": "guard-ordinary",
       "receipt_suite": "guard-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
+      "verdict": "PASS"
     },
     {
       "suite": "guard-wagodebug",
@@ -151,7 +151,7 @@
       "suite": "corpus-ordinary",
       "receipt_suite": "corpus-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "corpus-wagodebug",
@@ -1301,9 +1301,9 @@
     },
     {
       "suite": "baseline-canonical-checked-preflight",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "baseline-canonical-checked-preflight",
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-unsupported-global-ordinary",
@@ -1325,12 +1325,20 @@
     }
   ],
   "counts": {
-    "PASS": 60,
-    "RUNNING": 2,
-    "NOT_RUN": 157,
+    "PASS": 64,
+    "NOT_RUN": 152,
+    "RUNNING": 3,
     "FAIL": 1
   },
   "attempts": [
+    {
+      "suite": "baseline-canonical-checked-preflight",
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
     {
       "suite": "catalog-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -1364,12 +1372,36 @@
       "verdict": "PASS"
     },
     {
+      "suite": "cli-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": false,
+      "driver": "run.py",
+      "exit": null,
+      "verdict": "RUNNING"
+    },
+    {
       "suite": "collector-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "receipt_valid": true,
       "driver": "run.py",
       "exit": 0,
       "verdict": "PASS"
+    },
+    {
+      "suite": "collector-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "corpus-ordinary",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": false,
+      "driver": "run.py",
+      "exit": null,
+      "verdict": "RUNNING"
     },
     {
       "suite": "early-replay-cipolicy-ordinary",
@@ -1454,18 +1486,18 @@
     {
       "suite": "full-root-replay-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "guard-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "receipt_valid": false,
+      "receipt_valid": true,
       "driver": "run.py",
-      "exit": null,
-      "verdict": "RUNNING"
+      "exit": 0,
+      "verdict": "PASS"
     },
     {
       "suite": "installer-ordinary",
@@ -1514,6 +1546,14 @@
       "driver": "run.py",
       "exit": 0,
       "verdict": "PASS"
+    },
+    {
+      "suite": "race-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "receipt_valid": false,
+      "driver": "run.py",
+      "exit": null,
+      "verdict": "RUNNING"
     },
     {
       "suite": "repair-census-ordinary",

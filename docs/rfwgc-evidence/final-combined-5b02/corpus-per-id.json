@@ -209,12 +209,12 @@
       "TestCorpus/clang-cpp-kernels/Validate": "NOT_RUN",
       "TestCorpus/clang-cpp-kernels/Compile": "NOT_RUN",
       "TestCorpus/clang-cpp-kernels/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/clang-cpp-kernels/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/clang-cpp-kernels/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "skip",
       "pinned_external_runtime": "wasmtime",
-      "detail": ""
+      "detail": "=== RUN   TestApplicationCorpusRuns/clang-cpp-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-cpp-kernels/wazero (0.00s)\n"
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -229,12 +229,12 @@
       "TestCorpus/clang-c-kernels/Validate": "NOT_RUN",
       "TestCorpus/clang-c-kernels/Compile": "NOT_RUN",
       "TestCorpus/clang-c-kernels/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/clang-c-kernels/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/clang-c-kernels/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "skip",
       "pinned_external_runtime": "wasmtime",
-      "detail": ""
+      "detail": "=== RUN   TestApplicationCorpusRuns/clang-c-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-c-kernels/wazero (0.00s)\n"
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -308,12 +308,12 @@
       "TestCorpus/ecppack-bitstream/Validate": "NOT_RUN",
       "TestCorpus/ecppack-bitstream/Compile": "NOT_RUN",
       "TestCorpus/ecppack-bitstream/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/ecppack-bitstream/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/ecppack-bitstream/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -328,12 +328,12 @@
       "TestCorpus/coreutils-sort/Validate": "NOT_RUN",
       "TestCorpus/coreutils-sort/Compile": "NOT_RUN",
       "TestCorpus/coreutils-sort/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/coreutils-sort/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/coreutils-sort/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -348,12 +348,12 @@
       "TestCorpus/coreutils-sha256sum/Validate": "NOT_RUN",
       "TestCorpus/coreutils-sha256sum/Compile": "NOT_RUN",
       "TestCorpus/coreutils-sha256sum/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/coreutils-sha256sum/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/coreutils-sha256sum/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -368,12 +368,12 @@
       "TestCorpus/coreutils-base64/Validate": "NOT_RUN",
       "TestCorpus/coreutils-base64/Compile": "NOT_RUN",
       "TestCorpus/coreutils-base64/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/coreutils-base64/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/coreutils-base64/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -388,12 +388,12 @@
       "TestCorpus/coreutils-wc/Validate": "NOT_RUN",
       "TestCorpus/coreutils-wc/Compile": "NOT_RUN",
       "TestCorpus/coreutils-wc/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/coreutils-wc/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/coreutils-wc/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -508,12 +508,12 @@
       "TestCorpus/ecpbram-generate/Validate": "NOT_RUN",
       "TestCorpus/ecpbram-generate/Compile": "NOT_RUN",
       "TestCorpus/ecpbram-generate/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/ecpbram-generate/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/ecpbram-generate/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -548,12 +548,12 @@
       "TestCorpus/ecppll-clock/Validate": "NOT_RUN",
       "TestCorpus/ecppll-clock/Compile": "NOT_RUN",
       "TestCorpus/ecppll-clock/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/ecppll-clock/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/ecppll-clock/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -648,12 +648,12 @@
       "TestCorpus/brotli-compress/Validate": "NOT_RUN",
       "TestCorpus/brotli-compress/Compile": "NOT_RUN",
       "TestCorpus/brotli-compress/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/brotli-compress/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/brotli-compress/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -668,12 +668,12 @@
       "TestCorpus/brotli-decompress/Validate": "NOT_RUN",
       "TestCorpus/brotli-decompress/Compile": "NOT_RUN",
       "TestCorpus/brotli-decompress/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/brotli-decompress/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/brotli-decompress/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -708,12 +708,12 @@
       "TestCorpus/age-decrypt/Validate": "NOT_RUN",
       "TestCorpus/age-decrypt/Compile": "NOT_RUN",
       "TestCorpus/age-decrypt/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/age-decrypt/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/age-decrypt/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -728,12 +728,12 @@
       "TestCorpus/age-keygen-public/Validate": "NOT_RUN",
       "TestCorpus/age-keygen-public/Compile": "NOT_RUN",
       "TestCorpus/age-keygen-public/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/age-keygen-public/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/age-keygen-public/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -828,12 +828,12 @@
       "TestCorpus/duktape-script/Validate": "NOT_RUN",
       "TestCorpus/duktape-script/Compile": "NOT_RUN",
       "TestCorpus/duktape-script/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/duktape-script/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/duktape-script/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
@@ -1510,12 +1510,12 @@
       "TestCorpus/cjson/Validate": "NOT_RUN",
       "TestCorpus/cjson/Compile": "NOT_RUN",
       "TestCorpus/cjson/CompileFull": "NOT_RUN",
-      "TestApplicationCorpusRuns/cjson/wago": "NOT_RUN"
+      "TestApplicationCorpusRuns/cjson/wago": "pass"
     },
     "reference": {
-      "status": "NOT_RUN",
+      "status": "pass",
       "pinned_external_runtime": null,
-      "detail": ""
+      "detail": null
     },
     "status": "INCOMPLETE",
     "suite_completed": false
