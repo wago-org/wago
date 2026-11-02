@@ -60,12 +60,16 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 	// Staged conversions have their own opaque public-word namespace. They are
 	// deliberately absent from the ordinary externref directory; letting that
 	// miss fall through would let the legacy global setter publish them without
-	// a physical-container receipt. Inspect only this global's publishing state.
-	owner := access
+	// a physical-container receipt. The two public APIs resolve conversions via
+	// the access instance and the physical owner respectively.
+	var physical *Instance
 	if g.owner != nil {
-		owner = g.owner.instance
+		physical = g.owner.instance
 	}
-	if value.bits != 0 {
+	for _, owner := range [2]*Instance{access, physical} {
+		if value.bits == 0 || owner == nil {
+			continue
+		}
 		if conversion := owner.existingGCExternConversionState(); conversion != nil {
 			conversion.mu.Lock()
 			converted := false

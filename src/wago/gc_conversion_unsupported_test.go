@@ -32,6 +32,16 @@ func TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory(t *testin
 	if got := binary.LittleEndian.Uint64(cell); got != 99 {
 		t.Fatalf("rejected publication changed cell to %d", got)
 	}
+	// SetGlobalValue authenticates in the accessing instance, which can differ
+	// from the imported physical owner used by Global.SetValue.
+	g.owner.instance = &Instance{refStore: store}
+	if handled, err := setConversionGlobalPublic(in, g, Value{typ: ValExternRef, bits: public}); !handled || err == nil {
+		t.Fatalf("access-instance conversion not rejected: handled=%t err=%v", handled, err)
+	}
+	if got := binary.LittleEndian.Uint64(cell); got != 99 {
+		t.Fatal("rejected imported publication changed the cell")
+	}
+	g.owner.instance = in
 	if err := unsupportedConversionWord(store, internal); err == nil {
 		t.Fatal("internal opaque identity accepted")
 	}
