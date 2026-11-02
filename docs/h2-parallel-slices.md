@@ -1,5 +1,7 @@
 # H2 parallel implementation slices
 
+Coordination checkpoint: assessed production/source head `35c36bc594d2a027317cfcd321379f2d40c6b219`; observed port head `8a3defbcc1027b6c4afdd37e2fec5de5c54e0425` adds only the coordination log, with no `src` changes. Source conclusions remain pinned to the assessed head. The port orchestrator is the sole implementation authority; this document is advisory integration input, not a landing decision. **UNVERIFIED OWNERSHIP for the proposed new slices:** path sets are textually disjoint, but they are not active worker assignments. The integration owner must confirm current ownership and adopt the API contract before launch. The committed coordination log confirms the prior hook worker released its files; that release does not assign them to these proposed workers.
+
 Base `35c36bc594d2a027317cfcd321379f2d40c6b219` (production `501e9ab46`). This is an advisory launch contract for the integration owner, who must adopt or reject it before dispatch. The prior hook worker has released all files. The combined qualification worker alone owns `docs/rfwgc-evidence/combined-store-hook-gates/` and its immutable exports; neither proposed worker may touch those paths.
 
 The old `rfwgc-evidence/r9-h2-receipt-core/API.md` describes missing hooks at `79db49daa`. The newer `rfwgc-evidence/r9-h2-store-hooks/README.md` and source supersede that missing-work list: module-owned global/imported/public stores, bulk transactions, active initialization and compiled-global cycle tests now exist. Remaining necessary work, if host-created converted containers are included in final acceptance, is physical host-container authority and its guest integration. Preserve module-owned behavior as regression coverage.
@@ -96,7 +98,7 @@ Evidence directory reserved for the eventual worker: `docs/rfwgc-evidence/r9-h2-
 
 ## Disjointness and shared obligations
 
-The two production allowlists and new-path lists have empty intersections. A owns all receipt/host-adapter/public-container lifecycle files; B owns generic dispatch/compiler/invocation/initialization files. Test files and evidence directories are distinct. Neither may edit the shared port log, the old API/README evidence, this support branch's documents, the other's tests or the combined qualification worker's directory. Parent owns the eventual integration ledger and consolidated test results.
+The two proposed production allowlists and new-path lists have empty intersections as a static path check; actual worker ownership remains UNVERIFIED OWNERSHIP until the integration owner assigns them. A owns all receipt/host-adapter/public-container lifecycle files; B owns generic dispatch/compiler/invocation/initialization files. Test files and evidence directories are distinct. Neither may edit the shared port log, the old API/README evidence, this support branch's documents, the other's tests or the combined qualification worker's directory. Parent owns the eventual integration ledger and consolidated test results.
 
 | Concern | A responsibility | B responsibility |
 | --- | --- | --- |
