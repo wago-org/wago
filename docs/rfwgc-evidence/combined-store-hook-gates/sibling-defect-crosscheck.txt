@@ -1,0 +1,251 @@
+Slipstream dcb45b56386327a1f71fb039ed02e13562e1e2d7 (read-only Git objects, no execution)
+
+gc/native.goose
+810:     }
+811:     return true;
+812: }
+813: let N_OVERFLOW: u64 = 368;
+814: let N_HOST_HIGH: u64 = 376;
+815: let N_OVERFLOW_EVENTS: u64 = 384;
+816: let N_QUEUE_BOUND: u64 = 392;
+817: let N_TYPE_COUNT: u64 = 400;
+818: let N_PRESSURE: u64 = 416;
+819: let N_SWEEP_CLAIM: u64 = 424;
+820: let N_MAX_OBJECT: u64 = 432;
+821: let N_EVACUATED: u64 = 440;
+822: let N_FAST_LIMIT: u64 = 448; // zero disables generated allocation for instrumentation
+823: let N_MUTATOR_OWNER: u64 = 456; // 1 is direct; otherwise the recursive owner TID
+824: let N_MUTATOR_DEPTH: u64 = 464;
+825: let N_POISON: u64 = 472; // post-commit worker error: teardown only, never resume
+826: let N_ABORT_WORKER: u64 = 496; // contained-abort regression injection
+827: let N_READY: u64 = 504;
+828: let N_MUTATOR_WAITERS: u64 = 576; // after helper IDs; registered before sleeping
+829: let N_YOUNG_AGE: u64 = 1152; // eight byte counters: young-generation bytes per header age
+830: let N_YOUNG_AGE_NEXT: u64 = 1216; // copy-pass rebuild of N_YOUNG_AGE for the new survivor space
+831: let N_YOUNG_MAX: u64 = 1280; // largest object currently in the young generation
+832: let N_YOUNG_MAX_NEXT: u64 = 1288; // copy-pass rebuild of N_YOUNG_MAX
+833: let N_ACTIVATION: u64 = 488; // Store-owned suspended invocation chain
+834: let N_WORK_FAIL: u64 = 480; // internal fault injection, worker index + 1
+835: // The mutator is held and workers have not started: consume each dirty word
+
+native/gc_linux_x86_64.S
+1: /* ABI2 primitives. No libc, allocator, or pthread dependency. */
+2: .text
+3: .globl ss_ng_tid
+4: ss_ng_tid:
+5:     mov $186,%eax
+6:     syscall
+7:     ret
+8: #ifndef SS_NG_SANITIZE
+9: /* Recursive Store mutator ownership. Only host boundaries acquire this lock;
+10:    generated allocation and ordinary guest reference stores never do.
+11: 
+12:    Owner 1 is the direct, non-reentrant form.  The uncontended entry path can
+13:    claim it without a gettid syscall.  A helper that may block or reenter must
+14:    call ss_ng_inflate first, replacing 1 with the owning TID.  Offset 576 is an
+15:    exact count of registered contenders: registration precedes the retry that
+16:    can sleep, and deregistration follows acquisition.  Thus an unlock that
+17:    observes zero cannot race a waiter into sleeping on the released value. */
+18: .globl ss_ng_enter_direct
+19: ss_ng_enter_direct:
+20:     test %rdi,%rdi
+21:     jz 8f
+22:     mov $1,%r9d
+23:     xor %eax,%eax
+24:     lock cmpxchg %r9,456(%rdi)
+25:     je 7f
+26:     jmp ss_ng_enter
+27: .globl ss_ng_enter
+28: ss_ng_enter:
+29:     test %rdi,%rdi
+30:     jz 8f
+31:     mov %rdi,%r8
+32:     mov $186,%eax
+33:     syscall
+34:     mov %rax,%r9
+35: 1:
+36:     xor %eax,%eax
+37:     lock cmpxchg %r9,456(%r8)
+38:     je 6f
+39:     cmp %r9,%rax
+40:     je 6f
+41:     lock incq 576(%r8)
+42: 2:
+43:     xor %eax,%eax
+44:     lock cmpxchg %r9,456(%r8)
+45:     je 5f
+46:     cmp %r9,%rax
+47:     je 5f
+48:     mov %eax,%edx
+49:     lea 456(%r8),%rdi
+50:     mov $128,%esi
+51:     xor %r10d,%r10d
+52:     mov $202,%eax
+53:     syscall
+54:     jmp 2b
+55: 5:
+56:     lock decq 576(%r8)
+57: 6:
+58:     addq $1,464(%r8)
+59: 8:
+60:     ret
+61: 7:
+62:     addq $1,464(%rdi)
+63:     ret
+64: .globl ss_ng_inflate
+65: ss_ng_inflate:
+66:     test %rdi,%rdi
+67:     jz 2f
+68:     cmpq $1,456(%rdi)
+69:     jne 2f
+70:     mov %rdi,%r8
+71:     mov $186,%eax
+72:     syscall
+73:     mov %rax,%rdx
+74:     mov $1,%eax
+75:     lock cmpxchg %rdx,456(%r8)
+76: 2:
+77:     ret
+78: .globl ss_ng_leave
+79: ss_ng_leave:
+80:     test %rdi,%rdi
+81:     jz 3f
+82:     subq $1,464(%rdi)
+83:     jne 3f
+84:     movq $0,456(%rdi)
+85:     cmpq $0,576(%rdi)
+86:     je 3f
+87:     add $456,%rdi
+88:     mov $129,%esi
+89:     mov $1,%edx
+90:     mov $202,%eax
+91:     syscall
+92: 3:
+93:     ret
+94: /* One process-wide allowance for additional execution threads. Store pools
+95:    retain leases until teardown; JIT leases are returned after joining. */
+96: .globl ss_ng_budget_claim
+97: ss_ng_budget_claim:
+98:     mov ss_ng_budget(%rip),%rax
+99: 1:
+100:     xor %edx,%edx
+101:     cmp %rsi,%rax
+102:     jae 2f
+103:     mov %rsi,%rdx
+104:     sub %rax,%rdx
+105:     cmp %rdi,%rdx
+106:     cmova %rdi,%rdx
+107: 2:
+108:     lea (%rax,%rdx),%rcx
+109:     lock cmpxchg %rcx,ss_ng_budget(%rip)
+110:     jne 1b
+111:     mov %rdx,%rax
+112:     ret
+113: .globl ss_ng_budget_release
+114: ss_ng_budget_release:
+115:     lock sub %rdi,ss_ng_budget(%rip)
+116:     ret
+117: .bss
+118: .p2align 3
+119: ss_ng_budget: .quad 0
+120: .text
+121: #endif
+122: .globl ss_ng_map
+123: ss_ng_map:
+124:     mov %rsi,%rdx
+125:     mov %rdi,%rsi
+126:     xor %edi,%edi
+127:     mov $0x4022,%r10d
+128:     mov $-1,%r8
+129:     xor %r9d,%r9d
+130:     mov $9,%eax
+131:     syscall
+132:     ret
+133: .globl ss_ng_protect
+134: ss_ng_protect:
+135:     mov $10,%eax
+136:     syscall
+137:     ret
+138: .globl ss_ng_unmap
+139: ss_ng_unmap:
+140:     mov $11,%eax
+141:     syscall
+142:     ret
+143: .globl ss_ng_discard
+144: ss_ng_discard:
+145:     mov $4,%edx
+
+src/jit.goose
+1: import .jit_parallel;
+2: import .module;
+3: import .jit_store;
+4: import .jit_gc;
+5: import .jit_values;
+6: import .host;
+7: import .facts_capacity;
+8: 
+9: struct Initializer {
+10:     table: u32, memory: bool, destination: u64, source: u64, size: u64,
+11:     // Active element segments own their decoded reference values until this
+12:     // initializer transfers that ownership into the destination table.
+13:     segment: u32
+14: }
+15: var measure_execution: bool = false;
+16: // Correctness-only action runner: report code size without phase clocks.
+17: var execution_checks: bool = false;
+18: // Internal collection/poisoning stress driver, never a guest optimization flag.
+19: var jit_gc_stress: bool = false;
+20: var jit_guest_stack_bytes: u64 = 0;
+21: fn tag_payload_map(store: Store&, r: Reader&, m: Module&, sig: Signature) -> u64 {
+22:     var runs: RootRun[>..] = []; var start: i64 = -1; var kind: u8 = 0;
+23:     for i in sig.params.len as i64 {
+24:         let current = root_value_kind(m, m.value_types[sig.params.pos + i]);
+25:         if current != kind {
+26:             if start >= 0 { add_root_run(runs, 0, start as u32, i as u32, kind); }
+27:             start = if current == 0 { -1 } else { i }; kind = current;
+28:         }
+29:     }
+30:     if start >= 0 { add_root_run(runs, 0, start as u32, sig.params.len, kind); }
+31:     var words: u64[>..] = []; words.push(runs.len as u64);
+32:     for run in runs {
+33:         let tag = if run.kind == 2 { 0x80000000 as u32 }
+34:                   else if run.kind == 3 { 0x40000000 as u32 } else { 0 as u32 };
+35:         let first = run.first | tag;
+36:         words.push(first as u64 | (run.end as u64) << 32);
+37:     }
+38:     return store_words(store, r, words);
+39: }
+40: fn fixed_bits(r: Reader&, size: i64) -> u64 {
+41:     var bits: u64 = 0;
+42:     for i in size { bits |= (byte(r) as u64) << (i * 8); }
+43:     return bits;
+44: }
+45: fn runtime_constant(r: Reader&, m: Module&, rt: Runtime&, refs: u64[>..]&, global_refs: u64[>..]&, expected: u32) -> Value {
+46:     // Evaluate while decoding. The scoped value stack is proportional only to
+47:     // expression depth and is discarded on return; source instructions are
+48:     // never retained as IR.
+49:     var values: Value[>..] = [];
+50:     var owned: bool[>..] = []; var root_kinds: u8[>..] = [];
+51:     loop {
+52:         let op = byte(r);
+53:         if op == 0x0b { break; }
+54:         var value = Value {}; var root_kind: u8 = 0;
+55:         match op {
+56:             0x41 => { value.low = (sleb(r, 32) as! u64) & 4294967295; },
+57:             0x42 => { value.low = sleb(r, 64) as! u64; },
+58:             0x43 => { value.low = fixed_bits(r, 4); },
+59:             0x44 => { value.low = fixed_bits(r, 8); },
+60:             0x23 => {
+61:                 let index = uleb(r) as i64;
+62:                 value.low = ss_load64(global_refs[index]);
+63:                 value.high = ss_load64(global_refs[index] + 8);
+64:                 root_kind = root_value_kind(m, m.globals[index].value_type);
+65:             },
+
+Exact mechanism search /home/dev/Projects/slipstream dcb45b56386327a1f71fb039ed02e13562e1e2d7
+exit=1
+
+Exact mechanism search /home/dev/Projects/starshine-master-base 1d6c0af47140299d8f3c01ed03060d279c43ee03
+exit=1
+
+Disposition: Slipstream uses recursive Store mutator owner/depth/waiters in native assembly and mapped collector state; the Wago Go Instance lazy refStore/sync.Map reader and Railshot regalloccheck assertion have no exact counterpart in this scoped search. Starshine inspected GC boundary describes model/codec/validation/generator ownership, not this Go runtime/JIT. No sibling correctness or absence-of-all-analogous-bugs claim. Wago findings stay with Wago owning files.

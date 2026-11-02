@@ -1,0 +1,18 @@
+1 .M N... 100644 100644 100644 b560b4cb9ac12768f45bae24ee129c61e5554021 b560b4cb9ac12768f45bae24ee129c61e5554021 docs/rfwgc-evidence/stage2-corpus/measure.py
+1 .M N... 100644 100644 100644 c44507059410e076e376ffcb7c2697a1e35c5e2e c44507059410e076e376ffcb7c2697a1e35c5e2e docs/rfwgc-evidence/stage2-corpus/summarize.py
+1 .M N... 100644 100644 100644 984b05088464222bfd43f84e1cac3ee9cd93a573 984b05088464222bfd43f84e1cac3ee9cd93a573 docs/rfwgc-port-log.md
+1 .M N... 100644 100644 100644 4dca05f16a3607cfebb4fb1f16bfa6a4ab540376 4dca05f16a3607cfebb4fb1f16bfa6a4ab540376 src/wago/cross_instance.go
+1 .M N... 100644 100644 100644 fe14052438a1ded99388e5212b3fed1c23e2b098 fe14052438a1ded99388e5212b3fed1c23e2b098 src/wago/function_environment_linux.go
+1 .M N... 100644 100644 100644 d07cf7b64c7d271e424f74a41fcac594fa477d68 d07cf7b64c7d271e424f74a41fcac594fa477d68 src/wago/function_environment_mark_linux.go
+1 .M N... 100644 100644 100644 29510f2aa2961a0029dfde37d38bda7a93fa5b12 29510f2aa2961a0029dfde37d38bda7a93fa5b12 src/wago/gc_conversion_receipt_host.go
+1 .M N... 100644 100644 100644 70288931c9db55d33b76978e569806e68edda642 70288931c9db55d33b76978e569806e68edda642 src/wago/gc_conversion_store.go
+1 .M N... 100644 100644 100644 21896adbc78bfde769e8f8886566b542e4ac811d 21896adbc78bfde769e8f8886566b542e4ac811d src/wago/gc_conversion_store_host.go
+1 .M N... 100644 100644 100644 2634bc8cc5f045fa944780ce1df94ad1d8166a40 2634bc8cc5f045fa944780ce1df94ad1d8166a40 src/wago/globals.go
+1 .M SCM. 160000 160000 160000 a8bcbafe6d2fb191ce0188de0e18fdc107fa2598 a8bcbafe6d2fb191ce0188de0e18fdc107fa2598 tests/conformance/spec-v1
+1 .M SCM. 160000 160000 160000 05ca4182176763112561ae20153975c12bd689e4 05ca4182176763112561ae20153975c12bd689e4 tests/conformance/spec-v2
+? src/core/compiler/backend/railshot/amd64/extern_host_store_contract_test.go
+? src/core/compiler/backend/railshot/arm64/extern_host_store_contract_test.go
+? src/wago/gc_conversion_host_container_host.go
+? src/wago/gc_conversion_host_container_host_test.go
+? src/wago/gc_conversion_host_container_other.go
+? src/wago/gc_conversion_host_import_host_test.go

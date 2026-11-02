@@ -1,0 +1,53 @@
+=== RUN   TestPreparedGCRevocableEntryExternalAccess/reference-store
+==================
+WARNING: DATA RACE
+Write at 0x00c0008dd708 by goroutine 19014:
+  github.com/wago-org/wago/src/wago.(*Instance).referenceStoreForBoundary()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/reference_store.go:4157 +0x295
+  github.com/wago-org/wago/src/wago.(*Instance).NewExternRef()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/externref.go:66 +0x3d
+  github.com/wago-org/wago/src/wago.TestPreparedGCRevocableEntryExternalAccess.func1.2()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/prepared_gc_native_test.go:489 +0x1f9
+
+Previous read at 0x00c0008dd708 by goroutine 19013:
+  github.com/wago-org/wago/src/wago.managedFunctionAfterLifetimeBoundary()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/function_environment_platform_host.go:27 +0x39
+  github.com/wago-org/wago/src/wago.(*Instance).endInvocation.deferwrap1()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/instance_lifecycle.go:312 +0x2e
+  runtime.deferreturn()
+      /home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/panic.go:668 +0x53
+  github.com/wago-org/wago/src/wago.(*Instance).endFastInvocationSlow()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/instance_admission.go:123 +0x3e
+  github.com/wago-org/wago/src/wago.(*Instance).endFastInvocation()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/instance_admission.go:116 +0x57
+  github.com/wago-org/wago/src/wago.(*Instance).endPrivateGCInvocation()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/prepared_gc.go:218 +0xac4
+  github.com/wago-org/wago/src/wago.(*privateGCTestLease).unlockGCInvocation()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/prepared_gc_native_test.go:614 +0xa53
+  github.com/wago-org/wago/src/wago.TestPreparedGCRevocableEntryExternalAccess.func1()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/prepared_gc_native_test.go:508 +0xa52
+  testing.tRunner()
+      /home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x38
+
+Goroutine 19014 (running) created at:
+  github.com/wago-org/wago/src/wago.TestPreparedGCRevocableEntryExternalAccess.func1()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/prepared_gc_native_test.go:480 +0x89c
+  testing.tRunner()
+      /home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x38
+
+Goroutine 19013 (running) created at:
+  testing.(*T).Run()
+      /home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0xb12
+  github.com/wago-org/wago/src/wago.TestPreparedGCRevocableEntryExternalAccess()
+      /tmp/wago-combined-501e9-to2k8cyp/source/src/wago/prepared_gc_native_test.go:451 +0xdc
+  testing.tRunner()
+      /home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0x21c
+  testing.(*T).Run.gowrap1()
+      /home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x38
+==================
+    testing.go:1865: race detected during execution of test
+--- FAIL: TestPreparedGCRevocableEntryExternalAccess/reference-store (0.00s)

@@ -1,0 +1,42 @@
+{
+  "source": "501e9ab46c4f68090c7bbeb17a6ad14f4fadda6d",
+  "exit": 1,
+  "verdict": "FAIL",
+  "events": [
+    {
+      "Time": "2026-11-02T01:56:45.288868523Z",
+      "Action": "fail",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntervalRegionDynamicReuse",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:56:45.292425806Z",
+      "Action": "fail",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntervalRegionControlBoundaries/if-else",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:56:45.292865522Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntervalRegionControlBoundaries/call",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:56:45.293378235Z",
+      "Action": "fail",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestIntervalRegionControlBoundaries",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:56:45.293553274Z",
+      "Action": "fail",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Elapsed": 0.008
+    }
+  ],
+  "driver_unchanged": true
+}

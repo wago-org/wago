@@ -1,0 +1,28 @@
+{
+  "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+  "exit": 1,
+  "verdict": "FAIL",
+  "events": [
+    {
+      "Time": "2026-11-02T02:04:30.073973975Z",
+      "Action": "fail",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile/clang-cpp-kernels",
+      "Elapsed": 4.52
+    },
+    {
+      "Time": "2026-11-02T02:04:30.074791042Z",
+      "Action": "fail",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRFWStage3CorpusCompile",
+      "Elapsed": 4.52
+    },
+    {
+      "Time": "2026-11-02T02:04:30.077374493Z",
+      "Action": "fail",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 4.526
+    }
+  ],
+  "driver_unchanged": true
+}

@@ -1,0 +1,1301 @@
+{
+  "source": "501e9ab46c4f68090c7bbeb17a6ad14f4fadda6d",
+  "exit": 1,
+  "verdict": "FAIL",
+  "events": [
+    {
+      "Time": "2026-11-02T01:44:43.781244812Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerMovesPayloadsAcrossFilesystems",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.781302Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerReleaseMetadataHonorsCancellation",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.78265436Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerReleaseMetadataRejectsTrailingAndOversizedData/trailing_value",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.786455671Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerReleaseMetadataRejectsTrailingAndOversizedData/over_byte_limit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.786466872Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerReleaseMetadataRejectsTrailingAndOversizedData",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:43.786760463Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestMovePathDoesNotMaskOrdinaryRenameErrors",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.786789488Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerUsesEmbeddedReleaseIdentityByDefault",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.787204718Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerUsesLocalManagerOverride",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.78762101Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerUsesLocalSourceOverrideWithoutMovingCheckout",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.78766917Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerDryRunPresentation",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.787845121Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerBuildsExactCanonicalCanaryFromSource",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.788447102Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerCanonicalBetaManagerResolutionPaginates",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.788679939Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerReleaseCatalogKeepsPagesWithinMetadataLimit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.788851722Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerCanonicalRollingGitFetchUsesExactDetachedCommit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.7899471Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerCanonicalRollingArchiveFallbackUsesExactCommit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.79218277Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerArchiveCancellationCleansTemporaryTree",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.792724327Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerArchiveDownloadCancellation",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.792904937Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerResolvesNewestCanaryArtifactForSourceBuild",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.793111625Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerDownloadsCanaryManagerWorkflowArtifact",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.793969596Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerManagerDownloadFallsBackFromOfficialToBeta",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.794609068Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerManagerDownloadFallsBackFromBetaToCanaryArtifact",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.795271392Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerManagerDownloadDoesNotBypassBadOfficialChecksum",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.795814993Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerManagerDownloadDoesNotBypassLocalFailure",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.796064933Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestUnixPathSetupIsIdempotent",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.796522873Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerScriptedInstallDirectoryAndReinstallMode",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.796764847Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerScriptedPathSetupKeepsStatusDetails",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.796780697Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerPromptWordingMatchesWarmFlow",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.796976445Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestPathRefreshIsOfferedOnlyAfterAddingPath",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.798092832Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerTranscriptParity/fresh_install",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.799020665Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerTranscriptParity/reinstall",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.79903924Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerTranscriptParity",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.799057304Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerWarmFinishAfterPathSetup",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.799194522Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerFinishWhenPathIsAlreadyReady",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:43.799909274Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestUnixPartialAndFullCleanupSemantics",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.285196495Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestPowerShellBootstrapReleaseSelection/pwsh",
+      "Elapsed": 0.53
+    },
+    {
+      "Time": "2026-11-02T01:44:44.285206774Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestPowerShellBootstrapReleaseSelection",
+      "Elapsed": 0.53
+    },
+    {
+      "Time": "2026-11-02T01:44:44.79675079Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestPowerShellBootstrapFallsBackToGoForMainWithoutRelease",
+      "Elapsed": 0.51
+    },
+    {
+      "Time": "2026-11-02T01:44:44.800799225Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstallerVerificationIsBounded",
+      "Elapsed": 1
+    },
+    {
+      "Time": "2026-11-02T01:44:44.801064764Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/sh/installer/file/no-terminal",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.80121182Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestSourceRollbackRetainsBackup",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.810648888Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstalledLauncherAliasDispatches/symlink",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:44.813147682Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstalledLauncherAliasDispatches/argv0",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.814730266Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestInstalledLauncherAliasDispatches",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:44.814752688Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestResolveAndDisplayPath",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.815040218Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestPathSuggestionsOnlyReturnMatchingDirectories",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.81506803Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestEnvironmentRadioUsesConfiguredDefaultWithoutConsole",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.815264449Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestWriteSelectionUsesPortableNewline",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.815277915Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestColorsAreDisabledWithoutConsole",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.815290298Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestNoColorDisablesConsoleStyling",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.815305877Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestProgressUsesAnimatedLoader",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.8155414Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestCleanupProtectionDetectsReplacedRoot",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.816638881Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestReinstallCleanupPreservesReleaseIdentity/direct",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.817726685Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestReinstallCleanupPreservesReleaseIdentity/nested-cache",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.818884039Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestReinstallCleanupPreservesReleaseIdentity/external-alias",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.820060328Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestReinstallCleanupPreservesReleaseIdentity/internal-alias",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.821785429Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestReinstallCleanupPreservesReleaseIdentity/outward-alias",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.823376888Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestReinstallCleanupPreservesReleaseIdentity/outward-bin-alias",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.823386486Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Test": "TestReinstallCleanupPreservesReleaseIdentity",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:44.82405385Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Elapsed": 1.046
+    },
+    {
+      "Time": "2026-11-02T01:44:44.824154379Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/sh/installer/file/terminal",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T01:44:44.826382565Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/automation",
+      "Test": "TestParseLeadingAndEnvironment",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.826428712Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/automation",
+      "Test": "TestEnvironmentPolicyAndOfflineGoCommand",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.826577131Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/automation",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T01:44:44.82812029Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestParseAndHelpRecognition",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828130328Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestParsePreservesRepeatedStringFlagsInOrder",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828143974Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestPassThroughRecognizesInterspersedCommandFlags",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.82820054Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestDispatchSuccessfulPaths",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828208926Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestInvocationWantsHelpFollowsCommandTree",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828217502Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestHelpMarksDefaultGroupCommandOptional",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828226158Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestHelpShowsShortFormForPairedBooleanFlags",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828239343Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestHelpKeepsOptimizationFlagsOutOfEverydayHelp",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.8282481Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestSuggestChildFindsUnambiguousTypos",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828291521Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/sh/installer/pipe/no-terminal",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828375158Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestAutomationFlagsAndCommandSchema",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828385217Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestUnsupportedAutomationOutputIsRejected",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828406467Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestConfigureAutomationHonorsPassThroughBoundary",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828415614Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Test": "TestCompleteTraversesCommandsAndFlags",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:44.828661226Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T01:44:44.849944648Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/sh/installer/pipe/terminal",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T01:44:44.862139015Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/sh/go-fallback/file/no-terminal",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:44.883747558Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/sh/go-fallback/file/terminal",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T01:44:44.893593895Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/sh/go-fallback/pipe/no-terminal",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:44.915460814Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/sh/go-fallback/pipe/terminal",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T01:44:44.921597612Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/bash/installer/file/no-terminal",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:44.943291766Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/bash/installer/file/terminal",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T01:44:44.951312303Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/bash/installer/pipe/no-terminal",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:44.973158762Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/bash/installer/pipe/terminal",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T01:44:44.985857097Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/bash/go-fallback/file/no-terminal",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:45.009138934Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/bash/go-fallback/file/terminal",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T01:44:45.023870768Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/bash/go-fallback/pipe/no-terminal",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:45.052998717Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput/bash/go-fallback/pipe/terminal",
+      "Elapsed": 0.03
+    },
+    {
+      "Time": "2026-11-02T01:44:45.053012252Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapRefreshUsesTerminalInput",
+      "Elapsed": 0.26
+    },
+    {
+      "Time": "2026-11-02T01:44:45.057217041Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/handoff",
+      "Test": "TestMetadataEnvironment",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.05834994Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/handoff",
+      "Test": "TestRuntimeCommandsCarryRoutingAndCompilationSurface",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.058365449Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/handoff",
+      "Test": "TestMetadataEnvironmentOmitsEmptyFields",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.058376119Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/handoff",
+      "Test": "TestFromEnvironment",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.05838745Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/handoff",
+      "Test": "TestRuntimeOwnsPluginCommand",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.058695248Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/handoff",
+      "Test": "TestLooksLikeRuntimeTarget",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.058962059Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/handoff",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T01:44:45.059584449Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/internal/parallel",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.060690466Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+      "Test": "TestPickerDrillsIntoSubpackagesAndReturns",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.060701497Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+      "Test": "TestPickerAcceptsCanonicalGitHubPackage",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.060716746Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+      "Test": "TestPickerGroupsCanonicalSubpackages/github.com/wago-org/wasi",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.060730431Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+      "Test": "TestPickerGroupsCanonicalSubpackages/gopkg.in/yaml.v3",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.060734609Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+      "Test": "TestPickerGroupsCanonicalSubpackages",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.060745349Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+      "Test": "TestPickerPaginatesAtFifteenRoots",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.060932721Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T01:44:45.062442768Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/profiling",
+      "Test": "TestProfileCommandIsAbsent",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.062617276Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/profiling",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T01:44:45.064629806Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestProjectModelDoesNotDependOnRuntime",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.064836044Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestProjectRejectsDuplicateJSON",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.068189915Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestProjectMetadataLimits",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.087577225Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapMatchesReleaseContract/latest",
+      "Elapsed": 0.03
+    },
+    {
+      "Time": "2026-11-02T01:44:45.12378878Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapMatchesReleaseContract/main",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-11-02T01:44:45.127824481Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestEncodedProjectMetadataIncludesNewlineInLimit/manifest",
+      "Elapsed": 0.06
+    },
+    {
+      "Time": "2026-11-02T01:44:45.153065809Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapMatchesReleaseContract/beta",
+      "Elapsed": 0.03
+    },
+    {
+      "Time": "2026-11-02T01:44:45.171599325Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestEncodedProjectMetadataIncludesNewlineInLimit/lock",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-11-02T01:44:45.17161246Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestEncodedProjectMetadataIncludesNewlineInLimit",
+      "Elapsed": 0.1
+    },
+    {
+      "Time": "2026-11-02T01:44:45.172369281Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockRoundTripV1CompleteResolution",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.17305515Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestReadLockRejectsV0UnknownAndMalformedState",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173087741Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockAuthorityPolicyFailsClosed/unknown",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173099583Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockAuthorityPolicyFailsClosed/host_wildcard",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173127656Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockAuthorityPolicyFailsClosed/limit_widened",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.17313525Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockAuthorityPolicyFailsClosed",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173144738Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestRequiredAuthorityMayBeDeclined",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.17315618Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestRequiredAuthorityMayBeGrantedWithNarrowerScope",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.1731723Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestModuleCloseAuthorityIsKnownAndUnscoped",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173194842Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestActiveCallerInvokeAuthorityIsKnownAndUnscoped",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173212676Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockContractBindingsAndCycles",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173221392Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestOptionalContractMayBindNoProvider",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173250597Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestManyContractMustBindEverySelectedProvider",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173263802Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockContractBindingIsExactChoiceNotEveryAvailableProvider",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173296754Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestValidateLockedResolutionIsCompletePrunedAndReproducible",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173315018Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestValidateLockedResolutionIncludesContractReachability",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173324937Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockRejectsEmptyDependencyConstraint",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173351316Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockRejectsConflictingSharedSourceReleases/version",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173365262Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockRejectsConflictingSharedSourceReleases/checksum",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173381823Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockRejectsConflictingSharedSourceReleases/release_fingerprint",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173386973Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockRejectsConflictingSharedSourceReleases",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.173400308Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestValidGoChecksumRequiresCanonicalBase64",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.174528618Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestInitializeCreatesManifestAndPreservesFields",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.174682717Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestLockedModeRejectsManifestAndLockfileWrites",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.175494702Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestInitializeWithMergesWizardFields",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.1755681Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestManifestValidationRejectsUnknownNestedAndMalformedFields/root",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.175596955Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestManifestValidationRejectsUnknownNestedAndMalformedFields/package",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.175649553Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestManifestValidationRejectsUnknownNestedAndMalformedFields/author",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.175710187Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestManifestValidationRejectsUnknownNestedAndMalformedFields/setting",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.17573828Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestManifestValidationRejectsUnknownNestedAndMalformedFields/subpackage_outside_module",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.175748289Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestManifestValidationRejectsUnknownNestedAndMalformedFields",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.175768136Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestManifestValidationAcceptsCataloguedOptimizationFamilies",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.175784417Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestManifestValidationAcceptsRetiredV1OptimizationNames",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.176036089Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestEnsureGitignoreIsIdempotent",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.177080762Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestRequirementsUseCanonicalFullIDsAndFullSemverRanges",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.177629172Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestDependencyUpdatePreservesPackageField",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.178804971Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestRemoveDependencyPublishesPrunedCoherentMetadata",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.179988104Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestRequirementsRejectV0AliasesAndInvalidManifests",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.1800017Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestValidatePluginIDRejectsRelativeAndNonCanonical",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.180013121Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestExpandGitHubPluginID",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.180030223Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestValidateConstraintUsesFullRangeGrammar",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.180675846Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestPluginSelectionsIncludesDirectAndTransitiveLockedGraph",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.180899095Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestPluginSelectionsRequiresDirectResolution",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.181251898Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestPluginSelectionsFreshReadDoesNotCreateProjectState",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.18426596Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapMatchesReleaseContract/v0.1.0-canary.gccccccc",
+      "Elapsed": 0.03
+    },
+    {
+      "Time": "2026-11-02T01:44:45.184280968Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapMatchesReleaseContract",
+      "Elapsed": 0.13
+    },
+    {
+      "Time": "2026-11-02T01:44:45.211964503Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapDownloadsVerifiesAndExecutesInstaller",
+      "Elapsed": 0.03
+    },
+    {
+      "Time": "2026-11-02T01:44:45.221709149Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapStopsCleanlyWhenInstallerIsUnavailable",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:45.238213663Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapFallsBackToGoForMainWithoutRelease",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T01:44:45.274299263Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapDoesNotBypassBadOfficialChecksum",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-11-02T01:44:45.277063355Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapExplainsLegacyInstallerHandoff",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.279822679Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestShellBootstrapDoesNotStartRefreshedShellWithoutRequest",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.279928277Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestBootstrapScriptsKeepInstallationInNativeBinary",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.280003679Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestWindowsBootstrapUsesPowerShellOnly",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:45.285163792Z",
+      "Action": "fail",
+      "Package": "github.com/wago-org/wago",
+      "Test": "TestGoInstallBuildsNamedInstallerCommand",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T01:44:45.285666036Z",
+      "Action": "fail",
+      "Package": "github.com/wago-org/wago",
+      "Elapsed": 1.528
+    },
+    {
+      "Time": "2026-11-02T01:44:50.251324755Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestPluginSelectionsReadsOneMetadataSnapshot",
+      "Elapsed": 5.07
+    },
+    {
+      "Time": "2026-11-02T01:44:50.25136482Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestScopeGlobal",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:50.251387242Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestSelectPluginScope",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:50.251416016Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestTruthy",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:50.25272199Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestMetadataTransactionRecoversCommittedSplitWrite",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:50.252975567Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestMetadataTransactionRejectsInconsistentPairBeforeCommit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:50.25319551Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestMetadataReadDoesNotRequireOrCreateProjectState",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:50.2538079Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestMetadataTransactionPreservesExistingFileModes",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:50.254380837Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestMetadataTransactionPreservesPriorFileWhenJournalCommitFails",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:50.254949886Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestMetadataTransactionRejectsCorruptRecoveryJournal",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T01:44:50.460259371Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Test": "TestConcurrentDependencyUpdatesAreSerialized",
+      "Elapsed": 0.21
+    },
+    {
+      "Time": "2026-11-02T01:44:50.461213544Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Elapsed": 5.398
+    }
+  ],
+  "driver_unchanged": true
+}
