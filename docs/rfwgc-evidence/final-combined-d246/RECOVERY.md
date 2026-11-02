@@ -1,3 +1,5 @@
+> SUPERSEDED: user authorized 9ad. Do not run these historical d246 continuation commands. See README.md.
+
 # d246 recovery checkpoint
 
 Immutable source: d2464100f1945d38f9d1e25196855fe9699d9875. Initial recovered status: INCOMPLETE, 19 PASS / 198 NOT_RUN of 217. The terminal root/CLI/installer/nested batch now passes all three modes; current counts are in final-summary.json. No Darwin or Windows pass inferred.
