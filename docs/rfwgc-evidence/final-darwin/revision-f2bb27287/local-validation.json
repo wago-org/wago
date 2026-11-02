@@ -9,10 +9,10 @@
     "docs/rfwgc-evidence/final-darwin/run.py": "99737540a9fe880141765854b48706b231b58eb6c55a8dde7e4eb6cf23d845ff",
     "docs/rfwgc-evidence/final-darwin/setup.sh": "c1f39b5b666c3d90a743dbbaeb398b153855be1c2b97f793f93da598eac4716a",
     "docs/rfwgc-evidence/final-darwin/tinygo_setup.py": "5ae54c0d7a27fafd9aba4d8dabe4526150c16d1f9185471a5b903a290dccc074",
-    "docs/rfwgc-evidence/final-darwin/validate_local.py": "5dfa2f87ddf2f50b0eca203cc99bf093f182da684fefe76feff1bac32b69164c",
+    "docs/rfwgc-evidence/final-darwin/validate_local.py": "5968396f752bcce655e43423f1c70f7e22ec48d5e7e9eca89e9e396e6b6e25a6",
     ".github/workflows/ci.yml": "e9cd424dabc20c12eea4fd6a7c6c350f00d25f0287a794d2ebcac8f65b86eada",
     "tests/integration/cipolicy/workflows_test.go": "4cea89e24f19da81d204ed6e509dbb05a79967505f1874280346b5478155d681",
-    "docs/rfwgc-evidence/final-darwin/revision-f2bb27287/contracts.json": "41c890e001c41e9e1ae1991b867a5b6d17394e539ea4d0fd5e0aece9cb7971b5"
+    "docs/rfwgc-evidence/final-darwin/revision-f2bb27287/contracts.json": "10401ad81085297cd5b43a66e1c61fdd99c0e8a5b292dbb218d6cb05a92a3735"
   },
   "plan_integrity": "PASS: 63 exact receipt commands except Go executable and removed failfast",
   "linux_refusal_all_three_modes": [
@@ -430,7 +430,7 @@
         "-count=1"
       ],
       "exit_code": 0,
-      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.047s\n",
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.048s\n",
       "stderr": ""
     },
     {
@@ -453,7 +453,7 @@
         "-count=1"
       ],
       "exit_code": 0,
-      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.049s\n",
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.087s\n",
       "stderr": ""
     },
     {
@@ -477,7 +477,7 @@
         "-count=1"
       ],
       "exit_code": 0,
-      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.049s\n",
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/tools/ci-plan\t0.052s\n",
       "stderr": ""
     },
     {
@@ -514,7 +514,7 @@
         "-count=1"
       ],
       "exit_code": 0,
-      "stdout": "ok  \tgithub.com/wago-org/wago/tests/integration/cipolicy\t0.003s\n",
+      "stdout": "ok  \tgithub.com/wago-org/wago/tests/integration/cipolicy\t0.004s\n",
       "stderr": ""
     },
     {

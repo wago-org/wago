@@ -12,7 +12,7 @@
   },
   "fixtures": {
     "_fixtures/graph.wasm": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
-    "_fixtures/graph_test.go": "4a870bba864d3675eec43fd05aef7425d174a2b78df9303e96d3b3a3cf485315",
+    "_fixtures/graph_test.go": "be828e247b0e6286d18f9b159414c7ccd2baf7bfa5af6ddeebcd1d85b661b101",
     "_fixtures/noGC.wasm": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0",
     "_fixtures/scalar.wasm": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
     "_fixtures/windows_admission_test.go": "448256b41cf12b6e6e93c4d2ab5deab273b5598c2a25bcbec7a0007fff46b416"
