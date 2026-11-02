@@ -64,6 +64,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   small register-only loops with a forward exit while retaining every exit test.
 - Keep inlined ARM64 integer pairs in registers when a bounded leaf consists
   of a pure integer condition and local-only result arms.
+- Fold repeated ARM64 I32 local terms into one shifted add when their exact
+  modular coefficients fit, preserving captured values and trapping operands.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.
