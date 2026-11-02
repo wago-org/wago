@@ -1,0 +1,1109 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T14:31:20.105934274Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T14:31:20.107555698Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryCrossInstanceReentry",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.107907688Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryPanicAndExitComplete/panic",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108069121Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryPanicAndExitComplete/exit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108199055Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/plain/pop=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108226086Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryPanicAndExitComplete/cancel",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108231596Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryPanicAndExitComplete",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108249009Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/plain/pop=7",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108259348Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/plain/pop=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108307609Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/tail/pop=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108339178Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/tail/pop=7",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108368553Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/tail/pop=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108410132Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryPreparedCalls",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108423547Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/legacy/pop=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108439396Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/legacy/pop=7",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108456609Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryPreparedNilPanicComplete",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108470505Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/legacy/pop=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108483379Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryPreparedTypedHostNilPanicComplete",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108539374Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/delta/pop=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.10857978Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/delta/pop=7",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108625967Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/delta/pop=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108646415Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryDirectHostReexportComplete/panic",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108674167Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/delta-disabled/pop=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108704735Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/delta-disabled/pop=7",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108752484Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/delta-disabled/pop=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108777311Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryDirectHostReexportComplete/exit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108815272Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/tail-multigroup/pop=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108866268Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/tail-multigroup/pop=7",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108905311Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryDirectHostReexportComplete/cancel",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108910611Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryDirectHostReexportComplete",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108926461Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/tail-multigroup/pop=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108943403Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/legacy-multigroup/pop=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.108992294Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/legacy-multigroup/pop=7",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109006461Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/legacy-multigroup/pop=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109080089Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/delta-multigroup/pop=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109125384Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/delta-multigroup/pop=7",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109169537Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryDeferredHostEventComplete/panic",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109184295Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing/delta-multigroup/pop=6",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109190807Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestAdapterUnwindFollowsModuleSharing",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109296024Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileBorrowProtectionCopies",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109379932Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryDeferredHostEventComplete/exit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109398076Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFPressurePreservesAllocationAndCode",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109418554Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFPressureExcludesOwnedAndPinnedCaches",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109430667Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileLocalFrameTransfersAreSeparateFromOperandSpills",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109445114Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileCustomSpillSitesCoverEachStoredRegister",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109503314Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileOperandSitesIdentifyActualStackInstructions",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109535153Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFloatVectorLocalTransfers",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109592912Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryDeferredHostEventComplete/cancel",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109600877Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryDeferredHostEventComplete",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109641092Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryReentryNilPanicComplete",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.109804569Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryDirectGuestEntries",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.10985843Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFinalizedLayout/all-exports=true/compact=false/workers=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.110002941Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryConcurrentDirectEntriesAndClose",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.110141872Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFinalizedLayout/all-exports=true/compact=false/workers=4",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.110160597Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryTypedAndReservedEntries",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.110305419Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryReexportedHost",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.110356305Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFinalizedLayout/all-exports=true/compact=true/workers=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.110564125Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileBoundaryReservedHostCalls",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.110583241Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFinalizedLayout/all-exports=true/compact=true/workers=4",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.110761295Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFinalizedLayout/all-exports=false/compact=false/workers=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.110842157Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileLifecycleDefersPhysicalRelease",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.111033235Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileLifecycleStartAncestry",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.111233121Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileLifecycleFailedInitialization",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.111423027Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFinalizedLayout/all-exports=false/compact=false/workers=4",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.111485655Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileLifecycleDefinedInitializationPanicComplete/value",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.111496235Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileLifecycleDefinedInitializationPanicComplete",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.111605309Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFinalizedLayout/all-exports=false/compact=true/workers=1",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.11164299Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileLifecycleImportedInitialization",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.111769828Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFinalizedLayout/all-exports=false/compact=true/workers=4",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.111776731Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFinalizedLayout",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.111831474Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileLifecycleImportedInitializationPanicComplete/panic",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.111997997Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileLifecycleImportedInitializationPanicComplete/exit",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112082105Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileTracksDeferredArithmeticOrigins",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112135926Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileNestedDeferredOrigins",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112162846Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileLifecycleImportedInitializationPanicComplete/cancel",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112169659Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestProfileLifecycleImportedInitializationPanicComplete",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112208742Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileDeferredExpressionOrigins",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112480212Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileInlineConstantArgument",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112510639Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileSharedLifecycleAndCodeNeutrality",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112696919Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileInlineCallerLocations",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112741873Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileStartAndImportIndex",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112763053Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileInlineIdentityKeepsOperandOrigin",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.112846069Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileOpcodeLowering",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.113804618Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileFloatVectorLocalsFinalizedLayout",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.113822261Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileConcurrentInstances",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.114016866Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileArtifactReloadIsExplicitlyUnknown",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.11418395Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=false/compact=false/workers=1/exports=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.114511645Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=false/compact=false/workers=1/exports=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.114746907Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=false/compact=false/workers=4/exports=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.114954677Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=false/compact=false/workers=4/exports=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.115258257Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=false/compact=true/workers=1/exports=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.11560646Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=false/compact=true/workers=1/exports=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.115837053Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=false/compact=true/workers=4/exports=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.116065061Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=false/compact=true/workers=4/exports=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.116333846Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=true/compact=false/workers=1/exports=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.116589506Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=true/compact=false/workers=1/exports=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.11684723Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=true/compact=false/workers=4/exports=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.117008252Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=true/compact=false/workers=4/exports=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.117202727Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=true/compact=true/workers=1/exports=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.117423441Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=true/compact=true/workers=1/exports=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.117592689Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=true/compact=true/workers=4/exports=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.117815558Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames/reg=true/compact=true/workers=4/exports=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.11782215Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileUnwindFinalizedFixedFrames",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.118708754Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Test": "TestProfileSharedSourceRecordingFallback",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.119286258Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Elapsed": 0.013
+    },
+    {
+      "Time": "2026-11-02T14:31:20.119363403Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileCorpusLayouts/many_funcs",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.120268352Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileCorpusLayouts/matmul",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.122466578Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124569756Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileInstructionUnwindCallerRAAndOverwrite",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124585706Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileInstructionUnwindMergeAndEpilogue",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124595405Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileInstructionFloatStoreInvalidatesCallerRA",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124761176Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileInstructionUnrequestedMetadataDoesNotAllocate",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124774901Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileInstructionUnknownStoreCannotClaimSavedRA",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124796312Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataFinalCoordinatesAndGaps",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.12483297Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/entry-overlap",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124845344Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/missing-prefix",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124857126Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/oversized-code",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.12486993Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-empty",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124894045Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-helper",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124908502Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-overlap",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124919623Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/wasm-coordinate-overflow",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124934541Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/entry-gap",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124949549Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/entry-alignment",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124961011Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/negative-prefix",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124971641Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/body-gap",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124988232Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/body-omission",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.124998201Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-outside",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125012427Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/oversized-epilogue",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125022456Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/missing-epilogue",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125038126Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/body-overrun",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125048435Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-unaligned",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125058584Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-function",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125069665Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-after-body",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125079964Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/native-coordinate-overflow",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125090263Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/function-index",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.12510449Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/function-order",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125114629Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/unaligned-body",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125130088Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/unknown-kind",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125140297Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-before-body",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125150316Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-overflow",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125160315Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-inline",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125171576Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally/source-before-decls",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125178188Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataRejectsMalformedLayoutsTransactionally",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125189209Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileMetadataEmptyImagesAndBudget",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125959445Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfileSourceRecorderOriginsBoundsAndReuse",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.125984562Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Test": "TestProfilePublicCoordinatesExceedPrivatePilot",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.12643067Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T14:31:20.129185912Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared",
+      "Test": "TestProfileCompilerSitesFollowRollbackAndCompaction",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.129375728Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T14:31:20.134704411Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileCorpusLayouts/json-as",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:31:20.150273938Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileCorpusLayouts/json-as-simd",
+      "Elapsed": 0.02
+    },
+    {
+      "Time": "2026-11-02T14:31:20.150282805Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileCorpusLayouts",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-11-02T14:31:20.15067994Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileAttachLiveMappings/closed=false",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.150875498Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileAttachLiveMappings/closed=true",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.150881258Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileAttachLiveMappings",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.151001053Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileAttachRejectsLiveBoundaryTracing",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T14:31:20.158614826Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestCodeProfileAttachOwnedThunksAndConcurrentRetirement",
+      "Elapsed": 0.01
+    },
+    {
+      "Time": "2026-11-02T14:31:20.159643938Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 0.055
+    }
+  ],
+  "raw_sha256": "9359b789de7649fcc75fc369cc335d44070d46a8fe55ded679a17da805873cb6",
+  "driver_unchanged": true
+}

@@ -1,6 +1,6 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 102,
+  "remaining_count": 84,
   "remaining": [
     {
       "suite": "graphs-port-ordinary",
@@ -93,12 +93,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "runtime-cli-build-ordinary",
-      "receipt_suite": "runtime-cli-build-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "runtime-cli-build-wagodebug",
       "receipt_suite": "runtime-cli-build-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -111,12 +105,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "profile-metadata-ordinary",
-      "receipt_suite": "profile-metadata-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "profile-metadata-wagodebug",
       "receipt_suite": "profile-metadata-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -125,12 +113,6 @@
     {
       "suite": "profile-metadata-wago_regalloccheck",
       "receipt_suite": "profile-metadata-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "profile-runtime-ordinary",
-      "receipt_suite": "profile-runtime-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -150,7 +132,7 @@
       "suite": "shared-scalar-ordinary",
       "receipt_suite": "shared-scalar-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "shared-scalar-wagodebug",
@@ -255,66 +237,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "hardening-wago_regalloccheck",
-      "receipt_suite": "hardening-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "hardening-wagodebug,wago_guardpage",
-      "receipt_suite": "hardening-wagodebug,wago_guardpage",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "hardening-wago_regalloccheck,wago_guardpage",
-      "receipt_suite": "hardening-wago_regalloccheck,wago_guardpage",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "host-transition-wagodebug",
-      "receipt_suite": "host-transition-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "host-transition-wago_regalloccheck",
-      "receipt_suite": "host-transition-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "host-transition-wagodebug,wago_guardpage",
-      "receipt_suite": "host-transition-wagodebug,wago_guardpage",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "host-transition-wago_regalloccheck,wago_guardpage",
-      "receipt_suite": "host-transition-wago_regalloccheck,wago_guardpage",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-facade/arm64-ordinary-facade",
-      "receipt_suite": "qemu-facade/arm64-ordinary-facade",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-facade/arm64-wagodebug-facade",
-      "receipt_suite": "qemu-facade/arm64-wagodebug-facade",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-facade/arm64-wago_regalloccheck-facade",
-      "receipt_suite": "qemu-facade/arm64-wago_regalloccheck-facade",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "qemu-guest/arm64-ordinary-guest",
       "receipt_suite": "qemu-guest/arm64-ordinary-guest",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -329,30 +251,6 @@
     {
       "suite": "qemu-guest/arm64-wago_regalloccheck-guest",
       "receipt_suite": "qemu-guest/arm64-wago_regalloccheck-guest",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-collector/riscv64-wago_regalloccheck-collector",
-      "receipt_suite": "qemu-collector/riscv64-wago_regalloccheck-collector",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-facade/riscv64-ordinary-facade",
-      "receipt_suite": "qemu-facade/riscv64-ordinary-facade",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-facade/riscv64-wagodebug-facade",
-      "receipt_suite": "qemu-facade/riscv64-wagodebug-facade",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "qemu-facade/riscv64-wago_regalloccheck-facade",
-      "receipt_suite": "qemu-facade/riscv64-wago_regalloccheck-facade",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
     },
@@ -417,16 +315,10 @@
       "verdict": "FAIL"
     },
     {
-      "suite": "tinygo-34/ci-runtime",
-      "receipt_suite": "tinygo-34/ci-runtime",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
       "suite": "tinygo-34/ci-cli",
       "receipt_suite": "tinygo-34/ci-cli",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/ci-cli-smoke",
@@ -670,16 +562,33 @@
     "tooling-vet-ordinary",
     "tooling-vet-wagodebug",
     "tooling-vet-wago_regalloccheck",
+    "runtime-cli-build-ordinary",
+    "profile-metadata-ordinary",
+    "profile-runtime-ordinary",
     "hardening-ordinary",
     "hardening-wagodebug",
+    "hardening-wago_regalloccheck",
     "hardening-wago_guardpage",
+    "hardening-wagodebug,wago_guardpage",
+    "hardening-wago_regalloccheck,wago_guardpage",
     "host-transition-ordinary",
+    "host-transition-wagodebug",
+    "host-transition-wago_regalloccheck",
     "host-transition-wago_guardpage",
+    "host-transition-wagodebug,wago_guardpage",
+    "host-transition-wago_regalloccheck,wago_guardpage",
     "qemu-collector/arm64-ordinary-collector",
     "qemu-collector/arm64-wagodebug-collector",
     "qemu-collector/arm64-wago_regalloccheck-collector",
+    "qemu-facade/arm64-ordinary-facade",
+    "qemu-facade/arm64-wagodebug-facade",
+    "qemu-facade/arm64-wago_regalloccheck-facade",
     "qemu-collector/riscv64-ordinary-collector",
     "qemu-collector/riscv64-wagodebug-collector",
+    "qemu-collector/riscv64-wago_regalloccheck-collector",
+    "qemu-facade/riscv64-ordinary-facade",
+    "qemu-facade/riscv64-wagodebug-facade",
+    "qemu-facade/riscv64-wago_regalloccheck-facade",
     "tooling-generate",
     "replay-generated-diff",
     "replay-docs",
@@ -708,6 +617,7 @@
     "tinygo-34/standalone-wago_regalloccheck",
     "tinygo-34/guest-threads-wago_regalloccheck",
     "tinygo-34/ci-checkers",
+    "tinygo-34/ci-runtime",
     "fuzz-FuzzStructCardDifferential",
     "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic",
     "fuzz-FuzzNormalizeWABTJSONDoesNotPanic",
