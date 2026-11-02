@@ -160,7 +160,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if tt, ok := f.m.TableType(tableIdx); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+	if tt, ok := f.m.TableType(tableIdx); ok && wasm.ExternReferenceType(wasm.RefVal(tt.Ref)) {
 		indexType := wasm.I32
 		if tt.Limits.Addr64 {
 			indexType = wasm.I64
@@ -240,7 +240,7 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if tt, ok := f.m.TableType(dstTableIdx); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+	if tt, ok := f.m.TableType(dstTableIdx); ok && wasm.ExternReferenceType(wasm.RefVal(tt.Ref)) {
 		indexType := wasm.I32
 		if tt.Limits.Addr64 {
 			indexType = wasm.I64
@@ -330,7 +330,7 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if tt, ok := f.m.TableType(tableIdx); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+	if tt, ok := f.m.TableType(tableIdx); ok && wasm.ExternReferenceType(wasm.RefVal(tt.Ref)) {
 		indexType := wasm.I32
 		if tt.Limits.Addr64 {
 			indexType = wasm.I64
@@ -421,7 +421,7 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if tt, ok := f.m.TableType(tableIdx); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+	if tt, ok := f.m.TableType(tableIdx); ok && wasm.ExternReferenceType(wasm.RefVal(tt.Ref)) {
 		indexType := wasm.I32
 		if tt.Limits.Addr64 {
 			indexType = wasm.I64
@@ -593,7 +593,7 @@ func (f *fn) tableSet(r *wasm.Reader) error {
 		return err
 	}
 	f.materializePendingTraps()
-	if tt, ok := f.m.TableType(tableIdx); ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef) {
+	if tt, ok := f.m.TableType(tableIdx); ok && wasm.ExternReferenceType(wasm.RefVal(tt.Ref)) {
 		indexType := wasm.I32
 		if tt.Limits.Addr64 {
 			indexType = wasm.I64

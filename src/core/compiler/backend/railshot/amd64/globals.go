@@ -169,7 +169,7 @@ func (f *fn) globalSetIndex(x uint32) error {
 	}
 	f.materializePendingTraps()
 	gtv := wasm.GlobalValueType(gt)
-	if wasm.EqualValType(gtv, wasm.ExternRef) {
+	if wasm.ExternReferenceType(gtv) {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(x)})
 		return f.callGCStructHelper(54, []wasm.ValType{gtv, wasm.I32}, nil)
 	}

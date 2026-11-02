@@ -634,7 +634,7 @@ func tableSetMayCall(m *wasm.Module, index uint32) bool {
 	// references, without allocating a type lookup table during hint collection.
 	if tt.Ref.Heap().Kind() == wasm.HeapAbs {
 		switch tt.Ref.Heap().Abs() {
-		case wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapNoExtern:
+		case wasm.HeapFunc, wasm.HeapNoFunc:
 			return false
 		}
 	}
