@@ -1,0 +1,5 @@
+{
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "reason": "Infrastructure: shared /home/dev filled; prevent new gates until durable evidence storage is available. Not a source defect.",
+  "at": "2026-11-02T05:49:50.093080+00:00"
+}
