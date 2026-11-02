@@ -76,6 +76,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   exit test, and exchange pair register roles across parallel additions when
   all early exits can restore the original local homes. Use a conditional
   backedge for these alternating pairs to avoid a separate branch per group.
+- Retain inlined ARM64 integer tuple results across a fallthrough-only helper
+  boundary, and assign immediate caller locals before copying private results
+  into temporary registers. Preserve ordinary merges for returns and branches
+  to the helper boundary.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.

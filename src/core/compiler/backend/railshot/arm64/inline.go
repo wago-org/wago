@@ -1010,7 +1010,7 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 // their next parameter binding preserves outstanding reads through setLocal.
 // A straight-line callee runs on the frameless path; a control-flow callee runs
 // under a synthetic boundary frame (inlineBodyCtrl).
-func (f *fn) inlineCall(t *inlineTarget) error {
+func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	f.stats.call(callKindInline)
 	start := f.a.Len()
 	base := f.inlineBase[t.globalIdx]
@@ -1053,6 +1053,9 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	f.inlineDepth = oldInlineDepth
 	f.traceFuncIdx, f.tracePCBase, f.wasmPC = oldTraceFunc, oldTraceBase, oldPC
 	if err != nil {
+		return err
+	}
+	if err := f.consumeInlineTupleStores(t, caller); err != nil {
 		return err
 	}
 
@@ -1170,6 +1173,10 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 		height:      f.depth(),
 	}
 	fr.set(ctrlRegMerge1, f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128)
+	if f.inlineTupleFallsThrough(t) {
+		fr.controlSite = inlineTupleFallthroughSite
+		f.stats.peep("inline-tuple-fallthrough")
+	}
 	f.setFrameBaseTypes(&fr, f.currentLogicalTypes())
 	f.flush()
 	f.pushCtrl(&fr)

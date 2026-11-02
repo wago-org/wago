@@ -10,6 +10,118 @@ import (
 	rt "github.com/wago-org/wago/src/core/runtime"
 )
 
+func TestInlineTupleFallthroughKeepsResultsAndRejectsBoundaryEdges(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		typ, bt, k, add, mul, div := wasm.I32, byte(0x7f), byte(0x41), byte(0x6a), byte(0x6c), byte(0x6e)
+		fold := func(x uint64) uint64 { return uint64(uint32(x)) }
+		if wide {
+			typ, bt, k, add, mul, div = wasm.I64, 0x7e, 0x42, 0x7c, 0x7e, 0x80
+			fold = func(x uint64) uint64 { return x }
+		}
+		for _, variant := range []string{"fallthrough", "inner-branch", "boundary-br", "nested-boundary-br", "root-br", "return", "mutate", "division", "drop-result", "caller-alias", "same-destination", "one-store", "unreachable", "compact"} {
+			// A real loop keeps this in the bounded control-tuple class. Caller
+			// local0 remains live below the call, independently of private homes.
+			helper := []byte{0, 0x03, 0x40, 0x0b, 0x20, 0, 0x20, 1, 0x0b}
+			switch variant {
+			case "inner-branch":
+				helper = []byte{0, 0x03, 0x40, 0x02, 0x40, 0x20, 2, 0x0d, 0, 0x01, 0x0b, 0x0b, 0x20, 0, 0x20, 1, 0x0b}
+			case "boundary-br", "nested-boundary-br":
+				helper = []byte{0, 0x03, 0x40}
+				label := byte(1)
+				if variant == "nested-boundary-br" {
+					helper = append(helper, 0x02, 0x40)
+					label = 2
+				}
+				helper = append(helper, 0x20, 0, 0x20, 1, 0x20, 2, 0x0d, label, 0x1a, 0x1a, 0x0b)
+				if variant == "nested-boundary-br" {
+					helper = append(helper, 0x0b)
+				}
+				helper = append(helper, 0x20, 1, 0x20, 0, 0x0b)
+			case "root-br", "return":
+				helper = helper[:len(helper)-1]
+				if variant == "root-br" {
+					helper = append(helper, 0x0c, 0)
+				} else {
+					helper = append(helper, 0x0f)
+				}
+				helper = append(helper, 0x0b)
+			case "mutate":
+				helper = append([]byte{0, 0x20, 0, k, 1, add, 0x21, 0}, helper[1:]...)
+			case "division", "drop-result":
+				helper = []byte{0, 0x03, 0x40, 0x0b, 0x20, 0, 0x20, 1, div, 0x20, 1, 0x0b}
+			case "unreachable":
+				helper = []byte{0, 0x03, 0x40, 0x0b, 0x00, 0x0b}
+			}
+			low, high := byte(3), byte(4)
+			if variant == "caller-alias" {
+				low, high = 0, 1
+			} else if variant == "same-destination" {
+				high = low
+			}
+			caller := []byte{1, 2, bt, 0x20, 0, 0x20, 0, 0x20, 1, 0x20, 2, 0x10, 1, 0x21, high, 0x21, low, 0x20, low, k, 3, mul, 0x20, high, k, 5, mul, add, add, 0x0b}
+			if variant == "one-store" {
+				caller = []byte{1, 2, bt, 0x20, 0, 0x20, 0, 0x20, 1, 0x20, 2, 0x10, 1, 0x21, 4, k, 3, mul, 0x20, 4, k, 5, mul, add, add, 0x0b}
+			} else if variant == "drop-result" {
+				caller = []byte{0, 0x20, 0, 0x20, 0, 0x20, 1, 0x20, 2, 0x10, 1, 0x1a, 0x1a, k, 7, add, 0x0b}
+			}
+			params := []wasm.ValType{typ, typ, wasm.I32}
+			m := modFuncs(t, funcDef{params, []wasm.ValType{typ}, caller}, funcDef{params, []wasm.ValType{typ, typ}, helper})
+			for _, enabled := range []bool{false, true} {
+				for _, workers := range []int{1, 4} {
+					for _, flag := range []uint64{0, 1, 0xdeadbeef00000000, ^uint64(0)} {
+						for _, input := range [][2]uint64{{7, 3}, {^uint64(0), 0x8000000080000001}, {17, 0}} {
+							a, b := fold(input[0]), fold(input[1])
+							first, second := a, b
+							if (variant == "boundary-br" || variant == "nested-boundary-br") && uint32(flag) == 0 {
+								first, second = b, a
+							}
+							if variant == "mutate" {
+								first = fold(a + 1)
+							}
+							if (variant == "division" || variant == "drop-result") && b != 0 {
+								first = a / b
+							}
+							if variant == "same-destination" {
+								second = first
+							}
+							var stats ModuleStats
+							opts := CompileOptions{Workers: workers, CompactNative: variant == "compact", Optimizations: map[string]bool{"inline-integer-tuples": enabled}}
+							if diagnosticsEnabled {
+								opts.Stats = &stats
+							}
+							got, err := runArm64WrapperWithOptions(t, m, opts, input[0], input[1], flag)
+							want := fold(a + 3*first + 5*second)
+							if variant == "drop-result" {
+								want = fold(a + 7)
+							}
+							if variant == "unreachable" || (variant == "division" || variant == "drop-result") && b == 0 {
+								code := rt.TrapUnreachable
+								if variant != "unreachable" {
+									code = rt.TrapDivZero
+								}
+								var trap *rt.TrapError
+								if !errors.As(err, &trap) || trap.Code != code {
+									t.Fatalf("variant=%s got trap %v, want %v", variant, err, code)
+								}
+							} else if err != nil || fold(got) != want {
+								t.Fatalf("wide=%t variant=%s enabled=%t workers=%d input=%x flag=%x got=%x err=%v want=%x", wide, variant, enabled, workers, input, flag, got, err, want)
+							}
+							positive := variant == "fallthrough" || variant == "inner-branch" || variant == "mutate" || variant == "division" || variant == "drop-result" || variant == "caller-alias" || variant == "same-destination" || variant == "one-store" || variant == "unreachable"
+							if diagnosticsEnabled && (stats.Funcs[0].Peephole["inline-tuple-fallthrough"] != 0) != (enabled && positive && !profileEnabled) {
+								t.Fatalf("fallthrough proof variant=%s enabled=%t stats=%v", variant, enabled, stats.Funcs[0].Peephole)
+							}
+							stores := positive && variant != "drop-result" && variant != "one-store" && variant != "unreachable"
+							if diagnosticsEnabled && (stats.Funcs[0].Peephole["inline-tuple-result-stores"] != 0) != (enabled && stores && !profileEnabled) {
+								t.Fatalf("tuple store path variant=%s enabled=%t stats=%v", variant, enabled, stats.Funcs[0].Peephole)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestInlineIntegerTupleArgumentsPreserveTrapOrder(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		typ, bt, k, divS, divU, eqz, sub, add := wasm.I32, byte(0x7f), byte(0x41), byte(0x6d), byte(0x6e), byte(0x45), byte(0x6b), byte(0x6a)
@@ -39,6 +151,9 @@ func TestInlineIntegerTupleArgumentsPreserveTrapOrder(t *testing.T) {
 				}
 				if diagnosticsEnabled && (stats.Funcs[0].Calls[callKindInline] == 1) != (enabled && !profileEnabled) {
 					t.Fatal("did not exercise expanded tuple inlining")
+				}
+				if diagnosticsEnabled && (stats.Funcs[0].Peephole["inline-tuple-fallthrough"] == 1) != (enabled && !profileEnabled) {
+					t.Fatalf("fallthrough tuple path mismatch: enabled=%t stats=%v", enabled, stats.Funcs[0].Peephole)
 				}
 				for _, tc := range []struct {
 					args [3]uint64

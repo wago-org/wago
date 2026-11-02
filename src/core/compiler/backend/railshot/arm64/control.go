@@ -2647,6 +2647,15 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	// variable-sized type and loop-analysis slices do not stay live in scratch.
 	f.popCtrl()
 
+	if fr.isInlineTupleFallthrough() {
+		f.releaseCtrlMerge(&fr)
+		f.releaseFrameBaseTypes(&fr)
+		if firstEnd != 0 || secondEnd != 0 || len(ends) != 0 || len(coldEdges) != 0 || !f.unreachable && f.depth() != fr.height+fr.resultN {
+			return fmt.Errorf("arm64: inline tuple fallthrough boundary mismatch")
+		}
+		return nil
+	}
+
 	if fr.isStraightLineBlock() {
 		f.releaseCtrlMerge(&fr)
 		if f.unreachable || f.depth() != fr.height+fr.resultN {
