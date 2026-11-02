@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo && !wago_target_tinygo
+//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -65,6 +65,8 @@ func TestR9H2ConvertedAggregateAdmissionControls(t *testing.T) {
 	}
 }
 
+var r9H2StoppedStores []*referenceStore
+
 // This bounded local-owner control never retires a publisher with a foreign
 // container receipt. It qualifies allocating converted function aggregates and
 // exact frame maps while the conversion owner is alive.
@@ -91,7 +93,7 @@ func TestR9H2ConvertedAggregateCollectingLocalOwner(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			r9OwnershipStoppedStores = append(r9OwnershipStoppedStores, in.refStore)
+			r9H2StoppedStores = append(r9H2StoppedStores, in.refStore)
 			if !in.hasPhysicalResources() {
 				t.Fatal("STOP missing producer before collecting constructor")
 			}
