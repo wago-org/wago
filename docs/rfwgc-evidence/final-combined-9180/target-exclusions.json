@@ -1,0 +1,15 @@
+{
+  "source": "9180f09f7590d029bc90df2fa20c0decc590505a",
+  "Darwin ARM64": {
+    "execution": "NOT_RUN",
+    "blocker": "No available native or remote Darwin runner; cross-build cannot establish execution."
+  },
+  "Windows AMD64": {
+    "execution": "NOT_RUN",
+    "blocker": "No available Windows execution runner; cross-build cannot establish execution."
+  },
+  "RV64": "Compact ownership controls only; host-opaque H2 receipts unsupported.",
+  "TinyGo": "Host-opaque publication rejected; safe conversion and ordinary public table remain required.",
+  "baseline": "Never execute unsafe noinline/lifetime clang-cpp configuration.",
+  "external references": "Captured external runtimes are not fresh execution."
+}
