@@ -1,0 +1,53 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "exports": [
+    {
+      "export": "/home/dev/.cache/_wago_final_5b02_n61wfxab/source",
+      "checked": 19623,
+      "changes": []
+    },
+    {
+      "export": "/home/dev/.cache/_wago_final_5b02_n61wfxab/tooling",
+      "checked": 19623,
+      "changes": []
+    },
+    {
+      "export": "/home/dev/.cache/_wago_final_5b02_n61wfxab/baseline",
+      "checked": 7898,
+      "changes": []
+    }
+  ],
+  "receipts": [
+    {
+      "suite": "version-go",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c"
+    },
+    {
+      "suite": "version-node",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "6a0cec2e157365c1a8ac6d1715733b7c3321a7c5565862a701ca71ef00359d04"
+    },
+    {
+      "suite": "version-ocaml",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "18ac9b658e25d14212772d36407e0faf612281f83d6d1aa3b698bb6a1f59e52c"
+    },
+    {
+      "suite": "version-tinygo",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "ba20ab3c07a98ec81ee682d57218300d755e14a480ec11129a55714c78c0af02"
+    },
+    {
+      "suite": "version-wabt",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "exit": 0,
+      "raw_sha256": "c2601ed6a60da949eef7fe69539703c387aa3b41544dd15f574763471b0bd26e"
+    }
+  ],
+  "passed": true
+}
