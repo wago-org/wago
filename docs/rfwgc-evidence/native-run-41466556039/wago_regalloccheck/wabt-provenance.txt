@@ -1,0 +1,6 @@
+version=1.0.41
+platform=linux-arm64
+archive_sha256=5e35416ee8725dc7cc0572e4392a8117cbf008b0e34c0db65c75506b0299cdbf
+source_build=false
+bootstrap_sha256=3e9ffd6c9e068dcc45d9463bd2a30de680f519e4f44deb8394c4600dca053b4c
+binary_sha256=26e6fe02eeed144d0c91d8fcdf257d994b33d7e6885aa93e92a54d45027d5cee

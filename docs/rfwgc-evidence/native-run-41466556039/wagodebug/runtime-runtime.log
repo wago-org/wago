@@ -1,0 +1,47 @@
+{"Action":"start","Package":"./src/core/runtime"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestDeadlineCapacityAdmission"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestDeadlineCapacityAdmission","Output":"=== RUN   TestDeadlineCapacityAdmission\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestDeadlineCapacityAdmission","Output":"--- PASS: TestDeadlineCapacityAdmission (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestDeadlineCapacityAdmission"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestInterruptRequestSharedOwnership"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptRequestSharedOwnership","Output":"=== RUN   TestInterruptRequestSharedOwnership\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptRequestSharedOwnership","Output":"--- PASS: TestInterruptRequestSharedOwnership (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestInterruptRequestSharedOwnership"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestAsyncInterruptRetainsQueuedDeliveryToken"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestAsyncInterruptRetainsQueuedDeliveryToken","Output":"=== RUN   TestAsyncInterruptRetainsQueuedDeliveryToken\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestAsyncInterruptRetainsQueuedDeliveryToken","Output":"--- PASS: TestAsyncInterruptRetainsQueuedDeliveryToken (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestAsyncInterruptRetainsQueuedDeliveryToken"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestInterruptLinearMemoryCapacityReturnsTypedError"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptLinearMemoryCapacityReturnsTypedError","Output":"=== RUN   TestInterruptLinearMemoryCapacityReturnsTypedError\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptLinearMemoryCapacityReturnsTypedError","Output":"--- PASS: TestInterruptLinearMemoryCapacityReturnsTypedError (0.01s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestInterruptLinearMemoryCapacityReturnsTypedError"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestUnregisterWaitsForSignalReaders"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestUnregisterWaitsForSignalReaders","Output":"=== RUN   TestUnregisterWaitsForSignalReaders\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestUnregisterWaitsForSignalReaders","Output":"--- PASS: TestUnregisterWaitsForSignalReaders (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestUnregisterWaitsForSignalReaders"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestInterruptLinearMemoryRegistrationScansPastHoles"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptLinearMemoryRegistrationScansPastHoles","Output":"=== RUN   TestInterruptLinearMemoryRegistrationScansPastHoles\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptLinearMemoryRegistrationScansPastHoles","Output":"--- PASS: TestInterruptLinearMemoryRegistrationScansPastHoles (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestInterruptLinearMemoryRegistrationScansPastHoles"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestInterruptSignalOwnership"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptSignalOwnership","Output":"=== RUN   TestInterruptSignalOwnership\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptSignalOwnership","Output":"--- PASS: TestInterruptSignalOwnership (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestInterruptSignalOwnership"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestInterruptTokenChangesOnTrapReuse"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptTokenChangesOnTrapReuse","Output":"=== RUN   TestInterruptTokenChangesOnTrapReuse\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptTokenChangesOnTrapReuse","Output":"--- PASS: TestInterruptTokenChangesOnTrapReuse (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestInterruptTokenChangesOnTrapReuse"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestInterruptIdleGenerationRollover"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptIdleGenerationRollover","Output":"=== RUN   TestInterruptIdleGenerationRollover\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptIdleGenerationRollover","Output":"--- PASS: TestInterruptIdleGenerationRollover (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestInterruptIdleGenerationRollover"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestInterruptRequestPublishesTokenBeforeTrap"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptRequestPublishesTokenBeforeTrap","Output":"=== RUN   TestInterruptRequestPublishesTokenBeforeTrap\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptRequestPublishesTokenBeforeTrap","Output":"--- PASS: TestInterruptRequestPublishesTokenBeforeTrap (0.02s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestInterruptRequestPublishesTokenBeforeTrap"}
+{"Action":"run","Package":"./src/core/runtime","Test":"TestInterruptRequestSharedOwnerRetainsToken"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptRequestSharedOwnerRetainsToken","Output":"=== RUN   TestInterruptRequestSharedOwnerRetainsToken\n","OutputType":"frame"}
+{"Action":"output","Package":"./src/core/runtime","Test":"TestInterruptRequestSharedOwnerRetainsToken","Output":"--- PASS: TestInterruptRequestSharedOwnerRetainsToken (0.00s)\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime","Test":"TestInterruptRequestSharedOwnerRetainsToken"}
+{"Action":"output","Package":"./src/core/runtime","Output":"PASS\n","OutputType":"frame"}
+{"Action":"pass","Package":"./src/core/runtime"}
