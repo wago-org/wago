@@ -1,30 +1,12 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 143,
+  "remaining_count": 138,
   "remaining": [
-    {
-      "suite": "race-wago_regalloccheck",
-      "receipt_suite": "race-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
-    {
-      "suite": "guard-wago_regalloccheck",
-      "receipt_suite": "guard-wago_regalloccheck",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "baseline-corpus-ordinary",
-      "receipt_suite": "baseline-corpus-ordinary",
-      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-      "verdict": "RUNNING"
-    },
     {
       "suite": "baseline-corpus-wagodebug",
       "receipt_suite": "baseline-corpus-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "source": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
+      "verdict": "RUNNING"
     },
     {
       "suite": "baseline-corpus-wago_regalloccheck",
@@ -69,12 +51,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "spec-v3-signals-ordinary",
-      "receipt_suite": "spec-v3-signals-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "spec-v3-signals-wagodebug",
       "receipt_suite": "spec-v3-signals-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -90,7 +66,7 @@
       "suite": "guard-corpus-ordinary",
       "receipt_suite": "guard-corpus-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "guard-corpus-wagodebug",
@@ -543,16 +519,10 @@
       "verdict": "FAIL"
     },
     {
-      "suite": "tinygo-34/host-ordinary",
-      "receipt_suite": "tinygo-34/host-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "INTERRUPTED"
-    },
-    {
       "suite": "tinygo-34/standalone-ordinary",
       "receipt_suite": "tinygo-34/standalone-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-34/guest-threads-ordinary",
@@ -879,14 +849,17 @@
     "collector-wago_regalloccheck",
     "race-ordinary",
     "race-wagodebug",
+    "race-wago_regalloccheck",
     "parent-race-reduced-ordinary",
     "parent-race-reduced-wagodebug",
     "parent-race-reduced-wago_regalloccheck",
     "guard-ordinary",
     "guard-wagodebug",
+    "guard-wago_regalloccheck",
     "corpus-ordinary",
     "corpus-wagodebug",
     "corpus-wago_regalloccheck",
+    "baseline-corpus-ordinary",
     "catalog-ordinary",
     "catalog-wagodebug",
     "catalog-wago_regalloccheck",
@@ -899,6 +872,7 @@
     "spec-v3-ordinary",
     "spec-v3-wagodebug",
     "spec-v3-wago_regalloccheck",
+    "spec-v3-signals-ordinary",
     "tooling-build-ordinary",
     "tooling-build-wagodebug",
     "tooling-build-wago_regalloccheck",
@@ -923,6 +897,7 @@
     "tooling-script-check-diagnostic-dce.sh",
     "tooling-script-check-riscv64-diagnostics.sh",
     "tooling-script-check-regalloc-code.sh",
+    "tinygo-34/host-ordinary",
     "early-replay-discovery-ordinary",
     "early-replay-compile-ordinary",
     "early-replay-cipolicy-ordinary",
