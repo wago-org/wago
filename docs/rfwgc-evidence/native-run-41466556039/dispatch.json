@@ -1,0 +1,17 @@
+{
+  "run_id": 41466556039,
+  "url": "https://github.com/wago-org/wago/actions/runs/41466556039",
+  "recorded_at": "2026-11-02T14:55:40.564000+00:00",
+  "source": "08f511fac41a77f4c0f9046f88ebc78ad05a5da6",
+  "harness": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
+  "review": "57c04aa09c53321e86a8358ae7fc53688af82b2b",
+  "lane": "Linux_ARM64",
+  "ceiling_job_minutes": 138,
+  "inputs": {
+    "darwin_tinygo_supplement": false,
+    "darwin_qualification": false,
+    "native_arm64_rr3": true
+  },
+  "verdict": "PENDING_NATIVE_RECEIPTS",
+  "measurements": false
+}
