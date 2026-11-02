@@ -1,0 +1,10 @@
+{
+  "url": "https://github.com/wago-org/wago/actions/runs/41445401972",
+  "source": "5847df30f1af15d10b743d90a24b1429b290d358",
+  "harness": "4af18b3a2484b901e11f7347adab8e547176dbc6",
+  "review": "ccfa39bd9604830cd10f73d5d764c2fd54687542",
+  "recorded_at": "2026-11-02T12:31:39.642233+00:00",
+  "status": "DISPATCHED; results pending",
+  "correction": "backend-only wago_codegenstats; original census and probes retained",
+  "prior_failed_run": 41442912023
+}
