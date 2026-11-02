@@ -1,13 +1,7 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 160,
+  "remaining_count": 156,
   "remaining": [
-    {
-      "suite": "full-root-replay-wagodebug",
-      "receipt_suite": "full-root-replay-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
-    },
     {
       "suite": "full-root-replay-wago_regalloccheck",
       "receipt_suite": "full-root-replay-wago_regalloccheck",
@@ -18,7 +12,7 @@
       "suite": "cli-wagodebug",
       "receipt_suite": "cli-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "cli-wago_regalloccheck",
@@ -51,12 +45,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "collector-wagodebug",
-      "receipt_suite": "collector-wagodebug",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "collector-wago_regalloccheck",
       "receipt_suite": "collector-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
@@ -66,19 +54,13 @@
       "suite": "race-wagodebug",
       "receipt_suite": "race-wagodebug",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "race-wago_regalloccheck",
       "receipt_suite": "race-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
       "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "guard-ordinary",
-      "receipt_suite": "guard-ordinary",
-      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "RUNNING"
     },
     {
       "suite": "guard-wagodebug",
@@ -96,7 +78,7 @@
       "suite": "corpus-ordinary",
       "receipt_suite": "corpus-ordinary",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "corpus-wagodebug",
@@ -955,24 +937,21 @@
       "receipt_suite": null,
       "source": null,
       "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "baseline-canonical-checked-preflight",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
     }
   ],
   "completed": [
     "full-root-replay-ordinary",
+    "full-root-replay-wagodebug",
     "cli-ordinary",
     "installer-ordinary",
     "nested-ordinary",
     "collector-ordinary",
+    "collector-wagodebug",
     "race-ordinary",
     "parent-race-reduced-ordinary",
     "parent-race-reduced-wagodebug",
     "parent-race-reduced-wago_regalloccheck",
+    "guard-ordinary",
     "catalog-ordinary",
     "catalog-wagodebug",
     "catalog-wago_regalloccheck",
@@ -1021,6 +1000,7 @@
     "early-replay-compile-wago_regalloccheck",
     "early-replay-cipolicy-wago_regalloccheck",
     "repair-census-wago_regalloccheck",
+    "baseline-canonical-checked-preflight",
     "tinygo-unsupported-global-ordinary",
     "tinygo-unsupported-global-wagodebug",
     "tinygo-unsupported-global-wago_regalloccheck"
