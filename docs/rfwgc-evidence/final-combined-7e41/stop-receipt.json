@@ -1,0 +1,14 @@
+{
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "root_scheduler_exit": 75,
+  "last_root_terminal_gate": "cli-ordinary",
+  "last_root_terminal_exit": 0,
+  "next_root_gate_not_started": "installer-ordinary",
+  "tooling_scheduler_exit": 1,
+  "failed_tooling_gate": "tooling-staticcheck",
+  "next_tooling_gate_not_started": "tooling-native-compare",
+  "spec_scheduler_exit": 0,
+  "classification": "STOP_ON_NEW_VERIFIED_STATICCHECK_FAILURE",
+  "drained": true,
+  "no_process_killed_for_stop": true
+}

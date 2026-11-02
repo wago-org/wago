@@ -1,13 +1,13 @@
 {
   "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
   "baseline": "a3c08365f531eb3c9003e3acf3e0a822c12c31f4",
-  "verdict": "INCOMPLETE",
+  "verdict": "FAILED / INCOMPLETE",
   "required": [
     {
       "suite": "full-root-replay-ordinary",
       "receipt_suite": "full-root-replay-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "full-root-replay-wagodebug",
@@ -25,7 +25,7 @@
       "suite": "cli-ordinary",
       "receipt_suite": "cli-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "cli-wagodebug",
@@ -241,55 +241,55 @@
       "suite": "spec-v1-ordinary",
       "receipt_suite": "spec-v1-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v1-wagodebug",
       "receipt_suite": "spec-v1-wagodebug",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v1-wago_regalloccheck",
       "receipt_suite": "spec-v1-wago_regalloccheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v2-ordinary",
       "receipt_suite": "spec-v2-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v2-wagodebug",
       "receipt_suite": "spec-v2-wagodebug",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v2-wago_regalloccheck",
       "receipt_suite": "spec-v2-wago_regalloccheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v3-ordinary",
       "receipt_suite": "spec-v3-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v3-wagodebug",
       "receipt_suite": "spec-v3-wagodebug",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v3-wago_regalloccheck",
       "receipt_suite": "spec-v3-wago_regalloccheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "spec-v3-signals-ordinary",
@@ -385,37 +385,37 @@
       "suite": "tooling-build-ordinary",
       "receipt_suite": "tooling-build-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-build-wagodebug",
       "receipt_suite": "tooling-build-wagodebug",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-build-wago_regalloccheck",
       "receipt_suite": "tooling-build-wago_regalloccheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-vet-ordinary",
       "receipt_suite": "tooling-vet-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-vet-wagodebug",
       "receipt_suite": "tooling-vet-wagodebug",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-vet-wago_regalloccheck",
       "receipt_suite": "tooling-vet-wago_regalloccheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "runtime-cli-build-ordinary",
@@ -799,7 +799,7 @@
       "suite": "tooling-generate",
       "receipt_suite": "tooling-generate",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "replay-generated-diff",
@@ -815,21 +815,21 @@
     },
     {
       "suite": "replay-docs",
-      "receipt_suite": "replay-docs",
+      "receipt_suite": "tooling-docs",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "replay-actionlint",
-      "receipt_suite": "replay-actionlint",
+      "receipt_suite": "tooling-actionlint",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "replay-staticcheck",
-      "receipt_suite": "replay-staticcheck",
+      "receipt_suite": "tooling-staticcheck",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "FAIL"
     },
     {
       "suite": "replay-native-compare",
@@ -847,67 +847,67 @@
       "suite": "tooling-script-ci-riscv64",
       "receipt_suite": "tooling-script-ci-riscv64",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-node-update-website-bench",
       "receipt_suite": "tooling-node-update-website-bench",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-node-update-website-startup",
       "receipt_suite": "tooling-node-update-website-startup",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-node-engine-state-oracle",
       "receipt_suite": "tooling-node-engine-state-oracle",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-node-fuzz-engine-state",
       "receipt_suite": "tooling-node-fuzz-engine-state",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "replay-build-release-assets.sh",
-      "receipt_suite": "replay-build-release-assets.sh",
+      "receipt_suite": "tooling-script-build-release-assets.sh",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "replay-release-qualification.sh",
-      "receipt_suite": "replay-release-qualification.sh",
+      "receipt_suite": "tooling-script-release-qualification.sh",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "replay-ci-download-go-modules.sh",
-      "receipt_suite": "replay-ci-download-go-modules.sh",
+      "receipt_suite": "tooling-script-ci-download-go-modules.sh",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-script-check-diagnostic-dce.sh",
       "receipt_suite": "tooling-script-check-diagnostic-dce.sh",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-script-check-riscv64-diagnostics.sh",
       "receipt_suite": "tooling-script-check-riscv64-diagnostics.sh",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tooling-script-check-regalloc-code.sh",
       "receipt_suite": "tooling-script-check-regalloc-code.sh",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
-      "verdict": "NOT_RUN"
+      "verdict": "PASS"
     },
     {
       "suite": "tinygo-34/host-ordinary",
@@ -1325,8 +1325,9 @@
     }
   ],
   "counts": {
-    "NOT_RUN": 199,
-    "PASS": 21
+    "PASS": 52,
+    "NOT_RUN": 167,
+    "FAIL": 1
   },
   "attempts": [
     {
@@ -1347,6 +1348,14 @@
     },
     {
       "suite": "catalog-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "cli-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "receipt_valid": true,
       "driver": "run.py",
@@ -1426,6 +1435,14 @@
       "verdict": "PASS"
     },
     {
+      "suite": "full-root-replay-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "parent-race-reduced-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "receipt_valid": true,
@@ -1474,6 +1491,78 @@
       "verdict": "PASS"
     },
     {
+      "suite": "spec-v1-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v1-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v1-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v2-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v2-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v2-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "spec-v3-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
       "suite": "tinygo-unsupported-global-ordinary",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "receipt_valid": true,
@@ -1491,6 +1580,182 @@
     },
     {
       "suite": "tinygo-unsupported-global-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-actionlint",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-build-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-build-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-build-wagodebug",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-docs",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-generate",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-node-engine-state-oracle",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-node-fuzz-engine-state",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-node-update-website-bench",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-node-update-website-startup",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-build-release-assets.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-check-diagnostic-dce.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-check-regalloc-code.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-check-riscv64-diagnostics.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-ci-download-go-modules.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-ci-riscv64",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-script-release-qualification.sh",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-staticcheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 1,
+      "verdict": "FAIL"
+    },
+    {
+      "suite": "tooling-staticcheck-bootstrap",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-vet-ordinary",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-vet-wago_regalloccheck",
+      "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+      "receipt_valid": true,
+      "driver": "run.py",
+      "exit": 0,
+      "verdict": "PASS"
+    },
+    {
+      "suite": "tooling-vet-wagodebug",
       "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
       "receipt_valid": true,
       "driver": "run.py",
@@ -1538,5 +1803,39 @@
       "verdict": "PASS"
     }
   ],
-  "remote_targets": "Darwin/Windows verdict owned by parent; no local execution promotion"
+  "remote_targets": "Darwin/Windows verdict owned by parent; no local execution promotion",
+  "blocking_finding": {
+    "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+    "kind": "NEW_STATICCHECK_QUALIFICATION_FAILURE",
+    "gate": "tooling-staticcheck",
+    "command_exit": 1,
+    "reason": "publishConversionStore and publishConversionRange are unused (U1000); six findings outside reviewed baseline. Runtime behavior defect not asserted.",
+    "requested_utc": "2026-11-02T13:00:38.182087+00:00",
+    "action": "Stop new gates; drain current CLI command naturally; no source/expectation edit.",
+    "source_file": "src/wago/gc_conversion_store.go",
+    "source_file_sha256": "c0b508b3a58babee619e6638c87335e7fb91883f57cf6b9431691b17453bf234",
+    "findings": [
+      {
+        "line": 252,
+        "symbol": "(*Instance).publishConversionStore",
+        "code": "U1000"
+      },
+      {
+        "line": 255,
+        "symbol": "(*Instance).publishConversionRange",
+        "code": "U1000"
+      }
+    ],
+    "new_findings_reported": 6,
+    "verifier_profiles": [
+      "standard",
+      "runtime",
+      "profiling",
+      "diagnostics"
+    ],
+    "source_audit": "publishConversionStore has no callers in src; publishConversionRange callers are in design_repair_unsupported_test.go, whose build constraint excludes the current Linux host. The raw verifier log does not label individual profiles.",
+    "sibling_cross_check": "sibling-cross-check.json",
+    "triage_owner": "parent; no source or baseline changes authorized here"
+  },
+  "execution_state": "STOPPED; zero owned processes; await parent repair/direction"
 }

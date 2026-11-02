@@ -162,7 +162,7 @@
       "argv": [
         "python3",
         "docs/rfwgc-evidence/final-combined-7e41/bootstrap.py",
-        "docs/rfwgc-evidence/final-combined-7e41/tooling-replay.py"
+        "docs/rfwgc-evidence/final-combined-7e41/tooling-replay-v2.py"
       ]
     },
     {
