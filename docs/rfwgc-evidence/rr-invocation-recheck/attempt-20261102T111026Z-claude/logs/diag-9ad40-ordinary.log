@@ -1,0 +1,116 @@
+# label=diag-9ad40-ordinary pin=9ad40bce4 tags=- race=0
+# go version go1.27.1 linux/amd64 GOROOT=/home/dev/.local/share/mise/installs/go/1.27.1
+# go test -count=1 -timeout 300s -v -run ^TestRRRecheckDiagStacks$ ./src/wago
+=== RUN   TestRRRecheckDiagStacks
+    rr_recheck_diag_test.go:26: BLOCKED; goroutines:
+        goroutine 18 [running]:
+        github.com/wago-org/wago/src/wago.TestRRRecheckDiagStacks(0x2f7c44c62248)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/rr_recheck_diag_test.go:25 +0x24f
+        testing.tRunner(0x2f7c44c62248, 0x2642488)
+        	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea
+        created by testing.(*T).Run in goroutine 1
+        	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x4d4
+        
+        goroutine 1 [chan receive]:
+        testing.(*T).Run(0x2f7c44c62008, {0x17a1d01?, 0x2f7c44bf1aa0?}, 0x2642488)
+        	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2266 +0x4f2
+        testing.runTests.func1(0x2f7c44c62008)
+        	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2742 +0x37
+        testing.tRunner(0x2f7c44c62008, 0x2f7c44bf1bc8)
+        	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea
+        testing.runTests({0x17a4b03, 0x18}, {0x17c437e, 0x21}, 0x2f7c44c22048, {0x267b4e0, 0x9e8, 0x9e8}, {0xc2b23a46c5fd3e9c, 0x45d96d25fe, ...})
+        	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2740 +0x510
+        testing.(*M).Run(0x2f7c44c20280)
+        	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2600 +0x6af
+        main.main()
+        	_testmain.go:5964 +0x9b
+        
+        goroutine 19 [syscall]:
+        github.com/wago-org/wago/src/core/runtime.enterNative(0x7fb2f4400000, 0x7fb2ada0e108, 0x7fb2ad5de120, 0x7fb2ada0e118, 0x7fb2ada0e110, 0x7fb2ad400000)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/core/runtime/native_scheduler.go:21 +0x2b
+        github.com/wago-org/wago/src/core/runtime.(*Engine).CallPrepared(0x2f7c44d36488, 0x2f7c44bed728?, {0x7fb2ada0e108, 0x8, 0x8}, 0x0?, {0x7fb2ada0e118, 0x18, 0x18}, {0x7fb2ada0e110, ...})
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/core/runtime/engine.go:220 +0xe8
+        github.com/wago-org/wago/src/wago.callNative(0x0?, 0x2f7c44d36488, 0x2f7c44c32cc0, 0x0?, 0x7fb2f4400000, {0x7fb2ada0e108, 0x8, 0x8}, {0x7fb2ada0e118, 0x18, ...}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/guardrun_off.go:23 +0x11b
+        github.com/wago-org/wago/src/wago.(*Instance).callNativeAsyncWithTrap(0x2f7c44d3a808, 0x7fb2f4400000, 0x0, {0x7fb2ada0e118, 0x18, 0x18})
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/instance_native_context.go:595 +0x294
+        github.com/wago-org/wago/src/wago.(*Instance).callNativeAsync(...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/instance_native_context.go:578
+        github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenAdmittedBody(0x2f7c44d3a808, {0x17861f4, 0x3}, {0x0, 0x0, 0x0}, {{0x0, 0x0}, {0x0, 0x0}}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4732 +0xb65
+        github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenAdmitted.func1()
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4612 +0x114
+        github.com/wago-org/wago/src/wago.(*resourceCleanup).run(0x2f7c44bed3e0?, 0x2f7c44bed408?)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/resource_cleanup.go:24 +0x51
+        github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenAdmitted(0x2f7c44c641e0?, {0x17861f4?, 0x0?}, {0x0?, 0x0?, 0x2f7c44bb2500?}, {{0x0, 0x0}, {0x0, 0x0}}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4611 +0x17a
+        github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenLeased.func1()
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4592 +0xf8
+        github.com/wago-org/wago/src/wago.(*resourceCleanup).run(0x2f7c44bc6930?, 0x2f7c44bb2610?)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/resource_cleanup.go:24 +0x51
+        github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenLeased(0x2f7c44d3a808, {0x17861f4?, 0x0?}, {0x0?, 0x117d1cc?, 0x2f7c44c62248?}, {{0x0, 0x0}, {0x0, 0x0}}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4591 +0x18d
+        github.com/wago-org/wago/src/wago.(*Instance).invokeWithToken.func1()
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4572 +0x6c5
+        github.com/wago-org/wago/src/wago.(*resourceCleanup).run(0x0?, 0x0?)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/resource_cleanup.go:24 +0x51
+        github.com/wago-org/wago/src/wago.(*Instance).invokeWithToken(0x2f7c44d3a808, {0x17861f4?, 0x0?}, {0x0?, 0x0?, 0x0?}, {{0x0, 0x0}, {0x0, 0x0}}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4532 +0x19c
+        github.com/wago-org/wago/src/wago.(*Instance).invokeEntryLockedBody(0x2f7c44d3a808?, {0x17861f4?, 0x3?}, {0x0?, 0x0?, 0x0?}, {{0x0, 0x0}, {0x0, 0x0}}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4397 +0x9d8
+        github.com/wago-org/wago/src/wago.(*Instance).invokeEntryLocked(...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4343
+        github.com/wago-org/wago/src/wago.(*Instance).invokeEntry.func1()
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4313 +0x96
+        github.com/wago-org/wago/src/wago.(*resourceCleanup).run(0x2f7c44d3a808?, 0x0?)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/resource_cleanup.go:24 +0x51
+        github.com/wago-org/wago/src/wago.(*Instance).invokeEntry(0x2f7c44d3a808, {0x17861f4, 0x3}, {0x0, 0x0, 0x0}, {{0x0, 0x0}, {0x0, 0x0}}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4312 +0x317
+        github.com/wago-org/wago/src/wago.(*Instance).Invoke(0x2f7c44d3a808, {0x17861f4, 0x3}, {0x0, 0x0, 0x0})
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:3911 +0x629
+        github.com/wago-org/wago/src/wago.rrStartDynamicSpin.func3()
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/rr_recheck_adversary_test.go:104 +0x39
+        created by github.com/wago-org/wago/src/wago.rrStartDynamicSpin in goroutine 18
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/rr_recheck_adversary_test.go:104 +0x14fc
+        
+        goroutine 33 [chan receive]:
+        github.com/wago-org/wago/src/wago.(*gcTopologyGate).lockContext(0x2f7c44d061c8, {0x263d138?, 0x26ac7e0?}, 0x1)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/gc_admission.go:56 +0x251
+        github.com/wago-org/wago/src/wago.(*gcTopologyGate).Lock(...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/gc_admission.go:18
+        github.com/wago-org/wago/src/wago.(*referenceStore).lockGCDomainTopology(0x2f7c44ddb358?)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/reference_store.go:2617 +0x8b
+        github.com/wago-org/wago/src/wago.(*gcInvocationSnapshot).unpin(0x2f7c44dae0f0)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/reference_store.go:1526 +0x4b
+        github.com/wago-org/wago/src/wago.gcInvocationLease.unlock({0x2f7c44dae0f0, 0x2f7c44dbe008, 0x2f7c44d061b0, {0x0, 0x2f7c44dae0a0, 0x0, 0x0, 0x0, 0x0}, 0x2, ...})
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/reference_store.go:1772 +0x9a
+        github.com/wago-org/wago/src/wago.(*resourceCleanup).run(0x0?, 0x0?)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/resource_cleanup.go:24 +0x51
+        github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenLeased(0x2f7c44dbe008, {0x17861f4?, 0x0?}, {0x0?, 0x0?, 0x0?}, {{0x0, 0x0}, {0x0, 0x0}}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4597 +0x225
+        github.com/wago-org/wago/src/wago.(*Instance).invokeWithToken.func1()
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4572 +0x6c5
+        github.com/wago-org/wago/src/wago.(*resourceCleanup).run(0x0?, 0x0?)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/resource_cleanup.go:24 +0x51
+        github.com/wago-org/wago/src/wago.(*Instance).invokeWithToken(0x2f7c44dbe008, {0x17861f4?, 0x0?}, {0x0?, 0x0?, 0x0?}, {{0x0, 0x0}, {0x0, 0x0}}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4532 +0x19c
+        github.com/wago-org/wago/src/wago.(*Instance).invokeEntryLockedBody(0x2f7c44dbe008?, {0x17861f4?, 0x3?}, {0x0?, 0x0?, 0x0?}, {{0x0, 0x0}, {0x0, 0x0}}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4397 +0x9d8
+        github.com/wago-org/wago/src/wago.(*Instance).invokeEntryLocked(...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4343
+        github.com/wago-org/wago/src/wago.(*Instance).invokeEntry.func1()
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4313 +0x96
+        github.com/wago-org/wago/src/wago.(*resourceCleanup).run(0x2f7c44dbe008?, 0x0?)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/resource_cleanup.go:24 +0x51
+        github.com/wago-org/wago/src/wago.(*Instance).invokeEntry(0x2f7c44dbe008, {0x17861f4, 0x3}, {0x0, 0x0, 0x0}, {{0x0, 0x0}, {0x0, 0x0}}, ...)
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:4312 +0x317
+        github.com/wago-org/wago/src/wago.(*Instance).Invoke(0x2f7c44dbe008, {0x17861f4, 0x3}, {0x0, 0x0, 0x0})
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/api.go:3911 +0x629
+        github.com/wago-org/wago/src/wago.TestRRRecheckDiagStacks.func1()
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/rr_recheck_diag_test.go:19 +0x39
+        created by github.com/wago-org/wago/src/wago.TestRRRecheckDiagStacks in goroutine 18
+        	/home/dev/.cache/wago-rr-recheck/attempt-20261102T111026Z-claude/src/9ad40bce4/src/wago/rr_recheck_diag_test.go:19 +0x12b
+    rr_recheck_diag_test.go:28: after release: <nil>
+--- PASS: TestRRRecheckDiagStacks (2.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	2.007s

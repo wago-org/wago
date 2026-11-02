@@ -1,0 +1,21 @@
+# label=ctrl-97138-wagodebug pin=9713878ab tags=wagodebug race=0
+# go version go1.27.1 linux/amd64 GOROOT=/home/dev/.local/share/mise/installs/go/1.27.1
+# go test -count=1 -timeout 600s -v -run ^TestRRRecheck(StorageOnly|Canceled|SharedMemory) -tags=wagodebug ./src/wago
+=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader
+=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader/none
+    rr_recheck_adversary_test.go:175: kind=none dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=false secondAdmissionErr=<nil>
+=== RUN   TestRRRecheckStorageOnlyReturnBehindDynamicReader/table
+    rr_recheck_adversary_test.go:175: kind=table dynSpin(dynamic=true conversionOnly=false) storage(dynamic=false conversionOnly=false) storageReturnBlocked=true secondAdmissionErr=<nil>
+    rr_recheck_adversary_test.go:177: storage-only call could not return while an unrelated true-dynamic call ran
+--- FAIL: TestRRRecheckStorageOnlyReturnBehindDynamicReader (2.00s)
+    --- PASS: TestRRRecheckStorageOnlyReturnBehindDynamicReader/none (0.00s)
+    --- FAIL: TestRRRecheckStorageOnlyReturnBehindDynamicReader/table (2.00s)
+=== RUN   TestRRRecheckCanceledAdmissionBehindDynamicReader
+    rr_recheck_adversary_test.go:211: storage(dynamic=false conversionOnly=false) canceledReturnBlocked=false err=context deadline exceeded
+--- PASS: TestRRRecheckCanceledAdmissionBehindDynamicReader (0.30s)
+=== RUN   TestRRRecheckSharedMemoryHandoff
+    rr_recheck_handoff_test.go:84: handoffCompleted=true s1=<nil> s2=<nil>
+--- PASS: TestRRRecheckSharedMemoryHandoff (0.50s)
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	2.813s
+FAIL
