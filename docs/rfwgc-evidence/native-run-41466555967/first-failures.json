@@ -1,0 +1,35 @@
+[
+  {
+    "archive": "artifacts/darwin-ownership-wago_regalloccheck-1.zip",
+    "member": "receipts-wago_regalloccheck/race-wago_regalloccheck/raw.jsonl",
+    "event": {
+      "Time": "2026-11-02T15:19:06.344839Z",
+      "Action": "output",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCARM64LiveStructDoesNotPrepareUnusedHandles",
+      "Output": "fatal error: checkptr: pointer arithmetic result points to invalid allocation\n"
+    }
+  },
+  {
+    "archive": "artifacts/darwin-ownership-wagodebug-1.zip",
+    "member": "receipts-wagodebug/race-wagodebug/raw.jsonl",
+    "event": {
+      "Time": "2026-11-02T15:20:23.368405Z",
+      "Action": "output",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCARM64LiveStructDoesNotPrepareUnusedHandles",
+      "Output": "fatal error: checkptr: pointer arithmetic result points to invalid allocation\n"
+    }
+  },
+  {
+    "archive": "artifacts/darwin-ownership-wago_regalloccheck-1.zip",
+    "member": "receipts-wago_regalloccheck/diagnostics-established-wago_regalloccheck/raw.jsonl",
+    "event": {
+      "Time": "2026-11-02T15:36:21.596742Z",
+      "Action": "output",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64",
+      "Test": "TestTwoIntegerResultRegisterCall",
+      "Output": "fatal error: runtime: split stack overflow\n"
+    }
+  }
+]

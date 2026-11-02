@@ -1,0 +1,12 @@
+[
+  "go",
+  "test",
+  "-mod=readonly",
+  "-overlay=/Users/runner/work/wago/wago/receipts-wago_regalloccheck/overlay.json",
+  "-json",
+  "-count=1",
+  "-timeout=60m",
+  "-tags=wago_codegenstats,wago_regalloccheck",
+  "./src/core/compiler/backend/...",
+  "./src/wago"
+]

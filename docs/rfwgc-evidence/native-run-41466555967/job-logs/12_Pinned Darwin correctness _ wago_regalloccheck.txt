@@ -1,0 +1,1161 @@
+﻿2026-11-02T14:55:56.0546480Z Current runner version: '2.338.2'
+2026-11-02T14:55:56.0575850Z ##[group]Runner Image Provisioner
+2026-11-02T14:55:56.0576840Z Hosted Compute Agent
+2026-11-02T14:55:56.0577210Z Version: 20261021.618
+2026-11-02T14:55:56.0577610Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-11-02T14:55:56.0578060Z Build Date: 2026-10-21T00:45:21Z
+2026-11-02T14:55:56.0578500Z Worker ID: {5fa5193c-4d5c-4c88-af2e-c29c60cf83d5}
+2026-11-02T14:55:56.0578940Z Region: westus
+2026-11-02T14:55:56.0579280Z Cloud: MacCloud
+2026-11-02T14:55:56.0579620Z ##[endgroup]
+2026-11-02T14:55:56.0580590Z ##[group]Operating System
+2026-11-02T14:55:56.0581270Z macOS
+2026-11-02T14:55:56.0581630Z 15.8.2
+2026-11-02T14:55:56.0581940Z 24H232
+2026-11-02T14:55:56.0582270Z ##[endgroup]
+2026-11-02T14:55:56.0582630Z ##[group]Runner Image
+2026-11-02T14:55:56.0583060Z Image: macos-15-arm64
+2026-11-02T14:55:56.0583450Z Version: 20261028.0489.1
+2026-11-02T14:55:56.0584350Z Included Software: https://github.com/actions/runner-images/blob/macos-15-arm64/20261028.0489/images/macos/macos-15-arm64-Readme.md
+2026-11-02T14:55:56.0585380Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-15-arm64%2F20261028.0489
+2026-11-02T14:55:56.0586050Z ##[endgroup]
+2026-11-02T14:55:56.0586820Z ##[group]GITHUB_TOKEN Permissions
+2026-11-02T14:55:56.0588800Z Contents: read
+2026-11-02T14:55:56.0589230Z Metadata: read
+2026-11-02T14:55:56.0589590Z ##[endgroup]
+2026-11-02T14:55:56.0591250Z Secret source: Actions
+2026-11-02T14:55:56.0591820Z Cache mode: write
+2026-11-02T14:55:56.0592280Z Prepare workflow directory
+2026-11-02T14:55:56.1218590Z Prepare all required actions
+2026-11-02T14:55:56.1264380Z Getting action download info
+2026-11-02T14:55:56.5810580Z Download action repository 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-11-02T14:55:56.8946320Z Download action repository 'actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff' (SHA:40f1582b2485089dde7abd97c1529aa768e1baff)
+2026-11-02T14:55:57.3872610Z Download action repository 'extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3' (SHA:53165ef7e734c5c07cb06b3c8e7b647c5aa16db3)
+2026-11-02T14:55:57.7005490Z Download action repository 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-11-02T14:55:57.9726890Z Getting action download info
+2026-11-02T14:55:58.1484850Z Download action repository 'extractions/setup-crate@0551596312d4008a6dfbc4d3c38fa20eaef46d2d' (SHA:0551596312d4008a6dfbc4d3c38fa20eaef46d2d)
+2026-11-02T14:55:58.5361010Z Complete job name: Pinned Darwin correctness / wago_regalloccheck
+2026-11-02T14:55:58.7232760Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+2026-11-02T14:55:58.7236870Z with:
+2026-11-02T14:55:58.7239990Z   ref: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:55:58.7242150Z   path: harness
+2026-11-02T14:55:58.7243690Z   persist-credentials: false
+2026-11-02T14:55:58.7245880Z   repository: wago-org/wago
+2026-11-02T14:55:58.7259930Z   token: ***
+2026-11-02T14:55:58.7261500Z   ssh-strict: true
+2026-11-02T14:55:58.7263070Z   ssh-user: git
+2026-11-02T14:55:58.7264460Z   clean: true
+2026-11-02T14:55:58.7266000Z   sparse-checkout-cone-mode: true
+2026-11-02T14:55:58.7268510Z   fetch-depth: 1
+2026-11-02T14:55:58.7269390Z   fetch-tags: false
+2026-11-02T14:55:58.7270030Z   show-progress: true
+2026-11-02T14:55:58.7270780Z   lfs: false
+2026-11-02T14:55:58.7271360Z   submodules: false
+2026-11-02T14:55:58.7271970Z   set-safe-directory: true
+2026-11-02T14:55:58.7272670Z   allow-unsafe-pr-checkout: false
+2026-11-02T14:55:58.7274770Z env:
+2026-11-02T14:55:58.7275530Z   GO_VERSION: 1.27.1
+2026-11-02T14:55:58.7276240Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T14:55:58.7277140Z   TINYGO_VERSION: 0.42.0
+2026-11-02T14:55:58.7277880Z   JUST_VERSION: 1.58.0
+2026-11-02T14:55:58.7278800Z   GOTOOLCHAIN: local
+2026-11-02T14:55:58.7300180Z   GOENV: off
+2026-11-02T14:55:58.7300920Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T14:55:58.7301900Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:55:58.7586760Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:55:58.7587850Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:55:58.7588750Z ##[endgroup]
+2026-11-02T14:55:59.3149590Z Syncing repository: wago-org/wago
+2026-11-02T14:55:59.3151570Z ##[group]Getting Git version info
+2026-11-02T14:55:59.3152520Z Working directory is '/Users/runner/work/wago/wago/harness'
+2026-11-02T14:55:59.3153850Z [command]/opt/homebrew/bin/git version
+2026-11-02T14:55:59.4167120Z git version 2.56.0
+2026-11-02T14:55:59.4234670Z ##[endgroup]
+2026-11-02T14:55:59.4255760Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/f6771b81-a5d8-4bca-9243-29641a834849/.gitconfig'
+2026-11-02T14:55:59.4262900Z Temporarily overriding HOME='/Users/runner/work/_temp/f6771b81-a5d8-4bca-9243-29641a834849' before making global git config changes
+2026-11-02T14:55:59.4265820Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T14:55:59.4270220Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/wago/wago/harness
+2026-11-02T14:55:59.4405480Z ##[group]Initializing the repository
+2026-11-02T14:55:59.4408590Z [command]/opt/homebrew/bin/git init /Users/runner/work/wago/wago/harness
+2026-11-02T14:55:59.4753920Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-02T14:55:59.4756570Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-02T14:55:59.4759690Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-02T14:55:59.4762650Z hint: call:
+2026-11-02T14:55:59.4764030Z hint:
+2026-11-02T14:55:59.4766380Z hint: 	git config --global init.defaultBranch <name>
+2026-11-02T14:55:59.4768690Z hint:
+2026-11-02T14:55:59.4770730Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-02T14:55:59.4774010Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-02T14:55:59.4778060Z hint:
+2026-11-02T14:55:59.4779650Z hint: 	git branch -m <name>
+2026-11-02T14:55:59.4781270Z hint:
+2026-11-02T14:55:59.4783460Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-02T14:55:59.4784820Z Initialized empty Git repository in /Users/runner/work/wago/wago/harness/.git/
+2026-11-02T14:55:59.4788130Z [command]/opt/homebrew/bin/git remote add origin https://github.com/wago-org/wago
+2026-11-02T14:55:59.4885070Z ##[endgroup]
+2026-11-02T14:55:59.4886290Z ##[group]Disabling automatic garbage collection
+2026-11-02T14:55:59.4890560Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+2026-11-02T14:55:59.5000150Z ##[endgroup]
+2026-11-02T14:55:59.5001670Z ##[group]Setting up auth
+2026-11-02T14:55:59.5003570Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T14:55:59.5097080Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T14:55:59.6396090Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T14:55:59.6527510Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T14:55:59.8982310Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:55:59.9310400Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T14:56:00.1312460Z [command]/opt/homebrew/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-02T14:56:00.1468440Z ##[endgroup]
+2026-11-02T14:56:00.1474120Z ##[group]Fetching the repository
+2026-11-02T14:56:00.1479410Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:56:33.6215970Z From https://github.com/wago-org/wago
+2026-11-02T14:56:33.6219350Z  * branch              041f7ed4c376e2a33ce21b22075cd617ddca6597 -> FETCH_HEAD
+2026-11-02T14:56:33.6250380Z ##[endgroup]
+2026-11-02T14:56:33.6252160Z ##[group]Determining the checkout info
+2026-11-02T14:56:33.6272980Z ##[endgroup]
+2026-11-02T14:56:33.6285430Z [command]/opt/homebrew/bin/git sparse-checkout disable
+2026-11-02T14:56:33.6490280Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-02T14:56:33.6527660Z ##[group]Checking out the ref
+2026-11-02T14:56:33.6540790Z [command]/opt/homebrew/bin/git checkout --progress --force 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:56:34.7581430Z Updating files:   7% (1546/21424)
+2026-11-02T14:56:34.8280360Z Updating files:   8% (1714/21424)
+2026-11-02T14:56:34.9950030Z Updating files:   9% (1929/21424)
+2026-11-02T14:56:35.0202700Z Updating files:  10% (2143/21424)
+2026-11-02T14:56:35.0847590Z Updating files:  11% (2357/21424)
+2026-11-02T14:56:35.1161540Z Updating files:  12% (2571/21424)
+2026-11-02T14:56:35.1570120Z Updating files:  13% (2786/21424)
+2026-11-02T14:56:35.3014990Z Updating files:  14% (3000/21424)
+2026-11-02T14:56:35.6242120Z Updating files:  15% (3214/21424)
+2026-11-02T14:56:35.6840970Z Updating files:  16% (3428/21424)
+2026-11-02T14:56:35.6942500Z Updating files:  16% (3573/21424)
+2026-11-02T14:56:35.8032150Z Updating files:  17% (3643/21424)
+2026-11-02T14:56:35.9061280Z Updating files:  18% (3857/21424)
+2026-11-02T14:56:36.1563840Z Updating files:  19% (4071/21424)
+2026-11-02T14:56:36.2491550Z Updating files:  20% (4285/21424)
+2026-11-02T14:56:36.4301590Z Updating files:  21% (4500/21424)
+2026-11-02T14:56:36.4805220Z Updating files:  22% (4714/21424)
+2026-11-02T14:56:36.5953050Z Updating files:  23% (4928/21424)
+2026-11-02T14:56:36.6539620Z Updating files:  24% (5142/21424)
+2026-11-02T14:56:36.6937170Z Updating files:  25% (5356/21424)
+2026-11-02T14:56:36.7535160Z Updating files:  25% (5362/21424)
+2026-11-02T14:56:36.8543000Z Updating files:  26% (5571/21424)
+2026-11-02T14:56:37.0521620Z Updating files:  27% (5785/21424)
+2026-11-02T14:56:37.3048430Z Updating files:  28% (5999/21424)
+2026-11-02T14:56:37.4665470Z Updating files:  29% (6213/21424)
+2026-11-02T14:56:37.5120340Z Updating files:  30% (6428/21424)
+2026-11-02T14:56:37.6719350Z Updating files:  31% (6642/21424)
+2026-11-02T14:56:37.6817840Z Updating files:  32% (6856/21424)
+2026-11-02T14:56:37.7153780Z Updating files:  32% (6917/21424)
+2026-11-02T14:56:37.7765230Z Updating files:  33% (7070/21424)
+2026-11-02T14:56:37.8193570Z Updating files:  34% (7285/21424)
+2026-11-02T14:56:37.8428120Z Updating files:  35% (7499/21424)
+2026-11-02T14:56:37.9329900Z Updating files:  36% (7713/21424)
+2026-11-02T14:56:37.9560390Z Updating files:  37% (7927/21424)
+2026-11-02T14:56:37.9800350Z Updating files:  38% (8142/21424)
+2026-11-02T14:56:38.0042470Z Updating files:  39% (8356/21424)
+2026-11-02T14:56:38.0327890Z Updating files:  40% (8570/21424)
+2026-11-02T14:56:38.0678120Z Updating files:  41% (8784/21424)
+2026-11-02T14:56:38.0915180Z Updating files:  42% (8999/21424)
+2026-11-02T14:56:38.1163940Z Updating files:  43% (9213/21424)
+2026-11-02T14:56:38.1412520Z Updating files:  44% (9427/21424)
+2026-11-02T14:56:38.1636020Z Updating files:  45% (9641/21424)
+2026-11-02T14:56:38.1872810Z Updating files:  46% (9856/21424)
+2026-11-02T14:56:38.2078950Z Updating files:  47% (10070/21424)
+2026-11-02T14:56:38.2392200Z Updating files:  48% (10284/21424)
+2026-11-02T14:56:38.3096210Z Updating files:  49% (10498/21424)
+2026-11-02T14:56:38.4100750Z Updating files:  50% (10712/21424)
+2026-11-02T14:56:38.6170900Z Updating files:  51% (10927/21424)
+2026-11-02T14:56:38.7345750Z Updating files:  52% (11141/21424)
+2026-11-02T14:56:40.0910030Z Updating files:  52% (11170/21424)
+2026-11-02T14:56:40.5092930Z Updating files:  52% (11297/21424)
+2026-11-02T14:56:40.6853790Z Updating files:  53% (11355/21424)
+2026-11-02T14:56:41.1497190Z Updating files:  53% (11430/21424)
+2026-11-02T14:56:41.2422690Z Updating files:  54% (11569/21424)
+2026-11-02T14:56:41.5529660Z Updating files:  55% (11784/21424)
+2026-11-02T14:56:41.5767040Z Updating files:  56% (11998/21424)
+2026-11-02T14:56:41.6344100Z Updating files:  57% (12212/21424)
+2026-11-02T14:56:41.6832110Z Updating files:  58% (12426/21424)
+2026-11-02T14:56:41.7031800Z Updating files:  58% (12535/21424)
+2026-11-02T14:56:41.8140010Z Updating files:  59% (12641/21424)
+2026-11-02T14:56:41.8828650Z Updating files:  60% (12855/21424)
+2026-11-02T14:56:41.9153440Z Updating files:  61% (13069/21424)
+2026-11-02T14:56:41.9462730Z Updating files:  62% (13283/21424)
+2026-11-02T14:56:42.0132710Z Updating files:  63% (13498/21424)
+2026-11-02T14:56:42.0556480Z Updating files:  64% (13712/21424)
+2026-11-02T14:56:42.2231120Z Updating files:  65% (13926/21424)
+2026-11-02T14:56:42.3811570Z Updating files:  66% (14140/21424)
+2026-11-02T14:56:42.4573540Z Updating files:  67% (14355/21424)
+2026-11-02T14:56:42.5325370Z Updating files:  68% (14569/21424)
+2026-11-02T14:56:42.5951680Z Updating files:  69% (14783/21424)
+2026-11-02T14:56:42.6563520Z Updating files:  70% (14997/21424)
+2026-11-02T14:56:42.6810260Z Updating files:  71% (15212/21424)
+2026-11-02T14:56:42.7023930Z Updating files:  71% (15332/21424)
+2026-11-02T14:56:42.7472870Z Updating files:  72% (15426/21424)
+2026-11-02T14:56:42.7843020Z Updating files:  73% (15640/21424)
+2026-11-02T14:56:42.8187050Z Updating files:  74% (15854/21424)
+2026-11-02T14:56:42.8658290Z Updating files:  75% (16068/21424)
+2026-11-02T14:56:42.8980100Z Updating files:  76% (16283/21424)
+2026-11-02T14:56:42.9606850Z Updating files:  77% (16497/21424)
+2026-11-02T14:56:43.0136960Z Updating files:  78% (16711/21424)
+2026-11-02T14:56:43.0729560Z Updating files:  79% (16925/21424)
+2026-11-02T14:56:43.1174120Z Updating files:  80% (17140/21424)
+2026-11-02T14:56:43.1695820Z Updating files:  81% (17354/21424)
+2026-11-02T14:56:43.2078670Z Updating files:  82% (17568/21424)
+2026-11-02T14:56:43.2691910Z Updating files:  83% (17782/21424)
+2026-11-02T14:56:43.3809590Z Updating files:  84% (17997/21424)
+2026-11-02T14:56:43.4354190Z Updating files:  85% (18211/21424)
+2026-11-02T14:56:43.4835690Z Updating files:  86% (18425/21424)
+2026-11-02T14:56:43.5385990Z Updating files:  87% (18639/21424)
+2026-11-02T14:56:43.5861810Z Updating files:  88% (18854/21424)
+2026-11-02T14:56:43.6478990Z Updating files:  89% (19068/21424)
+2026-11-02T14:56:43.6812130Z Updating files:  90% (19282/21424)
+2026-11-02T14:56:43.6862160Z Updating files:  90% (19477/21424)
+2026-11-02T14:56:43.7728750Z Updating files:  91% (19496/21424)
+2026-11-02T14:56:43.8256480Z Updating files:  92% (19711/21424)
+2026-11-02T14:56:43.8619300Z Updating files:  93% (19925/21424)
+2026-11-02T14:56:43.8901540Z Updating files:  94% (20139/21424)
+2026-11-02T14:56:43.9325900Z Updating files:  95% (20353/21424)
+2026-11-02T14:56:43.9688490Z Updating files:  96% (20568/21424)
+2026-11-02T14:56:44.6813380Z Updating files:  97% (20782/21424)
+2026-11-02T14:56:44.7184500Z Updating files:  97% (20968/21424)
+2026-11-02T14:56:45.4464250Z Updating files:  98% (20996/21424)
+2026-11-02T14:56:45.7543860Z Updating files:  99% (21210/21424)
+2026-11-02T14:56:45.8382020Z Updating files:  99% (21337/21424)
+2026-11-02T14:56:45.8391800Z Updating files: 100% (21424/21424)
+2026-11-02T14:56:45.8392390Z Updating files: 100% (21424/21424), done.
+2026-11-02T14:56:45.8884860Z HEAD is now at 041f7ed4 ci: pin native qualification to repaired multi-table source
+2026-11-02T14:56:45.9181920Z ##[endgroup]
+2026-11-02T14:56:45.9632020Z [command]/opt/homebrew/bin/git log -1 --format=%H
+2026-11-02T14:56:45.9793860Z 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:56:45.9893410Z ##[group]Removing auth
+2026-11-02T14:56:45.9902600Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T14:56:45.9995200Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T14:56:46.4973200Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T14:56:46.5129060Z http.https://github.com/.extraheader
+2026-11-02T14:56:46.5141570Z [command]/opt/homebrew/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-02T14:56:46.5356950Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T14:56:46.7040790Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:56:46.7191830Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T14:56:46.9431530Z ##[endgroup]
+2026-11-02T14:56:47.0870530Z ##[group]Run mkdir -p setup-receipts
+2026-11-02T14:56:47.0871040Z [36;1mmkdir -p setup-receipts[0m
+2026-11-02T14:56:47.0871480Z [36;1mpython3 harness/docs/rfwgc-evidence/final-darwin/identity.py > setup-receipts/identity.json[0m
+2026-11-02T14:56:47.1401410Z shell: /bin/bash -e {0}
+2026-11-02T14:56:47.1405980Z env:
+2026-11-02T14:56:47.1426640Z   GO_VERSION: 1.27.1
+2026-11-02T14:56:47.1426890Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T14:56:47.1427220Z   TINYGO_VERSION: 0.42.0
+2026-11-02T14:56:47.1427520Z   JUST_VERSION: 1.58.0
+2026-11-02T14:56:47.1427750Z   GOTOOLCHAIN: local
+2026-11-02T14:56:47.1428010Z   GOENV: off
+2026-11-02T14:56:47.1428220Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T14:56:47.1428660Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:56:47.1429070Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:56:47.1429520Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:56:47.1429970Z ##[endgroup]
+2026-11-02T14:56:48.7073290Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+2026-11-02T14:56:48.7074320Z with:
+2026-11-02T14:56:48.7074870Z   ref: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:56:48.7075550Z   path: source
+2026-11-02T14:56:48.7076060Z   submodules: recursive
+2026-11-02T14:56:48.7076690Z   persist-credentials: false
+2026-11-02T14:56:48.7077320Z   repository: wago-org/wago
+2026-11-02T14:56:48.7083380Z   token: ***
+2026-11-02T14:56:48.7083910Z   ssh-strict: true
+2026-11-02T14:56:48.7084390Z   ssh-user: git
+2026-11-02T14:56:48.7084950Z   clean: true
+2026-11-02T14:56:48.7085440Z   sparse-checkout-cone-mode: true
+2026-11-02T14:56:48.7085980Z   fetch-depth: 1
+2026-11-02T14:56:48.7086470Z   fetch-tags: false
+2026-11-02T14:56:48.7086920Z   show-progress: true
+2026-11-02T14:56:48.7087630Z   lfs: false
+2026-11-02T14:56:48.7088070Z   set-safe-directory: true
+2026-11-02T14:56:48.7088690Z   allow-unsafe-pr-checkout: false
+2026-11-02T14:56:48.7089240Z env:
+2026-11-02T14:56:48.7089780Z   GO_VERSION: 1.27.1
+2026-11-02T14:56:48.7090270Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T14:56:48.7090760Z   TINYGO_VERSION: 0.42.0
+2026-11-02T14:56:48.7091250Z   JUST_VERSION: 1.58.0
+2026-11-02T14:56:48.7091700Z   GOTOOLCHAIN: local
+2026-11-02T14:56:48.7092160Z   GOENV: off
+2026-11-02T14:56:48.7092590Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T14:56:48.7093300Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:56:48.7094210Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:56:48.7095150Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:56:48.7095930Z ##[endgroup]
+2026-11-02T14:56:49.0571190Z Syncing repository: wago-org/wago
+2026-11-02T14:56:49.0571630Z ##[group]Getting Git version info
+2026-11-02T14:56:49.0571910Z Working directory is '/Users/runner/work/wago/wago/source'
+2026-11-02T14:56:49.0572320Z [command]/opt/homebrew/bin/git version
+2026-11-02T14:56:49.0572890Z git version 2.56.0
+2026-11-02T14:56:49.0573750Z ##[endgroup]
+2026-11-02T14:56:49.0574900Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/1feed098-4cfa-441d-a2cc-c5eca2ff96fa/.gitconfig'
+2026-11-02T14:56:49.0576060Z Temporarily overriding HOME='/Users/runner/work/_temp/1feed098-4cfa-441d-a2cc-c5eca2ff96fa' before making global git config changes
+2026-11-02T14:56:49.0576830Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T14:56:49.0577360Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/wago/wago/source
+2026-11-02T14:56:49.0578700Z ##[group]Initializing the repository
+2026-11-02T14:56:49.0579030Z [command]/opt/homebrew/bin/git init /Users/runner/work/wago/wago/source
+2026-11-02T14:56:49.0637780Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-02T14:56:49.0638350Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-02T14:56:49.0639050Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-02T14:56:49.0640640Z hint: call:
+2026-11-02T14:56:49.0640840Z hint:
+2026-11-02T14:56:49.0641230Z hint: 	git config --global init.defaultBranch <name>
+2026-11-02T14:56:49.0642020Z hint:
+2026-11-02T14:56:49.0642300Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-02T14:56:49.0642770Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-02T14:56:49.0643110Z hint:
+2026-11-02T14:56:49.0643360Z hint: 	git branch -m <name>
+2026-11-02T14:56:49.0643590Z hint:
+2026-11-02T14:56:49.0643910Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-02T14:56:49.0644450Z Initialized empty Git repository in /Users/runner/work/wago/wago/source/.git/
+2026-11-02T14:56:49.0652940Z [command]/opt/homebrew/bin/git remote add origin https://github.com/wago-org/wago
+2026-11-02T14:56:49.0723000Z ##[endgroup]
+2026-11-02T14:56:49.0727250Z ##[group]Disabling automatic garbage collection
+2026-11-02T14:56:49.0731340Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+2026-11-02T14:56:49.0814810Z ##[endgroup]
+2026-11-02T14:56:49.0815800Z ##[group]Setting up auth
+2026-11-02T14:56:49.0818820Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T14:56:49.0896440Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T14:56:49.2365130Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T14:56:49.2572290Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T14:56:49.3829000Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:56:49.3893600Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T14:56:49.4861540Z [command]/opt/homebrew/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-02T14:56:49.4966380Z ##[endgroup]
+2026-11-02T14:56:49.5001680Z ##[group]Fetching the repository
+2026-11-02T14:56:49.5038320Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:57:22.5338720Z From https://github.com/wago-org/wago
+2026-11-02T14:57:22.5400330Z  * branch              08f511fac41a77f4c0f9046f88ebc78ad05a5da6 -> FETCH_HEAD
+2026-11-02T14:57:22.5419480Z ##[endgroup]
+2026-11-02T14:57:22.5420160Z ##[group]Determining the checkout info
+2026-11-02T14:57:22.5422120Z ##[endgroup]
+2026-11-02T14:57:22.5441410Z [command]/opt/homebrew/bin/git sparse-checkout disable
+2026-11-02T14:57:22.6322960Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-02T14:57:22.6575450Z ##[group]Checking out the ref
+2026-11-02T14:57:22.6675590Z [command]/opt/homebrew/bin/git checkout --progress --force 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:57:24.0250630Z Updating files:   4% (1008/21325)
+2026-11-02T14:57:24.0527420Z Updating files:   5% (1067/21325)
+2026-11-02T14:57:24.0756940Z Updating files:   6% (1280/21325)
+2026-11-02T14:57:24.2606070Z Updating files:   7% (1493/21325)
+2026-11-02T14:57:24.3296180Z Updating files:   8% (1706/21325)
+2026-11-02T14:57:24.5700970Z Updating files:   9% (1920/21325)
+2026-11-02T14:57:24.6178740Z Updating files:  10% (2133/21325)
+2026-11-02T14:57:24.6784480Z Updating files:  11% (2346/21325)
+2026-11-02T14:57:24.7019970Z Updating files:  11% (2483/21325)
+2026-11-02T14:57:24.7478500Z Updating files:  12% (2559/21325)
+2026-11-02T14:57:24.8302280Z Updating files:  13% (2773/21325)
+2026-11-02T14:57:25.1905210Z Updating files:  14% (2986/21325)
+2026-11-02T14:57:25.5474280Z Updating files:  15% (3199/21325)
+2026-11-02T14:57:25.6709540Z Updating files:  16% (3412/21325)
+2026-11-02T14:57:25.8243970Z Updating files:  16% (3511/21325)
+2026-11-02T14:57:25.8661270Z Updating files:  17% (3626/21325)
+2026-11-02T14:57:26.0497400Z Updating files:  18% (3839/21325)
+2026-11-02T14:57:26.4880720Z Updating files:  19% (4052/21325)
+2026-11-02T14:57:26.6706020Z Updating files:  20% (4265/21325)
+2026-11-02T14:57:26.6773590Z Updating files:  20% (4446/21325)
+2026-11-02T14:57:26.8406360Z Updating files:  21% (4479/21325)
+2026-11-02T14:57:26.9029620Z Updating files:  22% (4692/21325)
+2026-11-02T14:57:27.1105010Z Updating files:  23% (4905/21325)
+2026-11-02T14:57:27.2420640Z Updating files:  24% (5118/21325)
+2026-11-02T14:57:27.3673440Z Updating files:  25% (5332/21325)
+2026-11-02T14:57:27.5909850Z Updating files:  26% (5545/21325)
+2026-11-02T14:57:27.6700440Z Updating files:  27% (5758/21325)
+2026-11-02T14:57:27.9269420Z Updating files:  27% (5845/21325)
+2026-11-02T14:57:28.2068070Z Updating files:  28% (5971/21325)
+2026-11-02T14:57:28.3480210Z Updating files:  29% (6185/21325)
+2026-11-02T14:57:28.4744170Z Updating files:  30% (6398/21325)
+2026-11-02T14:57:28.5786080Z Updating files:  31% (6611/21325)
+2026-11-02T14:57:28.6688310Z Updating files:  32% (6824/21325)
+2026-11-02T14:57:28.6764050Z Updating files:  32% (6991/21325)
+2026-11-02T14:57:28.8006210Z Updating files:  33% (7038/21325)
+2026-11-02T14:57:28.9238830Z Updating files:  34% (7251/21325)
+2026-11-02T14:57:29.0787770Z Updating files:  35% (7464/21325)
+2026-11-02T14:57:29.1020790Z Updating files:  36% (7677/21325)
+2026-11-02T14:57:29.1242730Z Updating files:  37% (7891/21325)
+2026-11-02T14:57:29.1467400Z Updating files:  38% (8104/21325)
+2026-11-02T14:57:29.2021140Z Updating files:  39% (8317/21325)
+2026-11-02T14:57:29.2537960Z Updating files:  40% (8530/21325)
+2026-11-02T14:57:29.2883220Z Updating files:  41% (8744/21325)
+2026-11-02T14:57:29.3432870Z Updating files:  42% (8957/21325)
+2026-11-02T14:57:29.4902640Z Updating files:  43% (9170/21325)
+2026-11-02T14:57:29.5204510Z Updating files:  44% (9383/21325)
+2026-11-02T14:57:29.6182270Z Updating files:  45% (9597/21325)
+2026-11-02T14:57:29.6691220Z Updating files:  46% (9810/21325)
+2026-11-02T14:57:29.6773870Z Updating files:  46% (9961/21325)
+2026-11-02T14:57:29.7547920Z Updating files:  47% (10023/21325)
+2026-11-02T14:57:29.7770100Z Updating files:  48% (10236/21325)
+2026-11-02T14:57:29.8731260Z Updating files:  49% (10450/21325)
+2026-11-02T14:57:29.9622090Z Updating files:  50% (10663/21325)
+2026-11-02T14:57:30.4156120Z Updating files:  51% (10876/21325)
+2026-11-02T14:57:31.1939400Z Updating files:  52% (11089/21325)
+2026-11-02T14:57:31.9821810Z Updating files:  52% (11197/21325)
+2026-11-02T14:57:32.5793350Z Updating files:  52% (11198/21325)
+2026-11-02T14:57:32.8193090Z Updating files:  53% (11303/21325)
+2026-11-02T14:57:33.4232380Z Updating files:  53% (11331/21325)
+2026-11-02T14:57:33.6693810Z Updating files:  54% (11516/21325)
+2026-11-02T14:57:33.7778010Z Updating files:  55% (11729/21325)
+2026-11-02T14:57:33.8106750Z Updating files:  56% (11942/21325)
+2026-11-02T14:57:33.9986080Z Updating files:  57% (12156/21325)
+2026-11-02T14:57:34.0439890Z Updating files:  58% (12369/21325)
+2026-11-02T14:57:34.2073660Z Updating files:  59% (12582/21325)
+2026-11-02T14:57:34.3001830Z Updating files:  60% (12795/21325)
+2026-11-02T14:57:34.3306260Z Updating files:  61% (13009/21325)
+2026-11-02T14:57:34.3606930Z Updating files:  62% (13222/21325)
+2026-11-02T14:57:34.4337530Z Updating files:  63% (13435/21325)
+2026-11-02T14:57:34.4643620Z Updating files:  64% (13648/21325)
+2026-11-02T14:57:34.6004790Z Updating files:  65% (13862/21325)
+2026-11-02T14:57:34.6281290Z Updating files:  66% (14075/21325)
+2026-11-02T14:57:34.6692900Z Updating files:  67% (14288/21325)
+2026-11-02T14:57:34.6966740Z Updating files:  67% (14417/21325)
+2026-11-02T14:57:34.7499870Z Updating files:  68% (14501/21325)
+2026-11-02T14:57:34.7972910Z Updating files:  69% (14715/21325)
+2026-11-02T14:57:34.8247770Z Updating files:  70% (14928/21325)
+2026-11-02T14:57:34.8578310Z Updating files:  71% (15141/21325)
+2026-11-02T14:57:34.8910020Z Updating files:  72% (15354/21325)
+2026-11-02T14:57:34.9728380Z Updating files:  73% (15568/21325)
+2026-11-02T14:57:35.0277710Z Updating files:  74% (15781/21325)
+2026-11-02T14:57:35.0684210Z Updating files:  75% (15994/21325)
+2026-11-02T14:57:35.0975220Z Updating files:  76% (16207/21325)
+2026-11-02T14:57:35.1236060Z Updating files:  77% (16421/21325)
+2026-11-02T14:57:35.1654360Z Updating files:  78% (16634/21325)
+2026-11-02T14:57:35.2021290Z Updating files:  79% (16847/21325)
+2026-11-02T14:57:35.2357010Z Updating files:  80% (17060/21325)
+2026-11-02T14:57:35.2738230Z Updating files:  81% (17274/21325)
+2026-11-02T14:57:35.3049700Z Updating files:  82% (17487/21325)
+2026-11-02T14:57:35.3357970Z Updating files:  83% (17700/21325)
+2026-11-02T14:57:35.3675820Z Updating files:  84% (17913/21325)
+2026-11-02T14:57:35.3983850Z Updating files:  85% (18127/21325)
+2026-11-02T14:57:35.4329970Z Updating files:  86% (18340/21325)
+2026-11-02T14:57:35.4662100Z Updating files:  87% (18553/21325)
+2026-11-02T14:57:35.4983240Z Updating files:  88% (18766/21325)
+2026-11-02T14:57:35.5324400Z Updating files:  89% (18980/21325)
+2026-11-02T14:57:35.5642520Z Updating files:  90% (19193/21325)
+2026-11-02T14:57:35.6395500Z Updating files:  91% (19406/21325)
+2026-11-02T14:57:35.6695590Z Updating files:  92% (19619/21325)
+2026-11-02T14:57:35.6792440Z Updating files:  92% (19782/21325)
+2026-11-02T14:57:35.7143810Z Updating files:  93% (19833/21325)
+2026-11-02T14:57:35.7398360Z Updating files:  94% (20046/21325)
+2026-11-02T14:57:35.8313010Z Updating files:  95% (20259/21325)
+2026-11-02T14:57:35.8710380Z Updating files:  96% (20472/21325)
+2026-11-02T14:57:35.8979830Z Updating files:  97% (20686/21325)
+2026-11-02T14:57:35.9312750Z Updating files:  98% (20899/21325)
+2026-11-02T14:57:35.9926850Z Updating files:  99% (21112/21325)
+2026-11-02T14:57:35.9929700Z Updating files: 100% (21325/21325)
+2026-11-02T14:57:35.9930430Z Updating files: 100% (21325/21325), done.
+2026-11-02T14:57:36.0418670Z HEAD is now at 08f511fa test: select converted table expectations by adapter capability
+2026-11-02T14:57:36.0839440Z ##[endgroup]
+2026-11-02T14:57:36.0840440Z ##[group]Setting up auth for fetching submodules
+2026-11-02T14:57:36.0857080Z [command]/opt/homebrew/bin/git config --global http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-02T14:57:36.1151260Z [command]/opt/homebrew/bin/git config --global --unset-all url.https://github.com/.insteadOf
+2026-11-02T14:57:36.1235040Z [command]/opt/homebrew/bin/git config --global --add url.https://github.com/.insteadOf git@github.com:
+2026-11-02T14:57:36.1385570Z [command]/opt/homebrew/bin/git config --global --add url.https://github.com/.insteadOf org-292204855@github.com:
+2026-11-02T14:57:36.1573200Z ##[endgroup]
+2026-11-02T14:57:36.1574640Z ##[group]Fetching submodules
+2026-11-02T14:57:36.1585910Z [command]/opt/homebrew/bin/git submodule sync --recursive
+2026-11-02T14:57:36.3469260Z [command]/opt/homebrew/bin/git -c protocol.version=2 submodule update --init --force --depth=1 --recursive
+2026-11-02T14:57:36.5731270Z Submodule 'tests/conformance/spec-v1' (https://github.com/WebAssembly/testsuite) registered for path 'tests/conformance/spec-v1'
+2026-11-02T14:57:36.5832510Z Submodule 'tests/conformance/spec-v2' (https://github.com/WebAssembly/spec) registered for path 'tests/conformance/spec-v2'
+2026-11-02T14:57:36.5934870Z Submodule 'tests/conformance/spec-v3' (https://github.com/WebAssembly/spec) registered for path 'tests/conformance/spec-v3'
+2026-11-02T14:57:36.6192060Z Cloning into '/Users/runner/work/wago/wago/source/tests/conformance/spec-v1'...
+2026-11-02T14:57:37.5480190Z Cloning into '/Users/runner/work/wago/wago/source/tests/conformance/spec-v2'...
+2026-11-02T14:57:39.3641640Z Cloning into '/Users/runner/work/wago/wago/source/tests/conformance/spec-v3'...
+2026-11-02T14:57:41.7211370Z From https://github.com/WebAssembly/testsuite
+2026-11-02T14:57:41.7223300Z  * branch            a8bcbafe6d2fb191ce0188de0e18fdc107fa2598 -> FETCH_HEAD
+2026-11-02T14:57:41.8164340Z Submodule path 'tests/conformance/spec-v1': checked out 'a8bcbafe6d2fb191ce0188de0e18fdc107fa2598'
+2026-11-02T14:57:43.2614310Z From https://github.com/WebAssembly/spec
+2026-11-02T14:57:43.2616080Z  * branch            05ca4182176763112561ae20153975c12bd689e4 -> FETCH_HEAD
+2026-11-02T14:57:43.4957210Z Submodule path 'tests/conformance/spec-v2': checked out '05ca4182176763112561ae20153975c12bd689e4'
+2026-11-02T14:57:43.5049500Z Submodule 'document/core/util/katex' (https://github.com/KaTeX/KaTeX.git) registered for path 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T14:57:43.5270360Z Cloning into '/Users/runner/work/wago/wago/source/tests/conformance/spec-v2/document/core/util/katex'...
+2026-11-02T14:57:46.6164020Z From https://github.com/KaTeX/KaTeX
+2026-11-02T14:57:46.6232050Z  * branch            e751278cff42fada16dba6df331fda52aaa90f73 -> FETCH_HEAD
+2026-11-02T14:57:47.1477740Z Submodule path 'tests/conformance/spec-v2/document/core/util/katex': checked out 'e751278cff42fada16dba6df331fda52aaa90f73'
+2026-11-02T14:57:48.9460870Z From https://github.com/WebAssembly/spec
+2026-11-02T14:57:48.9463530Z  * branch            9d36019973201a19f9c9ebb0f10828b2fe2374aa -> FETCH_HEAD
+2026-11-02T14:57:49.5710770Z Submodule path 'tests/conformance/spec-v3': checked out '9d36019973201a19f9c9ebb0f10828b2fe2374aa'
+2026-11-02T14:57:49.5878900Z Submodule 'document/core/util/katex' (https://github.com/KaTeX/KaTeX.git) registered for path 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T14:57:49.6112820Z Cloning into '/Users/runner/work/wago/wago/source/tests/conformance/spec-v3/document/core/util/katex'...
+2026-11-02T14:57:52.0662090Z From https://github.com/KaTeX/KaTeX
+2026-11-02T14:57:52.0663350Z  * branch            e751278cff42fada16dba6df331fda52aaa90f73 -> FETCH_HEAD
+2026-11-02T14:57:52.3801520Z Submodule path 'tests/conformance/spec-v3/document/core/util/katex': checked out 'e751278cff42fada16dba6df331fda52aaa90f73'
+2026-11-02T14:57:52.4061770Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local gc.auto 0
+2026-11-02T14:57:52.5352550Z Entering 'tests/conformance/spec-v1'
+2026-11-02T14:57:52.5725570Z Entering 'tests/conformance/spec-v2'
+2026-11-02T14:57:52.5950520Z Entering 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T14:57:52.6285180Z Entering 'tests/conformance/spec-v3'
+2026-11-02T14:57:52.6517810Z Entering 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T14:57:52.6718140Z ##[endgroup]
+2026-11-02T14:57:52.6886360Z [command]/opt/homebrew/bin/git log -1 --format=%H
+2026-11-02T14:57:52.7027420Z 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:57:52.7063530Z ##[group]Removing auth
+2026-11-02T14:57:52.7075040Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T14:57:52.7179470Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T14:57:52.8218130Z Entering 'tests/conformance/spec-v1'
+2026-11-02T14:57:52.8558710Z Entering 'tests/conformance/spec-v2'
+2026-11-02T14:57:52.8875050Z Entering 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T14:57:52.9120150Z Entering 'tests/conformance/spec-v3'
+2026-11-02T14:57:52.9357600Z Entering 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T14:57:52.9686770Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T14:57:52.9698250Z http.https://github.com/.extraheader
+2026-11-02T14:57:52.9724720Z [command]/opt/homebrew/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-02T14:57:52.9845850Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T14:57:53.1027030Z Entering 'tests/conformance/spec-v1'
+2026-11-02T14:57:53.1532020Z Entering 'tests/conformance/spec-v2'
+2026-11-02T14:57:53.1934730Z Entering 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T14:57:53.2311420Z Entering 'tests/conformance/spec-v3'
+2026-11-02T14:57:53.2629010Z Entering 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T14:57:53.2938100Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:57:53.3021650Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T14:57:53.4088570Z Entering 'tests/conformance/spec-v1'
+2026-11-02T14:57:53.4216430Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v1/config	remote.origin.url
+2026-11-02T14:57:53.4294450Z Entering 'tests/conformance/spec-v2'
+2026-11-02T14:57:53.4412590Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/config	remote.origin.url
+2026-11-02T14:57:53.4489540Z Entering 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T14:57:53.4658250Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/modules/document/core/util/katex/config	remote.origin.url
+2026-11-02T14:57:53.4786210Z Entering 'tests/conformance/spec-v3'
+2026-11-02T14:57:53.4987340Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/config	remote.origin.url
+2026-11-02T14:57:53.5067000Z Entering 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T14:57:53.5174960Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/modules/document/core/util/katex/config	remote.origin.url
+2026-11-02T14:57:53.5269210Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v1/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:57:53.5351700Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:57:53.5430490Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/modules/document/core/util/katex/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:57:53.5728490Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:57:53.5833840Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/modules/document/core/util/katex/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:57:53.5927860Z ##[endgroup]
+2026-11-02T14:57:53.6588380Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+2026-11-02T14:57:53.6589190Z with:
+2026-11-02T14:57:53.6589510Z   ref: a3c08365f531eb3c9003e3acf3e0a822c12c31f4
+2026-11-02T14:57:53.6589800Z   path: baseline
+2026-11-02T14:57:53.6590110Z   persist-credentials: false
+2026-11-02T14:57:53.6590420Z   repository: wago-org/wago
+2026-11-02T14:57:53.6592930Z   token: ***
+2026-11-02T14:57:53.6593200Z   ssh-strict: true
+2026-11-02T14:57:53.6593440Z   ssh-user: git
+2026-11-02T14:57:53.6593730Z   clean: true
+2026-11-02T14:57:53.6593960Z   sparse-checkout-cone-mode: true
+2026-11-02T14:57:53.6594280Z   fetch-depth: 1
+2026-11-02T14:57:53.6594600Z   fetch-tags: false
+2026-11-02T14:57:53.6594840Z   show-progress: true
+2026-11-02T14:57:53.6595180Z   lfs: false
+2026-11-02T14:57:53.6596000Z   submodules: false
+2026-11-02T14:57:53.6596290Z   set-safe-directory: true
+2026-11-02T14:57:53.6596530Z   allow-unsafe-pr-checkout: false
+2026-11-02T14:57:53.6598300Z env:
+2026-11-02T14:57:53.6598800Z   GO_VERSION: 1.27.1
+2026-11-02T14:57:53.6599020Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T14:57:53.6599310Z   TINYGO_VERSION: 0.42.0
+2026-11-02T14:57:53.6599570Z   JUST_VERSION: 1.58.0
+2026-11-02T14:57:53.6599820Z   GOTOOLCHAIN: local
+2026-11-02T14:57:53.6599970Z   GOENV: off
+2026-11-02T14:57:53.6600220Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T14:57:53.6600520Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:57:53.6600910Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:57:53.6601460Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:57:53.6601760Z ##[endgroup]
+2026-11-02T14:57:53.8218590Z Syncing repository: wago-org/wago
+2026-11-02T14:57:53.8223940Z ##[group]Getting Git version info
+2026-11-02T14:57:53.8224570Z Working directory is '/Users/runner/work/wago/wago/baseline'
+2026-11-02T14:57:53.8266150Z [command]/opt/homebrew/bin/git version
+2026-11-02T14:57:53.8373620Z git version 2.56.0
+2026-11-02T14:57:53.8387190Z ##[endgroup]
+2026-11-02T14:57:53.8396620Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/0a042625-e11b-4831-916a-ed9f1bd4df30/.gitconfig'
+2026-11-02T14:57:53.8411750Z Temporarily overriding HOME='/Users/runner/work/_temp/0a042625-e11b-4831-916a-ed9f1bd4df30' before making global git config changes
+2026-11-02T14:57:53.8412490Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T14:57:53.8416360Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/wago/wago/baseline
+2026-11-02T14:57:53.8498960Z ##[group]Initializing the repository
+2026-11-02T14:57:53.8504690Z [command]/opt/homebrew/bin/git init /Users/runner/work/wago/wago/baseline
+2026-11-02T14:57:53.8646280Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-02T14:57:53.8655210Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-02T14:57:53.8655900Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-02T14:57:53.8656250Z hint: call:
+2026-11-02T14:57:53.8656410Z hint:
+2026-11-02T14:57:53.8656650Z hint: 	git config --global init.defaultBranch <name>
+2026-11-02T14:57:53.8656910Z hint:
+2026-11-02T14:57:53.8657160Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-02T14:57:53.8657570Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-02T14:57:53.8657900Z hint:
+2026-11-02T14:57:53.8658050Z hint: 	git branch -m <name>
+2026-11-02T14:57:53.8658240Z hint:
+2026-11-02T14:57:53.8658520Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-02T14:57:53.8659000Z Initialized empty Git repository in /Users/runner/work/wago/wago/baseline/.git/
+2026-11-02T14:57:53.8675390Z [command]/opt/homebrew/bin/git remote add origin https://github.com/wago-org/wago
+2026-11-02T14:57:53.8901900Z ##[endgroup]
+2026-11-02T14:57:53.8919530Z ##[group]Disabling automatic garbage collection
+2026-11-02T14:57:53.8923700Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+2026-11-02T14:57:53.8926320Z ##[endgroup]
+2026-11-02T14:57:53.8926920Z ##[group]Setting up auth
+2026-11-02T14:57:53.8927510Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T14:57:53.9108860Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T14:57:54.0343520Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T14:57:54.0439590Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T14:57:54.1527970Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:57:54.1817230Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T14:57:54.2859150Z [command]/opt/homebrew/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-02T14:57:54.2950200Z ##[endgroup]
+2026-11-02T14:57:54.2951330Z ##[group]Fetching the repository
+2026-11-02T14:57:54.2957880Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin a3c08365f531eb3c9003e3acf3e0a822c12c31f4
+2026-11-02T14:58:02.2508380Z From https://github.com/wago-org/wago
+2026-11-02T14:58:02.2612650Z  * branch            a3c08365f531eb3c9003e3acf3e0a822c12c31f4 -> FETCH_HEAD
+2026-11-02T14:58:02.2924960Z ##[endgroup]
+2026-11-02T14:58:02.3023090Z ##[group]Determining the checkout info
+2026-11-02T14:58:02.3086690Z ##[endgroup]
+2026-11-02T14:58:02.3126490Z [command]/opt/homebrew/bin/git sparse-checkout disable
+2026-11-02T14:58:02.3159710Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-02T14:58:02.3178170Z ##[group]Checking out the ref
+2026-11-02T14:58:02.3194840Z [command]/opt/homebrew/bin/git checkout --progress --force a3c08365f531eb3c9003e3acf3e0a822c12c31f4
+2026-11-02T14:58:03.6338680Z Updating files:  12% (1006/7901)
+2026-11-02T14:58:03.6487950Z Updating files:  13% (1028/7901)
+2026-11-02T14:58:03.6712850Z Updating files:  14% (1107/7901)
+2026-11-02T14:58:03.7102400Z Updating files:  15% (1186/7901)
+2026-11-02T14:58:03.7296430Z Updating files:  16% (1265/7901)
+2026-11-02T14:58:03.7431500Z Updating files:  17% (1344/7901)
+2026-11-02T14:58:03.7613340Z Updating files:  18% (1423/7901)
+2026-11-02T14:58:03.7960420Z Updating files:  19% (1502/7901)
+2026-11-02T14:58:03.8142710Z Updating files:  20% (1581/7901)
+2026-11-02T14:58:03.8254090Z Updating files:  21% (1660/7901)
+2026-11-02T14:58:03.8398380Z Updating files:  22% (1739/7901)
+2026-11-02T14:58:03.8569210Z Updating files:  23% (1818/7901)
+2026-11-02T14:58:03.8718270Z Updating files:  24% (1897/7901)
+2026-11-02T14:58:03.8914790Z Updating files:  25% (1976/7901)
+2026-11-02T14:58:03.9059950Z Updating files:  26% (2055/7901)
+2026-11-02T14:58:03.9184590Z Updating files:  27% (2134/7901)
+2026-11-02T14:58:03.9370660Z Updating files:  28% (2213/7901)
+2026-11-02T14:58:03.9489710Z Updating files:  29% (2292/7901)
+2026-11-02T14:58:03.9601190Z Updating files:  30% (2371/7901)
+2026-11-02T14:58:03.9684400Z Updating files:  31% (2450/7901)
+2026-11-02T14:58:03.9785560Z Updating files:  32% (2529/7901)
+2026-11-02T14:58:03.9882530Z Updating files:  33% (2608/7901)
+2026-11-02T14:58:04.0009590Z Updating files:  34% (2687/7901)
+2026-11-02T14:58:04.0130100Z Updating files:  35% (2766/7901)
+2026-11-02T14:58:04.0234030Z Updating files:  36% (2845/7901)
+2026-11-02T14:58:04.0642550Z Updating files:  37% (2924/7901)
+2026-11-02T14:58:04.0769080Z Updating files:  38% (3003/7901)
+2026-11-02T14:58:04.0919610Z Updating files:  39% (3082/7901)
+2026-11-02T14:58:04.1058260Z Updating files:  40% (3161/7901)
+2026-11-02T14:58:04.1493410Z Updating files:  41% (3240/7901)
+2026-11-02T14:58:04.1638440Z Updating files:  42% (3319/7901)
+2026-11-02T14:58:04.1821570Z Updating files:  43% (3398/7901)
+2026-11-02T14:58:04.1961780Z Updating files:  44% (3477/7901)
+2026-11-02T14:58:04.2423490Z Updating files:  45% (3556/7901)
+2026-11-02T14:58:04.2576920Z Updating files:  46% (3635/7901)
+2026-11-02T14:58:04.2685480Z Updating files:  47% (3714/7901)
+2026-11-02T14:58:04.3317050Z Updating files:  48% (3793/7901)
+2026-11-02T14:58:04.3382310Z Updating files:  49% (3872/7901)
+2026-11-02T14:58:04.3556000Z Updating files:  49% (3889/7901)
+2026-11-02T14:58:04.3718070Z Updating files:  50% (3951/7901)
+2026-11-02T14:58:04.3898160Z Updating files:  51% (4030/7901)
+2026-11-02T14:58:04.4781420Z Updating files:  52% (4109/7901)
+2026-11-02T14:58:04.4858020Z Updating files:  53% (4188/7901)
+2026-11-02T14:58:04.4954930Z Updating files:  54% (4267/7901)
+2026-11-02T14:58:04.5980640Z Updating files:  55% (4346/7901)
+2026-11-02T14:58:04.6079150Z Updating files:  56% (4425/7901)
+2026-11-02T14:58:04.6196720Z Updating files:  57% (4504/7901)
+2026-11-02T14:58:04.6334250Z Updating files:  58% (4583/7901)
+2026-11-02T14:58:04.6470490Z Updating files:  59% (4662/7901)
+2026-11-02T14:58:04.6640110Z Updating files:  60% (4741/7901)
+2026-11-02T14:58:04.6779190Z Updating files:  61% (4820/7901)
+2026-11-02T14:58:04.6922770Z Updating files:  62% (4899/7901)
+2026-11-02T14:58:04.7314790Z Updating files:  63% (4978/7901)
+2026-11-02T14:58:04.7397670Z Updating files:  64% (5057/7901)
+2026-11-02T14:58:04.7492650Z Updating files:  65% (5136/7901)
+2026-11-02T14:58:04.7611680Z Updating files:  66% (5215/7901)
+2026-11-02T14:58:04.8215900Z Updating files:  67% (5294/7901)
+2026-11-02T14:58:04.8319800Z Updating files:  68% (5373/7901)
+2026-11-02T14:58:04.8453370Z Updating files:  69% (5452/7901)
+2026-11-02T14:58:04.8544850Z Updating files:  70% (5531/7901)
+2026-11-02T14:58:04.8695110Z Updating files:  71% (5610/7901)
+2026-11-02T14:58:04.8793270Z Updating files:  72% (5689/7901)
+2026-11-02T14:58:04.8884070Z Updating files:  73% (5768/7901)
+2026-11-02T14:58:04.8985010Z Updating files:  74% (5847/7901)
+2026-11-02T14:58:04.9372240Z Updating files:  75% (5926/7901)
+2026-11-02T14:58:04.9447850Z Updating files:  76% (6005/7901)
+2026-11-02T14:58:04.9744570Z Updating files:  77% (6084/7901)
+2026-11-02T14:58:05.0142440Z Updating files:  78% (6163/7901)
+2026-11-02T14:58:05.0218340Z Updating files:  79% (6242/7901)
+2026-11-02T14:58:05.0332590Z Updating files:  80% (6321/7901)
+2026-11-02T14:58:05.0442060Z Updating files:  81% (6400/7901)
+2026-11-02T14:58:05.0537080Z Updating files:  82% (6479/7901)
+2026-11-02T14:58:05.0634040Z Updating files:  83% (6558/7901)
+2026-11-02T14:58:05.0729140Z Updating files:  84% (6637/7901)
+2026-11-02T14:58:05.0870730Z Updating files:  85% (6716/7901)
+2026-11-02T14:58:05.0956800Z Updating files:  86% (6795/7901)
+2026-11-02T14:58:05.1041990Z Updating files:  87% (6874/7901)
+2026-11-02T14:58:05.1167940Z Updating files:  88% (6953/7901)
+2026-11-02T14:58:05.1555930Z Updating files:  89% (7032/7901)
+2026-11-02T14:58:05.1695630Z Updating files:  90% (7111/7901)
+2026-11-02T14:58:05.1792820Z Updating files:  91% (7190/7901)
+2026-11-02T14:58:05.2144070Z Updating files:  92% (7269/7901)
+2026-11-02T14:58:05.2270580Z Updating files:  93% (7348/7901)
+2026-11-02T14:58:05.2439310Z Updating files:  94% (7427/7901)
+2026-11-02T14:58:05.2557310Z Updating files:  95% (7506/7901)
+2026-11-02T14:58:05.2976610Z Updating files:  96% (7585/7901)
+2026-11-02T14:58:05.3086110Z Updating files:  97% (7664/7901)
+2026-11-02T14:58:05.3410010Z Updating files:  98% (7743/7901)
+2026-11-02T14:58:05.3441800Z Updating files:  98% (7815/7901)
+2026-11-02T14:58:05.3842140Z Updating files:  99% (7822/7901)
+2026-11-02T14:58:05.3844030Z Updating files: 100% (7901/7901)
+2026-11-02T14:58:05.3845110Z Updating files: 100% (7901/7901), done.
+2026-11-02T14:58:05.3964020Z HEAD is now at a3c0836 docs: reconcile all corpus compiler census results
+2026-11-02T14:58:05.4007710Z ##[endgroup]
+2026-11-02T14:58:05.4230570Z [command]/opt/homebrew/bin/git log -1 --format=%H
+2026-11-02T14:58:05.4379700Z a3c08365f531eb3c9003e3acf3e0a822c12c31f4
+2026-11-02T14:58:05.4397260Z ##[group]Removing auth
+2026-11-02T14:58:05.4401690Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T14:58:05.4538990Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T14:58:05.7244370Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T14:58:05.7345890Z http.https://github.com/.extraheader
+2026-11-02T14:58:05.7532600Z [command]/opt/homebrew/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-02T14:58:05.7534580Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T14:58:05.8994280Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T14:58:05.9096850Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T14:58:06.0725910Z ##[endgroup]
+2026-11-02T14:58:06.1147700Z ##[group]Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+2026-11-02T14:58:06.1148650Z with:
+2026-11-02T14:58:06.1149130Z   go-version: 1.27.1
+2026-11-02T14:58:06.1149640Z   cache: false
+2026-11-02T14:58:06.1150050Z   check-latest: false
+2026-11-02T14:58:06.1156370Z   token: ***
+2026-11-02T14:58:06.1156890Z env:
+2026-11-02T14:58:06.1157550Z   GO_VERSION: 1.27.1
+2026-11-02T14:58:06.1158290Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T14:58:06.1158660Z   TINYGO_VERSION: 0.42.0
+2026-11-02T14:58:06.1158890Z   JUST_VERSION: 1.58.0
+2026-11-02T14:58:06.1159080Z   GOTOOLCHAIN: local
+2026-11-02T14:58:06.1159350Z   GOENV: off
+2026-11-02T14:58:06.1159530Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T14:58:06.1159940Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:58:06.1160340Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:58:06.1160800Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:58:06.1161260Z ##[endgroup]
+2026-11-02T14:58:06.3759120Z Setup go version spec 1.27.1
+2026-11-02T14:58:06.3792670Z Attempting to download 1.27.1...
+2026-11-02T14:58:06.4038510Z (node:3726) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-02T14:58:06.4111820Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-02T14:58:07.1589910Z matching 1.27.1...
+2026-11-02T14:58:07.1649670Z Acquiring 1.27.1 from https://github.com/actions/go-versions/releases/download/1.27.1-33583469715/go-1.27.1-darwin-arm64.tar.gz
+2026-11-02T14:58:07.9907050Z Extracting Go...
+2026-11-02T14:58:08.0082650Z [command]/usr/bin/tar xz -C /Users/runner/work/_temp/e5762a5f-bbc7-462e-ab4a-b0bde7d2908a -f /Users/runner/work/_temp/f941d899-ea63-4517-914e-cd2c465bbde5
+2026-11-02T14:58:12.1192230Z Successfully extracted go to /Users/runner/work/_temp/e5762a5f-bbc7-462e-ab4a-b0bde7d2908a
+2026-11-02T14:58:12.1301870Z Adding to the cache ...
+2026-11-02T14:58:21.9122070Z Successfully cached go to /Users/runner/hostedtoolcache/go/1.27.1/arm64
+2026-11-02T14:58:21.9123080Z Added go to the path
+2026-11-02T14:58:21.9125640Z Successfully set up Go version 1.27.1
+2026-11-02T14:58:22.0644740Z go version go1.27.1 darwin/arm64
+2026-11-02T14:58:22.0645130Z 
+2026-11-02T14:58:22.0645560Z ##[group]go env
+2026-11-02T14:58:25.3865690Z AR='ar'
+2026-11-02T14:58:25.3867030Z CC='clang'
+2026-11-02T14:58:25.3868330Z CGO_CFLAGS='-O2 -g'
+2026-11-02T14:58:25.3869750Z CGO_CPPFLAGS=''
+2026-11-02T14:58:25.3874360Z CGO_CXXFLAGS='-O2 -g'
+2026-11-02T14:58:25.3874910Z CGO_ENABLED='1'
+2026-11-02T14:58:25.3882480Z CGO_FFLAGS='-O2 -g'
+2026-11-02T14:58:25.3882860Z CGO_LDFLAGS='-O2 -g'
+2026-11-02T14:58:25.3883150Z CXX='clang++'
+2026-11-02T14:58:25.3883560Z GCCGO='gccgo'
+2026-11-02T14:58:25.3883850Z GO111MODULE=''
+2026-11-02T14:58:25.3884220Z GOARCH='arm64'
+2026-11-02T14:58:25.3884510Z GOARM64='v8.0'
+2026-11-02T14:58:25.3884910Z GOAUTH='netrc'
+2026-11-02T14:58:25.3885370Z GOBIN='/Users/runner/go/bin'
+2026-11-02T14:58:25.3885780Z GOCACHE='/Users/runner/Library/Caches/go-build'
+2026-11-02T14:58:25.3886300Z GOCACHEPROG=''
+2026-11-02T14:58:25.3886610Z GODEBUG=''
+2026-11-02T14:58:25.3886990Z GOENV=''
+2026-11-02T14:58:25.3887260Z GOEXE=''
+2026-11-02T14:58:25.3887690Z GOEXPERIMENT=''
+2026-11-02T14:58:25.3887990Z GOFIPS140='off'
+2026-11-02T14:58:25.3888350Z GOFLAGS=''
+2026-11-02T14:58:25.3889520Z GOGCCFLAGS='-fPIC -arch arm64 -pthread -fno-caret-diagnostics -Qunused-arguments -fmessage-length=0 -ffile-prefix-map=/var/folders/y3/p6x0rn5562l5qyxy7x6jqrsc0000gn/T/go-build2171497167=/tmp/go-build -gno-record-gcc-switches -fno-common'
+2026-11-02T14:58:25.3890620Z GOHOSTARCH='arm64'
+2026-11-02T14:58:25.3906340Z GOHOSTOS='darwin'
+2026-11-02T14:58:25.3907190Z GOINSECURE=''
+2026-11-02T14:58:25.3908100Z GOMOD='/dev/null'
+2026-11-02T14:58:25.3908840Z GOMODCACHE='/Users/runner/go/pkg/mod'
+2026-11-02T14:58:25.3909780Z GONOPROXY=''
+2026-11-02T14:58:25.3910440Z GONOSUMDB=''
+2026-11-02T14:58:25.3911140Z GOOS='darwin'
+2026-11-02T14:58:25.3913510Z GOPACKAGESDRIVER=''
+2026-11-02T14:58:25.3914200Z GOPATH='/Users/runner/go'
+2026-11-02T14:58:25.3914950Z GOPRIVATE=''
+2026-11-02T14:58:25.3915790Z GOPROXY='https://proxy.golang.org,direct'
+2026-11-02T14:58:25.3916670Z GOROOT='/Users/runner/hostedtoolcache/go/1.27.1/arm64'
+2026-11-02T14:58:25.3917580Z GOSUMDB='sum.golang.org'
+2026-11-02T14:58:25.3918240Z GOTELEMETRY='local'
+2026-11-02T14:58:25.3919460Z GOTELEMETRYDIR='/Users/runner/Library/Application Support/go/telemetry'
+2026-11-02T14:58:25.3919950Z GOTMPDIR=''
+2026-11-02T14:58:25.3920240Z GOTOOLCHAIN='local'
+2026-11-02T14:58:25.3920620Z GOTOOLDIR='/Users/runner/hostedtoolcache/go/1.27.1/arm64/pkg/tool/darwin_arm64'
+2026-11-02T14:58:25.3921090Z GOVCS=''
+2026-11-02T14:58:25.3921300Z GOVERSION='go1.27.1'
+2026-11-02T14:58:25.3921620Z GOWORK=''
+2026-11-02T14:58:25.3922000Z PKG_CONFIG='pkg-config'
+2026-11-02T14:58:25.3922110Z 
+2026-11-02T14:58:25.3922690Z ##[endgroup]
+2026-11-02T14:58:25.4183260Z ##[group]Run extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3
+2026-11-02T14:58:25.4183710Z with:
+2026-11-02T14:58:25.4184070Z   just-version: 1.58.0
+2026-11-02T14:58:25.4187330Z   github-token: ***
+2026-11-02T14:58:25.4187630Z env:
+2026-11-02T14:58:25.4188020Z   GO_VERSION: 1.27.1
+2026-11-02T14:58:25.4188330Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T14:58:25.4188670Z   TINYGO_VERSION: 0.42.0
+2026-11-02T14:58:25.4188940Z   JUST_VERSION: 1.58.0
+2026-11-02T14:58:25.4189270Z   GOTOOLCHAIN: local
+2026-11-02T14:58:25.4189590Z   GOENV: off
+2026-11-02T14:58:25.4189870Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T14:58:25.4190790Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:58:25.4191360Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:58:25.4192380Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:58:25.4240170Z ##[endgroup]
+2026-11-02T14:58:25.4329450Z ##[start-action display=Run extractions/setup-crate@0551596312d4008a6dfbc4d3c38fa20eaef46d2d;id=__extractions_setup-just.__extractions_setup-crate]
+2026-11-02T14:58:25.4417260Z ##[group]Run extractions/setup-crate@0551596312d4008a6dfbc4d3c38fa20eaef46d2d
+2026-11-02T14:58:25.4417580Z with:
+2026-11-02T14:58:25.4417760Z   repo: casey/just
+2026-11-02T14:58:25.4418030Z   version: 1.58.0
+2026-11-02T14:58:25.4420140Z   github-token: ***
+2026-11-02T14:58:25.4420330Z env:
+2026-11-02T14:58:25.4420630Z   GO_VERSION: 1.27.1
+2026-11-02T14:58:25.4420860Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T14:58:25.4421150Z   TINYGO_VERSION: 0.42.0
+2026-11-02T14:58:25.4421400Z   JUST_VERSION: 1.58.0
+2026-11-02T14:58:25.4421560Z   GOTOOLCHAIN: local
+2026-11-02T14:58:25.4422340Z   GOENV: off
+2026-11-02T14:58:25.4422540Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T14:58:25.4422850Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:58:25.4423260Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:58:25.4423730Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:58:25.4423990Z ##[endgroup]
+2026-11-02T14:58:26.7391560Z [command]/usr/bin/tar xz -C /Users/runner/work/_temp/28b8f187-557b-4c6a-9ccc-25ad81d044fc -f /Users/runner/work/_temp/b24b0109-a959-437d-8a54-7a95bcc887b0
+2026-11-02T14:58:26.7776200Z Successfully setup just v1.58.0
+2026-11-02T14:58:26.7837060Z ##[end-action id=__extractions_setup-just.__extractions_setup-crate;outcome=success;conclusion=success;duration_ms=1350]
+2026-11-02T14:58:26.7876290Z ##[group]Run mkdir -p setup-receipts
+2026-11-02T14:58:26.7876590Z [36;1mmkdir -p setup-receipts[0m
+2026-11-02T14:58:26.7876850Z [36;1mset -o pipefail[0m
+2026-11-02T14:58:26.7877330Z [36;1mbash harness/docs/rfwgc-evidence/final-darwin/setup.sh source setup-receipts 2>&1 | tee setup-receipts/setup.log[0m
+2026-11-02T14:58:27.0098470Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-02T14:58:27.0098770Z env:
+2026-11-02T14:58:27.0098920Z   GO_VERSION: 1.27.1
+2026-11-02T14:58:27.0099130Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T14:58:27.0099320Z   TINYGO_VERSION: 0.42.0
+2026-11-02T14:58:27.0099510Z   JUST_VERSION: 1.58.0
+2026-11-02T14:58:27.0099750Z   GOTOOLCHAIN: local
+2026-11-02T14:58:27.0099910Z   GOENV: off
+2026-11-02T14:58:27.0100090Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T14:58:27.0100350Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T14:58:27.0100720Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:58:27.0101120Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T14:58:27.0101410Z ##[endgroup]
+2026-11-02T14:58:28.7898350Z  a8bcbafe6d2fb191ce0188de0e18fdc107fa2598 tests/conformance/spec-v1 (a8bcbaf)
+2026-11-02T14:58:28.8329380Z  05ca4182176763112561ae20153975c12bd689e4 tests/conformance/spec-v2 (05ca418)
+2026-11-02T14:58:28.8716670Z  e751278cff42fada16dba6df331fda52aaa90f73 tests/conformance/spec-v2/document/core/util/katex (e751278)
+2026-11-02T14:58:28.9161890Z  9d36019973201a19f9c9ebb0f10828b2fe2374aa tests/conformance/spec-v3 (9d36019)
+2026-11-02T14:58:28.9580820Z  e751278cff42fada16dba6df331fda52aaa90f73 tests/conformance/spec-v3/document/core/util/katex (e751278)
+2026-11-02T14:58:29.0317180Z /Applications/Xcode_16.4.app/Contents/Developer
+2026-11-02T14:58:29.0557880Z Apple clang version 17.0.0 (clang-1700.0.13.5)
+2026-11-02T14:58:29.0558330Z Target: arm64-apple-darwin24.6.0
+2026-11-02T14:58:29.0561890Z Thread model: posix
+2026-11-02T14:58:29.0562470Z InstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin
+2026-11-02T14:58:29.0911380Z Python 3.15.2
+2026-11-02T14:58:29.1050760Z ProductName:		macOS
+2026-11-02T14:58:29.1051300Z ProductVersion:		15.8.2
+2026-11-02T14:58:29.1051970Z BuildVersion:		24H232
+2026-11-02T14:58:29.1052640Z ImageOS=macos15 ImageVersion=20261028.0489.1
+2026-11-02T14:58:29.1454250Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+2026-11-02T14:58:29.1455470Z                                  Dload  Upload   Total   Spent    Left  Speed
+2026-11-02T14:58:29.1455750Z 
+2026-11-02T14:58:29.4053030Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+2026-11-02T14:58:29.6539210Z  42 50.6M   42 21.4M    0     0  82.9M      0 --:--:-- --:--:-- --:--:-- 82.6M
+2026-11-02T14:58:29.6539960Z 100 50.6M  100 50.6M    0     0  99.5M      0 --:--:-- --:--:-- --:--:-- 99.4M
+2026-11-02T14:58:29.9735890Z /Users/runner/work/_temp/rfwgc-tools/node.tar.gz: OK
+2026-11-02T14:58:32.0430960Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+2026-11-02T14:58:32.0437550Z                                  Dload  Upload   Total   Spent    Left  Speed
+2026-11-02T14:58:32.0463480Z 
+2026-11-02T14:58:32.2351130Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+2026-11-02T14:58:32.2352600Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+2026-11-02T14:58:32.4603010Z 
+2026-11-02T14:58:33.1140530Z  14 67.3M   14 10.0M    0     0  24.0M      0  0:00:02 --:--:--  0:00:02 24.0M
+2026-11-02T14:58:33.1142050Z 100 67.3M  100 67.3M    0     0  62.9M      0  0:00:01  0:00:01 --:--:-- 87.7M
+2026-11-02T14:58:33.4296350Z /Users/runner/work/_temp/rfwgc-tools/pwsh.tar.gz: OK
+2026-11-02T14:58:36.7280810Z [32m==>[0m [1mDownloading bottle manifests[0m
+2026-11-02T14:58:36.7361680Z ✔︎ Bottle Manifest opam (2.6.1)
+2026-11-02T14:58:36.8722290Z [34m==>[0m [1mWould install 1 formula:[0m
+2026-11-02T14:58:36.8723860Z opam 2.6.1
+2026-11-02T14:58:36.8734760Z [34m==>[0m [1mWould install 3 dependencies for opam:[0m
+2026-11-02T14:58:36.8737180Z popt    1.19
+2026-11-02T14:58:36.8738360Z xxhash  0.8.4
+2026-11-02T14:58:36.8739770Z rsync   3.5.1
+2026-11-02T14:58:37.0672470Z [32m==>[0m [1mFetching downloads for: [32mopam[39m[0m
+2026-11-02T14:58:37.2384790Z ✔︎ Bottle Manifest xxhash (0.8.4)
+2026-11-02T14:58:37.2563040Z ✔︎ Bottle Manifest popt (1.19)
+2026-11-02T14:58:37.3355030Z ✔︎ Bottle Manifest rsync (3.5.1)
+2026-11-02T14:58:39.5593060Z ✔︎ Bottle popt (1.19)
+2026-11-02T14:58:39.5793130Z ✔︎ Bottle xxhash (0.8.4)
+2026-11-02T14:58:39.5960910Z ✔︎ Bottle rsync (3.5.1)
+2026-11-02T14:58:39.6055950Z ✔︎ Bottle opam (2.6.1)
+2026-11-02T14:58:39.6347060Z [32m==>[0m [1mInstalling dependencies for opam:[0m [32mpopt[39m, [32mxxhash[39m and [32mrsync[39m[0m
+2026-11-02T14:58:39.6348540Z [32m==>[0m [1mInstalling opam dependency: [32mpopt[39m (1.19)[0m
+2026-11-02T14:58:39.6366110Z [34m==>[0m [1mPouring popt--1.19.arm64_sequoia.bottle.tar.gz[0m
+2026-11-02T14:58:40.9687550Z 🍺  /opt/homebrew/Cellar/popt/1.19: 11 files, 179.8KB
+2026-11-02T14:58:40.9688510Z [32m==>[0m [1mInstalling opam dependency: [32mxxhash[39m (0.8.4)[0m
+2026-11-02T14:58:40.9715510Z [34m==>[0m [1mPouring xxhash--0.8.4.arm64_sequoia.bottle.tar.gz[0m
+2026-11-02T14:58:42.1389150Z 🍺  /opt/homebrew/Cellar/xxhash/0.8.4: 28 files, 583.3KB
+2026-11-02T14:58:42.1399790Z [32m==>[0m [1mInstalling opam dependency: [32mrsync[39m (3.5.1)[0m
+2026-11-02T14:58:42.2156470Z [34m==>[0m [1mPouring rsync--3.5.1.arm64_sequoia.bottle.1.tar.gz[0m
+2026-11-02T14:58:43.5234250Z 🍺  /opt/homebrew/Cellar/rsync/3.5.1: 14 files, 1.3MB
+2026-11-02T14:58:43.5240310Z [32m==>[0m [1mInstalling [32mopam[39m[0m
+2026-11-02T14:58:43.5242390Z [34m==>[0m [1mPouring opam--2.6.1.arm64_sequoia.bottle.tar.gz[0m
+2026-11-02T14:58:44.3584270Z 🍺  /opt/homebrew/Cellar/opam/2.6.1: 56 files, 20.4MB
+2026-11-02T14:58:44.3587450Z [32m==>[0m [1mCaveats[0m
+2026-11-02T14:58:44.3589280Z Bash completion has been installed to:
+2026-11-02T14:58:44.3590500Z   /opt/homebrew/etc/bash_completion.d
+2026-11-02T14:58:44.3591340Z [34m==>[0m [1mopam[0m
+2026-11-02T14:58:44.3593050Z OPAM uses ~/.opam by default for its package database, so you need to
+2026-11-02T14:58:44.3594810Z initialize it first by running:
+2026-11-02T14:58:44.3595090Z 
+2026-11-02T14:58:44.3595210Z $ opam init
+2026-11-02T14:58:44.4475340Z 2.6.1
+2026-11-02T14:58:44.5040380Z No configuration file found, using built-in defaults.
+2026-11-02T14:58:44.5059460Z Checking for available remotes: rsync and local, git.
+2026-11-02T14:58:44.5075200Z   - you won't be able to use mercurial repositories unless you install the hg command on your system.
+2026-11-02T14:58:44.5079530Z   - you won't be able to use darcs repositories unless you install the darcs command on your system.
+2026-11-02T14:58:44.5079960Z 
+2026-11-02T14:58:44.5136110Z 
+2026-11-02T14:58:44.5148220Z <><> Fetching repository information ><><><><><><><><><><><><><><><><><><><>  🐫 
+2026-11-02T14:58:46.4365520Z [default] Initialised
+2026-11-02T14:59:14.4054100Z 
+2026-11-02T14:59:14.4056880Z <><> Installing new switch packages <><><><><><><><><><><><><><><><><><><><>  🐫 
+2026-11-02T14:59:14.4058680Z Switch invariant: ["ocaml-base-compiler" {= "4.14.3"}]
+2026-11-02T14:59:19.2837650Z 
+2026-11-02T14:59:19.2944090Z <><> Processing actions <><><><><><><><><><><><><><><><><><><><><><><><><><>  🐫 
+2026-11-02T14:59:19.3051640Z ∗ installed base-bigarray.base
+2026-11-02T14:59:19.3157900Z ∗ installed base-threads.base
+2026-11-02T14:59:19.3259450Z ∗ installed base-unix.base
+2026-11-02T14:59:19.3268060Z ∗ installed ocaml-options-vanilla.1
+2026-11-02T14:59:20.2853390Z ⬇ retrieved ocaml-config.2  (2 extra sources)
+2026-11-02T14:59:20.2853890Z ⬇ retrieved ocaml-config.2  (2 extra sources)
+2026-11-02T14:59:23.1657520Z ⬇ retrieved ocaml-base-compiler.4.14.3  (https://opam.ocaml.org/cache)
+2026-11-02T15:03:47.0341330Z ∗ installed ocaml-base-compiler.4.14.3
+2026-11-02T15:03:47.7515120Z ∗ installed ocaml-config.2
+2026-11-02T15:03:47.8642280Z ∗ installed ocaml.4.14.3
+2026-11-02T15:03:47.8657460Z Done.
+2026-11-02T15:03:47.8701410Z # To update the current shell environment, run: eval $(opam env --switch=darwin)
+2026-11-02T15:03:53.8538070Z The following actions will be performed:
+2026-11-02T15:03:53.8539490Z === install 6 packages
+2026-11-02T15:03:53.8544830Z   ∗ dune      3.22.1
+2026-11-02T15:03:53.8545620Z   ∗ menhir    20260209
+2026-11-02T15:03:53.8546380Z   ∗ menhirCST 20260209 [required by menhir]
+2026-11-02T15:03:53.8547910Z   ∗ menhirGLR 20260209 [required by menhir]
+2026-11-02T15:03:53.8548920Z   ∗ menhirLib 20260209 [required by menhir]
+2026-11-02T15:03:53.8549920Z   ∗ menhirSdk 20260209 [required by menhir]
+2026-11-02T15:03:53.8550480Z 
+2026-11-02T15:03:53.8554850Z <><> Processing actions <><><><><><><><><><><><><><><><><><><><><><><><><><>  🐫 
+2026-11-02T15:03:56.3812780Z ⬇ retrieved menhir.20260209, menhirCST.20260209, menhirGLR.20260209, menhirLib.20260209, menhirSdk.20260209  (https://opam.ocaml.org/cache)
+2026-11-02T15:04:01.4522950Z ⬇ retrieved dune.3.22.1  (https://opam.ocaml.org/cache)
+2026-11-02T15:05:00.9895550Z ∗ installed dune.3.22.1
+2026-11-02T15:05:02.4833450Z ∗ installed menhirCST.20260209
+2026-11-02T15:05:03.4197410Z ∗ installed menhirGLR.20260209
+2026-11-02T15:05:03.7969200Z ∗ installed menhirLib.20260209
+2026-11-02T15:05:04.0564970Z ∗ installed menhirSdk.20260209
+2026-11-02T15:05:22.5827290Z ∗ installed menhir.20260209
+2026-11-02T15:05:22.7705790Z Done.
+2026-11-02T15:05:22.7796550Z # To update the current shell environment, run: eval $(opam env)
+2026-11-02T15:05:23.7117950Z wast2json 1.0.41 (/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json)
+2026-11-02T15:05:23.8380910Z rm -f wasm
+2026-11-02T15:05:23.8424990Z dune build wasm.exe
+2026-11-02T15:05:31.1294350Z ln _build/default/wasm.exe wasm
+2026-11-02T15:05:31.3599650Z WebAssembly/spec interpreter 9d36019973201a19f9c9ebb0f10828b2fe2374aa (/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm)
+2026-11-02T15:05:32.8328630Z ##[group]Run python3 harness/docs/rfwgc-evidence/final-darwin/contracts.py source contracts-wago_regalloccheck --target darwin --mode wago_regalloccheck
+2026-11-02T15:05:32.8329670Z [36;1mpython3 harness/docs/rfwgc-evidence/final-darwin/contracts.py source contracts-wago_regalloccheck --target darwin --mode wago_regalloccheck[0m
+2026-11-02T15:05:32.8529040Z shell: /bin/bash -e {0}
+2026-11-02T15:05:32.8529280Z env:
+2026-11-02T15:05:32.8529530Z   GO_VERSION: 1.27.1
+2026-11-02T15:05:32.8529740Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T15:05:32.8530040Z   TINYGO_VERSION: 0.42.0
+2026-11-02T15:05:32.8530310Z   JUST_VERSION: 1.58.0
+2026-11-02T15:05:32.8530500Z   GOTOOLCHAIN: local
+2026-11-02T15:05:32.8530760Z   GOENV: off
+2026-11-02T15:05:32.8530950Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T15:05:32.8531300Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T15:05:32.8531730Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T15:05:32.8532340Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T15:05:32.8532750Z   GOROOT: /Users/runner/hostedtoolcache/go/1.27.1/arm64
+2026-11-02T15:05:32.8539410Z   WAGO_WAST2JSON: /Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json
+2026-11-02T15:05:32.8540210Z   WAGO_SPEC_INTERPRETER: /Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm
+2026-11-02T15:05:32.8540860Z   WAGO_SPEC_INTERPRETER_REVISION: 9d36019973201a19f9c9ebb0f10828b2fe2374aa
+2026-11-02T15:05:32.8541270Z ##[endgroup]
+2026-11-02T15:06:42.3425470Z ##[group]Run python3 harness/docs/rfwgc-evidence/final-darwin/contracts.py baseline baseline-wago_regalloccheck --target darwin --mode wago_regalloccheck --baseline
+2026-11-02T15:06:42.3434490Z [36;1mpython3 harness/docs/rfwgc-evidence/final-darwin/contracts.py baseline baseline-wago_regalloccheck --target darwin --mode wago_regalloccheck --baseline[0m
+2026-11-02T15:06:42.4941520Z shell: /bin/bash -e {0}
+2026-11-02T15:06:42.4941910Z env:
+2026-11-02T15:06:42.4942350Z   GO_VERSION: 1.27.1
+2026-11-02T15:06:42.4942600Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T15:06:42.4943140Z   TINYGO_VERSION: 0.42.0
+2026-11-02T15:06:42.4943370Z   JUST_VERSION: 1.58.0
+2026-11-02T15:06:42.4943690Z   GOTOOLCHAIN: local
+2026-11-02T15:06:42.4944010Z   GOENV: off
+2026-11-02T15:06:42.4944240Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T15:06:42.4947440Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T15:06:42.4952890Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T15:06:42.4953480Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T15:06:42.4953890Z   GOROOT: /Users/runner/hostedtoolcache/go/1.27.1/arm64
+2026-11-02T15:06:42.4954440Z   WAGO_WAST2JSON: /Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json
+2026-11-02T15:06:42.4955220Z   WAGO_SPEC_INTERPRETER: /Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm
+2026-11-02T15:06:42.4955920Z   WAGO_SPEC_INTERPRETER_REVISION: 9d36019973201a19f9c9ebb0f10828b2fe2374aa
+2026-11-02T15:06:42.4956350Z ##[endgroup]
+2026-11-02T15:07:30.0248130Z ##[group]Run python3 harness/docs/rfwgc-evidence/final-darwin/run.py source receipts-wago_regalloccheck --mode 'wago_regalloccheck'
+2026-11-02T15:07:30.0251310Z [36;1mpython3 harness/docs/rfwgc-evidence/final-darwin/run.py source receipts-wago_regalloccheck --mode 'wago_regalloccheck'[0m
+2026-11-02T15:07:30.0776140Z shell: /bin/bash -e {0}
+2026-11-02T15:07:30.0776430Z env:
+2026-11-02T15:07:30.0777550Z   GO_VERSION: 1.27.1
+2026-11-02T15:07:30.0777790Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T15:07:30.0778150Z   TINYGO_VERSION: 0.42.0
+2026-11-02T15:07:30.0778450Z   JUST_VERSION: 1.58.0
+2026-11-02T15:07:30.0778680Z   GOTOOLCHAIN: local
+2026-11-02T15:07:30.0779060Z   GOENV: off
+2026-11-02T15:07:30.0779560Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T15:07:30.0780060Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T15:07:30.0780910Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T15:07:30.0781600Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T15:07:30.0782240Z   GOROOT: /Users/runner/hostedtoolcache/go/1.27.1/arm64
+2026-11-02T15:07:30.0782690Z   WAGO_WAST2JSON: /Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json
+2026-11-02T15:07:30.0783480Z   WAGO_SPEC_INTERPRETER: /Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm
+2026-11-02T15:07:30.0784090Z   WAGO_SPEC_INTERPRETER_REVISION: 9d36019973201a19f9c9ebb0f10828b2fe2374aa
+2026-11-02T15:07:30.0784550Z ##[endgroup]
+2026-11-02T15:08:15.2854980Z cancellation-wago_regalloccheck PASS
+2026-11-02T15:08:17.3543360Z core3-child-wago_regalloccheck PASS
+2026-11-02T15:08:18.8370450Z repaired-contracts-wago_regalloccheck PASS
+2026-11-02T15:12:51.1910850Z full-root-replay-wago_regalloccheck PASS_WITH_SKIPS
+2026-11-02T15:13:12.9269010Z collector-wago_regalloccheck PASS
+2026-11-02T15:19:06.6329700Z race-wago_regalloccheck FAIL
+2026-11-02T15:20:32.0501660Z guard-wago_regalloccheck PASS_WITH_SKIPS
+2026-11-02T15:20:51.7511060Z backend-wago_regalloccheck PASS_WITH_SKIPS
+2026-11-02T15:22:00.4441720Z cli-wago_regalloccheck PASS_WITH_SKIPS
+2026-11-02T15:22:01.3929780Z installer-wago_regalloccheck PASS
+2026-11-02T15:29:19.6713220Z corpus-wago_regalloccheck PASS_WITH_SKIPS
+2026-11-02T15:33:21.9407860Z guard-corpus-wago_regalloccheck PASS_WITH_SKIPS
+2026-11-02T15:33:24.5274820Z host-transition-wago_regalloccheck PASS
+2026-11-02T15:34:10.2149060Z hardening-wago_regalloccheck PASS
+2026-11-02T15:34:49.4950050Z profile-runtime-wago_regalloccheck PASS_WITH_SKIPS
+2026-11-02T15:35:12.2117340Z profile-metadata-wago_regalloccheck PASS
+2026-11-02T15:36:17.8712850Z diagnostics-default-wago_regalloccheck PASS_WITH_SKIPS
+2026-11-02T15:36:56.0102680Z diagnostics-established-wago_regalloccheck FAIL
+2026-11-02T15:36:58.0064510Z shared-scalar-wago_regalloccheck PASS
+2026-11-02T15:36:59.0570570Z seeded-concurrency-wago_regalloccheck PASS
+2026-11-02T15:37:01.4053530Z spec-v1-wago_regalloccheck PASS
+2026-11-02T15:37:05.2903880Z spec-v2-wago_regalloccheck PASS
+2026-11-02T15:37:12.0772060Z spec-v3-wago_regalloccheck PASS
+2026-11-02T15:37:19.3877670Z spec-v3-signals-wago_regalloccheck PASS
+2026-11-02T15:37:31.4448920Z ##[error]Process completed with exit code 1.
+2026-11-02T15:37:31.5131810Z ##[group]Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+2026-11-02T15:37:31.5132290Z with:
+2026-11-02T15:37:31.5132530Z   name: darwin-ownership-wago_regalloccheck-1
+2026-11-02T15:37:31.5133090Z   path: setup-receipts
+receipts-wago_regalloccheck
+contracts-wago_regalloccheck
+baseline-wago_regalloccheck
+
+2026-11-02T15:37:31.5133850Z   if-no-files-found: error
+2026-11-02T15:37:31.5134140Z   retention-days: 7
+2026-11-02T15:37:31.5134370Z   compression-level: 6
+2026-11-02T15:37:31.5134530Z   overwrite: false
+2026-11-02T15:37:31.5134760Z   include-hidden-files: false
+2026-11-02T15:37:31.5135040Z env:
+2026-11-02T15:37:31.5135320Z   GO_VERSION: 1.27.1
+2026-11-02T15:37:31.5135480Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T15:37:31.5135870Z   TINYGO_VERSION: 0.42.0
+2026-11-02T15:37:31.5136090Z   JUST_VERSION: 1.58.0
+2026-11-02T15:37:31.5136360Z   GOTOOLCHAIN: local
+2026-11-02T15:37:31.5136610Z   GOENV: off
+2026-11-02T15:37:31.5136990Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T15:37:31.5137390Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T15:37:31.5137900Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T15:37:31.5138490Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T15:37:31.5138800Z   GOROOT: /Users/runner/hostedtoolcache/go/1.27.1/arm64
+2026-11-02T15:37:31.5139420Z   WAGO_WAST2JSON: /Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json
+2026-11-02T15:37:31.5140150Z   WAGO_SPEC_INTERPRETER: /Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm
+2026-11-02T15:37:31.5140860Z   WAGO_SPEC_INTERPRETER_REVISION: 9d36019973201a19f9c9ebb0f10828b2fe2374aa
+2026-11-02T15:37:31.5141190Z ##[endgroup]
+2026-11-02T15:37:32.0858160Z (node:99084) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-02T15:37:32.0859070Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-02T15:37:32.1272650Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2026-11-02T15:37:32.1273860Z The least common ancestor is /Users/runner/work/wago/wago. This will be the root directory of the artifact
+2026-11-02T15:37:32.1274340Z With the provided path, there will be 163 files uploaded
+2026-11-02T15:37:32.1274890Z Artifact name is valid!
+2026-11-02T15:37:32.1275260Z Root directory input is valid!
+2026-11-02T15:37:32.5234820Z Beginning upload of artifact content to blob storage
+2026-11-02T15:37:33.5122230Z (node:99084) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-11-02T15:37:34.4678620Z Uploaded bytes 8388608
+2026-11-02T15:37:34.6026590Z Uploaded bytes 11445586
+2026-11-02T15:37:34.6896990Z Finished uploading artifact content to blob storage!
+2026-11-02T15:37:34.6905800Z SHA256 digest of uploaded artifact zip is 618e634e4312f8055cf3b216fd023bd336a8cb3abf2b761038fccce3eedca537
+2026-11-02T15:37:34.6910660Z Finalizing artifact upload
+2026-11-02T15:37:35.2436440Z Artifact darwin-ownership-wago_regalloccheck-1.zip successfully finalized. Artifact ID 13155349166
+2026-11-02T15:37:35.2438920Z Artifact darwin-ownership-wago_regalloccheck-1 has been successfully uploaded! Final size is 11445586 bytes. Artifact ID is 13155349166
+2026-11-02T15:37:35.2459640Z Artifact download URL: https://github.com/wago-org/wago/actions/runs/41466555967/artifacts/13155349166
+2026-11-02T15:37:35.2743560Z Post job cleanup.
+2026-11-02T15:37:35.3587120Z [command]/opt/homebrew/bin/git version
+2026-11-02T15:37:35.3661230Z git version 2.56.0
+2026-11-02T15:37:35.3678540Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/566e124a-a853-42d0-b9c7-09225cc05fee/.gitconfig'
+2026-11-02T15:37:35.3685230Z Temporarily overriding HOME='/Users/runner/work/_temp/566e124a-a853-42d0-b9c7-09225cc05fee' before making global git config changes
+2026-11-02T15:37:35.3685960Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T15:37:35.3688790Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/wago/wago/baseline
+2026-11-02T15:37:35.3766860Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T15:37:35.3823440Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T15:37:35.4859090Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T15:37:35.4918350Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T15:37:35.5612390Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:37:35.5667820Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T15:37:35.6647550Z Post job cleanup.
+2026-11-02T15:37:35.7445450Z [command]/opt/homebrew/bin/git version
+2026-11-02T15:37:35.7500780Z git version 2.56.0
+2026-11-02T15:37:35.7518490Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/c4e507e2-2bd0-48aa-a088-3168140da9d7/.gitconfig'
+2026-11-02T15:37:35.7526390Z Temporarily overriding HOME='/Users/runner/work/_temp/c4e507e2-2bd0-48aa-a088-3168140da9d7' before making global git config changes
+2026-11-02T15:37:35.7527190Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T15:37:35.7530100Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/wago/wago/source
+2026-11-02T15:37:35.7594610Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T15:37:35.7654990Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T15:37:35.8352080Z Entering 'tests/conformance/spec-v1'
+2026-11-02T15:37:35.8535500Z Entering 'tests/conformance/spec-v2'
+2026-11-02T15:37:35.8715650Z Entering 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T15:37:35.8890590Z Entering 'tests/conformance/spec-v3'
+2026-11-02T15:37:35.9071760Z Entering 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T15:37:35.9263440Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T15:37:35.9320610Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T15:37:35.9986060Z Entering 'tests/conformance/spec-v1'
+2026-11-02T15:37:36.0159860Z Entering 'tests/conformance/spec-v2'
+2026-11-02T15:37:36.0338530Z Entering 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T15:37:36.0533100Z Entering 'tests/conformance/spec-v3'
+2026-11-02T15:37:36.0714820Z Entering 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T15:37:36.0915000Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:37:36.0969150Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T15:37:36.1679980Z Entering 'tests/conformance/spec-v1'
+2026-11-02T15:37:36.1769010Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v1/config	remote.origin.url
+2026-11-02T15:37:36.1829830Z Entering 'tests/conformance/spec-v2'
+2026-11-02T15:37:36.1917950Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/config	remote.origin.url
+2026-11-02T15:37:36.1979830Z Entering 'tests/conformance/spec-v2/document/core/util/katex'
+2026-11-02T15:37:36.2077180Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/modules/document/core/util/katex/config	remote.origin.url
+2026-11-02T15:37:36.2144240Z Entering 'tests/conformance/spec-v3'
+2026-11-02T15:37:36.2247500Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/config	remote.origin.url
+2026-11-02T15:37:36.2310290Z Entering 'tests/conformance/spec-v3/document/core/util/katex'
+2026-11-02T15:37:36.2412900Z file:/Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/modules/document/core/util/katex/config	remote.origin.url
+2026-11-02T15:37:36.2499020Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v1/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:37:36.2563550Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:37:36.2650340Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v2/modules/document/core/util/katex/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:37:36.2714200Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:37:36.2782170Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/wago/wago/source/.git/modules/tests/conformance/spec-v3/modules/document/core/util/katex/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:37:36.2973530Z Post job cleanup.
+2026-11-02T15:37:36.4321930Z [command]/opt/homebrew/bin/git version
+2026-11-02T15:37:36.4476290Z git version 2.56.0
+2026-11-02T15:37:36.4484360Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/5ae14929-d19b-428c-af52-20a50a17f6b5/.gitconfig'
+2026-11-02T15:37:36.4490990Z Temporarily overriding HOME='/Users/runner/work/_temp/5ae14929-d19b-428c-af52-20a50a17f6b5' before making global git config changes
+2026-11-02T15:37:36.4492020Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T15:37:36.4494820Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/wago/wago/harness
+2026-11-02T15:37:36.4574040Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T15:37:36.4648370Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T15:37:36.5564680Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T15:37:36.5631040Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T15:37:36.6474530Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T15:37:36.6751680Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T15:37:36.7637210Z Cleaning up orphan processes
+2026-11-02T15:37:38.1936410Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@11d5960a326750d5838078e36cf38b85af677262, actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff, actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

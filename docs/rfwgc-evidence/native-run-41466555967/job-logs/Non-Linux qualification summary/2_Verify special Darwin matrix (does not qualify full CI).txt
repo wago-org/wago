@@ -1,0 +1,101 @@
+﻿2026-11-02T15:37:55.9705673Z ##[group]Run test "$DARWIN_RESULT" = success
+2026-11-02T15:37:55.9706728Z [36;1mtest "$DARWIN_RESULT" = success[0m
+2026-11-02T15:37:55.9707443Z [36;1mtest "$WINDOWS_RESULT" = success[0m
+2026-11-02T15:37:55.9709036Z [36;1mpython3 -c 'import json, os; n=json.loads(os.environ["NORMAL_RESULTS"]); assert all(v["result"] == "skipped" for k,v in n.items() if k not in ("darwin-qualification", "windows-qualification")), n'[0m
+2026-11-02T15:37:55.9710965Z [36;1mecho 'Pinned non-Linux command execution succeeded; gaps and skips still require review.' >> "$GITHUB_STEP_SUMMARY"[0m
+2026-11-02T15:37:55.9900543Z shell: /usr/bin/bash -e {0}
+2026-11-02T15:37:55.9901422Z env:
+2026-11-02T15:37:55.9901908Z   GO_VERSION: 1.27.1
+2026-11-02T15:37:55.9902501Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T15:37:55.9903071Z   TINYGO_VERSION: 0.42.0
+2026-11-02T15:37:55.9903631Z   JUST_VERSION: 1.58.0
+2026-11-02T15:37:55.9904210Z   WINDOWS_RESULT: success
+2026-11-02T15:37:55.9904745Z   DARWIN_RESULT: abandoned
+2026-11-02T15:37:55.9910637Z   NORMAL_RESULTS: {
+  "changes": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "smoke": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "docs": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "lint": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "regression-integrity": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "regression-rebuild": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "gc-hardening": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "race": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "current-go": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "platform-test": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "corpus-correctness": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "app-corpus": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "app-corpus-verify": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "spec-v1": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "core-v2": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "core-v3": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "fuzz": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "tinygo": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "size": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "darwin-qualification": {
+    "result": "abandoned",
+    "outputs": {}
+  },
+  "windows-qualification": {
+    "result": "success",
+    "outputs": {}
+  }
+}
+2026-11-02T15:37:55.9917330Z ##[endgroup]
+2026-11-02T15:37:56.0093945Z ##[error]Process completed with exit code 1.

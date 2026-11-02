@@ -1,0 +1,9 @@
+2026-11-02T14:55:29.9160000Z Evaluating windows-qualification.if
+2026-11-02T14:55:29.9160000Z Evaluating: (success() && (((github.event_name == 'workflow_dispatch') && inputs.darwin_qualification && !inputs.native_arm64_rr3 && !inputs.darwin_tinygo_supplement)))
+2026-11-02T14:55:29.9160000Z Expanded: (true && (('workflow_dispatch' == 'workflow_dispatch') && true && !false && !false))
+2026-11-02T14:55:29.9160000Z Result: true
+2026-11-02T14:55:29.9200000Z Requested labels: windows-2025
+2026-11-02T14:55:29.9200000Z Job defined at: wago-org/wago/.github/workflows/ci.yml@refs/heads/experiment/rfwgc-port
+2026-11-02T14:55:29.9200000Z Waiting for a runner to pick up this job...
+2026-11-02T14:55:30.2010000Z Job is about to start running on the hosted runner: GitHub Actions 1000143724
+2026-11-02T14:55:30.1990000Z Job is waiting for a hosted runner to come online.

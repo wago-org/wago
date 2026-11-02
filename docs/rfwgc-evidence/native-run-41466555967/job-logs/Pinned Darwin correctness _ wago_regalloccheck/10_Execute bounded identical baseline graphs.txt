@@ -1,0 +1,19 @@
+﻿2026-11-02T15:06:42.3425440Z ##[group]Run python3 harness/docs/rfwgc-evidence/final-darwin/contracts.py baseline baseline-wago_regalloccheck --target darwin --mode wago_regalloccheck --baseline
+2026-11-02T15:06:42.3434470Z [36;1mpython3 harness/docs/rfwgc-evidence/final-darwin/contracts.py baseline baseline-wago_regalloccheck --target darwin --mode wago_regalloccheck --baseline[0m
+2026-11-02T15:06:42.4941490Z shell: /bin/bash -e {0}
+2026-11-02T15:06:42.4941900Z env:
+2026-11-02T15:06:42.4942350Z   GO_VERSION: 1.27.1
+2026-11-02T15:06:42.4942600Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T15:06:42.4943140Z   TINYGO_VERSION: 0.42.0
+2026-11-02T15:06:42.4943370Z   JUST_VERSION: 1.58.0
+2026-11-02T15:06:42.4943690Z   GOTOOLCHAIN: local
+2026-11-02T15:06:42.4944000Z   GOENV: off
+2026-11-02T15:06:42.4944240Z   PYTHONDONTWRITEBYTECODE: 1
+2026-11-02T15:06:42.4947440Z   QUALIFICATION_SOURCE: 08f511fac41a77f4c0f9046f88ebc78ad05a5da6
+2026-11-02T15:06:42.4952620Z   QUALIFICATION_DRIVER: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T15:06:42.4953470Z   QUALIFICATION_HARNESS: 041f7ed4c376e2a33ce21b22075cd617ddca6597
+2026-11-02T15:06:42.4953890Z   GOROOT: /Users/runner/hostedtoolcache/go/1.27.1/arm64
+2026-11-02T15:06:42.4954430Z   WAGO_WAST2JSON: /Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json
+2026-11-02T15:06:42.4955220Z   WAGO_SPEC_INTERPRETER: /Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm
+2026-11-02T15:06:42.4955920Z   WAGO_SPEC_INTERPRETER_REVISION: 9d36019973201a19f9c9ebb0f10828b2fe2374aa
+2026-11-02T15:06:42.4956350Z ##[endgroup]

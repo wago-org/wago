@@ -1,0 +1,132 @@
+﻿2026-11-02T15:37:55.8317204Z Current runner version: '2.338.2'
+2026-11-02T15:37:55.8340319Z ##[group]Runner Image Provisioner
+2026-11-02T15:37:55.8341162Z Hosted Compute Agent
+2026-11-02T15:37:55.8341759Z Version: 20261021.618
+2026-11-02T15:37:55.8342429Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-11-02T15:37:55.8343119Z Build Date: 2026-10-21T00:45:21Z
+2026-11-02T15:37:55.8343788Z Worker ID: {a0b56ef9-ac24-42b7-8f6d-a4511a526d17}
+2026-11-02T15:37:55.8344482Z Region: westus3
+2026-11-02T15:37:55.8345023Z Cloud: Azure
+2026-11-02T15:37:55.8345852Z ##[endgroup]
+2026-11-02T15:37:55.8347475Z ##[group]Operating System
+2026-11-02T15:37:55.8348054Z Ubuntu
+2026-11-02T15:37:55.8348599Z 24.04.5
+2026-11-02T15:37:55.8349115Z LTS
+2026-11-02T15:37:55.8349654Z ##[endgroup]
+2026-11-02T15:37:55.8350178Z ##[group]Runner Image
+2026-11-02T15:37:55.8350723Z Image: ubuntu-24.04
+2026-11-02T15:37:55.8351294Z Version: 20261025.353.1
+2026-11-02T15:37:55.8352534Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261025.353/images/ubuntu/Ubuntu2404-Readme.md
+2026-11-02T15:37:55.8354323Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261025.353
+2026-11-02T15:37:55.8355212Z ##[endgroup]
+2026-11-02T15:37:55.8356481Z ##[group]GITHUB_TOKEN Permissions
+2026-11-02T15:37:55.8358568Z Contents: read
+2026-11-02T15:37:55.8359165Z Metadata: read
+2026-11-02T15:37:55.8359693Z ##[endgroup]
+2026-11-02T15:37:55.8361593Z Secret source: Actions
+2026-11-02T15:37:55.8362503Z Cache mode: write
+2026-11-02T15:37:55.8363307Z Prepare workflow directory
+2026-11-02T15:37:55.8710402Z Prepare all required actions
+2026-11-02T15:37:55.8775558Z Complete job name: Non-Linux qualification summary
+2026-11-02T15:37:55.9705718Z ##[group]Run test "$DARWIN_RESULT" = success
+2026-11-02T15:37:55.9706738Z [36;1mtest "$DARWIN_RESULT" = success[0m
+2026-11-02T15:37:55.9707446Z [36;1mtest "$WINDOWS_RESULT" = success[0m
+2026-11-02T15:37:55.9709041Z [36;1mpython3 -c 'import json, os; n=json.loads(os.environ["NORMAL_RESULTS"]); assert all(v["result"] == "skipped" for k,v in n.items() if k not in ("darwin-qualification", "windows-qualification")), n'[0m
+2026-11-02T15:37:55.9710968Z [36;1mecho 'Pinned non-Linux command execution succeeded; gaps and skips still require review.' >> "$GITHUB_STEP_SUMMARY"[0m
+2026-11-02T15:37:55.9900580Z shell: /usr/bin/bash -e {0}
+2026-11-02T15:37:55.9901427Z env:
+2026-11-02T15:37:55.9901912Z   GO_VERSION: 1.27.1
+2026-11-02T15:37:55.9902505Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T15:37:55.9903074Z   TINYGO_VERSION: 0.42.0
+2026-11-02T15:37:55.9903634Z   JUST_VERSION: 1.58.0
+2026-11-02T15:37:55.9904213Z   WINDOWS_RESULT: success
+2026-11-02T15:37:55.9904903Z   DARWIN_RESULT: abandoned
+2026-11-02T15:37:55.9910883Z   NORMAL_RESULTS: {
+  "changes": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "smoke": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "docs": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "lint": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "regression-integrity": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "regression-rebuild": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "gc-hardening": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "race": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "current-go": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "platform-test": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "corpus-correctness": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "app-corpus": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "app-corpus-verify": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "spec-v1": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "core-v2": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "core-v3": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "fuzz": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "tinygo": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "size": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "darwin-qualification": {
+    "result": "abandoned",
+    "outputs": {}
+  },
+  "windows-qualification": {
+    "result": "success",
+    "outputs": {}
+  }
+}
+2026-11-02T15:37:55.9917340Z ##[endgroup]
+2026-11-02T15:37:56.0093990Z ##[error]Process completed with exit code 1.
+2026-11-02T15:37:56.0303809Z Cleaning up orphan processes
