@@ -1,0 +1,83 @@
+{
+  "pin": "08f511fac41a77f4c0f9046f88ebc78ad05a5da6",
+  "export": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/source",
+  "archive_sha256": "0c9f6693bb6ca745253401c208d3e55430d1149a6325860dd60afe1e4fb17de9",
+  "qemu": "/home/dev/.cache/_wago_final_5b02_n61wfxab/target-repairs/qemu/usr/bin/qemu-aarch64",
+  "qemu_sha256": "73cc2584f119f9e74c85c0a8549dbb6fd104ae3897a06a7500797f9e5b4d0943",
+  "go": "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+  "go_sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b",
+  "environment": {
+    "CODEX_MANAGED_PACKAGE_ROOT": "/home/dev/.local/share/mise/installs/node/24.22.2/lib/node_modules/@openai/codex",
+    "COLORTERM": "",
+    "HOSTNAME": "t3",
+    "CODEX_VERSION": "0.165.0-alpha.1",
+    "YARN_VERSION": "1.22.22",
+    "GH_PAGER": "cat",
+    "PWD": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port",
+    "CODEX_MANAGED_BY_NPM": "1",
+    "NoDefaultCurrentDirectoryInExePath": "1",
+    "container": "podman",
+    "HOME": "/home/dev",
+    "CODEX_SESSION_ID": "01a19cdb-a6d4-7200-9bbe-3042c5793d53",
+    "CLAUDE_AGENT_SDK_VERSION": "0.3.276",
+    "LANG": "C.UTF-8",
+    "__MISE_DIFF": "eAFqWVjGtDg/J6VhcV5qedNSd38nT7+b7kk5idmpxlapxmaWRomGBskGJoYpKeZpZqaGqQZGaabJhqnGBqmGFpZpZmYWphbJlmZmaYkWiZbJRhapKUZJialmFokp5iZmy9z9g/z9Q+DmpaUYGVpYGKammZmZWRoZmyeZGqekGplYWhqmWVokJRmZpyWnGhobJpumWVhYWCYbWRqYmhmnGhkkJxkkmqYkmiwpSCzJmHPTWD8jPzdVPyW1TF8vJz85MUe/OCOxKFU/N7M4VT8zr7gkMSenWD85J7E0JVXfSM9Qz9jQ4KYZUZpSi3IS89L1cxJLUotL9JMy8256EaUvPQNkkYGxnpF+eka8kZ4hiBmfk5lXWhGfmJtiZgI2K4A4szJLMkqTdMtTk3QTi4tTc5NyKnWTMvMSiypT8/RTi4oz8/PiDY2NwSZ6kG1ieWJSib6hnoGeiRHYJCdSTEpMLEpJLChIzdFNz88vToWG100j4szI1zfUMzLXg/jAgCg9efmgqISEImAmROnIL0jNSwbpgsTlTVOidBXkl6cWFWek5uTom+uZ6VnctCVKW0lmXmV6vr6BnomxnoE+lAdKPeFEaS9PLM7VLcnPzykGhYyZkZ6BPkJI11DPCCSkW2FhFm9mogtOVAAX0E96",
+    "__MISE_SHIM": "1",
+    "CODEX_HOME": "/home/dev/.codex",
+    "TERM": "dumb",
+    "CODEX_THREAD_ID": "01a19cdb-a6d4-7200-9bbe-3042c5793d53",
+    "GIT_PAGER": "cat",
+    "CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS": "1",
+    "SHLVL": "0",
+    "PAGER": "cat",
+    "NO_COLOR": "1",
+    "CODEX_CI": "1",
+    "LC_CTYPE": "C.UTF-8",
+    "CODEX_TOOL_CALL_ID": "exec-7bcfb418-a274-472a-aef3-2b377f64b776",
+    "LC_ALL": "C.UTF-8",
+    "CODEX_INTERNAL_ORIGINATOR_OVERRIDE": "T3 Code",
+    "PATH": "/home/dev/.cache/_wago_final_5b02_n61wfxab/source/.tools/wabt-1.0.41-linux-x64/bin:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin",
+    "NODE_VERSION": "24.21.0",
+    "_": "/usr/bin/python3",
+    "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.3",
+    "GOTOOLCHAIN": "local",
+    "GOENV": "off",
+    "GOARCH": "arm64",
+    "GOOS": "linux",
+    "CGO_ENABLED": "0",
+    "GOMAXPROCS": "2",
+    "GOFLAGS": "-p=2"
+  },
+  "signal_map": "32 36 28,64 64 1",
+  "remaining_archive_sha256": "43b5dbf1679e6593b82b2bb7e2429721efd40104c06627f07b03beab837f9359",
+  "binaries": {
+    "ordinary": {
+      "path": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/ordinary.test",
+      "sha256": "8337dbb623da5f3f90b4a68684a18a0bc8274724be433e3691eae61cfdf803b2",
+      "elf_machine": 183
+    },
+    "wagodebug": {
+      "path": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wagodebug.test",
+      "sha256": "a3463b8d644497bd8cbd9b762fa7496dcf2728e427162f2ca606513ae2a9492e",
+      "elf_machine": 183
+    },
+    "wago_regalloccheck": {
+      "path": "/home/dev/.cache/wago-qemu-diagnosis-np07y194/wago_regalloccheck.test",
+      "sha256": "18ee06442b70c82743dbc18d0b213e0f7117830d34d876a3478e73e57564c692",
+      "elf_machine": 183
+    }
+  },
+  "source_archive_sha256": "0c9f6693bb6ca745253401c208d3e55430d1149a6325860dd60afe1e4fb17de9",
+  "support_archive_sha256": "4a56220270d0557438576a77fb7d0adef3128b771ae9c683c9e3476902cee356",
+  "tests_archive_sha256": "38be4ef69f51c7373e8d07e8c199e0c3c78bd338387f54d4c5c8f6fc59f1472c",
+  "qemu_deb_sha256": "ca6ede739327a20ae5a3498230c8a3a9a072c586e131bc6bcc1201eb1725e336",
+  "qemu_deb_fields": "Package: qemu-user\nVersion: 1:10.0.13+ds-0+deb13u1\nArchitecture: amd64\nSource: qemu\n",
+  "host": [
+    "Linux",
+    "t3",
+    "7.2.8-9-omarchy",
+    "#1 SMP PREEMPT_DYNAMIC Sat, 17 Oct 2026 22:09:33 +0000",
+    "x86_64",
+    ""
+  ]
+}
