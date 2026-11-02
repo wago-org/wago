@@ -1,0 +1,11 @@
+{
+  "failed_attempt": "full-root-replay-ordinary",
+  "reason": "GOWORK=off incorrectly carried from early gates into workspace-dependent installer test",
+  "correction": "Remove default GOWORK override for subsequent broad gates; early gates retain explicit off",
+  "production_or_expectation_edits": false,
+  "drivers": {
+    "run-v2.py": "8c4f3e1972a8b06d319ce61c970fd7e49a4c981a87b874183f942df4763acc61",
+    "bootstrap-v2.py": "8112ce6da9c663e73ed8374966ece8439bec99966b82ef0d879f4bc11b66f542",
+    "continue-v2.py": "5ca50894c91d63f72adebb2defec0f9b44ff8af59a92a7fac6c87bc20d26432a"
+  }
+}

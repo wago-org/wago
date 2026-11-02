@@ -1,0 +1,29 @@
+{
+  "source": "d2464100f1945d38f9d1e25196855fe9699d9875",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T09:42:46.722204742Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestPreparedGCRevocableEntryExternalAccess/reference-store",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T09:42:46.722428502Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestPreparedGCRevocableEntryExternalAccess",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T09:42:47.72604792Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 1.016
+    }
+  ],
+  "raw_sha256": "8abc551323b937590839ce5d2f909e22fb7c0743848a650b9bceca24eda904f6",
+  "driver_unchanged": true
+}

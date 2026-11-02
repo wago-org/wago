@@ -1,0 +1,1652 @@
+{
+  "drivers-frozen.json": {
+    "setup.py": {
+      "before": "1599798bdca3fe448e014d58b0c263db85baad80598ea07337f331a00e211300",
+      "after": "1599798bdca3fe448e014d58b0c263db85baad80598ea07337f331a00e211300",
+      "unchanged": true
+    },
+    "lanes.py": {
+      "before": "0fb30ab5514a636d72dd7610099a84389577873e1a5551f4678cf64657d240cb",
+      "after": "0fb30ab5514a636d72dd7610099a84389577873e1a5551f4678cf64657d240cb",
+      "unchanged": true
+    },
+    "target-families.py": {
+      "before": "f1f6ed11840c444c40b0b8e6ad6cec52a6bc86c3c0b89cfb08407ea16e5a3bbc",
+      "after": "f1f6ed11840c444c40b0b8e6ad6cec52a6bc86c3c0b89cfb08407ea16e5a3bbc",
+      "unchanged": true
+    },
+    "continuation.py": {
+      "before": "d3523f76294d2095462c0986156d00e345bfff5efb64cbc38ae8ca0cae9f56b1",
+      "after": "d3523f76294d2095462c0986156d00e345bfff5efb64cbc38ae8ca0cae9f56b1",
+      "unchanged": true
+    },
+    "qemu-collector.py": {
+      "before": "b0b1fd35e25d6ef86ff1d2856a637f645a3de7c4b925fe2105683e34f186ebdb",
+      "after": "b0b1fd35e25d6ef86ff1d2856a637f645a3de7c4b925fe2105683e34f186ebdb",
+      "unchanged": true
+    },
+    "batch.py": {
+      "before": "6610e1e1eb723c5a8a078f612d2297ec3b05b68c7fc7e0d26a97ebed1fa33eb0",
+      "after": "6610e1e1eb723c5a8a078f612d2297ec3b05b68c7fc7e0d26a97ebed1fa33eb0",
+      "unchanged": true
+    },
+    "baseline-preflight.py": {
+      "before": "8ed5e1f5db8cc363a765ad003e546035228202ac6899c3329eaf6f33395f847c",
+      "after": "8ed5e1f5db8cc363a765ad003e546035228202ac6899c3329eaf6f33395f847c",
+      "unchanged": true
+    },
+    "tooling-isolated.py": {
+      "before": "a0c55915d01812df0c2af52a82aa2cc72986de91ce2cf7ef6682c84578918ad8",
+      "after": "a0c55915d01812df0c2af52a82aa2cc72986de91ce2cf7ef6682c84578918ad8",
+      "unchanged": true
+    },
+    "full-gates.py": {
+      "before": "b1abe0560f2ad16d844c21bebb526a6ccc50b67e55bb82f4cca6f3da489ee27d",
+      "after": "b1abe0560f2ad16d844c21bebb526a6ccc50b67e55bb82f4cca6f3da489ee27d",
+      "unchanged": true
+    },
+    "tinygo-complete.py": {
+      "before": "cc8e3eafa4310d9497e8a0c7cbf3c6cb09c9f55ad153fd486a5b92c88e147335",
+      "after": "cc8e3eafa4310d9497e8a0c7cbf3c6cb09c9f55ad153fd486a5b92c88e147335",
+      "unchanged": true
+    },
+    "qemu-h6.py": {
+      "before": "efc6a0fc108fed36029e16e5a013211a5a859f5239bf9091e1fe93469fdf7152",
+      "after": "efc6a0fc108fed36029e16e5a013211a5a859f5239bf9091e1fe93469fdf7152",
+      "unchanged": true
+    },
+    "fuzz-extended.py": {
+      "before": "e0d86398f99bedbc08282c7aa757de3f2720cb1ef8ace702e372c46ae61453e6",
+      "after": "e0d86398f99bedbc08282c7aa757de3f2720cb1ef8ace702e372c46ae61453e6",
+      "unchanged": true
+    },
+    "qemu-facade.py": {
+      "before": "c0f311812b6d27a0be1bd5e24aad384922bccab7d89ce43ce7f43b8ab979fb23",
+      "after": "c0f311812b6d27a0be1bd5e24aad384922bccab7d89ce43ce7f43b8ab979fb23",
+      "unchanged": true
+    },
+    "early-gates.py": {
+      "before": "f40f006fe5bb5ee25e95ed011254b77434246ab2842975e743c489fae0e8c747",
+      "after": "f40f006fe5bb5ee25e95ed011254b77434246ab2842975e743c489fae0e8c747",
+      "unchanged": true
+    },
+    "qualify.py": {
+      "before": "e1cbcb3397d03a25906921e51ad4cb1c944efd5221334a7e000116982444fd1a",
+      "after": "e1cbcb3397d03a25906921e51ad4cb1c944efd5221334a7e000116982444fd1a",
+      "unchanged": true
+    },
+    "tooling-replay.py": {
+      "before": "35002d76cabb403744839bc7a8cc5370d42989c0992d7e917ed22cff1b37890a",
+      "after": "35002d76cabb403744839bc7a8cc5370d42989c0992d7e917ed22cff1b37890a",
+      "unchanged": true
+    },
+    "target-repairs.py": {
+      "before": "34ee41d822504940b30d2fa2eaaa6f8af8e0462c54098393a4ee3a3d3d70d5a3",
+      "after": "34ee41d822504940b30d2fa2eaaa6f8af8e0462c54098393a4ee3a3d3d70d5a3",
+      "unchanged": true
+    },
+    "root-replay.py": {
+      "before": "4215bb3d27501993d59434597c1d3fd02df2a41cab2c30b375deabcabfd1ec3f",
+      "after": "4215bb3d27501993d59434597c1d3fd02df2a41cab2c30b375deabcabfd1ec3f",
+      "unchanged": true
+    },
+    "run.py": {
+      "before": "35951fa89afde2433a28f5203109e00636da2593e06a302c74febc5bf80ea1f5",
+      "after": "35951fa89afde2433a28f5203109e00636da2593e06a302c74febc5bf80ea1f5",
+      "unchanged": true
+    },
+    "ancillary.py": {
+      "before": "9092e621a47c05b19ac14047d2ce8efbdc0c2575656e7fda85c1d359f509a01d",
+      "after": "9092e621a47c05b19ac14047d2ce8efbdc0c2575656e7fda85c1d359f509a01d",
+      "unchanged": true
+    },
+    "qemu-rv64-controls.py": {
+      "before": "e617df0c9be83c023468e22342e58685bd592f784bf4ae3b933d2b60ced9ffe4",
+      "after": "e617df0c9be83c023468e22342e58685bd592f784bf4ae3b933d2b60ced9ffe4",
+      "unchanged": true
+    },
+    "repairs-v2.py": {
+      "before": "d84b7ca769ca5973a87023bee295cb294f534231527ff06ba52fd29e1061b863",
+      "after": "d84b7ca769ca5973a87023bee295cb294f534231527ff06ba52fd29e1061b863",
+      "unchanged": true
+    },
+    "extra.py": {
+      "before": "7252504e59ff7797d366786d55e00927527f80866dcdc19387d98de2ba5024ec",
+      "after": "7252504e59ff7797d366786d55e00927527f80866dcdc19387d98de2ba5024ec",
+      "unchanged": true
+    },
+    "tinygo-repairs.py": {
+      "before": "5ab48a68e5b27863610b8ce03ac6e1178217f74a4311c3b98d487d7eab23a22c",
+      "after": "5ab48a68e5b27863610b8ce03ac6e1178217f74a4311c3b98d487d7eab23a22c",
+      "unchanged": true
+    },
+    "tinygo-34.sh": {
+      "before": "f5932ebca8f92a74220eb86f0fddd008c1713f6fee8b9aa2cf44ec95e91d25ae",
+      "after": "f5932ebca8f92a74220eb86f0fddd008c1713f6fee8b9aa2cf44ec95e91d25ae",
+      "unchanged": true
+    },
+    "special.py": {
+      "before": "57308b81e44bfa8ef21031673bce91ea5545efef5a87dc9aa5bb486e6ba577aa",
+      "after": "57308b81e44bfa8ef21031673bce91ea5545efef5a87dc9aa5bb486e6ba577aa",
+      "unchanged": true
+    },
+    "qemu-guest.py": {
+      "before": "68b1bd2b8fbe77a617afe6cbe6a77920f242c4ed97ce374b523052c640498260",
+      "after": "68b1bd2b8fbe77a617afe6cbe6a77920f242c4ed97ce374b523052c640498260",
+      "unchanged": true
+    }
+  },
+  "drivers-before.json": {
+    "setup.py": {
+      "before": "1599798bdca3fe448e014d58b0c263db85baad80598ea07337f331a00e211300",
+      "after": "1599798bdca3fe448e014d58b0c263db85baad80598ea07337f331a00e211300",
+      "unchanged": true
+    },
+    "lanes.py": {
+      "before": "0fb30ab5514a636d72dd7610099a84389577873e1a5551f4678cf64657d240cb",
+      "after": "0fb30ab5514a636d72dd7610099a84389577873e1a5551f4678cf64657d240cb",
+      "unchanged": true
+    },
+    "target-families.py": {
+      "before": "f1f6ed11840c444c40b0b8e6ad6cec52a6bc86c3c0b89cfb08407ea16e5a3bbc",
+      "after": "f1f6ed11840c444c40b0b8e6ad6cec52a6bc86c3c0b89cfb08407ea16e5a3bbc",
+      "unchanged": true
+    },
+    "continuation.py": {
+      "before": "d3523f76294d2095462c0986156d00e345bfff5efb64cbc38ae8ca0cae9f56b1",
+      "after": "d3523f76294d2095462c0986156d00e345bfff5efb64cbc38ae8ca0cae9f56b1",
+      "unchanged": true
+    },
+    "drain.py": {
+      "before": "f7d14a82575c7ce27cd1b3b676618f1e977538abf15b03ce3b0e23a8c9d4d570",
+      "after": "f7d14a82575c7ce27cd1b3b676618f1e977538abf15b03ce3b0e23a8c9d4d570",
+      "unchanged": true
+    },
+    "recovery-census-stopped.py": {
+      "before": "38f5be41fd62cc5c29eb717875cfeca28eb136c5c24463d5c9beee1c243c2ab0",
+      "after": "38f5be41fd62cc5c29eb717875cfeca28eb136c5c24463d5c9beee1c243c2ab0",
+      "unchanged": true
+    },
+    "qemu-collector.py": {
+      "before": "b0b1fd35e25d6ef86ff1d2856a637f645a3de7c4b925fe2105683e34f186ebdb",
+      "after": "b0b1fd35e25d6ef86ff1d2856a637f645a3de7c4b925fe2105683e34f186ebdb",
+      "unchanged": true
+    },
+    "batch.py": {
+      "before": "6610e1e1eb723c5a8a078f612d2297ec3b05b68c7fc7e0d26a97ebed1fa33eb0",
+      "after": "6610e1e1eb723c5a8a078f612d2297ec3b05b68c7fc7e0d26a97ebed1fa33eb0",
+      "unchanged": true
+    },
+    "baseline-preflight.py": {
+      "before": "8ed5e1f5db8cc363a765ad003e546035228202ac6899c3329eaf6f33395f847c",
+      "after": "8ed5e1f5db8cc363a765ad003e546035228202ac6899c3329eaf6f33395f847c",
+      "unchanged": true
+    },
+    "tooling-isolated.py": {
+      "before": "a0c55915d01812df0c2af52a82aa2cc72986de91ce2cf7ef6682c84578918ad8",
+      "after": "a0c55915d01812df0c2af52a82aa2cc72986de91ce2cf7ef6682c84578918ad8",
+      "unchanged": true
+    },
+    "full-gates.py": {
+      "before": "b1abe0560f2ad16d844c21bebb526a6ccc50b67e55bb82f4cca6f3da489ee27d",
+      "after": "b1abe0560f2ad16d844c21bebb526a6ccc50b67e55bb82f4cca6f3da489ee27d",
+      "unchanged": true
+    },
+    "recovery-dependency-pins.py": {
+      "before": "bd63d99a9f08a1d4eef2300da17b50ea9f445feab1aa1558334016e5df8d5391",
+      "after": "bd63d99a9f08a1d4eef2300da17b50ea9f445feab1aa1558334016e5df8d5391",
+      "unchanged": true
+    },
+    "tinygo-complete.py": {
+      "before": "cc8e3eafa4310d9497e8a0c7cbf3c6cb09c9f55ad153fd486a5b92c88e147335",
+      "after": "cc8e3eafa4310d9497e8a0c7cbf3c6cb09c9f55ad153fd486a5b92c88e147335",
+      "unchanged": true
+    },
+    "ledger.py": {
+      "before": "479197f6035a2a529489fc9375e1d5f9e77f7f21357aea97c539e086833a1999",
+      "after": "479197f6035a2a529489fc9375e1d5f9e77f7f21357aea97c539e086833a1999",
+      "unchanged": true
+    },
+    "coverage.py": {
+      "before": "53150ff28adf20455290acb51cc7de8af9ce73cd47f51729771d0acaff7c7ddd",
+      "after": "53150ff28adf20455290acb51cc7de8af9ce73cd47f51729771d0acaff7c7ddd",
+      "unchanged": true
+    },
+    "qemu-h6.py": {
+      "before": "efc6a0fc108fed36029e16e5a013211a5a859f5239bf9091e1fe93469fdf7152",
+      "after": "efc6a0fc108fed36029e16e5a013211a5a859f5239bf9091e1fe93469fdf7152",
+      "unchanged": true
+    },
+    "fuzz-extended.py": {
+      "before": "e0d86398f99bedbc08282c7aa757de3f2720cb1ef8ace702e372c46ae61453e6",
+      "after": "e0d86398f99bedbc08282c7aa757de3f2720cb1ef8ace702e372c46ae61453e6",
+      "unchanged": true
+    },
+    "qemu-facade.py": {
+      "before": "c0f311812b6d27a0be1bd5e24aad384922bccab7d89ce43ce7f43b8ab979fb23",
+      "after": "c0f311812b6d27a0be1bd5e24aad384922bccab7d89ce43ce7f43b8ab979fb23",
+      "unchanged": true
+    },
+    "report.py": {
+      "before": "2aa8a923e83606c649600271d3bd8dd921aa39bdefa7615992743ef4d524f132",
+      "after": "2aa8a923e83606c649600271d3bd8dd921aa39bdefa7615992743ef4d524f132",
+      "unchanged": true
+    },
+    "accounting.py": {
+      "before": "f7cba577eb41d335437977c8686be525d1e7345566690affbd2764c70c5705d2",
+      "after": "f7cba577eb41d335437977c8686be525d1e7345566690affbd2764c70c5705d2",
+      "unchanged": true
+    },
+    "early-gates.py": {
+      "before": "f40f006fe5bb5ee25e95ed011254b77434246ab2842975e743c489fae0e8c747",
+      "after": "f40f006fe5bb5ee25e95ed011254b77434246ab2842975e743c489fae0e8c747",
+      "unchanged": true
+    },
+    "qualify.py": {
+      "before": "e1cbcb3397d03a25906921e51ad4cb1c944efd5221334a7e000116982444fd1a",
+      "after": "e1cbcb3397d03a25906921e51ad4cb1c944efd5221334a7e000116982444fd1a",
+      "unchanged": true
+    },
+    "tooling-replay.py": {
+      "before": "35002d76cabb403744839bc7a8cc5370d42989c0992d7e917ed22cff1b37890a",
+      "after": "35002d76cabb403744839bc7a8cc5370d42989c0992d7e917ed22cff1b37890a",
+      "unchanged": true
+    },
+    "target-repairs.py": {
+      "before": "34ee41d822504940b30d2fa2eaaa6f8af8e0462c54098393a4ee3a3d3d70d5a3",
+      "after": "34ee41d822504940b30d2fa2eaaa6f8af8e0462c54098393a4ee3a3d3d70d5a3",
+      "unchanged": true
+    },
+    "root-replay.py": {
+      "before": "4215bb3d27501993d59434597c1d3fd02df2a41cab2c30b375deabcabfd1ec3f",
+      "after": "4215bb3d27501993d59434597c1d3fd02df2a41cab2c30b375deabcabfd1ec3f",
+      "unchanged": true
+    },
+    "run.py": {
+      "before": "35951fa89afde2433a28f5203109e00636da2593e06a302c74febc5bf80ea1f5",
+      "after": "35951fa89afde2433a28f5203109e00636da2593e06a302c74febc5bf80ea1f5",
+      "unchanged": true
+    },
+    "ancillary.py": {
+      "before": "9092e621a47c05b19ac14047d2ce8efbdc0c2575656e7fda85c1d359f509a01d",
+      "after": "9092e621a47c05b19ac14047d2ce8efbdc0c2575656e7fda85c1d359f509a01d",
+      "unchanged": true
+    },
+    "qemu-rv64-controls.py": {
+      "before": "e617df0c9be83c023468e22342e58685bd592f784bf4ae3b933d2b60ced9ffe4",
+      "after": "e617df0c9be83c023468e22342e58685bd592f784bf4ae3b933d2b60ced9ffe4",
+      "unchanged": true
+    },
+    "repairs-v2.py": {
+      "before": "d84b7ca769ca5973a87023bee295cb294f534231527ff06ba52fd29e1061b863",
+      "after": "d84b7ca769ca5973a87023bee295cb294f534231527ff06ba52fd29e1061b863",
+      "unchanged": true
+    },
+    "extra.py": {
+      "before": "7252504e59ff7797d366786d55e00927527f80866dcdc19387d98de2ba5024ec",
+      "after": "7252504e59ff7797d366786d55e00927527f80866dcdc19387d98de2ba5024ec",
+      "unchanged": true
+    },
+    "tinygo-repairs.py": {
+      "before": "5ab48a68e5b27863610b8ce03ac6e1178217f74a4311c3b98d487d7eab23a22c",
+      "after": "5ab48a68e5b27863610b8ce03ac6e1178217f74a4311c3b98d487d7eab23a22c",
+      "unchanged": true
+    },
+    "corpus-summary.py": {
+      "before": "d4d1916af518538b55838433841390a7edaff0878745aac91636b566336003e8",
+      "after": "d4d1916af518538b55838433841390a7edaff0878745aac91636b566336003e8",
+      "unchanged": true
+    },
+    "tinygo-34.sh": {
+      "before": "f5932ebca8f92a74220eb86f0fddd008c1713f6fee8b9aa2cf44ec95e91d25ae",
+      "after": "f5932ebca8f92a74220eb86f0fddd008c1713f6fee8b9aa2cf44ec95e91d25ae",
+      "unchanged": true
+    },
+    "recovery-spec-census.py": {
+      "before": "ebf53a7c84acb70dec667a70e2a6b582516c238154f67e8ad7648668a83d3add",
+      "after": "ebf53a7c84acb70dec667a70e2a6b582516c238154f67e8ad7648668a83d3add",
+      "unchanged": true
+    },
+    "special.py": {
+      "before": "57308b81e44bfa8ef21031673bce91ea5545efef5a87dc9aa5bb486e6ba577aa",
+      "after": "57308b81e44bfa8ef21031673bce91ea5545efef5a87dc9aa5bb486e6ba577aa",
+      "unchanged": true
+    },
+    "recovery-census.py": {
+      "before": "297e5edf486b15fd527d6a4f4a15e0337db3de57c10055aceb2eb97aeb09d28d",
+      "after": "297e5edf486b15fd527d6a4f4a15e0337db3de57c10055aceb2eb97aeb09d28d",
+      "unchanged": true
+    },
+    "qemu-guest.py": {
+      "before": "68b1bd2b8fbe77a617afe6cbe6a77920f242c4ed97ce374b523052c640498260",
+      "after": "68b1bd2b8fbe77a617afe6cbe6a77920f242c4ed97ce374b523052c640498260",
+      "unchanged": true
+    }
+  },
+  "tools.json": {
+    "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go": {
+      "before": "30969f97169d7f43fe6a085873d75613adc21e30818a8c61d95bd27275df4624",
+      "after": "30969f97169d7f43fe6a085873d75613adc21e30818a8c61d95bd27275df4624",
+      "unchanged": true
+    },
+    "/tmp/wago-final-d246-m9h4zboi/source/.tools/wabt-1.0.41-linux-x64/bin/wast2json": {
+      "before": "5a1201dca94d1901369005930f3081b67ad97493e4ce1cc017faf415c4dc09c8",
+      "after": "5a1201dca94d1901369005930f3081b67ad97493e4ce1cc017faf415c4dc09c8",
+      "unchanged": true
+    },
+    "/tmp/wago-final-d246-m9h4zboi/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm": {
+      "before": "0f20f49c1153d30993235d5959cac5941328e32e0eac279cbb44b5b3dbd17e4b",
+      "after": "0f20f49c1153d30993235d5959cac5941328e32e0eac279cbb44b5b3dbd17e4b",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/mise/installs/node/24.22.2/bin/node": {
+      "before": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+      "after": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-rfwgc-opam/rfwgc/bin/ocaml": {
+      "before": "b37901bcbff648ee8849b595adfe212c8e58f3708d78c5487ece9ec540193520",
+      "after": "b37901bcbff648ee8849b595adfe212c8e58f3708d78c5487ece9ec540193520",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-rfwgc-opam/rfwgc/bin/dune": {
+      "before": "e55d1890e1e06f3f164c99022babe516ce74db874a00cbefbe9e3d7dca74b5f5",
+      "after": "e55d1890e1e06f3f164c99022babe516ce74db874a00cbefbe9e3d7dca74b5f5",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-rfwgc-opam/rfwgc/bin/menhir": {
+      "before": "3907bfeabdb9e37a44b2732c7abc0672a47fa299f11bb080aebb535ea2caf0fc",
+      "after": "3907bfeabdb9e37a44b2732c7abc0672a47fa299f11bb080aebb535ea2caf0fc",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/bin/tinygo": {
+      "before": "cdd520d062bc2624584f6fc9046929dea9c800af63b791be6cc9d06402c72130",
+      "after": "cdd520d062bc2624584f6fc9046929dea9c800af63b791be6cc9d06402c72130",
+      "unchanged": true
+    }
+  },
+  "tinygo-runtime-before.json": {
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32_usb.go": {
+      "before": "d3c4c9fecd01ad65774f7c0068beb8e3ed80d5dc6a5e65489b3ef856e6109692",
+      "after": "d3c4c9fecd01ad65774f7c0068beb8e3ed80d5dc6a5e65489b3ef856e6109692",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_stack_portable.go": {
+      "before": "6e8359bb07f4aa0450a1c91d639d85de806d32aebf438776f29fedb04e734cd1",
+      "after": "6e8359bb07f4aa0450a1c91d639d85de806d32aebf438776f29fedb04e734cd1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_stack_raw.go": {
+      "before": "74fecf14257048a27693570d2706195cb48edca0b486c6e69ccf0dca14ac729d",
+      "after": "74fecf14257048a27693570d2706195cb48edca0b486c6e69ccf0dca14ac729d",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atmega.go": {
+      "before": "a9a76975cbb20c12168b9368dba387a73cfc3703ce14c2f67f5396140921b9bf",
+      "after": "a9a76975cbb20c12168b9368dba387a73cfc3703ce14c2f67f5396140921b9bf",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/extern.go": {
+      "before": "09439a096adccb9d901d48d5bdfd604977faf3ab7b004601aba68799fef66460",
+      "after": "09439a096adccb9d901d48d5bdfd604977faf3ab7b004601aba68799fef66460",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32f407.go": {
+      "before": "653647989b93cf723b79e076ca600fa13ebd5b74248ff79ed9efaa7324024995",
+      "after": "653647989b93cf723b79e076ca600fa13ebd5b74248ff79ed9efaa7324024995",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_leaking_uefi.go": {
+      "before": "285df99bc7e62a51f06a048bd3c4ecf689246b58d20fe88ff9f1e2bc71c55419",
+      "after": "285df99bc7e62a51f06a048bd3c4ecf689246b58d20fe88ff9f1e2bc71c55419",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsame51j19.go": {
+      "before": "2f4b74e4bf0ef3412da9b1301db9476f4be33dab3186f57110693448a9f6650c",
+      "after": "2f4b74e4bf0ef3412da9b1301db9476f4be33dab3186f57110693448a9f6650c",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/scheduler_idle_wasip1.go": {
+      "before": "dfae08b085bc8200433ab1bf5042864e90879f26850c60ecdb1971ba6f50b88c",
+      "after": "dfae08b085bc8200433ab1bf5042864e90879f26850c60ecdb1971ba6f50b88c",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32f7x2.go": {
+      "before": "866e68baf7d2d7340cbeea6cd84934b309742b5170697b25085dd853f598c4fb",
+      "after": "866e68baf7d2d7340cbeea6cd84934b309742b5170697b25085dd853f598c4fb",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_nrf52840.go": {
+      "before": "10af7f4d79d1943554bdadb873b9f956a7e6932ec5ffbbff2f46757809f422b7",
+      "after": "10af7f4d79d1943554bdadb873b9f956a7e6932ec5ffbbff2f46757809f422b7",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp32_abort.go": {
+      "before": "c2ed40de9cd7db6f47975d7050ca1caa694725b08dcbc003256caf8273b5436e",
+      "after": "c2ed40de9cd7db6f47975d7050ca1caa694725b08dcbc003256caf8273b5436e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32l0x1.go": {
+      "before": "552ee88aa0be940af4da09f2dbc697dfaefcd6c9bb69cc5c94026144bce44586",
+      "after": "552ee88aa0be940af4da09f2dbc697dfaefcd6c9bb69cc5c94026144bce44586",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_cortexm_abort.go": {
+      "before": "f3626afc2caa399ed08f4b8062b040a4ce99ed3d04efe56e53f71c7c4f41f56b",
+      "after": "f3626afc2caa399ed08f4b8062b040a4ce99ed3d04efe56e53f71c7c4f41f56b",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc.go": {
+      "before": "13242bc1390db14a25b0dae5d7b728ead4ee69561514b1ff1515a3559dbe1059",
+      "after": "13242bc1390db14a25b0dae5d7b728ead4ee69561514b1ff1515a3559dbe1059",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/stack.go": {
+      "before": "912277cab026a4dfd8df9a21533c3057fb30f2785bfe749d759e5c8f273fc9bb",
+      "after": "912277cab026a4dfd8df9a21533c3057fb30f2785bfe749d759e5c8f273fc9bb",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/panic.go": {
+      "before": "dba160fcb16bb03867c02f4a6e731db19550d42e76aa3958ee10a72e4c54dc3a",
+      "after": "dba160fcb16bb03867c02f4a6e731db19550d42e76aa3958ee10a72e4c54dc3a",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32.go": {
+      "before": "4b3ee0dadbd842e77ee500083e233deab481de24b5f05e0c6216d7a0dc8747d3",
+      "after": "4b3ee0dadbd842e77ee500083e233deab481de24b5f05e0c6216d7a0dc8747d3",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_tinygoriscv_qemu.go": {
+      "before": "0bd3cfaa901b0b9800b1420964362b13dd2a10574113c415eaa507acdbedf4dc",
+      "after": "0bd3cfaa901b0b9800b1420964362b13dd2a10574113c415eaa507acdbedf4dc",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/float_test.go": {
+      "before": "3d3b399c30bcf4b9cb7cd98e214625edaf97fed768d00c473d548a2a81ebef5b",
+      "after": "3d3b399c30bcf4b9cb7cd98e214625edaf97fed768d00c473d548a2a81ebef5b",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/rand_norng.go": {
+      "before": "e4776776fc9751e78a68022fa5105c8bbea5b2c21c2b174d6a5d5f2c478396d4",
+      "after": "e4776776fc9751e78a68022fa5105c8bbea5b2c21c2b174d6a5d5f2c478396d4",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/scheduler_cooperative.go": {
+      "before": "75dc3d69751102030b1732ab7f866334afd55c863e81a793f293bf2b93465e23",
+      "after": "75dc3d69751102030b1732ab7f866334afd55c863e81a793f293bf2b93465e23",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_k210.go": {
+      "before": "7cf9deba8b1db1f81425887f1d02922ce74934e15c87a630827e669d8d772f55",
+      "after": "7cf9deba8b1db1f81425887f1d02922ce74934e15c87a630827e669d8d772f55",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/mstats.go": {
+      "before": "692ace171ca2f1e49cd532369869b6c329572b783ab6c9bff2e9f48990e0ecfd",
+      "after": "692ace171ca2f1e49cd532369869b6c329572b783ab6c9bff2e9f48990e0ecfd",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_fe310_baremetal.go": {
+      "before": "05d7193fb5976db2ad0d408719db5ca23a17f1cf57cd563bc2ed294aeb315ee4",
+      "after": "05d7193fb5976db2ad0d408719db5ca23a17f1cf57cd563bc2ed294aeb315ee4",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/env_unix.go": {
+      "before": "cc524191102f0fac5d7f5741c6b2a404f4c50993a4413a8f27ba612fe740f60f",
+      "after": "cc524191102f0fac5d7f5741c6b2a404f4c50993a4413a8f27ba612fe740f60f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_darwin.c": {
+      "before": "d29df3d52f6bd0d10efc93916eede657a9722f502683391fd1350e787b00efaa",
+      "after": "d29df3d52f6bd0d10efc93916eede657a9722f502683391fd1350e787b00efaa",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsamd51j20.go": {
+      "before": "a44b83d75aa5c499f069e71401a201d0e0abc4055d911e56e7c3a4f644af8ca2",
+      "after": "a44b83d75aa5c499f069e71401a201d0e0abc4055d911e56e7c3a4f644af8ca2",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_windows.c": {
+      "before": "ff3f50863f0a2b8e4c027ff8d3aef4e0d4bf21f6470f1ae20c43fe65477e05da",
+      "after": "ff3f50863f0a2b8e4c027ff8d3aef4e0d4bf21f6470f1ae20c43fe65477e05da",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_py32_hsi.go": {
+      "before": "4747399d7f0a2405f4ded24a63777aecb2c2aa6e6ee210485ba47f84e00a40a2",
+      "after": "4747399d7f0a2405f4ded24a63777aecb2c2aa6e6ee210485ba47f84e00a40a2",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_wasip1.go": {
+      "before": "efc6bdfac1f82cd1add86ca5b0cc79b2176b2edaa48674d8cec7e9d6fe5730d0",
+      "after": "efc6bdfac1f82cd1add86ca5b0cc79b2176b2edaa48674d8cec7e9d6fe5730d0",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/wait_other.go": {
+      "before": "dc4ae4b7c4d37d267ab213c838c80a7377bd03b8d09fbdacc3bc38bfd86bd7bb",
+      "after": "dc4ae4b7c4d37d267ab213c838c80a7377bd03b8d09fbdacc3bc38bfd86bd7bb",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_tkey.go": {
+      "before": "6235be2c38e2e9efe0549ff160ce9e9fb0f9ec63ea5f70c39607f260f48b85a2",
+      "after": "6235be2c38e2e9efe0549ff160ce9e9fb0f9ec63ea5f70c39607f260f48b85a2",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_wasip1.go": {
+      "before": "5396f09479199a36aa24a36a724147b93ff549fd9488c1c3d2de6168951ce4cb",
+      "after": "5396f09479199a36aa24a36a724147b93ff549fd9488c1c3d2de6168951ce4cb",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_rp2350.go": {
+      "before": "5ed030f62edbbb26e027289ec90860a367a8bdae43faf1781e591ce1b3f49583",
+      "after": "5ed030f62edbbb26e027289ec90860a367a8bdae43faf1781e591ce1b3f49583",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32f103.go": {
+      "before": "346611771645e31c14aa651ed0524ecd5c56e279a1ad6053b65f576303e75b98",
+      "after": "346611771645e31c14aa651ed0524ecd5c56e279a1ad6053b65f576303e75b98",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_tinygowasm.go": {
+      "before": "d24729c08d94e82b42b8beac125583aa230228f077a7807a651d8be39101d70e",
+      "after": "d24729c08d94e82b42b8beac125583aa230228f077a7807a651d8be39101d70e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/memhash_leveldb.go": {
+      "before": "94bc1a80e0f113b97f68d8e07ade8e1da52c03505bc1cbc23101833d2e9bc8a1",
+      "after": "94bc1a80e0f113b97f68d8e07ade8e1da52c03505bc1cbc23101833d2e9bc8a1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_cortexm_qemu.go": {
+      "before": "2bea1f757f7e6b887b0afda224ed8a466e613ca5860b73451994a7a0a98cd7ab",
+      "after": "2bea1f757f7e6b887b0afda224ed8a466e613ca5860b73451994a7a0a98cd7ab",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/poll.go": {
+      "before": "a59dd2db545b2b132907e8328a904460cd09c96584bdf78ae73f1bb6bb3a95fb",
+      "after": "a59dd2db545b2b132907e8328a904460cd09c96584bdf78ae73f1bb6bb3a95fb",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp32_timer.go": {
+      "before": "2abf655fc3bab3833a82bd497df16c662acf8828eede2aa8adc3e08126cf2a31",
+      "after": "2abf655fc3bab3833a82bd497df16c662acf8828eede2aa8adc3e08126cf2a31",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_unix.c": {
+      "before": "229fea217e4fe2610fbebc0f12eb3bf3d61dc9c7ddb670af7c88a43303c2f2d1",
+      "after": "229fea217e4fe2610fbebc0f12eb3bf3d61dc9c7ddb670af7c88a43303c2f2d1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32h7.go": {
+      "before": "d561a603803584b2ce34ee4071642b9fe3c6cbbf57225a1188d8970d17ad41d6",
+      "after": "d561a603803584b2ce34ee4071642b9fe3c6cbbf57225a1188d8970d17ad41d6",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_nxpmk66f18.go": {
+      "before": "f2013c3a1747a54222436356b404156f353873ce9801279f96acc717e9aa0560",
+      "after": "f2013c3a1747a54222436356b404156f353873ce9801279f96acc717e9aa0560",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/debug.go": {
+      "before": "3b1cc227f7bc9fb8106cc4a5f8f6a3ef07be686d958c1748430757395accd7e8",
+      "after": "3b1cc227f7bc9fb8106cc4a5f8f6a3ef07be686d958c1748430757395accd7e8",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interface.go": {
+      "before": "774ce8e359570aa773775d205896010fe3e5f8973b3d4cfd65a45a46a9bc22ad",
+      "after": "774ce8e359570aa773775d205896010fe3e5f8973b3d4cfd65a45a46a9bc22ad",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsamd51j19.go": {
+      "before": "0c49dd5f7cafc0b6524b5c4f32859310f54bd1136d5326740fc0316c260f4325",
+      "after": "0c49dd5f7cafc0b6524b5c4f32859310f54bd1136d5326740fc0316c260f4325",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/coro.go": {
+      "before": "2f3f92702771b3f71def5baa2c40f4912169556fedced6762fee322d8615a82e",
+      "after": "2f3f92702771b3f71def5baa2c40f4912169556fedced6762fee322d8615a82e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_boehm.go": {
+      "before": "3baeab106880cdce71b2ae2d9de1b74a8129e766ddebbf985ab1034b6665fe33",
+      "after": "3baeab106880cdce71b2ae2d9de1b74a8129e766ddebbf985ab1034b6665fe33",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/print.go": {
+      "before": "f08578131fbba92b2f782e6e3494c1f840fc6552d108af22068f60f01dc11d84",
+      "after": "f08578131fbba92b2f782e6e3494c1f840fc6552d108af22068f60f01dc11d84",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/scheduler_cores.go": {
+      "before": "09d28211279e80f0ef43e2f7768a1429a04a6419faf1857055f07a14039b2d7e",
+      "after": "09d28211279e80f0ef43e2f7768a1429a04a6419faf1857055f07a14039b2d7e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsamd21.go": {
+      "before": "4d9e4b57602b1d27093c43aad73323d8d8ed00615ac4232f47aa979433af6840",
+      "after": "4d9e4b57602b1d27093c43aad73323d8d8ed00615ac4232f47aa979433af6840",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32u0.go": {
+      "before": "dcd5dc7f1ada5364bf97c6ddea34175b20b62fe254fdfc6f9cc9055c84419f8e",
+      "after": "dcd5dc7f1ada5364bf97c6ddea34175b20b62fe254fdfc6f9cc9055c84419f8e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_cortexm_hardfault_debug.go": {
+      "before": "4811f29d1244ac9913d05a858a9cf6b3d9cf6254aa2c6e1ede6abb9b1d077f53",
+      "after": "4811f29d1244ac9913d05a858a9cf6b3d9cf6254aa2c6e1ede6abb9b1d077f53",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/scheduler_none.go": {
+      "before": "b002a57637e3e49a4482903b201af05d4767bb16ee8b38d7683e3ea486858ba1",
+      "after": "b002a57637e3e49a4482903b201af05d4767bb16ee8b38d7683e3ea486858ba1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_nintendoswitch.go": {
+      "before": "17aa4402c7478c1e1daa000d90c922eb55f12538514424fcb1e6281bd744ff50",
+      "after": "17aa4402c7478c1e1daa000d90c922eb55f12538514424fcb1e6281bd744ff50",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32l4x5.go": {
+      "before": "9f911459e85a6a61871ff82e9fb1d53b06ec21298d87a90587ad58f603bd974b",
+      "after": "9f911459e85a6a61871ff82e9fb1d53b06ec21298d87a90587ad58f603bd974b",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_wasmentry.go": {
+      "before": "120142570b154909f86008ef6df5ade5787a8a32d097d4a25abfe9b2bf683399",
+      "after": "120142570b154909f86008ef6df5ade5787a8a32d097d4a25abfe9b2bf683399",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/slice.go": {
+      "before": "e674134e3463bc23c5dd264e1b32f9096eb21e6107d1638f83bdfc899033eb06",
+      "after": "e674134e3463bc23c5dd264e1b32f9096eb21e6107d1638f83bdfc899033eb06",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/asm_arm.S": {
+      "before": "f5e89f2bea44ffc4dada43762b0162d7d7bfbfc52b6213773e44176e9887101f",
+      "after": "f5e89f2bea44ffc4dada43762b0162d7d7bfbfc52b6213773e44176e9887101f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/asm_amd64.S": {
+      "before": "d65482b15ad10a637403a22b6b834d8dc0fcd5ee0a0cb122f3d580bdab0bb84f",
+      "after": "d65482b15ad10a637403a22b6b834d8dc0fcd5ee0a0cb122f3d580bdab0bb84f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_rp2.go": {
+      "before": "edfc9e397472691f66ec7e3dcb5578c9e7edaa14e8a4013cf22c04891ae00264",
+      "after": "edfc9e397472691f66ec7e3dcb5578c9e7edaa14e8a4013cf22c04891ae00264",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/hashmap.go": {
+      "before": "4bab12fcf8b19fab6233242b5e2dcd2cf277756e3aa6d78d5668735a45acc5a3",
+      "after": "4bab12fcf8b19fab6233242b5e2dcd2cf277756e3aa6d78d5668735a45acc5a3",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32f469.go": {
+      "before": "6707fb687ceee2cb311289e1d1e854a93cebb7d46db34f9ff8dc568f93af281f",
+      "after": "6707fb687ceee2cb311289e1d1e854a93cebb7d46db34f9ff8dc568f93af281f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/scheduler_tasks.go": {
+      "before": "502d7a57c96492a9cc1dc9faa98b063967bdf99fdec1f19c6a00b7814637ca4f",
+      "after": "502d7a57c96492a9cc1dc9faa98b063967bdf99fdec1f19c6a00b7814637ca4f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_windows.go": {
+      "before": "16d384446b3d107abc9d778ace0be0c63cd5d65c8a380a8e29a611e32002cfda",
+      "after": "16d384446b3d107abc9d778ace0be0c63cd5d65c8a380a8e29a611e32002cfda",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32l4x6.go": {
+      "before": "3739069a3fbf5ef750a3a3e658130824b853185ed0ac2ca6739f19fd6e03c115",
+      "after": "3739069a3fbf5ef750a3a3e658130824b853185ed0ac2ca6739f19fd6e03c115",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp32c3.go": {
+      "before": "6b4c49e29e5de6ba0b0dcec3ffb5d9e94a03cb7aacdcbd5988d11e7bc7d1d4dc",
+      "after": "6b4c49e29e5de6ba0b0dcec3ffb5d9e94a03cb7aacdcbd5988d11e7bc7d1d4dc",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/build_asserts.go": {
+      "before": "139fb556fd6dac6b01f9f4f83ce0c3d34b5426869b504b9477c4203143ba74df",
+      "after": "139fb556fd6dac6b01f9f4f83ce0c3d34b5426869b504b9477c4203143ba74df",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/env_nonhosted.go": {
+      "before": "d4134dd490c0dcf9f0a0bbbe0c6ee2471aa2663d23d5f88641e64b4906487dcf",
+      "after": "d4134dd490c0dcf9f0a0bbbe0c6ee2471aa2663d23d5f88641e64b4906487dcf",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/dynamic_arm64.go": {
+      "before": "8a3ae8544436ebf4e2894902651ce035cae6888890d97533358a74885bec6bd4",
+      "after": "8a3ae8544436ebf4e2894902651ce035cae6888890d97533358a74885bec6bd4",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_tinygowasm_unknown.go": {
+      "before": "304e08f620bb712134229f2d2c0c75345f06c11568a4d23bca15618b660a0480",
+      "after": "304e08f620bb712134229f2d2c0c75345f06c11568a4d23bca15618b660a0480",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_avr.go": {
+      "before": "5bd1c81f46a25506a54b29bc80fd87dc8074a6e817c9d61dd8a9abe71c231f90",
+      "after": "5bd1c81f46a25506a54b29bc80fd87dc8074a6e817c9d61dd8a9abe71c231f90",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_stack_cores.go": {
+      "before": "c7e3e2b3d46cb81c9b604a89229c83b94543443a6abd30e8725f95f288034014",
+      "after": "c7e3e2b3d46cb81c9b604a89229c83b94543443a6abd30e8725f95f288034014",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_mgba.go": {
+      "before": "04c48f9db27574f76b82ec0aaf3c6500fda3dab7477ce958954c892c6412b09f",
+      "after": "04c48f9db27574f76b82ec0aaf3c6500fda3dab7477ce958954c892c6412b09f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_mipsle.go": {
+      "before": "478bc2a0ec5c06ad70a2b3eb00e5ab1861dc41319041a2bab7baebee1c46637b",
+      "after": "478bc2a0ec5c06ad70a2b3eb00e5ab1861dc41319041a2bab7baebee1c46637b",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/memhash_tsip.go": {
+      "before": "7538673475a0e508c3990fb363519e4b45354ad9df9883b26e2bfa9b33e85f9e",
+      "after": "7538673475a0e508c3990fb363519e4b45354ad9df9883b26e2bfa9b33e85f9e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_attiny.go": {
+      "before": "40e4865ac3f668b272aa7ff64adb0ee390f7541ee70e62e76e030ba8c6f770ad",
+      "after": "40e4865ac3f668b272aa7ff64adb0ee390f7541ee70e62e76e030ba8c6f770ad",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_wasm_js_scheduler.go": {
+      "before": "b229915d4f26733bd9103ec12bceb8f12e50b1b3848602f7c3248a287f6f4633",
+      "after": "b229915d4f26733bd9103ec12bceb8f12e50b1b3848602f7c3248a287f6f4633",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_386.go": {
+      "before": "1c0b247aab713542f47048fb57cb2688169d13e1b2e71c181c0163436d574aca",
+      "after": "1c0b247aab713542f47048fb57cb2688169d13e1b2e71c181c0163436d574aca",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp32_qemu.go": {
+      "before": "9cb03ee88c596c6c1a748305585470fd3988b7e0767a14a51982781833cd4ba1",
+      "after": "9cb03ee88c596c6c1a748305585470fd3988b7e0767a14a51982781833cd4ba1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_linux.go": {
+      "before": "5ba8e5de0d1616bc1ed15c4488e0a8f1f05dabb417af3f5183e64f2e551ce191",
+      "after": "5ba8e5de0d1616bc1ed15c4488e0a8f1f05dabb417af3f5183e64f2e551ce191",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_tinygoriscv64.go": {
+      "before": "dae5eaf81d160c16cb21118990daff13a8226ff0118f83b530502f45602a987e",
+      "after": "dae5eaf81d160c16cb21118990daff13a8226ff0118f83b530502f45602a987e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_py32.go": {
+      "before": "b1afc07f9a9566ce844ce4c1fa05335d73fe67b209e1791ee9ff6e41e34db568",
+      "after": "b1afc07f9a9566ce844ce4c1fa05335d73fe67b209e1791ee9ff6e41e34db568",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/atomics_critical.go": {
+      "before": "ed885650e630cc4d22d40178a46013acbcb01de0835329bd6314048962e60c35",
+      "after": "ed885650e630cc4d22d40178a46013acbcb01de0835329bd6314048962e60c35",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_windows.go": {
+      "before": "1a2bda8e66ed9328ec95b9c66bb1e75d9ae54c79dd1c1bc8eee1a819e35651a3",
+      "after": "1a2bda8e66ed9328ec95b9c66bb1e75d9ae54c79dd1c1bc8eee1a819e35651a3",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp8266.go": {
+      "before": "053734f42e945eaad0a2887462237864efa7a7a6b072127ea1c57439f1a3bd47",
+      "after": "053734f42e945eaad0a2887462237864efa7a7a6b072127ea1c57439f1a3bd47",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch-no-returnaddr.go": {
+      "before": "b6e7b4426b2bfa59a8b1360240da588e6adafa931e872886d048b6dd6026c985",
+      "after": "b6e7b4426b2bfa59a8b1360240da588e6adafa931e872886d048b6dd6026c985",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32l5x2.go": {
+      "before": "1191cf981da924db8093496102913fc4f7f9e678e6d0f6b01c620b27c47e68c2",
+      "after": "1191cf981da924db8093496102913fc4f7f9e678e6d0f6b01c620b27c47e68c2",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_tinygoriscv.go": {
+      "before": "0c4facee0e05dff241fad3b36f7aae843db7548ff3f7e0cb161c11d961d1eeac",
+      "after": "0c4facee0e05dff241fad3b36f7aae843db7548ff3f7e0cb161c11d961d1eeac",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_unix.go": {
+      "before": "5033b4739b0015e259314cd1df0056b5786c37a2fbd06039709c6d2abe09dc58",
+      "after": "5033b4739b0015e259314cd1df0056b5786c37a2fbd06039709c6d2abe09dc58",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/build_noasserts.go": {
+      "before": "7f6c2e159e77f60e4e7c7212dbfcae8b3a4e714f3958298ec7e6594ce464c4fa",
+      "after": "7f6c2e159e77f60e4e7c7212dbfcae8b3a4e714f3958298ec7e6594ce464c4fa",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_tinygowasm_malloc.go": {
+      "before": "085f3222a5e975dd7c9c0b38fa8ecb94d0179d7e04aa51de547ee7c49487f2b7",
+      "after": "085f3222a5e975dd7c9c0b38fa8ecb94d0179d7e04aa51de547ee7c49487f2b7",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/string.go": {
+      "before": "122468b3a6da0c12b64fe364883363913c753b1ecab1d265dced8afe9ee7b330",
+      "after": "122468b3a6da0c12b64fe364883363913c753b1ecab1d265dced8afe9ee7b330",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_darwin.go": {
+      "before": "6ff7879cae6145531acea20af962fa57b0179b2975a7685cb55e83ebbe609a2a",
+      "after": "6ff7879cae6145531acea20af962fa57b0179b2975a7685cb55e83ebbe609a2a",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_js.go": {
+      "before": "3f220853343009b95a05ae28c677698e85c0d336d825d1364d7f11c0c8c345f9",
+      "after": "3f220853343009b95a05ae28c677698e85c0d336d825d1364d7f11c0c8c345f9",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32l0x2.go": {
+      "before": "b2817cdb102f9e2392f73aaf48b516bab9903d57f236c02c9e8d78110b8f6295",
+      "after": "b2817cdb102f9e2392f73aaf48b516bab9903d57f236c02c9e8d78110b8f6295",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_arm7tdmi.go": {
+      "before": "1fc797712317c19c773dbbdbd97482a8b18c0aeddf37cf2c28fdebe69b33e84c",
+      "after": "1fc797712317c19c773dbbdbd97482a8b18c0aeddf37cf2c28fdebe69b33e84c",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32h7_mpu.go": {
+      "before": "e5969cadf95bc570a6b9b979a009dcabe492a8925ca5ea3bf29831991270a8ec",
+      "after": "e5969cadf95bc570a6b9b979a009dcabe492a8925ca5ea3bf29831991270a8ec",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp32s3.go": {
+      "before": "dec7914b01cc2ad32f3e7661a0af86329045ceacf32b19ffb9da348c95e77cc1",
+      "after": "dec7914b01cc2ad32f3e7661a0af86329045ceacf32b19ffb9da348c95e77cc1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32l4.go": {
+      "before": "c7c5225a57527838a908ce085013cc632506cdefb69c41dcd99f462cb0f8d4a4",
+      "after": "c7c5225a57527838a908ce085013cc632506cdefb69c41dcd99f462cb0f8d4a4",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_windows_go125.go": {
+      "before": "cc70fde15704ab4ff91bf075777c705a78832ca9e0343c8a7d9889a0947ec015",
+      "after": "cc70fde15704ab4ff91bf075777c705a78832ca9e0343c8a7d9889a0947ec015",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32f4.go": {
+      "before": "2541a0c9a927105f2f116b223c181f0fdad1836867d8035de1bcb94f1e8faa67",
+      "after": "2541a0c9a927105f2f116b223c181f0fdad1836867d8035de1bcb94f1e8faa67",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/time.go": {
+      "before": "0036f0194dd775d7056bedbb6532c280d9d1930a02480b2f6b8c84fa216b1588",
+      "after": "0036f0194dd775d7056bedbb6532c280d9d1930a02480b2f6b8c84fa216b1588",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/algorithm.go": {
+      "before": "8ca3a05562d915d0df9103a6e55507fce3aa9e27d889feb0fed787358a2c3443",
+      "after": "8ca3a05562d915d0df9103a6e55507fce3aa9e27d889feb0fed787358a2c3443",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_tinygowasmp2.go": {
+      "before": "81e3d32f33c524dd806c0beaa145406360f8820b006716cc5ec450f6f7ec58ad",
+      "after": "81e3d32f33c524dd806c0beaa145406360f8820b006716cc5ec450f6f7ec58ad",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_cortexm.go": {
+      "before": "a0048400c808695f367611aac3126ee66f3fe3ab4071af72170fbc668cf0ac7e",
+      "after": "a0048400c808695f367611aac3126ee66f3fe3ab4071af72170fbc668cf0ac7e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/signalstub.go": {
+      "before": "2d3049ea101565eeeef0e2e9db52086b5be6a0722263e969e75331f869ca4b38",
+      "after": "2d3049ea101565eeeef0e2e9db52086b5be6a0722263e969e75331f869ca4b38",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_arm64.go": {
+      "before": "eaec7ce2e9163d2d5f6ce6474538463644ddeffa29dac61b7193010f055b7c49",
+      "after": "eaec7ce2e9163d2d5f6ce6474538463644ddeffa29dac61b7193010f055b7c49",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsamd51p20.go": {
+      "before": "03aed8addde7ce7823384042d616011beb502701639767f38bbf4d512bda9168",
+      "after": "03aed8addde7ce7823384042d616011beb502701639767f38bbf4d512bda9168",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_mimxrt1062_time.go": {
+      "before": "6696cfce1a33cf71b11ade682b71978fdf637652b2ef390f7c273ba6c2f53261",
+      "after": "6696cfce1a33cf71b11ade682b71978fdf637652b2ef390f7c273ba6c2f53261",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_blocks.go": {
+      "before": "8a8a37e21c7ef987ad25e6810c0857a62cfe41748aff85deec0dd3281217b49c",
+      "after": "8a8a37e21c7ef987ad25e6810c0857a62cfe41748aff85deec0dd3281217b49c",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp32xx_exit.go": {
+      "before": "89dd75e8b8480ce59628f4fe305d4d8e40aa479948065723ffc9330c1bec65f6",
+      "after": "89dd75e8b8480ce59628f4fe305d4d8e40aa479948065723ffc9330c1bec65f6",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsamd21g18.go": {
+      "before": "bb149339e2dac575112e3edc0cf87c408da2688e63807f8b576e4d9ce5e5a8f1",
+      "after": "bb149339e2dac575112e3edc0cf87c408da2688e63807f8b576e4d9ce5e5a8f1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp32.go": {
+      "before": "32e980e63186b0ceb0610c9b328e7833bfd506eefe6a0ed893cb4f6c103b8a34",
+      "after": "32e980e63186b0ceb0610c9b328e7833bfd506eefe6a0ed893cb4f6c103b8a34",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/asm_mipsx.S": {
+      "before": "09d36f69290472dc8b935436c3a9f530987ab0323f9ab1e6d601b81a17f2ab35",
+      "after": "09d36f69290472dc8b935436c3a9f530987ab0323f9ab1e6d601b81a17f2ab35",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/rand_hwrng.go": {
+      "before": "1102b1cdad11f2d5d7807a96c6b5012494f493f74c495a6f364d2a80fea569a1",
+      "after": "1102b1cdad11f2d5d7807a96c6b5012494f493f74c495a6f364d2a80fea569a1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32g0b1.go": {
+      "before": "b5e5dc33f87edccfe1affbc823020bba23e35f440c3688028b62c9500a1f8a1f",
+      "after": "b5e5dc33f87edccfe1affbc823020bba23e35f440c3688028b62c9500a1f8a1f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp32sx.go": {
+      "before": "cfc8634f6c943ef871177ba3f3c6dcfeab9e999b2e40ccb3c013616e9da56dde",
+      "after": "cfc8634f6c943ef871177ba3f3c6dcfeab9e999b2e40ccb3c013616e9da56dde",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_mimxrt1062_clock.go": {
+      "before": "d667316973c153482cd8864746cca13fa0b9e729790e7c33bbfff84158ef06aa",
+      "after": "d667316973c153482cd8864746cca13fa0b9e729790e7c33bbfff84158ef06aa",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_tinygoriscv32.go": {
+      "before": "0c5e984ab549e6ecccdde5c01778496de8367879b99e6e0a94ef18d5e4b79881",
+      "after": "0c5e984ab549e6ecccdde5c01778496de8367879b99e6e0a94ef18d5e4b79881",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/scheduler_threads.go": {
+      "before": "4bc592c06b41a6c3feee4a54bc1c47d14298fd742608202416ade78f803fb8d1",
+      "after": "4bc592c06b41a6c3feee4a54bc1c47d14298fd742608202416ade78f803fb8d1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/asm_riscv.S": {
+      "before": "5481d1931cb52a619619de579fdb8480f93eca87669bb5e90541596f836f54e8",
+      "after": "5481d1931cb52a619619de579fdb8480f93eca87669bb5e90541596f836f54e8",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_finalizer_sched.go": {
+      "before": "96a273b3e9fb1575fb4bd343cebf6259f376fe492c18517267d0900445bb930e",
+      "after": "96a273b3e9fb1575fb4bd343cebf6259f376fe492c18517267d0900445bb930e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/asm_tinygowasm.S": {
+      "before": "bf1d6728136da497003d3ae4e044dccddaf6db55cc831006fce5f006c39f3afa",
+      "after": "bf1d6728136da497003d3ae4e044dccddaf6db55cc831006fce5f006c39f3afa",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsamd51g19.go": {
+      "before": "2eab3959bad95a1e8983e4981f9a5ac182e81d9056338ffb2e9fba0889d3cc8b",
+      "after": "2eab3959bad95a1e8983e4981f9a5ac182e81d9056338ffb2e9fba0889d3cc8b",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_wasm_js.go": {
+      "before": "935784676d5f2b6f2b457da68e50b4044013aeda9c04b80475861a0cdeda1dbc",
+      "after": "935784676d5f2b6f2b457da68e50b4044013aeda9c04b80475861a0cdeda1dbc",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/time_nxpmk66f18.go": {
+      "before": "810c7129490392e14f9f9ccac2d5abc6a364be1b507f08e137f74ed3b1d26abf",
+      "after": "810c7129490392e14f9f9ccac2d5abc6a364be1b507f08e137f74ed3b1d26abf",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_xtensa.go": {
+      "before": "e161212cf12ce23c557bec1c841ecc64c1a72d6778fe39366253b2c2e93badec",
+      "after": "e161212cf12ce23c557bec1c841ecc64c1a72d6778fe39366253b2c2e93badec",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch-has-returnaddr.go": {
+      "before": "604a04c5b94390881f585e88fe4fba3669c8a7353a229a7fc861334f81f21efd",
+      "after": "604a04c5b94390881f585e88fe4fba3669c8a7353a229a7fc861334f81f21efd",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_tinygowasm.go": {
+      "before": "e13ef53a2d0711c4e1db265ec6a22540c85234756fb2b2582a35552bef23b4ff",
+      "after": "e13ef53a2d0711c4e1db265ec6a22540c85234756fb2b2582a35552bef23b4ff",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_nrf.go": {
+      "before": "412952cad819c5f0d4581c5def89eff2088f83ccf07895f0a853d6b36c993461",
+      "after": "412952cad819c5f0d4581c5def89eff2088f83ccf07895f0a853d6b36c993461",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_darwin_go125.go": {
+      "before": "7dc43a1d5bd5e678e86d99954481fa13106cfb091d269a739dc62d6b979ed1bc",
+      "after": "7dc43a1d5bd5e678e86d99954481fa13106cfb091d269a739dc62d6b979ed1bc",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_avr.go": {
+      "before": "57c23c9f5131ecb2c7f9a4751b8a6bbb64aa8a9d6bbabd485c9c59012048fd9e",
+      "after": "57c23c9f5131ecb2c7f9a4751b8a6bbb64aa8a9d6bbabd485c9c59012048fd9e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32wlx.go": {
+      "before": "ecf83216a5103d7abc8d1a1e4de6c9cb7e49b2a089e6240950debdb8c033ec6b",
+      "after": "ecf83216a5103d7abc8d1a1e4de6c9cb7e49b2a089e6240950debdb8c033ec6b",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsamd51.go": {
+      "before": "6dedd7790e4d42ecdd1d12e542f227eacad5b89a555c76e65a2621338fdfa586",
+      "after": "6dedd7790e4d42ecdd1d12e542f227eacad5b89a555c76e65a2621338fdfa586",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/float.go": {
+      "before": "7221e8eed459134456c9b8727e59669bc21fcdecb8a2e7181758ed2364b416ef",
+      "after": "7221e8eed459134456c9b8727e59669bc21fcdecb8a2e7181758ed2364b416ef",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/zero_new_alloc.go": {
+      "before": "c34f063d3daf1929b8dd5c68d241407b6bd345a917d3f5a67110b364bfbbbac3",
+      "after": "c34f063d3daf1929b8dd5c68d241407b6bd345a917d3f5a67110b364bfbbbac3",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_rp2040.go": {
+      "before": "28a9f689a693e103922a105d44a458c59b4cd14c3eb87948c8d114e3a6b351e4",
+      "after": "28a9f689a693e103922a105d44a458c59b4cd14c3eb87948c8d114e3a6b351e4",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_precise.go": {
+      "before": "c8140cb80da71a055380a22ed4c90ab71d7f5b009d5fcfa7b2cc68dcd5f397d3",
+      "after": "c8140cb80da71a055380a22ed4c90ab71d7f5b009d5fcfa7b2cc68dcd5f397d3",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/error.go": {
+      "before": "7170224d86072ee2b52d2df22a0f933069d25e4263613e9eb5464202a6f10d7e",
+      "after": "7170224d86072ee2b52d2df22a0f933069d25e4263613e9eb5464202a6f10d7e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/env.go": {
+      "before": "9117f88127a99fde3e550e1c07c3035802b3723c5b8fbf030d27675b3e2347bd",
+      "after": "9117f88127a99fde3e550e1c07c3035802b3723c5b8fbf030d27675b3e2347bd",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/asm_avr.S": {
+      "before": "bc908e0b41000aabca2ebb72fbf3f3b19d174949849ecd9e038c1225fbc00bad",
+      "after": "bc908e0b41000aabca2ebb72fbf3f3b19d174949849ecd9e038c1225fbc00bad",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32l0.go": {
+      "before": "a42fd9e40513d2a92ce527815800692c47bd2bb7038e921c8826ff35bb0221d8",
+      "after": "a42fd9e40513d2a92ce527815800692c47bd2bb7038e921c8826ff35bb0221d8",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/defer.go": {
+      "before": "82828260e6ec55bd3e62e97c037ae9f81f2412c18e3402fbe5c9517db60a90dc",
+      "after": "82828260e6ec55bd3e62e97c037ae9f81f2412c18e3402fbe5c9517db60a90dc",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/zero_new_alloc_noop.go": {
+      "before": "6ec83d1546bc17d026d3cea3b13ac7087c47b98db106246bcae74481f2397159",
+      "after": "6ec83d1546bc17d026d3cea3b13ac7087c47b98db106246bcae74481f2397159",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_mimxrt1062.go": {
+      "before": "7af6ee9b131615632b62b14bc2e67d436d14517898c68bbde981789516458c3e",
+      "after": "7af6ee9b131615632b62b14bc2e67d436d14517898c68bbde981789516458c3e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_stack_threads.go": {
+      "before": "0b6cc9541f044503425f36fadb01063fa9ab5fbca36615030e24cae8d8c281e7",
+      "after": "0b6cc9541f044503425f36fadb01063fa9ab5fbca36615030e24cae8d8c281e7",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32_timers.go": {
+      "before": "44f3e1e2419246a3b6e670e876f0d135047ae1bd07b70e71311151f766de5288",
+      "after": "44f3e1e2419246a3b6e670e876f0d135047ae1bd07b70e71311151f766de5288",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/sync.go": {
+      "before": "f0116fcb36b939330279fd03623143351e1f3da0b20d804f3e6cf3a69ebe6c21",
+      "after": "f0116fcb36b939330279fd03623143351e1f3da0b20d804f3e6cf3a69ebe6c21",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsamd51p19.go": {
+      "before": "ce83afe247500863fdf59dc6c087f099d7e488b2641e56efc4ef1c716deecb51",
+      "after": "ce83afe247500863fdf59dc6c087f099d7e488b2641e56efc4ef1c716deecb51",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_finalizer.go": {
+      "before": "7db2f2a95e066524cee615efe4ba5f3d3f033d809740a485f63f80073774292c",
+      "after": "7db2f2a95e066524cee615efe4ba5f3d3f033d809740a485f63f80073774292c",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_wasip2.go": {
+      "before": "3d9d402c58479473101168e89065bc730f49a0e0921cb9dce4ae4851f338ea93",
+      "after": "3d9d402c58479473101168e89065bc730f49a0e0921cb9dce4ae4851f338ea93",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsame5x_can.go": {
+      "before": "4ea20e121484c2a89c512bcf977e0fc97fdf8c688cec995eaf0f68d1e7888890",
+      "after": "4ea20e121484c2a89c512bcf977e0fc97fdf8c688cec995eaf0f68d1e7888890",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_boehm.c": {
+      "before": "81b368ddf199a1e7d95c348afc7db52d80f908323e8110c037576ff434873516",
+      "after": "81b368ddf199a1e7d95c348afc7db52d80f908323e8110c037576ff434873516",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/env_windows.go": {
+      "before": "7239c3246edd678ee16ea994d75328efe136efe076e678f56d78ace5078854ec",
+      "after": "7239c3246edd678ee16ea994d75328efe136efe076e678f56d78ace5078854ec",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime.go": {
+      "before": "d1be2f7083071bd44d140d7e5531a3aff4f4da53506f94ad6a8ef56fb2a185db",
+      "after": "d1be2f7083071bd44d140d7e5531a3aff4f4da53506f94ad6a8ef56fb2a185db",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32u585.go": {
+      "before": "ef0958f9387f1d9488080e764ad40cd5c074fe1e9583927dcd4d72339259c42d",
+      "after": "ef0958f9387f1d9488080e764ad40cd5c074fe1e9583927dcd4d72339259c42d",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/asm_arm64.S": {
+      "before": "52b84ba8c1e6c07cf6c406993cf36053038a1e0266fff9396539b3e3f657f9f5",
+      "after": "52b84ba8c1e6c07cf6c406993cf36053038a1e0266fff9396539b3e3f657f9f5",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/nonhosted.go": {
+      "before": "b31c7b184eda6e424821b82bf28601c0002fe22785f93aefb21f85d75e6fcce2",
+      "after": "b31c7b184eda6e424821b82bf28601c0002fe22785f93aefb21f85d75e6fcce2",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_other.go": {
+      "before": "38ac576738f1393af954b982d6848819341948451a4921c6c29d91fbbb369188",
+      "after": "38ac576738f1393af954b982d6848819341948451a4921c6c29d91fbbb369188",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_darwin_go126.go": {
+      "before": "c978a47ac41964c60989b399f20559fb99e095703830677a4fc0a1f54db66279",
+      "after": "c978a47ac41964c60989b399f20559fb99e095703830677a4fc0a1f54db66279",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32u5.go": {
+      "before": "c84a03619b1fac023ad8469503abee9b87c40bbe18cb728644ec0aa868160289",
+      "after": "c84a03619b1fac023ad8469503abee9b87c40bbe18cb728644ec0aa868160289",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32l4x2.go": {
+      "before": "7c597044cdd43ddacf2440a37d7198c224a66af3ce8b2ac234b8cebe48613e57",
+      "after": "7c597044cdd43ddacf2440a37d7198c224a66af3ce8b2ac234b8cebe48613e57",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/symtab.go": {
+      "before": "d640bff9a833d283591abb97c5457522ce0e9b6b1c09eb3ec58efde959ca28a8",
+      "after": "d640bff9a833d283591abb97c5457522ce0e9b6b1c09eb3ec58efde959ca28a8",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsamd21e18.go": {
+      "before": "a3d52b9a3d09b7504bb608b21c22c8a0950fee7bea2b4a452fbe526bea6a679c",
+      "after": "a3d52b9a3d09b7504bb608b21c22c8a0950fee7bea2b4a452fbe526bea6a679c",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/scheduler_idle_wasip1_none.go": {
+      "before": "b02d0ad8fafbe4cd6e7ee6f6f9bd83ed5c7d2fc356394f9b6d606b2a99726734",
+      "after": "b02d0ad8fafbe4cd6e7ee6f6f9bd83ed5c7d2fc356394f9b6d606b2a99726734",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_wasip2.go": {
+      "before": "1d8c7729181edaac9cfe65937138e5610569af90e7bce77a4ae9cba978506e07",
+      "after": "1d8c7729181edaac9cfe65937138e5610569af90e7bce77a4ae9cba978506e07",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_fe310_qemu.go": {
+      "before": "074642d42662001d75a5e382c986430475d4b72c4a957543170fe57ff1d8b673",
+      "after": "074642d42662001d75a5e382c986430475d4b72c4a957543170fe57ff1d8b673",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_cortexm_hardfault.go": {
+      "before": "3ff828f7deb82d34a3a44f6ab88d5abb9736ba533407a8df450e45bf2f795c7e",
+      "after": "3ff828f7deb82d34a3a44f6ab88d5abb9736ba533407a8df450e45bf2f795c7e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/signal.c": {
+      "before": "176175a432d0e84864a0d80e966b6b80720d98bfa8f9b3b1d8a5ccb7393f05ed",
+      "after": "176175a432d0e84864a0d80e966b6b80720d98bfa8f9b3b1d8a5ccb7393f05ed",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_fe310.go": {
+      "before": "84e063051c3795fa951dbbbcda3752989e2b0b36d4da438b12758a91e8262fa2",
+      "after": "84e063051c3795fa951dbbbcda3752989e2b0b36d4da438b12758a91e8262fa2",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_tinygoriscv.go": {
+      "before": "7684983b3094a611d1372c042c905021cf41636fc449d71c06588f5d03ad5eb3",
+      "after": "7684983b3094a611d1372c042c905021cf41636fc449d71c06588f5d03ad5eb3",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_k210_baremetal.go": {
+      "before": "1f924fdc562ffedb3fb027f7da3f00d6a2b3cb8088b06929183a3fddaa727cee",
+      "after": "1f924fdc562ffedb3fb027f7da3f00d6a2b3cb8088b06929183a3fddaa727cee",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp32c6.go": {
+      "before": "77570d3f70820de47da6e01f5976f647e03e6b1d278e21e1bf0203ace689f6bb",
+      "after": "77570d3f70820de47da6e01f5976f647e03e6b1d278e21e1bf0203ace689f6bb",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_finalizer_sched_none.go": {
+      "before": "d2a38a53966dc0d461326ca769e2947e7b5966bdd37f18b9dd3e20236cc3a693",
+      "after": "d2a38a53966dc0d461326ca769e2947e7b5966bdd37f18b9dd3e20236cc3a693",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/memhash_fnv.go": {
+      "before": "245e9e4e24c84f32382b1fa84346e30d4954be9cfb2d7007a6e646780233e0b5",
+      "after": "245e9e4e24c84f32382b1fa84346e30d4954be9cfb2d7007a6e646780233e0b5",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32g0.go": {
+      "before": "6a3fcc4e263b457318f5dd978c61a4696ad7f5d99e059f4571073924b1039079",
+      "after": "6a3fcc4e263b457318f5dd978c61a4696ad7f5d99e059f4571073924b1039079",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/proc.go": {
+      "before": "0df4ac8dfff1fa04b5fdeb8ae54135ace2e83714df8bce89a81debbfd7f9c7eb",
+      "after": "0df4ac8dfff1fa04b5fdeb8ae54135ace2e83714df8bce89a81debbfd7f9c7eb",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/asm_amd64_windows.S": {
+      "before": "bff7eeb5b03c875ac07e7a7cdbd0b5f7a6151a98dd087abb13baf4e98cbf4161",
+      "after": "bff7eeb5b03c875ac07e7a7cdbd0b5f7a6151a98dd087abb13baf4e98cbf4161",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_avrtiny.go": {
+      "before": "7acb15bdaa2fa20210ef3e1225b08a9edb6dce7714a2811d83ce9252c1625196",
+      "after": "7acb15bdaa2fa20210ef3e1225b08a9edb6dce7714a2811d83ce9252c1625196",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/complex.go": {
+      "before": "5b1e59a5b7554d628728d31c7165a72d281c3e4369be54c9989d0eea147ec397",
+      "after": "5b1e59a5b7554d628728d31c7165a72d281c3e4369be54c9989d0eea147ec397",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_cortexm.go": {
+      "before": "72cd61729e119df010621f402290fe7f14b234978ee55aa81fa40f16584e34d7",
+      "after": "72cd61729e119df010621f402290fe7f14b234978ee55aa81fa40f16584e34d7",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_mimxrt1062_mpu.go": {
+      "before": "ef91d7a1f6e8b056c2faa20690c9419966b0d407c211b45d667cef54aa18feb2",
+      "after": "ef91d7a1f6e8b056c2faa20690c9419966b0d407c211b45d667cef54aa18feb2",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/netpoll_wasip1.go": {
+      "before": "fcd9bc2a9b219c31545a4c0325bf89fda00cd1917ebd6bbc607efe53e3b7f7f0",
+      "after": "fcd9bc2a9b219c31545a4c0325bf89fda00cd1917ebd6bbc607efe53e3b7f7f0",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_windows_go126.go": {
+      "before": "20951712bcb7343a9bca6621d40f77499d3cfbf666f912a11edc800944a89e22",
+      "after": "20951712bcb7343a9bca6621d40f77499d3cfbf666f912a11edc800944a89e22",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_nintendoswitch.S": {
+      "before": "22d3046b14f4b0dc451dbdf5f3b0e501d51f0b4c8ac309a508e25451e775ac66",
+      "after": "22d3046b14f4b0dc451dbdf5f3b0e501d51f0b4c8ac309a508e25451e775ac66",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_py32_hsi_none.go": {
+      "before": "c9bcc245e1da6de2ae3869081c6aef8d67621f9a488aa98fc967dc02a4613d12",
+      "after": "c9bcc245e1da6de2ae3869081c6aef8d67621f9a488aa98fc967dc02a4613d12",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/baremetal.go": {
+      "before": "111e71bb241f682738895ec039dec7115b0ee16183fb240d42017545027b2e1f",
+      "after": "111e71bb241f682738895ec039dec7115b0ee16183fb240d42017545027b2e1f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_wasm_unknown.go": {
+      "before": "1733d51d42fc4d8a774f821d7ab79d259e350c0e654109d440aa94f816c906e4",
+      "after": "1733d51d42fc4d8a774f821d7ab79d259e350c0e654109d440aa94f816c906e4",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_nrf_softdevice.go": {
+      "before": "42ea1878fd519543ece49ab48b21cd77c6b5d31e3db3176c9d6657609dadfbb1",
+      "after": "42ea1878fd519543ece49ab48b21cd77c6b5d31e3db3176c9d6657609dadfbb1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_atsame54p20.go": {
+      "before": "0e83246d3447d809275ae246f132753384620250dad48bb199413d72e6a5e9f1",
+      "after": "0e83246d3447d809275ae246f132753384620250dad48bb199413d72e6a5e9f1",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/synctest.go": {
+      "before": "fabe4e418f822c7a1e3ad52a9a7e110dc7ccf1db07a12fa674e3550286d1add4",
+      "after": "fabe4e418f822c7a1e3ad52a9a7e110dc7ccf1db07a12fa674e3550286d1add4",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_arm.go": {
+      "before": "388d0a40c27158e312134057f4380b592bd43f0c39d3c2c7b5b6c3a70c0e9bc5",
+      "after": "388d0a40c27158e312134057f4380b592bd43f0c39d3c2c7b5b6c3a70c0e9bc5",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_stm32f405.go": {
+      "before": "d59c1f01b85dec12cd7af7d654b906e158c5217ad4ba0e0d9ed0b94c28c2d1aa",
+      "after": "d59c1f01b85dec12cd7af7d654b906e158c5217ad4ba0e0d9ed0b94c28c2d1aa",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/rand.go": {
+      "before": "79686a88a801eb2550b656c5836b210fe215e3bdbcf1b2f56ad6d8577ecb5289",
+      "after": "79686a88a801eb2550b656c5836b210fe215e3bdbcf1b2f56ad6d8577ecb5289",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/chan.go": {
+      "before": "8cf81f77b92ebd99413d93a4e6bf88fe49967a700fbe72a229082a8f267436b5",
+      "after": "8cf81f77b92ebd99413d93a4e6bf88fe49967a700fbe72a229082a8f267436b5",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_leaking.go": {
+      "before": "b3dc47737d54c86c7a1ad5518cd722ae84c7d1fb9bbe480e3c1339ff0d0631d8",
+      "after": "b3dc47737d54c86c7a1ad5518cd722ae84c7d1fb9bbe480e3c1339ff0d0631d8",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/os_windows_pe.go": {
+      "before": "b7169c7566cef42cace5666fa60c9e557eb8bdadab2874f0399c063764ccfcdf",
+      "after": "b7169c7566cef42cace5666fa60c9e557eb8bdadab2874f0399c063764ccfcdf",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_tinygoriscv64.go": {
+      "before": "dc8f013efe9ed08e04752b106424a3ca07bdf90b5332fd03671009a0d69bceb4",
+      "after": "dc8f013efe9ed08e04752b106424a3ca07bdf90b5332fd03671009a0d69bceb4",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_tkey_baremetal.go": {
+      "before": "830d7564cc6a8a0e69723c248e874e5a626c197fec6fccc31e7e301be382cf09",
+      "after": "830d7564cc6a8a0e69723c248e874e5a626c197fec6fccc31e7e301be382cf09",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_amd64.go": {
+      "before": "ffe55ac81d57927db23214de5e69749ca5e76b6ea2894ea40f5fa077e73f37da",
+      "after": "ffe55ac81d57927db23214de5e69749ca5e76b6ea2894ea40f5fa077e73f37da",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/arch_mips.go": {
+      "before": "47bfe28292255f10732bf10189ee5c0b75e455e1e31cd89c0c82a51c66fa529e",
+      "after": "47bfe28292255f10732bf10189ee5c0b75e455e1e31cd89c0c82a51c66fa529e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/baremetal_memory.go": {
+      "before": "148a3d4ad0b89afac927c56b86214d81e3d2aa557b9b40c5a24406381b7d3a6a",
+      "after": "148a3d4ad0b89afac927c56b86214d81e3d2aa557b9b40c5a24406381b7d3a6a",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_uefi.go": {
+      "before": "e17517d3eca2177d9d4094abcc35347c3f650d5e52d1df92e3dd45ebe8b0f393",
+      "after": "e17517d3eca2177d9d4094abcc35347c3f650d5e52d1df92e3dd45ebe8b0f393",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/hosted.go": {
+      "before": "3a7d190dc2e86eedb9b1dfcd9a9192e80a01efc576e46cf28ceeae5276dfd34c",
+      "after": "3a7d190dc2e86eedb9b1dfcd9a9192e80a01efc576e46cf28ceeae5276dfd34c",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_nrf_bare.go": {
+      "before": "1850ba92ba4f8b7064eef4ddbcb57e5c3b0fa22c6514c8b4d4ea53bb5565cd82",
+      "after": "1850ba92ba4f8b7064eef4ddbcb57e5c3b0fa22c6514c8b4d4ea53bb5565cd82",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_none.go": {
+      "before": "7ff78f58406476c0dbbd8af6dcec763c7ee065fbc42dcabf1c2ba7a84a6262c4",
+      "after": "7ff78f58406476c0dbbd8af6dcec763c7ee065fbc42dcabf1c2ba7a84a6262c4",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_py32_hsi_op.go": {
+      "before": "39b1a172864f990dfe3070b6702ae119bba3852c9d1b9370815c987c94ab216c",
+      "after": "39b1a172864f990dfe3070b6702ae119bba3852c9d1b9370815c987c94ab216c",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_finalizer_sched_other.go": {
+      "before": "de3be5391e8bf1ddc5c4ff45ff6352ca7897986c58747981777e119b3b843f90",
+      "after": "de3be5391e8bf1ddc5c4ff45ff6352ca7897986c58747981777e119b3b843f90",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/runtime_esp32xx.go": {
+      "before": "fce6b21dcfed3a828c1ad965ad668535ad57eb8dad9f9cd90daed00130d4e32f",
+      "after": "fce6b21dcfed3a828c1ad965ad668535ad57eb8dad9f9cd90daed00130d4e32f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_globals.go": {
+      "before": "a5242c0d4c656ddce7f7d9494bce21bff9100fd89fb3d7109044cbddcc068d02",
+      "after": "a5242c0d4c656ddce7f7d9494bce21bff9100fd89fb3d7109044cbddcc068d02",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/metrics.go": {
+      "before": "2f78d704d4ba71b198e002019bd5b345eff27a29558bd772198ceaf10b106948",
+      "after": "2f78d704d4ba71b198e002019bd5b345eff27a29558bd772198ceaf10b106948",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_custom.go": {
+      "before": "fd48d96ff134454e95a9edd4bf410555e0ce5bd769575270b107cd3832fddc0d",
+      "after": "fd48d96ff134454e95a9edd4bf410555e0ce5bd769575270b107cd3832fddc0d",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/env_wasip2.go": {
+      "before": "8c88462d0c7681bc426d9e6bfad33c4c2ba44b06521daae11018aac8a651d4fe",
+      "after": "8c88462d0c7681bc426d9e6bfad33c4c2ba44b06521daae11018aac8a651d4fe",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/scheduler.go": {
+      "before": "131d8d01946cdeb33ce8f24fbb6970db38d9fb95a6c3afaaf627fd9d000128a5",
+      "after": "131d8d01946cdeb33ce8f24fbb6970db38d9fb95a6c3afaaf627fd9d000128a5",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/gc_conservative.go": {
+      "before": "60e63df2bc0d60c9962dc60a918d243107a9827a7acd3c330ed7746fdbde3341",
+      "after": "60e63df2bc0d60c9962dc60a918d243107a9827a7acd3c330ed7746fdbde3341",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/asm_386.S": {
+      "before": "b5a6f1f43262aa41756e0937e650944e020a0e632b38d547333e477f68a7a8f7",
+      "after": "b5a6f1f43262aa41756e0937e650944e020a0e632b38d547333e477f68a7a8f7",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/trace/trace.go": {
+      "before": "2b1ae178c23c71982f78baaae1a656374336cbe25723d2b27e59712f2522e63c",
+      "after": "2b1ae178c23c71982f78baaae1a656374336cbe25723d2b27e59712f2522e63c",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/debug/debug.go": {
+      "before": "60e5d346a210ac2fa09a2ebdea90d3d31d045865379e8be1a1e357d38377d04d",
+      "after": "60e5d346a210ac2fa09a2ebdea90d3d31d045865379e8be1a1e357d38377d04d",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/debug/garbage.go": {
+      "before": "04459fa67451bec80a58b99db6d3e47a4a0f0c9fa13e228256ce11ed20ea69d6",
+      "after": "04459fa67451bec80a58b99db6d3e47a4a0f0c9fa13e228256ce11ed20ea69d6",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_esp32c3.go": {
+      "before": "5ecd35ab3dc9bb8d8e0ba87e25229889a9076d4417c9ab485f3cb18458ef5181",
+      "after": "5ecd35ab3dc9bb8d8e0ba87e25229889a9076d4417c9ab485f3cb18458ef5181",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_avr.go": {
+      "before": "9252ad3632f0c42c7e7e255c12ce88fbbe0864843c0c503c66628b458e4ff4d6",
+      "after": "9252ad3632f0c42c7e7e255c12ce88fbbe0864843c0c503c66628b458e4ff4d6",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_esp32s3.go": {
+      "before": "d494e4e966558f0d24ae60d4572b0f91631a06079cdbed8f86e97dfdcb538442",
+      "after": "d494e4e966558f0d24ae60d4572b0f91631a06079cdbed8f86e97dfdcb538442",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/checkpoint.go": {
+      "before": "43e9d681ae7b8c7a2df731844877d28f12ce59539289175233764629b6eec830",
+      "after": "43e9d681ae7b8c7a2df731844877d28f12ce59539289175233764629b6eec830",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_esp32c6.go": {
+      "before": "1f20cdc3efd3b5f6c7bea6d799ff1657dc1d94e2a74c23f9c374087f743824b0",
+      "after": "1f20cdc3efd3b5f6c7bea6d799ff1657dc1d94e2a74c23f9c374087f743824b0",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_esp32.go": {
+      "before": "f2a846303124882fbb123e74a84ee9f4a4da2e270fb3273257a4752418edcadf",
+      "after": "f2a846303124882fbb123e74a84ee9f4a4da2e270fb3273257a4752418edcadf",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_cortexm.go": {
+      "before": "290205b6161be7d374bfe7918fe1f44349f7778e6c72e669ddbfc772918c9fe0",
+      "after": "290205b6161be7d374bfe7918fe1f44349f7778e6c72e669ddbfc772918c9fe0",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt.go": {
+      "before": "c62e8fa06b5af4a78db5d0ddc5fa1b4d8a4e857a1787da1dd0e704d6e66be84d",
+      "after": "c62e8fa06b5af4a78db5d0ddc5fa1b4d8a4e857a1787da1dd0e704d6e66be84d",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_none.go": {
+      "before": "1cff4f60dedb49c8dac15a441ae5923d8934b5bfe6ab3e8a2e4fb40d003330bc",
+      "after": "1cff4f60dedb49c8dac15a441ae5923d8934b5bfe6ab3e8a2e4fb40d003330bc",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_k210.go": {
+      "before": "f15d480060ed3f05afaa10564c22ac3ebd0e85c5f2116225740797dcf5576648",
+      "after": "f15d480060ed3f05afaa10564c22ac3ebd0e85c5f2116225740797dcf5576648",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_tinygoriscv.go": {
+      "before": "4fdf0f475b62463360d80f49d1bc23d61c9b777ad4239d1b681888cc9e518cd9",
+      "after": "4fdf0f475b62463360d80f49d1bc23d61c9b777ad4239d1b681888cc9e518cd9",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_esp32c3_qemu.go": {
+      "before": "81a8c2df4e916d961fbbf2825d70f161ced1ea375650e62e94568240a7344b87",
+      "after": "81a8c2df4e916d961fbbf2825d70f161ced1ea375650e62e94568240a7344b87",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_gameboyadvance.go": {
+      "before": "d6894ef30a4d542b613cbf6fca84e49f6b91d0f3cfd9beb3e35698adc69bb78e",
+      "after": "d6894ef30a4d542b613cbf6fca84e49f6b91d0f3cfd9beb3e35698adc69bb78e",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_xtensa.go": {
+      "before": "822b5151ab87f7086298fcb4a78526498f8e850bb42dd300264eb83d9e84ea3b",
+      "after": "822b5151ab87f7086298fcb4a78526498f8e850bb42dd300264eb83d9e84ea3b",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/interrupt/interrupt_sifive.go": {
+      "before": "0d2b3073166c9a91dba3627894be5540d95a482df583f36b3eeb23ca06b90bbf",
+      "after": "0d2b3073166c9a91dba3627894be5540d95a482df583f36b3eeb23ca06b90bbf",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/cgo/cgo.go": {
+      "before": "cf40d9cc0c5d7050b585d54bed32951a98674ba8cf9665dcc8a7d1586711e47a",
+      "after": "cf40d9cc0c5d7050b585d54bed32951a98674ba8cf9665dcc8a7d1586711e47a",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/volatile/bitband_nxpmk66f18.go": {
+      "before": "1a790a6e5b5b733bd32ebe33b998d315eb7bef357ddf736ce88a9af511726390",
+      "after": "1a790a6e5b5b733bd32ebe33b998d315eb7bef357ddf736ce88a9af511726390",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/volatile/volatile.go": {
+      "before": "1f6613ed7467b50742e8e90c28368a078b0122b941cade45972db31b79a10830",
+      "after": "1f6613ed7467b50742e8e90c28368a078b0122b941cade45972db31b79a10830",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/volatile/register.go": {
+      "before": "42c25530b6dcaabe5aad097c60c0128acc0e42323522ad418ead6ba616990879",
+      "after": "42c25530b6dcaabe5aad097c60c0128acc0e42323522ad418ead6ba616990879",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/metrics/metrics.go": {
+      "before": "0ee259a7284cb6566cb9d0763c218b8cf3548cd94be56706969149005ca2dc13",
+      "after": "0ee259a7284cb6566cb9d0763c218b8cf3548cd94be56706969149005ca2dc13",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/pprof/pprof.go": {
+      "before": "b43d4687bfad0393674f95aa19d307c0c3558213d2b5effac5e5917435289072",
+      "after": "b43d4687bfad0393674f95aa19d307c0c3558213d2b5effac5e5917435289072",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/wago-tinygo-investigation/tinygo/src/runtime/internal/sys/zversion.go": {
+      "before": "3ed4419d5d82f0be89554075eb21d2ceb5ce77119f721a43d03b6393f2e498df",
+      "after": "3ed4419d5d82f0be89554075eb21d2ceb5ce77119f721a43d03b6393f2e498df",
+      "unchanged": true
+    }
+  },
+  "extra-tools-before.json": {
+    "/tmp/qemu-user.deb": {
+      "before": "ca6ede739327a20ae5a3498230c8a3a9a072c586e131bc6bcc1201eb1725e336",
+      "after": "ca6ede739327a20ae5a3498230c8a3a9a072c586e131bc6bcc1201eb1725e336",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go": {
+      "before": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b",
+      "after": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/mise/installs/just/1.58.0/just": {
+      "before": "3ad66571feae522db2cad31b9613bf21035b8a06d2738d6fc8fe6089856f2042",
+      "after": "3ad66571feae522db2cad31b9613bf21035b8a06d2738d6fc8fe6089856f2042",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/mise/installs/powershell/7.6.8/pwsh": {
+      "before": "873de21f04b6a0269c220f9c8396ff5cd639e8deb058a32cc26df54b69bbff8d",
+      "after": "873de21f04b6a0269c220f9c8396ff5cd639e8deb058a32cc26df54b69bbff8d",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/mise/installs/github-bytecodealliance-wasm-tools/1.251.0/wasm-tools": {
+      "before": "fd12b0ed2358741f9ad1cd0e762a22376dcff6130a1a3a32ad0f8b528db240df",
+      "after": "fd12b0ed2358741f9ad1cd0e762a22376dcff6130a1a3a32ad0f8b528db240df",
+      "unchanged": true
+    },
+    "/home/dev/Projects/wago/.tools/wabt-1.0.41-linux-x64/bin/wast2json": {
+      "before": "5a1201dca94d1901369005930f3081b67ad97493e4ce1cc017faf415c4dc09c8",
+      "after": "5a1201dca94d1901369005930f3081b67ad97493e4ce1cc017faf415c4dc09c8",
+      "unchanged": true
+    },
+    "/home/dev/Projects/wago/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm": {
+      "before": "0f20f49c1153d30993235d5959cac5941328e32e0eac279cbb44b5b3dbd17e4b",
+      "after": "0f20f49c1153d30993235d5959cac5941328e32e0eac279cbb44b5b3dbd17e4b",
+      "unchanged": true
+    },
+    "/usr/bin/cc": {
+      "before": "a23ecab8ff08f09ad8c80602c2c5df7f49e09c25905cb8975902e101bf72635f",
+      "after": "a23ecab8ff08f09ad8c80602c2c5df7f49e09c25905cb8975902e101bf72635f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/mise/shims/clang": {
+      "before": "2b8ce21f550872807bcaabf45b6bc5c64bfbd6dc3bf49dd4e67de700ef3ceb75",
+      "after": "2b8ce21f550872807bcaabf45b6bc5c64bfbd6dc3bf49dd4e67de700ef3ceb75",
+      "unchanged": true
+    },
+    "/usr/bin/gcc": {
+      "before": "a23ecab8ff08f09ad8c80602c2c5df7f49e09c25905cb8975902e101bf72635f",
+      "after": "a23ecab8ff08f09ad8c80602c2c5df7f49e09c25905cb8975902e101bf72635f",
+      "unchanged": true
+    },
+    "/usr/bin/python3": {
+      "before": "889c603f0d17cb54060951bcf4c4f9b8c9ebd9e52b392c70209bbb9755d797d9",
+      "after": "889c603f0d17cb54060951bcf4c4f9b8c9ebd9e52b392c70209bbb9755d797d9",
+      "unchanged": true
+    },
+    "/usr/bin/bash": {
+      "before": "223fe8564b60636bc738b6178d3ba9a50ef7d791266b0efae6363bb716e4c47f",
+      "after": "223fe8564b60636bc738b6178d3ba9a50ef7d791266b0efae6363bb716e4c47f",
+      "unchanged": true
+    },
+    "/home/dev/.local/share/mise/shims/node": {
+      "before": "2b8ce21f550872807bcaabf45b6bc5c64bfbd6dc3bf49dd4e67de700ef3ceb75",
+      "after": "2b8ce21f550872807bcaabf45b6bc5c64bfbd6dc3bf49dd4e67de700ef3ceb75",
+      "unchanged": true
+    }
+  }
+}
