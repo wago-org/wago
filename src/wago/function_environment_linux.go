@@ -87,6 +87,7 @@ type managedFunctionGraph struct {
 	pendingCollection atomic.Bool
 	collecting        sync.Mutex
 	hostRetry         managedFunctionRetryState
+	receiptReleases   []*gcStoreDomain // drained outside topology readers
 	drainingReclaims  bool
 }
 
@@ -132,25 +133,26 @@ type managedFunctionEnv struct {
 }
 
 type managedFunctionCollector struct {
-	mu            sync.Mutex // observer journal only; maps are collector-domain serialized
-	graph         *managedFunctionGraph
-	collector     *gc.Collector
-	typeID        gc.TypeID
-	envs          map[gc.Ref]*managedFunctionEnv    // weak, removed before handle reuse
-	byOwner       map[*Instance]*managedFunctionEnv // same weak identity
-	byDescriptor  map[uint64]*managedFunctionEnv
-	shadows       map[gc.Ref]managedFunctionEdge   // inline first producer; null tombstones preserve Tiny cursors
-	extraShadows  map[gc.Ref][]managedFunctionEdge // cold overflow for multiple producers
-	aggregate     *managedFunctionAggregateScratch
-	globalOwners  map[uint32]*managedFunctionMember
-	tableOwners   map[uint32]*managedFunctionMember
-	hostEnvSlots  map[uint32]gc.Ref // floating roots, excluded from the quiescent joint mark
-	hostFreeSlots []uint32
-	authorized    bool // only a validated joint mark may make slots conditional
-	liveOwners    map[*managedFunctionMember]bool
-	reclaimed     []*managedFunctionEnv
-	closed        bool
-	exception     *managedFunctionExceptionScratch
+	mu                 sync.Mutex // observer journal only; maps are collector-domain serialized
+	graph              *managedFunctionGraph
+	collector          *gc.Collector
+	typeID             gc.TypeID
+	envs               map[gc.Ref]*managedFunctionEnv    // weak, removed before handle reuse
+	byOwner            map[*Instance]*managedFunctionEnv // same weak identity
+	byDescriptor       map[uint64]*managedFunctionEnv
+	shadows            map[gc.Ref]managedFunctionEdge   // inline first producer; null tombstones preserve Tiny cursors
+	extraShadows       map[gc.Ref][]managedFunctionEdge // cold overflow for multiple producers
+	aggregate          *managedFunctionAggregateScratch
+	globalOwners       map[uint32]*managedFunctionMember
+	tableOwners        map[uint32]*managedFunctionMember
+	hostEnvSlots       map[uint32]gc.Ref // floating roots, excluded from the quiescent joint mark
+	conversionFloating map[uint32]*gcConversionIdentity
+	hostFreeSlots      []uint32
+	authorized         bool // only a validated joint mark may make slots conditional
+	liveOwners         map[*managedFunctionMember]bool
+	reclaimed          []*managedFunctionEnv
+	closed             bool
+	exception          *managedFunctionExceptionScratch
 }
 
 func (s *managedFunctionCollector) ObjectEdgeCount(ref gc.Ref) uint32 {
@@ -165,6 +167,9 @@ func (s *managedFunctionCollector) ObjectEdgeAt(ref gc.Ref, index uint32) gc.Ref
 func (s *managedFunctionCollector) ObjectEdgesMutated(gc.Ref)  { s.graph.epoch.Add(1) }
 func (s *managedFunctionCollector) ObjectRootPublished(gc.Ref) { s.graph.epoch.Add(1) }
 func (s *managedFunctionCollector) PersistentRootIsStrong(kind gc.SlotKind, index uint32) bool {
+	if s.authorized && kind == gc.SlotTable && s.conversionFloating[index] != nil {
+		return false
+	}
 	if s.authorized && kind == gc.SlotGlobal && s.hostEnvSlots[index] != gc.Null() {
 		return false
 	}
@@ -589,7 +594,7 @@ func drainManagedFunctionReclaims(collector *gc.Collector) {
 // while another topology reader still exists. Keep its graph/journal reachable
 // until the post-gate drain consumes it, even with zero collector domains.
 func (g *managedFunctionGraph) retireEmptyLocked() {
-	if g.retired || len(g.collectors) != 0 || g.pendingFinalizers.Load() != 0 || g.pendingReclaims.Load() != 0 {
+	if g.retired || len(g.collectors) != 0 || len(g.receiptReleases) != 0 || g.pendingFinalizers.Load() != 0 || g.pendingReclaims.Load() != 0 {
 		return
 	}
 	for _, member := range g.members {

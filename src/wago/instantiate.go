@@ -2216,6 +2216,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		if err := gcRefTestTable.attachConversion(gcExternConversion); err != nil {
 			return nil, err
 		}
+		if err := bindGCConversionCore(in); err != nil {
+			return nil, err
+		}
 	}
 	if opts.runtime == nil && c.HasStart && !(c.nativeTableContextABI && c.tableImportCount() != 0 || dependencyConstruction) {
 		// Only transfer direct-start cleanup after reference-store and conversion

@@ -1,0 +1,489 @@
+//go:build linux && !riscv64 && !tinygo && !wago_target_tinygo
+
+package wago
+
+import (
+	"fmt"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+)
+
+// Identity is the actual opaque conversion, never a compact interpretation of
+// its word. Neither identity nor domain retains the publishing Instance.
+// All heap/receipt operations require topology -> ordered domains -> native
+// authority. store.mu protects directory publication; graph.mu protects journals.
+type gcConversionIdentity struct {
+	store     *referenceStore
+	domain    *gcStoreDomain
+	word      uint64
+	ref       gc.Ref
+	floating  uint32
+	publisher *gcExternConversionState
+	receipts  map[*gcConversionReceipt]struct{}
+}
+type gcConversionCore struct {
+	owner  *Instance // cleared at publisher teardown
+	domain *gcStoreDomain
+}
+
+// A container is one physical storage allocation, shared by every alias of it.
+// Distinct containers must use distinct objects even for equal slot indexes.
+type gcConversionContainer struct {
+	owner  *Instance
+	store  *referenceStore
+	slots  map[uint64]*gcConversionReceipt
+	closed bool
+}
+type gcConversionReceipt struct {
+	identity  *gcConversionIdentity
+	container *gcConversionContainer
+	index     uint64
+	root      uint32
+	released  bool
+}
+type gcConversionTransaction struct {
+	container *gcConversionContainer
+	index     uint64
+	old, next *gcConversionReceipt
+	done      bool
+}
+
+func bindGCConversionCore(in *Instance) error {
+	s := in.existingGCExternConversionState()
+	if s == nil || in.refStore == nil {
+		return nil
+	}
+	store := in.refStore
+	topology := store.ensureGCTopology()
+	topology.Lock()
+	defer topology.Unlock()
+	store.mu.Lock()
+	entry := store.instances[in]
+	if entry == nil || entry.gcDomain == nil {
+		store.mu.Unlock()
+		return fmt.Errorf("conversion publisher has no domain")
+	}
+	domain := entry.gcDomain
+	if domain.private {
+		domain.private = false
+		domain.conversionOwned = true
+		domain.refs = 1
+		topology.appendDomainLocked(domain)
+		for {
+			old := in.executionFlags.Load()
+			if in.executionFlags.CompareAndSwap(old, old|executionFlagStoreOwnedGCCollector) {
+				break
+			}
+		}
+	}
+	store.mu.Unlock()
+	s.core = &gcConversionCore{owner: in, domain: domain}
+	return nil
+}
+
+func newGCConversionContainer(owner *Instance) (*gcConversionContainer, error) {
+	if owner == nil || owner.refStore == nil {
+		return nil, fmt.Errorf("conversion container has no physical owner")
+	}
+	owner.lifeMu.Lock()
+	live := !owner.resourcesClosed
+	owner.lifeMu.Unlock()
+	if !live || managedFunctionOwnerClaimed(owner) {
+		return nil, fmt.Errorf("conversion container owner retired")
+	}
+	return &gcConversionContainer{owner: owner, store: owner.refStore, slots: make(map[uint64]*gcConversionReceipt)}, nil
+}
+
+func (s *gcExternConversionState) conversionIdentity(word uint64) (*gcConversionIdentity, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.core == nil {
+		return nil, fmt.Errorf("conversion publisher unavailable")
+	}
+	entry, err := s.dataEntryForExternLocked(word)
+	if err != nil || entry == nil {
+		return nil, err
+	}
+	if entry.uses == ^uint32(0) {
+		return nil, fmt.Errorf("GC extern conversion ownership overflow")
+	}
+	store := s.store
+	store.mu.Lock()
+	identity := store.conversions[word]
+	store.mu.Unlock()
+	if identity != nil {
+		return identity, nil
+	}
+	state := s.core.owner.managedFunctionCollector(s.core.domain)
+	identity = &gcConversionIdentity{store: store, domain: s.core.domain, word: word, ref: entry.ref, floating: entry.rootSlot, publisher: s, receipts: make(map[*gcConversionReceipt]struct{})}
+	store.mu.Lock()
+	if store.gcDomains.domainForCollectorLocked(identity.domain.collector) != identity.domain {
+		store.mu.Unlock()
+		return nil, fmt.Errorf("conversion domain retired")
+	}
+	if store.conversions == nil {
+		store.conversions = make(map[uint64]*gcConversionIdentity)
+	}
+	store.conversions[word] = identity
+	store.mu.Unlock()
+	if entry.hasRoot {
+		if state.conversionFloating == nil {
+			state.conversionFloating = make(map[uint32]*gcConversionIdentity)
+		}
+		state.conversionFloating[entry.rootSlot] = identity
+	}
+	state.graph.epoch.Add(1)
+	return identity, nil
+}
+
+// prepare acquires a distinct root and domain claim before any visible write.
+// source may be nil for an identity already registered by another publisher.
+func (c *gcConversionContainer) prepare(index, word uint64, source *gcExternConversionState) (*gcConversionTransaction, error) {
+	if c == nil || c.closed || c.owner == nil || managedFunctionOwnerClaimed(c.owner) {
+		return nil, fmt.Errorf("conversion container retired")
+	}
+	c.owner.lifeMu.Lock()
+	live := !c.owner.resourcesClosed
+	c.owner.lifeMu.Unlock()
+	if !live {
+		return nil, fmt.Errorf("conversion owner released")
+	}
+	tx := &gcConversionTransaction{container: c, index: index, old: c.slots[index]}
+	if tx.old != nil && tx.old.identity.word == word {
+		tx.next = tx.old
+		return tx, nil
+	}
+	if word == 0 {
+		return tx, nil
+	}
+	c.store.mu.Lock()
+	identity := c.store.conversions[word]
+	c.store.mu.Unlock()
+	if identity == nil && source != nil {
+		if source.store != c.store {
+			return nil, fmt.Errorf("conversion crosses Runtime")
+		}
+		var err error
+		identity, err = source.conversionIdentity(word)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if identity == nil {
+		if _, ok := c.store.resolveExternref(word); !ok {
+			return nil, fmt.Errorf("unknown opaque conversion identity")
+		}
+		return tx, nil
+	}
+	domain := identity.domain
+	c.store.mu.Lock()
+	if c.store.gcDomains.domainForCollectorLocked(domain.collector) != domain || domain.claims == ^uint32(0) {
+		c.store.mu.Unlock()
+		return nil, fmt.Errorf("conversion domain has no receipt authority")
+	}
+	domain.claims++
+	c.store.mu.Unlock()
+	stateValue, ok := managedFunctionCollectors.Load(domain.collector)
+	if !ok {
+		panic("conversion collector graph absent")
+	}
+	state := stateValue.(*managedFunctionCollector)
+	root, err := domain.collector.NewCheckedTableSlot(identity.ref)
+	if err != nil {
+		queueConversionClaim(state.graph, domain)
+		return nil, err
+	}
+	if err = state.bindPersistentSlot(c.owner, gc.SlotTable, root); err != nil {
+		_ = domain.collector.SetTableSlot(root, gc.Null())
+		queueConversionClaim(state.graph, domain)
+		return nil, err
+	}
+	receipt := &gcConversionReceipt{identity: identity, container: c, index: index, root: root}
+	identity.receipts[receipt] = struct{}{}
+	tx.next = receipt
+	return tx, nil
+}
+
+// commit publishes only after prepare. A rejecting callback must leave storage
+// unchanged. Bulk callers prepare their entire range before committing any cell.
+func (tx *gcConversionTransaction) commit(publish func() error) error {
+	if tx == nil || tx.done {
+		return fmt.Errorf("conversion transaction already consumed")
+	}
+	if tx.container.slots[tx.index] != tx.old {
+		tx.rollback()
+		return fmt.Errorf("conversion transaction changed physical slot")
+	}
+	if err := publish(); err != nil {
+		tx.rollback()
+		return err
+	}
+	tx.done = true
+	if tx.next == nil {
+		delete(tx.container.slots, tx.index)
+	} else {
+		tx.container.slots[tx.index] = tx.next
+	}
+	if tx.old != tx.next {
+		tx.old.release()
+	}
+	return nil
+}
+func (tx *gcConversionTransaction) rollback() {
+	if tx == nil || tx.done {
+		return
+	}
+	tx.done = true
+	if tx.next != tx.old {
+		tx.next.release()
+	}
+}
+func queueConversionClaim(g *managedFunctionGraph, domain *gcStoreDomain) {
+	g.mu.Lock()
+	g.receiptReleases = append(g.receiptReleases, domain)
+	g.mu.Unlock()
+	g.pendingMetadata.Store(true)
+	g.pendingCollection.Store(true)
+}
+func (r *gcConversionReceipt) release() {
+	if r == nil || r.released {
+		return
+	}
+	r.released = true
+	identity := r.identity
+	store, domain := identity.store, identity.domain
+	store.mu.Lock()
+	registered := store.gcDomains.domainForCollectorLocked(domain.collector) == domain
+	store.mu.Unlock()
+	// Store retirement may have consumed the domain. Its pointer is then metadata
+	// only; do not touch the closed heap or infer authority from a remaining owner.
+	if registered {
+		if err := domain.collector.SetTableSlot(r.root, gc.Null()); err != nil {
+			panic(gcHelperFailure(err))
+		}
+	}
+	delete(identity.receipts, r)
+	if r.container.slots[r.index] == r {
+		delete(r.container.slots, r.index)
+	}
+	if stateValue, ok := managedFunctionCollectors.Load(domain.collector); ok {
+		state := stateValue.(*managedFunctionCollector)
+		state.graph.mu.Lock()
+		member := state.tableOwners[r.root]
+		delete(state.tableOwners, r.root)
+		if member != nil {
+			for i, slot := range member.slots {
+				if slot.collector == domain.collector && slot.kind == gc.SlotTable && slot.index == r.root {
+					member.slots = append(member.slots[:i], member.slots[i+1:]...)
+					break
+				}
+			}
+		}
+		state.graph.epoch.Add(1)
+		state.graph.mu.Unlock()
+		if registered {
+			queueConversionClaim(state.graph, domain)
+		}
+	}
+	if len(identity.receipts) == 0 && identity.publisher == nil {
+		store.mu.Lock()
+		delete(store.conversions, identity.word)
+		store.mu.Unlock()
+	}
+}
+func (c *gcConversionContainer) release() {
+	if c == nil || c.closed {
+		return
+	}
+	c.closed = true
+	for _, receipt := range c.slots {
+		receipt.release()
+	}
+	c.owner = nil
+}
+func drainConversionClaims(g *managedFunctionGraph) {
+	g.mu.Lock()
+	pending := g.receiptReleases
+	g.receiptReleases = nil
+	g.mu.Unlock()
+	for _, domain := range pending {
+		g.store.releaseUnclaimedGCCollector(domain.collector)
+	}
+}
+func conversionAddClaimedDomainsLocked(store *referenceStore, set *gcInvocationDomainSet) {
+	for _, identity := range store.conversions {
+		domain := identity.domain
+		if store.gcDomains.domainForCollectorLocked(domain.collector) == domain {
+			set.add(domain)
+		}
+	}
+}
+func closeGCConversionCoreLocked(s *gcExternConversionState) {
+	if s.core == nil {
+		return
+	}
+	store := s.store
+	store.mu.Lock()
+	for _, entry := range s.entries {
+		identity := store.conversions[entry.externWord]
+		if identity == nil || identity.publisher != s {
+			continue
+		}
+		identity.publisher = nil
+		if v, ok := managedFunctionCollectors.Load(identity.domain.collector); ok {
+			delete(v.(*managedFunctionCollector).conversionFloating, identity.floating)
+		}
+		if len(identity.receipts) == 0 {
+			delete(store.conversions, identity.word)
+		}
+	}
+	store.mu.Unlock()
+	s.core = nil
+}
+func publishGCConversionTable(s *gcRefTestTableState, table, index, old, word uint64, publish func() error) error {
+	if s.Conversion.core == nil && s.conversionContainers == nil {
+		return s.Conversion.publishExternReplacement(old, word, publish)
+	}
+	if s.conversionContainers == nil {
+		s.conversionContainers = make([]*gcConversionContainer, s.TableCount)
+	}
+	container := s.conversionContainers[table]
+	if container == nil {
+		var err error
+		container, err = newGCConversionContainer(s.Conversion.core.owner)
+		if err != nil {
+			return err
+		}
+		s.conversionContainers[table] = container
+	}
+	tx, err := container.prepare(index, word, s.Conversion)
+	if err != nil {
+		return err
+	}
+	return tx.commit(publish)
+}
+func releaseGCConversionTables(s *gcRefTestTableState) {
+	for _, c := range s.conversionContainers {
+		c.release()
+	}
+	s.conversionContainers = nil
+}
+func clearUnreachableConversionRoots(d *managedFunctionMarkDomain) error {
+	// Receipt roots are conditional on the physical owner. Release dead receipts
+	// into the post-topology journal before local collection can invalidate refs.
+	store := d.state.graph.store
+	store.mu.Lock()
+	var identities []*gcConversionIdentity
+	for _, identity := range store.conversions {
+		if identity.domain.collector == d.state.collector {
+			identities = append(identities, identity)
+		}
+	}
+	store.mu.Unlock()
+	for _, identity := range identities {
+		for receipt := range identity.receipts {
+			member := d.state.tableOwners[receipt.root]
+			if !d.mark.live[member] {
+				receipt.release()
+			}
+		}
+		ref := identity.ref
+		index := uint32(ref) >> 1
+		word, bit := int(index>>6), uint64(1)<<(index&63)
+		if ref.IsObj() && word < len(d.seen) && d.seen[word]&bit != 0 {
+			continue
+		}
+		if s := identity.publisher; s != nil {
+			s.mu.Lock()
+			for i := range s.entries {
+				entry := &s.entries[i]
+				if entry.externWord == identity.word {
+					if entry.hasRoot {
+						if err := d.state.collector.SetTableSlot(entry.rootSlot, gc.Null()); err != nil {
+							s.mu.Unlock()
+							return err
+						}
+					}
+					*entry = gcExternConversionEntry{}
+					s.count--
+					break
+				}
+			}
+			s.mu.Unlock()
+			identity.publisher = nil
+			delete(d.state.conversionFloating, identity.floating)
+		}
+		if len(identity.receipts) == 0 {
+			store.mu.Lock()
+			delete(store.conversions, identity.word)
+			store.mu.Unlock()
+		}
+	}
+	return nil
+}
+
+func gcConversionCollectorRegistered(s *gcExternConversionState) bool {
+	if s == nil || s.core == nil {
+		return true
+	}
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	return s.store.gcDomains.domainForCollectorLocked(s.collector) == s.core.domain
+}
+func releaseGCConversionOwner(owner *Instance) {
+	if owner == nil || owner.refStore == nil {
+		return
+	}
+	store := owner.refStore
+	store.mu.Lock()
+	var containers []*gcConversionContainer
+	for _, identity := range store.conversions {
+		for r := range identity.receipts {
+			if r.container.owner == owner {
+				containers = append(containers, r.container)
+			}
+		}
+	}
+	store.mu.Unlock()
+	for _, c := range containers {
+		c.release()
+	}
+}
+func gcConversionPrivateFrames(in *Instance) bool {
+	in.refStore.mu.Lock()
+	defer in.refStore.mu.Unlock()
+	d := in.refStore.gcDomains.domainForCollectorLocked(in.gc)
+	return d != nil && d.conversionOwned
+}
+
+// Physical teardown has no live invocation. Freeze all receipt-domain readers
+// while clearing roots; release before native resources or callbacks are retired.
+func lockGCConversionRetirement(in *Instance) func() {
+	if in == nil || in.refStore == nil {
+		return func() {}
+	}
+	in.refStore.mu.Lock()
+	needed := len(in.refStore.conversions) != 0 || in.existingGCExternConversionState() != nil
+	in.refStore.mu.Unlock()
+	if !needed {
+		return func() {}
+	}
+	topology := in.refStore.ensureGCTopology()
+	topology.Lock()
+	return topology.Unlock
+}
+
+// Store unlink owns terminal retirement; collector callbacks run after unlock.
+// Invalidate receipts as metadata before relinquishing registered heap authority.
+func retireGCConversionStoreLocked(store *referenceStore) {
+	for _, identity := range store.conversions {
+		for receipt := range identity.receipts {
+			receipt.released = true
+			if receipt.container.slots[receipt.index] == receipt {
+				delete(receipt.container.slots, receipt.index)
+			}
+		}
+		clear(identity.receipts)
+		identity.publisher = nil
+	}
+	store.conversions = nil
+}

@@ -7,7 +7,7 @@ package wago
 var managedFunctionInvocationStates managedFunctionPointerRegistry[*instancePluginState] // *instancePluginState -> *managedFunctionGraph
 
 func managedFunctionBindInvocationState(in *Instance, state *instancePluginState) {
-	if managedFunctionMemberCount.Load() == 0 || in == nil || state == nil {
+	if in == nil || state == nil {
 		return
 	}
 	if value, ok := managedFunctionMembers.Load(in); ok {
@@ -25,7 +25,7 @@ func managedFunctionAfterInvocationUnlock(state *instancePluginState, id invocat
 }
 
 func drainManagedFunctionStoreReclaims(store *referenceStore) {
-	if managedFunctionMemberCount.Load() == 0 || store == nil {
+	if store == nil {
 		return
 	}
 	if value, ok := managedFunctionGraphs.Load(store); ok {
@@ -66,6 +66,7 @@ func (g *managedFunctionGraph) drainAfterGate(id invocationID) {
 	cleanup.run(func() { managedFunctionDrainDeadDependencies(g) })
 	for {
 		g.pendingMetadata.Store(false)
+		drainConversionClaims(g)
 		// A native pin can be the last reason a public converted token stayed
 		// live during Runtime close. This driver owns no invocation/native lock;
 		// release its root only after the last pin and closed-host proof agree.
@@ -122,7 +123,7 @@ func (g *managedFunctionGraph) drainAfterGate(id invocationID) {
 // topology reader. Defer its finalization (not the root-count decrement) to the
 // same synchronous outer cleanup boundary as Env physical reclamation.
 func managedFunctionDeferFinalization(in *Instance) bool {
-	if managedFunctionMemberCount.Load() == 0 || in == nil || in.invocationState.Load()&instanceInvocationClosed == 0 {
+	if in == nil || in.invocationState.Load()&instanceInvocationClosed == 0 {
 		return false
 	}
 	value, ok := managedFunctionMembers.Load(in)

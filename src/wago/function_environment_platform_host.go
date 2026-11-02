@@ -21,7 +21,7 @@ func managedFunctionMemberActive(member *managedFunctionMember, _ invocationID) 
 	return active
 }
 func managedFunctionAfterLifetimeBoundary(in *Instance) {
-	if in == nil || managedFunctionMemberCount.Load() == 0 {
+	if in == nil {
 		return
 	}
 	if value, ok := managedFunctionGraphs.Load(in.refStore); ok {

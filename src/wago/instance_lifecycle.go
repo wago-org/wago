@@ -667,6 +667,8 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	cleanup.run(func() { detachImportedTags(in) })
 	cleanup.run(func() { releaseInstanceExceptionTags(in) })
 	cleanup.run(func() { releaseInstanceCompactExtern(in) })
+	conversionUnlock := lockGCConversionRetirement(in)
+	releaseGCConversionOwner(in)
 	if in.gc != nil {
 		closeCollector := func() {
 			if table := in.existingGCRefTestTableState(); table != nil {
@@ -687,6 +689,7 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 			closeCollector()
 		}
 	}
+	conversionUnlock()
 	// These containers consume their root units before producer callbacks run.
 	// A nested physical callback must not interrupt our remaining native teardown.
 	for table := in.table; table != nil; table = table.next {
