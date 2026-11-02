@@ -16,6 +16,7 @@ func enableAssociativeAddTree(t *testing.T) {
 }
 
 func TestAssociativeTreeCover(t *testing.T) {
+	useEstablishedScalarPath(t)
 	enableAssociativeAddTree(t)
 	// (a + b) + (c + d): the balanced tree needs three registers normally.
 	body := []byte{
@@ -56,6 +57,7 @@ func TestAssociativeTreeCover(t *testing.T) {
 }
 
 func TestAssociativeTreeCoverBeyondEightLeaves(t *testing.T) {
+	useEstablishedScalarPath(t)
 	enableAssociativeAddTree(t)
 	// A balanced sixteen-leaf tree fits under Valent's height bound but exceeded
 	// the old eight-element collection array. The generalized cover should select
@@ -95,6 +97,7 @@ func TestAssociativeTreeCoverBeyondEightLeaves(t *testing.T) {
 }
 
 func TestAssociativeTreeCoverDestination(t *testing.T) {
+	useEstablishedScalarPath(t)
 	enableAssociativeAddTree(t)
 	tests := []struct {
 		name   string
@@ -162,6 +165,7 @@ func TestAssociativeTreeCoverDestination(t *testing.T) {
 }
 
 func TestAssociativeTreeCoverNestedRepeatedDestination(t *testing.T) {
+	useEstablishedScalarPath(t)
 	enableAssociativeAddTree(t)
 	// Two flattened add leaves read the destination inside shift subtrees. Keep
 	// one old-value copy alive while the accumulator overwrites local 0.

@@ -37,6 +37,7 @@ func setI64Mask32(t testing.TB, enabled bool) {
 }
 
 func TestI64Mask32Lowering(t *testing.T) {
+	useEstablishedScalarPath(t)
 	saved := i64Mask32Enabled
 	defer SetOptKnob("i64-mask32", saved)
 

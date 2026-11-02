@@ -42,6 +42,7 @@ func TestTreeRegisterNeed(t *testing.T) {
 }
 
 func TestValentTreeOrder(t *testing.T) {
+	useEstablishedScalarPath(t)
 	// (a + b) + c: the root's left subtree needs two registers and its right
 	// leaf needs one. The two-address condense path normally emits right first;
 	// tree ordering commutes the root so the larger subtree is emitted first.

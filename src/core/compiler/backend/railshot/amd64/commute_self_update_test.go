@@ -33,6 +33,7 @@ func commuteSelfUpdateModule(t *testing.T) *wasm.Module {
 }
 
 func TestCommuteSelfUpdate(t *testing.T) {
+	useEstablishedScalarPath(t)
 	saved, savedTree, savedOrder := commuteSelfUpdateEnabled, associativeTreeEnabled, treeOrderEnabled
 	defer func() {
 		commuteSelfUpdateEnabled, associativeTreeEnabled, treeOrderEnabled = saved, savedTree, savedOrder

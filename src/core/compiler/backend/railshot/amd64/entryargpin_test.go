@@ -35,6 +35,7 @@ func TestEntryArgPinExec(t *testing.T) {
 }
 
 func TestEntryArgPinFires(t *testing.T) {
+	useEstablishedScalarPath(t)
 	s := compileWithStats(t, sum5Module(t), false).Funcs[0]
 	if s.Peephole["entry-arg-local-pin"] == 0 {
 		t.Fatalf("entry-arg-local-pin = 0, want >=1 (all: %v)", s.Peephole)

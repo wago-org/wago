@@ -9,6 +9,7 @@ import (
 )
 
 func TestLateFrameCommute(t *testing.T) {
+	useEstablishedScalarPath(t)
 	requireCompilerDiagnostics(t)
 	saved := lateFrameCommuteEnabled
 	defer func() { lateFrameCommuteEnabled = saved }()

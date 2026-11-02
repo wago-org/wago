@@ -9,6 +9,7 @@ import (
 )
 
 func TestAdjacentSetGetTeeFold(t *testing.T) {
+	useEstablishedScalarPath(t)
 	saved := setGetTeeFoldEnabled
 	setGetTeeFoldEnabled = true
 	defer func() { setGetTeeFoldEnabled = saved }()

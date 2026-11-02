@@ -9,6 +9,7 @@ import (
 )
 
 func TestShiftOwnedDestination(t *testing.T) {
+	useEstablishedScalarPath(t)
 	saved := shiftOwnedDestinationEnabled
 	defer func() { shiftOwnedDestinationEnabled = saved }()
 	for op := byte(0x74); op <= 0x78; op++ {
