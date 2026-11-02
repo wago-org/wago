@@ -1,0 +1,166 @@
+=== RUN   TestNativeImportVariantRoutesARM64
+=== RUN   TestNativeImportVariantRoutesARM64/compact=true/pair=false/trap=false
+    native_import_variant_route_test.go:100: execute mode=0
+    native_import_variant_route_test.go:101: native=false
+    native_import_variant_route_test.go:101: native=true
+VARIANT router=28 oldLen=43c padding=4 internal=0 fastlen=c8
+    native_import_variant_route_test.go:100: execute mode=1
+    native_import_variant_route_test.go:101: native=false
+    native_import_variant_route_test.go:101: native=true
+SIGSEGV: segmentation violation
+PC=0x7f664c132008 m=2 sigcode=2 addr=0x7f664c132008
+
+goroutine 3 gp=0x2630ad0510e0 m=2 mp=0x2630ad0be808 [syscall]:
+github.com/wago-org/wago/src/core/runtime.enterNative(0x7f664c131000, 0x7f664c132000, 0x7f664c015120, 0x7f664c132010, 0x7f664c132008, 0x7f65f8a00000)
+	/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/src/core/runtime/native_scheduler.go:21 +0x28 fp=0x2630ad269580 sp=0x2630ad269540 pc=0x220968
+github.com/wago-org/wago/src/core/runtime.(*Engine).callWithHostLoop(0x2630ad1f4008, 0x7f664c131000, {0x7f664c132000, 0x8, 0x2630ad1ca480?}, 0x7f664c015120, {0x7f664c132010, 0x18, 0x18}, {0x7f664c132008, ...}, ...)
+	/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/src/core/runtime/engine_host.go:309 +0x120 fp=0x2630ad269640 sp=0x2630ad269580 pc=0x21c2e0
+github.com/wago-org/wago/src/core/runtime.(*Engine).callWithHostBase(0x2630ad1f4008, 0x7f664c131000, {0x7f664c132000, 0x8, 0x8}, 0x7f664c015120, {0x7f664c132010, 0x18, 0x18}, {0x7f664c132008, ...}, ...)
+	/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/src/core/runtime/engine_host.go:241 +0x2b4 fp=0x2630ad2697c0 sp=0x2630ad269640 pc=0x21bd34
+github.com/wago-org/wago/src/core/runtime.(*Engine).CallWithHostBase(...)
+	/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/src/core/runtime/engine_host.go:43
+github.com/wago-org/wago/src/core/runtime.(*Engine).CallWithHost(0x2630ad269bf0?, 0x9ba728?, {0x7f664c132000?, 0x2630ad2698d8?, 0x58224?}, {0x7f664c015120, 0x10000, 0x10000}, {0x7f664c132010?, 0x2630ad0ea5d0?, ...}, ...)
+	/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/src/core/runtime/engine_host.go:34 +0x78 fp=0x2630ad269870 sp=0x2630ad2697c0 pc=0x21ba08
+github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.executeVariantRoute(0x2630ad0626c8, {0x7f664c133000, 0x508, 0x508}, 0x0, 0x0, 0x0)
+	/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/src/core/compiler/backend/railshot/arm64/native_import_variant_route_test.go:225 +0xcc0 fp=0x2630ad269c40 sp=0x2630ad269870 pc=0x405eb0
+github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.TestNativeImportVariantRoutesARM64.func1(0x2630ad0626c8)
+	/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/src/core/compiler/backend/railshot/arm64/native_import_variant_route_test.go:101 +0x7d0 fp=0x2630ad269f60 sp=0x2630ad269c40 pc=0x48a580
+testing.tRunner(0x2630ad0626c8, 0x2630ad0ecc60)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xc4 fp=0x2630ad269fb0 sp=0x2630ad269f60 pc=0x115534
+testing.(*T).Run.gowrap1()
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x20 fp=0x2630ad269fd0 sp=0x2630ad269fb0 pc=0x11a810
+runtime.goexit({})
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/asm_arm64.s:1039 +0x4 fp=0x2630ad269fd0 sp=0x2630ad269fd0 pc=0x9a6b4
+created by testing.(*T).Run in goroutine 2
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x3b8
+
+goroutine 1 gp=0x2630ad0501e0 m=nil [chan receive]:
+runtime.gopark(0x2630ad205968?, 0x1158a8?, 0x88?, 0x5b?, 0x2630ad184020?)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:474 +0xb8 fp=0x2630ad2058c0 sp=0x2630ad2058a0 pc=0x93a88
+runtime.chanrecv(0x2630ad0f4200, 0x2630ad2059c7, 0x1)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/chan.go:667 +0x470 fp=0x2630ad205940 sp=0x2630ad2058c0 pc=0x24c20
+runtime.chanrecv1(0x18?, 0x989f10?)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/chan.go:509 +0x14 fp=0x2630ad205970 sp=0x2630ad205940 pc=0x24774
+testing.(*T).Run(0x2630ad062248, {0x4d7d1d?, 0x2630ad205a88?}, 0x9b98a0)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2266 +0x3cc fp=0x2630ad205a50 sp=0x2630ad205970 pc=0x11596c
+testing.runTests.func1(0x2630ad062248)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2742 +0x38 fp=0x2630ad205a90 sp=0x2630ad205a50 pc=0x11aa58
+testing.tRunner(0x2630ad062248, 0x2630ad205bb8)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xc4 fp=0x2630ad205ae0 sp=0x2630ad205a90 pc=0x115534
+testing.runTests({0x4cc51e, 0x18}, {0x4f38d5, 0x41}, 0x2630ad05c030, {0x9e97f0, 0x2e4, 0x2e4}, {0x0?, 0x2630ad0eca40?, ...})
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2740 +0x400 fp=0x2630ad205be0 sp=0x2630ad205ae0 pc=0x117490
+testing.(*M).Run(0x2630ad21c000)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2600 +0x578 fp=0x2630ad205e20 sp=0x2630ad205be0 pc=0x1164d8
+main.main()
+	_testmain.go:1598 +0x80 fp=0x2630ad205ea0 sp=0x2630ad205e20 pc=0x4ad600
+runtime.main()
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:302 +0x380 fp=0x2630ad205fd0 sp=0x2630ad205ea0 pc=0x5c3a0
+runtime.goexit({})
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/asm_arm64.s:1039 +0x4 fp=0x2630ad205fd0 sp=0x2630ad205fd0 pc=0x9a6b4
+
+goroutine 17 gp=0x2630ad1043c0 m=nil [force gc (idle)]:
+runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:474 +0xb8 fp=0x2630ad0b6790 sp=0x2630ad0b6770 pc=0x93a88
+runtime.goparkunlock(...)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:480
+runtime.forcegchelper()
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:387 +0xb4 fp=0x2630ad0b67d0 sp=0x2630ad0b6790 pc=0x5c684
+runtime.goexit({})
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/asm_arm64.s:1039 +0x4 fp=0x2630ad0b67d0 sp=0x2630ad0b67d0 pc=0x9a6b4
+created by runtime.init.7 in goroutine 1
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:375 +0x24
+
+goroutine 18 gp=0x2630ad1045a0 m=nil [GC sweep wait]:
+runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:474 +0xb8 fp=0x2630ad0b6f70 sp=0x2630ad0b6f50 pc=0x93a88
+runtime.goparkunlock(...)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:480
+runtime.bgsweep(0x2630ad11a000)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/mgcsweep.go:279 +0x9c fp=0x2630ad0b6fb0 sp=0x2630ad0b6f70 pc=0x4676c
+runtime.gcenable.gowrap1()
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/mgc.go:214 +0x20 fp=0x2630ad0b6fd0 sp=0x2630ad0b6fb0 pc=0x8a1e0
+runtime.goexit({})
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/asm_arm64.s:1039 +0x4 fp=0x2630ad0b6fd0 sp=0x2630ad0b6fd0 pc=0x9a6b4
+created by runtime.gcenable in goroutine 1
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/mgc.go:214 +0x6c
+
+goroutine 19 gp=0x2630ad104780 m=nil [GC scavenge wait]:
+runtime.gopark(0x2630ad11a000?, 0x4fb3e0?, 0x1?, 0x0?, 0x2630ad104780?)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:474 +0xb8 fp=0x2630ad0b7760 sp=0x2630ad0b7740 pc=0x93a88
+runtime.goparkunlock(...)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:480
+runtime.(*scavengerState).park(0x9efc60)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/mgcscavenge.go:425 +0x5c fp=0x2630ad0b7790 sp=0x2630ad0b7760 pc=0x443dc
+runtime.bgscavenge(0x2630ad11a000)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/mgcscavenge.go:653 +0x44 fp=0x2630ad0b77b0 sp=0x2630ad0b7790 pc=0x448e4
+runtime.gcenable.gowrap2()
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/mgc.go:215 +0x20 fp=0x2630ad0b77d0 sp=0x2630ad0b77b0 pc=0x8a1a0
+runtime.goexit({})
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/asm_arm64.s:1039 +0x4 fp=0x2630ad0b77d0 sp=0x2630ad0b77d0 pc=0x9a6b4
+created by runtime.gcenable in goroutine 1
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/mgc.go:215 +0xac
+
+goroutine 33 gp=0x2630ad1a2000 m=nil [finalizer wait]:
+runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:474 +0xb8 fp=0x2630ad1a8580 sp=0x2630ad1a8560 pc=0x93a88
+runtime.runFinalizers()
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/mfinal.go:210 +0x100 fp=0x2630ad1a87d0 sp=0x2630ad1a8580 pc=0x37a10
+runtime.goexit({})
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/asm_arm64.s:1039 +0x4 fp=0x2630ad1a87d0 sp=0x2630ad1a87d0 pc=0x9a6b4
+created by runtime.createfing in goroutine 1
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/mfinal.go:172 +0x78
+
+goroutine 2 gp=0x2630ad050f00 m=nil [chan receive]:
+runtime.gopark(0x2630ad122dc8?, 0x1158a8?, 0x88?, 0x5b?, 0x2630ad184020?)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/proc.go:474 +0xb8 fp=0x2630ad122d20 sp=0x2630ad122d00 pc=0x93a88
+runtime.chanrecv(0x2630ad0f4480, 0x2630ad122e27, 0x1)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/chan.go:667 +0x470 fp=0x2630ad122da0 sp=0x2630ad122d20 pc=0x24c20
+runtime.chanrecv1(0x18?, 0x989f10?)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/chan.go:509 +0x14 fp=0x2630ad122dd0 sp=0x2630ad122da0 pc=0x24774
+testing.(*T).Run(0x2630ad062488, {0x2630ad06c4e0?, 0x2630ad122f18?}, 0x2630ad0ecc60)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2266 +0x3cc fp=0x2630ad122eb0 sp=0x2630ad122dd0 pc=0x11596c
+github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.TestNativeImportVariantRoutesARM64(0x2630ad062488)
+	/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/src/core/compiler/backend/railshot/arm64/native_import_variant_route_test.go:59 +0x110 fp=0x2630ad122f60 sp=0x2630ad122eb0 pc=0x4050f0
+testing.tRunner(0x2630ad062488, 0x9b98a0)
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xc4 fp=0x2630ad122fb0 sp=0x2630ad122f60 pc=0x115534
+testing.(*T).Run.gowrap1()
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x20 fp=0x2630ad122fd0 sp=0x2630ad122fb0 pc=0x11a810
+runtime.goexit({})
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/asm_arm64.s:1039 +0x4 fp=0x2630ad122fd0 sp=0x2630ad122fd0 pc=0x9a6b4
+created by testing.(*T).Run in goroutine 1
+	/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x3b8
+
+r0      0x5
+r1      0x7f664c015120
+r2      0x7f664c132010
+r3      0x7f664c132008
+r4      0x220968
+r5      0x2630ad269538
+r6      0x2630ad051170
+r7      0x2
+r8      0x3
+r9      0x5
+r10     0x4
+r11     0x221a4c
+r12     0x7f664c132000
+r13     0x7f664c132010
+r14     0x7f664c132008
+r15     0x7f664c132028
+r16     0x7f65f8640000
+r17     0x2
+r18     0x0
+r19     0x1
+r20     0x5
+r21     0x0
+r22     0x0
+r23     0x48a710
+r24     0x7f664c1300c0
+r25     0x7f664c1324e8
+r26     0x7f664c015120
+r27     0x2
+r28     0x2630ad0510e0
+r29     0x221a74
+lr      0x7f664c132008
+sp      0x7f65f89fff50
+pc      0x7f664c132008
+fault   0x7f664c132008

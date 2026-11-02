@@ -1,0 +1,146 @@
+{
+  "source": "d6f4e94fe671542d7e22fe84e8fe1f9358661c3a",
+  "commands": [
+    {
+      "name": "ordinary-worker-diagnostics",
+      "argv": [
+        "/tmp/qemu-x/usr/bin/qemu-aarch64",
+        "/home/dev/.cache/wago-final-codegen/ordinary-diagnostics.test",
+        "-test.run",
+        "^TestCompileWorkers(DeterministicArm64|SizeSharedAdaptersDeterministicArm64)$/^synthetic/",
+        "-test.v",
+        "-test.timeout=120s"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source/src/core/compiler/backend/railshot/arm64",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "linux",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery"
+      },
+      "exit": 0,
+      "log": "logs/ordinary-worker-diagnostics.log"
+    },
+    {
+      "name": "ordinary-darwin-diagnostics-build",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_codegenstats",
+        "-c",
+        "-o",
+        "/home/dev/.cache/wago-final-codegen/ordinary-darwin-diagnostics.test",
+        "./src/core/compiler/backend/railshot/arm64"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "darwin",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery"
+      },
+      "exit": 0,
+      "log": "logs/ordinary-darwin-diagnostics-build.log"
+    },
+    {
+      "name": "wagodebug-worker-diagnostics",
+      "argv": [
+        "/tmp/qemu-x/usr/bin/qemu-aarch64",
+        "/home/dev/.cache/wago-final-codegen/wagodebug-diagnostics.test",
+        "-test.run",
+        "^TestCompileWorkers(DeterministicArm64|SizeSharedAdaptersDeterministicArm64)$/^synthetic/",
+        "-test.v",
+        "-test.timeout=120s"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source/src/core/compiler/backend/railshot/arm64",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "linux",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery"
+      },
+      "exit": 0,
+      "log": "logs/wagodebug-worker-diagnostics.log"
+    },
+    {
+      "name": "wagodebug-darwin-diagnostics-build",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wagodebug,wago_codegenstats",
+        "-c",
+        "-o",
+        "/home/dev/.cache/wago-final-codegen/wagodebug-darwin-diagnostics.test",
+        "./src/core/compiler/backend/railshot/arm64"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "darwin",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery"
+      },
+      "exit": 0,
+      "log": "logs/wagodebug-darwin-diagnostics-build.log"
+    },
+    {
+      "name": "wago_regalloccheck-worker-diagnostics",
+      "argv": [
+        "/tmp/qemu-x/usr/bin/qemu-aarch64",
+        "/home/dev/.cache/wago-final-codegen/wago_regalloccheck-diagnostics.test",
+        "-test.run",
+        "^TestCompileWorkers(DeterministicArm64|SizeSharedAdaptersDeterministicArm64)$/^synthetic/",
+        "-test.v",
+        "-test.timeout=120s"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source/src/core/compiler/backend/railshot/arm64",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "linux",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery"
+      },
+      "exit": 0,
+      "log": "logs/wago_regalloccheck-worker-diagnostics.log"
+    },
+    {
+      "name": "wago_regalloccheck-darwin-diagnostics-build",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_regalloccheck,wago_codegenstats",
+        "-c",
+        "-o",
+        "/home/dev/.cache/wago-final-codegen/wago_regalloccheck-darwin-diagnostics.test",
+        "./src/core/compiler/backend/railshot/arm64"
+      ],
+      "cwd": "/home/dev/.cache/wago-final-codegen/source",
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local",
+        "GOARCH": "arm64",
+        "GOOS": "darwin",
+        "CGO_ENABLED": "0",
+        "GOCACHE": "/home/dev/.cache/wago-arm64-recovery"
+      },
+      "exit": 0,
+      "log": "logs/wago_regalloccheck-darwin-diagnostics-build.log"
+    }
+  ]
+}

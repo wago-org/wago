@@ -1,0 +1,92 @@
+=== RUN   TestConstFoldPackPeepArm64
+=== RUN   TestConstFoldPackPeepArm64/compare-fold
+    constfold_arm64_test.go:202: Peephole["const-fold"] = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+=== RUN   TestConstFoldPackPeepArm64/unary-fold
+=== RUN   TestConstFoldPackPeepArm64/same-operand-compare
+    constfold_arm64_test.go:202: Peephole["same-operand"] = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+--- FAIL: TestConstFoldPackPeepArm64 (0.03s)
+    --- FAIL: TestConstFoldPackPeepArm64/compare-fold (0.02s)
+    --- PASS: TestConstFoldPackPeepArm64/unary-fold (0.00s)
+    --- FAIL: TestConstFoldPackPeepArm64/same-operand-compare (0.00s)
+=== RUN   TestEntryParamPairsWrapperARM64
+    entry_param_pairs_arm64_test.go:56: wrapper parameter pairs = 16, want 8
+--- FAIL: TestEntryParamPairsWrapperARM64 (0.00s)
+=== RUN   TestEntryZeroPairsARM64
+=== RUN   TestEntryZeroPairsARM64/offset-cap-fallback
+    entry_zero_pairs_arm64_test.go:49: entry-zero-pair = 0, want 32
+--- FAIL: TestEntryZeroPairsARM64 (0.00s)
+    --- FAIL: TestEntryZeroPairsARM64/offset-cap-fallback (0.00s)
+=== RUN   TestIntervalRegionDynamicReuseArm64
+    interval_region_arm64_test.go:128: interval-region = 0, want 1 (all: map[frame-header-elide:1 small-frame-adjust:1])
+--- FAIL: TestIntervalRegionDynamicReuseArm64 (0.01s)
+=== RUN   TestEntryInitializedLocalSkipsZeroArm64
+    interval_region_arm64_test.go:235: entry-init-elide = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+--- FAIL: TestEntryInitializedLocalSkipsZeroArm64 (0.00s)
+=== RUN   TestLeafScratchPinAssignmentsArm64
+=== RUN   TestLeafScratchPinAssignmentsArm64/scalar
+    scratch_hints_arm64_test.go:123: actual local pins 0x0, required 0x7000, forbidden 0x0
+=== RUN   TestLeafScratchPinAssignmentsArm64/data.drop
+=== RUN   TestLeafScratchPinAssignmentsArm64/elem.drop
+=== RUN   TestLeafScratchPinAssignmentsArm64/loop
+=== RUN   TestLeafScratchPinAssignmentsArm64/nested-loop
+=== RUN   TestLeafScratchPinAssignmentsArm64/fill
+=== RUN   TestLeafScratchPinAssignmentsArm64/inline-fill
+=== RUN   TestLeafScratchPinAssignmentsArm64/loop-fill
+--- FAIL: TestLeafScratchPinAssignmentsArm64 (0.02s)
+    --- FAIL: TestLeafScratchPinAssignmentsArm64/scalar (0.00s)
+    --- PASS: TestLeafScratchPinAssignmentsArm64/data.drop (0.01s)
+    --- PASS: TestLeafScratchPinAssignmentsArm64/elem.drop (0.00s)
+    --- PASS: TestLeafScratchPinAssignmentsArm64/loop (0.00s)
+    --- PASS: TestLeafScratchPinAssignmentsArm64/nested-loop (0.00s)
+    --- PASS: TestLeafScratchPinAssignmentsArm64/fill (0.00s)
+    --- PASS: TestLeafScratchPinAssignmentsArm64/inline-fill (0.00s)
+    --- PASS: TestLeafScratchPinAssignmentsArm64/loop-fill (0.00s)
+=== RUN   TestCompactShiftedAddImmediateArm64
+    shifted_imm_arm64_test.go:38: compact shifted-immediate hits = 0, want 1
+--- FAIL: TestCompactShiftedAddImmediateArm64 (0.00s)
+=== RUN   TestCodegenStatsPeepholesArm64
+=== RUN   TestCodegenStatsPeepholesArm64/const-fold
+    stats_test.go:187: Peephole["const-fold"] = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+=== RUN   TestCodegenStatsPeepholesArm64/alu-identity
+    stats_test.go:187: Peephole["alu-identity"] = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+=== RUN   TestCodegenStatsPeepholesArm64/strength-reduce
+    stats_test.go:187: Peephole["strength-reduce"] = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+=== RUN   TestCodegenStatsPeepholesArm64/add-shifted-index
+    stats_test.go:187: Peephole["lea-scaled-index"] = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+=== RUN   TestCodegenStatsPeepholesArm64/local-three-operand-sink
+=== RUN   TestCodegenStatsPeepholesArm64/local-three-operand-unary-rhs
+=== RUN   TestCodegenStatsPeepholesArm64/local-old-destination-rhs
+    stats_test.go:187: Peephole["old-dest-rhs-sink"] = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+=== RUN   TestCodegenStatsPeepholesArm64/compare-tee-branch
+=== RUN   TestCodegenStatsPeepholesArm64/select-local-sink
+=== RUN   TestCodegenStatsPeepholesArm64/if-local-sink
+    stats_test.go:187: Peephole["if-local-sink"] = 0, want 1 (all: map[frame-header-elide:1 small-frame-adjust:1])
+=== RUN   TestCodegenStatsPeepholesArm64/compare-cset
+    stats_test.go:187: Peephole["compare-setcc"] = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+=== RUN   TestCodegenStatsPeepholesArm64/float-local-sink
+=== RUN   TestCodegenStatsPeepholesArm64/float-minmax-local-sink
+=== RUN   TestCodegenStatsPeepholesArm64/v128-three-operand-result
+=== RUN   TestCodegenStatsPeepholesArm64/extend-wrap-elim
+--- FAIL: TestCodegenStatsPeepholesArm64 (0.01s)
+    --- FAIL: TestCodegenStatsPeepholesArm64/const-fold (0.00s)
+    --- FAIL: TestCodegenStatsPeepholesArm64/alu-identity (0.00s)
+    --- FAIL: TestCodegenStatsPeepholesArm64/strength-reduce (0.00s)
+    --- FAIL: TestCodegenStatsPeepholesArm64/add-shifted-index (0.00s)
+    --- PASS: TestCodegenStatsPeepholesArm64/local-three-operand-sink (0.00s)
+    --- PASS: TestCodegenStatsPeepholesArm64/local-three-operand-unary-rhs (0.00s)
+    --- FAIL: TestCodegenStatsPeepholesArm64/local-old-destination-rhs (0.00s)
+    --- PASS: TestCodegenStatsPeepholesArm64/compare-tee-branch (0.00s)
+    --- PASS: TestCodegenStatsPeepholesArm64/select-local-sink (0.00s)
+    --- FAIL: TestCodegenStatsPeepholesArm64/if-local-sink (0.00s)
+    --- FAIL: TestCodegenStatsPeepholesArm64/compare-cset (0.00s)
+    --- PASS: TestCodegenStatsPeepholesArm64/float-local-sink (0.00s)
+    --- PASS: TestCodegenStatsPeepholesArm64/float-minmax-local-sink (0.00s)
+    --- PASS: TestCodegenStatsPeepholesArm64/v128-three-operand-result (0.00s)
+    --- PASS: TestCodegenStatsPeepholesArm64/extend-wrap-elim (0.00s)
+=== RUN   TestEntryArgumentRegistersPromoteLeafLocalsArm64
+    stats_test.go:364: entry-arg-local-pin = 0, want 6 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+--- FAIL: TestEntryArgumentRegistersPromoteLeafLocalsArm64 (0.00s)
+=== RUN   TestZeroBranchIfArm64
+    zero_branch_arm64_test.go:78: CMP+B.cond delta = 0 bytes, want 4
+--- FAIL: TestZeroBranchIfArm64 (0.00s)
+FAIL
