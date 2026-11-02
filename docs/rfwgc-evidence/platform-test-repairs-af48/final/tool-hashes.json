@@ -1,0 +1,5 @@
+{
+  "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go": "30969f97169d7f43fe6a085873d75613adc21e30818a8c61d95bd27275df4624",
+  "/tmp/qemu-x/usr/bin/qemu-aarch64": "73cc2584f119f9e74c85c0a8549dbb6fd104ae3897a06a7500797f9e5b4d0943",
+  "/home/dev/Projects/wago/.tools/wabt-1.0.41-linux-x64/bin/wat2wasm": "b98b5517a024025e76f7cd78cc5e9a9002d7429ba4c8f01b3a178725ed4676da"
+}
