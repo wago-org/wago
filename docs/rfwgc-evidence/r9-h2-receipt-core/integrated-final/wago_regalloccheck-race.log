@@ -1,0 +1,326 @@
+=== RUN   TestR9OwnershipStateH6FailedInitialization
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xa)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xb)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x10)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x11)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xa)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xb)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x10)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x11)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xa)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xb)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x10)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x11)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xa)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0xb)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=false/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=false/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=<nil>
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=true/array=false
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x10)
+=== RUN   TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=true/array=true
+    function_environment_nested_owner_host_test.go:114: publication checkpoint: nonzero root slots=2 producerRefs=1 tokens=0 sameDomain=true
+    function_environment_nested_owner_host_test.go:170: cleanup: beforeRefs=1 afterRefs=1 releasedCallbacks=0 resourcesClosed=false registered=true publicTokens=0 error=start function trapped: wasm trap: unreachable instruction executed
+            at func[2] (func[2], wasm pc 0x11)
+--- PASS: TestR9OwnershipStateH6FailedInitialization (0.08s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=false/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=0/nested=true/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=false/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=false/region=6/nested=true/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=false/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=0/nested=true/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=false/trap=true/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=false/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=false/array=true (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=true/array=false (0.00s)
+    --- PASS: TestR9OwnershipStateH6FailedInitialization/cycle=true/region=6/nested=true/trap=true/array=true (0.00s)
+=== RUN   TestR9OwnershipStateH6CallbackQuiescence
+=== RUN   TestR9OwnershipStateH6CallbackQuiescence/0
+=== RUN   TestR9OwnershipStateH6CallbackQuiescence/6
+--- PASS: TestR9OwnershipStateH6CallbackQuiescence (0.02s)
+    --- PASS: TestR9OwnershipStateH6CallbackQuiescence/0 (0.01s)
+    --- PASS: TestR9OwnershipStateH6CallbackQuiescence/6 (0.01s)
+=== RUN   TestR9OwnershipStateH6CollectingMutations
+=== RUN   TestR9OwnershipStateH6CollectingMutations/struct.set/region=0
+=== RUN   TestR9OwnershipStateH6CollectingMutations/array.set/region=0
+=== RUN   TestR9OwnershipStateH6CollectingMutations/array.fill/region=0
+=== RUN   TestR9OwnershipStateH6CollectingMutations/mixed.new/region=0
+=== RUN   TestR9OwnershipStateH6CollectingMutations/struct.set/region=6
+=== RUN   TestR9OwnershipStateH6CollectingMutations/array.set/region=6
+=== RUN   TestR9OwnershipStateH6CollectingMutations/array.fill/region=6
+=== RUN   TestR9OwnershipStateH6CollectingMutations/mixed.new/region=6
+--- PASS: TestR9OwnershipStateH6CollectingMutations (0.01s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/struct.set/region=0 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/array.set/region=0 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/array.fill/region=0 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/mixed.new/region=0 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/struct.set/region=6 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/array.set/region=6 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/array.fill/region=6 (0.00s)
+    --- PASS: TestR9OwnershipStateH6CollectingMutations/mixed.new/region=6 (0.00s)
+=== RUN   TestR9H2ConditionalSlotExplicitDomain
+--- PASS: TestR9H2ConditionalSlotExplicitDomain (0.00s)
+=== RUN   TestR9H2RetiredCollectorPreservesDeferredFinalizer
+--- PASS: TestR9H2RetiredCollectorPreservesDeferredFinalizer (0.00s)
+=== RUN   TestR9OwnershipWakeupContention
+=== RUN   TestR9OwnershipWakeupContention/region=0/native
+=== RUN   TestR9OwnershipWakeupContention/region=0/topology
+=== RUN   TestR9OwnershipWakeupContention/region=0/domain
+=== RUN   TestR9OwnershipWakeupContention/region=0/revoked-domain
+=== RUN   TestR9OwnershipWakeupContention/region=0/driver
+=== RUN   TestR9OwnershipWakeupContention/region=0/foreign-runtime
+=== RUN   TestR9OwnershipWakeupContention/region=6/native
+=== RUN   TestR9OwnershipWakeupContention/region=6/topology
+=== RUN   TestR9OwnershipWakeupContention/region=6/domain
+=== RUN   TestR9OwnershipWakeupContention/region=6/revoked-domain
+=== RUN   TestR9OwnershipWakeupContention/region=6/driver
+=== RUN   TestR9OwnershipWakeupContention/region=6/foreign-runtime
+--- PASS: TestR9OwnershipWakeupContention (0.04s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/native (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/topology (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/domain (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/revoked-domain (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/driver (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=0/foreign-runtime (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/native (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/topology (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/domain (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/revoked-domain (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/driver (0.00s)
+    --- PASS: TestR9OwnershipWakeupContention/region=6/foreign-runtime (0.01s)
+=== RUN   TestR9OwnershipWakeupActiveBoundary
+=== RUN   TestR9OwnershipWakeupActiveBoundary/0
+=== RUN   TestR9OwnershipWakeupActiveBoundary/6
+--- PASS: TestR9OwnershipWakeupActiveBoundary (0.00s)
+    --- PASS: TestR9OwnershipWakeupActiveBoundary/0 (0.00s)
+    --- PASS: TestR9OwnershipWakeupActiveBoundary/6 (0.00s)
+=== RUN   TestR9OwnershipWakeupExitCrossing
+=== RUN   TestR9OwnershipWakeupExitCrossing/0
+=== RUN   TestR9OwnershipWakeupExitCrossing/6
+--- PASS: TestR9OwnershipWakeupExitCrossing (0.01s)
+    --- PASS: TestR9OwnershipWakeupExitCrossing/0 (0.00s)
+    --- PASS: TestR9OwnershipWakeupExitCrossing/6 (0.00s)
+=== RUN   TestR9OwnershipWakeupProviderAndStoreClose
+=== RUN   TestR9OwnershipWakeupProviderAndStoreClose/region=0/store-close=false
+=== RUN   TestR9OwnershipWakeupProviderAndStoreClose/region=0/store-close=true
+=== RUN   TestR9OwnershipWakeupProviderAndStoreClose/region=6/store-close=false
+=== RUN   TestR9OwnershipWakeupProviderAndStoreClose/region=6/store-close=true
+--- PASS: TestR9OwnershipWakeupProviderAndStoreClose (0.02s)
+    --- PASS: TestR9OwnershipWakeupProviderAndStoreClose/region=0/store-close=false (0.00s)
+    --- PASS: TestR9OwnershipWakeupProviderAndStoreClose/region=0/store-close=true (0.00s)
+    --- PASS: TestR9OwnershipWakeupProviderAndStoreClose/region=6/store-close=false (0.00s)
+    --- PASS: TestR9OwnershipWakeupProviderAndStoreClose/region=6/store-close=true (0.01s)
+=== RUN   TestR9OwnershipWakeupConcurrentRequests
+--- PASS: TestR9OwnershipWakeupConcurrentRequests (0.02s)
+=== RUN   TestR9OwnershipWakeupRetiredDomainAdmission
+--- PASS: TestR9OwnershipWakeupRetiredDomainAdmission (0.00s)
+=== RUN   TestR9H2ReceiptPublisherRetirement
+=== RUN   TestR9H2ReceiptPublisherRetirement/region=0
+=== RUN   TestR9H2ReceiptPublisherRetirement/region=6
+--- PASS: TestR9H2ReceiptPublisherRetirement (0.01s)
+    --- PASS: TestR9H2ReceiptPublisherRetirement/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptPublisherRetirement/region=6 (0.00s)
+=== RUN   TestR9H2ReceiptIndependentContainersAndRollback
+--- PASS: TestR9H2ReceiptIndependentContainersAndRollback (0.01s)
+=== RUN   TestR9H2ReceiptCloseOrders
+=== RUN   TestR9H2ReceiptCloseOrders/provider-first
+=== RUN   TestR9H2ReceiptCloseOrders/publisher-first
+=== RUN   TestR9H2ReceiptCloseOrders/store-first
+--- PASS: TestR9H2ReceiptCloseOrders (0.01s)
+    --- PASS: TestR9H2ReceiptCloseOrders/provider-first (0.00s)
+    --- PASS: TestR9H2ReceiptCloseOrders/publisher-first (0.00s)
+    --- PASS: TestR9H2ReceiptCloseOrders/store-first (0.00s)
+=== RUN   TestR9H2ReceiptConvertedProducerCycle
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/direct/region=0
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/direct/region=6
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/callback/region=0
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/callback/region=6
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/contention/region=0
+=== RUN   TestR9H2ReceiptConvertedProducerCycle/contention/region=6
+--- PASS: TestR9H2ReceiptConvertedProducerCycle (0.02s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/direct/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/direct/region=6 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/callback/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/callback/region=6 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/contention/region=0 (0.00s)
+    --- PASS: TestR9H2ReceiptConvertedProducerCycle/contention/region=6 (0.00s)
+=== RUN   TestR9H2ReceiptOnlyContention
+=== RUN   TestR9H2ReceiptOnlyContention/native
+=== RUN   TestR9H2ReceiptOnlyContention/foreign-runtime
+=== RUN   TestR9H2ReceiptOnlyContention/topology
+=== RUN   TestR9H2ReceiptOnlyContention/domain
+=== RUN   TestR9H2ReceiptOnlyContention/driver
+--- PASS: TestR9H2ReceiptOnlyContention (0.01s)
+    --- PASS: TestR9H2ReceiptOnlyContention/native (0.00s)
+    --- PASS: TestR9H2ReceiptOnlyContention/foreign-runtime (0.00s)
+    --- PASS: TestR9H2ReceiptOnlyContention/topology (0.00s)
+    --- PASS: TestR9H2ReceiptOnlyContention/domain (0.00s)
+    --- PASS: TestR9H2ReceiptOnlyContention/driver (0.00s)
+=== RUN   TestGCExternConversionStableIdentityAndOwnership
+    gc_extern_conversion_test.go:115: GC extern conversion layouts: state=64 entry=56 live=3
+--- PASS: TestGCExternConversionStableIdentityAndOwnership (0.00s)
+=== RUN   TestGCExternConversionRejectsForeignForgedAndClosed
+--- PASS: TestGCExternConversionRejectsForeignForgedAndClosed (0.00s)
+=== RUN   TestGCExternConversionCollectorFirstCloseFailsClosed
+--- PASS: TestGCExternConversionCollectorFirstCloseFailsClosed (0.00s)
+=== RUN   TestGCExternConversionRejectedReplacementPreservesRoot
+--- PASS: TestGCExternConversionRejectedReplacementPreservesRoot (0.00s)
+=== RUN   TestGCExternConversionPublicationOrderingAndRollback
+--- PASS: TestGCExternConversionPublicationOrderingAndRollback (0.00s)
+=== RUN   TestGCExternConversionWithFunctionTable
+--- PASS: TestGCExternConversionWithFunctionTable (0.00s)
+=== RUN   TestGCExternConversionKeepsLocalRoots
+=== RUN   TestGCExternConversionKeepsLocalRoots/op26/throughput
+=== RUN   TestGCExternConversionKeepsLocalRoots/op26/tiny
+=== RUN   TestGCExternConversionKeepsLocalRoots/op27/throughput
+=== RUN   TestGCExternConversionKeepsLocalRoots/op27/tiny
+--- PASS: TestGCExternConversionKeepsLocalRoots (0.00s)
+    --- PASS: TestGCExternConversionKeepsLocalRoots/op26/throughput (0.00s)
+    --- PASS: TestGCExternConversionKeepsLocalRoots/op26/tiny (0.00s)
+    --- PASS: TestGCExternConversionKeepsLocalRoots/op27/throughput (0.00s)
+    --- PASS: TestGCExternConversionKeepsLocalRoots/op27/tiny (0.00s)
+=== RUN   TestGCExternConversionKeepsVectorAndLocalRoots
+--- PASS: TestGCExternConversionKeepsVectorAndLocalRoots (0.00s)
+=== RUN   TestGCExternConversionForeignLocalRoots
+--- PASS: TestGCExternConversionForeignLocalRoots (0.00s)
+=== RUN   TestGCExternConversionCheckedTableRoots
+--- PASS: TestGCExternConversionCheckedTableRoots (0.00s)
+=== RUN   TestGCExternConversionMissingRootsDisableCollection
+--- PASS: TestGCExternConversionMissingRootsDisableCollection (0.00s)
+=== RUN   TestGCExternConversionWithoutHeapKeepsTinyProfile
+--- PASS: TestGCExternConversionWithoutHeapKeepsTinyProfile (0.00s)
+=== RUN   TestGCExternConversionRejectsForgedFrameWords
+--- PASS: TestGCExternConversionRejectsForgedFrameWords (0.00s)
+=== RUN   TestGCExternConversionManyForeignLocals
+--- PASS: TestGCExternConversionManyForeignLocals (0.00s)
+=== RUN   TestGCExternConversionVoidImportCannotUseEmptyRoots
+--- PASS: TestGCExternConversionVoidImportCannotUseEmptyRoots (0.00s)
+=== RUN   TestGCExternConversionAcrossReferenceTables
+--- PASS: TestGCExternConversionAcrossReferenceTables (0.02s)
+=== RUN   TestR9H2ConvertedAggregateAdmission
+    r9_h2_converted_admission_test.go:29: product=12 generic=false conversion=true managed=true frameRoots=true sharedSafe=true
+--- PASS: TestR9H2ConvertedAggregateAdmission (0.00s)
+=== RUN   TestR9H2ConvertedAggregateAdmissionControls
+=== RUN   TestR9H2ConvertedAggregateAdmissionControls/numeric
+=== RUN   TestR9H2ConvertedAggregateAdmissionControls/unused-function-type
+--- PASS: TestR9H2ConvertedAggregateAdmissionControls (0.00s)
+    --- PASS: TestR9H2ConvertedAggregateAdmissionControls/numeric (0.00s)
+    --- PASS: TestR9H2ConvertedAggregateAdmissionControls/unused-function-type (0.00s)
+=== RUN   TestR9H2ConvertedAggregateCollectingLocalOwner
+=== RUN   TestR9H2ConvertedAggregateCollectingLocalOwner/region=0
+=== RUN   TestR9H2ConvertedAggregateCollectingLocalOwner/region=6
+--- PASS: TestR9H2ConvertedAggregateCollectingLocalOwner (0.00s)
+    --- PASS: TestR9H2ConvertedAggregateCollectingLocalOwner/region=0 (0.00s)
+    --- PASS: TestR9H2ConvertedAggregateCollectingLocalOwner/region=6 (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	1.329s
