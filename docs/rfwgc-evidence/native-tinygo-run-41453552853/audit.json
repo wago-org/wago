@@ -1,0 +1,697 @@
+{
+  "archives": [
+    {
+      "bytes": 7119021,
+      "files": 41,
+      "id": 13147191072,
+      "mode": "ordinary",
+      "sha256": "5774cda250e54b8fd553c775f249dbc4892bb3a48fa3f971d4979f13ec43eeee"
+    },
+    {
+      "bytes": 7163281,
+      "files": 41,
+      "id": 13147114243,
+      "mode": "wago_regalloccheck",
+      "sha256": "27786ac4c2340190e18dc8d2c2e380c6de3864efff64d62416731e190ae76fab"
+    },
+    {
+      "bytes": 7152171,
+      "files": 41,
+      "id": 13147012458,
+      "mode": "wagodebug",
+      "sha256": "9cb0f755d31a91ec5933a30ff9f8e18ce4974d9e9b6a0e13e533844fc74cb468"
+    }
+  ],
+  "compiler_sha256": "1b74ee7ef9841f01364823be1254833a96832e74076957c956d89872f705b7d2",
+  "harness": "8801252952255edf6ab6196250bd544873785328",
+  "modes": {
+    "ordinary": {
+      "expected_top": 33,
+      "passed_top": 29,
+      "source_effective_files": 18802,
+      "suites": [
+        {
+          "all_pass_children": 3,
+          "build_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin/tinygo",
+              "test",
+              "-c",
+              "-p=2",
+              "-scheduler=threads",
+              "-gc=conservative",
+              "-o",
+              "/Users/runner/work/_temp/tinygo-supplement-ordinary/0.test",
+              "./src/core/runtime"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-ordinary/source",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary/cache"
+            },
+            "timeout_seconds": 1200
+          },
+          "build_exit": 0,
+          "expected_top": 7,
+          "failed": [
+            "TestTinyGoNativeResumeUsesPhysicalStackTop"
+          ],
+          "missing_passes": [
+            "TestTinyGoNativeResumeUsesPhysicalStackTop"
+          ],
+          "package": "src/core/runtime",
+          "passed_required_children": 3,
+          "passed_top": 6,
+          "required_children": 3,
+          "run_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-ordinary/0.test",
+              "-test.v",
+              "-test.run=^(TestTinyGoForeignStackConcurrentGC|TestTinyGoForeignStackGCPreparedEntry|TestTinyGoForeignStackGCHostReentry|TestTinyGoForeignStackGCCloseThunkFailure|TestTinyGoTrampolineFailurePreservesInterrupt|TestTinyGoNativeResumeUsesPhysicalStackTop|TestPreparedIntThunkOwnedByEngine)$"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-ordinary/source/src/core/runtime",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary/cache"
+            },
+            "timeout_seconds": 600
+          },
+          "run_exit": 1,
+          "sha256": "454e5014db7274cc47d70a1cdbf565668eb3452b25ee922a63ccb56266919747",
+          "skipped": [],
+          "verdict": "FAIL"
+        },
+        {
+          "all_pass_children": 0,
+          "build_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin/tinygo",
+              "test",
+              "-c",
+              "-p=2",
+              "-scheduler=threads",
+              "-gc=conservative",
+              "-o",
+              "/Users/runner/work/_temp/tinygo-supplement-ordinary/1.test",
+              "./src/core/runtime/gc/native"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-ordinary/source",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary/cache"
+            },
+            "timeout_seconds": 1200
+          },
+          "build_exit": 0,
+          "expected_top": 11,
+          "failed": [],
+          "missing_passes": [],
+          "package": "src/core/runtime/gc/native",
+          "passed_required_children": 0,
+          "passed_top": 11,
+          "required_children": 0,
+          "run_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-ordinary/1.test",
+              "-test.v",
+              "-test.run=^(TestEvacuationTinyGoPolicy|TestEvacuationTinyGoExactAdmissionEdges|TestEvacuationTinyGoCheckedGeneration|TestEvacuationTinyGoCardsLOSAndYoung|TestEvacuationTinyGoRequiredPressure|TestEvacuationStage7RunCredit|TestEvacuationStage7PolicyAndOptionalRefusal|TestEvacuationStage7Selection|TestEvacuationStage7CrossingPhysicalMove|TestEvacuationStage7AbsorbedTail|TestEvacuationStage7LargeYoungPlan)$"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-ordinary/source/src/core/runtime/gc/native",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary/cache"
+            },
+            "timeout_seconds": 600
+          },
+          "run_exit": 0,
+          "sha256": "7297ffda6f579d81195246eaa7936e62be26b5660ccbdd1c34aa47bd0bfe40f1",
+          "skipped": [],
+          "verdict": "PASS"
+        },
+        {
+          "all_pass_children": 20,
+          "build_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin/tinygo",
+              "test",
+              "-c",
+              "-p=2",
+              "-scheduler=threads",
+              "-gc=conservative",
+              "-o",
+              "/Users/runner/work/_temp/tinygo-supplement-ordinary/2.test",
+              "./src/wago"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-ordinary/source",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary/cache"
+            },
+            "timeout_seconds": 1200
+          },
+          "build_exit": 0,
+          "expected_top": 15,
+          "failed": [
+            "TestDarwinTinyGoCancellationAndGC",
+            "TestGCStage8TinyGoGuestRelocatedRead",
+            "TestGCStage8TinyGoControls"
+          ],
+          "missing_passes": [
+            "TestGCStage8TinyGoGuestRelocatedRead",
+            "TestGCStage8TinyGoControls",
+            "TestDarwinTinyGoCancellationAndGC"
+          ],
+          "package": "src/wago",
+          "passed_required_children": 18,
+          "passed_top": 12,
+          "required_children": 18,
+          "run_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-ordinary/2.test",
+              "-test.v",
+              "-test.run=^(TestGCStage8TinyGoGuestRelocatedRead|TestGCStage8TinyGoControls|TestDarwinTinyGoCancellationAndGC|TestGCExternConversionStableIdentityAndOwnership|TestGCExternConversionRejectsForeignForgedAndClosed|TestGCExternConversionCollectorFirstCloseFailsClosed|TestGCExternConversionRejectedReplacementPreservesRoot|TestGCExternConversionPublicationOrderingAndRollback|TestDesignRepairPublicGlobalTokenClassification|TestDesignRepairUnsupportedConvertedPublication|TestDesignRepairUnsupportedBulkAtomicity|TestDesignRepairPublicTableOrdinary|TestDesignRepairUnsupportedConvertedPublicToken|TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory|TestUnsupportedConversionGlobalValidationOrdering)$"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-ordinary/source/src/wago",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary/cache"
+            },
+            "timeout_seconds": 600
+          },
+          "run_exit": 1,
+          "sha256": "92c80274d5ebf72b64ba3a95ac9ef79d7622e9876edab583b74fe2badea9024d",
+          "skipped": [],
+          "verdict": "FAIL"
+        }
+      ],
+      "tool_files": 11418,
+      "verdict": "FAIL"
+    },
+    "wago_regalloccheck": {
+      "expected_top": 33,
+      "passed_top": 30,
+      "source_effective_files": 18802,
+      "suites": [
+        {
+          "all_pass_children": 3,
+          "build_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo/bin/tinygo",
+              "test",
+              "-c",
+              "-p=2",
+              "-scheduler=threads",
+              "-gc=conservative",
+              "-o",
+              "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/0.test",
+              "-tags=wago_regalloccheck",
+              "./src/core/runtime"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/source",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/cache"
+            },
+            "timeout_seconds": 1200
+          },
+          "build_exit": 0,
+          "expected_top": 7,
+          "failed": [],
+          "missing_passes": [],
+          "package": "src/core/runtime",
+          "passed_required_children": 3,
+          "passed_top": 7,
+          "required_children": 3,
+          "run_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/0.test",
+              "-test.v",
+              "-test.run=^(TestTinyGoForeignStackConcurrentGC|TestTinyGoForeignStackGCPreparedEntry|TestTinyGoForeignStackGCHostReentry|TestTinyGoForeignStackGCCloseThunkFailure|TestTinyGoTrampolineFailurePreservesInterrupt|TestTinyGoNativeResumeUsesPhysicalStackTop|TestPreparedIntThunkOwnedByEngine)$"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/source/src/core/runtime",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/cache"
+            },
+            "timeout_seconds": 600
+          },
+          "run_exit": 0,
+          "sha256": "f786975ebbcc42728edcf6e873db107a01b9188c8d2fe48fb29df7bd693efc49",
+          "skipped": [],
+          "verdict": "PASS"
+        },
+        {
+          "all_pass_children": 0,
+          "build_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo/bin/tinygo",
+              "test",
+              "-c",
+              "-p=2",
+              "-scheduler=threads",
+              "-gc=conservative",
+              "-o",
+              "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/1.test",
+              "-tags=wago_regalloccheck",
+              "./src/core/runtime/gc/native"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/source",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/cache"
+            },
+            "timeout_seconds": 1200
+          },
+          "build_exit": 0,
+          "expected_top": 11,
+          "failed": [],
+          "missing_passes": [],
+          "package": "src/core/runtime/gc/native",
+          "passed_required_children": 0,
+          "passed_top": 11,
+          "required_children": 0,
+          "run_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/1.test",
+              "-test.v",
+              "-test.run=^(TestEvacuationTinyGoPolicy|TestEvacuationTinyGoExactAdmissionEdges|TestEvacuationTinyGoCheckedGeneration|TestEvacuationTinyGoCardsLOSAndYoung|TestEvacuationTinyGoRequiredPressure|TestEvacuationStage7RunCredit|TestEvacuationStage7PolicyAndOptionalRefusal|TestEvacuationStage7Selection|TestEvacuationStage7CrossingPhysicalMove|TestEvacuationStage7AbsorbedTail|TestEvacuationStage7LargeYoungPlan)$"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/source/src/core/runtime/gc/native",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/cache"
+            },
+            "timeout_seconds": 600
+          },
+          "run_exit": 0,
+          "sha256": "38ca28af39da183a94967521666383f0a3c105a16770c1a1c4eac132f89c7ca2",
+          "skipped": [],
+          "verdict": "PASS"
+        },
+        {
+          "all_pass_children": 20,
+          "build_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo/bin/tinygo",
+              "test",
+              "-c",
+              "-p=2",
+              "-scheduler=threads",
+              "-gc=conservative",
+              "-o",
+              "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/2.test",
+              "-tags=wago_regalloccheck",
+              "./src/wago"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/source",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/cache"
+            },
+            "timeout_seconds": 1200
+          },
+          "build_exit": 0,
+          "expected_top": 15,
+          "failed": [
+            "TestDarwinTinyGoCancellationAndGC",
+            "TestGCStage8TinyGoGuestRelocatedRead",
+            "TestGCStage8TinyGoControls"
+          ],
+          "missing_passes": [
+            "TestGCStage8TinyGoGuestRelocatedRead",
+            "TestGCStage8TinyGoControls",
+            "TestDarwinTinyGoCancellationAndGC"
+          ],
+          "package": "src/wago",
+          "passed_required_children": 18,
+          "passed_top": 12,
+          "required_children": 18,
+          "run_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/2.test",
+              "-test.v",
+              "-test.run=^(TestGCStage8TinyGoGuestRelocatedRead|TestGCStage8TinyGoControls|TestDarwinTinyGoCancellationAndGC|TestGCExternConversionStableIdentityAndOwnership|TestGCExternConversionRejectsForeignForgedAndClosed|TestGCExternConversionCollectorFirstCloseFailsClosed|TestGCExternConversionRejectedReplacementPreservesRoot|TestGCExternConversionPublicationOrderingAndRollback|TestDesignRepairPublicGlobalTokenClassification|TestDesignRepairUnsupportedConvertedPublication|TestDesignRepairUnsupportedBulkAtomicity|TestDesignRepairPublicTableOrdinary|TestDesignRepairUnsupportedConvertedPublicToken|TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory|TestUnsupportedConversionGlobalValidationOrdering)$"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/source/src/wago",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/cache"
+            },
+            "timeout_seconds": 600
+          },
+          "run_exit": 1,
+          "sha256": "fa0bc159d8590ee8d7aa690ad44b36b4eb70a04f4d6300799eecb005076d94df",
+          "skipped": [],
+          "verdict": "FAIL"
+        }
+      ],
+      "tool_files": 11418,
+      "verdict": "FAIL"
+    },
+    "wagodebug": {
+      "expected_top": 36,
+      "passed_top": 33,
+      "source_effective_files": 18802,
+      "suites": [
+        {
+          "all_pass_children": 3,
+          "build_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo/bin/tinygo",
+              "test",
+              "-c",
+              "-p=2",
+              "-scheduler=threads",
+              "-gc=conservative",
+              "-o",
+              "/Users/runner/work/_temp/tinygo-supplement-wagodebug/0.test",
+              "-tags=wagodebug",
+              "./src/core/runtime"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/source",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/cache"
+            },
+            "timeout_seconds": 1200
+          },
+          "build_exit": 0,
+          "expected_top": 7,
+          "failed": [],
+          "missing_passes": [],
+          "package": "src/core/runtime",
+          "passed_required_children": 3,
+          "passed_top": 7,
+          "required_children": 3,
+          "run_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wagodebug/0.test",
+              "-test.v",
+              "-test.run=^(TestTinyGoForeignStackConcurrentGC|TestTinyGoForeignStackGCPreparedEntry|TestTinyGoForeignStackGCHostReentry|TestTinyGoForeignStackGCCloseThunkFailure|TestTinyGoTrampolineFailurePreservesInterrupt|TestTinyGoNativeResumeUsesPhysicalStackTop|TestPreparedIntThunkOwnedByEngine)$"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/source/src/core/runtime",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/cache"
+            },
+            "timeout_seconds": 600
+          },
+          "run_exit": 0,
+          "sha256": "aa79194a0f9d09a530f088eedf6a71ba60a65a43b948c4f176bf88a6a613e684",
+          "skipped": [],
+          "verdict": "PASS"
+        },
+        {
+          "all_pass_children": 4,
+          "build_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo/bin/tinygo",
+              "test",
+              "-c",
+              "-p=2",
+              "-scheduler=threads",
+              "-gc=conservative",
+              "-o",
+              "/Users/runner/work/_temp/tinygo-supplement-wagodebug/1.test",
+              "-tags=wagodebug",
+              "./src/core/runtime/gc/native"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/source",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/cache"
+            },
+            "timeout_seconds": 1200
+          },
+          "build_exit": 0,
+          "expected_top": 14,
+          "failed": [],
+          "missing_passes": [],
+          "package": "src/core/runtime/gc/native",
+          "passed_required_children": 0,
+          "passed_top": 14,
+          "required_children": 0,
+          "run_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wagodebug/1.test",
+              "-test.v",
+              "-test.run=^(TestEvacuationTinyGoPolicy|TestEvacuationTinyGoExactAdmissionEdges|TestEvacuationTinyGoCheckedGeneration|TestEvacuationTinyGoCardsLOSAndYoung|TestEvacuationTinyGoRequiredPressure|TestEvacuationStage7RunCredit|TestEvacuationStage7PolicyAndOptionalRefusal|TestEvacuationStage7Selection|TestEvacuationStage7CrossingPhysicalMove|TestEvacuationStage7AbsorbedTail|TestEvacuationStage7LargeYoungPlan|TestEvacuationStage7AdmissionFaults|TestEvacuationStage7CommittedMaintenance|TestEvacuationStage7SerialPartialCopyRollback)$"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/source/src/core/runtime/gc/native",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/cache"
+            },
+            "timeout_seconds": 600
+          },
+          "run_exit": 0,
+          "sha256": "ee15c5951dcfb13e6782f7280a47f48c990dbb8d45644994bf3f13ec9b0caf4e",
+          "skipped": [],
+          "verdict": "PASS"
+        },
+        {
+          "all_pass_children": 20,
+          "build_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo/bin/tinygo",
+              "test",
+              "-c",
+              "-p=2",
+              "-scheduler=threads",
+              "-gc=conservative",
+              "-o",
+              "/Users/runner/work/_temp/tinygo-supplement-wagodebug/2.test",
+              "-tags=wagodebug",
+              "./src/wago"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/source",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/cache"
+            },
+            "timeout_seconds": 1200
+          },
+          "build_exit": 0,
+          "expected_top": 15,
+          "failed": [
+            "TestDarwinTinyGoCancellationAndGC",
+            "TestGCStage8TinyGoGuestRelocatedRead",
+            "TestGCStage8TinyGoControls"
+          ],
+          "missing_passes": [
+            "TestGCStage8TinyGoGuestRelocatedRead",
+            "TestGCStage8TinyGoControls",
+            "TestDarwinTinyGoCancellationAndGC"
+          ],
+          "package": "src/wago",
+          "passed_required_children": 18,
+          "passed_top": 12,
+          "required_children": 18,
+          "run_command": {
+            "argv": [
+              "/Users/runner/work/_temp/tinygo-supplement-wagodebug/2.test",
+              "-test.v",
+              "-test.run=^(TestGCStage8TinyGoGuestRelocatedRead|TestGCStage8TinyGoControls|TestDarwinTinyGoCancellationAndGC|TestGCExternConversionStableIdentityAndOwnership|TestGCExternConversionRejectsForeignForgedAndClosed|TestGCExternConversionCollectorFirstCloseFailsClosed|TestGCExternConversionRejectedReplacementPreservesRoot|TestGCExternConversionPublicationOrderingAndRollback|TestDesignRepairPublicGlobalTokenClassification|TestDesignRepairUnsupportedConvertedPublication|TestDesignRepairUnsupportedBulkAtomicity|TestDesignRepairPublicTableOrdinary|TestDesignRepairUnsupportedConvertedPublicToken|TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory|TestUnsupportedConversionGlobalValidationOrdering)$"
+            ],
+            "cwd": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/source/src/wago",
+            "environment": {
+              "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/go-cache",
+              "GOENV": "off",
+              "GOFLAGS": "-mod=readonly -p=2",
+              "GOMAXPROCS": "2",
+              "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/modules",
+              "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+              "GOTOOLCHAIN": "local",
+              "GOWORK": "off",
+              "HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug",
+              "PATH": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+              "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/tool/tinygo",
+              "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wagodebug/cache"
+            },
+            "timeout_seconds": 600
+          },
+          "run_exit": 1,
+          "sha256": "cb1f0951bc33d711f56191dde1b91b0ba0d0af3e558e15eef7bc42c8c2276f96",
+          "skipped": [],
+          "verdict": "FAIL"
+        }
+      ],
+      "tool_files": 11418,
+      "verdict": "FAIL"
+    }
+  },
+  "release_sha256": "493da3585e66c5da677a4be39402faf2041b4e45a61eb456e4547eca753a544e",
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "source_archive_sha256": "9ca226384ac27874ae0ffd36030931f805b232e963dcb1475f5c87b84660a3f5",
+  "source_files": 18798
+}

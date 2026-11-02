@@ -1,0 +1,212 @@
+//go:build darwin && arm64 && tinygo && scheduler.threads
+
+package runtime
+
+import (
+	"encoding/binary"
+	"errors"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+	grt "runtime"
+	"sync/atomic"
+	"testing"
+	"time"
+	"unsafe"
+)
+
+// Release/acquire rendezvous; x86's implicit ordering is not an ARM proof.
+// The collector cannot release the guest before eight collections complete.
+func supplementRendezvous(a *a64.Asm, base a64.Reg) {
+	a.MovImm64(a64.X12, 1)
+	a.Stlr(a64.X12, base, 4)
+	a.AddImm64(a64.X13, base, 4)
+	loop := a.Len()
+	a.Ldar(a64.X12, a64.X13, 4)
+	a.CmpImm32(a64.X12, 0)
+	branch := a.Bcond(a64.CondEQ)
+	must(a.PatchBranch19(branch, loop))
+}
+func supplementWait(t *testing.T, entered *uint32) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for atomic.LoadUint32(entered) == 0 {
+		if time.Now().After(deadline) {
+			panic("Darwin foreign entry handshake timeout")
+		}
+		grt.Gosched()
+	}
+	for i := 0; i < 8; i++ {
+		grt.GC()
+	}
+}
+func TestTinyGoForeignStackConcurrentGC(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		trap TrapCode
+	}{{"return", TrapNone}, {"trap-unwind", TrapLinMemOutOfBounds}, {"interrupt", TrapInterrupted}} {
+		t.Run(tc.name, func(t *testing.T) {
+			eng, jm, ar := fixture(t)
+			var a a64.Asm
+			a.SubImm64(a64.SP, a64.SP, 32)
+			supplementRendezvous(&a, a64.X1)
+			a.MovImm64(a64.X4, uint64(tc.trap))
+			must(a.Store32(a64.X4, a64.X2, 0))
+			// Restore through the saved trap reentry cell, as the handler-jump path does.
+			a.Ldur64(a64.X11, a64.X1, -offTrapStackReentry)
+			a.AddImm64(a64.SP, a64.X11, 0)
+			a.Ret()
+			code, err := mmapExec(a.B)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer munmap(code)
+			lin := jm.LinearMemory()
+			entered := (*uint32)(unsafe.Pointer(&lin[0]))
+			release := (*uint32)(unsafe.Pointer(&lin[4]))
+			args, trap, res := ar.Alloc(16), ar.Alloc(TrapBufferBytes), ar.Alloc(16)
+			done := make(chan error, 1)
+			go func() { done <- eng.Call(slicePtr(code), args, lin, trap, res) }()
+			supplementWait(t, entered)
+			atomic.StoreUint32(release, 1)
+			select {
+			case err := <-done:
+				if tc.trap == TrapNone {
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					var te *TrapError
+					if !errors.As(err, &te) || te.Code != tc.trap {
+						t.Fatalf("trap %v", err)
+					}
+				}
+			case <-time.After(5 * time.Second):
+				panic("Darwin foreign return timeout")
+			}
+			// Collect after the calling task has returned; stale host SP must not be scanned.
+			grt.GC()
+			if err := eng.Close(); err != nil {
+				t.Fatal(err)
+			}
+			grt.GC()
+			if err := eng.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+func TestTinyGoForeignStackGCPreparedEntry(t *testing.T) {
+	eng, jm, _ := fixture(t)
+	var a a64.Asm
+	supplementRendezvous(&a, a64.X26)
+	a.MovImm64(a64.X0, 42)
+	a.Ret()
+	code, err := mmapExec(a.B)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer munmap(code)
+	lin := jm.LinearMemory()
+	entered := (*uint32)(unsafe.Pointer(&lin[0]))
+	release := (*uint32)(unsafe.Pointer(&lin[4]))
+	done := make(chan uint64, 1)
+	go func() {
+		v, e := eng.EnterPreparedInt(slicePtr(code), jm.LinMemBase(), 0, 0, 0, 0)
+		if e != nil {
+			panic(e)
+		}
+		done <- v
+	}()
+	supplementWait(t, entered)
+	atomic.StoreUint32(release, 1)
+	select {
+	case v := <-done:
+		if v != 42 {
+			t.Fatal(v)
+		}
+	case <-time.After(5 * time.Second):
+		panic("prepared return timeout")
+	}
+	grt.GC()
+}
+func TestTinyGoForeignStackGCHostReentry(t *testing.T) {
+	eng, jm, ar := fixture(t)
+	inner, ijm, iar := fixture(t)
+	// Insert after BLR X16 (host return), before any instruction of the resumed body.
+	body := stubHostRoundtrip()
+	needle := []byte{0x00, 0x02, 0x3f, 0xd6}
+	at := -1
+	for i := 0; i+4 <= len(body); i += 4 {
+		if string(body[i:i+4]) == string(needle) {
+			if at != -1 {
+				t.Fatal("ambiguous BLR")
+			}
+			at = i + 4
+		}
+	}
+	if at < 0 {
+		t.Fatal("missing host BLR")
+	}
+	var a a64.Asm
+	supplementRendezvous(&a, a64.X26)
+	body = append(append(append([]byte{}, body[:at]...), a.B...), body[at:]...)
+	code, err := mmapExec(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer munmap(code)
+	ic, err := mmapExec(stubAdd1())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer munmap(ic)
+	args, res, trap, ctrl := hostCallFixture(t, jm, ar)
+	binary.LittleEndian.PutUint32(args, 20)
+	ia, ir, it := iar.Alloc(16), iar.Alloc(16), iar.Alloc(TrapBufferBytes)
+	binary.LittleEndian.PutUint32(ia, 41)
+	calls := 0
+	host := func(_ uintptr, _ uint32, args, res []uint64) {
+		calls++
+		grt.GC()
+		if err := inner.Call(slicePtr(ic), ia, ijm.LinearMemory(), it, ir); err != nil {
+			panic(err)
+		}
+		if binary.LittleEndian.Uint32(ir) != 42 {
+			panic("nested result")
+		}
+		grt.GC()
+		res[0] = args[0] * 2
+	}
+	lin := jm.LinearMemory()
+	entered := (*uint32)(unsafe.Pointer(&lin[0]))
+	release := (*uint32)(unsafe.Pointer(&lin[4]))
+	collected := make(chan struct{})
+	go func() { supplementWait(t, entered); atomic.StoreUint32(release, 1); close(collected) }()
+	if err := eng.CallWithHost(slicePtr(code), args, lin, trap, res, ctrl, host); err != nil {
+		t.Fatal(err)
+	}
+	<-collected
+	if calls != 1 || binary.LittleEndian.Uint32(res) != 151 {
+		t.Fatal("parked frames corrupted")
+	}
+	grt.GC()
+}
+func TestTinyGoForeignStackGCCloseThunkFailure(t *testing.T) {
+	eng, err := NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapping := eng.preparedInt.mem
+	eng.preparedInt.mem = mapping[1:]
+	if err := eng.Close(); err == nil {
+		t.Fatal("unaligned thunk unmap succeeded")
+	}
+	if eng.preparedInt.foreignStack != nil || eng.stack != nil {
+		t.Fatal("dangling registered mapping")
+	}
+	grt.GC()
+	eng.preparedInt.mem = mapping
+	if err := eng.Close(); err != nil {
+		t.Fatal(err)
+	}
+	grt.GC()
+}

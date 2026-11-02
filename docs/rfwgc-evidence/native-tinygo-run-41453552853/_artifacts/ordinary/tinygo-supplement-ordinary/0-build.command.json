@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin/tinygo",
+    "test",
+    "-c",
+    "-p=2",
+    "-scheduler=threads",
+    "-gc=conservative",
+    "-o",
+    "/Users/runner/work/_temp/tinygo-supplement-ordinary/0.test",
+    "./src/core/runtime"
+  ],
+  "cwd": "/Users/runner/work/_temp/tinygo-supplement-ordinary/source",
+  "environment": {
+    "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/go-cache",
+    "GOENV": "off",
+    "GOFLAGS": "-mod=readonly -p=2",
+    "GOMAXPROCS": "2",
+    "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-ordinary/modules",
+    "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+    "GOTOOLCHAIN": "local",
+    "GOWORK": "off",
+    "HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary",
+    "PATH": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo/bin:/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "TINYGOROOT": "/Users/runner/work/_temp/tinygo-supplement-ordinary/tool/tinygo",
+    "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-ordinary/cache"
+  },
+  "timeout_seconds": 1200
+}
