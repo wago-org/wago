@@ -29,7 +29,12 @@ func (in *Instance) publishConversionStore(_ *Instance, _ []byte, _, word uint64
 	}
 	return publish()
 }
-func conversionImportedTableCount(*gcRefTestTableState) int         { return 0 }
+func conversionImportedTableCount(s *gcRefTestTableState) int {
+	if s != nil && s.Conversion != nil && s.Conversion.core != nil {
+		return s.Conversion.core.owner.c.tableImportCount()
+	}
+	return 0
+}
 func conversionBoundaryWord(*Instance, uint64, bool) (uint64, bool) { return 0, false }
 func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, error) {
 	if compiledArchitecture == 4 || g == nil || g.Type != ValExternRef || value.typ != ValExternRef {
