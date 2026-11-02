@@ -1,0 +1,22 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T14:27:05.222025235Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "FuzzSpecTrapMatchingDoesNotPanic",
+      "Elapsed": 31.01
+    },
+    {
+      "Time": "2026-11-02T14:27:05.223588262Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 31.012
+    }
+  ],
+  "raw_sha256": "c42006129643d27b0c63168e2d60aee326c803628d9a60c9bfa0bdb51e3fb2dd",
+  "driver_unchanged": true
+}
