@@ -1,0 +1,4 @@
+=== RUN   TestDynamicImportUnwindLocalJoinARM64
+    dynamic_import_join_test.go:45: arm64: function 0: direct Go import local-state join differs at local 0
+--- FAIL: TestDynamicImportUnwindLocalJoinARM64 (0.04s)
+FAIL
