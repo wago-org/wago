@@ -24,7 +24,7 @@ func TestNativeLeafInstancesShareExecutableCode(t *testing.T) {
 		t.Fatalf("same callback allocated separate executable mappings: %x != %x", first, second)
 	}
 	value, _ := nativeLeafHosts.Load(slicePtr(controls[1]))
-	leaf := value.(nativeScalarLeaf)
+	leaf := value.(nativeScalarLeafRegistration).legacy
 	original := append([]byte(nil), leaf.code...)
 	unregisterNativeScalarLeaf(controls[0])
 	if nativeScalarLeafPtr(controls[0]) != 0 || nativeScalarLeafPtr(controls[1]) != first {
@@ -90,7 +90,7 @@ func TestNativeLeafConcurrentRegistrationsRetainSharedCode(t *testing.T) {
 		}
 	}
 	value, _ := nativeLeafHosts.Load(slicePtr(controls[0]))
-	leaf := value.(nativeScalarLeaf)
+	leaf := value.(nativeScalarLeafRegistration).legacy
 	original := append([]byte(nil), leaf.code...)
 	for _, ctrl := range controls[:count/2] {
 		workers.Add(1)

@@ -70,7 +70,7 @@ func capturedNativeLeafAlias(delta int32) func(int32) int32 {
 	return func(x int32) int32 { return x + delta }
 }
 
-func TestNativeLeafAliasesRejectDifferentBodiesAndCapturedState(t *testing.T) {
+func TestNativeLeafDistinctBodiesAndCapturedState(t *testing.T) {
 	if codeProfileEnabled {
 		t.Skip("profiling retains Go callbacks")
 	}
@@ -89,8 +89,8 @@ func TestNativeLeafAliasesRejectDifferentBodiesAndCapturedState(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			if in.executionFlags.Load()&executionFlagNativeScalarLeaf != 0 {
-				t.Fatal("nonalias or captured body admitted")
+			if admitted := in.executionFlags.Load()&executionFlagNativeScalarLeaf != 0; admitted != (name == "different-pure-bodies") {
+				t.Fatal("unexpected distinct/captured body admission")
 			}
 			got, err := in.Invoke("run", 7)
 			if err != nil || len(got) != 1 || got[0] != 13 {

@@ -69,7 +69,7 @@ func TestNativeScalarLeafRegisterEntry(t *testing.T) {
 		t.Fatalf("register: %v %v", ok, err)
 	}
 	value, _ := nativeLeafHosts.Load(slicePtr(ctrl))
-	leaf := value.(nativeScalarLeaf)
+	leaf := value.(nativeScalarLeafRegistration).legacy
 	start := int(leaf.direct-slicePtr(leaf.code)) + NativeScalarLeafRegisterEntryOffset
 	body := scalarLeafBody(nativeLeafIncTest, 1)
 	if len(leaf.code) < start+len(body)+8 {

@@ -185,7 +185,13 @@ func bindHostInvocationParent(in *Instance, parent context.Context) func() {
 }
 
 func registerHostControl(in *Instance) error {
-	if in == nil || len(in.ctrl) == 0 || len(in.ctrl) < coreruntime.HostCtrlFrameBytes {
+	return registerHostControlTransaction(in, railshotRegisterNativeHostOwner, nil)
+}
+
+// The instance is unpublished and cannot execute during this transaction. The
+// hooks are parameters so failure tests do not mutate process-wide registries.
+func registerHostControlTransaction(in *Instance, registerOwner func(*Instance) error, afterBind func(int) error) error {
+	if in == nil || len(in.ctrl) < coreruntime.HostCtrlFrameBytes {
 		return fmt.Errorf("invalid synchronous host control frame")
 	}
 	ptr := offHeapSlicePtr(in.ctrl)
@@ -196,45 +202,122 @@ func registerHostControl(in *Instance) error {
 		hostControlInstances.Delete(ptr)
 		return fmt.Errorf("register runtime synchronous host control frame: %w", err)
 	}
-	if coreruntime.NativeScalarLeafSupported && !codeProfileEnabled && in.c.nativeScalarLeafAllowed() {
-		binding := in.nativeScalarLeafAliases()
-		if binding != nil {
-			params := uint32(1)
-			var fn any = binding.typedI32
-			if binding.scalarKind == syncHostTypedI32x2 {
-				params = 2
-				fn = binding.typedI32x2
-			}
-			admitted, err := coreruntime.RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), in.ctrl, fn, params)
-			if err != nil {
-				coreruntime.UnregisterHostCtrlFrame(in.ctrl)
-				hostControlInstances.Delete(ptr)
-				return err
-			}
-			if admitted {
-				if dispatch := in.jm.CaptureInstanceContext().ImportDispatch; dispatch != 0 {
-					cells := unsafe.Slice((*byte)(offHeapPtr(dispatch)), len(in.syncHosts)*coreruntime.ImportDispatchEntryBytes)
-					for i := range in.syncHosts {
-						cell := cells[i*coreruntime.ImportDispatchEntryBytes : (i+1)*coreruntime.ImportDispatchEntryBytes]
-						coreruntime.BindNativeScalarLeafImport(runtimebridge.GrantHostScalarCall(), in.ctrl, cell)
-					}
+	var originalControl []byte
+	originalLeafFlag := in.executionFlags.Load() & executionFlagNativeScalarLeaf
+	var cells, originalCells []byte
+	committed := false
+	defer func() {
+		if !committed {
+			// Restore every native target before releasing executable mappings.
+			copy(cells, originalCells)
+			copy(in.ctrl, originalControl)
+			in.setNativeScalarLeafFlag(originalLeafFlag != 0)
+			coreruntime.UnregisterHostCtrlFrame(in.ctrl)
+			hostControlInstances.Delete(ptr)
+		}
+	}()
+	if coreruntime.NativeScalarLeafSupported && !codeProfileEnabled && in.c.nativeScalarLeafAllowed() && in.nativeScalarLeafBindingsEligible() {
+		alias := in.nativeScalarLeafAliases()
+		dispatch := in.jm.CaptureInstanceContext().ImportDispatch
+		if dispatch != 0 {
+			cells = unsafe.Slice((*byte)(offHeapPtr(dispatch)), len(in.syncHosts)*coreruntime.ImportDispatchEntryBytes)
+		}
+		// New distinct admission requires a complete, self-owned dispatch namespace.
+		valid := alias != nil || in.nativeScalarLeafDispatchValid(cells)
+		admitted := false
+		var err error
+		access := runtimebridge.GrantHostScalarCall()
+		if valid {
+			if alias != nil {
+				fn, params := alias.nativeScalarLeafCallback()
+				admitted, err = coreruntime.RegisterNativeScalarLeaf(access, in.ctrl, fn, params)
+			} else {
+				callbacks := make([]any, len(in.syncHosts))
+				params := make([]uint32, len(in.syncHosts))
+				for i := range in.syncHosts {
+					callbacks[i], params[i] = in.syncHosts[i].nativeScalarLeafCallback()
 				}
-				for {
-					flags := in.executionFlags.Load()
-					if flags&executionFlagNativeScalarLeaf != 0 || in.executionFlags.CompareAndSwap(flags, flags|executionFlagNativeScalarLeaf) {
-						break
-					}
-				}
+				admitted, err = coreruntime.RegisterNativeScalarLeafImports(access, in.ctrl, callbacks, params)
 			}
 		}
+		if err != nil {
+			return err
+		}
+		if admitted {
+			originalControl = append([]byte(nil), in.ctrl...)
+			originalCells = append([]byte(nil), cells...)
+			for i := range in.syncHosts {
+				if len(cells) == 0 {
+					break
+				} // legacy trampoline-only admission
+				cell := cells[i*coreruntime.ImportDispatchEntryBytes : (i+1)*coreruntime.ImportDispatchEntryBytes]
+				bound := false
+				if alias != nil {
+					bound = coreruntime.BindNativeScalarLeafImport(access, in.ctrl, cell)
+				} else {
+					bound = coreruntime.BindNativeScalarLeafImportAt(access, in.ctrl, cell, i)
+				}
+				if !bound {
+					// Legacy arm64 bodies may have only a staged trampoline.
+					if alias != nil {
+						break
+					}
+					return fmt.Errorf("bind native scalar import %d", i)
+				}
+				if afterBind != nil {
+					if err := afterBind(i); err != nil {
+						return err
+					}
+				}
+			}
+			in.setNativeScalarLeafFlag(true)
+		} else {
+			// No cell has changed; avoid restoring an uninitialized snapshot on error.
+			cells = nil
+		}
 	}
-
-	if err := railshotRegisterNativeHostOwner(in); err != nil {
-		coreruntime.UnregisterHostCtrlFrame(in.ctrl)
-		hostControlInstances.Delete(ptr)
+	if err := registerOwner(in); err != nil {
 		return err
 	}
+	committed = true
 	return nil
+}
+
+func (in *Instance) setNativeScalarLeafFlag(enabled bool) {
+	for {
+		flags := in.executionFlags.Load()
+		next := flags &^ executionFlagNativeScalarLeaf
+		if enabled {
+			next |= executionFlagNativeScalarLeaf
+		}
+		if next == flags || in.executionFlags.CompareAndSwap(flags, next) {
+			return
+		}
+	}
+}
+
+func (b *syncHostBinding) nativeScalarLeafCallback() (any, uint32) {
+	if b.scalarKind == syncHostTypedI32x2 {
+		return b.typedI32x2, 2
+	}
+	return b.typedI32, 1
+}
+
+func (in *Instance) nativeScalarLeafDispatchValid(cells []byte) bool {
+	if len(cells) != len(in.syncHosts)*coreruntime.ImportDispatchEntryBytes || in.nativeContext == 0 {
+		return false
+	}
+	for i := range in.syncHosts {
+		cell := cells[i*coreruntime.ImportDispatchEntryBytes : (i+1)*coreruntime.ImportDispatchEntryBytes]
+		word := func(offset int) uint64 { return binary.LittleEndian.Uint64(cell[offset:]) }
+		if word(coreruntime.ImportDispatchCodePtrOffset) == 0 ||
+			word(coreruntime.ImportDispatchHomeLinMemOffset) != uint64(in.jm.LinMemBase()) ||
+			word(coreruntime.ImportDispatchTargetContextOffset) != uint64(in.nativeContext) ||
+			word(coreruntime.ImportDispatchCallerContextOffset)&^coreruntime.ImportDispatchCallerTagMask != uint64(in.nativeContext) {
+			return false
+		}
+	}
+	return true
 }
 
 func unregisterHostControl(in *Instance) {
@@ -1080,37 +1163,50 @@ func (in *Instance) hasDirectTypedScalarHost() bool {
 	return false
 }
 
-// The runtime owns one native leaf per control frame. Multiple import cells
-// can share it only when their typed callback code and shape match. The runtime
-// independently proves the copied body reads no closure/receiver/Go state, so
-// equal PCs are sufficient here even for distinct Go function values. Unknown
-// or mixed callbacks retain their normal dispatch and scheduling contract.
-func (in *Instance) nativeScalarLeafAliases() *syncHostBinding {
+// Resolved binding identity and exact signature are checked independently of
+// reusable machine-code identity. A single rejected binding rejects the class.
+func (in *Instance) nativeScalarLeafBindingsEligible() bool {
 	if len(in.syncHosts) == 0 || in.c == nil || len(in.syncHosts) != in.c.NumImports || in.gc != nil ||
 		in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) != 0 {
+		return false
+	}
+	for i := range in.syncHosts {
+		b := &in.syncHosts[i]
+		if b.gate != nil || b.importIdx != uint32(i) || b.sig == nil || (b.scalarKind != syncHostTypedI32 && b.scalarKind != syncHostTypedI32x2) {
+			return false
+		}
+		_, params := b.nativeScalarLeafCallback()
+		if len(b.sig.Params) != int(params) || len(b.sig.Results) != 1 || b.sig.Results[0] != ValI32 {
+			return false
+		}
+		for _, typ := range b.sig.Params {
+			if typ != ValI32 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// Preserve the legacy single/same-PC trampoline separately from the new indexed
+// route. The machine proof excludes captured state even when Go PCs alias.
+func (in *Instance) nativeScalarLeafAliases() *syncHostBinding {
+	if !in.nativeScalarLeafBindingsEligible() {
 		return nil
 	}
 	first := &in.syncHosts[0]
-	if first.gate != nil || (first.scalarKind != syncHostTypedI32 && first.scalarKind != syncHostTypedI32x2) {
-		return nil
-	}
-	// Preserve the common single-import path without reflection.
 	if len(in.syncHosts) == 1 {
 		return first
 	}
-	pc := func(b *syncHostBinding) uintptr {
-		if b.scalarKind == syncHostTypedI32 {
-			return reflect.ValueOf(b.typedI32).Pointer()
-		}
-		return reflect.ValueOf(b.typedI32x2).Pointer()
-	}
-	code := pc(first)
+	fn, _ := first.nativeScalarLeafCallback()
+	code := reflect.ValueOf(fn).Pointer()
 	if code == 0 {
 		return nil
 	}
 	for i := 1; i < len(in.syncHosts); i++ {
 		b := &in.syncHosts[i]
-		if b.gate != nil || b.scalarKind != first.scalarKind || pc(b) != code {
+		fn, _ := b.nativeScalarLeafCallback()
+		if b.scalarKind != first.scalarKind || reflect.ValueOf(fn).Pointer() != code {
 			return nil
 		}
 	}

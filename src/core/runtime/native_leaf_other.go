@@ -21,3 +21,12 @@ func unregisterNativeScalarLeaf([]byte)  {}
 func BindNativeScalarLeafImport(runtimebridge.HostScalarCallAccess, []byte, []byte) bool {
 	return false
 }
+
+// Distinct leaves remain generic here. RV64 wrappers embed their control frame;
+// the shared-code indexed ownership model is intentionally not used on RV64.
+func RegisterNativeScalarLeafImports(runtimebridge.HostScalarCallAccess, []byte, []any, []uint32) (bool, error) {
+	return false, nil
+}
+func BindNativeScalarLeafImportAt(runtimebridge.HostScalarCallAccess, []byte, []byte, int) bool {
+	return false
+}
