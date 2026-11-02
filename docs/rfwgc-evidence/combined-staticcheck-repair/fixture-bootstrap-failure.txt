@@ -1,0 +1,1 @@
+Initial host-replay.py tried git archive 9d36019973201a19f9c9ebb0f10828b2fe2374aa in the empty shared worktree spec-v3 directory. git returned 128: fatal: not a tree object. Corrected read-only object source to /home/dev/Projects/wago/tests/conformance/spec-v3. No shared submodule was changed. v1/v2 successfully exported before failure; all three re-exported on replay.

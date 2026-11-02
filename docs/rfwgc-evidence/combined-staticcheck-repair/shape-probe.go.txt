@@ -1,0 +1,4 @@
+//go:build linux && !tinygo && !wago_target_tinygo
+package wago
+import("testing";"reflect";"runtime")
+func TestStaticcheckShapeProbe(t *testing.T) { for _, x:=range []any{managedFunctionCollector{},managedFunctionMark{}} { typ:=reflect.TypeOf(x);t.Logf("SHAPE %s %s size=%d align=%d",runtime.GOARCH,typ.Name(),typ.Size(),typ.Align());for i:=0;i<typ.NumField();i++ {f:=typ.Field(i); t.Logf("FIELD %s %s offset=%d size=%d",typ.Name(),f.Name,f.Offset,f.Type.Size())} } }

@@ -1,0 +1,12 @@
+[
+  {
+    "phase": "before",
+    "original_archive_files": 10547,
+    "changed": []
+  },
+  {
+    "phase": "after",
+    "original_archive_files": 10807,
+    "changed": []
+  }
+]

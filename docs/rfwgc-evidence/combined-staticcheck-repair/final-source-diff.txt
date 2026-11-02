@@ -1,0 +1,380 @@
+diff --git a/src/core/runtime/gc/native/mature_review_stage5_test.go b/src/core/runtime/gc/native/mature_review_stage5_test.go
+index d59ea4b0f..d89290c3f 100644
+--- a/src/core/runtime/gc/native/mature_review_stage5_test.go
++++ b/src/core/runtime/gc/native/mature_review_stage5_test.go
+@@ -32,10 +32,10 @@ func matureReviewOracle(t *testing.T, h *throughputHeap, live []matureReviewExte
+ 		}
+ 	}
+ 	for _, x := range h.freeSpans() {
+-		all = append(all, span{x.off, x.size})
++		all = append(all, span(x))
+ 	}
+ 	for _, x := range h.pendingFree {
+-		all = append(all, span{x.off, x.size})
++		all = append(all, span(x))
+ 	}
+ 	sort.Slice(all, func(i, j int) bool { return all[i].off < all[j].off })
+ 	var end uint32
+diff --git a/src/wago/function_environment_dependencies_host.go b/src/wago/function_environment_dependencies_host.go
+index b2c249b6d..daa6113f1 100644
+--- a/src/wago/function_environment_dependencies_host.go
++++ b/src/wago/function_environment_dependencies_host.go
+@@ -92,8 +92,6 @@ func managedFunctionDrainDeadDependencies(g *managedFunctionGraph) {
+ 	cleanup.finish()
+ }
+ 
+-type managedFunctionReceiptProof struct{}
+-
+ func (m *managedFunctionMark) lockDependencySnapshot() func() {
+ 	m.snapshotHostDependencies()
+ 	return func() {}
+diff --git a/src/wago/function_environment_linux.go b/src/wago/function_environment_linux.go
+index 1b8a4dea7..c471cc3de 100644
+--- a/src/wago/function_environment_linux.go
++++ b/src/wago/function_environment_linux.go
+@@ -132,30 +132,6 @@ type managedFunctionEnv struct {
+ 	descriptors []uint64
+ }
+ 
+-type managedFunctionCollector struct {
+-	mu                  sync.Mutex // observer journal only; maps are collector-domain serialized
+-	graph               *managedFunctionGraph
+-	collector           *gc.Collector
+-	typeID              gc.TypeID
+-	envs                map[gc.Ref]*managedFunctionEnv    // weak, removed before handle reuse
+-	byOwner             map[*Instance]*managedFunctionEnv // same weak identity
+-	byDescriptor        map[uint64]*managedFunctionEnv
+-	shadows             map[gc.Ref]managedFunctionEdge   // inline first producer; null tombstones preserve Tiny cursors
+-	extraShadows        map[gc.Ref][]managedFunctionEdge // cold overflow for multiple producers
+-	aggregate           *managedFunctionAggregateScratch
+-	globalOwners        map[uint32]*managedFunctionMember
+-	tableOwners         map[uint32]*managedFunctionMember
+-	hostEnvSlots        map[uint32]gc.Ref                 // floating roots, excluded from the quiescent joint mark
+-	conversionHostSlots map[uint32]*gcConversionContainer // collector-local physical host receipts
+-	conversionFloating  map[uint32]*gcConversionIdentity
+-	hostFreeSlots       []uint32
+-	authorized          bool // only a validated joint mark may make slots conditional
+-	liveOwners          map[*managedFunctionMember]bool
+-	reclaimed           []*managedFunctionEnv
+-	closed              bool
+-	exception           *managedFunctionExceptionScratch
+-}
+-
+ func (s *managedFunctionCollector) ObjectEdgeCount(ref gc.Ref) uint32 {
+ 	if _, ok := s.shadows[ref]; ok {
+ 		return 1 + uint32(len(s.extraShadows[ref]))
+diff --git a/src/wago/function_environment_mark_linux.go b/src/wago/function_environment_mark_linux.go
+index 80224741d..42d152fb1 100644
+--- a/src/wago/function_environment_mark_linux.go
++++ b/src/wago/function_environment_mark_linux.go
+@@ -35,24 +35,6 @@ type managedFunctionMarkDomain struct {
+ 	transient     gc.RootSet
+ }
+ 
+-type managedFunctionMark struct {
+-	graph              *managedFunctionGraph
+-	epoch              uint64
+-	domains            []*managedFunctionMarkDomain
+-	byCollector        map[*gc.Collector]*managedFunctionMarkDomain
+-	live               map[*managedFunctionMember]bool
+-	owners             []*managedFunctionMember
+-	ownerAt, ownerSlot int
+-	edges              map[*managedFunctionMember][]*managedFunctionMember
+-	incoming           map[*managedFunctionMember]int
+-	err                error
+-	complete           bool
+-	members            []*managedFunctionMember
+-	receipts           []managedFunctionReceiptProof
+-	nativeCursor       managedFunctionNativeRootCursor
+-	nativeDone         bool
+-}
+-
+ // bindPersistentSlot transfers a private instance slot from the unconditional
+ // collector roots to its physical owner's conditional roots. Public token and
+ // host argument slots must never be bound here. Slot indexes are append-only.
+diff --git a/src/wago/function_environment_platform_host.go b/src/wago/function_environment_platform_host.go
+index f55f49afc..0517d5d75 100644
+--- a/src/wago/function_environment_platform_host.go
++++ b/src/wago/function_environment_platform_host.go
+@@ -12,7 +12,6 @@ import (
+ // Host backends do not yet describe raw function words in their exact frame
+ // maps. Keep environment slots conservative during an invocation; the joint
+ // owner pass makes them conditional only at a fully quiescent boundary.
+-func managedFunctionGateOwner(*instancePluginState) invocationID { return 0 }
+ func managedFunctionMemberActive(member *managedFunctionMember, _ invocationID) bool {
+ 	owner := member.owner
+ 	owner.lifeMu.Lock()
+@@ -115,9 +114,6 @@ func (a *managedFunctionAggregateScratch) changeOpaque(s *managedFunctionCollect
+ 	a.change(s, in, bits, delta, allocate)
+ }
+ 
+-// Compact extern and exception ownership keep their existing host representation.
+-type managedFunctionExceptionScratch struct{}
+-
+ func compactExternAddClaimedDomainsLocked(*referenceStore, *gcInvocationDomainSet) {}
+ func compactExternHostRootIsStrong(*gc.Collector, uint32) bool                     { return true }
+ func (*managedFunctionMarkDomain) clearUnreachableHostExternRoots() error          { return nil }
+diff --git a/src/wago/function_environment_shape_host.go b/src/wago/function_environment_shape_host.go
+new file mode 100644
+index 000000000..ca5c53bc5
+--- /dev/null
++++ b/src/wago/function_environment_shape_host.go
+@@ -0,0 +1,52 @@
++//go:build linux && !riscv64 && !tinygo && !wago_target_tinygo
++
++package wago
++
++import (
++	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
++	"sync"
++)
++
++// Keep these target shapes explicit: host builds do not use RV64 exception
++// scratch or dependency receipt snapshots. Common ownership operations live in
++// the Linux implementation files; RV64 keeps its original fields and offsets.
++// Direct fields also preserve the existing internal keyed construction API.
++type managedFunctionCollector struct {
++	mu                  sync.Mutex // observer journal only; maps are collector-domain serialized
++	graph               *managedFunctionGraph
++	collector           *gc.Collector
++	typeID              gc.TypeID
++	envs                map[gc.Ref]*managedFunctionEnv    // weak, removed before handle reuse
++	byOwner             map[*Instance]*managedFunctionEnv // same weak identity
++	byDescriptor        map[uint64]*managedFunctionEnv
++	shadows             map[gc.Ref]managedFunctionEdge   // inline first producer; null tombstones preserve Tiny cursors
++	extraShadows        map[gc.Ref][]managedFunctionEdge // cold overflow for multiple producers
++	aggregate           *managedFunctionAggregateScratch
++	globalOwners        map[uint32]*managedFunctionMember
++	tableOwners         map[uint32]*managedFunctionMember
++	hostEnvSlots        map[uint32]gc.Ref                 // floating roots, excluded from the quiescent joint mark
++	conversionHostSlots map[uint32]*gcConversionContainer // collector-local physical host receipts
++	conversionFloating  map[uint32]*gcConversionIdentity
++	hostFreeSlots       []uint32
++	authorized          bool // only a validated joint mark may make slots conditional
++	liveOwners          map[*managedFunctionMember]bool
++	reclaimed           []*managedFunctionEnv
++	closed              bool
++}
++
++type managedFunctionMark struct {
++	graph              *managedFunctionGraph
++	epoch              uint64
++	domains            []*managedFunctionMarkDomain
++	byCollector        map[*gc.Collector]*managedFunctionMarkDomain
++	live               map[*managedFunctionMember]bool
++	owners             []*managedFunctionMember
++	ownerAt, ownerSlot int
++	edges              map[*managedFunctionMember][]*managedFunctionMember
++	incoming           map[*managedFunctionMember]int
++	err                error
++	complete           bool
++	members            []*managedFunctionMember
++	nativeCursor       managedFunctionNativeRootCursor
++	nativeDone         bool
++}
+diff --git a/src/wago/function_environment_shape_host_test.go b/src/wago/function_environment_shape_host_test.go
+new file mode 100644
+index 000000000..ec0b0d92d
+--- /dev/null
++++ b/src/wago/function_environment_shape_host_test.go
+@@ -0,0 +1,28 @@
++//go:build linux && !riscv64 && !tinygo && !wago_target_tinygo
++
++package wago
++
++import (
++	"reflect"
++	"testing"
++	"unsafe"
++)
++
++func TestManagedFunctionHostShape(t *testing.T) {
++	for _, shape := range []struct {
++		value  any
++		absent string
++		size64 uintptr
++	}{
++		{managedFunctionCollector{}, "exception", 192},
++		{managedFunctionMark{}, "receipts", 168},
++	} {
++		typ := reflect.TypeOf(shape.value)
++		if _, ok := typ.FieldByName(shape.absent); ok {
++			t.Fatalf("host %s still carries RV64 %s", typ, shape.absent)
++		}
++		if unsafe.Sizeof(uintptr(0)) == 8 && typ.Size() != shape.size64 {
++			t.Fatalf("host %s size=%d, want %d", typ, typ.Size(), shape.size64)
++		}
++	}
++}
+diff --git a/src/wago/function_environment_shape_riscv64.go b/src/wago/function_environment_shape_riscv64.go
+new file mode 100644
+index 000000000..3ad7d0e45
+--- /dev/null
++++ b/src/wago/function_environment_shape_riscv64.go
+@@ -0,0 +1,54 @@
++//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
++
++package wago
++
++import (
++	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
++	"sync"
++)
++
++// Keep these target shapes explicit: host builds do not use RV64 exception
++// scratch or dependency receipt snapshots. Common ownership operations live in
++// the Linux implementation files; RV64 keeps its original fields and offsets.
++// Direct fields also preserve the existing internal keyed construction API.
++type managedFunctionCollector struct {
++	mu                  sync.Mutex // observer journal only; maps are collector-domain serialized
++	graph               *managedFunctionGraph
++	collector           *gc.Collector
++	typeID              gc.TypeID
++	envs                map[gc.Ref]*managedFunctionEnv    // weak, removed before handle reuse
++	byOwner             map[*Instance]*managedFunctionEnv // same weak identity
++	byDescriptor        map[uint64]*managedFunctionEnv
++	shadows             map[gc.Ref]managedFunctionEdge   // inline first producer; null tombstones preserve Tiny cursors
++	extraShadows        map[gc.Ref][]managedFunctionEdge // cold overflow for multiple producers
++	aggregate           *managedFunctionAggregateScratch
++	globalOwners        map[uint32]*managedFunctionMember
++	tableOwners         map[uint32]*managedFunctionMember
++	hostEnvSlots        map[uint32]gc.Ref                 // floating roots, excluded from the quiescent joint mark
++	conversionHostSlots map[uint32]*gcConversionContainer // collector-local physical host receipts
++	conversionFloating  map[uint32]*gcConversionIdentity
++	hostFreeSlots       []uint32
++	authorized          bool // only a validated joint mark may make slots conditional
++	liveOwners          map[*managedFunctionMember]bool
++	reclaimed           []*managedFunctionEnv
++	closed              bool
++	exception           *managedFunctionExceptionScratch
++}
++
++type managedFunctionMark struct {
++	graph              *managedFunctionGraph
++	epoch              uint64
++	domains            []*managedFunctionMarkDomain
++	byCollector        map[*gc.Collector]*managedFunctionMarkDomain
++	live               map[*managedFunctionMember]bool
++	owners             []*managedFunctionMember
++	ownerAt, ownerSlot int
++	edges              map[*managedFunctionMember][]*managedFunctionMember
++	incoming           map[*managedFunctionMember]int
++	err                error
++	complete           bool
++	members            []*managedFunctionMember
++	receipts           []managedFunctionReceiptProof
++	nativeCursor       managedFunctionNativeRootCursor
++	nativeDone         bool
++}
+diff --git a/src/wago/function_environment_shape_riscv64_test.go b/src/wago/function_environment_shape_riscv64_test.go
+new file mode 100644
+index 000000000..787afdc9c
+--- /dev/null
++++ b/src/wago/function_environment_shape_riscv64_test.go
+@@ -0,0 +1,91 @@
++//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
++
++package wago
++
++import (
++	"reflect"
++	"testing"
++)
++
++// These are the pre-split RV64 sizes and offsets, captured by execution at
++// 563631afba41d58f6de9eb7fd31bb8aa3f16f55e. The target declaration must preserve
++// every existing field, including the exact receipt and exception state slots.
++func TestManagedFunctionRV64Shape(t *testing.T) {
++	for _, shape := range []struct {
++		value  any
++		size   uintptr
++		fields []struct {
++			name         string
++			offset, size uintptr
++		}
++	}{
++		{managedFunctionCollector{}, 200, []struct {
++			name         string
++			offset, size uintptr
++		}{
++			{"mu", 0, 8},
++			{"graph", 8, 8},
++			{"collector", 16, 8},
++			{"typeID", 24, 4},
++			{"envs", 32, 8},
++			{"byOwner", 40, 8},
++			{"byDescriptor", 48, 8},
++			{"shadows", 56, 8},
++			{"extraShadows", 64, 8},
++			{"aggregate", 72, 8},
++			{"globalOwners", 80, 8},
++			{"tableOwners", 88, 8},
++			{"hostEnvSlots", 96, 8},
++			{"conversionHostSlots", 104, 8},
++			{"conversionFloating", 112, 8},
++			{"hostFreeSlots", 120, 24},
++			{"authorized", 144, 1},
++			{"liveOwners", 152, 8},
++			{"reclaimed", 160, 24},
++			{"closed", 184, 1},
++			{"exception", 192, 8},
++		}},
++		{managedFunctionMark{}, 208, []struct {
++			name         string
++			offset, size uintptr
++		}{
++			{"graph", 0, 8},
++			{"epoch", 8, 8},
++			{"domains", 16, 24},
++			{"byCollector", 40, 8},
++			{"live", 48, 8},
++			{"owners", 56, 24},
++			{"ownerAt", 80, 8},
++			{"ownerSlot", 88, 8},
++			{"edges", 96, 8},
++			{"incoming", 104, 8},
++			{"err", 112, 16},
++			{"complete", 128, 1},
++			{"members", 136, 24},
++			{"receipts", 160, 24},
++			{"nativeCursor", 184, 16},
++			{"nativeDone", 200, 1},
++		}},
++	} {
++		typ := reflect.TypeOf(shape.value)
++		if typ.Size() != shape.size || typ.Align() != 8 {
++			t.Fatalf("%s size/alignment=%d/%d, want %d/8", typ, typ.Size(), typ.Align(), shape.size)
++		}
++		for _, want := range shape.fields {
++			field, ok := typ.FieldByName(want.name)
++			if !ok {
++				t.Fatalf("%s lost %s", typ, want.name)
++			}
++			current := typ
++			var offset uintptr
++			for _, index := range field.Index {
++				nested := current.Field(index)
++				offset += nested.Offset
++				current = nested.Type
++			}
++			if offset != want.offset || field.Type.Size() != want.size {
++				t.Fatalf("%s.%s offset/size=%d/%d, want %d/%d", typ, want.name, offset, field.Type.Size(), want.offset, want.size)
++			}
++		}
++	}
++}
+diff --git a/src/wago/gc_frame_roots_linux_amd64.go b/src/wago/gc_frame_roots_linux_amd64.go
+index d4ee3f55f..72fdc80f7 100644
+--- a/src/wago/gc_frame_roots_linux_amd64.go
++++ b/src/wago/gc_frame_roots_linux_amd64.go
+@@ -321,10 +321,6 @@ func bodyUsesEH(body []byte, classifier *wasm.ModuleInstructionClassifier) bool
+ 	return false
+ }
+ 
+-func gcFrameConservativeMasks(body []byte, localRoots int, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
+-	return gcFrameAllLiveMasksArenaWithClassifier(body, localRoots, classifier)
+-}
+-
+ //go:noinline
+ func gcFrameHostCallABI(ft *wasm.CompType) bool {
+ 	if ft == nil {

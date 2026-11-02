@@ -1,0 +1,182 @@
+[
+  {
+    "repo": "/home/dev/Projects/slipstream",
+    "pin": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+    "command": [
+      "git",
+      "-C",
+      "/home/dev/Projects/slipstream",
+      "grep",
+      "-n",
+      "-E",
+      "matureReviewOracle|freeSpans|pendingFree",
+      "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+      "--"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "repo": "/home/dev/Projects/slipstream",
+    "pin": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+    "command": [
+      "git",
+      "-C",
+      "/home/dev/Projects/slipstream",
+      "grep",
+      "-n",
+      "-E",
+      "managedFunctionReceiptProof|managedFunctionMark",
+      "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+      "--"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "repo": "/home/dev/Projects/slipstream",
+    "pin": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+    "command": [
+      "git",
+      "-C",
+      "/home/dev/Projects/slipstream",
+      "grep",
+      "-n",
+      "-E",
+      "managedFunctionExceptionScratch|managedFunctionCollector",
+      "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+      "--"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "repo": "/home/dev/Projects/slipstream",
+    "pin": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+    "command": [
+      "git",
+      "-C",
+      "/home/dev/Projects/slipstream",
+      "grep",
+      "-n",
+      "-E",
+      "managedFunctionGateOwner",
+      "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+      "--"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "repo": "/home/dev/Projects/slipstream",
+    "pin": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+    "command": [
+      "git",
+      "-C",
+      "/home/dev/Projects/slipstream",
+      "grep",
+      "-n",
+      "-E",
+      "gcFrameConservativeMasks",
+      "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+      "--"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "repo": "/home/dev/Projects/starshine-master-base",
+    "pin": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+    "command": [
+      "git",
+      "-C",
+      "/home/dev/Projects/starshine-master-base",
+      "grep",
+      "-n",
+      "-E",
+      "matureReviewOracle|freeSpans|pendingFree",
+      "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+      "--"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "repo": "/home/dev/Projects/starshine-master-base",
+    "pin": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+    "command": [
+      "git",
+      "-C",
+      "/home/dev/Projects/starshine-master-base",
+      "grep",
+      "-n",
+      "-E",
+      "managedFunctionReceiptProof|managedFunctionMark",
+      "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+      "--"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "repo": "/home/dev/Projects/starshine-master-base",
+    "pin": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+    "command": [
+      "git",
+      "-C",
+      "/home/dev/Projects/starshine-master-base",
+      "grep",
+      "-n",
+      "-E",
+      "managedFunctionExceptionScratch|managedFunctionCollector",
+      "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+      "--"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "repo": "/home/dev/Projects/starshine-master-base",
+    "pin": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+    "command": [
+      "git",
+      "-C",
+      "/home/dev/Projects/starshine-master-base",
+      "grep",
+      "-n",
+      "-E",
+      "managedFunctionGateOwner",
+      "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+      "--"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "repo": "/home/dev/Projects/starshine-master-base",
+    "pin": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+    "command": [
+      "git",
+      "-C",
+      "/home/dev/Projects/starshine-master-base",
+      "grep",
+      "-n",
+      "-E",
+      "gcFrameConservativeMasks",
+      "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+      "--"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  }
+]
