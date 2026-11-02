@@ -1,0 +1,4 @@
+=== RUN   TestGCExternConversionAcrossReferenceTables
+--- PASS: TestGCExternConversionAcrossReferenceTables (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.007s

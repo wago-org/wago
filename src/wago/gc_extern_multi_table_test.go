@@ -37,7 +37,8 @@ func TestGCExternConversionAcrossReferenceTables(t *testing.T) {
 	}
 	// The first instruction publishing a converted object targets table 0.
 	// The unsupported adapter must reject it before modifying any table.
-	if runtime.GOOS == "darwin" {
+	// RV64 uses compact references; other targets need opaque store hooks.
+	if runtime.GOARCH != "riscv64" && !compiledConversionStoreHooks(compiled) {
 		before := make([][]byte, 3)
 		for i := range before {
 			before[i] = bytes.Clone(inst.tableDescriptor(i))
