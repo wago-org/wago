@@ -3,14 +3,23 @@
 package wago
 
 type gcConversionIdentity struct{}
-type gcConversionCore struct{}
+type gcConversionCore struct{ owner *Instance }
 type gcConversionContainer struct{}
 
-func bindGCConversionCore(*Instance) error                 { return nil }
-func closeGCConversionCoreLocked(*gcExternConversionState) {}
+func bindGCConversionCore(in *Instance) error {
+	if s := in.existingGCExternConversionState(); s != nil {
+		s.core = &gcConversionCore{owner: in}
+	}
+	return nil
+}
+func closeGCConversionCoreLocked(s *gcExternConversionState) { s.core = nil }
 func publishGCConversionTable(s *gcRefTestTableState, table, index, old, word uint64, publish func() error) error {
-	if err := unsupportedConversionWord(s.Conversion.store, word); err != nil {
-		return err
+	// The legacy transaction is sufficient for a table physically owned by
+	// its publisher. Imported storage must never rely on that publisher's root.
+	if core := s.Conversion.core; core != nil && table < uint64(core.owner.c.tableImportCount()) {
+		if err := unsupportedConversionWord(s.Conversion.store, word); err != nil {
+			return err
+		}
 	}
 	return s.Conversion.publishExternReplacement(old, word, publish)
 }
