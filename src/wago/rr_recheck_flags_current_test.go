@@ -2,4 +2,6 @@
 
 package wago
 
-func rrConversionOnly(entry *referenceStoreInstance) bool { return entry.conversionOnlyInvocationDomains }
+func rrConversionOnly(entry *referenceStoreInstance) bool {
+	return entry.conversionOnlyInvocationDomains
+}
