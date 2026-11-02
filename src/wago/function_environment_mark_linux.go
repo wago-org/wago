@@ -12,8 +12,9 @@ import (
 var errManagedFunctionMarkChanged = errors.New("managed function ownership changed during joint mark")
 
 type managedFunctionSlot struct {
-	kind  gc.SlotKind
-	index uint32
+	collector *gc.Collector // explicit domain: a container owner may have no collector
+	kind      gc.SlotKind
+	index     uint32
 }
 
 type managedFunctionObjectWork struct {
@@ -56,7 +57,7 @@ type managedFunctionMark struct {
 // collector roots to its physical owner's conditional roots. Public token and
 // host argument slots must never be bound here. Slot indexes are append-only.
 func (s *managedFunctionCollector) bindPersistentSlot(owner *Instance, kind gc.SlotKind, index uint32) error {
-	if owner == nil || owner.gc != s.collector || owner.refStore != s.graph.store {
+	if owner == nil || owner.refStore != s.graph.store {
 		return fmt.Errorf("managed function slot has a different collector or Runtime")
 	}
 	if _, err := s.collector.PersistentSlotRef(kind, index); err != nil {
@@ -84,7 +85,7 @@ func (s *managedFunctionCollector) bindPersistentSlot(owner *Instance, kind gc.S
 		return nil
 	}
 	rows[index] = member
-	member.slots = append(member.slots, managedFunctionSlot{kind, index})
+	member.slots = append(member.slots, managedFunctionSlot{collector: s.collector, kind: kind, index: index})
 	s.graph.epoch.Add(1)
 	return nil
 }
@@ -233,7 +234,7 @@ func (m *managedFunctionMark) step(budget uint32) (uint32, bool, error) {
 			owner := m.owners[m.ownerAt]
 			if m.ownerSlot < len(owner.slots) {
 				slot := owner.slots[m.ownerSlot]
-				d := m.byCollector[owner.owner.gc]
+				d := m.byCollector[slot.collector]
 				if d == nil {
 					return used, false, fmt.Errorf("owner root has no participating collector")
 				}
@@ -357,11 +358,11 @@ func (m *managedFunctionMark) collect() error {
 		if m.live[member] {
 			continue
 		}
-		d := m.byCollector[member.owner.gc]
-		if d == nil && len(member.slots) != 0 {
-			return fmt.Errorf("owner slots have no participating collector")
-		}
 		for _, slot := range member.slots {
+			d := m.byCollector[slot.collector]
+			if d == nil {
+				return fmt.Errorf("owner slot has no participating collector")
+			}
 			var err error
 			if slot.kind == gc.SlotGlobal {
 				err = d.state.collector.SetGlobalSlot(slot.index, gc.Null())
