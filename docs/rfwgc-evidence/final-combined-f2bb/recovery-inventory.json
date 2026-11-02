@@ -1,0 +1,228 @@
+[
+  {
+    "gate": "catalog-ordinary",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "197f739b7f0bc6fb92a83f31934f94c0a86240f378453fe31f8afe73eb32bba4",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "catalog-wago_regalloccheck",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "d36b6cfd30eca4e300cb4da597ae0b170596de39da7d46e615085448e3222091",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "catalog-wagodebug",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "b60444d400cfabdc090eb78fcbe1872c9991d14ec8aa7d291b2a93159b4faa16",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "early-discovery-ordinary",
+    "receipt_valid": false,
+    "exit": null,
+    "raw_sha256": "55c31dfc56f5a0606c60908dd9ea06fc528d5abc3a9c02048c42b785a0f7d77b",
+    "status": "INTERRUPTED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "early-replay-cipolicy-ordinary",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "f7679f5ca8da57e1afa6e1dc83f0543a6417cb75b43968278fb6ac746acfa259",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "early-replay-cipolicy-wago_regalloccheck",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "a730564ce1adc5ba8d583c6a0c85c43aeff6c59541325be9696c10d90dbed5b6",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "early-replay-cipolicy-wagodebug",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "d6f2b1fa2907af0b97c415216eeb0953ccbed97090016c50a9e9d10554dafd6e",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "early-replay-compile-ordinary",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "692c042234d90c1eed4e59899f1c277fbfdc2d33a17df1380cf24775391baaed",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "early-replay-compile-wago_regalloccheck",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "98fa7526dc489c9dba8f1a96a4560754533bb97d126f22edd801dad09083c4c0",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "early-replay-compile-wagodebug",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "8f7ccb97733c9692318e459d29ca19be373e16a48e2890c2456453adda18b931",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "early-replay-discovery-ordinary",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "55c31dfc56f5a0606c60908dd9ea06fc528d5abc3a9c02048c42b785a0f7d77b",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "early-replay-discovery-wago_regalloccheck",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "ca342b9f57785a859e90acb272d735370221ccaae3a8ca463f9c2c6dbf67a810",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "early-replay-discovery-wagodebug",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "03cd751a5ce5f8fb55f83c8eb7a619ce319c1ea6b47bfca3f95a35dc3fafaf68",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "full-root-replay-ordinary",
+    "receipt_valid": false,
+    "exit": null,
+    "raw_sha256": "99024a1d9aee2290ddd8b778ac0cbb9cc5f1d7e7b8459014dea3b8bea4216a4d",
+    "status": "INTERRUPTED",
+    "raw_fail_lines": [
+      "{\"Time\":\"2026-11-02T05:24:05.43292162Z\",\"Action\":\"fail\",\"Package\":\"github.com/wago-org/wago/cli/manager/internal/standalone\",\"Test\":\"TestTinyGoForeignStackGCInterruption/wagodebug\",\"Elapsed\":43.01}"
+    ]
+  },
+  {
+    "gate": "full-step-0",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "8c86b89a137ec4fbe08c60337219de57af461bdfff30090eeabd5df8a3320276",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "full-step-1",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "7a5b03a04b0dca77e73abd53190c8fb0957068bff3295cff563e703c6024fa06",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "full-step-2",
+    "receipt_valid": false,
+    "exit": null,
+    "raw_sha256": "c2f71366b16c56a31ef93b37385830d2f6f1d38a43d415ea881b1a37260a206c",
+    "status": "INTERRUPTED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "parent-race-reduced-ordinary",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "d9119507a7b29f1700ef5ab946bdb2f822a7ca1add94375543d2e31da41bc846",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "parent-race-reduced-wago_regalloccheck",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "054e9e19e3b745aa121d638a79ab57e31fd55395449b07eca207880d9c9d4d09",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "parent-race-reduced-wagodebug",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "f36d86d59a0390818fbe19849fc06768a0459c83719ab3d64a9832a616711f05",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "repair-census-ordinary",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "3e0ba323362c989cf98ef505ec511b3532a5d9fcf5860aed79e47981465b576f",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "repair-census-wago_regalloccheck",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "76ab2213a56c5edaf1bf0aa36aa676e677e2c995d86852a8693a6ebd568ffab2",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "repair-census-wagodebug",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "9e16fc4470b82677b14a464f1dc8fc9cc568bab5e1d81d93ba619630e57e8211",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "version-go",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "version-node",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "6a0cec2e157365c1a8ac6d1715733b7c3321a7c5565862a701ca71ef00359d04",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "version-ocaml",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "18ac9b658e25d14212772d36407e0faf612281f83d6d1aa3b698bb6a1f59e52c",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "version-tinygo",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "ba20ab3c07a98ec81ee682d57218300d755e14a480ec11129a55714c78c0af02",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  },
+  {
+    "gate": "version-wabt",
+    "receipt_valid": true,
+    "exit": 0,
+    "raw_sha256": "c2601ed6a60da949eef7fe69539703c387aa3b41544dd15f574763471b0bd26e",
+    "status": "COMPLETED",
+    "raw_fail_lines": []
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "pin": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "evidence_head": "6bd79ae0403ed75e7f20489d93d731ce9a42baeb",
+  "source": "/tmp/wago-final-f2bb-n11khnr8/source",
+  "scratch": "/tmp/wago-final-f2bb-n11khnr8",
+  "archive_sha256": "bd0333284954e9a5d4833a5429b6b6f662765228a09423ad4c5e303bd57d5b12",
+  "v1": {
+    "pin": "a8bcbafe6d2fb191ce0188de0e18fdc107fa2598",
+    "archive_sha256": "9fdb20a38cc44eea2185cbd4770681c84a38f9ec25db4423d4a5b38f620c7e61"
+  },
+  "v2": {
+    "pin": "05ca4182176763112561ae20153975c12bd689e4",
+    "archive_sha256": "0e32b8c1ceaf635fa69bc0844506adf750e035dff6b4c8f0c1373d5462eaf3c1"
+  },
+  "v3": {
+    "pin": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+    "archive_sha256": "790a5674b5a59c743a8d96c22d064211357bc68037f25eceaf820234094b89aa"
+  }
+}
