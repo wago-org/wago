@@ -1,0 +1,29 @@
+{
+  "activation": "YES",
+  "execution_source": "21d7be58952b64435110246f65d44e11046c5083",
+  "harness_sha": "6d52c087f3136f0cb4d5457c733e1a92449df08b",
+  "workflow_baseline": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
+  "workflow_sha256": "f352281f3779615da24aa5ddf99a420d6007d94f2887f80352d48423f99ca0e6",
+  "source_is_ancestor_of_harness": true,
+  "revision_sha256sum": "pass",
+  "source_review_sha256sums": "pass",
+  "cross_build_targets": 15,
+  "cross_build_targets_unique": 15,
+  "cross_build_failures": 0,
+  "continuation_controls": 6,
+  "continuation_commands_per_control": 26,
+  "continuation_aggregate_failure_preserved": true,
+  "test_commands": 87,
+  "job_minute_ceiling": 1173,
+  "native_execution": "NOT_RUN",
+  "native_closure": "PENDING",
+  "artifact_on_external_cancellation": "NOT_GUARANTEED",
+  "findings": [],
+  "qualification_limits": [
+    "historical native results do not transfer",
+    "all three native Darwin modes including ordinary remain mandatory",
+    "native reservation race and established two-result diagnostics remain pending",
+    "all broad Darwin and Windows receipts remain pending",
+    "native ARM and TinyGo contracts are unchanged but not equivalent evidence"
+  ]
+}
