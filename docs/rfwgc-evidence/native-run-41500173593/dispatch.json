@@ -1,0 +1,27 @@
+{
+  "run_id": 41500173593,
+  "url": "https://github.com/wago-org/wago/actions/runs/41500173593",
+  "source": "21d7be58952b64435110246f65d44e11046c5083",
+  "harness": "6d52c087f3136f0cb4d5457c733e1a92449df08b",
+  "ref": "qualification/rfwgc-darwin-6d52c087f",
+  "modes": [
+    "wagodebug",
+    "wago_regalloccheck",
+    "ordinary"
+  ],
+  "status_at_record": "queued",
+  "created_at": "2026-11-02T18:23:51Z",
+  "recorded_at": "2026-11-02T18:24:09.152173+00:00",
+  "authorization": "Owner explicitly directed full three-mode redispatch at these exact historical pins despite parallel audit",
+  "known_blocker": "Mode-independent archived Go package discovery defect confirmed by 41490640588 ordinary; root qualification expected to fail. Reported before and immediately after dispatch.",
+  "audit_commit": "889b46c45fc54e2fb4b4617eb0c5cc5f54de5db7",
+  "superseded_run": {
+    "id": 41500038996,
+    "cancel_requested": true,
+    "status": "in_progress",
+    "conclusion": null
+  },
+  "ceiling_job_minutes": 1173,
+  "measurements": false,
+  "verdict": "PENDING_NATIVE_EXECUTION; known packaging blocker, no approval"
+}
