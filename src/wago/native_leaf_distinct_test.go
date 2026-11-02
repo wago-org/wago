@@ -107,8 +107,25 @@ func TestNativeLeafDistinctDifferentialRoutes(t *testing.T) {
 					if name == "run" || name == "tail" {
 						args = append(args, 0xaabbccddfffffffd)
 					}
+					// Direct entries bypass control-frame staging. Poison the
+					// packed import/shape word to prove native execution, while
+					// the independently forced generic oracle must stage it.
+					const marker = uint64(0xfefdfcfbfaf9f8f7)
+					if name == "run" {
+						for _, in := range instances {
+							binary.LittleEndian.PutUint64(in.ctrl[wruntime.HostCtrlImportIndexOffset:], marker)
+						}
+					}
 					want, werr := instances[0].Invoke(name, args...)
 					got, gerr := instances[1].Invoke(name, args...)
+					if name == "run" {
+						for index, in := range instances {
+							unchanged := binary.LittleEndian.Uint64(in.ctrl[wruntime.HostCtrlImportIndexOffset:]) == marker
+							if unchanged != (index == 1 && !codeProfileEnabled) {
+								t.Fatalf("direct route staging unchanged=%t instance=%d", unchanged, index)
+							}
+						}
+					}
 					if !reflect.DeepEqual(got, want) || fmt.Sprint(gerr) != fmt.Sprint(werr) {
 						t.Fatalf("%s(%x): native=%x,%v generic=%x,%v", name, args, got, gerr, want, werr)
 					}
