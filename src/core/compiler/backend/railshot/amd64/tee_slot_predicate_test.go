@@ -10,6 +10,7 @@ import (
 )
 
 func TestTeeSlotPredicateExecution(t *testing.T) {
+	useEstablishedScalarPath(t)
 	requireCompilerDiagnostics(t)
 	old := teeSlotPredicateEnabled
 	defer func() { teeSlotPredicateEnabled = old }()
