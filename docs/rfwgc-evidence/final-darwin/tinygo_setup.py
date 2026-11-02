@@ -21,7 +21,7 @@ p.add_argument('--tinygo-sha256', required=True)
 a = p.parse_args()
 if (platform.system(), platform.machine()) != ('Darwin', 'arm64'):
     p.error('requires actual Darwin arm64')
-validate(os.environ.get('QUALIFICATION_SOURCE', ''), os.environ.get('QUALIFICATION_DRIVER', ''))
+validate(os.environ.get('QUALIFICATION_SOURCE', ''), os.environ.get('QUALIFICATION_DRIVER', ''), os.environ.get('QUALIFICATION_HARNESS', ''))
 root = a.source.resolve()
 if capture(['git','rev-parse','HEAD'],root) != SPEC['source'] or capture(['git','status','--porcelain'],root):
     p.error('requires clean pinned source')

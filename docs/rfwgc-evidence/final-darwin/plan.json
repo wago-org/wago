@@ -1,6 +1,6 @@
 {
-  "source": "da19f1a8d29fec7305d937a42622a198b8e79717",
-  "evidence": "Historical recipes only; native qualification NOT_RUN at da19f1a8d29fec7305d937a42622a198b8e79717",
+  "source": "7e41fafbbcd737ed1edce11b94b43b4eda134dcf",
+  "evidence": "Exact committed source including namespace, validation-ordering and installer checksum repairs; native execution NOT_RUN.",
   "lanes": [
     {
       "id": "full-root-replay-ordinary",
@@ -1680,24 +1680,16 @@
       ]
     }
   ],
-  "scope": "51 replay commands plus 12 explicit official-spec commands; not complete Darwin qualification.",
+  "scope": "63 unchanged broad recipes + 9 narrow commands + 3 expanded Darwin focused commands + 3 baseline graph commands + 3 Windows contract commands = 81 go test commands (81 paired census commands), all within existing 1080 Mac + 90 Windows job-minute ceilings; ARM lane unchanged at 138.",
   "unmet_gaps": [
     {
       "gap": "TinyGo Darwin patched runtime",
-      "status": "NOT_RUN; setup supplement prepared, native verification still required"
-    },
-    {
-      "gap": "Generated graph baseline comparison",
-      "status": "NOT_RUN; candidate hashed adapter prepared; baseline separate export remains required"
-    },
-    {
-      "gap": "H6 Linux host ownership graph",
-      "status": "INTENTIONALLY_UNSUPPORTED on Darwin; no tag-only adapter permitted"
+      "status": "OPEN: separately reviewed native toolpatch archive and hash required; not executed by this workflow"
     },
     {
       "gap": "Darwin platform census",
       "status": "REQUIRES_REVIEW after execution"
     }
   ],
-  "supplement_revision": "revision-da19f1a8d"
+  "supplement_revision": "revision-7e41"
 }

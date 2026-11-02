@@ -1,0 +1,3 @@
+# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
+/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-3242/_fixtures/design_invocation_snapshot_test.go:66:4: undefined: awaitGCLifecycle
+/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-3242/_fixtures/rr_retirement_test.go:286:2: undefined: awaitGCLifecycle

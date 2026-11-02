@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/tmp/wago-darwin-7e41-source/src/wago/qualification_supplement_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/windows_admission_test.go"
+  }
+}

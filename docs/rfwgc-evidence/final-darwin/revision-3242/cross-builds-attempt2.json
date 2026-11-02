@@ -1,0 +1,43 @@
+[
+  {
+    "mode": "ordinary",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-overlay=/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-3242/candidate-overlay.json",
+      "-o",
+      "/tmp/wago-darwin-3242-preparation/candidate-ordinary.test",
+      "./src/wago"
+    ],
+    "exit_code": 0
+  },
+  {
+    "mode": "wagodebug",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-overlay=/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-3242/candidate-overlay.json",
+      "-tags=wagodebug",
+      "-o",
+      "/tmp/wago-darwin-3242-preparation/candidate-wagodebug.test",
+      "./src/wago"
+    ],
+    "exit_code": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-overlay=/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-3242/candidate-overlay.json",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/tmp/wago-darwin-3242-preparation/candidate-wago_regalloccheck.test",
+      "./src/wago"
+    ],
+    "exit_code": 0
+  }
+]

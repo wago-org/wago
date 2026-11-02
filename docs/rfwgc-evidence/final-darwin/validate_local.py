@@ -18,7 +18,7 @@ import discriminators
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 MODES = ['ordinary', 'wagodebug', 'wago_regalloccheck']
-BASE = 'e8af5e012'
+BASE = '6c71c4d6747456578f55928e900e36bb2d1449a8'
 
 
 def run(argv, **kwargs):
@@ -31,7 +31,7 @@ def main():
     report = {'darwin_execution': 'NOT_RUN', 'darwin_compile_only': 'NOT_RUN'}
     plan = json.loads((HERE / 'plan.json').read_text())
     report['source'] = plan['source']
-    report['driver_files_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in [HERE/'plan.json', HERE/'identity.py', HERE/'contracts.py', HERE/'run.py', HERE/'setup.sh', HERE/'tinygo_setup.py', HERE/'discriminators.py', HERE/'validate_local.py', ROOT/'.github/workflows/ci.yml', ROOT/'tests/integration/cipolicy/workflows_test.go', contracts.REV/'contracts.json']}
+    report['driver_files_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in [HERE/'plan.json', HERE/'identity.py', HERE/'contracts.py', HERE/'run.py', HERE/'setup.sh', HERE/'tinygo_setup.py', HERE/'discriminators.py', HERE/'validate_local.py', HERE/'validate_exports.py', HERE/'validate_broad_tags.py', ROOT/'.github/workflows/ci.yml', ROOT/'tests/integration/cipolicy/workflows_test.go', contracts.REV/'contracts.json']}
     assert len(plan['lanes']) == 63
     for lane in plan['lanes']:
         receipt = ROOT / lane['receipt']
@@ -50,7 +50,7 @@ def main():
         run(['git', '-C', tmp, '-c', 'user.name=Harness test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'])
         head = run(['git', '-C', tmp, 'rev-parse', 'HEAD'])['stdout'].strip()
         with patch.object(identity, 'HERE', folder):
-            assert identity.validate(plan['source'], head)['driver'] == head
+            assert identity.validate(plan['source'], head, head)['driver'] == head
             for source, driver in [('main', head), (plan['source'][:9], head), ('0'*40, head), (plan['source'], 'main'), (plan['source'], '0'*40)]:
                 try:
                     identity.validate(source, driver)
@@ -82,19 +82,18 @@ def main():
     # Ignore trailing comments separating jobs. Every normal job body remains identical.
     def body(s):
         return re.sub(r'\n(?:  #.*\n|\s*\n)*\Z', '\n', s)
-    for name in before.keys() - {'changes', 'ci-ok'}:
-        assert body(before[name]) == body(after[name]), name
-    normal = "github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification"
-    assert after['changes'] == before['changes'].replace("if: github.event_name != 'pull_request' || !github.event.pull_request.draft", f"if: ({normal}) && (github.event_name != 'pull_request' || !github.event.pull_request.draft)")
-    assert 'default: false' in current
-    assert "if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification" in after['darwin-qualification']
-    assert "group: ci-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && '-darwin-qualification' || '' }}" in current
-    # Remove special summary step/guards/dependency to recover the exact old contract.
-    summary = after['ci-ok']
+    for name in before.keys() - {'darwin-qualification', 'windows-qualification'}:
+        actual = after[name].replace('    timeout-minutes: 3\n', '', 1) if name == 'darwin-qualification-summary' else after[name]
+        assert body(before[name]) == body(actual), name
+    assert "default: 'f2bb" not in current
+    assert "QUALIFICATION_HARNESS: ${{ inputs.harness_sha }}" in after['darwin-qualification']
+    concurrency = lambda text: text.split('concurrency:\n', 1)[1].split('\nenv:',1)[0]
+    assert concurrency(current) == concurrency(baseline)
+    assert 'timeout-minutes: 360' in after['darwin-qualification']
+    assert 'timeout-minutes: 30' in after['windows-qualification']
+    assert 'timeout-minutes: 45' in after['native-arm64-rr3']
+    assert 'timeout-minutes: 3' in after['darwin-qualification-summary']
     special = after['darwin-qualification-summary'].split('    steps:\n', 1)[1]
-    assert 'name: Non-Linux qualification summary' in after['darwin-qualification-summary']
-    assert "'Full CI not run (non-Linux dispatch)' || 'CI'" in summary
-    assert f'if: always() && ({normal})' in summary
     script = textwrap.dedent(special.split('        run: |\n', 1)[1])
     with tempfile.TemporaryDirectory() as tmp:
         checked = []
@@ -112,10 +111,7 @@ def main():
                     checked.append({'darwin': darwin, 'windows': windows, 'normal': normal_state, 'accepted': expected})
         report['explicit_summary_states'] = checked
     report['special_summary_states'] = 'PASS: only both native matrices successful with all normal jobs skipped accepted'
-    summary = re.sub(r"    name: .*\n    if: always\(\) && .*\n", "    name: CI\n    if: always()\n", summary, count=1)
-    summary = summary.replace('        if: ' + normal + '\n', '').replace(', darwin-qualification, windows-qualification, darwin-qualification-summary]', ']')
-    assert summary == before['ci-ok']
-    report['workflow_contracts'] = 'PASS: unchanged normal job bodies/planner; aggregate additionally awaits skipped special jobs; dispatch-only isolation and concurrency suffix'
+    report['workflow_contracts'] = 'PASS: every normal and native ARM64 job and concurrency group unchanged from 6c71; Darwin source default requires explicit input; ARM 138, Mac 1080 and Windows 90 job-minute ceilings unchanged'
     report['planner_all_modes'] = []
     for mode in MODES:
         tags = [] if mode == 'ordinary' else ['-tags=' + mode]
@@ -129,7 +125,7 @@ def main():
         report['planner_all_modes'].append(run(['go', 'run', *tags, './tests/tools/ci-plan', 'verify'], cwd=ROOT, env=env))
     report['workflow_lint'] = run(['go', 'run', 'github.com/rhysd/actionlint/cmd/actionlint@v1.7.7', '.github/workflows/ci.yml'], cwd=ROOT)
     report['shell_syntax'] = run(['bash', '-n', str(HERE / 'setup.sh')])
-    for name in ['identity.py', 'run.py', 'contracts.py', 'validate_local.py', 'tinygo_setup.py', 'discriminators.py']:
+    for name in ['identity.py', 'run.py', 'contracts.py', 'validate_local.py', 'tinygo_setup.py', 'discriminators.py', 'validate_exports.py', 'validate_broad_tags.py']:
         compile((HERE / name).read_text(), str(HERE / name), 'exec')
     report['python_syntax'] = 'PASS'
     spec = contracts.SPEC
@@ -145,11 +141,37 @@ def main():
     assert excerpt.count('.WithOptimization("gc-lifetime-analyze", true)') == 1
     excerpt = excerpt.replace('.WithOptimization("gc-lifetime-analyze", true)', '')
     assert (contracts.REV/'_fixtures/graph_test.go').read_text() == excerpt
+    for name, fixture in spec['darwin_test_overlays'].items():
+        original = subprocess.check_output(['git','show', plan['source']+':'+name], cwd=ROOT, text=True)
+        actual = (contracts.REV/fixture).read_text()
+        if name.endswith(('design_repair_unsupported_test.go','design_repair_unsupported_token_test.go')):
+            for old, replacements in spec['migration'].items():
+                if 'func '+old+'(' in original:
+                    assert 'func '+old+'(' in actual
+                    for test in replacements:
+                        assert 't.Run("'+test+'", '+test+')' in actual
+        elif name.endswith('gc_lifecycle_regression_test.go'):
+            assert 'func awaitGCLifecycle'+original.split('func awaitGCLifecycle',1)[1].split('\nfunc Test',1)[0] in actual
+        else:
+            adapted = original.replace('//go:build linux && (amd64 || arm64)', '//go:build darwin && arm64', 1)
+            assert actual == run(['gofmt'], input=adapted)['stdout']
+    for requested in ['', 'main', '0'*40]:
+        try: identity.validate(plan['source'], '1'*40, requested)
+        except ValueError: pass
+        else: raise AssertionError('bad explicit harness pin accepted')
+    baseline_events = [{'Test':'TestRFWStage3MeasurementGuest','Action':'pass'}]+[{'Test':n,'Action':'pass'} for n in spec['baseline_graph_subtests']]
+    assert contracts.census(baseline_events, 'darwin', True)
+    assert not contracts.census(baseline_events[:-1], 'darwin', True)
+    assert not contracts.census(baseline_events+[baseline_events[-1]], 'darwin', True)
+    assert not contracts.census(baseline_events+[{'Test':'TestRFWStage3MeasurementGuest/graph/true','Action':'pass'}], 'darwin', True)
     for target in ['darwin','windows']:
         events = [{'Test': name, 'Action': 'pass'} for name in spec['tests'][target]]
         if target == 'darwin':
             events += [{'Test': name, 'Action': 'pass'} for name in spec['graph_subtests']]
+            events += [{'Test': old+'/'+test, 'Action': 'pass'} for old, tests in spec['migration'].items() for test in tests]
         assert contracts.census(events, target)
+        if target == 'darwin':
+            assert not contracts.census(events[:-1], target)
         assert not contracts.census(events[1:], target)
         assert not contracts.census(events+[{'Action':'skip','Test':'unexpected'}], target)
         assert not contracts.census(events+[events[0]], target)

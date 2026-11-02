@@ -1,0 +1,15 @@
+{
+  "Replace": {
+    "/tmp/wago-darwin-7e41-source/src/wago/design_repair_unsupported_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/design_repair_unsupported_test.go",
+    "/tmp/wago-darwin-7e41-source/src/wago/design_repair_unsupported_token_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/design_repair_unsupported_token_test.go",
+    "/tmp/wago-darwin-7e41-source/src/wago/rr_recheck_adversary_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/rr_recheck_adversary_test.go",
+    "/tmp/wago-darwin-7e41-source/src/wago/rr_recheck_flags_current_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/rr_recheck_flags_current_test.go",
+    "/tmp/wago-darwin-7e41-source/src/wago/rr_recheck_handoff_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/rr_recheck_handoff_test.go",
+    "/tmp/wago-darwin-7e41-source/src/wago/rr_retirement_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/rr_retirement_test.go",
+    "/tmp/wago-darwin-7e41-source/src/wago/design_invocation_snapshot_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/design_invocation_snapshot_test.go",
+    "/tmp/wago-darwin-7e41-source/src/wago/design_recheck_adversary_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/design_recheck_adversary_test.go",
+    "/tmp/wago-darwin-7e41-source/src/wago/design_repair_admission_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/design_repair_admission_test.go",
+    "/tmp/wago-darwin-7e41-source/src/wago/gc_lifecycle_regression_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/gc_lifecycle_helper_test.go",
+    "/tmp/wago-darwin-7e41-source/src/wago/qualification_supplement_test.go": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-darwin/revision-7e41/_fixtures/graph_test.go"
+  }
+}

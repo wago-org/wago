@@ -26,13 +26,13 @@ on:
         type: boolean
         default: false
       harness_sha:
-        description: 'Full reviewed workflow/harness SHA, required for native ARM64 RR3'
+        description: 'Full reviewed workflow/harness SHA, required for manual qualification'
         type: string
         default: ''
       source_sha:
         description: 'Exact reviewed source SHA; used only for manual qualification'
         type: string
-        default: 'f2bb27287220783e86a4ead41fee78693a5129de'
+        default: ''
 
 permissions:
   contents: read
@@ -1436,9 +1436,11 @@ jobs:
         mode: [ordinary, wagodebug, wago_regalloccheck]
     env:
       GOTOOLCHAIN: local
+      GOENV: 'off'
       PYTHONDONTWRITEBYTECODE: '1'
       QUALIFICATION_SOURCE: ${{ inputs.source_sha }}
       QUALIFICATION_DRIVER: ${{ github.sha }}
+      QUALIFICATION_HARNESS: ${{ inputs.harness_sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -1454,6 +1456,11 @@ jobs:
           ref: ${{ inputs.source_sha }}
           path: source
           submodules: recursive
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: a3c08365f531eb3c9003e3acf3e0a822c12c31f4
+          path: baseline
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
@@ -1473,6 +1480,12 @@ jobs:
         run: >-
           python3 harness/docs/rfwgc-evidence/final-darwin/contracts.py
           source contracts-${{ matrix.mode }} --target darwin --mode ${{ matrix.mode }}
+      - name: Execute bounded identical baseline graphs
+        if: ${{ !cancelled() && steps.darwin-setup.outcome == 'success' }}
+        timeout-minutes: 20
+        run: >-
+          python3 harness/docs/rfwgc-evidence/final-darwin/contracts.py
+          baseline baseline-${{ matrix.mode }} --target darwin --mode ${{ matrix.mode }} --baseline
       - name: Execute correctness and retain census
         if: ${{ !cancelled() && steps.darwin-setup.outcome == 'success' }}
         run: >-
@@ -1482,11 +1495,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: darwin-da19f1a8d-${{ matrix.mode }}-${{ github.run_attempt }}
+          name: darwin-ownership-${{ matrix.mode }}-${{ github.run_attempt }}
           path: |
             setup-receipts
             receipts-${{ matrix.mode }}
             contracts-${{ matrix.mode }}
+            baseline-${{ matrix.mode }}
           if-no-files-found: error
           retention-days: 7
 
@@ -1504,9 +1518,11 @@ jobs:
         shell: bash
     env:
       GOTOOLCHAIN: local
+      GOENV: 'off'
       PYTHONDONTWRITEBYTECODE: '1'
       QUALIFICATION_SOURCE: ${{ inputs.source_sha }}
       QUALIFICATION_DRIVER: ${{ github.sha }}
+      QUALIFICATION_HARNESS: ${{ inputs.harness_sha }}
     steps:
       - name: Preserve Git blob bytes for hash validation
         run: git config --global core.autocrlf false
@@ -1527,14 +1543,15 @@ jobs:
           go-version: '1.27.1'
           cache: false
       - name: Execute admitted native storage contracts
-        run: >-
-          python harness/docs/rfwgc-evidence/final-darwin/contracts.py
-          source contracts-${{ matrix.mode }} --target windows --mode ${{ matrix.mode }}
+        run: |
+          export GOROOT="$(go env GOROOT)"
+          python harness/docs/rfwgc-evidence/final-darwin/contracts.py \
+            source contracts-${{ matrix.mode }} --target windows --mode ${{ matrix.mode }}
       - name: Retain failures and exact census
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: windows-da19f1a8d-${{ matrix.mode }}-${{ github.run_attempt }}
+          name: windows-ownership-${{ matrix.mode }}-${{ github.run_attempt }}
           path: contracts-${{ matrix.mode }}
           if-no-files-found: error
           retention-days: 7
@@ -1543,6 +1560,7 @@ jobs:
   # skipped jobs are accepted only when the profile did not expect them.
   darwin-qualification-summary:
     name: Non-Linux qualification summary
+    timeout-minutes: 3
     if: always() && github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && !inputs.native_arm64_rr3
     needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification, windows-qualification]
     runs-on: ubuntu-latest

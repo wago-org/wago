@@ -1,0 +1,9 @@
+{
+  "source": "3242c18a19620aa77f39dd63cb5cd7544d4ca70a",
+  "initial_head": "b33f0f5c53e6e6fe50a86be5afac373484a08d30",
+  "ancestry": {
+    "3f6161883": true,
+    "d6f4e94fe": true
+  },
+  "private_export": "/tmp/wago-darwin-3242-preparation/source"
+}
