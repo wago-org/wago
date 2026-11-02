@@ -218,3 +218,11 @@ Skips:
 
 Scratch archives are outside the repository. No production edits, pushes,
 PRs, subagents or closures were made. The commit contains only this directory.
+
+## Archive packaging correction
+
+The archived probes now reside in `_probes/` so Go package discovery does not
+compile them outside src/wago. Their bytes are unchanged; SHA256SUMS updates
+only their relative paths. Historical logs and source references retain their
+original names. Durable copies in src/wago remain executable regression tests.
+This packaging repair does not alter runtime behavior.

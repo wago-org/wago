@@ -1,0 +1,43 @@
+{
+  "probe_hashes_unchanged": {
+    "design_review_probe_test.go": "6a77cce48864cb4377f8e00d419f1952178b131da80633f4d6789af9193fe6df",
+    "design_review_cross_runtime_probe_test.go": "e409a71d1dd97b4839a793c93df55b54bdaf77ccd046c85e1b1bbb3d83145bf1"
+  },
+  "checks": [
+    {
+      "mode": "ordinary",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "list",
+        "./..."
+      ],
+      "exit": 0,
+      "package_count": 187,
+      "archived_probe_package_present": false
+    },
+    {
+      "mode": "wagodebug",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "list",
+        "-tags=wagodebug",
+        "./..."
+      ],
+      "exit": 0,
+      "package_count": 187,
+      "archived_probe_package_present": false
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "list",
+        "-tags=wago_regalloccheck",
+        "./..."
+      ],
+      "exit": 0,
+      "package_count": 187,
+      "archived_probe_package_present": false
+    }
+  ]
+}
