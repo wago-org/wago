@@ -1,0 +1,92 @@
+[
+  {
+    "file": "fixtures-baseline-ordinary/graph.wasm",
+    "sha256": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+    "kind": "actual WasmGC chain"
+  },
+  {
+    "file": "fixtures-baseline-ordinary/noGC.wasm",
+    "sha256": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0",
+    "kind": "no-GC control"
+  },
+  {
+    "file": "fixtures-baseline-ordinary/scalar.wasm",
+    "sha256": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+    "kind": "scalar control"
+  },
+  {
+    "file": "fixtures-baseline-wago_regalloccheck/graph.wasm",
+    "sha256": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+    "kind": "actual WasmGC chain"
+  },
+  {
+    "file": "fixtures-baseline-wago_regalloccheck/noGC.wasm",
+    "sha256": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0",
+    "kind": "no-GC control"
+  },
+  {
+    "file": "fixtures-baseline-wago_regalloccheck/scalar.wasm",
+    "sha256": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+    "kind": "scalar control"
+  },
+  {
+    "file": "fixtures-baseline-wagodebug/graph.wasm",
+    "sha256": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+    "kind": "actual WasmGC chain"
+  },
+  {
+    "file": "fixtures-baseline-wagodebug/noGC.wasm",
+    "sha256": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0",
+    "kind": "no-GC control"
+  },
+  {
+    "file": "fixtures-baseline-wagodebug/scalar.wasm",
+    "sha256": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+    "kind": "scalar control"
+  },
+  {
+    "file": "fixtures-port-ordinary/graph.wasm",
+    "sha256": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+    "kind": "actual WasmGC chain"
+  },
+  {
+    "file": "fixtures-port-ordinary/noGC.wasm",
+    "sha256": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0",
+    "kind": "no-GC control"
+  },
+  {
+    "file": "fixtures-port-ordinary/scalar.wasm",
+    "sha256": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+    "kind": "scalar control"
+  },
+  {
+    "file": "fixtures-port-wago_regalloccheck/graph.wasm",
+    "sha256": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+    "kind": "actual WasmGC chain"
+  },
+  {
+    "file": "fixtures-port-wago_regalloccheck/noGC.wasm",
+    "sha256": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0",
+    "kind": "no-GC control"
+  },
+  {
+    "file": "fixtures-port-wago_regalloccheck/scalar.wasm",
+    "sha256": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+    "kind": "scalar control"
+  },
+  {
+    "file": "fixtures-port-wagodebug/graph.wasm",
+    "sha256": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+    "kind": "actual WasmGC chain"
+  },
+  {
+    "file": "fixtures-port-wagodebug/noGC.wasm",
+    "sha256": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0",
+    "kind": "no-GC control"
+  },
+  {
+    "file": "fixtures-port-wagodebug/scalar.wasm",
+    "sha256": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+    "kind": "scalar control"
+  }
+]

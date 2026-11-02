@@ -1,5 +1,10 @@
 [
   {
+    "command": "corpus-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "parent-race-reduced-wago_regalloccheck/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
     "unchanged": true
@@ -10,8 +15,28 @@
     "unchanged": true
   },
   {
+    "command": "fuzz-30s-FuzzValidateRelativePathAndRustScannerDoNotPanic/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "race-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "full-step-2/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
+    "unchanged": true
+  },
+  {
+    "command": "hardening-wago_regalloccheck,wago_guardpage/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "replay-actionlint/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
     "unchanged": true
   },
   {
@@ -20,8 +45,143 @@
     "unchanged": true
   },
   {
+    "command": "native-join-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "guard-corpus-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "replay-docs/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "shared-scalar-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v3-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-1/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-3/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tinygo-complete-0/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "profile-metadata-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-build-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-10/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "profile-runtime-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "fuzz-FuzzStructCardDifferential/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "shared-scalar-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-script-ci-download-go-modules.sh/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "fuzz-FuzzValidateRelativePathAndRustScannerDoNotPanic/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "guard-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-script-check-regalloc-code.sh/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "early-replay-cipolicy-ordinary/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
+    "unchanged": true
+  },
+  {
+    "command": "nested-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "replay-build-release-assets.sh/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "collector-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "continuation-6/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v3-signals-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "installer-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "graphs-baseline-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "target-family-h6/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "cli-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
     "unchanged": true
   },
   {
@@ -30,13 +190,98 @@
     "unchanged": true
   },
   {
+    "command": "fuzz-30s-FuzzSpecTrapMatchingDoesNotPanic/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "fuzz-FuzzNormalizeWABTJSONDoesNotPanic/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "host-transition-wago_guardpage/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "fuzz-FuzzSpecTrapMatchingDoesNotPanic/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "race-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "hardening-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "replay-ci-download-go-modules.sh/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "collector-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "repair-census-ordinary/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
     "unchanged": true
   },
   {
+    "command": "target-family-guest/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v3-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "host-transition-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "graphs-port-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "fuzz-30s-FuzzDecodeValidateByteBackedDifferentialGenerated/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v2-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v2-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "catalog-wago_regalloccheck/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-8/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "seeded-concurrency-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
     "unchanged": true
   },
   {
@@ -50,8 +295,83 @@
     "unchanged": true
   },
   {
+    "command": "recovery-step-0/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "baseline-corpus-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "runtime-cli-build-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "version-ocaml/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
+    "unchanged": true
+  },
+  {
+    "command": "backend-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "backend-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "installer-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v2-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "baseline-corpus-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "graphs-baseline-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "seeded-concurrency-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "runtime-cli-build-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-vet-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "race-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "graphs-port-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "corpus-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
     "unchanged": true
   },
   {
@@ -60,13 +380,93 @@
     "unchanged": true
   },
   {
+    "command": "diagnostics-default-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "early-replay-discovery-wagodebug/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
     "unchanged": true
   },
   {
+    "command": "diagnostics-default-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v3-signals-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "runtime-cli-build-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "collector-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-script-check-riscv64-diagnostics.sh/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "nested-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "cli-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "replay-generated-diff/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "hardening-wago_guardpage/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "native-join-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-script-release-qualification.sh/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "batch-tinygo-0/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "full-root-replay-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "catalog-ordinary/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-node-engine-state-oracle/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v3-signals-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
     "unchanged": true
   },
   {
@@ -80,8 +480,48 @@
     "unchanged": true
   },
   {
+    "command": "continuation-5/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v1-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "profile-runtime-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "installer-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-node-update-website-bench/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "full-root-replay-ordinary/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
+    "unchanged": true
+  },
+  {
+    "command": "target-family-facade/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-build-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "baseline-canonical-checked-preflight/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
     "unchanged": true
   },
   {
@@ -90,8 +530,48 @@
     "unchanged": true
   },
   {
+    "command": "cli-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "target-family-rv64-controls/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-node-fuzz-engine-state/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v1-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "corpus-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v1-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "fuzz-FuzzDecodeValidateByteBackedDifferentialGenerated/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "early-replay-discovery-ordinary/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
+    "unchanged": true
+  },
+  {
+    "command": "profile-metadata-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
     "unchanged": true
   },
   {
@@ -100,8 +580,83 @@
     "unchanged": true
   },
   {
+    "command": "tooling-docs/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "fuzz-30s-FuzzNormalizeWABTJSONDoesNotPanic/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-5/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-native-compare/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "guard-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "continuation-1/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "replay-staticcheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "full-root-replay-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "early-replay-compile-ordinary/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
+    "unchanged": true
+  },
+  {
+    "command": "backend-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "hardening-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "native-join-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-vet-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "seeded-concurrency-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-2/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-6/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
     "unchanged": true
   },
   {
@@ -110,18 +665,78 @@
     "unchanged": true
   },
   {
+    "command": "guard-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "parent-race-reduced-wagodebug/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
     "unchanged": true
   },
   {
+    "command": "hardening-wagodebug,wago_guardpage/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "diagnostics-established-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "early-discovery-ordinary/command.json",
     "recorded": "798fe53884d9040b28bb1a4904c959d36f65fe715a77f7bbceb0790f83c6285d",
-    "unchanged": false
+    "unchanged": true
+  },
+  {
+    "command": "tooling-generate/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "shared-scalar-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "nested-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-4/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "diagnostics-established-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
   },
   {
     "command": "full-step-1/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
+    "unchanged": true
+  },
+  {
+    "command": "continuation-3/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "guard-corpus-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "graphs-port-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-script-check-diagnostic-dce.sh/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
     "unchanged": true
   },
   {
@@ -130,8 +745,173 @@
     "unchanged": true
   },
   {
+    "command": "tooling-script-build-release-assets.sh/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "resume-full-root-replay-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-staticcheck-bootstrap/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "hardening-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-portable-386/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "continuation-2/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-script-ci-riscv64/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
     "command": "version-node/command.json",
     "recorded": "2855058411b661762e0e26c8addc78195f3935c09312e77fdb5107280e3b1d2f",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-staticcheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-vet-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-node-update-website-startup/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-actionlint/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "replay-format/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "host-transition-wago_regalloccheck/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "fuzz-30s-FuzzStructCardDifferential/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "tooling-build-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-11/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "profile-runtime-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "guard-corpus-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "continuation-0/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "continuation-4/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "spec-v3-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "host-transition-wago_regalloccheck,wago_guardpage/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "host-transition-wagodebug,wago_guardpage/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "replay-release-qualification.sh/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "profile-metadata-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-7/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "host-transition-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "target-family-collector/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "baseline-corpus-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "diagnostics-established-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "recovery-step-9/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "diagnostics-default-ordinary/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
+    "unchanged": true
+  },
+  {
+    "command": "graphs-baseline-wagodebug/command.json",
+    "recorded": "1afd182fb4853692c04dcc7b6ccd09320cad8960bfefcf46a90ff53debb8a945",
     "unchanged": true
   },
   {
