@@ -1,0 +1,2726 @@
+[
+  {
+    "mode": "ordinary",
+    "lane": "cancellation-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-run=^(TestSharedEntryGuardCancellationAndGC)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {},
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "core3-child-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-run=^(TestWasmtimeCore3Corpus)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WASMTIME_CORE3_FIXTURE": "gc/const-expr-gc.wast",
+      "WAGO_REGRESSION_CHILD_PROTOCOL": "2",
+      "WAGO_REGRESSION_CHILD_NONCE": "00112233445566778899aabbccddeeff",
+      "WAGO_BOUNDS": "explicit"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WASMTIME_CORE3_FIXTURE": "gc/const-expr-gc.wast",
+      "WAGO_REGRESSION_CHILD_PROTOCOL": "2",
+      "WAGO_REGRESSION_CHILD_NONCE": "00112233445566778899aabbccddeeff",
+      "WAGO_BOUNDS": "explicit",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "repaired-contracts-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-run=^(TestExternrefGlobalHoldingConvertedGCReference|TestGCExternConversionAcrossReferenceTables|TestFixedSharedDirectGoImport|TestFixedSharedDirectGoCallerScope|TestFixedSharedDirectGoImportPolicy|TestSharedSingleEntryGuardAndGoFallback|TestSharedEntryRegisterResultAndGoFallback|TestSharedEntryRegisterArgumentAndGoFallback|TestSharedEntryGuardForeignFallback|TestSharedSingleNativePinsAndGoFallback)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {},
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 9,
+    "failure_events": 2,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "full-root-replay-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "./..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 27376,
+    "failure_events": 14,
+    "skip_events": 327
+  },
+  {
+    "mode": "ordinary",
+    "lane": "collector-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "./src/core/runtime/gc/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 2210,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "race-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-race",
+      "./src/core/runtime/gc/...",
+      "./src/core/runtime",
+      "./src/wago",
+      "./tests/integration/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 5859,
+    "failure_events": 2,
+    "skip_events": 19
+  },
+  {
+    "mode": "ordinary",
+    "lane": "guard-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage",
+      "./src/core/runtime",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 9143,
+    "failure_events": 11,
+    "skip_events": 35
+  },
+  {
+    "mode": "ordinary",
+    "lane": "backend-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "./src/core/compiler/backend/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 9301,
+    "failure_events": 0,
+    "skip_events": 225
+  },
+  {
+    "mode": "ordinary",
+    "lane": "cli-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_runtime",
+      "./cli/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 999,
+    "failure_events": 0,
+    "skip_events": 41
+  },
+  {
+    "mode": "ordinary",
+    "lane": "installer-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "./..."
+    ],
+    "cwd": "cli/wago-installer",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 1,
+    "passing_test_events": 0,
+    "failure_events": 1,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "corpus-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-run",
+      "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "cwd": "bench",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 880,
+    "failure_events": 0,
+    "skip_events": 12
+  },
+  {
+    "mode": "ordinary",
+    "lane": "guard-corpus-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage",
+      "-run",
+      "^(TestCorpus|TestJsonAsGuardCorrect)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "cwd": "bench",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 628,
+    "failure_events": 0,
+    "skip_events": 1
+  },
+  {
+    "mode": "ordinary",
+    "lane": "host-transition-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-count=3",
+      "-run",
+      "Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 48,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "hardening-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-count=3",
+      "./src/core/runtime/gc/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 6630,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "profile-runtime-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile",
+      "-run",
+      "^Test(CodeProfile|Profile|AdapterUnwind)",
+      "./src/wago",
+      "./src/core/compiler/backend/railshot/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 62,
+    "failure_events": 0,
+    "skip_events": 3
+  },
+  {
+    "mode": "ordinary",
+    "lane": "profile-metadata-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile",
+      "./internal/jitprofile",
+      "./profile",
+      "./internal/profcapture",
+      "./internal/profilecmd",
+      "./cli/internal/profiling"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 157,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "diagnostics-default-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 18139,
+    "failure_events": 34,
+    "skip_events": 38
+  },
+  {
+    "mode": "ordinary",
+    "lane": "diagnostics-established-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "0"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "0",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 18160,
+    "failure_events": 12,
+    "skip_events": 38
+  },
+  {
+    "mode": "ordinary",
+    "lane": "shared-scalar-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats",
+      "-run",
+      "^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 83,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "seeded-concurrency-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-run",
+      "^TestRuntimeConcurrency",
+      "./tests/integration/runtimeconcurrency"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_CONCURRENCY_SEED": "439000001,439000019,439000043,439000081",
+      "WAGO_CONCURRENCY_ROUNDS": "24"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_CONCURRENCY_SEED": "439000001,439000019,439000043,439000081",
+      "WAGO_CONCURRENCY_ROUNDS": "24",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 24,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "spec-v1-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v1",
+      "WAGO_SPEC_VERSION": "1.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v1",
+      "WAGO_SPEC_VERSION": "1.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "spec-v2-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v2",
+      "WAGO_SPEC_VERSION": "2.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v2",
+      "WAGO_SPEC_VERSION": "2.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "spec-v3-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v3",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 0,
+    "failure_events": 2,
+    "skip_events": 0
+  },
+  {
+    "mode": "ordinary",
+    "lane": "spec-v3-signals-ordinary",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v3",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 0,
+    "failure_events": 2,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "cancellation-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wago_regalloccheck",
+      "-run=^(TestSharedEntryGuardCancellationAndGC)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {},
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "core3-child-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wago_regalloccheck",
+      "-run=^(TestWasmtimeCore3Corpus)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WASMTIME_CORE3_FIXTURE": "gc/const-expr-gc.wast",
+      "WAGO_REGRESSION_CHILD_PROTOCOL": "2",
+      "WAGO_REGRESSION_CHILD_NONCE": "00112233445566778899aabbccddeeff",
+      "WAGO_BOUNDS": "explicit"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WASMTIME_CORE3_FIXTURE": "gc/const-expr-gc.wast",
+      "WAGO_REGRESSION_CHILD_PROTOCOL": "2",
+      "WAGO_REGRESSION_CHILD_NONCE": "00112233445566778899aabbccddeeff",
+      "WAGO_BOUNDS": "explicit",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "repaired-contracts-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wago_regalloccheck",
+      "-run=^(TestExternrefGlobalHoldingConvertedGCReference|TestGCExternConversionAcrossReferenceTables|TestFixedSharedDirectGoImport|TestFixedSharedDirectGoCallerScope|TestFixedSharedDirectGoImportPolicy|TestSharedSingleEntryGuardAndGoFallback|TestSharedEntryRegisterResultAndGoFallback|TestSharedEntryRegisterArgumentAndGoFallback|TestSharedEntryGuardForeignFallback|TestSharedSingleNativePinsAndGoFallback)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {},
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 9,
+    "failure_events": 2,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "full-root-replay-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 33399,
+    "failure_events": 14,
+    "skip_events": 327
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "collector-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime/gc/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 2210,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "race-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-race",
+      "./src/core/runtime/gc/...",
+      "./src/core/runtime",
+      "./src/wago",
+      "./tests/integration/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 5859,
+    "failure_events": 2,
+    "skip_events": 19
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "guard-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck,wago_guardpage",
+      "./src/core/runtime",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 9143,
+    "failure_events": 11,
+    "skip_events": 35
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "backend-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 9980,
+    "failure_events": 0,
+    "skip_events": 225
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "cli-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_runtime,wago_regalloccheck",
+      "./cli/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 999,
+    "failure_events": 0,
+    "skip_events": 41
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "installer-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": "cli/wago-installer",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 1,
+    "passing_test_events": 0,
+    "failure_events": 1,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "corpus-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-run",
+      "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "cwd": "bench",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 880,
+    "failure_events": 0,
+    "skip_events": 12
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "guard-corpus-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage,wago_regalloccheck",
+      "-run",
+      "^(TestCorpus|TestJsonAsGuardCorrect)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "cwd": "bench",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 628,
+    "failure_events": 0,
+    "skip_events": 1
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "host-transition-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-count=3",
+      "-run",
+      "Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 48,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "hardening-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-count=3",
+      "./src/core/runtime/gc/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 6630,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "profile-runtime-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile,wago_regalloccheck",
+      "-run",
+      "^Test(CodeProfile|Profile|AdapterUnwind)",
+      "./src/wago",
+      "./src/core/compiler/backend/railshot/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 62,
+    "failure_events": 0,
+    "skip_events": 3
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "profile-metadata-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile,wago_regalloccheck",
+      "./internal/jitprofile",
+      "./profile",
+      "./internal/profcapture",
+      "./internal/profilecmd",
+      "./cli/internal/profiling"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 157,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "diagnostics-default-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wago_regalloccheck",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 18818,
+    "failure_events": 34,
+    "skip_events": 38
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "diagnostics-established-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wago_regalloccheck",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "0"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "0",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 18839,
+    "failure_events": 12,
+    "skip_events": 38
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "shared-scalar-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wago_regalloccheck",
+      "-run",
+      "^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 85,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "seeded-concurrency-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-run",
+      "^TestRuntimeConcurrency",
+      "./tests/integration/runtimeconcurrency"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_CONCURRENCY_SEED": "439000001,439000019,439000043,439000081",
+      "WAGO_CONCURRENCY_ROUNDS": "24"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_CONCURRENCY_SEED": "439000001,439000019,439000043,439000081",
+      "WAGO_CONCURRENCY_ROUNDS": "24",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 24,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v1-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v1",
+      "WAGO_SPEC_VERSION": "1.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v1",
+      "WAGO_SPEC_VERSION": "1.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v2-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v2",
+      "WAGO_SPEC_VERSION": "2.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v2",
+      "WAGO_SPEC_VERSION": "2.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v3-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_regalloccheck",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v3",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 0,
+    "failure_events": 2,
+    "skip_events": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "lane": "spec-v3-signals-wago_regalloccheck",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage,wago_regalloccheck",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v3",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 0,
+    "failure_events": 2,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "cancellation-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wagodebug",
+      "-run=^(TestSharedEntryGuardCancellationAndGC)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {},
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "core3-child-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wagodebug",
+      "-run=^(TestWasmtimeCore3Corpus)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WASMTIME_CORE3_FIXTURE": "gc/const-expr-gc.wast",
+      "WAGO_REGRESSION_CHILD_PROTOCOL": "2",
+      "WAGO_REGRESSION_CHILD_NONCE": "00112233445566778899aabbccddeeff",
+      "WAGO_BOUNDS": "explicit"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WASMTIME_CORE3_FIXTURE": "gc/const-expr-gc.wast",
+      "WAGO_REGRESSION_CHILD_PROTOCOL": "2",
+      "WAGO_REGRESSION_CHILD_NONCE": "00112233445566778899aabbccddeeff",
+      "WAGO_BOUNDS": "explicit",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "repaired-contracts-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-v",
+      "-count=1",
+      "-timeout=30s",
+      "-tags=wagodebug",
+      "-run=^(TestExternrefGlobalHoldingConvertedGCReference|TestGCExternConversionAcrossReferenceTables|TestFixedSharedDirectGoImport|TestFixedSharedDirectGoCallerScope|TestFixedSharedDirectGoImportPolicy|TestSharedSingleEntryGuardAndGoFallback|TestSharedEntryRegisterResultAndGoFallback|TestSharedEntryRegisterArgumentAndGoFallback|TestSharedEntryGuardForeignFallback|TestSharedSingleNativePinsAndGoFallback)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {},
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 9,
+    "failure_events": 2,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "full-root-replay-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "./..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 27449,
+    "failure_events": 14,
+    "skip_events": 336
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "collector-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "./src/core/runtime/gc/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 2292,
+    "failure_events": 0,
+    "skip_events": 3
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "race-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-race",
+      "./src/core/runtime/gc/...",
+      "./src/core/runtime",
+      "./src/wago",
+      "./tests/integration/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 5941,
+    "failure_events": 2,
+    "skip_events": 22
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "guard-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug,wago_guardpage",
+      "./src/core/runtime",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 9143,
+    "failure_events": 11,
+    "skip_events": 35
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "backend-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "./src/core/compiler/backend/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 9301,
+    "failure_events": 0,
+    "skip_events": 225
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "cli-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_runtime,wagodebug",
+      "./cli/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 999,
+    "failure_events": 0,
+    "skip_events": 41
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "installer-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "./..."
+    ],
+    "cwd": "cli/wago-installer",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 1,
+    "passing_test_events": 0,
+    "failure_events": 1,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "corpus-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-run",
+      "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "cwd": "bench",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 880,
+    "failure_events": 0,
+    "skip_events": 12
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "guard-corpus-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage,wagodebug",
+      "-run",
+      "^(TestCorpus|TestJsonAsGuardCorrect)$",
+      "./suite",
+      "-args",
+      "-wago.corpus=all"
+    ],
+    "cwd": "bench",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 628,
+    "failure_events": 0,
+    "skip_events": 1
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "host-transition-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-count=3",
+      "-run",
+      "Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 48,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "hardening-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-count=3",
+      "./src/core/runtime/gc/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "explicit",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 6876,
+    "failure_events": 0,
+    "skip_events": 9
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "profile-runtime-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile,wagodebug",
+      "-run",
+      "^Test(CodeProfile|Profile|AdapterUnwind)",
+      "./src/wago",
+      "./src/core/compiler/backend/railshot/..."
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS_WITH_SKIPS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 62,
+    "failure_events": 0,
+    "skip_events": 3
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "profile-metadata-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_profile,wagodebug",
+      "./internal/jitprofile",
+      "./profile",
+      "./internal/profcapture",
+      "./internal/profilecmd",
+      "./cli/internal/profiling"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 157,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "diagnostics-default-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wagodebug",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 18130,
+    "failure_events": 34,
+    "skip_events": 44
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "diagnostics-established-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wagodebug",
+      "./src/core/compiler/backend/...",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "0"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "0",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 18151,
+    "failure_events": 12,
+    "skip_events": 44
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "shared-scalar-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_codegenstats,wagodebug",
+      "-run",
+      "^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)",
+      "./src/core/compiler/backend/railshot/...",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SHARED_SCALAR": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 83,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "seeded-concurrency-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-run",
+      "^TestRuntimeConcurrency",
+      "./tests/integration/runtimeconcurrency"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_CONCURRENCY_SEED": "439000001,439000019,439000043,439000081",
+      "WAGO_CONCURRENCY_ROUNDS": "24"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_CONCURRENCY_SEED": "439000001,439000019,439000043,439000081",
+      "WAGO_CONCURRENCY_ROUNDS": "24",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 24,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v1-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v1",
+      "WAGO_SPEC_VERSION": "1.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v1",
+      "WAGO_SPEC_VERSION": "1.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v2-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v2",
+      "WAGO_SPEC_VERSION": "2.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v2",
+      "WAGO_SPEC_VERSION": "2.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "PASS",
+    "exit_code": 0,
+    "census_exit_code": 0,
+    "passing_test_events": 1,
+    "failure_events": 0,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v3-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wagodebug",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v3",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 0,
+    "failure_events": 2,
+    "skip_events": 0
+  },
+  {
+    "mode": "wagodebug",
+    "lane": "spec-v3-signals-wagodebug",
+    "argv": [
+      "go",
+      "test",
+      "-json",
+      "-count=1",
+      "-timeout=60m",
+      "-tags=wago_guardpage,wagodebug",
+      "-run",
+      "^TestSpecSuiteExec$",
+      "./src/wago"
+    ],
+    "cwd": ".",
+    "environment": {
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+    },
+    "effective_environment": {
+      "GOTOOLCHAIN": "local",
+      "WAGO_WAST2JSON": "/Users/runner/work/wago/wago/source/.tools/wabt-1.0.41-macos-arm64/bin/wast2json",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "WAGO_SPEC_INTERPRETER": "/Users/runner/work/wago/wago/source/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+      "WAGO_WABT_VERSION": "1.0.41",
+      "WAGO_APP_CORPUS_REFERENCE": "all",
+      "WAGO_CORPUS_TIMEOUT": "1m",
+      "WAGO_BOUNDS": "signals",
+      "WAGO_SPEC_VERSION": "3.0",
+      "WAGO_SPECTEST_DIR": "/Users/runner/work/wago/wago/source/tests/conformance/spec-v3",
+      "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1",
+      "GOMAXPROCS": "2"
+    },
+    "status": "FAIL",
+    "exit_code": 1,
+    "census_exit_code": 0,
+    "passing_test_events": 0,
+    "failure_events": 2,
+    "skip_events": 0
+  }
+]

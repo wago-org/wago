@@ -1,0 +1,11 @@
+{
+  "patterns": [
+    "gh[pousr]_[A-Za-z0-9]{20,}",
+    "github_pat_[A-Za-z0-9_]{20,}",
+    "-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----",
+    "(?i)AUTHORIZATION: basic (?!\\*\\*\\*)[^\\s]+",
+    "(?i)https://[^\\s/:]+:[^\\s/@]+@"
+  ],
+  "matches": [],
+  "limitation": "Known-pattern scan only; existing GitHub masking preserved."
+}

@@ -1,0 +1,758 @@
+[
+  {
+    "root": "/home/dev/Projects/slipstream",
+    "head": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+    "tracked_status": " M experiment.md\n",
+    "files": {
+      "src/host_moonbit.goose": {
+        "sha256": "f3ca77445a8702646014c80dd86fe55f5ae14d180b587180e59762115e836b50",
+        "same_as_prior_audit": true,
+        "relevant_lines": [
+          {
+            "line": 3,
+            "text": "// Instance-owned externrefs. These records share the existing resource table,"
+          },
+          {
+            "line": 17,
+            "text": "    let resource = host_resource(rt, token & 4294967295);"
+          },
+          {
+            "line": 18,
+            "text": "    if resource == 0 { rt.trap = 11; return 0; }"
+          },
+          {
+            "line": 19,
+            "text": "    if ss_load64(resource) != kind { rt.trap = 11; return 0; }"
+          },
+          {
+            "line": 20,
+            "text": "    return resource;"
+          },
+          {
+            "line": 113,
+            "text": "    let resource = host_fd(rt, ss_load64(selected));"
+          },
+          {
+            "line": 114,
+            "text": "    if resource == 0 { return 0, 0, 4; }"
+          },
+          {
+            "line": 115,
+            "text": "    if ss_load64(resource + 16) & right != right { return 0, 0, 37; }"
+          },
+          {
+            "line": 120,
+            "text": "    return ss_load64(resource + 8), offset, 0;"
+          }
+        ]
+      },
+      "src/host_common.goose": {
+        "sha256": "a48cbc97e183bfe977e525f5b68d27dc21a780e8ffc8dd21b6e2c84c63d17b8f",
+        "same_as_prior_audit": true,
+        "relevant_lines": [
+          {
+            "line": 10,
+            "text": "var next_host_owner: u64 = 1;"
+          },
+          {
+            "line": 13,
+            "text": "extern fn ss_host_ignore_sigpipe() -> i64;"
+          },
+          {
+            "line": 22,
+            "text": "extern fn ss_host_open_directory(path: const u8[:]) -> i64;"
+          },
+          {
+            "line": 23,
+            "text": "extern fn ss_host_fstat(fd: u64, output: u64[:]) -> i64;"
+          },
+          {
+            "line": 24,
+            "text": "extern fn ss_host_address() -> u64;"
+          },
+          {
+            "line": 25,
+            "text": "extern fn ss_host_syscall(number: u64, a: u64, b: u64, c: u64, d: u64, e: u64, f: u64) -> i64;"
+          },
+          {
+            "line": 26,
+            "text": "extern fn ss_host_clock(which: u64, output: u64[:]) -> i64;"
+          },
+          {
+            "line": 27,
+            "text": "extern fn ss_host_resolution(which: u64, output: u64[:]) -> i64;"
+          },
+          {
+            "line": 28,
+            "text": "extern fn ss_host_random_word(output: u64[:]) -> i64;"
+          },
+          {
+            "line": 29,
+            "text": "extern fn ss_host_sleep(which: u64, flags: u64, request: u64[:]) -> i64;"
+          },
+          {
+            "line": 31,
+            "text": "// Header: resource base, next monotonic slot, instance identity. Resources are"
+          },
+          {
+            "line": 38,
+            "text": "        let resource = base + (i as u64) * 64;"
+          },
+          {
+            "line": 39,
+            "text": "        if ss_load64(resource) == 1 { ss_host_syscall(3, ss_load64(resource + 8), 0, 0, 0, 0, 0); ss_store64(resource, 0); }"
+          },
+          {
+            "line": 40,
+            "text": "        else if ss_load64(resource) == 2 { ss_jit_free(ss_load64(resource + 32), 4194304); ss_store64(resource, 0); }"
+          },
+          {
+            "line": 41,
+            "text": "        else if ss_load64(resource) == 12 { ss_host_syscall(3, ss_load64(resource + 8), 0, 0, 0, 0, 0); ss_jit_free(ss_load64(resource + 32), 65536); ss_store64(resource, 0); }"
+          },
+          {
+            "line": 42,
+            "text": "        else if ss_load64(resource) >= 3 { if ss_load64(resource + 24) != 0 { ss_jit_free(ss_load64(resource + 8), ss_load64(resource + 24)); } ss_store64(resource, 0); }"
+          },
+          {
+            "line": 56,
+            "text": "fn host_resource(rt: Runtime&, handle: u64) -> u64 {"
+          },
+          {
+            "line": 60,
+            "text": "    let resource = ss_load64(rt.host) + slot * 64;"
+          },
+          {
+            "line": 61,
+            "text": "    if ss_load64(resource) == 0 { return 0; }"
+          },
+          {
+            "line": 62,
+            "text": "    return resource;"
+          },
+          {
+            "line": 65,
+            "text": "    let resource = host_resource(rt, handle);"
+          },
+          {
+            "line": 66,
+            "text": "    if resource == 0 || ss_load64(resource) != 1 { return 0; }"
+          },
+          {
+            "line": 67,
+            "text": "    return resource;"
+          },
+          {
+            "line": 72,
+            "text": "    let resource = ss_load64(rt.host) + slot * 64;"
+          },
+          {
+            "line": 73,
+            "text": "    ss_store64(resource, 1); ss_store64(resource + 8, descriptor); ss_store64(resource + 16, rights);"
+          },
+          {
+            "line": 76,
+            "text": "    if ss_host_fstat(descriptor, status) == 0 && status[3] & 61440 == 16384 { ss_store64(resource + 40, 1); }"
+          },
+          {
+            "line": 77,
+            "text": "    ss_store64(resource + 24, (if flags & 1024 != 0 { 1 as u64 } else { 0 as u64 }) | (if flags & 2048 != 0 { 2 as u64 } else { 0 as u64 }));"
+          }
+        ]
+      },
+      "src/jit_platform.goose": {
+        "sha256": "aabd9c61d430fff434ac0aa161ce83d03fb84f327368b8c83c08b3b4bd535427",
+        "same_as_prior_audit": true,
+        "relevant_lines": [
+          {
+            "line": 30,
+            "text": "    // share the registry cell, while exception_owner names the node whose top"
+          },
+          {
+            "line": 32,
+            "text": "    exception_owner: u64 = 0, exception_registry: u64 = 0,"
+          },
+          {
+            "line": 44,
+            "text": "// Opaque host externrefs use bit 63. Managed anyrefs externalized into an"
+          },
+          {
+            "line": 45,
+            "text": "// externref use bit 62 and carry a compact collector word in the low 32 bits."
+          },
+          {
+            "line": 64,
+            "text": "extern fn ss_load64(address: u64) -> u64;"
+          },
+          {
+            "line": 65,
+            "text": "extern fn ss_load32(address: u64) -> u64;"
+          },
+          {
+            "line": 66,
+            "text": "extern fn ss_load16(address: u64) -> u64;"
+          },
+          {
+            "line": 67,
+            "text": "extern fn ss_load8(address: u64) -> u64;"
+          },
+          {
+            "line": 68,
+            "text": "extern fn ss_store64(address: u64, value: u64);"
+          },
+          {
+            "line": 69,
+            "text": "extern fn ss_store32(address: u64, value: u64);"
+          },
+          {
+            "line": 70,
+            "text": "extern fn ss_store16(address: u64, value: u64);"
+          },
+          {
+            "line": 71,
+            "text": "extern fn ss_store8(address: u64, value: u64);"
+          },
+          {
+            "line": 74,
+            "text": "extern fn ss_atomic_compare_exchange(address: u64, width: u64, expected: u64, replacement: u64) -> u64;"
+          },
+          {
+            "line": 75,
+            "text": "extern fn ss_futex_wait(address: u64, expected: u64, timeout_ns: i64) -> i64;"
+          },
+          {
+            "line": 76,
+            "text": "extern fn ss_futex_wake(address: u64, count: u64) -> i64;"
+          },
+          {
+            "line": 77,
+            "text": "extern fn ss_move_bytes(dst: u64, src: u64, size: u64);"
+          },
+          {
+            "line": 78,
+            "text": "extern fn ss_fill_bytes(dst: u64, value: u64, size: u64);"
+          },
+          {
+            "line": 79,
+            "text": "extern fn ss_read_region(fd: i64, destination: u64, size: u64, offset: u64) -> i64;"
+          },
+          {
+            "line": 80,
+            "text": "extern fn ss_slice_pointer(bytes: u8[:]) -> u64;"
+          },
+          {
+            "line": 81,
+            "text": "extern fn ss_bind_tables(rt: Runtime&, tables: RuntimeTable[:]);"
+          },
+          {
+            "line": 82,
+            "text": "extern fn ss_bind_data(rt: Runtime&, data: DataSegment[:]);"
+          },
+          {
+            "line": 83,
+            "text": "extern fn ss_bind_elements(rt: Runtime&, elements: ElementSegment[:]);"
+          },
+          {
+            "line": 84,
+            "text": "extern fn ss_bind_types(rt: Runtime&, types: u32[:]);"
+          },
+          {
+            "line": 85,
+            "text": "extern fn ss_runtime_address() -> u64;"
+          },
+          {
+            "line": 86,
+            "text": "extern fn ss_gc_address() -> u64;"
+          },
+          {
+            "line": 87,
+            "text": "extern fn ss_gc_retain_owned_pointer(runtime: u64, rt: Runtime&) -> bool;"
+          },
+          {
+            "line": 88,
+            "text": "extern fn ss_gc_release_owned_pointer(runtime: u64, rt: Runtime&) -> bool;"
+          },
+          {
+            "line": 89,
+            "text": "extern fn ss_gc_failed_runtime_reachable_pointer(runtime: u64, rt: Runtime&) -> bool;"
+          },
+          {
+            "line": 90,
+            "text": "extern fn ss_gc_close_pointer(runtime: u64) -> bool;"
+          },
+          {
+            "line": 91,
+            "text": "extern fn ss_gc_constant_op_pointer(runtime: u64, rt: Runtime&, op: u32, base: u64, count: u64, imm: u64) -> u64;"
+          },
+          {
+            "line": 92,
+            "text": "extern fn ss_value_pointer(values: Value[:]) -> u64;"
+          },
+          {
+            "line": 93,
+            "text": "extern fn ss_exception_address() -> u64;"
+          },
+          {
+            "line": 94,
+            "text": "extern fn ss_float_address() -> u64;"
+          },
+          {
+            "line": 96,
+            "text": "extern fn ss_jit_cpu_features() -> u32;"
+          },
+          {
+            "line": 97,
+            "text": "extern fn ss_float(op: u32, a: u64, b: u64) -> u64;"
+          },
+          {
+            "line": 98,
+            "text": "extern fn ss_simd_address() -> u64;"
+          },
+          {
+            "line": 99,
+            "text": "extern fn ss_runtime_pointer(rt: Runtime&) -> u64;"
+          },
+          {
+            "line": 100,
+            "text": "extern fn ss_bind_refs(rt: Runtime&, refs: u64[:]);"
+          },
+          {
+            "line": 101,
+            "text": "extern fn ss_bind_global_refs(rt: Runtime&, refs: u64[:]);"
+          },
+          {
+            "line": 102,
+            "text": "extern fn ss_bind_table_refs(rt: Runtime&, refs: u64[:]);"
+          },
+          {
+            "line": 103,
+            "text": "extern fn ss_bind_functions(rt: Runtime&, functions: u64[:], globals: u64[:]);"
+          },
+          {
+            "line": 104,
+            "text": "extern fn ss_table_pointer(tables: RuntimeTable[:], index: u64) -> u64;"
+          },
+          {
+            "line": 105,
+            "text": "extern fn ss_copy_words(address: u64, words: const u64[:]);"
+          },
+          {
+            "line": 106,
+            "text": "extern fn ss_jit_invoke(rt: Runtime&, transfer: u64[:]) -> i64;"
+          },
+          {
+            "line": 107,
+            "text": "extern fn ss_jit_alloc(size: u64) -> u64;"
+          },
+          {
+            "line": 108,
+            "text": "extern fn ss_jit_reserve(size: u64) -> u64;"
+          },
+          {
+            "line": 109,
+            "text": "extern fn ss_jit_resize(address: u64, old_size: u64, new_size: u64) -> u64;"
+          },
+          {
+            "line": 110,
+            "text": "extern fn ss_jit_free(address: u64, size: u64) -> i64;"
+          },
+          {
+            "line": 111,
+            "text": "extern fn ss_jit_copy(address: u64, bytes: const u8[:]);"
+          },
+          {
+            "line": 112,
+            "text": "extern fn ss_jit_seal(address: u64, size: u64) -> i64;"
+          },
+          {
+            "line": 115,
+            "text": "extern fn ss_jit_enter(runtime: Runtime&, functions: const u64[:], globals: u64[:], transfer: u64[:]) -> i64;"
+          }
+        ]
+      },
+      "src/jit_compiler.goose": {
+        "sha256": "4146defaaab6a4032f183d24a9dded7d1263faff20332cbc1f75fc4e4c4177a9",
+        "same_as_prior_audit": true,
+        "relevant_lines": [
+          {
+            "line": 34,
+            "text": "// Exact maps distinguish compact managed words, exnrefs and externrefs."
+          },
+          {
+            "line": 50,
+            "text": "    // Plain host externrefs need no counts, but an extern slot in a Store with"
+          },
+          {
+            "line": 51,
+            "text": "    // a collector may later carry an externalized managed handle. This is a"
+          },
+          {
+            "line": 52,
+            "text": "    // Store property: a later GC module can import an earlier extern table."
+          },
+          {
+            "line": 972,
+            "text": "    // rax is the written SLOT address; r10 holds destination generation."
+          },
+          {
+            "line": 1196,
+            "text": "    // Incremental young-generation census (gc/native.goose N_YOUNG_AGE):"
+          },
+          {
+            "line": 1245,
+            "text": "    // Incremental young-generation census (gc/native.goose N_YOUNG_AGE):"
+          },
+          {
+            "line": 1638,
+            "text": "    // exception_owner is the append-only field at offset 488."
+          },
+          {
+            "line": 2488,
+            "text": "    // These borrowed fields must never outlive the attempt's local owners."
+          }
+        ]
+      }
+    },
+    "analogous_implementation_search": {
+      "pattern": "opaque converted publication|setConversionGlobalPublic|initializeConversionReceipts|direct Go import local-state join differs",
+      "exit": 1,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "root": "/home/dev/Projects/starshine-mb",
+    "head": "b28144a7c50f1dc360825f7f68220022101b9921",
+    "tracked_status": " M ffi/src/ffi/export-names.generated.json\n M ffi/src/ffi/export-schema.generated.json\n M ffi/src/ffi/exports.generated.mbt\n M ffi/src/ffi/moon.pkg\n M ffi/src/ffi/unsupported.generated.json\n M ffi/src/npm/generated.mbt\n M ffi/src/npm/moon.pkg\n M ffi/src/npm/unsupported-abi-policy.json\n M node/binary.d.ts\n M node/binary.js\n M node/cli.d.ts\n M node/cli.js\n M node/internal/generated/cmd.generated.d.ts\n M node/internal/generated/cmd.generated.js\n M node/lib.d.ts\n M node/lib.js\n M node/passes.d.ts\n M node/passes.js\n M node/validate.d.ts\n M node/validate.js\n M node/wast.js\n M node/wat.js\n M src/binary/pkg.generated.mbti\n M src/binary_fuzz/pkg.generated.mbti\n M src/bitset/pkg.generated.mbti\n M src/cli-benchmarks/pkg.generated.mbti\n M src/cli/pkg.generated.mbti\n M src/cmd/pkg.generated.mbti\n M src/diff/pkg.generated.mbti\n M src/ffi_bridge/pkg.generated.mbti\n M src/fuzz/pkg.generated.mbti\n M src/ir/pkg.generated.mbti\n M src/lib/pkg.generated.mbti\n M src/passes/pkg.generated.mbti\n M src/representation/pkg.generated.mbti\n M src/rume/pkg.generated.mbti\n M src/validate/pkg.generated.mbti\n M src/validate_proof/pkg.generated.mbti\n M src/validate_trace/pkg.generated.mbti\n M src/wast/pkg.generated.mbti\n M src/wat/pkg.generated.mbti\n",
+    "files": {
+      "scripts/lib/optimizer-runtime-executor.ts": {
+        "sha256": "cc1a70c626a3876e5e20db9d792d6ad35c2f1b3e301a446e80cf879d1a6a1ee5",
+        "same_as_prior_audit": true,
+        "relevant_lines": [
+          {
+            "line": 280,
+            "text": "  if ([\"funcref\", \"externref\", \"anyref\", \"eqref\", \"i31ref\", \"structref\", \"arrayref\"].includes(type)) return false;"
+          },
+          {
+            "line": 324,
+            "text": "    nullable: elementType === \"funcref\" || elementType === \"externref\" || form.includes(\"ref null\"),"
+          },
+          {
+            "line": 342,
+            "text": "  return [\"funcref\", \"externref\", \"anyref\", \"eqref\", \"i31ref\", \"structref\", \"arrayref\"].includes(table.elementType)"
+          },
+          {
+            "line": 410,
+            "text": "  const resources: ResourceTypeMaps = {"
+          },
+          {
+            "line": 439,
+            "text": "        resources.functions.set(index, signature);"
+          },
+          {
+            "line": 443,
+            "text": "        resources.globals.set(index, global);"
+          },
+          {
+            "line": 447,
+            "text": "        resources.memories.set(index, memory);"
+          },
+          {
+            "line": 451,
+            "text": "        resources.tables.set(index, table);"
+          },
+          {
+            "line": 466,
+            "text": "      resources.functions.set("
+          },
+          {
+            "line": 471,
+            "text": "    else if (form.startsWith(\"(global \")) resources.globals.set(index, globalTypeFromForm(form));"
+          },
+          {
+            "line": 472,
+            "text": "    else if (form.startsWith(\"(memory \")) resources.memories.set(index, memoryTypeFromForm(form));"
+          },
+          {
+            "line": 473,
+            "text": "    else if (form.startsWith(\"(table \")) resources.tables.set(index, tableTypeFromForm(form));"
+          },
+          {
+            "line": 490,
+            "text": "      const signature = resources.functions.get(index) ?? { params: [], results: [] };"
+          },
+          {
+            "line": 493,
+            "text": "      const globalType = resources.globals.get(index) ?? { valueType: \"unknown\", mutable: false };"
+          },
+          {
+            "line": 496,
+            "text": "      const memory = resources.memories.get(index);"
+          },
+          {
+            "line": 499,
+            "text": "      const table = resources.tables.get(index);"
+          },
+          {
+            "line": 511,
+            "text": "  if ([...resources.functions.values()].some((signature) => [...signature.params, ...signature.results].includes(\"v128\"))) features.add(\"simd\");"
+          },
+          {
+            "line": 512,
+            "text": "  if ([...resources.memories.values()].some((memory) => memory.memory64)) features.add(\"memory64\");"
+          },
+          {
+            "line": 513,
+            "text": "  if ([...resources.memories.values()].some((memory) => memory.shared)) features.add(\"threads\");"
+          },
+          {
+            "line": 514,
+            "text": "  if (resources.memories.size > 1) features.add(\"multi-memory\");"
+          },
+          {
+            "line": 515,
+            "text": "  if (resources.tables.size > 1) features.add(\"multi-table\");"
+          },
+          {
+            "line": 516,
+            "text": "  if ([...resources.globals.values()].some((global) => isReferenceType(global.valueType)) || [...resources.tables.values()].some((table) => isReferenceType(table.elementType))) features.add(\"reference-types\");"
+          },
+          {
+            "line": 584,
+            "text": "      relation = `${typeof value === \"function\" ? \"funcref\" : \"externref\"}:${relations.size}`;"
+          },
+          {
+            "line": 957,
+            "text": "  resources: RuntimeResources;"
+          },
+          {
+            "line": 962,
+            "text": "  readonly resources: RuntimeResources;"
+          },
+          {
+            "line": 963,
+            "text": "  constructor(message: string, original: unknown, resources: RuntimeResources) {"
+          },
+          {
+            "line": 967,
+            "text": "    this.resources = resources;"
+          },
+          {
+            "line": 1156,
+            "text": "  const resources = { globals, memories, tables, staticTableRelations };"
+          },
+          {
+            "line": 1164,
+            "text": "      resources,"
+          },
+          {
+            "line": 1173,
+            "text": "  return { instance, resources };"
+          },
+          {
+            "line": 1176,
+            "text": "function snapshotResources(resources: RuntimeResources, runtimeInterface: RuntimeInterfaceV1, options: NodeObservationV2Options): RuntimeStateSnapshotV2 {"
+          },
+          {
+            "line": 1178,
+            "text": "  const globals = [...resources.globals.entries()].sort(([left], [right]) => left - right).map(([index, global]) => {"
+          },
+          {
+            "line": 1189,
+            "text": "  const memories = [...resources.memories.entries()].sort(([left], [right]) => left - right).map(([index, memory]) => {"
+          },
+          {
+            "line": 1197,
+            "text": "  const tables = [...resources.tables.entries()].sort(([left], [right]) => left - right).map(([index, table]) => {"
+          },
+          {
+            "line": 1209,
+            "text": "      resources.staticTableRelations.get(index),"
+          },
+          {
+            "line": 1216,
+            "text": "  return snapshotResources(runtime.resources, runtimeInterface, options);"
+          },
+          {
+            "line": 1295,
+            "text": "    resources: emptyState(),"
+          },
+          {
+            "line": 1388,
+            "text": "      observation.resources = error instanceof RuntimeInstantiationFailure"
+          },
+          {
+            "line": 1389,
+            "text": "        ? snapshotResources(error.resources, runtimeInterface, options) : emptyState();"
+          },
+          {
+            "line": 1391,
+            "text": "        stateBefore: emptyState(), stateAfter: observation.resources, stateDelta: [], firstChangedResource: null,"
+          },
+          {
+            "line": 1399,
+            "text": "      ? snapshotResources(error.resources, runtimeInterface, options)"
+          },
+          {
+            "line": 1419,
+            "text": "    observation.resources = stateAfter;"
+          },
+          {
+            "line": 1456,
+            "text": "          const stateAfter = error instanceof RuntimeInstantiationFailure ? snapshotResources(error.resources, runtimeInterface, options) : emptyState();"
+          },
+          {
+            "line": 1460,
+            "text": "          observation.resources = stateAfter;"
+          },
+          {
+            "line": 1522,
+            "text": "  observation.resources = snapshotState(current, runtimeInterface, options);"
+          },
+          {
+            "line": 1523,
+            "text": "  observation.blockedReasons.push(...blockedReasons(observation.resources, options));"
+          },
+          {
+            "line": 1736,
+            "text": "    resources: emptyState(),"
+          }
+        ]
+      },
+      "src/wast/types.mbt": {
+        "sha256": "8dc7d68bc7aeb869ab5b04c1efe519575d9f6d3d284d0f7f490307e20850b563",
+        "same_as_prior_audit": true,
+        "relevant_lines": [
+          {
+            "line": 267,
+            "text": "  ExternConvertAny"
+          },
+          {
+            "line": 845,
+            "text": "    ExternConvertAny => logger.write_string(\"ExternConvertAny\")"
+          }
+        ]
+      },
+      "src/wast/lower_to_lib.mbt": {
+        "sha256": "8d4f822d9739712c742036ea222eee4b6a5b81c7a7141521a39eb097e7d4a94b",
+        "same_as_prior_audit": true,
+        "relevant_lines": [
+          {
+            "line": 79,
+            "text": "    NoExtern => Ok((@lib.HeapType::abs(@lib.AbsHeapType::no_extern()), false))"
+          },
+          {
+            "line": 107,
+            "text": "    ExternRef => Ok(@lib.ValType::externref())"
+          },
+          {
+            "line": 125,
+            "text": "            @lib.HeapType::abs(@lib.AbsHeapType::extern_()),"
+          },
+          {
+            "line": 161,
+            "text": "      Ok(Some(@lib.HeapType::abs(@lib.AbsHeapType::extern_())))"
+          },
+          {
+            "line": 1411,
+            "text": "    AnyConvertExtern => Ok(@lib.Instruction::any_convert_extern())"
+          },
+          {
+            "line": 1412,
+            "text": "    ExternConvertAny => Ok(@lib.Instruction::extern_convert_any())"
+          },
+          {
+            "line": 6317,
+            "text": "    #|    (param (ref any) (ref eq) (ref i31) (ref none) (ref nofunc) (ref noextern) (ref noexn))"
+          },
+          {
+            "line": 6318,
+            "text": "    #|    (result (ref null any) (ref null eq) (ref null i31) (ref null none) (ref null nofunc) (ref null noextern) (ref null noexn))"
+          },
+          {
+            "line": 6324,
+            "text": "    #|    (ref.null noextern)"
+          },
+          {
+            "line": 6366,
+            "text": "            @lib.HeapType::abs(@lib.AbsHeapType::no_extern()),"
+          },
+          {
+            "line": 6398,
+            "text": "            @lib.HeapType::abs(@lib.AbsHeapType::no_extern()),"
+          },
+          {
+            "line": 6425,
+            "text": "          @lib.HeapType::abs(@lib.AbsHeapType::no_extern()),"
+          },
+          {
+            "line": 6442,
+            "text": "    #|  (type $tag_t (func (param (ref null noextern))))"
+          },
+          {
+            "line": 6446,
+            "text": "    #|  (table 2 (ref null noextern))"
+          },
+          {
+            "line": 6467,
+            "text": "                    @lib.HeapType::abs(@lib.AbsHeapType::no_extern()),"
+          },
+          {
+            "line": 6526,
+            "text": "              @lib.HeapType::abs(@lib.AbsHeapType::no_extern()),"
+          },
+          {
+            "line": 6707,
+            "text": "    #|  (func (param externref externref i32 externref)"
+          },
+          {
+            "line": 6724,
+            "text": "    #|    any.convert_extern"
+          },
+          {
+            "line": 6725,
+            "text": "    #|    extern.convert_any"
+          },
+          {
+            "line": 6755,
+            "text": "                any_convert_extern_instr,"
+          },
+          {
+            "line": 6756,
+            "text": "                extern_convert_any_instr,"
+          },
+          {
+            "line": 6774,
+            "text": "        any_convert_extern_instr,"
+          },
+          {
+            "line": 6775,
+            "text": "        @lib.Instruction::any_convert_extern(),"
+          },
+          {
+            "line": 6778,
+            "text": "        extern_convert_any_instr,"
+          },
+          {
+            "line": 6779,
+            "text": "        @lib.Instruction::extern_convert_any(),"
+          },
+          {
+            "line": 7721,
+            "text": "    #|  (func $build (param (ref null $u16) i32 i32) (result externref)"
+          },
+          {
+            "line": 7744,
+            "text": "        ) => @debug.assert_eq(result, @lib.ValType::externref())"
+          }
+        ]
+      }
+    },
+    "analogous_implementation_search": {
+      "pattern": "opaque converted publication|setConversionGlobalPublic|initializeConversionReceipts|direct Go import local-state join differs",
+      "exit": 1,
+      "stdout": "",
+      "stderr": ""
+    }
+  }
+]
