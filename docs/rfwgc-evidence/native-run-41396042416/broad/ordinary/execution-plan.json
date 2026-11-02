@@ -1,0 +1,573 @@
+{
+  "lanes": [
+    {
+      "id": "full-root-replay-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "./..."
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/full-root-replay-ordinary/command.json",
+      "receipt_sha256": "aa3c9155fc0b26982d1a2dd90f3dd843f390c056d6443d6dfe30dffbc9cb6494",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "collector-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "./src/core/runtime/gc/..."
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/collector-ordinary/command.json",
+      "receipt_sha256": "f104b727f9f0b4ea937ff61780b6d96a781f7b0af606a83932a29adede5211dd",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "race-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-race",
+        "./src/core/runtime/gc/...",
+        "./src/core/runtime",
+        "./src/wago",
+        "./tests/integration/..."
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/race-ordinary/command.json",
+      "receipt_sha256": "19294e9c50a77c795d1687b72202e3696be9cab50b4fabf56d52c2264be32c59",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "guard-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_guardpage",
+        "./src/core/runtime",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/guard-ordinary/command.json",
+      "receipt_sha256": "6d87c142c9e32e2f16a79c89d9e26c7f06efc8796386e69fdab22a8556ee1a0b",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "backend-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "./src/core/compiler/backend/..."
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/backend-ordinary/command.json",
+      "receipt_sha256": "66ef43f8204c5911dbbbde8ce282f1660711908da7ae5ff0a4554c74c9262663",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "cli-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_runtime",
+        "./cli/..."
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/cli-ordinary/command.json",
+      "receipt_sha256": "1bc8abd2cc2b772f40936154dc06e9065314e1e303ae2aa95db22bb061eb29df",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "installer-ordinary",
+      "mode": "ordinary",
+      "cwd": "cli/wago-installer",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "./..."
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/installer-ordinary/command.json",
+      "receipt_sha256": "efd8f23f149db7caa34d13fcf24630f53bce7e49eb1e1610d82f605000a0d1f4",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "corpus-ordinary",
+      "mode": "ordinary",
+      "cwd": "bench",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-run",
+        "^(TestCorpus|TestCorpusSemanticExec|TestCatalog.*|TestValidateCorpusModule.*|TestApplicationCorpusRuns)$",
+        "./suite",
+        "-args",
+        "-wago.corpus=all"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/corpus-ordinary/command.json",
+      "receipt_sha256": "0a37dc5b3e0e286448f491255c9df0193f74d68705f5efcda31fd7471315e219",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "guard-corpus-ordinary",
+      "mode": "ordinary",
+      "cwd": "bench",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_guardpage",
+        "-run",
+        "^(TestCorpus|TestJsonAsGuardCorrect)$",
+        "./suite",
+        "-args",
+        "-wago.corpus=all"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_BOUNDS": "signals"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/guard-corpus-ordinary/command.json",
+      "receipt_sha256": "7c80092dc11f779973d92a8d1431bb1e20d2a6191e2f5b131f326a803b100a56",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "host-transition-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-count=3",
+        "-run",
+        "Test(RuntimeGCHostFuncRefCallAndTailOwnership|GenericGCResultsIssueBoundedHostTokens|GCCrossInstanceCallsWithSharedPersistentRoots|GCHostReentryNativeFrameRoots|GCArm64HostReentryRoots|GCWarmSnapshotPreservesCyclesAndSharing)$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_BOUNDS": "explicit"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/host-transition-ordinary/command.json",
+      "receipt_sha256": "409ca56e8347fdc76353bd679464abce6dcbc86655fe6c8997f3ad158757473b",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "hardening-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-count=3",
+        "./src/core/runtime/gc/..."
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_BOUNDS": "explicit"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/hardening-ordinary/command.json",
+      "receipt_sha256": "6c34f04623e9e595b414973b4f055910524eee7403bb7f162055bf6f403126a4",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "profile-runtime-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_profile",
+        "-run",
+        "^Test(CodeProfile|Profile|AdapterUnwind)",
+        "./src/wago",
+        "./src/core/compiler/backend/railshot/..."
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/profile-runtime-ordinary/command.json",
+      "receipt_sha256": "46bc712e7af85afbce96a44ca4a4a5ba995b63e87ae3dc55ca702d9238655c8d",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "profile-metadata-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_profile",
+        "./internal/jitprofile",
+        "./profile",
+        "./internal/profcapture",
+        "./internal/profilecmd",
+        "./cli/internal/profiling"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/profile-metadata-ordinary/command.json",
+      "receipt_sha256": "e890ce1eef5a5bae87602a7132d18b435dfb8909334b874d521a7e37a2423137",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "diagnostics-default-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_codegenstats",
+        "./src/core/compiler/backend/...",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/diagnostics-default-ordinary/command.json",
+      "receipt_sha256": "17ba87f52acc4a7aac8f6ccbe9cf9bcfb6fe4d62ff8edfd2dfbed617a8573f24",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "diagnostics-established-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_codegenstats",
+        "./src/core/compiler/backend/...",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SHARED_SCALAR": "0"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/diagnostics-established-ordinary/command.json",
+      "receipt_sha256": "a4e722b412fd9fa813302be338ba6e57d804228f825161501880da53b41f5cbc",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "shared-scalar-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_codegenstats",
+        "-run",
+        "^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)",
+        "./src/core/compiler/backend/railshot/...",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SHARED_SCALAR": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/shared-scalar-ordinary/command.json",
+      "receipt_sha256": "dfc4bb8e869bc4b356fb532aa52cb68b69ef102a951806756ba4707c45cc1097",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "seeded-concurrency-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-run",
+        "^TestRuntimeConcurrency",
+        "./tests/integration/runtimeconcurrency"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_CONCURRENCY_SEED": "439000001,439000019,439000043,439000081",
+        "WAGO_CONCURRENCY_ROUNDS": "24"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/seeded-concurrency-ordinary/command.json",
+      "receipt_sha256": "6c268bf03a6689b87408bce6eeecd09b05e92119262ac99f2b296e9fd9871e45",
+      "adaptations": [
+        "Removed -failfast to retain complete failure/skip census."
+      ]
+    },
+    {
+      "id": "spec-v1-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v1",
+        "WAGO_SPEC_VERSION": "1.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v1-ordinary/command.json",
+      "receipt_sha256": "d7f2fcc3ee96c094ddd63473002665c65a4fec22769c909119ed105443a42ca5",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v2-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v2",
+        "WAGO_SPEC_VERSION": "2.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v2-ordinary/command.json",
+      "receipt_sha256": "ea78c5602125a412f0c9480d75880a8de1faa90e1790305455e928904fc35127",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v3-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+        "WAGO_SPEC_VERSION": "3.0",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v3-ordinary/command.json",
+      "receipt_sha256": "2e8ea90e332e76fec78a09044c1d8dcd65b9e6341f8705ef26d0069fd235d001",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    },
+    {
+      "id": "spec-v3-signals-ordinary",
+      "mode": "ordinary",
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=60m",
+        "-tags=wago_guardpage",
+        "-run",
+        "^TestSpecSuiteExec$",
+        "./src/wago"
+      ],
+      "environment": {
+        "WAGO_WABT_VERSION": "1.0.41",
+        "WAGO_APP_CORPUS_REFERENCE": "all",
+        "WAGO_CORPUS_TIMEOUT": "1m",
+        "WAGO_BOUNDS": "signals",
+        "WAGO_SPEC_VERSION": "3.0",
+        "WAGO_SPECTEST_DIR": "{source}/tests/conformance/spec-v3",
+        "WAGO_SPEC_REQUIRE_ZERO_GAPS": "1"
+      },
+      "receipt": "docs/rfwgc-evidence/final-combined-5345/spec-v3-signals-ordinary/command.json",
+      "receipt_sha256": "4905f5c5d04256907ec13987867b545d80aac84c58611e73ae12cae7d1048023",
+      "adaptations": [
+        "Native tool paths supplied by setup; absolute source path resolved at execution; no failfast."
+      ]
+    }
+  ],
+  "unmet_gaps": [
+    {
+      "gap": "TinyGo Darwin patched runtime",
+      "status": "NOT_RUN; setup supplement prepared, native verification still required"
+    },
+    {
+      "gap": "Generated graph baseline comparison",
+      "status": "NOT_RUN; candidate hashed adapter prepared; baseline separate export remains required"
+    },
+    {
+      "gap": "H6 Linux host ownership graph",
+      "status": "INTENTIONALLY_UNSUPPORTED on Darwin; no tag-only adapter permitted"
+    },
+    {
+      "gap": "Darwin platform census",
+      "status": "REQUIRES_REVIEW after execution"
+    }
+  ]
+}

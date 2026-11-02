@@ -1,0 +1,50 @@
+{
+  "status": "PASS",
+  "source": "f2bb27287220783e86a4ead41fee78693a5129de",
+  "driver": "1fe8aab8edc8451731f3534f59b37a4fcca42640",
+  "native_execution": true,
+  "exit_codes": [
+    0,
+    0
+  ],
+  "exact_census": true,
+  "graph_hashes": true,
+  "unchanged": true,
+  "terminal_events": [
+    {
+      "Time": "2026-11-02T05:49:07.130617Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairPublicTableOrdinary",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T05:49:07.130617Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedBulkAtomicity",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T05:49:07.1313697Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestDesignRepairUnsupportedConvertedPublicToken",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T05:49:07.1313697Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestQualificationWindowsGCAdmission",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T05:49:07.1334273Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 0.021
+    }
+  ],
+  "ceiling": "Windows storage/admission only; no Windows converted GC JIT claim. Darwin candidate graphs only; baseline and TinyGo remain NOT_RUN."
+}
