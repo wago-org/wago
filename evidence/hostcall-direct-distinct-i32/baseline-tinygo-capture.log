@@ -1,0 +1,4 @@
+=== RUN   TestTinyGoSupportsCooperativeInterruption
+--- PASS: TestTinyGoSupportsCooperativeInterruption (39.43s)
+PASS
+ok  	github.com/wago-org/wago/cli/manager/internal/standalone	39.435s

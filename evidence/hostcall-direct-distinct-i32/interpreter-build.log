@@ -1,0 +1,9 @@
+Get:1 http://deb.debian.org/debian trixie/main amd64 menhir amd64 20240715+ds-1+b2 [1387 kB]
+Get:2 http://deb.debian.org/debian trixie/main amd64 libcompiler-libs-ocaml-dev amd64 5.3.0-3 [48.2 MB]
+Get:3 http://deb.debian.org/debian trixie/main amd64 libstdlib-ocaml amd64 5.3.0-3 [605 kB]
+Get:4 http://deb.debian.org/debian trixie/main amd64 libstdlib-ocaml-dev amd64 5.3.0-3 [7886 kB]
+Get:5 http://deb.debian.org/debian trixie/main amd64 ocaml amd64 5.3.0-3 [18.0 MB]
+Get:6 http://deb.debian.org/debian trixie/main amd64 ocaml-base amd64 5.3.0-3 [495 kB]
+Get:7 http://deb.debian.org/debian trixie/main amd64 ocaml-interp amd64 5.3.0-3 [7104 kB]
+Get:8 http://deb.debian.org/debian trixie/main amd64 ocaml-dune amd64 3.17.2-1+b1 [4835 kB]
+Fetched 88.5 MB in 7s (12.5 MB/s)

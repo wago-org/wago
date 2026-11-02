@@ -1,0 +1,5 @@
+--- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+    gc_array_bulk_official_amd64_test.go:387: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.006s
+FAIL

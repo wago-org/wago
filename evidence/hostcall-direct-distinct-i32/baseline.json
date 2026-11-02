@@ -1,0 +1,133 @@
+{
+  "method": "git archive exact base extracted in assigned checkout temporary .candidate-baseline; removed after probes; pinned spec-v3 from assigned checkout symlinked read-only",
+  "go": "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+  "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+  "powershell_bin": "/home/dev/.local/share/mise/installs/powershell/7.6.8",
+  "probes": [
+    {
+      "name": "baseline-powershell",
+      "base": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-count=1",
+        "-run",
+        "^TestPowerShellBootstrap",
+        "."
+      ],
+      "exit_code": 1,
+      "invariant_globalization": false
+    },
+    {
+      "name": "baseline-powershell-invariant",
+      "base": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-count=1",
+        "-run",
+        "^TestPowerShellBootstrap",
+        "."
+      ],
+      "exit_code": 0,
+      "invariant_globalization": true
+    },
+    {
+      "name": "baseline-wabt-1.0.42",
+      "base": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-count=1",
+        "-run",
+        "^TestStagedOfficialGCArrayBulkAccounting$",
+        "./src/wago"
+      ],
+      "exit_code": 1,
+      "wabt_path": "/home/dev/.local/share/mise/installs/github-web-assembly-wabt/1.0.42/bin"
+    },
+    {
+      "name": "baseline-wabt-1.0.41",
+      "base": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-count=1",
+        "-run",
+        "^TestStagedOfficialGCArrayBulkAccounting$",
+        "./src/wago"
+      ],
+      "exit_code": 1,
+      "wabt_path": "/tmp/wago-direct-tooling-c1cq5pse/wabt-1.0.41/bin"
+    },
+    {
+      "name": "baseline-wabt-interpreter",
+      "base": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-count=1",
+        "-run",
+        "^TestStagedOfficialGCArrayBulkAccounting$",
+        "./src/wago"
+      ],
+      "exit_code": 0,
+      "environment": {
+        "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+        "WAGO_SPEC_INTERPRETER": "/tmp/wago-direct-tooling-c1cq5pse/spec-interpreter/wasm",
+        "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+      },
+      "wabt_path": "/tmp/wago-direct-tooling-c1cq5pse/wabt-1.0.41/bin"
+    },
+    {
+      "name": "baseline-tinygo-interruption",
+      "base": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-count=1",
+        "-v",
+        "-run",
+        "^TestTinyGoSupportsCooperativeInterruption$",
+        "./cli/manager/internal/standalone"
+      ],
+      "exit_code": 0,
+      "go_root": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "tinygo": "/home/dev/.local/share/mise/installs/tinygo/0.43.0/tinygo/bin/tinygo"
+    },
+    {
+      "name": "baseline-plugin-install",
+      "base": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+      "command": [
+        "go",
+        "test",
+        "-tags=wago_regalloccheck,wago_runtime",
+        "-count=10",
+        "-v",
+        "-run",
+        "^TestPluginRuntimeBinaryResolvesGlobalBuild$",
+        "./cli/manager/internal/plugin"
+      ],
+      "exit_code": 1,
+      "go_root": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "tinygo": "/home/dev/.local/share/mise/installs/tinygo/0.43.0/tinygo/bin/tinygo"
+    },
+    {
+      "name": "baseline-tinygo-repeated",
+      "base": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+      "command": [
+        "go",
+        "test",
+        "-count=5",
+        "-failfast",
+        "-v",
+        "-run",
+        "^TestTinyGoSupportsCooperativeInterruption$",
+        "./cli/manager/internal/standalone"
+      ],
+      "exit_code": 0,
+      "go_root": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "tinygo": "/home/dev/.local/share/mise/installs/tinygo/0.43.0/tinygo/bin/tinygo"
+    }
+  ]
+}

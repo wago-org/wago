@@ -1,0 +1,67 @@
+[
+  {
+    "name": "ordinary",
+    "command": "go test -count=1 ./src/wago ./src/core/runtime",
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "environment": {
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1",
+      "PATH": "/tmp/wago-direct-tooling-c1cq5pse/wabt-1.0.41/bin:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/home/dev/.local/share/mise/installs/node/24.22.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin",
+      "WAGO_SPEC_INTERPRETER": "/tmp/wago-direct-tooling-c1cq5pse/spec-interpreter/wasm",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+    }
+  },
+  {
+    "name": "debug",
+    "command": "go test -tags=wagodebug -count=1 ./src/wago ./src/core/runtime",
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "environment": {
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1",
+      "PATH": "/tmp/wago-direct-tooling-c1cq5pse/wabt-1.0.41/bin:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/home/dev/.local/share/mise/installs/node/24.22.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin",
+      "WAGO_SPEC_INTERPRETER": "/tmp/wago-direct-tooling-c1cq5pse/spec-interpreter/wasm",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+    }
+  },
+  {
+    "name": "checked",
+    "command": "go test -tags=wago_regalloccheck -count=1 ./src/wago ./src/core/runtime",
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "environment": {
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1",
+      "PATH": "/tmp/wago-direct-tooling-c1cq5pse/wabt-1.0.41/bin:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/home/dev/.local/share/mise/installs/node/24.22.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin",
+      "WAGO_SPEC_INTERPRETER": "/tmp/wago-direct-tooling-c1cq5pse/spec-interpreter/wasm",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+    }
+  },
+  {
+    "name": "race",
+    "command": "go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency",
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "environment": {
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1",
+      "PATH": "/tmp/wago-direct-tooling-c1cq5pse/wabt-1.0.41/bin:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/home/dev/.local/share/mise/installs/node/24.22.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin",
+      "WAGO_SPEC_INTERPRETER": "/tmp/wago-direct-tooling-c1cq5pse/spec-interpreter/wasm",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+    }
+  },
+  {
+    "name": "root-retry",
+    "command": "go test -count=1 ./...",
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 1,
+    "environment": {
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "1",
+      "PATH": "/tmp/wago-direct-tooling-c1cq5pse/wabt-1.0.41/bin:/home/dev/.local/share/mise/installs/go/1.27.1/bin:/home/dev/.local/share/mise/installs/node/24.22.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dev/.local/share/vite-plus/bin:/home/dev/.local/bin:/home/dev/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/home/dev/.local/share/vite-plus/fallback-bin",
+      "WAGO_SPEC_INTERPRETER": "/tmp/wago-direct-tooling-c1cq5pse/spec-interpreter/wasm",
+      "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+    }
+  }
+]

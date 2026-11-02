@@ -1,0 +1,24 @@
+=== RUN   TestPluginRuntimeBinaryResolvesGlobalBuild
+--- PASS: TestPluginRuntimeBinaryResolvesGlobalBuild (0.40s)
+=== RUN   TestPluginRuntimeBinaryResolvesGlobalBuild
+    build_test.go:77: install plugin build: open /tmp/TestPluginRuntimeBinaryResolvesGlobalBuild914801780/001/data/versions/0.0.0/standard/normal/plugins/bin/.wago-atomic-2869956548: text file busy
+--- FAIL: TestPluginRuntimeBinaryResolvesGlobalBuild (0.40s)
+=== RUN   TestPluginRuntimeBinaryResolvesGlobalBuild
+--- PASS: TestPluginRuntimeBinaryResolvesGlobalBuild (0.42s)
+=== RUN   TestPluginRuntimeBinaryResolvesGlobalBuild
+--- PASS: TestPluginRuntimeBinaryResolvesGlobalBuild (0.41s)
+=== RUN   TestPluginRuntimeBinaryResolvesGlobalBuild
+--- PASS: TestPluginRuntimeBinaryResolvesGlobalBuild (0.41s)
+=== RUN   TestPluginRuntimeBinaryResolvesGlobalBuild
+--- PASS: TestPluginRuntimeBinaryResolvesGlobalBuild (0.40s)
+=== RUN   TestPluginRuntimeBinaryResolvesGlobalBuild
+--- PASS: TestPluginRuntimeBinaryResolvesGlobalBuild (0.42s)
+=== RUN   TestPluginRuntimeBinaryResolvesGlobalBuild
+--- PASS: TestPluginRuntimeBinaryResolvesGlobalBuild (0.47s)
+=== RUN   TestPluginRuntimeBinaryResolvesGlobalBuild
+--- PASS: TestPluginRuntimeBinaryResolvesGlobalBuild (0.48s)
+=== RUN   TestPluginRuntimeBinaryResolvesGlobalBuild
+--- PASS: TestPluginRuntimeBinaryResolvesGlobalBuild (0.47s)
+FAIL
+FAIL	github.com/wago-org/wago/cli/manager/internal/plugin	4.280s
+FAIL

@@ -1,0 +1,2 @@
+attempt=619 exit_code=-6
+panic: runtime error: invalid memory address or nil pointer dereference at 0x00000000002810c8

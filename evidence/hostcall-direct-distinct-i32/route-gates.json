@@ -1,0 +1,81 @@
+[
+  {
+    "name": "ordinary",
+    "command": [
+      "go",
+      "test",
+      "-count=1",
+      "-v",
+      "-run",
+      "^TestNativeLeafDistinct",
+      "./src/wago",
+      "./src/core/runtime"
+    ],
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0
+  },
+  {
+    "name": "debug",
+    "command": [
+      "go",
+      "test",
+      "-count=1",
+      "-v",
+      "-run",
+      "^TestNativeLeafDistinct",
+      "-tags=wagodebug",
+      "./src/wago",
+      "./src/core/runtime"
+    ],
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0
+  },
+  {
+    "name": "checked",
+    "command": [
+      "go",
+      "test",
+      "-count=1",
+      "-v",
+      "-run",
+      "^TestNativeLeafDistinct",
+      "-tags=wago_regalloccheck",
+      "./src/wago",
+      "./src/core/runtime"
+    ],
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0
+  },
+  {
+    "name": "profile",
+    "command": [
+      "go",
+      "test",
+      "-count=1",
+      "-v",
+      "-run",
+      "^TestNativeLeafDistinct",
+      "-tags=wago_profile",
+      "./src/wago",
+      "./src/core/runtime"
+    ],
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0
+  },
+  {
+    "name": "race",
+    "command": [
+      "go",
+      "test",
+      "-count=1",
+      "-v",
+      "-run",
+      "^TestNativeLeafDistinct",
+      "-race",
+      "./src/wago",
+      "./src/core/runtime"
+    ],
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0
+  }
+]

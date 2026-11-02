@@ -1,0 +1,32 @@
+--- FAIL: TestPowerShellBootstrapReleaseSelection (0.25s)
+    --- FAIL: TestPowerShellBootstrapReleaseSelection/pwsh (0.25s)
+        install_powershell_portable_test.go:32: release selection: signal: aborted (core dumped)
+            Process terminated.
+            Couldn't find a valid ICU package installed on the system. Please install libicu (or icu-libs) using your package manager and try again. Alternatively you can set the configuration flag System.Globalization.Invariant to true if you want to run with no globalization support. Please see https://aka.ms/dotnet-missing-libicu for more information.
+               at System.Environment.FailFast(System.Runtime.CompilerServices.StackCrawlMarkHandle, System.String, System.Runtime.CompilerServices.ObjectHandleOnStack, System.String)
+               at System.Environment.FailFast(System.Threading.StackCrawlMark ByRef, System.String, System.Exception, System.String)
+               at System.Environment.FailFast(System.String)
+               at System.Globalization.GlobalizationMode+Settings..cctor()
+               at System.Globalization.CultureData.CreateCultureWithInvariantData()
+               at System.Globalization.CultureData.get_Invariant()
+               at System.Globalization.CultureInfo..cctor()
+               at System.Globalization.CultureInfo.get_CurrentUICulture()
+               at Microsoft.PowerShell.UnmanagedPSEntry.Start(System.String[], Int32)
+               at Microsoft.PowerShell.ManagedPSEntry.Main(System.String[])
+--- FAIL: TestPowerShellBootstrapFallsBackToGoForMainWithoutRelease (0.28s)
+    install_powershell_portable_test.go:70: source fallback: signal: aborted (core dumped)
+        Process terminated.
+        Couldn't find a valid ICU package installed on the system. Please install libicu (or icu-libs) using your package manager and try again. Alternatively you can set the configuration flag System.Globalization.Invariant to true if you want to run with no globalization support. Please see https://aka.ms/dotnet-missing-libicu for more information.
+           at System.Environment.FailFast(System.Runtime.CompilerServices.StackCrawlMarkHandle, System.String, System.Runtime.CompilerServices.ObjectHandleOnStack, System.String)
+           at System.Environment.FailFast(System.Threading.StackCrawlMark ByRef, System.String, System.Exception, System.String)
+           at System.Environment.FailFast(System.String)
+           at System.Globalization.GlobalizationMode+Settings..cctor()
+           at System.Globalization.CultureData.CreateCultureWithInvariantData()
+           at System.Globalization.CultureData.get_Invariant()
+           at System.Globalization.CultureInfo..cctor()
+           at System.Globalization.CultureInfo.get_CurrentUICulture()
+           at Microsoft.PowerShell.UnmanagedPSEntry.Start(System.String[], Int32)
+           at Microsoft.PowerShell.ManagedPSEntry.Main(System.String[])
+FAIL
+FAIL	github.com/wago-org/wago	0.539s
+FAIL

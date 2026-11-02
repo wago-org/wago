@@ -1,0 +1,86 @@
+[
+  {
+    "name": "focused",
+    "cwd": ".",
+    "command": "go test -count=1 -v -run 'TestNative(Leaf|ScalarLeaf)' ./src/wago ./src/core/runtime",
+    "head": "98f5a9a7b9be87ee21b05e8a1ffa2cc2aa536d9f",
+    "exit_code": 0
+  },
+  {
+    "name": "build",
+    "cwd": ".",
+    "command": "go build ./...",
+    "head": "98f5a9a7b9be87ee21b05e8a1ffa2cc2aa536d9f",
+    "exit_code": 0
+  },
+  {
+    "name": "build-runtime",
+    "cwd": ".",
+    "command": "go build -tags wago_runtime ./cli/...",
+    "head": "98f5a9a7b9be87ee21b05e8a1ffa2cc2aa536d9f",
+    "exit_code": 0
+  },
+  {
+    "name": "ordinary",
+    "cwd": ".",
+    "command": "go test -count=1 ./...",
+    "head": "98f5a9a7b9be87ee21b05e8a1ffa2cc2aa536d9f",
+    "exit_code": 1
+  },
+  {
+    "name": "checked",
+    "cwd": ".",
+    "command": "go test -tags=wago_regalloccheck -count=1 ./...",
+    "head": "9217e6d61b468183e48d200c062e02445ef70d6f",
+    "exit_code": 1
+  },
+  {
+    "name": "runtime",
+    "cwd": ".",
+    "command": "go test -count=1 -tags wago_runtime ./cli/...",
+    "head": "9217e6d61b468183e48d200c062e02445ef70d6f",
+    "exit_code": 0
+  },
+  {
+    "name": "runtime-checked",
+    "cwd": ".",
+    "command": "go test -count=1 -tags wago_regalloccheck,wago_runtime ./cli/...",
+    "head": "944796e8ba98c48dc17b4e22f9b8784f82ded21d",
+    "exit_code": 1
+  },
+  {
+    "name": "installer-checked",
+    "cwd": "cli/wago-installer",
+    "command": "go test -tags=wago_regalloccheck -count=1 ./...",
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0
+  },
+  {
+    "name": "bench-module-checked",
+    "cwd": "bench",
+    "command": "go test -tags=wago_regalloccheck -count=1 -skip '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns|TestCatalog.*|TestValidateCorpusModule.*)$' ./...",
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0
+  },
+  {
+    "name": "debug",
+    "cwd": ".",
+    "command": "go test -tags=wagodebug -count=1 ./src/wago ./src/core/runtime",
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 1
+  },
+  {
+    "name": "race",
+    "cwd": ".",
+    "command": "go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency",
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 1
+  },
+  {
+    "name": "profile",
+    "cwd": ".",
+    "command": "go test -tags=wago_profile -count=1 -v -run '^TestNativeLeafDistinct' ./src/wago",
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0
+  }
+]

@@ -1,0 +1,37 @@
+{
+  "status": "READY TO MEASURE",
+  "scope": "Linux amd64 native distinct-i32 class, with explicit baseline qualification exception",
+  "full_unmodified_unit_recipe_passed": false,
+  "native_candidate_gates_passed": true,
+  "ordinary_root_without_confirmed_baseline_test_passed": true,
+  "source_head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+  "source_tree": "bdb7f54858ea6a2b29ced4134410a9dcab8f27d3",
+  "base": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+  "branch": "candidate/wago-hostcall-direct-distinct-i32",
+  "campaign_owner": "t3-thread://v1/mcp:8faf6900-ac97-419e-b761-141f062b89c2",
+  "execution_platform": "linux/amd64, Go 1.27.1",
+  "cross_compile_builds": 12,
+  "foreign_execution_claimed": false,
+  "riscv64_new_class": "generic; embedded-control registry unchanged",
+  "benchmarks_or_timing_measurements": false,
+  "ci_dispatches": false,
+  "prs": false,
+  "children": false,
+  "excluded_campaign_access": false,
+  "public_host_api_changes": false,
+  "decoder_changes": false,
+  "baseline_exceptions": [
+    {
+      "test": "TestTinyGoSupportsCooperativeInterruption",
+      "ordinary_root": "red; exact-base generated cancellation executable reproduced SIGABRT on attempt 619",
+      "evidence": "baseline-tinygo-stress.json"
+    },
+    {
+      "test": "TestPluginRuntimeBinaryResolvesGlobalBuild",
+      "earlier_attempt": "text file busy, reproduced in exact base count=10",
+      "final_cli_gates": "passed",
+      "evidence": "baseline.json"
+    }
+  ],
+  "cleanup": "All candidate-owned build temporaries, exact-base exports and downloaded tooling removed. Shared caches and other artifacts untouched."
+}

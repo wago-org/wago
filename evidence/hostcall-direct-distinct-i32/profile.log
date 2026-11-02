@@ -1,0 +1,30 @@
+=== RUN   TestNativeLeafDistinctBodiesAndCapturedState
+    native_leaf_alias_test.go:75: profiling retains Go callbacks
+--- SKIP: TestNativeLeafDistinctBodiesAndCapturedState (0.00s)
+=== RUN   TestNativeLeafDistinctDifferentialRoutes
+=== RUN   TestNativeLeafDistinctDifferentialRoutes/[a_b_pair_alias]
+=== RUN   TestNativeLeafDistinctDifferentialRoutes/[pair_alias_b_a]
+=== RUN   TestNativeLeafDistinctDifferentialRoutes/[b_pair_a_alias]
+--- PASS: TestNativeLeafDistinctDifferentialRoutes (0.00s)
+    --- PASS: TestNativeLeafDistinctDifferentialRoutes/[a_b_pair_alias] (0.00s)
+    --- PASS: TestNativeLeafDistinctDifferentialRoutes/[pair_alias_b_a] (0.00s)
+    --- PASS: TestNativeLeafDistinctDifferentialRoutes/[b_pair_a_alias] (0.00s)
+=== RUN   TestNativeLeafDistinctPublicationRollback
+    native_leaf_distinct_test.go:173: profiling retains generic route
+--- SKIP: TestNativeLeafDistinctPublicationRollback (0.00s)
+=== RUN   TestNativeLeafDistinctLoopScheduling
+    native_leaf_test.go:104: profiling retains Go callbacks
+--- SKIP: TestNativeLeafDistinctLoopScheduling (0.00s)
+=== RUN   TestNativeLeafDistinctMixedEffectsAndTraps
+--- PASS: TestNativeLeafDistinctMixedEffectsAndTraps (0.00s)
+=== RUN   TestNativeLeafDistinctDomainAndGateFallback
+--- PASS: TestNativeLeafDistinctDomainAndGateFallback (0.00s)
+=== RUN   TestNativeLeafDistinctCodeSharingClose
+    native_leaf_distinct_test.go:316: profiling retains generic route
+--- SKIP: TestNativeLeafDistinctCodeSharingClose (0.00s)
+=== RUN   TestNativeLeafDistinctLocalGCFallback
+--- PASS: TestNativeLeafDistinctLocalGCFallback (0.00s)
+=== RUN   TestNativeLeafDistinctBinaryDifferential
+--- PASS: TestNativeLeafDistinctBinaryDifferential (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.010s

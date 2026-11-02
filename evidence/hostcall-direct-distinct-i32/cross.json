@@ -1,0 +1,242 @@
+[
+  {
+    "name": "cross-linux-arm64-runtime",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-52vmh2wm/candidate.test",
+      "./src/core/runtime"
+    ],
+    "environment": {
+      "GOOS": "linux",
+      "GOARCH": "arm64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-linux-arm64-wago",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-iiahtkln/candidate.test",
+      "./src/wago"
+    ],
+    "environment": {
+      "GOOS": "linux",
+      "GOARCH": "arm64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-linux-riscv64-runtime",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-xc3vte6m/candidate.test",
+      "./src/core/runtime"
+    ],
+    "environment": {
+      "GOOS": "linux",
+      "GOARCH": "riscv64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-linux-riscv64-wago",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-iexj5ddy/candidate.test",
+      "./src/wago"
+    ],
+    "environment": {
+      "GOOS": "linux",
+      "GOARCH": "riscv64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-darwin-amd64-runtime",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-651l3snu/candidate.test",
+      "./src/core/runtime"
+    ],
+    "environment": {
+      "GOOS": "darwin",
+      "GOARCH": "amd64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-darwin-amd64-wago",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-dmcp2k1t/candidate.test",
+      "./src/wago"
+    ],
+    "environment": {
+      "GOOS": "darwin",
+      "GOARCH": "amd64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-darwin-arm64-runtime",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-_ni16siq/candidate.test",
+      "./src/core/runtime"
+    ],
+    "environment": {
+      "GOOS": "darwin",
+      "GOARCH": "arm64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-darwin-arm64-wago",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-t2a3il2s/candidate.test",
+      "./src/wago"
+    ],
+    "environment": {
+      "GOOS": "darwin",
+      "GOARCH": "arm64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-windows-amd64-runtime",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-jh9ags44/candidate.test",
+      "./src/core/runtime"
+    ],
+    "environment": {
+      "GOOS": "windows",
+      "GOARCH": "amd64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-windows-amd64-wago",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-1nx_xlxh/candidate.test",
+      "./src/wago"
+    ],
+    "environment": {
+      "GOOS": "windows",
+      "GOARCH": "amd64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-windows-arm64-runtime",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-vfekj3zc/candidate.test",
+      "./src/core/runtime"
+    ],
+    "environment": {
+      "GOOS": "windows",
+      "GOARCH": "arm64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  },
+  {
+    "name": "cross-windows-arm64-wago",
+    "command": [
+      "go",
+      "test",
+      "-p=2",
+      "-c",
+      "-o",
+      "/tmp/wago-direct-cross-_z0jwrwm/candidate.test",
+      "./src/wago"
+    ],
+    "environment": {
+      "GOOS": "windows",
+      "GOARCH": "arm64",
+      "CGO_ENABLED": "0"
+    },
+    "head": "0ab4994f229b995bdce5cc89e557cb8c40c0cea4",
+    "exit_code": 0,
+    "executed": false
+  }
+]

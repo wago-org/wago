@@ -1,0 +1,3 @@
+ok  	github.com/wago-org/wago/src/wago	408.998s
+ok  	github.com/wago-org/wago/src/core/runtime	3.377s
+ok  	github.com/wago-org/wago/tests/integration/runtimeconcurrency	1.208s

@@ -1,0 +1,5 @@
+--- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+    gc_array_bulk_official_amd64_test.go:387: convert pinned gc/array_fill.wast with WABT (exit status 1: ../../tests/conformance/spec-v3/test/core/gc/array_fill.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.006s
+FAIL

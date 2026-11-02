@@ -6,7 +6,7 @@ Base: `90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e`.
 Branch: `candidate/wago-hostcall-direct-distinct-i32`.
 Authority: campaign census/admission in `/home/dev/Projects/wago-hostcall-record/docs/hostcall/`; Slipstream `bd640ddf0:docs/host-call-boundary-redesign-2026-11-01.md`, safety contract v2.
 
-Status: qualification in progress. No performance measurements, benchmarks, CI dispatches, PRs, children, or excluded GC campaign work.
+Status: **READY TO MEASURE — Linux amd64 native candidate, with an explicit baseline qualification exception. The unmodified ordinary unit gate remains red; this is not an all-green unit-recipe claim.** No performance measurements, benchmarks, CI dispatches, PRs, children, or excluded GC campaign work.
 
 ## Implementation
 
@@ -27,7 +27,7 @@ No public host-function API or accepted callback shape changes. New core install
 
 ## Evidence format
 
-`qualified-gates.json` is the final package/mode gate manifest, with exact commands, execution head, exit codes and explicit environment. Matching `qualified-*.log` files retain output. `cross.json` records compile-only targets and exact commands; its `executed` fields are false. `baseline.json` records exact-base probes. `gates.json` and `harness-gates.json` preserve earlier attempts with incomplete host tooling; they are not passing qualification claims.
+`qualified-gates.json` is the complete package/mode gate manifest, with exact commands, execution head, exit codes and explicit environment. Matching `qualified-*.log` files retain output. `cross.json` records compile-only targets and exact commands; its `executed` fields are false. `baseline.json` records exact-base probes. `gates.json` and `harness-gates.json` preserve earlier attempts with incomplete host tooling; they are not passing qualification claims.
 
 Go build temporaries are candidate-owned and removed after each command. Cross-compiled binaries are removed after each build. Shared Go caches and other checkouts/artifacts are untouched. Conformance submodules in this assigned worktree were checked out at the exact base's pins: spec-v1 `a8bcbafe6d2fb191ce0188de0e18fdc107fa2598`, spec-v2 `05ca4182176763112561ae20153975c12bd689e4`, spec-v3 `9d36019973201a19f9c9ebb0f10828b2fe2374aa`.
 
@@ -40,4 +40,30 @@ The unmodified exact base was exported with `git archive` into temporary `.candi
 3. WABT 1.0.41 cannot parse all pinned GC text. The exact base reproduces missing `WAGO_SPEC_INTERPRETER`. Building the exact pinned Release 3 interpreter and setting its path/revision makes the same baseline GC array bulk accounting test pass. The OCaml/Dune/Menhir packages and hashes, source revision and interpreter hash are in `tooling.json`; source/build/download artifacts were removed immediately after the build.
 4. Initial temporary-tree probes hit mise trust and inherited GOROOT mismatches before tests ran. Canonical baseline probes explicitly select Go 1.27.1 and matching GOROOT; no shared mise configuration was changed.
 
-Only Linux amd64 / Go 1.27.1 execution is claimed. Other supported native cells are cross-compiled, not executed. No arm64/RV64 emulator or foreign host execution is claimed. TinyGo execution is unavailable and unqualified. The new RV64 class remains generic.
+Only Linux amd64 / Go 1.27.1 execution is claimed. Other supported native cells are cross-compiled, not executed. No arm64/RV64 emulator or foreign host execution is claimed. TinyGo 0.43.0 standalone execution was exercised by the package recipe; the distinct class remains disabled there. Its existing cancellation abort is reproduced at the base, as recorded below. The new RV64 class remains generic.
+
+5. `TestPluginRuntimeBinaryResolvesGlobalBuild` intermittently fails with `text file busy` in the unmodified exact-base tree, reproduced with `go test -tags=wago_regalloccheck,wago_runtime -count=10 -v -run '^TestPluginRuntimeBinaryResolvesGlobalBuild$' ./cli/manager/internal/plugin`. See `baseline-plugin-install.log` and `baseline.json`. No plugin installer source was changed.
+6. One candidate ordinary-root attempt aborted in `TestTinyGoSupportsCooperativeInterruption`. Seven recorded isolated exact-base test invocations passed, so the unchanged baseline test's generated executable was copied through its own child `/proc/.../exe` while executing, then rerun as a correctness-only cancellation probe. Attempt 619 reproduced the same SIGABRT/nil-pointer panic. `baseline-tinygo-stress.json` pins the exact source revision, binary SHA256 and attempt count; `baseline-tinygo-stress.log` preserves the failure. `reproduce-tinygo.py` reproduces without modifying baseline sources. No timings or benchmark results were collected. The executable, downloaded OCaml packages, interpreter build tree and exact-base exports were removed. This no-import standalone fixture never admits native host leaves.
+
+## Gate matrix and head attribution
+
+Runtime source head: `0ab4994f229b995bdce5cc89e557cb8c40c0cea4` (source tree `bdb7f54858ea6a2b29ced4134410a9dcab8f27d3`). Later commits contain evidence only. The implementation is based directly on the required base; no campaign/parent changes were imported.
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Focused native leaves, forced-generic oracle and actual direct staging-bypass assertions | PASS, ordinary/debug/checked/race; profiling correctly generic | `route-gates.json`, `route-*.log` |
+| `go build ./...`; `go build -tags wago_runtime ./cli/...` | PASS | `qualified-gates.json` |
+| Ordinary full root, unmodified command | RED: confirmed exact-base TinyGo cancellation abort only; no native candidate failure | `qualified-ordinary.log`, `final-root-retry.log`, baseline stress evidence |
+| Full checked root (`wago_regalloccheck`) | PASS | `qualified-checked.log` |
+| Both ordinary and checked `wago_runtime` CLI recipe commands | PASS | `qualified-runtime*.log` |
+| Checked installer module and checked bench module with exact unit-recipe exclusions | PASS | `qualified-installer-checked.log`, `qualified-bench-module-checked.log` |
+| Full changed packages: ordinary, `wagodebug`, `wago_regalloccheck` | PASS on final source head | `final-gates.json` |
+| Exact three-package race gate | PASS twice with complete fixtures | `final-race.log`, `qualified-race.log` |
+| New distinct tests under `wago_profile` | PASS; intentional profile-only native assertions skipped | `route-profile.log`, `qualified-profile.log` |
+| Runtime/Wago test compilation, six foreign OS/architecture cells | PASS (12 builds); execution NOT claimed | `cross.json` |
+
+The standard ordinary root result remains red and is not described as an all-green unit recipe. Its confirmed baseline failure is kept separate from the admitted native class. The ordinary root command excluding only the confirmed baseline cancellation test is recorded separately in `ordinary-baseline-exception.json`; it does not replace or erase the unmodified-command result. `log-summary.json` enumerates explicit failures/skips and package counts; standard package logs do not enumerate individual internal skips.
+
+The ordinary root command excluding only `TestTinyGoSupportsCooperativeInterruption` **passed**. The full checked root, both CLI runtime modes, checked installer/bench modules, full ordinary/debug/checked native packages, profile fallback, focused tests in all modes, both exact race runs, and all 12 cross-compilation builds passed. `qualification.json` is the machine-readable disposition. No measurements were run; no full-unit all-green status is claimed.
+
+Temporary tooling paths in manifests are historical execution paths, now removed. Re-provision the recorded URL/checksum and pinned interpreter/package versions before replaying gate scripts. Only this candidate's temporary files were removed.

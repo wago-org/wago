@@ -1,0 +1,49 @@
+{
+  "url": "https://github.com/WebAssembly/wabt/releases/download/1.0.41/wabt-1.0.41-linux-x64.tar.gz",
+  "sha256": "83f8122e924745fcd70636e3594bc01c4c47f2d4c8f3c63b5d70d3f83a482677",
+  "path": "/tmp/wago-direct-tooling-c1cq5pse/wabt-1.0.41/bin",
+  "note": "Candidate-owned temporary pinned WABT; remove after all gates. No shared tool changes.",
+  "interpreter_build": {
+    "packages": [
+      {
+        "name": "menhir_20240715+ds-1+b2_amd64.deb",
+        "sha256": "5872a5707d06954e25aa340796f9ecab6444c0dedb8a742dd7bf7f8e578b047b"
+      },
+      {
+        "name": "libcompiler-libs-ocaml-dev_5.3.0-3_amd64.deb",
+        "sha256": "9b7906c3035dbb3b3e6d6e881413b8d8ccf239409c5677a0382864f0a84f4fe3"
+      },
+      {
+        "name": "libstdlib-ocaml_5.3.0-3_amd64.deb",
+        "sha256": "5334efd10830ee37210e87a7ade0f74009192e6e77446f062dc3ca15f95c1043"
+      },
+      {
+        "name": "libstdlib-ocaml-dev_5.3.0-3_amd64.deb",
+        "sha256": "dc30c05739633cf8313fd685b635db6eb50d41b2d42f1e83208c269964c8d322"
+      },
+      {
+        "name": "ocaml_5.3.0-3_amd64.deb",
+        "sha256": "226e71a9cbb59148280298a74a3930a6d01b052cf4c17cd09675f80fe323cdd1"
+      },
+      {
+        "name": "ocaml-base_5.3.0-3_amd64.deb",
+        "sha256": "039652a52bce7fd48abc2d905225d1811bd65e139ee6b8a28650c957a235a013"
+      },
+      {
+        "name": "ocaml-interp_5.3.0-3_amd64.deb",
+        "sha256": "fe4595e7bf353c6b81a4e46ffc552f1c82cc5a33cd0c724251cbad010dddf1b0"
+      },
+      {
+        "name": "ocaml-dune_3.17.2-1+b1_amd64.deb",
+        "sha256": "92c9dc9d98431053624fe2639886aeac28b6222a1601510f42a0211a99d56b98"
+      }
+    ],
+    "command": "dune build -j 2 wasm.exe",
+    "source_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+    "exit_code": 0
+  },
+  "interpreter": "/tmp/wago-direct-tooling-c1cq5pse/spec-interpreter/wasm",
+  "interpreter_sha256": "3cceef46a2e5b91be23b625a81be756741a3bb11c45176acba64b4d04854a71f",
+  "temporary_tooling_removed": true,
+  "build_artifacts_removed": true
+}
