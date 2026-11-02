@@ -1,0 +1,177 @@
+[
+  {
+    "artifact_sha256": "454e5014db7274cc47d70a1cdbf565668eb3452b25ee922a63ccb56266919747",
+    "build_exit": 0,
+    "census": {
+      "duplicates": [],
+      "failed": [
+        "TestTinyGoNativeResumeUsesPhysicalStackTop"
+      ],
+      "missing": [
+        "TestTinyGoNativeResumeUsesPhysicalStackTop"
+      ],
+      "ok": false,
+      "passed": [
+        "TestTinyGoTrampolineFailurePreservesInterrupt",
+        "TestPreparedIntThunkOwnedByEngine",
+        "TestTinyGoForeignStackConcurrentGC/return",
+        "TestTinyGoForeignStackConcurrentGC/trap-unwind",
+        "TestTinyGoForeignStackConcurrentGC/interrupt",
+        "TestTinyGoForeignStackConcurrentGC",
+        "TestTinyGoForeignStackGCPreparedEntry",
+        "TestTinyGoForeignStackGCHostReentry",
+        "TestTinyGoForeignStackGCCloseThunkFailure"
+      ],
+      "skipped": [],
+      "unexpected": [],
+      "vacuous": false
+    },
+    "exit": 1,
+    "package": "src/core/runtime",
+    "required": [
+      "TestTinyGoForeignStackConcurrentGC",
+      "TestTinyGoForeignStackGCPreparedEntry",
+      "TestTinyGoForeignStackGCHostReentry",
+      "TestTinyGoForeignStackGCCloseThunkFailure",
+      "TestTinyGoTrampolineFailurePreservesInterrupt",
+      "TestTinyGoNativeResumeUsesPhysicalStackTop",
+      "TestPreparedIntThunkOwnedByEngine",
+      "TestTinyGoForeignStackConcurrentGC/return",
+      "TestTinyGoForeignStackConcurrentGC/trap-unwind",
+      "TestTinyGoForeignStackConcurrentGC/interrupt"
+    ]
+  },
+  {
+    "artifact_sha256": "7297ffda6f579d81195246eaa7936e62be26b5660ccbdd1c34aa47bd0bfe40f1",
+    "build_exit": 0,
+    "census": {
+      "duplicates": [],
+      "failed": [],
+      "missing": [],
+      "ok": true,
+      "passed": [
+        "TestEvacuationStage7RunCredit",
+        "TestEvacuationStage7PolicyAndOptionalRefusal",
+        "TestEvacuationStage7Selection",
+        "TestEvacuationStage7CrossingPhysicalMove",
+        "TestEvacuationStage7AbsorbedTail",
+        "TestEvacuationStage7LargeYoungPlan",
+        "TestEvacuationTinyGoPolicy",
+        "TestEvacuationTinyGoExactAdmissionEdges",
+        "TestEvacuationTinyGoCheckedGeneration",
+        "TestEvacuationTinyGoCardsLOSAndYoung",
+        "TestEvacuationTinyGoRequiredPressure"
+      ],
+      "skipped": [],
+      "unexpected": [],
+      "vacuous": false
+    },
+    "exit": 0,
+    "package": "src/core/runtime/gc/native",
+    "required": [
+      "TestEvacuationTinyGoPolicy",
+      "TestEvacuationTinyGoExactAdmissionEdges",
+      "TestEvacuationTinyGoCheckedGeneration",
+      "TestEvacuationTinyGoCardsLOSAndYoung",
+      "TestEvacuationTinyGoRequiredPressure",
+      "TestEvacuationStage7RunCredit",
+      "TestEvacuationStage7PolicyAndOptionalRefusal",
+      "TestEvacuationStage7Selection",
+      "TestEvacuationStage7CrossingPhysicalMove",
+      "TestEvacuationStage7AbsorbedTail",
+      "TestEvacuationStage7LargeYoungPlan"
+    ]
+  },
+  {
+    "artifact_sha256": "92c80274d5ebf72b64ba3a95ac9ef79d7622e9876edab583b74fe2badea9024d",
+    "build_exit": 0,
+    "census": {
+      "duplicates": [],
+      "failed": [
+        "TestDarwinTinyGoCancellationAndGC",
+        "TestGCStage8TinyGoGuestRelocatedRead",
+        "TestGCStage8TinyGoControls"
+      ],
+      "missing": [
+        "TestGCStage8TinyGoGuestRelocatedRead",
+        "TestGCStage8TinyGoControls",
+        "TestDarwinTinyGoCancellationAndGC"
+      ],
+      "ok": false,
+      "passed": [
+        "TestDesignRepairPublicGlobalTokenClassification/local/foreign",
+        "TestDesignRepairPublicGlobalTokenClassification/local/forged",
+        "TestDesignRepairPublicGlobalTokenClassification/local/expired",
+        "TestDesignRepairPublicGlobalTokenClassification/local/authenticated-wrapper",
+        "TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null",
+        "TestDesignRepairPublicGlobalTokenClassification/local",
+        "TestDesignRepairPublicGlobalTokenClassification/owned/foreign",
+        "TestDesignRepairPublicGlobalTokenClassification/owned/forged",
+        "TestDesignRepairPublicGlobalTokenClassification/owned/expired",
+        "TestDesignRepairPublicGlobalTokenClassification/owned/authenticated-wrapper",
+        "TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null",
+        "TestDesignRepairPublicGlobalTokenClassification/owned",
+        "TestDesignRepairPublicGlobalTokenClassification",
+        "TestDesignRepairPublicTableOrdinary",
+        "TestDesignRepairUnsupportedConvertedPublicToken",
+        "TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory",
+        "TestUnsupportedConversionGlobalValidationOrdering/ordinary",
+        "TestUnsupportedConversionGlobalValidationOrdering/null",
+        "TestUnsupportedConversionGlobalValidationOrdering/invalid",
+        "TestUnsupportedConversionGlobalValidationOrdering/cross-store",
+        "TestUnsupportedConversionGlobalValidationOrdering/immutable-before-invalid",
+        "TestUnsupportedConversionGlobalValidationOrdering/immutable-before-null",
+        "TestUnsupportedConversionGlobalValidationOrdering/closed-before-invalid",
+        "TestUnsupportedConversionGlobalValidationOrdering/closed-before-null",
+        "TestUnsupportedConversionGlobalValidationOrdering",
+        "TestGCExternConversionStableIdentityAndOwnership",
+        "TestGCExternConversionRejectsForeignForgedAndClosed",
+        "TestGCExternConversionCollectorFirstCloseFailsClosed",
+        "TestGCExternConversionRejectedReplacementPreservesRoot",
+        "TestGCExternConversionPublicationOrderingAndRollback",
+        "TestDesignRepairUnsupportedConvertedPublication",
+        "TestDesignRepairUnsupportedBulkAtomicity"
+      ],
+      "skipped": [],
+      "unexpected": [],
+      "vacuous": false
+    },
+    "exit": 1,
+    "package": "src/wago",
+    "required": [
+      "TestGCStage8TinyGoGuestRelocatedRead",
+      "TestGCStage8TinyGoControls",
+      "TestDarwinTinyGoCancellationAndGC",
+      "TestGCExternConversionStableIdentityAndOwnership",
+      "TestGCExternConversionRejectsForeignForgedAndClosed",
+      "TestGCExternConversionCollectorFirstCloseFailsClosed",
+      "TestGCExternConversionRejectedReplacementPreservesRoot",
+      "TestGCExternConversionPublicationOrderingAndRollback",
+      "TestDesignRepairPublicGlobalTokenClassification",
+      "TestDesignRepairUnsupportedConvertedPublication",
+      "TestDesignRepairUnsupportedBulkAtomicity",
+      "TestDesignRepairPublicTableOrdinary",
+      "TestDesignRepairUnsupportedConvertedPublicToken",
+      "TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory",
+      "TestUnsupportedConversionGlobalValidationOrdering",
+      "TestDesignRepairPublicGlobalTokenClassification/local/foreign",
+      "TestDesignRepairPublicGlobalTokenClassification/local/forged",
+      "TestDesignRepairPublicGlobalTokenClassification/local/expired",
+      "TestDesignRepairPublicGlobalTokenClassification/local/authenticated-wrapper",
+      "TestDesignRepairPublicGlobalTokenClassification/local/ordinary-and-null",
+      "TestDesignRepairPublicGlobalTokenClassification/owned/foreign",
+      "TestDesignRepairPublicGlobalTokenClassification/owned/forged",
+      "TestDesignRepairPublicGlobalTokenClassification/owned/expired",
+      "TestDesignRepairPublicGlobalTokenClassification/owned/authenticated-wrapper",
+      "TestDesignRepairPublicGlobalTokenClassification/owned/ordinary-and-null",
+      "TestUnsupportedConversionGlobalValidationOrdering/ordinary",
+      "TestUnsupportedConversionGlobalValidationOrdering/null",
+      "TestUnsupportedConversionGlobalValidationOrdering/invalid",
+      "TestUnsupportedConversionGlobalValidationOrdering/cross-store",
+      "TestUnsupportedConversionGlobalValidationOrdering/immutable-before-invalid",
+      "TestUnsupportedConversionGlobalValidationOrdering/immutable-before-null",
+      "TestUnsupportedConversionGlobalValidationOrdering/closed-before-invalid",
+      "TestUnsupportedConversionGlobalValidationOrdering/closed-before-null"
+    ]
+  }
+]

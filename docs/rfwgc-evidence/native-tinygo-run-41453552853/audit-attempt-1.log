@@ -1,0 +1,17 @@
+{
+  "ordinary": {
+    "expected": 33,
+    "passed": 29,
+    "verdict": "FAIL"
+  },
+  "wago_regalloccheck": {
+    "expected": 33,
+    "passed": 30,
+    "verdict": "FAIL"
+  },
+  "wagodebug": {
+    "expected": 36,
+    "passed": 33,
+    "verdict": "FAIL"
+  }
+}

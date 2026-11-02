@@ -1,0 +1,485 @@
+{
+  "jobs": [
+    {
+      "id": 125304482181,
+      "name": "TinyGo Darwin ARM64 (wago_regalloccheck)",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Identity and native platform gate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Verified compiler release",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Native compiled-artifact qualification",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 6
+        },
+        {
+          "name": "Retain downloaded archive identity even on failure",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Preserve complete and failed attempts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Post Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        }
+      ]
+    },
+    {
+      "id": 125304482479,
+      "name": "TinyGo Darwin ARM64 (wagodebug)",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Identity and native platform gate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Verified compiler release",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Native compiled-artifact qualification",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 6
+        },
+        {
+          "name": "Retain downloaded archive identity even on failure",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Preserve complete and failed attempts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Post Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        }
+      ]
+    },
+    {
+      "id": 125304482569,
+      "name": "TinyGo Darwin ARM64 (ordinary)",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Identity and native platform gate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Verified compiler release",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Native compiled-artifact qualification",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 6
+        },
+        {
+          "name": "Retain downloaded archive identity even on failure",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Preserve complete and failed attempts",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Post Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 15
+        },
+        {
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        }
+      ]
+    },
+    {
+      "id": 125304484275,
+      "name": "Pinned Windows storage contracts / ${{ matrix.mode }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304484339,
+      "name": "Corpus correctness / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304484448,
+      "name": "Pinned Darwin correctness / ${{ matrix.mode }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304484485,
+      "name": "Draft smoke / Linux amd64",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304484750,
+      "name": "Bounded fuzzing / Linux amd64",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304484787,
+      "name": "Pinned native Linux ARM64 RR3 / ${{ matrix.mode }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304484914,
+      "name": "Lint & format",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304485042,
+      "name": "Documentation",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304485172,
+      "name": "Regenerate regression corpus from pinned source",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304485270,
+      "name": "Plan CI profile",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304485489,
+      "name": "Current Go / Linux amd64",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304485568,
+      "name": "WebAssembly 1.0 conformance / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304485646,
+      "name": "GC hardening / bounded",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304485856,
+      "name": "TinyGo / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304485949,
+      "name": "Application corpus / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304486026,
+      "name": "Build size",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304486152,
+      "name": "matrix.name",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304486180,
+      "name": "Race detector / Linux amd64",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304486347,
+      "name": "Core v3 conformance / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304486352,
+      "name": "Regression corpus integrity",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304486430,
+      "name": "Core v2 conformance / ${{ matrix.name }}",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304486675,
+      "name": "Verify corpus shard coverage",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304487637,
+      "name": "Non-Linux qualification summary",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125304488446,
+      "name": "Native Linux ARM64 RR3 qualification summary",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 125322576643,
+      "name": "Darwin TinyGo supplement complete",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run python3 -c 'import json,os; n=json.loads(os.environ[\"RESULTS\"]); assert n[\"darwin-tinygo-native\"][\"result\"] == \"success\", n; assert all(v[\"result\"] == \"skipped\" for k,v in n.items() if k != \"darwin-tinygo-native\"), n'",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 2
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        }
+      ]
+    },
+    {
+      "id": 125322637667,
+      "name": "github.event_name == 'workflow_dispatch' && (inputs.darwin_qualification || inputs.native_arm64_rr3 || inputs.darwin_tinygo_supplement) && 'Full CI not run (qualification dispatch)' || 'CI'",
+      "status": "completed",
+      "conclusion": "skipped",
+      "run_id": 41453552853,
+      "logs_url": null,
+      "steps": null
+    }
+  ]
+}

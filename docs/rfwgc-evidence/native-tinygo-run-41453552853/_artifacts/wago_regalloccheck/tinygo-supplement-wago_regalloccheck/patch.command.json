@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/source/scripts/patch-tinygo-foreign-stack.py",
+    "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/tool/tinygo"
+  ],
+  "cwd": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/source",
+  "environment": {
+    "GOCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/go-cache",
+    "GOENV": "off",
+    "GOFLAGS": "-mod=readonly -p=2",
+    "GOMAXPROCS": "2",
+    "GOMODCACHE": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/modules",
+    "GOROOT": "/Users/runner/hostedtoolcache/go/1.27.1/arm64",
+    "GOTOOLCHAIN": "local",
+    "GOWORK": "off",
+    "HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck",
+    "PATH": "/Users/runner/hostedtoolcache/go/1.27.1/arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "XDG_CACHE_HOME": "/Users/runner/work/_temp/tinygo-supplement-wago_regalloccheck/cache"
+  },
+  "timeout_seconds": 60
+}
