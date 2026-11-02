@@ -1,0 +1,32 @@
+[
+  [
+    "ordinary",
+    "cancel",
+    "missing child rejected"
+  ],
+  [
+    "ordinary",
+    "close",
+    "missing child rejected"
+  ],
+  [
+    "wagodebug",
+    "cancel",
+    "missing child rejected"
+  ],
+  [
+    "wagodebug",
+    "close",
+    "missing child rejected"
+  ],
+  [
+    "wago_regalloccheck",
+    "cancel",
+    "missing child rejected"
+  ],
+  [
+    "wago_regalloccheck",
+    "close",
+    "missing child rejected"
+  ]
+]

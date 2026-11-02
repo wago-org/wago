@@ -40,8 +40,20 @@ def adapt(source):
  for src,dst in [('src/wago/gc_stage8_tinygo_guest_amd64_test.go','src/wago/supplement_stage8_test.go'),('src/wago/design_repair_unsupported_test.go','src/wago/supplement_rejection_test.go')]:
   old=(source/src).read_bytes()
   data=b'//go:build darwin && arm64 && tinygo\n'+old.split(b'\n',1)[1]
+  if 'stage8' in dst:
+   option=b'.WithOptimization("dead-gc-new", false)'
+   assert data.count(option)==2
+   data=data.replace(option,b'')
   (source/dst).write_bytes(data)
-  changes[dst]=dict(original=src,original_sha256=hashlib.sha256(old).hexdigest(),sha256=sha(source/dst),change='build constraint and filename only; body unchanged')
+  changes[dst]=dict(original=src,original_sha256=hashlib.sha256(old).hexdigest(),sha256=sha(source/dst),change=('build constraint/filename; remove two AMD64-only dead-gc-new disable options, all assertions unchanged' if 'stage8' in dst else 'build constraint and filename only; body unchanged'))
+ # Replace the allocator-dependent test oracle only, retaining the actual resume check.
+ path=source/'src/core/runtime/engine_int_tinygo_test.go'
+ old=path.read_text()
+ fragment='\tif got, want := e.nativeResumeStackTop(), e.preparedInt.stackTop; got != want || got == e.stackTop {\n\t\tt.Fatalf("resume stack top = %#x, want physical top %#x distinct from entry %#x", got, want, e.stackTop)\n\t}'
+ replacement='\tif got, want := e.nativeResumeStackTop(), e.preparedInt.stackTop; got != want {\n\t\tt.Fatalf("resume stack top = %#x, want physical top %#x", got, want)\n\t}\n\tentry := e.stackTop\n\te.stackTop = e.preparedInt.stackTop ^ uintptr(16)\n\tgot, want := e.nativeResumeStackTop(), e.preparedInt.stackTop\n\te.stackTop = entry\n\tif got != want {\n\t\tt.Fatalf("resume used controlled entry sentinel: got %#x want %#x", got, want)\n\t}'
+ assert old.count(fragment)==1
+ path.write_text(old.replace(fragment,replacement))
+ changes[str(path.relative_to(source))]=dict(original_sha256=hashlib.sha256(old.encode()).hexdigest(),sha256=sha(path),change='test-only physical-top oracle plus deterministic distinct entry sentinel; restore before Close')
  for src,dst in [('foreign_stack_arm64_test.go.in','src/core/runtime/supplement_foreign_stack_arm64_test.go'),('cancellation_test.go.in','src/wago/supplement_cancellation_test.go')]:
   (source/dst).write_bytes((E/src).read_bytes());changes[dst]=dict(adapter=src,sha256=sha(source/dst))
  return changes
@@ -53,6 +65,7 @@ def suites(mode):
  evacuation += ['TestEvacuationStage7'+n for n in ['RunCredit','PolicyAndOptionalRefusal','Selection','CrossingPhysicalMove','AbsorbedTail','LargeYoungPlan']]
  if mode=='wagodebug': evacuation += ['TestEvacuationStage7'+n for n in ['AdmissionFaults','CommittedMaintenance','SerialPartialCopyRollback']]
  wago=['TestGCStage8TinyGoGuestRelocatedRead','TestGCStage8TinyGoControls','TestDarwinTinyGoCancellationAndGC']
+ wago += ['TestDarwinTinyGoCancellationAndGC/'+n for n in ['cancel','close']]
  wago += ['TestGCExternConversion'+n for n in ['StableIdentityAndOwnership','RejectsForeignForgedAndClosed','CollectorFirstCloseFailsClosed','RejectedReplacementPreservesRoot','PublicationOrderingAndRollback']]
  wago += ['TestDesignRepair'+n for n in ['PublicGlobalTokenClassification','UnsupportedConvertedPublication','UnsupportedBulkAtomicity','PublicTableOrdinary','UnsupportedConvertedPublicToken']]
  wago += ['TestUnsupportedConversionPublicGlobalRejectsOpaqueBeforeDirectory','TestUnsupportedConversionGlobalValidationOrdering']
