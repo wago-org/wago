@@ -1,0 +1,3 @@
+=== RUN   TestTinyGoForeignStackGCCloseThunkFailure
+--- PASS: TestTinyGoForeignStackGCCloseThunkFailure (0.00s)
+PASS

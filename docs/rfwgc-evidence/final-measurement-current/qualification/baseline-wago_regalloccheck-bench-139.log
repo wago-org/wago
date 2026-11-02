@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/yyjson.yyjson_run
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/yyjson.yyjson_run
+--- PASS: TestFinalPreparationRuntime (0.06s)
+    --- PASS: TestFinalPreparationRuntime/yyjson.yyjson_run (0.03s)
+PASS

@@ -1,0 +1,5 @@
+=== RUN   TestFinalMeasurementPlainExtern
+=== RUN   TestFinalMeasurementPlainExtern/init
+--- PASS: TestFinalMeasurementPlainExtern (0.00s)
+    --- PASS: TestFinalMeasurementPlainExtern/init (0.00s)
+PASS

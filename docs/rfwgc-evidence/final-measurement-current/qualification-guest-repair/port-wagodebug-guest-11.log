@@ -1,0 +1,5 @@
+=== RUN   TestR9H2HostContainerPublicTable
+=== RUN   TestR9H2HostContainerPublicTable/6
+--- PASS: TestR9H2HostContainerPublicTable (0.00s)
+    --- PASS: TestR9H2HostContainerPublicTable/6 (0.00s)
+PASS

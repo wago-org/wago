@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/micropython-squares
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/micropython-squares
+--- PASS: TestFinalPreparationCompile (0.07s)
+    --- PASS: TestFinalPreparationCompile/micropython-squares (0.07s)
+PASS

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/age-keygen-public
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/age-keygen-public
+--- PASS: TestFinalPreparationCompile (0.21s)
+    --- PASS: TestFinalPreparationCompile/age-keygen-public (0.21s)
+PASS

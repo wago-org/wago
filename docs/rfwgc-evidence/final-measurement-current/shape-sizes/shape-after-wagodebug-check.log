@@ -1,0 +1,4 @@
+=== RUN   TestFinalPreparationShapeSize
+    final_shape_size_test.go:7: collector_bytes=192 mark_bytes=168 pointer_bytes=8
+--- PASS: TestFinalPreparationShapeSize (0.00s)
+PASS

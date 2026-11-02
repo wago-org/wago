@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/coremark
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/coremark
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/coremark (0.00s)
+PASS

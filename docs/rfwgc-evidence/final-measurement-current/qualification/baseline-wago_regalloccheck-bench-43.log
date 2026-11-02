@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/yosys-counter
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/yosys-counter
+--- PASS: TestFinalPreparationRuntime (3.45s)
+    --- PASS: TestFinalPreparationRuntime/yosys-counter (3.43s)
+PASS

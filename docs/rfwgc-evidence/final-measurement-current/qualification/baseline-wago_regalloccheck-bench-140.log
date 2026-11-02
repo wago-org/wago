@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/utf8proc
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/utf8proc
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/utf8proc (0.00s)
+PASS

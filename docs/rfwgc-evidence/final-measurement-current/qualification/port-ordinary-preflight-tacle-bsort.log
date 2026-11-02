@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/tacle-bsort
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/tacle-bsort
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/tacle-bsort (0.00s)
+PASS

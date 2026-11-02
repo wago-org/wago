@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/ripgrep-source
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/ripgrep-source
+--- PASS: TestFinalPreparationRuntime (0.54s)
+    --- PASS: TestFinalPreparationRuntime/ripgrep-source (0.52s)
+PASS

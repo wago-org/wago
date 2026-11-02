@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/embench-nettle-sha256
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/embench-nettle-sha256
+--- PASS: TestFinalPreparationRuntime (0.00s)
+    --- PASS: TestFinalPreparationRuntime/embench-nettle-sha256 (0.00s)
+PASS

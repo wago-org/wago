@@ -1,0 +1,68 @@
+[
+  {
+    "fixture": "census_test.go.txt",
+    "parent_sha256": "99c74481faf8a417768cf5f2a182e87b66965f212c8332109d6a1d5841831618",
+    "current_sha256": "99c74481faf8a417768cf5f2a182e87b66965f212c8332109d6a1d5841831618",
+    "change": "identical"
+  },
+  {
+    "fixture": "corpus_test.go.txt",
+    "parent_sha256": "9c111a2a78624de9f394850832e40ec1a3e12d3a2576c67dd1e99586a6260bd2",
+    "current_sha256": "9c111a2a78624de9f394850832e40ec1a3e12d3a2576c67dd1e99586a6260bd2",
+    "change": "identical"
+  },
+  {
+    "fixture": "design_review_cross_runtime_probe_test.go.txt",
+    "parent_sha256": "e409a71d1dd97b4839a793c93df55b54bdaf77ccd046c85e1b1bbb3d83145bf1",
+    "current_sha256": "02fc5be4b6cf05d4331d7f2a0ef96f32bef2d0c689adadd75bfb86b17b31c349",
+    "change": "test entrypoint prefix only, bodies unchanged"
+  },
+  {
+    "fixture": "design_review_probe_test.go.txt",
+    "parent_sha256": "6a77cce48864cb4377f8e00d419f1952178b131da80633f4d6789af9193fe6df",
+    "current_sha256": "addd00eeb463b67a0731e3b3e8f409e54bfdc096d188f437c1255f7a242fea14",
+    "change": "test entrypoint prefix only, bodies unchanged"
+  },
+  {
+    "fixture": "domain_test.go.txt",
+    "parent_sha256": "e850ea8e1ee469a1e25c270e274b5564e5ecf7b5ff0d3cd47cfb862e2bea937a",
+    "current_sha256": "e850ea8e1ee469a1e25c270e274b5564e5ecf7b5ff0d3cd47cfb862e2bea937a",
+    "change": "identical"
+  },
+  {
+    "fixture": "evacuation_test.go.txt",
+    "parent_sha256": "c18991ae95753ad5247b0a4b1e8c15ab13214ec28835d078995b6514789f8f70",
+    "current_sha256": "c18991ae95753ad5247b0a4b1e8c15ab13214ec28835d078995b6514789f8f70",
+    "change": "identical"
+  },
+  {
+    "fixture": "foreign_stack_test.go.txt",
+    "parent_sha256": "d6ce562908135c66819f281f581d176cace36f3b645ed86a20f68ac68b6aebbf",
+    "current_sha256": "d6ce562908135c66819f281f581d176cace36f3b645ed86a20f68ac68b6aebbf",
+    "change": "identical"
+  },
+  {
+    "fixture": "graph_test.go.txt",
+    "parent_sha256": "56c42817b826510933ad0b7477c90dcf528244c175d72c5ec7e57421d2b5d960",
+    "current_sha256": "56c42817b826510933ad0b7477c90dcf528244c175d72c5ec7e57421d2b5d960",
+    "change": "identical"
+  },
+  {
+    "fixture": "review_guest_test.go.txt",
+    "parent_sha256": "782ecce76bbab4054a1a4dd548c0a642921d8660980f593d3ab769c8d9a67719",
+    "current_sha256": "782ecce76bbab4054a1a4dd548c0a642921d8660980f593d3ab769c8d9a67719",
+    "change": "identical"
+  },
+  {
+    "fixture": "review_native_test.go.txt",
+    "parent_sha256": "2dedc30140acc455c0d773ea9181cf1a89f84cd9490e9e7c92fd1e9bae9e0f25",
+    "current_sha256": "2dedc30140acc455c0d773ea9181cf1a89f84cd9490e9e7c92fd1e9bae9e0f25",
+    "change": "identical"
+  },
+  {
+    "fixture": "shape_test.go.txt",
+    "parent_sha256": "20c9c86dcdb2317f639e8d3de43a3b56da4042c2fd8b1c7c53bac7e083ba2861",
+    "current_sha256": "20c9c86dcdb2317f639e8d3de43a3b56da4042c2fd8b1c7c53bac7e083ba2861",
+    "change": "identical"
+  }
+]

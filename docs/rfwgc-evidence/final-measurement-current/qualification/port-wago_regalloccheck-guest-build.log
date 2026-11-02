@@ -1,0 +1,5 @@
+# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
+src/wago/final_review_cross_runtime_test.go:13:6: TestDesignReviewExternStorageProducerCrossRuntimeImport redeclared in this block
+	src/wago/design_review_cross_runtime_probe_test.go:13:6: other declaration of TestDesignReviewExternStorageProducerCrossRuntimeImport
+src/wago/final_review_probe_test.go:17:6: TestDesignReviewExternStorageImportsPrivateGCProducer redeclared in this block
+	src/wago/design_review_probe_test.go:17:6: other declaration of TestDesignReviewExternStorageImportsPrivateGCProducer

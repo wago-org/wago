@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/tinyxml2
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/tinyxml2
+--- PASS: TestFinalPreparationRuntime (0.01s)
+    --- PASS: TestFinalPreparationRuntime/tinyxml2 (0.01s)
+PASS

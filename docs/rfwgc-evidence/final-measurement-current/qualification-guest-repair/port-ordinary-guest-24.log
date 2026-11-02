@@ -1,0 +1,5 @@
+=== RUN   TestR9OwnershipWakeupExitCrossing
+=== RUN   TestR9OwnershipWakeupExitCrossing/0
+--- PASS: TestR9OwnershipWakeupExitCrossing (0.00s)
+    --- PASS: TestR9OwnershipWakeupExitCrossing/0 (0.00s)
+PASS

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/age-keygen-public
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/age-keygen-public
+--- PASS: TestFinalPreparationRuntime (0.33s)
+    --- PASS: TestFinalPreparationRuntime/age-keygen-public (0.32s)
+PASS

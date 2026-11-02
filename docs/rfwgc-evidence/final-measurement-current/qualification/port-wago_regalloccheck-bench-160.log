@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/cjson
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/cjson
+--- PASS: TestFinalPreparationCompile (0.01s)
+    --- PASS: TestFinalPreparationCompile/cjson (0.01s)
+PASS
