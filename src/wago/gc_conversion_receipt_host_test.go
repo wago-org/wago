@@ -313,7 +313,7 @@ func TestR9H2ReceiptConvertedProducerCycle(t *testing.T) {
 		for _, shift := range []uint8{0, 6} {
 			t.Run(fmt.Sprintf("%s/region=%d", mode, shift), func(t *testing.T) {
 				store := newReferenceStore(false)
-				initial, provider, table, _ := h2ReceiptFixture(t, store, shift)
+				initial, provider, _, _ := h2ReceiptFixture(t, store, shift)
 				if err := initial.Close(); err != nil {
 					t.Fatal(err)
 				}
@@ -341,9 +341,14 @@ func TestR9H2ReceiptConvertedProducerCycle(t *testing.T) {
 				if s == nil || s.count != 1 || !producer.hasPhysicalResources() {
 					t.Fatal("STOP converted producer absent")
 				}
-				table.Conversion = s
-				h2TableSet(t, table, 0, s.entries[0].externWord)
-				r := h2AssertReceipt(t, table.conversionContainers[0], 0)
+				// The compiled global.set above is the sole publication hook.
+				store.mu.Lock()
+				container := store.gcDomains.conversionContainers[&exported.cell[0]]
+				store.mu.Unlock()
+				if container == nil {
+					t.Fatal("STOP guest global store has no physical receipt")
+				}
+				r := h2AssertReceipt(t, container, 0)
 				stateValue, ok := managedFunctionCollectors.Load(producer.gc)
 				if !ok || len(stateValue.(*managedFunctionCollector).envs) != 1 {
 					t.Fatal("STOP converted object has no producer edge")
@@ -381,13 +386,13 @@ func TestR9H2ReceiptConvertedProducerCycle(t *testing.T) {
 				if err = provider.Close(); err != nil {
 					t.Fatal(err)
 				}
-				h2AssertReceipt(t, table.conversionContainers[0], 0)
+				h2AssertReceipt(t, container, 0)
 				if !producer.hasPhysicalResources() || released.Load() != 0 {
 					t.Fatal("STOP external edge failed to retain converted cycle")
 				}
 				graph.pendingCollection.Store(true)
 				graph.drainAfterGate(0)
-				h2AssertReceipt(t, table.conversionContainers[0], 0)
+				h2AssertReceipt(t, container, 0)
 				switch mode {
 				case "direct":
 					provider.releaseResourceRoot()
@@ -416,18 +421,18 @@ func TestR9H2ReceiptConvertedProducerCycle(t *testing.T) {
 					}
 				case "callback":
 					probe := slotHostFunc(func(host HostModule, _ []uint64, _ []uint64) {
-						h2AssertReceipt(t, table.conversionContainers[0], 0)
+						h2AssertReceipt(t, container, 0)
 						provider.releaseResourceRoot()
 						graph.drainAfterGate(0)
 						h2WithAuthority(t, store, func() {
-							h2AssertReceipt(t, table.conversionContainers[0], 0)
+							h2AssertReceipt(t, container, 0)
 							if !producer.hasPhysicalResources() {
 								t.Fatal("STOP active callback lost producer before collection")
 							}
 							if err := r.identity.domain.collector.CollectFull(gc.EmptyRoots{}); err != nil {
 								t.Fatal(err)
 							}
-							h2AssertReceipt(t, table.conversionContainers[0], 0)
+							h2AssertReceipt(t, container, 0)
 						})
 						if !producer.hasPhysicalResources() || released.Load() != 0 {
 							t.Fatal("STOP active callback lost conditional owner")

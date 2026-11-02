@@ -1464,7 +1464,11 @@ func scanLoopCallFree(r *wasm.Reader, classifier wasm.ModuleInstructionClassifie
 
 // scanLoopCallFreeDetails also picks one float constant while the
 // existing loop proof is walking the body. No second bytecode pass is needed.
-func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, pinnedLocals []int, wantFloat bool, budget *int) (bool, uint64, storage, bool) {
+func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, gcStructHelpers bool, pinnedLocals []int, wantFloat bool, budget *int, modules ...*wasm.Module) (bool, uint64, storage, bool) {
+	var m *wasm.Module
+	if len(modules) != 0 {
+		m = modules[0]
+	}
 	if budget == nil || *budget >= maxCallFreeLoopLookaheadBytes {
 		return false, 0, storage{}, false
 	}
@@ -1567,7 +1571,7 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 			// the hot path. Keep the existing stack convergence there.
 			brTable = true
 		}
-		if gcOrAtomicInstructionMayCall(imm.Kind, gcStructHelpers) {
+		if shared.ExternStoreMayCall(m, imm.Kind, imm.Index) || gcOrAtomicInstructionMayCall(imm.Kind, gcStructHelpers) {
 			return false, 0, storage{}, false
 		}
 		if imm.UsesBulkMemory {
@@ -1688,7 +1692,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 		if loopRegState {
 			pins = f.pinnedLocals
 		}
-		if callFree, writes, st, hasFloat := scanLoopCallFreeDetails(r, f.classifier, f.gcStructHelpers, pins, len(f.fconsts) < 2, &f.callFreeLoopLookaheadBytes); callFree {
+		if callFree, writes, st, hasFloat := scanLoopCallFreeDetails(r, f.classifier, f.gcStructHelpers, pins, len(f.fconsts) < 2, &f.callFreeLoopLookaheadBytes, f.m); callFree {
 			fr.set(ctrlLoopCallFree, true)
 			loopPinnedWrites = writes
 			loopFloatConst, loopFloatConstOK = st, hasFloat
