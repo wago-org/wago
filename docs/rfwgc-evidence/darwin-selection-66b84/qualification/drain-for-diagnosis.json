@@ -1,0 +1,20 @@
+{
+  "utc": 1793658545.7253077,
+  "driver_paused": 2270085,
+  "owned": [
+    {
+      "pid": 2270085,
+      "ppid": 2694527,
+      "state": "T"
+    },
+    {
+      "pid": 2275150,
+      "ppid": 2270085,
+      "state": "Z"
+    }
+  ],
+  "active_children": [],
+  "no_new_starts_until_explicit_release": true,
+  "current_log": "ordinary-fallback.log",
+  "log_tail": "PASS; ok src/wago 0.003s"
+}

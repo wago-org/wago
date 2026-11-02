@@ -1,0 +1,430 @@
+﻿2026-11-02T21:57:33.3992575Z Current runner version: '2.338.2'
+2026-11-02T21:57:33.4017837Z ##[group]Runner Image Provisioner
+2026-11-02T21:57:33.4018736Z Hosted Compute Agent
+2026-11-02T21:57:33.4019485Z Version: 20261021.618
+2026-11-02T21:57:33.4020144Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-11-02T21:57:33.4020978Z Build Date: 2026-10-21T00:45:21Z
+2026-11-02T21:57:33.4021712Z Worker ID: {f6923c2c-cb08-4f3a-a588-c9f65318e934}
+2026-11-02T21:57:33.4022422Z Region: eastus
+2026-11-02T21:57:33.4023065Z Cloud: Azure
+2026-11-02T21:57:33.4023634Z ##[endgroup]
+2026-11-02T21:57:33.4025545Z ##[group]Operating System
+2026-11-02T21:57:33.4026285Z Ubuntu
+2026-11-02T21:57:33.4026820Z 24.04.5
+2026-11-02T21:57:33.4027432Z LTS
+2026-11-02T21:57:33.4027972Z ##[endgroup]
+2026-11-02T21:57:33.4028636Z ##[group]Runner Image
+2026-11-02T21:57:33.4029266Z Image: ubuntu-24.04
+2026-11-02T21:57:33.4029844Z Version: 20261025.353.1
+2026-11-02T21:57:33.4031176Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261025.353/images/ubuntu/Ubuntu2404-Readme.md
+2026-11-02T21:57:33.4032857Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261025.353
+2026-11-02T21:57:33.4033878Z ##[endgroup]
+2026-11-02T21:57:33.4035378Z ##[group]GITHUB_TOKEN Permissions
+2026-11-02T21:57:33.4037487Z Contents: read
+2026-11-02T21:57:33.4038214Z Metadata: read
+2026-11-02T21:57:33.4038816Z ##[endgroup]
+2026-11-02T21:57:33.4040980Z Secret source: Actions
+2026-11-02T21:57:33.4041978Z Cache mode: write
+2026-11-02T21:57:33.4043025Z Prepare workflow directory
+2026-11-02T21:57:33.4429728Z Prepare all required actions
+2026-11-02T21:57:33.4478209Z Getting action download info
+2026-11-02T21:57:33.6267629Z Download action repository 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-11-02T21:57:33.7393885Z Download action repository 'actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff' (SHA:40f1582b2485089dde7abd97c1529aa768e1baff)
+2026-11-02T21:57:34.0141079Z Complete job name: Race detector / Linux amd64
+2026-11-02T21:57:34.1055479Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+2026-11-02T21:57:34.1056617Z with:
+2026-11-02T21:57:34.1057100Z   repository: wago-org/wago
+2026-11-02T21:57:34.1060803Z   token: ***
+2026-11-02T21:57:34.1061270Z   ssh-strict: true
+2026-11-02T21:57:34.1061742Z   ssh-user: git
+2026-11-02T21:57:34.1062217Z   persist-credentials: true
+2026-11-02T21:57:34.1062745Z   clean: true
+2026-11-02T21:57:34.1063225Z   sparse-checkout-cone-mode: true
+2026-11-02T21:57:34.1063779Z   fetch-depth: 1
+2026-11-02T21:57:34.1064483Z   fetch-tags: false
+2026-11-02T21:57:34.1064956Z   show-progress: true
+2026-11-02T21:57:34.1065428Z   lfs: false
+2026-11-02T21:57:34.1065860Z   submodules: false
+2026-11-02T21:57:34.1066331Z   set-safe-directory: true
+2026-11-02T21:57:34.1066868Z   allow-unsafe-pr-checkout: false
+2026-11-02T21:57:34.1067654Z env:
+2026-11-02T21:57:34.1068078Z   GO_VERSION: 1.27.1
+2026-11-02T21:57:34.1068579Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:57:34.1069158Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:57:34.1069650Z   JUST_VERSION: 1.58.0
+2026-11-02T21:57:34.1070118Z ##[endgroup]
+2026-11-02T21:57:34.3819995Z Syncing repository: wago-org/wago
+2026-11-02T21:57:34.3822559Z ##[group]Getting Git version info
+2026-11-02T21:57:34.3823806Z Working directory is '/home/runner/work/wago/wago'
+2026-11-02T21:57:34.3825943Z [command]/usr/bin/git version
+2026-11-02T21:57:34.3920493Z git version 2.56.0
+2026-11-02T21:57:34.3948551Z ##[endgroup]
+2026-11-02T21:57:34.3968047Z Temporarily overriding HOME='/home/runner/work/_temp/fcade3ff-b227-4ba4-b0da-1def144e6e07' before making global git config changes
+2026-11-02T21:57:34.3971324Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T21:57:34.3974435Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wago/wago
+2026-11-02T21:57:34.4055777Z Deleting the contents of '/home/runner/work/wago/wago'
+2026-11-02T21:57:34.4061751Z ##[group]Initializing the repository
+2026-11-02T21:57:34.4064687Z [command]/usr/bin/git init /home/runner/work/wago/wago
+2026-11-02T21:57:34.4220631Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-02T21:57:34.4223045Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-02T21:57:34.4225363Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-02T21:57:34.4227133Z hint: call:
+2026-11-02T21:57:34.4228292Z hint:
+2026-11-02T21:57:34.4229343Z hint: 	git config --global init.defaultBranch <name>
+2026-11-02T21:57:34.4230761Z hint:
+2026-11-02T21:57:34.4232095Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-02T21:57:34.4234406Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-02T21:57:34.4236154Z hint:
+2026-11-02T21:57:34.4237194Z hint: 	git branch -m <name>
+2026-11-02T21:57:34.4238361Z hint:
+2026-11-02T21:57:34.4239817Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-02T21:57:34.4248384Z Initialized empty Git repository in /home/runner/work/wago/wago/.git/
+2026-11-02T21:57:34.4277760Z [command]/usr/bin/git remote add origin https://github.com/wago-org/wago
+2026-11-02T21:57:34.4377063Z ##[endgroup]
+2026-11-02T21:57:34.4379007Z ##[group]Disabling automatic garbage collection
+2026-11-02T21:57:34.4380399Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-02T21:57:34.4396580Z ##[endgroup]
+2026-11-02T21:57:34.4398776Z ##[group]Setting up auth
+2026-11-02T21:57:34.4409600Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T21:57:34.4473384Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T21:57:34.4953747Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T21:57:34.5006528Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T21:57:34.5265051Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T21:57:34.5321902Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T21:57:34.5566336Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-02T21:57:34.5614648Z ##[endgroup]
+2026-11-02T21:57:34.5615963Z ##[group]Fetching the repository
+2026-11-02T21:57:34.5636024Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0717d065315484c0049c56c571be6d881caf395a:refs/remotes/pull/1048/merge
+2026-11-02T21:57:37.5348794Z From https://github.com/wago-org/wago
+2026-11-02T21:57:37.5351218Z  * [new ref]         0717d065315484c0049c56c571be6d881caf395a -> pull/1048/merge
+2026-11-02T21:57:37.5356217Z ##[endgroup]
+2026-11-02T21:57:37.5357653Z ##[group]Determining the checkout info
+2026-11-02T21:57:37.5359473Z ##[endgroup]
+2026-11-02T21:57:37.5360987Z [command]/usr/bin/git sparse-checkout disable
+2026-11-02T21:57:37.5418476Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-02T21:57:37.5456817Z ##[group]Checking out the ref
+2026-11-02T21:57:37.5459472Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/1048/merge
+2026-11-02T21:57:38.5576076Z Updating files:  46% (3521/7552)
+2026-11-02T21:57:38.5618292Z Updating files:  47% (3550/7552)
+2026-11-02T21:57:38.5663231Z Updating files:  48% (3625/7552)
+2026-11-02T21:57:38.5701266Z Updating files:  49% (3701/7552)
+2026-11-02T21:57:38.5741600Z Updating files:  50% (3776/7552)
+2026-11-02T21:57:38.5787619Z Updating files:  51% (3852/7552)
+2026-11-02T21:57:38.5835792Z Updating files:  52% (3928/7552)
+2026-11-02T21:57:38.5879160Z Updating files:  53% (4003/7552)
+2026-11-02T21:57:38.5928357Z Updating files:  54% (4079/7552)
+2026-11-02T21:57:38.5976505Z Updating files:  55% (4154/7552)
+2026-11-02T21:57:38.6032360Z Updating files:  56% (4230/7552)
+2026-11-02T21:57:38.6077774Z Updating files:  57% (4305/7552)
+2026-11-02T21:57:38.6125139Z Updating files:  58% (4381/7552)
+2026-11-02T21:57:38.6174397Z Updating files:  59% (4456/7552)
+2026-11-02T21:57:38.6228326Z Updating files:  60% (4532/7552)
+2026-11-02T21:57:38.6279260Z Updating files:  61% (4607/7552)
+2026-11-02T21:57:38.6328085Z Updating files:  62% (4683/7552)
+2026-11-02T21:57:38.6379360Z Updating files:  63% (4758/7552)
+2026-11-02T21:57:38.6423600Z Updating files:  64% (4834/7552)
+2026-11-02T21:57:38.6471688Z Updating files:  65% (4909/7552)
+2026-11-02T21:57:38.6521052Z Updating files:  66% (4985/7552)
+2026-11-02T21:57:38.6583033Z Updating files:  67% (5060/7552)
+2026-11-02T21:57:38.6633506Z Updating files:  68% (5136/7552)
+2026-11-02T21:57:38.6692554Z Updating files:  69% (5211/7552)
+2026-11-02T21:57:38.6746830Z Updating files:  70% (5287/7552)
+2026-11-02T21:57:38.6793180Z Updating files:  71% (5362/7552)
+2026-11-02T21:57:38.6837826Z Updating files:  72% (5438/7552)
+2026-11-02T21:57:38.6882678Z Updating files:  73% (5513/7552)
+2026-11-02T21:57:38.6909092Z Updating files:  74% (5589/7552)
+2026-11-02T21:57:38.6934213Z Updating files:  75% (5664/7552)
+2026-11-02T21:57:38.7200833Z Updating files:  76% (5740/7552)
+2026-11-02T21:57:38.7268882Z Updating files:  77% (5816/7552)
+2026-11-02T21:57:38.7301045Z Updating files:  78% (5891/7552)
+2026-11-02T21:57:38.7335294Z Updating files:  79% (5967/7552)
+2026-11-02T21:57:38.7370544Z Updating files:  80% (6042/7552)
+2026-11-02T21:57:38.7401662Z Updating files:  81% (6118/7552)
+2026-11-02T21:57:38.7425501Z Updating files:  82% (6193/7552)
+2026-11-02T21:57:38.7454132Z Updating files:  83% (6269/7552)
+2026-11-02T21:57:38.7481531Z Updating files:  84% (6344/7552)
+2026-11-02T21:57:38.7513745Z Updating files:  85% (6420/7552)
+2026-11-02T21:57:38.7544787Z Updating files:  86% (6495/7552)
+2026-11-02T21:57:38.7577883Z Updating files:  87% (6571/7552)
+2026-11-02T21:57:38.7608867Z Updating files:  88% (6646/7552)
+2026-11-02T21:57:38.7637875Z Updating files:  89% (6722/7552)
+2026-11-02T21:57:38.7668762Z Updating files:  90% (6797/7552)
+2026-11-02T21:57:38.7704330Z Updating files:  91% (6873/7552)
+2026-11-02T21:57:38.7733534Z Updating files:  92% (6948/7552)
+2026-11-02T21:57:38.7764960Z Updating files:  93% (7024/7552)
+2026-11-02T21:57:38.7795834Z Updating files:  94% (7099/7552)
+2026-11-02T21:57:38.7828722Z Updating files:  95% (7175/7552)
+2026-11-02T21:57:38.7860191Z Updating files:  96% (7250/7552)
+2026-11-02T21:57:38.7894167Z Updating files:  97% (7326/7552)
+2026-11-02T21:57:38.8165168Z Updating files:  98% (7401/7552)
+2026-11-02T21:57:38.8210148Z Updating files:  99% (7477/7552)
+2026-11-02T21:57:38.8211175Z Updating files: 100% (7552/7552)
+2026-11-02T21:57:38.8212291Z Updating files: 100% (7552/7552), done.
+2026-11-02T21:57:38.8285943Z Note: switching to 'refs/remotes/pull/1048/merge'.
+2026-11-02T21:57:38.8286499Z 
+2026-11-02T21:57:38.8287243Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-11-02T21:57:38.8288378Z changes and commit them, and you can discard any commits you make in this
+2026-11-02T21:57:38.8289375Z state without impacting any branches by switching back to a branch.
+2026-11-02T21:57:38.8290111Z 
+2026-11-02T21:57:38.8290503Z If you want to create a new branch to retain commits you create, you may
+2026-11-02T21:57:38.8291468Z do so (now or later) by using -c with the switch command. Example:
+2026-11-02T21:57:38.8292069Z 
+2026-11-02T21:57:38.8292464Z   git switch -c <new-branch-name>
+2026-11-02T21:57:38.8292835Z 
+2026-11-02T21:57:38.8293126Z Or undo this operation with:
+2026-11-02T21:57:38.8293458Z 
+2026-11-02T21:57:38.8293676Z   git switch -
+2026-11-02T21:57:38.8294287Z 
+2026-11-02T21:57:38.8294814Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-11-02T21:57:38.8295499Z 
+2026-11-02T21:57:38.8296634Z HEAD is now at 0717d06 Merge af48e57b41cf4251459178ac0c1c2055edad8a72 into 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e
+2026-11-02T21:57:38.8330350Z ##[endgroup]
+2026-11-02T21:57:38.8388856Z [command]/usr/bin/git log -1 --format=%H
+2026-11-02T21:57:38.8426846Z 0717d065315484c0049c56c571be6d881caf395a
+2026-11-02T21:57:38.8835389Z ##[group]Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+2026-11-02T21:57:38.8835795Z with:
+2026-11-02T21:57:38.8835993Z   go-version: 1.27.1
+2026-11-02T21:57:38.8836203Z   cache: true
+2026-11-02T21:57:38.8836617Z   cache-dependency-path: go.work
+go.mod
+go.sum
+bench/go.mod
+bench/go.sum
+cli/wago-installer/go.mod
+
+2026-11-02T21:57:38.8837094Z   check-latest: false
+2026-11-02T21:57:38.8839449Z   token: ***
+2026-11-02T21:57:38.8839649Z env:
+2026-11-02T21:57:38.8839828Z   GO_VERSION: 1.27.1
+2026-11-02T21:57:38.8840047Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:57:38.8840283Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:57:38.8840500Z   JUST_VERSION: 1.58.0
+2026-11-02T21:57:38.8840722Z ##[endgroup]
+2026-11-02T21:57:39.0242331Z Setup go version spec 1.27.1
+2026-11-02T21:57:39.0262145Z Attempting to download 1.27.1...
+2026-11-02T21:57:39.0420935Z (node:2293) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-02T21:57:39.0421944Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-02T21:57:39.4869959Z matching 1.27.1...
+2026-11-02T21:57:39.4904804Z Acquiring 1.27.1 from https://github.com/actions/go-versions/releases/download/1.27.1-33583469715/go-1.27.1-linux-x64.tar.gz
+2026-11-02T21:57:39.9257021Z Extracting Go...
+2026-11-02T21:57:39.9403489Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/5c5931d9-9848-47d5-8f8a-f74eadd66a45 -f /home/runner/work/_temp/314cd5e1-e8b5-43a9-8911-4e5dec021924
+2026-11-02T21:57:41.6331583Z Successfully extracted go to /home/runner/work/_temp/5c5931d9-9848-47d5-8f8a-f74eadd66a45
+2026-11-02T21:57:41.6332124Z Adding to the cache ...
+2026-11-02T21:57:46.7670843Z Successfully cached go to /opt/hostedtoolcache/go/1.27.1/x64
+2026-11-02T21:57:46.7674939Z Added go to the path
+2026-11-02T21:57:46.7677205Z Successfully set up Go version 1.27.1
+2026-11-02T21:57:46.7958855Z [command]/opt/hostedtoolcache/go/1.27.1/x64/bin/go env GOMODCACHE
+2026-11-02T21:57:46.8012714Z [command]/opt/hostedtoolcache/go/1.27.1/x64/bin/go env GOCACHE
+2026-11-02T21:57:46.8068857Z /home/runner/go/pkg/mod
+2026-11-02T21:57:46.8092582Z /home/runner/.cache/go-build
+2026-11-02T21:57:46.9072130Z Cache hit for: setup-go-Linux-x64-ubuntu24-go-1.27.1-d3df07694eb1e7ab5c5a06a176e89b7a74782bd039c3f115a1775be9028de6fe
+2026-11-02T21:57:46.9196025Z (node:2293) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-11-02T21:57:47.1907772Z Received 15947581 of 15947581 (100.0%), 71.7 MBs/sec
+2026-11-02T21:57:47.1908461Z Cache Size: ~15 MB (15947581 B)
+2026-11-02T21:57:47.2011654Z [command]/usr/bin/tar -xf /home/runner/work/_temp/85ebf9cb-eadc-4dc7-8ac5-042648fb3eb5/cache.tzst -P -C /home/runner/work/wago/wago --use-compress-program unzstd
+2026-11-02T21:57:47.3428454Z Cache restored successfully
+2026-11-02T21:57:47.3443553Z Cache restored from key: setup-go-Linux-x64-ubuntu24-go-1.27.1-d3df07694eb1e7ab5c5a06a176e89b7a74782bd039c3f115a1775be9028de6fe
+2026-11-02T21:57:47.3470801Z go version go1.27.1 linux/amd64
+2026-11-02T21:57:47.3471109Z 
+2026-11-02T21:57:47.3471555Z ##[group]go env
+2026-11-02T21:57:47.3633738Z AR='ar'
+2026-11-02T21:57:47.3634274Z CC='gcc'
+2026-11-02T21:57:47.3634630Z CGO_CFLAGS='-O2 -g'
+2026-11-02T21:57:47.3635005Z CGO_CPPFLAGS=''
+2026-11-02T21:57:47.3635376Z CGO_CXXFLAGS='-O2 -g'
+2026-11-02T21:57:47.3635630Z CGO_ENABLED='1'
+2026-11-02T21:57:47.3635885Z CGO_FFLAGS='-O2 -g'
+2026-11-02T21:57:47.3636115Z CGO_LDFLAGS='-O2 -g'
+2026-11-02T21:57:47.3636342Z CXX='g++'
+2026-11-02T21:57:47.3636845Z GCCGO='gccgo'
+2026-11-02T21:57:47.3637061Z GO111MODULE=''
+2026-11-02T21:57:47.3637279Z GOAMD64='v1'
+2026-11-02T21:57:47.3637480Z GOARCH='amd64'
+2026-11-02T21:57:47.3637682Z GOAUTH='netrc'
+2026-11-02T21:57:47.3637898Z GOBIN='/home/runner/go/bin'
+2026-11-02T21:57:47.3638184Z GOCACHE='/home/runner/.cache/go-build'
+2026-11-02T21:57:47.3638671Z GOCACHEPROG=''
+2026-11-02T21:57:47.3638889Z GODEBUG=''
+2026-11-02T21:57:47.3639109Z GOENV='/home/runner/.config/go/env'
+2026-11-02T21:57:47.3639379Z GOEXE=''
+2026-11-02T21:57:47.3639585Z GOEXPERIMENT=''
+2026-11-02T21:57:47.3639795Z GOFIPS140='off'
+2026-11-02T21:57:47.3640002Z GOFLAGS=''
+2026-11-02T21:57:47.3640738Z GOGCCFLAGS='-fPIC -m64 -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=/tmp/go-build3003036637=/tmp/go-build -gno-record-gcc-switches'
+2026-11-02T21:57:47.3641519Z GOHOSTARCH='amd64'
+2026-11-02T21:57:47.3641736Z GOHOSTOS='linux'
+2026-11-02T21:57:47.3641944Z GOINSECURE=''
+2026-11-02T21:57:47.3642201Z GOMOD='/home/runner/work/wago/wago/go.mod'
+2026-11-02T21:57:47.3642537Z GOMODCACHE='/home/runner/go/pkg/mod'
+2026-11-02T21:57:47.3642812Z GONOPROXY=''
+2026-11-02T21:57:47.3643013Z GONOSUMDB=''
+2026-11-02T21:57:47.3643206Z GOOS='linux'
+2026-11-02T21:57:47.3643416Z GOPACKAGESDRIVER=''
+2026-11-02T21:57:47.3643647Z GOPATH='/home/runner/go'
+2026-11-02T21:57:47.3643881Z GOPRIVATE=''
+2026-11-02T21:57:47.3644425Z GOPROXY='https://proxy.golang.org,direct'
+2026-11-02T21:57:47.3644773Z GOROOT='/opt/hostedtoolcache/go/1.27.1/x64'
+2026-11-02T21:57:47.3645067Z GOSUMDB='sum.golang.org'
+2026-11-02T21:57:47.3645297Z GOTELEMETRY='local'
+2026-11-02T21:57:47.3645559Z GOTELEMETRYDIR='/home/runner/.config/go/telemetry'
+2026-11-02T21:57:47.3645861Z GOTMPDIR=''
+2026-11-02T21:57:47.3646061Z GOTOOLCHAIN='auto'
+2026-11-02T21:57:47.3646380Z GOTOOLDIR='/opt/hostedtoolcache/go/1.27.1/x64/pkg/tool/linux_amd64'
+2026-11-02T21:57:47.3646774Z GOVCS=''
+2026-11-02T21:57:47.3646967Z GOVERSION='go1.27.1'
+2026-11-02T21:57:47.3647221Z GOWORK='/home/runner/work/wago/wago/go.work'
+2026-11-02T21:57:47.3647551Z PKG_CONFIG='pkg-config'
+2026-11-02T21:57:47.3647695Z 
+2026-11-02T21:57:47.3647978Z ##[endgroup]
+2026-11-02T21:57:47.3869665Z ##[group]Run git submodule update --init --depth=1 tests/conformance/spec-v3
+2026-11-02T21:57:47.3870295Z [36;1mgit submodule update --init --depth=1 tests/conformance/spec-v3[0m
+2026-11-02T21:57:47.3895882Z shell: /usr/bin/bash -e {0}
+2026-11-02T21:57:47.3896176Z env:
+2026-11-02T21:57:47.3896373Z   GO_VERSION: 1.27.1
+2026-11-02T21:57:47.3896603Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:57:47.3896847Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:57:47.3897081Z   JUST_VERSION: 1.58.0
+2026-11-02T21:57:47.3897299Z ##[endgroup]
+2026-11-02T21:57:47.4189590Z Submodule 'tests/conformance/spec-v3' (https://github.com/WebAssembly/spec) registered for path 'tests/conformance/spec-v3'
+2026-11-02T21:57:47.4216031Z Cloning into '/home/runner/work/wago/wago/tests/conformance/spec-v3'...
+2026-11-02T21:57:50.6191389Z From https://github.com/WebAssembly/spec
+2026-11-02T21:57:50.6191942Z  * branch            9d36019973201a19f9c9ebb0f10828b2fe2374aa -> FETCH_HEAD
+2026-11-02T21:57:50.8072706Z Submodule path 'tests/conformance/spec-v3': checked out '9d36019973201a19f9c9ebb0f10828b2fe2374aa'
+2026-11-02T21:57:50.8143840Z ##[group]Run go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency
+2026-11-02T21:57:50.8145729Z [36;1mgo test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency[0m
+2026-11-02T21:57:50.8174759Z shell: /usr/bin/bash -e {0}
+2026-11-02T21:57:50.8175177Z env:
+2026-11-02T21:57:50.8175502Z   GO_VERSION: 1.27.1
+2026-11-02T21:57:50.8175877Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T21:57:50.8176286Z   TINYGO_VERSION: 0.42.0
+2026-11-02T21:57:50.8176664Z   JUST_VERSION: 1.58.0
+2026-11-02T21:57:50.8177029Z ##[endgroup]
+2026-11-02T21:57:51.0122549Z go: downloading golang.org/x/sys v0.30.0
+2026-11-02T22:09:12.9001140Z panic: test timed out after 10m0s
+2026-11-02T22:09:12.9001715Z 	running tests:
+2026-11-02T22:09:12.9002686Z 		TestRuntimeRegressionPortCoreWastExecution (10s)
+2026-11-02T22:09:12.9003520Z 		TestRuntimeRegressionPortCoreWastExecution/div-rem (0s)
+2026-11-02T22:09:12.9004414Z 
+2026-11-02T22:09:12.9004719Z goroutine 23418 [running]:
+2026-11-02T22:09:12.9005212Z testing.(*M).startAlarm.func1()
+2026-11-02T22:09:12.9007956Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2959 +0x605
+2026-11-02T22:09:12.9008650Z created by time.goFunc
+2026-11-02T22:09:12.9009249Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/time/sleep.go:182 +0x45
+2026-11-02T22:09:12.9009726Z 
+2026-11-02T22:09:12.9009856Z goroutine 1 [chan receive]:
+2026-11-02T22:09:12.9010184Z testing.(*T).Run(0xc000174008, {0x24773ef, 0x2a}, 0x3560890)
+2026-11-02T22:09:12.9010679Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2266 +0xb3e
+2026-11-02T22:09:12.9011097Z testing.runTests.func1(0xc000174008)
+2026-11-02T22:09:12.9011509Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2742 +0x85
+2026-11-02T22:09:12.9011907Z testing.tRunner(0xc000174008, 0xc000143a40)
+2026-11-02T22:09:12.9012391Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2193 +0x21d
+2026-11-02T22:09:12.9013079Z testing.runTests({0x242df96, 0x18}, {0x244da34, 0x21}, 0xc000016330, {0x359e738, 0x9f6, 0x9f6}, {0xc2b26062342430f2, 0x8bb2f20021, ...})
+2026-11-02T22:09:12.9013770Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2740 +0x9ea
+2026-11-02T22:09:12.9014543Z testing.(*M).Run(0xc00007e820)
+2026-11-02T22:09:12.9015029Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2600 +0xf45
+2026-11-02T22:09:12.9015406Z main.main()
+2026-11-02T22:09:12.9015625Z 	_testmain.go:5994 +0x165
+2026-11-02T22:09:12.9015780Z 
+2026-11-02T22:09:12.9015876Z goroutine 23415 [syscall]:
+2026-11-02T22:09:12.9016216Z syscall.Syscall6(0xf7, 0x3, 0xa, 0xc000b3fd40, 0x4, 0xc0001c3680, 0x0)
+2026-11-02T22:09:12.9016717Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/syscall/syscall_linux.go:96 +0x45
+2026-11-02T22:09:12.9017210Z internal/syscall/unix.Waitid(0x3, 0xa, 0xc000b3fd40, 0x4, 0xc0001c3680)
+2026-11-02T22:09:12.9017773Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/internal/syscall/unix/waitid_linux.go:18 +0x70
+2026-11-02T22:09:12.9018215Z os.(*Process).pidfdWait.func1(...)
+2026-11-02T22:09:12.9018590Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/pidfd_linux.go:108
+2026-11-02T22:09:12.9018929Z os.ignoringEINTR(...)
+2026-11-02T22:09:12.9019263Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/file_posix.go:263
+2026-11-02T22:09:12.9019614Z os.(*Process).pidfdWait(0xc0005a2780)
+2026-11-02T22:09:12.9020004Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/pidfd_linux.go:107 +0x365
+2026-11-02T22:09:12.9020373Z os.(*Process).wait(0xc0005a2780)
+2026-11-02T22:09:12.9020725Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/exec_unix.go:25 +0x47
+2026-11-02T22:09:12.9021069Z os.(*Process).Wait(...)
+2026-11-02T22:09:12.9021399Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/exec.go:347
+2026-11-02T22:09:12.9021738Z os/exec.(*Cmd).Wait(0xc0002f91e0)
+2026-11-02T22:09:12.9022112Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/exec/exec.go:944 +0xb0
+2026-11-02T22:09:12.9022485Z os/exec.(*Cmd).Run(0xc0002f91e0)
+2026-11-02T22:09:12.9022839Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/exec/exec.go:643 +0x55
+2026-11-02T22:09:12.9023607Z github.com/wago-org/wago/src/wago_test.runRegressionWastFixtureChild(_, {_, _})
+2026-11-02T22:09:12.9024461Z 	/home/runner/work/wago/wago/src/wago/regression_core_test.go:417 +0x8d1
+2026-11-02T22:09:12.9025133Z github.com/wago-org/wago/src/wago_test.TestRuntimeRegressionPortCoreWastExecution.func1(0xc000353208)
+2026-11-02T22:09:12.9025797Z 	/home/runner/work/wago/wago/src/wago/regression_core_test.go:346 +0x13b
+2026-11-02T22:09:12.9026195Z testing.tRunner(0xc000353208, 0xc0005a2280)
+2026-11-02T22:09:12.9026612Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2193 +0x21d
+2026-11-02T22:09:12.9027021Z created by testing.(*T).Run in goroutine 23159
+2026-11-02T22:09:12.9027454Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2258 +0xb13
+2026-11-02T22:09:12.9027728Z 
+2026-11-02T22:09:12.9027979Z goroutine 23159 [chan receive]:
+2026-11-02T22:09:12.9028304Z testing.(*T).Run(0xc000352008, {0xc00322c630, 0x7}, 0xc0005a2280)
+2026-11-02T22:09:12.9028763Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2266 +0xb3e
+2026-11-02T22:09:12.9029354Z github.com/wago-org/wago/src/wago_test.TestRuntimeRegressionPortCoreWastExecution(0xc000352008)
+2026-11-02T22:09:12.9029971Z 	/home/runner/work/wago/wago/src/wago/regression_core_test.go:343 +0x5eb
+2026-11-02T22:09:12.9030365Z testing.tRunner(0xc000352008, 0x3560890)
+2026-11-02T22:09:12.9030753Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2193 +0x21d
+2026-11-02T22:09:12.9031145Z created by testing.(*T).Run in goroutine 1
+2026-11-02T22:09:12.9031543Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/testing/testing.go:2258 +0xb13
+2026-11-02T22:09:12.9031817Z 
+2026-11-02T22:09:12.9031913Z goroutine 23416 [IO wait]:
+2026-11-02T22:09:12.9032215Z internal/poll.runtime_pollWait(0x7f87345c9e00, 0x72)
+2026-11-02T22:09:12.9032650Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/runtime/netpoll.go:351 +0x85
+2026-11-02T22:09:12.9033072Z internal/poll.(*pollDesc).wait(0xc0008dd760, 0x72, 0x1)
+2026-11-02T22:09:12.9033556Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/internal/poll/fd_poll_runtime.go:84 +0xb1
+2026-11-02T22:09:12.9034230Z internal/poll.(*pollDesc).waitRead(...)
+2026-11-02T22:09:12.9034727Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/internal/poll/fd_poll_runtime.go:89
+2026-11-02T22:09:12.9035228Z internal/poll.(*FD).Read(0xc0008dd740, {0xc0007f0000, 0x8000, 0x8000})
+2026-11-02T22:09:12.9035842Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/internal/poll/fd_unix.go:170 +0x499
+2026-11-02T22:09:12.9036229Z os.(*File).read(...)
+2026-11-02T22:09:12.9036542Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/file_posix.go:30
+2026-11-02T22:09:12.9036940Z os.(*File).Read(0xc000082da0, {0xc0007f0000, 0x8000, 0x8000})
+2026-11-02T22:09:12.9037363Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/file.go:144 +0xad
+2026-11-02T22:09:12.9037833Z io.copyBuffer({0x35574b8, 0xc0008c8630}, {0x3556c18, 0xc000082da0}, {0x0, 0x0, 0x0})
+2026-11-02T22:09:12.9038334Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/io/io.go:429 +0x26e
+2026-11-02T22:09:12.9038657Z io.Copy(...)
+2026-11-02T22:09:12.9038939Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/io/io.go:388
+2026-11-02T22:09:12.9039310Z os.genericWriteTo(0xc000082da0, {0x35574b8, 0xc0008c8630})
+2026-11-02T22:09:12.9039724Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/file.go:295 +0x4a
+2026-11-02T22:09:12.9040108Z os.(*File).WriteTo(0xc000082da0, {0x35574b8, 0xc0008c8630})
+2026-11-02T22:09:12.9040511Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/file.go:273 +0xd5
+2026-11-02T22:09:12.9040972Z io.copyBuffer({0x35574b8, 0xc0008c8630}, {0x3556c98, 0xc000082da0}, {0x0, 0x0, 0x0})
+2026-11-02T22:09:12.9041461Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/io/io.go:411 +0xd4
+2026-11-02T22:09:12.9041780Z io.Copy(...)
+2026-11-02T22:09:12.9042052Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/io/io.go:388
+2026-11-02T22:09:12.9042382Z os/exec.(*Cmd).writerDescriptor.func1()
+2026-11-02T22:09:12.9042775Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/exec/exec.go:613 +0x5b
+2026-11-02T22:09:12.9043148Z os/exec.(*Cmd).Start.func2(0xc00028cae0)
+2026-11-02T22:09:12.9043685Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/exec/exec.go:768 +0x3d
+2026-11-02T22:09:12.9044342Z created by os/exec.(*Cmd).Start in goroutine 23415
+2026-11-02T22:09:12.9044778Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/exec/exec.go:767 +0x10f2
+2026-11-02T22:09:12.9045047Z 
+2026-11-02T22:09:12.9045141Z goroutine 23417 [select]:
+2026-11-02T22:09:12.9045418Z os/exec.(*Cmd).watchCtx(0xc0002f91e0, 0xc000bb83f0)
+2026-11-02T22:09:12.9045830Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/exec/exec.go:808 +0x109
+2026-11-02T22:09:12.9046220Z created by os/exec.(*Cmd).Start in goroutine 23415
+2026-11-02T22:09:12.9046632Z 	/opt/hostedtoolcache/go/1.27.1/x64/src/os/exec/exec.go:794 +0x109d
+2026-11-02T22:09:12.9047038Z FAIL	github.com/wago-org/wago/src/wago	600.038s
+2026-11-02T22:09:12.9047399Z ok  	github.com/wago-org/wago/src/core/runtime	4.703s
+2026-11-02T22:09:12.9047971Z ok  	github.com/wago-org/wago/tests/integration/runtimeconcurrency	1.479s
+2026-11-02T22:09:12.9048343Z FAIL
+2026-11-02T22:09:13.1422651Z ##[error]Process completed with exit code 1.
+2026-11-02T22:09:13.1572732Z Post job cleanup.
+2026-11-02T22:09:13.2476265Z [command]/usr/bin/git version
+2026-11-02T22:09:13.2524217Z git version 2.56.0
+2026-11-02T22:09:13.2564794Z Temporarily overriding HOME='/home/runner/work/_temp/e665d58a-de67-42b1-8634-635dc65ad5e0' before making global git config changes
+2026-11-02T22:09:13.2566093Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T22:09:13.2571350Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wago/wago
+2026-11-02T22:09:13.2616043Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T22:09:13.2658303Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T22:09:13.2931390Z Entering 'tests/conformance/spec-v3'
+2026-11-02T22:09:13.3018452Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T22:09:13.3060745Z http.https://github.com/.extraheader
+2026-11-02T22:09:13.3098997Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-02T22:09:13.3155413Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T22:09:13.3447801Z Entering 'tests/conformance/spec-v3'
+2026-11-02T22:09:13.3520685Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T22:09:13.3566357Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T22:09:13.3822150Z Entering 'tests/conformance/spec-v3'
+2026-11-02T22:09:13.3845198Z file:/home/runner/work/wago/wago/.git/modules/tests/conformance/spec-v3/config	remote.origin.url
+2026-11-02T22:09:13.3885164Z [command]/usr/bin/git config --file /home/runner/work/wago/wago/.git/modules/tests/conformance/spec-v3/config --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T22:09:13.4093611Z Cleaning up orphan processes
+2026-11-02T22:09:13.4547350Z Terminate orphan process: pid (5631) (wago.test)
+2026-11-02T22:09:13.4634829Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@11d5960a326750d5838078e36cf38b85af677262, actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+

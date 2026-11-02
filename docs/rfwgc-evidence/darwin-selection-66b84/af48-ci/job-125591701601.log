@@ -1,0 +1,355 @@
+﻿2026-11-02T22:25:26.1465345Z Current runner version: '2.338.2'
+2026-11-02T22:25:26.1483453Z ##[group]Runner Image Provisioner
+2026-11-02T22:25:26.1484081Z Hosted Compute Agent
+2026-11-02T22:25:26.1484461Z Version: 20261021.618
+2026-11-02T22:25:26.1484849Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-11-02T22:25:26.1485278Z Build Date: 2026-10-21T00:45:21Z
+2026-11-02T22:25:26.1485690Z Worker ID: {9dd61aab-fc3b-44c1-a672-9e8aef4ea7b9}
+2026-11-02T22:25:26.1486130Z Region: centralus
+2026-11-02T22:25:26.1486487Z Cloud: Azure
+2026-11-02T22:25:26.1486793Z ##[endgroup]
+2026-11-02T22:25:26.1487603Z ##[group]Operating System
+2026-11-02T22:25:26.1488186Z Ubuntu
+2026-11-02T22:25:26.1488597Z 24.04.5
+2026-11-02T22:25:26.1488927Z LTS
+2026-11-02T22:25:26.1489220Z ##[endgroup]
+2026-11-02T22:25:26.1489588Z ##[group]Runner Image
+2026-11-02T22:25:26.1489944Z Image: ubuntu-24.04
+2026-11-02T22:25:26.1490295Z Version: 20261025.353.1
+2026-11-02T22:25:26.1491075Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261025.353/images/ubuntu/Ubuntu2404-Readme.md
+2026-11-02T22:25:26.1491980Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261025.353
+2026-11-02T22:25:26.1492520Z ##[endgroup]
+2026-11-02T22:25:26.1493211Z ##[group]GITHUB_TOKEN Permissions
+2026-11-02T22:25:26.1494445Z Contents: read
+2026-11-02T22:25:26.1494822Z Metadata: read
+2026-11-02T22:25:26.1495167Z ##[endgroup]
+2026-11-02T22:25:26.1496462Z Secret source: Actions
+2026-11-02T22:25:26.1497091Z Cache mode: write
+2026-11-02T22:25:26.1497563Z Prepare workflow directory
+2026-11-02T22:25:26.1737640Z Prepare all required actions
+2026-11-02T22:25:26.1771921Z Getting action download info
+2026-11-02T22:25:26.4255211Z Download action repository 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-11-02T22:25:26.4965386Z Download action repository 'actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff' (SHA:40f1582b2485089dde7abd97c1529aa768e1baff)
+2026-11-02T22:25:26.9097617Z Download action repository 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-11-02T22:25:27.0842619Z Complete job name: CI
+2026-11-02T22:25:27.1320181Z ##[group]Run echo "::notice title=CI profile::$CI_PROFILE"
+2026-11-02T22:25:27.1320653Z [36;1mecho "::notice title=CI profile::$CI_PROFILE"[0m
+2026-11-02T22:25:27.1321013Z [36;1mecho "Expected jobs: $CI_EXPECTED_JOBS"[0m
+2026-11-02T22:25:27.1339648Z shell: /usr/bin/bash -e {0}
+2026-11-02T22:25:27.1340014Z env:
+2026-11-02T22:25:27.1340237Z   GO_VERSION: 1.27.1
+2026-11-02T22:25:27.1340486Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T22:25:27.1340746Z   TINYGO_VERSION: 0.42.0
+2026-11-02T22:25:27.1340992Z   JUST_VERSION: 1.58.0
+2026-11-02T22:25:27.1341233Z   CI_PROFILE: full
+2026-11-02T22:25:27.1342021Z   CI_EXPECTED_JOBS: app-corpus,app-corpus-verify,changes,core-v2,core-v3,corpus-correctness,current-go,docs,fuzz,gc-hardening,lint,platform-test,race,regression-integrity,size,spec-v1,tinygo
+2026-11-02T22:25:27.1342864Z ##[endgroup]
+2026-11-02T22:25:27.1435458Z ##[notice]full
+2026-11-02T22:25:27.1440564Z Expected jobs: app-corpus,app-corpus-verify,changes,core-v2,core-v3,corpus-correctness,current-go,docs,fuzz,gc-hardening,lint,platform-test,race,regression-integrity,size,spec-v1,tinygo
+2026-11-02T22:25:27.1574949Z ##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+2026-11-02T22:25:27.1575350Z with:
+2026-11-02T22:25:27.1575595Z   ref: 0717d065315484c0049c56c571be6d881caf395a
+2026-11-02T22:25:27.1575909Z   repository: wago-org/wago
+2026-11-02T22:25:27.1577791Z   token: ***
+2026-11-02T22:25:27.1578202Z   ssh-strict: true
+2026-11-02T22:25:27.1578433Z   ssh-user: git
+2026-11-02T22:25:27.1578670Z   persist-credentials: true
+2026-11-02T22:25:27.1578928Z   clean: true
+2026-11-02T22:25:27.1579167Z   sparse-checkout-cone-mode: true
+2026-11-02T22:25:27.1579440Z   fetch-depth: 1
+2026-11-02T22:25:27.1579667Z   fetch-tags: false
+2026-11-02T22:25:27.1579908Z   show-progress: true
+2026-11-02T22:25:27.1580349Z   lfs: false
+2026-11-02T22:25:27.1580572Z   submodules: false
+2026-11-02T22:25:27.1580832Z   set-safe-directory: true
+2026-11-02T22:25:27.1581099Z   allow-unsafe-pr-checkout: false
+2026-11-02T22:25:27.1581368Z env:
+2026-11-02T22:25:27.1581573Z   GO_VERSION: 1.27.1
+2026-11-02T22:25:27.1581944Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T22:25:27.1582204Z   TINYGO_VERSION: 0.42.0
+2026-11-02T22:25:27.1582449Z   JUST_VERSION: 1.58.0
+2026-11-02T22:25:27.1582685Z ##[endgroup]
+2026-11-02T22:25:27.3768168Z Syncing repository: wago-org/wago
+2026-11-02T22:25:27.3769861Z ##[group]Getting Git version info
+2026-11-02T22:25:27.3770405Z Working directory is '/home/runner/work/wago/wago'
+2026-11-02T22:25:27.3771059Z [command]/usr/bin/git version
+2026-11-02T22:25:27.3843666Z git version 2.56.0
+2026-11-02T22:25:27.3857335Z ##[endgroup]
+2026-11-02T22:25:27.3868829Z Temporarily overriding HOME='/home/runner/work/_temp/98bf38af-151c-4dea-b347-ec08cc6e4ee1' before making global git config changes
+2026-11-02T22:25:27.3873477Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T22:25:27.3874441Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wago/wago
+2026-11-02T22:25:27.3923162Z Deleting the contents of '/home/runner/work/wago/wago'
+2026-11-02T22:25:27.3926303Z ##[group]Initializing the repository
+2026-11-02T22:25:27.3929860Z [command]/usr/bin/git init /home/runner/work/wago/wago
+2026-11-02T22:25:27.4042082Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-02T22:25:27.4043269Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-02T22:25:27.4044295Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-02T22:25:27.4045032Z hint: call:
+2026-11-02T22:25:27.4045460Z hint:
+2026-11-02T22:25:27.4045923Z hint: 	git config --global init.defaultBranch <name>
+2026-11-02T22:25:27.4046495Z hint:
+2026-11-02T22:25:27.4046958Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-02T22:25:27.4047777Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-02T22:25:27.4048473Z hint:
+2026-11-02T22:25:27.4048721Z hint: 	git branch -m <name>
+2026-11-02T22:25:27.4048972Z hint:
+2026-11-02T22:25:27.4049318Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-02T22:25:27.4056420Z Initialized empty Git repository in /home/runner/work/wago/wago/.git/
+2026-11-02T22:25:27.4068216Z [command]/usr/bin/git remote add origin https://github.com/wago-org/wago
+2026-11-02T22:25:27.4116874Z ##[endgroup]
+2026-11-02T22:25:27.4120513Z ##[group]Disabling automatic garbage collection
+2026-11-02T22:25:27.4121250Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-02T22:25:27.4158466Z ##[endgroup]
+2026-11-02T22:25:27.4159228Z ##[group]Setting up auth
+2026-11-02T22:25:27.4185708Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T22:25:27.4235052Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T22:25:27.4555020Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T22:25:27.4590689Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T22:25:27.4779578Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T22:25:27.4816714Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T22:25:27.5004177Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-02T22:25:27.5047779Z ##[endgroup]
+2026-11-02T22:25:27.5048553Z ##[group]Fetching the repository
+2026-11-02T22:25:27.5064157Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin 0717d065315484c0049c56c571be6d881caf395a
+2026-11-02T22:25:31.0785393Z From https://github.com/wago-org/wago
+2026-11-02T22:25:31.0785938Z  * branch            0717d065315484c0049c56c571be6d881caf395a -> FETCH_HEAD
+2026-11-02T22:25:31.0788420Z ##[endgroup]
+2026-11-02T22:25:31.0788678Z ##[group]Determining the checkout info
+2026-11-02T22:25:31.0789882Z ##[endgroup]
+2026-11-02T22:25:31.0794249Z [command]/usr/bin/git sparse-checkout disable
+2026-11-02T22:25:31.0965867Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-02T22:25:31.0997165Z ##[group]Checking out the ref
+2026-11-02T22:25:31.0999646Z [command]/usr/bin/git checkout --progress --force 0717d065315484c0049c56c571be6d881caf395a
+2026-11-02T22:25:32.0364638Z Note: switching to '0717d065315484c0049c56c571be6d881caf395a'.
+2026-11-02T22:25:32.0364988Z 
+2026-11-02T22:25:32.0365189Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-11-02T22:25:32.0365508Z changes and commit them, and you can discard any commits you make in this
+2026-11-02T22:25:32.0365766Z state without impacting any branches by switching back to a branch.
+2026-11-02T22:25:32.0365978Z 
+2026-11-02T22:25:32.0366104Z If you want to create a new branch to retain commits you create, you may
+2026-11-02T22:25:32.0366359Z do so (now or later) by using -c with the switch command. Example:
+2026-11-02T22:25:32.0366496Z 
+2026-11-02T22:25:32.0366558Z   git switch -c <new-branch-name>
+2026-11-02T22:25:32.0366661Z 
+2026-11-02T22:25:32.0366728Z Or undo this operation with:
+2026-11-02T22:25:32.0366825Z 
+2026-11-02T22:25:32.0366878Z   git switch -
+2026-11-02T22:25:32.0366993Z 
+2026-11-02T22:25:32.0367121Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-11-02T22:25:32.0367281Z 
+2026-11-02T22:25:32.0367466Z HEAD is now at 0717d06 Merge af48e57b41cf4251459178ac0c1c2055edad8a72 into 90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e
+2026-11-02T22:25:32.0399997Z ##[endgroup]
+2026-11-02T22:25:32.0446680Z [command]/usr/bin/git log -1 --format=%H
+2026-11-02T22:25:32.0475440Z 0717d065315484c0049c56c571be6d881caf395a
+2026-11-02T22:25:32.0665414Z ##[group]Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+2026-11-02T22:25:32.0665630Z with:
+2026-11-02T22:25:32.0665749Z   go-version: 1.27.1
+2026-11-02T22:25:32.0665872Z   cache: true
+2026-11-02T22:25:32.0666096Z   cache-dependency-path: go.work
+go.mod
+go.sum
+bench/go.mod
+bench/go.sum
+cli/wago-installer/go.mod
+
+2026-11-02T22:25:32.0666356Z   check-latest: false
+2026-11-02T22:25:32.0667678Z   token: ***
+2026-11-02T22:25:32.0667812Z env:
+2026-11-02T22:25:32.0668057Z   GO_VERSION: 1.27.1
+2026-11-02T22:25:32.0668182Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T22:25:32.0668316Z   TINYGO_VERSION: 0.42.0
+2026-11-02T22:25:32.0668439Z   JUST_VERSION: 1.58.0
+2026-11-02T22:25:32.0668565Z ##[endgroup]
+2026-11-02T22:25:32.1516385Z Setup go version spec 1.27.1
+2026-11-02T22:25:32.1532774Z Attempting to download 1.27.1...
+2026-11-02T22:25:32.1638202Z (node:2125) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-02T22:25:32.1638695Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-02T22:25:32.8403826Z matching 1.27.1...
+2026-11-02T22:25:32.8423783Z Acquiring 1.27.1 from https://github.com/actions/go-versions/releases/download/1.27.1-33583469715/go-1.27.1-linux-x64.tar.gz
+2026-11-02T22:25:33.3739079Z Extracting Go...
+2026-11-02T22:25:33.3831104Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/88b7a8f8-0ecb-4665-b65c-54c31b8683e3 -f /home/runner/work/_temp/a73f28f8-b037-4681-81cf-6c64bb42b83d
+2026-11-02T22:25:34.5904774Z Successfully extracted go to /home/runner/work/_temp/88b7a8f8-0ecb-4665-b65c-54c31b8683e3
+2026-11-02T22:25:34.5905060Z Adding to the cache ...
+2026-11-02T22:25:38.3771765Z Successfully cached go to /opt/hostedtoolcache/go/1.27.1/x64
+2026-11-02T22:25:38.3772987Z Added go to the path
+2026-11-02T22:25:38.3774738Z Successfully set up Go version 1.27.1
+2026-11-02T22:25:38.3986073Z [command]/opt/hostedtoolcache/go/1.27.1/x64/bin/go env GOMODCACHE
+2026-11-02T22:25:38.4037233Z [command]/opt/hostedtoolcache/go/1.27.1/x64/bin/go env GOCACHE
+2026-11-02T22:25:38.4085985Z /home/runner/go/pkg/mod
+2026-11-02T22:25:38.4101181Z /home/runner/.cache/go-build
+2026-11-02T22:25:38.5559881Z Cache hit for: setup-go-Linux-x64-ubuntu24-go-1.27.1-d3df07694eb1e7ab5c5a06a176e89b7a74782bd039c3f115a1775be9028de6fe
+2026-11-02T22:25:38.5630577Z (node:2125) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-11-02T22:25:39.2460077Z Received 15947581 of 15947581 (100.0%), 29.0 MBs/sec
+2026-11-02T22:25:39.2460404Z Cache Size: ~15 MB (15947581 B)
+2026-11-02T22:25:39.2474001Z [command]/usr/bin/tar -xf /home/runner/work/_temp/3592b9da-ed85-48e7-85ed-12f29f7c1040/cache.tzst -P -C /home/runner/work/wago/wago --use-compress-program unzstd
+2026-11-02T22:25:39.3359417Z Cache restored successfully
+2026-11-02T22:25:39.3371456Z Cache restored from key: setup-go-Linux-x64-ubuntu24-go-1.27.1-d3df07694eb1e7ab5c5a06a176e89b7a74782bd039c3f115a1775be9028de6fe
+2026-11-02T22:25:39.3390489Z go version go1.27.1 linux/amd64
+2026-11-02T22:25:39.3390609Z 
+2026-11-02T22:25:39.3390796Z ##[group]go env
+2026-11-02T22:25:39.3519202Z AR='ar'
+2026-11-02T22:25:39.3519408Z CC='gcc'
+2026-11-02T22:25:39.3519674Z CGO_CFLAGS='-O2 -g'
+2026-11-02T22:25:39.3519862Z CGO_CPPFLAGS=''
+2026-11-02T22:25:39.3520040Z CGO_CXXFLAGS='-O2 -g'
+2026-11-02T22:25:39.3520551Z CGO_ENABLED='1'
+2026-11-02T22:25:39.3520669Z CGO_FFLAGS='-O2 -g'
+2026-11-02T22:25:39.3520795Z CGO_LDFLAGS='-O2 -g'
+2026-11-02T22:25:39.3520910Z CXX='g++'
+2026-11-02T22:25:39.3521015Z GCCGO='gccgo'
+2026-11-02T22:25:39.3521126Z GO111MODULE=''
+2026-11-02T22:25:39.3521250Z GOAMD64='v1'
+2026-11-02T22:25:39.3521352Z GOARCH='amd64'
+2026-11-02T22:25:39.3521456Z GOAUTH='netrc'
+2026-11-02T22:25:39.3521571Z GOBIN='/home/runner/go/bin'
+2026-11-02T22:25:39.3521741Z GOCACHE='/home/runner/.cache/go-build'
+2026-11-02T22:25:39.3522097Z GOCACHEPROG=''
+2026-11-02T22:25:39.3522205Z GODEBUG=''
+2026-11-02T22:25:39.3522320Z GOENV='/home/runner/.config/go/env'
+2026-11-02T22:25:39.3522460Z GOEXE=''
+2026-11-02T22:25:39.3522560Z GOEXPERIMENT=''
+2026-11-02T22:25:39.3522670Z GOFIPS140='off'
+2026-11-02T22:25:39.3522775Z GOFLAGS=''
+2026-11-02T22:25:39.3523131Z GOGCCFLAGS='-fPIC -m64 -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=/tmp/go-build1845504992=/tmp/go-build -gno-record-gcc-switches'
+2026-11-02T22:25:39.3523489Z GOHOSTARCH='amd64'
+2026-11-02T22:25:39.3523601Z GOHOSTOS='linux'
+2026-11-02T22:25:39.3523709Z GOINSECURE=''
+2026-11-02T22:25:39.3523844Z GOMOD='/home/runner/work/wago/wago/go.mod'
+2026-11-02T22:25:39.3524005Z GOMODCACHE='/home/runner/go/pkg/mod'
+2026-11-02T22:25:39.3524148Z GONOPROXY=''
+2026-11-02T22:25:39.3524250Z GONOSUMDB=''
+2026-11-02T22:25:39.3524354Z GOOS='linux'
+2026-11-02T22:25:39.3524458Z GOPACKAGESDRIVER=''
+2026-11-02T22:25:39.3524578Z GOPATH='/home/runner/go'
+2026-11-02T22:25:39.3524703Z GOPRIVATE=''
+2026-11-02T22:25:39.3524872Z GOPROXY='https://proxy.golang.org,direct'
+2026-11-02T22:25:39.3525059Z GOROOT='/opt/hostedtoolcache/go/1.27.1/x64'
+2026-11-02T22:25:39.3525214Z GOSUMDB='sum.golang.org'
+2026-11-02T22:25:39.3525338Z GOTELEMETRY='local'
+2026-11-02T22:25:39.3525478Z GOTELEMETRYDIR='/home/runner/.config/go/telemetry'
+2026-11-02T22:25:39.3525638Z GOTMPDIR=''
+2026-11-02T22:25:39.3525747Z GOTOOLCHAIN='auto'
+2026-11-02T22:25:39.3525914Z GOTOOLDIR='/opt/hostedtoolcache/go/1.27.1/x64/pkg/tool/linux_amd64'
+2026-11-02T22:25:39.3526095Z GOVCS=''
+2026-11-02T22:25:39.3526199Z GOVERSION='go1.27.1'
+2026-11-02T22:25:39.3526331Z GOWORK='/home/runner/work/wago/wago/go.work'
+2026-11-02T22:25:39.3526488Z PKG_CONFIG='pkg-config'
+2026-11-02T22:25:39.3526568Z 
+2026-11-02T22:25:39.3526860Z ##[endgroup]
+2026-11-02T22:25:39.3716389Z ##[group]Run go run ./tests/tools/ci-plan verify
+2026-11-02T22:25:39.3716609Z [36;1mgo run ./tests/tools/ci-plan verify[0m
+2026-11-02T22:25:39.3734220Z shell: /usr/bin/bash -e {0}
+2026-11-02T22:25:39.3734359Z env:
+2026-11-02T22:25:39.3734468Z   GO_VERSION: 1.27.1
+2026-11-02T22:25:39.3734590Z   CURRENT_GO_VERSION: 1.27.1
+2026-11-02T22:25:39.3734720Z   TINYGO_VERSION: 0.42.0
+2026-11-02T22:25:39.3734839Z   JUST_VERSION: 1.58.0
+2026-11-02T22:25:39.3734954Z   CI_PROFILE: full
+2026-11-02T22:25:39.3735064Z   CI_CODE: true
+2026-11-02T22:25:39.3735200Z   CI_CORPUS_SOURCES: false
+2026-11-02T22:25:39.3737497Z   CI_NEEDS: {
+  "changes": {
+    "result": "success",
+    "outputs": {
+      "profile": "full",
+      "code": "true",
+      "docs": "true",
+      "corpus_sources": "false",
+      "source_sha": "0717d065315484c0049c56c571be6d881caf395a",
+      "expected_jobs": "app-corpus,app-corpus-verify,changes,core-v2,core-v3,corpus-correctness,current-go,docs,fuzz,gc-hardening,lint,platform-test,race,regression-integrity,size,spec-v1,tinygo"
+    }
+  },
+  "smoke": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "docs": {
+    "result": "success",
+    "outputs": {}
+  },
+  "lint": {
+    "result": "success",
+    "outputs": {}
+  },
+  "regression-integrity": {
+    "result": "success",
+    "outputs": {}
+  },
+  "regression-rebuild": {
+    "result": "skipped",
+    "outputs": {}
+  },
+  "gc-hardening": {
+    "result": "success",
+    "outputs": {}
+  },
+  "race": {
+    "result": "failure",
+    "outputs": {}
+  },
+  "current-go": {
+    "result": "success",
+    "outputs": {}
+  },
+  "platform-test": {
+    "result": "failure",
+    "outputs": {}
+  },
+  "corpus-correctness": {
+    "result": "success",
+    "outputs": {}
+  },
+  "app-corpus": {
+    "result": "success",
+    "outputs": {}
+  },
+  "app-corpus-verify": {
+    "result": "success",
+    "outputs": {}
+  },
+  "spec-v1": {
+    "result": "success",
+    "outputs": {}
+  },
+  "core-v2": {
+    "result": "success",
+    "outputs": {}
+  },
+  "core-v3": {
+    "result": "success",
+    "outputs": {}
+  },
+  "fuzz": {
+    "result": "success",
+    "outputs": {}
+  },
+  "tinygo": {
+    "result": "success",
+    "outputs": {}
+  },
+  "size": {
+    "result": "success",
+    "outputs": {}
+  }
+}
+2026-11-02T22:25:39.3740035Z ##[endgroup]
+2026-11-02T22:25:39.4301047Z ci-plan: expected CI job platform-test did not succeed: failure
+2026-11-02T22:25:39.4302008Z exit status 1
+2026-11-02T22:25:39.4489191Z ##[error]Process completed with exit code 1.
+2026-11-02T22:25:39.4594033Z Post job cleanup.
+2026-11-02T22:25:39.5112428Z [command]/usr/bin/git version
+2026-11-02T22:25:39.5144757Z git version 2.56.0
+2026-11-02T22:25:39.5168630Z Temporarily overriding HOME='/home/runner/work/_temp/a95dbf43-d087-4b94-9bf9-c6967f3caa98' before making global git config changes
+2026-11-02T22:25:39.5169410Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-02T22:25:39.5171819Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/wago/wago
+2026-11-02T22:25:39.5202325Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-02T22:25:39.5239476Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-02T22:25:39.5444771Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-02T22:25:39.5468850Z http.https://github.com/.extraheader
+2026-11-02T22:25:39.5477185Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-02T22:25:39.5508644Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-02T22:25:39.5715063Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-02T22:25:39.5751344Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-02T22:25:39.6060199Z Cleaning up orphan processes
+2026-11-02T22:25:39.6294515Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@11d5960a326750d5838078e36cf38b85af677262, actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+

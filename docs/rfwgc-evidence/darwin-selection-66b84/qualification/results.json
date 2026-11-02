@@ -1,0 +1,199 @@
+{
+  "pin": "66b84a47705a82a09617c4f96fdcdbeb0b983d27",
+  "rows": [
+    {
+      "label": "ordinary-darwin-arm64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "ordinary-windows-amd64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "ordinary-windows-arm64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "ordinary-linux-riscv64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "ordinary-fallback",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_target_tinygo",
+        "./src/wago",
+        "-run",
+        "^Test(UnsupportedConversion|DesignRepairUnsupportedConvertedPublicToken|DesignRepairPublicGlobalTokenClassification)",
+        "-count=1",
+        "-v"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "wagodebug-darwin-arm64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wagodebug",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "wagodebug-windows-amd64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wagodebug",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "wagodebug-windows-arm64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wagodebug",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "wagodebug-linux-riscv64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wagodebug",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "wagodebug-fallback",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_target_tinygo,wagodebug",
+        "./src/wago",
+        "-run",
+        "^Test(UnsupportedConversion|DesignRepairUnsupportedConvertedPublicToken|DesignRepairPublicGlobalTokenClassification)",
+        "-count=1",
+        "-v"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "wago_regalloccheck-darwin-arm64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_regalloccheck",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "wago_regalloccheck-windows-amd64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_regalloccheck",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "wago_regalloccheck-windows-arm64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_regalloccheck",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "wago_regalloccheck-linux-riscv64",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_regalloccheck",
+        "./src/wago",
+        "-run",
+        "^$",
+        "-exec=true"
+      ],
+      "exit": 0
+    },
+    {
+      "label": "wago_regalloccheck-fallback",
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_target_tinygo,wago_regalloccheck",
+        "./src/wago",
+        "-run",
+        "^Test(UnsupportedConversion|DesignRepairUnsupportedConvertedPublicToken|DesignRepairPublicGlobalTokenClassification)",
+        "-count=1",
+        "-v"
+      ],
+      "exit": 0
+    }
+  ]
+}
