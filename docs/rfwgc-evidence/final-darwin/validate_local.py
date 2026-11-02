@@ -12,6 +12,7 @@ import textwrap
 from unittest.mock import patch
 
 import identity
+import contracts
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
@@ -88,41 +89,71 @@ def main():
     # Remove special summary step/guards/dependency to recover the exact old contract.
     summary = after['ci-ok']
     special = after['darwin-qualification-summary'].split('    steps:\n', 1)[1]
-    assert 'name: Darwin qualification summary' in after['darwin-qualification-summary']
-    assert "'Full CI not run (Darwin-only dispatch)' || 'CI'" in summary
+    assert 'name: Non-Linux qualification summary' in after['darwin-qualification-summary']
+    assert "'Full CI not run (non-Linux dispatch)' || 'CI'" in summary
     assert f'if: always() && ({normal})' in summary
     script = textwrap.dedent(special.split('        run: |\n', 1)[1])
     with tempfile.TemporaryDirectory() as tmp:
-        for state in ['success', 'failure', 'cancelled', 'skipped']:
-            states = {name: {'result': 'skipped'} for name in before if name != 'ci-ok'}
-            states['darwin-qualification'] = {'result': state}
-            env = dict(os.environ, DARWIN_RESULT=state, NORMAL_RESULTS=json.dumps(states), GITHUB_STEP_SUMMARY=tmp+'/summary')
-            result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], env=env, text=True, capture_output=True)
-            assert (result.returncode == 0) == (state == 'success'), state
-        states['darwin-qualification']['result'] = 'success'
-        states['changes']['result'] = 'success'
-        env.update(DARWIN_RESULT='success', NORMAL_RESULTS=json.dumps(states))
-        result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], env=env, text=True, capture_output=True)
-        assert result.returncode != 0, 'unexpected normal job execution accepted'
-    report['special_summary_states'] = 'PASS: only successful Darwin with all normal jobs skipped accepted'
+        checked = []
+        for darwin in ['success', 'failure', 'cancelled', 'skipped']:
+            for windows in ['success', 'failure', 'cancelled', 'skipped']:
+                for normal_state in ['skipped', 'success', 'failure', 'cancelled']:
+                    states = {name: {'result': 'skipped'} for name in before if name != 'ci-ok'}
+                    states['changes']['result'] = normal_state
+                    states['darwin-qualification'] = {'result': darwin}
+                    states['windows-qualification'] = {'result': windows}
+                    env = dict(os.environ, DARWIN_RESULT=darwin, WINDOWS_RESULT=windows, NORMAL_RESULTS=json.dumps(states), GITHUB_STEP_SUMMARY=tmp+'/summary')
+                    result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], env=env, text=True, capture_output=True)
+                    expected = darwin == windows == 'success' and normal_state == 'skipped'
+                    assert (result.returncode == 0) == expected, states
+                    checked.append({'darwin': darwin, 'windows': windows, 'normal': normal_state, 'accepted': expected})
+        report['explicit_summary_states'] = checked
+    report['special_summary_states'] = 'PASS: only both native matrices successful with all normal jobs skipped accepted'
     summary = re.sub(r"    name: .*\n    if: always\(\) && .*\n", "    name: CI\n    if: always()\n", summary, count=1)
-    summary = summary.replace('        if: ' + normal + '\n', '').replace(', darwin-qualification]', ']')
+    summary = summary.replace('        if: ' + normal + '\n', '').replace(', darwin-qualification, windows-qualification, darwin-qualification-summary]', ']')
     assert summary == before['ci-ok']
-    report['workflow_contracts'] = 'PASS: unchanged normal job bodies, summary and planner; dispatch-only isolation and concurrency suffix'
+    report['workflow_contracts'] = 'PASS: unchanged normal job bodies/planner; aggregate additionally awaits skipped special jobs; dispatch-only isolation and concurrency suffix'
     report['planner_all_modes'] = []
     for mode in MODES:
         tags = [] if mode == 'ordinary' else ['-tags=' + mode]
+        report.setdefault('aggregate_policy_all_modes', []).append(run(['go', 'test', *tags, './tests/integration/cipolicy', '-count=1'], cwd=ROOT))
         report['planner_all_modes'].append(run(['go', 'test', *tags, './tests/tools/ci-plan', '-count=1'], cwd=ROOT))
         states = {name: {'result': 'success'} for name in before if name != 'ci-ok'}
         states['darwin-qualification'] = {'result': 'skipped'}
+        states['windows-qualification'] = {'result': 'skipped'}
+        states['darwin-qualification-summary'] = {'result': 'skipped'}
         env = dict(os.environ, CI_PROFILE='full', CI_CODE='true', CI_CORPUS_SOURCES='true', CI_NEEDS=json.dumps(states))
         report['planner_all_modes'].append(run(['go', 'run', *tags, './tests/tools/ci-plan', 'verify'], cwd=ROOT, env=env))
     report['workflow_lint'] = run(['go', 'run', 'github.com/rhysd/actionlint/cmd/actionlint@v1.7.7', '.github/workflows/ci.yml'], cwd=ROOT)
     report['shell_syntax'] = run(['bash', '-n', str(HERE / 'setup.sh')])
-    for name in ['identity.py', 'run.py', 'validate_local.py']:
+    for name in ['identity.py', 'run.py', 'contracts.py', 'validate_local.py', 'tinygo_setup.py']:
         compile((HERE / name).read_text(), str(HERE / name), 'exec')
     report['python_syntax'] = 'PASS'
-    (HERE / 'local-validation.json').write_text(json.dumps(report, indent=2) + '\n')
+    spec = contracts.SPEC
+    assert spec['source'] == plan['source']
+    for name, sha in spec['source_files'].items():
+        data = subprocess.check_output(['git', 'show', plan['source']+':'+name], cwd=ROOT)
+        assert hashlib.sha256(data).hexdigest() == sha, name
+    for name, sha in spec['fixtures'].items():
+        assert contracts.digest(contracts.REV/name) == sha, name
+    original_graph = subprocess.check_output(['git', 'show', plan['source']+':src/wago/rfwgc_stage3_measurement_bench_test.go'], cwd=ROOT, text=True)
+    excerpt = original_graph.split('func BenchmarkRFWStage3Guest', 1)[0].replace('//go:build linux && amd64 && !tinygo && !wago_guardpage', '//go:build darwin && arm64 && !tinygo && !wago_guardpage', 1)
+    assert (contracts.REV/'_fixtures/graph_test.go').read_text() == excerpt
+    for target in ['darwin','windows']:
+        events = [{'Test': name, 'Action': 'pass'} for name in spec['tests'][target]]
+        if target == 'darwin':
+            events += [{'Test': name, 'Action': 'pass'} for name in spec['graph_subtests']]
+        assert contracts.census(events, target)
+        assert not contracts.census(events[1:], target)
+        assert not contracts.census(events+[{'Action':'skip','Test':'unexpected'}], target)
+        assert not contracts.census(events+[events[0]], target)
+        for mode in MODES:
+            with tempfile.TemporaryDirectory() as tmp:
+                out = Path(tmp)/'receipts'
+                proc = subprocess.run([sys.executable,str(HERE/'contracts.py'),str(ROOT),str(out),'--mode',mode,'--target',target],capture_output=True,text=True)
+                assert proc.returncode == 2 and 'requires actual native' in proc.stderr and not out.exists()
+    report['native_contracts'] = 'PASS: pinned hashes, exact/negative census, six Linux refusals; no native execution'
+    (HERE / 'revision-9180/local-validation.json').write_text(json.dumps(report, indent=2) + '\n')
     print('PASS: local contracts; Darwin remains NOT_RUN')
 
 

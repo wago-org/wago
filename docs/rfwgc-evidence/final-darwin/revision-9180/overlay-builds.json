@@ -1,0 +1,100 @@
+{
+  "source": "9180f09f7590d029bc90df2fa20c0decc590505a",
+  "archive_sha256": "3a19a74b43253264e5629e0910ec02bf3cd5708c5ca4169a196ffba8f1c1c8dc",
+  "rows": [
+    {
+      "target": "darwin",
+      "mode": "ordinary",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-c",
+        "-overlay=/tmp/rfwgc-contract-build-lnd_u5fu/darwin.json",
+        "-o",
+        "/tmp/rfwgc-contract-build-lnd_u5fu/test.bin",
+        "./src/wago"
+      ],
+      "exit": 0,
+      "execution": "NOT_RUN"
+    },
+    {
+      "target": "darwin",
+      "mode": "wagodebug",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-c",
+        "-overlay=/tmp/rfwgc-contract-build-lnd_u5fu/darwin.json",
+        "-o",
+        "/tmp/rfwgc-contract-build-lnd_u5fu/test.bin",
+        "-tags=wagodebug",
+        "./src/wago"
+      ],
+      "exit": 0,
+      "execution": "NOT_RUN"
+    },
+    {
+      "target": "darwin",
+      "mode": "wago_regalloccheck",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-c",
+        "-overlay=/tmp/rfwgc-contract-build-lnd_u5fu/darwin.json",
+        "-o",
+        "/tmp/rfwgc-contract-build-lnd_u5fu/test.bin",
+        "-tags=wago_regalloccheck",
+        "./src/wago"
+      ],
+      "exit": 0,
+      "execution": "NOT_RUN"
+    },
+    {
+      "target": "windows",
+      "mode": "ordinary",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-c",
+        "-overlay=/tmp/rfwgc-contract-build-lnd_u5fu/windows.json",
+        "-o",
+        "/tmp/rfwgc-contract-build-lnd_u5fu/test.bin",
+        "./src/wago"
+      ],
+      "exit": 0,
+      "execution": "NOT_RUN"
+    },
+    {
+      "target": "windows",
+      "mode": "wagodebug",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-c",
+        "-overlay=/tmp/rfwgc-contract-build-lnd_u5fu/windows.json",
+        "-o",
+        "/tmp/rfwgc-contract-build-lnd_u5fu/test.bin",
+        "-tags=wagodebug",
+        "./src/wago"
+      ],
+      "exit": 0,
+      "execution": "NOT_RUN"
+    },
+    {
+      "target": "windows",
+      "mode": "wago_regalloccheck",
+      "command": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-c",
+        "-overlay=/tmp/rfwgc-contract-build-lnd_u5fu/windows.json",
+        "-o",
+        "/tmp/rfwgc-contract-build-lnd_u5fu/test.bin",
+        "-tags=wago_regalloccheck",
+        "./src/wago"
+      ],
+      "exit": 0,
+      "execution": "NOT_RUN"
+    }
+  ]
+}

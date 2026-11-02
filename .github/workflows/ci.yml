@@ -18,13 +18,13 @@ on:
   workflow_dispatch:
     inputs:
       darwin_qualification:
-        description: 'Run only reviewed pinned RFWGC Darwin correctness (not full CI)'
+        description: 'Run reviewed Darwin correctness and Windows contracts (not full CI)'
         type: boolean
         default: false
       source_sha:
-        description: 'Exact reviewed source SHA; used only for Darwin qualification'
+        description: 'Exact reviewed source SHA; used only for non-Linux qualification'
         type: string
-        default: '5345bd365c13963f1bf60e26bb80789ab9ead4cc'
+        default: '9180f09f7590d029bc90df2fa20c0decc590505a'
 
 permissions:
   contents: read
@@ -1382,6 +1382,10 @@ jobs:
           mkdir -p setup-receipts
           set -o pipefail
           bash harness/docs/rfwgc-evidence/final-darwin/setup.sh source setup-receipts 2>&1 | tee setup-receipts/setup.log
+      - name: Execute exact new contracts and generated graphs
+        run: >-
+          python3 harness/docs/rfwgc-evidence/final-darwin/contracts.py
+          source contracts-${{ matrix.mode }} --target darwin --mode ${{ matrix.mode }}
       - name: Execute correctness and retain census
         run: >-
           python3 harness/docs/rfwgc-evidence/final-darwin/run.py
@@ -1390,35 +1394,87 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: darwin-5345-${{ matrix.mode }}-${{ github.run_attempt }}
+          name: darwin-9180-${{ matrix.mode }}-${{ github.run_attempt }}
           path: |
             setup-receipts
             receipts-${{ matrix.mode }}
+            contracts-${{ matrix.mode }}
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-qualification:
+    name: Pinned Windows storage contracts / ${{ matrix.mode }}
+    if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification
+    runs-on: windows-2025
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [ordinary, wagodebug, wago_regalloccheck]
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+      PYTHONDONTWRITEBYTECODE: '1'
+      QUALIFICATION_SOURCE: ${{ inputs.source_sha }}
+      QUALIFICATION_DRIVER: ${{ github.sha }}
+    steps:
+      - name: Preserve Git blob bytes for hash validation
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+          persist-credentials: false
+      - name: Validate exact input before source checkout
+        run: python harness/docs/rfwgc-evidence/final-darwin/identity.py
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Execute admitted native storage contracts
+        run: >-
+          python harness/docs/rfwgc-evidence/final-darwin/contracts.py
+          source contracts-${{ matrix.mode }} --target windows --mode ${{ matrix.mode }}
+      - name: Retain failures and exact census
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-9180-${{ matrix.mode }}-${{ github.run_attempt }}
+          path: contracts-${{ matrix.mode }}
           if-no-files-found: error
           retention-days: 7
 
   # This is the sole required status check. It validates the selected plan, so
   # skipped jobs are accepted only when the profile did not expect them.
   darwin-qualification-summary:
-    name: Darwin qualification summary
+    name: Non-Linux qualification summary
     if: always() && github.event_name == 'workflow_dispatch' && inputs.darwin_qualification
-    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification]
+    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification, windows-qualification]
     runs-on: ubuntu-latest
     steps:
       - name: Verify special Darwin matrix (does not qualify full CI)
         if: github.event_name == 'workflow_dispatch' && inputs.darwin_qualification
         env:
+          WINDOWS_RESULT: ${{ needs.windows-qualification.result }}
           DARWIN_RESULT: ${{ needs.darwin-qualification.result }}
           NORMAL_RESULTS: ${{ toJSON(needs) }}
         run: |
           test "$DARWIN_RESULT" = success
-          python3 -c 'import json, os; n=json.loads(os.environ["NORMAL_RESULTS"]); assert all(v["result"] == "skipped" for k,v in n.items() if k != "darwin-qualification"), n'
-          echo 'Pinned Darwin command execution succeeded; gaps and skips still require review.' >> "$GITHUB_STEP_SUMMARY"
+          test "$WINDOWS_RESULT" = success
+          python3 -c 'import json, os; n=json.loads(os.environ["NORMAL_RESULTS"]); assert all(v["result"] == "skipped" for k,v in n.items() if k not in ("darwin-qualification", "windows-qualification")), n'
+          echo 'Pinned non-Linux command execution succeeded; gaps and skips still require review.' >> "$GITHUB_STEP_SUMMARY"
 
   ci-ok:
-    name: ${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && 'Full CI not run (Darwin-only dispatch)' || 'CI' }}
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.darwin_qualification && 'Full CI not run (non-Linux dispatch)' || 'CI' }}
     if: always() && (github.event_name != 'workflow_dispatch' || !inputs.darwin_qualification)
-    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size]
+    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size, darwin-qualification, windows-qualification, darwin-qualification-summary]
     runs-on: ubuntu-latest
     steps:
       - name: Identify qualification profile
