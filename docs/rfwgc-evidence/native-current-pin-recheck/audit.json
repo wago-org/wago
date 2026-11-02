@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "source": "08f511fac41a77f4c0f9046f88ebc78ad05a5da6",
+  "harness": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
+  "native_execution": "NOT_RUN",
+  "darwin_windows_activation": "YES for exact source/harness; native qualification remains NOT_RUN",
+  "linux_arm_activation": "YES for exact source/harness; native qualification remains NOT_RUN",
+  "census": {
+    "darwin_focus": 73,
+    "windows": 6,
+    "arm_focused": 85,
+    "arm_guard": 1,
+    "arm_runtime": 11,
+    "arm_backend": 9,
+    "broad": 63
+  },
+  "expectation_change": "selection predicate only; positive and rejection oracles unchanged",
+  "original_native_failure": "retained; no old failing command promoted"
+}
