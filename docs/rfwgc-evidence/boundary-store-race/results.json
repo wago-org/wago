@@ -1,0 +1,51 @@
+[
+  {
+    "mode": "ordinary",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "-count=1",
+      "-failfast",
+      "-timeout=3m",
+      "-run",
+      "^TestPreparedGCRevocableEntryExternalAccess$/^reference-store$",
+      "./src/wago"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wagodebug",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "-count=1",
+      "-failfast",
+      "-timeout=3m",
+      "-tags",
+      "wagodebug",
+      "-run",
+      "^TestPreparedGCRevocableEntryExternalAccess$/^reference-store$",
+      "./src/wago"
+    ],
+    "exit": 0
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "command": [
+      "/home/dev/.local/share/mise/installs/go/1.27.3/bin/go",
+      "test",
+      "-race",
+      "-count=1",
+      "-failfast",
+      "-timeout=3m",
+      "-tags",
+      "wago_regalloccheck",
+      "-run",
+      "^TestPreparedGCRevocableEntryExternalAccess$/^reference-store$",
+      "./src/wago"
+    ],
+    "exit": 0
+  }
+]
