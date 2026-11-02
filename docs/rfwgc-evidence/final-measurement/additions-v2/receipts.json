@@ -1,0 +1,2212 @@
+[
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-ordinary-guest.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-ordinary-guest-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-ordinary-guest.test",
+      "-test.run=^TestFinalMeasurementPlainExtern$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-ordinary-TestFinalMeasurementPlainExtern.log",
+    "sha256": "d9f54ab93fdc0194e860996a4737a88a65894c071e8023d376c57bb88617711a"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-ordinary-guest.test",
+      "-test.run=^TestFinalMeasurementIndependentDomains$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-ordinary-TestFinalMeasurementIndependentDomains.log",
+    "sha256": "fe316558dfe1349d58daca99799f1ae10fd31d32bd38963bb3c247c9fa730bdb"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-ordinary-native.test",
+      "./src/core/runtime/gc/native"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-ordinary-native-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-ordinary-old-0-0-1.log",
+    "sha256": "8c399fa98374c69a6da00c3056b1d73fc9577770e421451f87d8a359a6cfac19"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-ordinary-old-0-1-1.log",
+    "sha256": "10456936662a1e5d26ceaf2e3bdc32ba9bad8f0153f3c857889e4f1ad30626d6"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wagodebug-guest.test",
+      "-tags=wagodebug",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wagodebug-guest-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wagodebug-guest.test",
+      "-test.run=^TestFinalMeasurementPlainExtern$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wagodebug-TestFinalMeasurementPlainExtern.log",
+    "sha256": "d9f54ab93fdc0194e860996a4737a88a65894c071e8023d376c57bb88617711a"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wagodebug-guest.test",
+      "-test.run=^TestFinalMeasurementIndependentDomains$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wagodebug-TestFinalMeasurementIndependentDomains.log",
+    "sha256": "fe316558dfe1349d58daca99799f1ae10fd31d32bd38963bb3c247c9fa730bdb"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wagodebug-native.test",
+      "-tags=wagodebug",
+      "./src/core/runtime/gc/native"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wagodebug-native-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wagodebug-old-0-0-1.log",
+    "sha256": "8c399fa98374c69a6da00c3056b1d73fc9577770e421451f87d8a359a6cfac19"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wagodebug-old-0-1-1.log",
+    "sha256": "10456936662a1e5d26ceaf2e3bdc32ba9bad8f0153f3c857889e4f1ad30626d6"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wago_regalloccheck-guest.test",
+      "-tags=wago_regalloccheck",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wago_regalloccheck-guest-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wago_regalloccheck-guest.test",
+      "-test.run=^TestFinalMeasurementPlainExtern$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wago_regalloccheck-TestFinalMeasurementPlainExtern.log",
+    "sha256": "d9f54ab93fdc0194e860996a4737a88a65894c071e8023d376c57bb88617711a"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wago_regalloccheck-guest.test",
+      "-test.run=^TestFinalMeasurementIndependentDomains$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wago_regalloccheck-TestFinalMeasurementIndependentDomains.log",
+    "sha256": "fe316558dfe1349d58daca99799f1ae10fd31d32bd38963bb3c247c9fa730bdb"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wago_regalloccheck-native.test",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime/gc/native"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wago_regalloccheck-native-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wago_regalloccheck-old-0-0-1.log",
+    "sha256": "8c399fa98374c69a6da00c3056b1d73fc9577770e421451f87d8a359a6cfac19"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-baseline/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/baseline-wago_regalloccheck-old-0-1-1.log",
+    "sha256": "ba118d7b8b2455001e5c87efd2fc92deba0c8a1ecc0137f276b8880386796ca1"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-guest.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-guest-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-guest.test",
+      "-test.run=^TestFinalMeasurementPlainExtern$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-TestFinalMeasurementPlainExtern.log",
+    "sha256": "d9f54ab93fdc0194e860996a4737a88a65894c071e8023d376c57bb88617711a"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-guest.test",
+      "-test.run=^TestFinalMeasurementIndependentDomains$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-TestFinalMeasurementIndependentDomains.log",
+    "sha256": "fe316558dfe1349d58daca99799f1ae10fd31d32bd38963bb3c247c9fa730bdb"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "./src/core/runtime/gc/native"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-native-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-0-0-1.log",
+    "sha256": "0315fb08eff57b63434ec58fa4461b3900c40c9c4ab0cbe2b54851d860453954"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-0-0-2.log",
+    "sha256": "3b46ee4e1ea13bf0a8a3ec9be498d6910a075a14b292bbf09326d8740c3d1349"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-0-0-4.log",
+    "sha256": "30ceff03fa6bb77fe71e14e86932b7ff88b608c2b489428141c5e9a3b8dadd08"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-0-0-8.log",
+    "sha256": "a546decce598406443532e770c1425ea7d2178e57ad944c776c5f1f04909bd4a"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-0-1-1.log",
+    "sha256": "31af3fc0e6e4b3e46fdd105cea2d84e8edc757399889f32e5b7776239c0ef4d9"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-0-1-2.log",
+    "sha256": "8f09355030c92f899177a3dcd25ee3b439c1741c38cdc8db263a6d0efe7308aa"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-0-1-4.log",
+    "sha256": "eaf71243285f6c8eb0d949a79161c05906408fddcfd2374d72bee396209fcafb"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-0-1-8.log",
+    "sha256": "b8aca29f7e06b234c06c6e59c251f1a7c3f9e603179be7beebb392eef3c36509"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-12-0-1.log",
+    "sha256": "6421367198043dbf4d679d95546cdbffa16cf73c33a640206f85e5b9b442356f"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-12-0-2.log",
+    "sha256": "013b080c159029e36899deb4c4666581ebae29890acbb9625d52e59792eee051"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-12-0-4.log",
+    "sha256": "785ee409f7f1e0a8d10021e97cf27f1ab69a00e14476c048f3cdde4566a6e637"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-12-0-8.log",
+    "sha256": "698f420fa114b019d4e4c6b8c7102abf2140fd601e7f04b0c7e95a531c4fe1ac"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-12-1-1.log",
+    "sha256": "4cd2d1259dff0c604521acd52770cb362dc26725f38d04c30b520a9308a387db"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-12-1-2.log",
+    "sha256": "c801d8731296f24ada3d31d6bb89bfcab249dd5fa82a14c0921e0d6fc88083af"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-12-1-4.log",
+    "sha256": "a3aaa313d70972df6960e45456052f2434bba4161403f702cc8288aba3ab9594"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-ordinary-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-ordinary-old-12-1-8.log",
+    "sha256": "8248cda0d6004d0e30b9de7a55b8fe7fd396650b847f8632c71e934c61d6e2e7"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-guest.test",
+      "-tags=wagodebug",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-guest-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-guest.test",
+      "-test.run=^TestFinalMeasurementPlainExtern$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-TestFinalMeasurementPlainExtern.log",
+    "sha256": "d9f54ab93fdc0194e860996a4737a88a65894c071e8023d376c57bb88617711a"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-guest.test",
+      "-test.run=^TestFinalMeasurementIndependentDomains$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-TestFinalMeasurementIndependentDomains.log",
+    "sha256": "4b5965f6603d501cac3a978e16647d7fff6a9ed9d864d978263f9b3186cec1db"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-tags=wagodebug",
+      "./src/core/runtime/gc/native"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-native-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-0-0-1.log",
+    "sha256": "0315fb08eff57b63434ec58fa4461b3900c40c9c4ab0cbe2b54851d860453954"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-0-0-2.log",
+    "sha256": "3b46ee4e1ea13bf0a8a3ec9be498d6910a075a14b292bbf09326d8740c3d1349"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-0-0-4.log",
+    "sha256": "936678027f1be989004c11243dd8d823b933bf20124febd0c7308ff78d090c58"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-0-0-8.log",
+    "sha256": "a546decce598406443532e770c1425ea7d2178e57ad944c776c5f1f04909bd4a"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-0-1-1.log",
+    "sha256": "31af3fc0e6e4b3e46fdd105cea2d84e8edc757399889f32e5b7776239c0ef4d9"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-0-1-2.log",
+    "sha256": "8f09355030c92f899177a3dcd25ee3b439c1741c38cdc8db263a6d0efe7308aa"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-0-1-4.log",
+    "sha256": "3cc1af62dcff0338a09dc70ab0d9751f034f73ad3223bd79dab760188ed25c1e"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-0-1-8.log",
+    "sha256": "623e574518e497895824ab27efad41d2ce51c0f65542a77a36fa6929f42d14b2"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-12-0-1.log",
+    "sha256": "f99e3025fb23da4ae85617b0abb052ef617f7309ea0a3336f8bb2088805c7b60"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-12-0-2.log",
+    "sha256": "6a2729910754b37223d5ead4d6c7467112497eec510ea2868bd7234b418833a0"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-12-0-4.log",
+    "sha256": "db868806ccc2283a6725134122aca1a14756777b65d45841e1d29be644c2f40d"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-12-0-8.log",
+    "sha256": "ad08d2782c96bae8cd7252024f2fe50c37d59c119e8b40f30eb5e37e9bba2ac1"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-12-1-1.log",
+    "sha256": "0deba1c0180d7c3bfc4940dc4c18ecf262f487546fa4da0a9238813f04fc8de8"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-12-1-2.log",
+    "sha256": "1df003b824a1c31bf7c7aae0bfdd6badda0f888580224c1bc3057f0afc16c2f4"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-12-1-4.log",
+    "sha256": "76bc970b1449039c71fdd35757964c079e4ed0346517ce7646451c29ea2e7011"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wagodebug-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wagodebug-old-12-1-8.log",
+    "sha256": "a4cbec00951a537bfefb53d36dfeac86a2f8b693f5a424794824b375643470f8"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-guest.test",
+      "-tags=wago_regalloccheck",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-guest-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-guest.test",
+      "-test.run=^TestFinalMeasurementPlainExtern$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-TestFinalMeasurementPlainExtern.log",
+    "sha256": "d9f54ab93fdc0194e860996a4737a88a65894c071e8023d376c57bb88617711a"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-guest.test",
+      "-test.run=^TestFinalMeasurementIndependentDomains$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/wago",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-TestFinalMeasurementIndependentDomains.log",
+    "sha256": "fe316558dfe1349d58daca99799f1ae10fd31d32bd38963bb3c247c9fa730bdb"
+  },
+  {
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-o",
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-tags=wago_regalloccheck",
+      "./src/core/runtime/gc/native"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": ""
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-native-build.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-0-0-1.log",
+    "sha256": "0315fb08eff57b63434ec58fa4461b3900c40c9c4ab0cbe2b54851d860453954"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-0-0-2.log",
+    "sha256": "3b46ee4e1ea13bf0a8a3ec9be498d6910a075a14b292bbf09326d8740c3d1349"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-0-0-4.log",
+    "sha256": "30ceff03fa6bb77fe71e14e86932b7ff88b608c2b489428141c5e9a3b8dadd08"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-0-0-8.log",
+    "sha256": "a546decce598406443532e770c1425ea7d2178e57ad944c776c5f1f04909bd4a"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-0-1-1.log",
+    "sha256": "31af3fc0e6e4b3e46fdd105cea2d84e8edc757399889f32e5b7776239c0ef4d9"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-0-1-2.log",
+    "sha256": "8f09355030c92f899177a3dcd25ee3b439c1741c38cdc8db263a6d0efe7308aa"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-0-1-4.log",
+    "sha256": "572284a27becc08ff4fcd13fdc64380b0e1705aba83acf2c7cf7818534c65266"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "0",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-0-1-8.log",
+    "sha256": "336981f4af29ca5324f08a49104843f1e731b833c6e8a636f0fbaca2eac8bfaa"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-12-0-1.log",
+    "sha256": "6421367198043dbf4d679d95546cdbffa16cf73c33a640206f85e5b9b442356f"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-12-0-2.log",
+    "sha256": "013b080c159029e36899deb4c4666581ebae29890acbb9625d52e59792eee051"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-12-0-4.log",
+    "sha256": "785ee409f7f1e0a8d10021e97cf27f1ab69a00e14476c048f3cdde4566a6e637"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "0"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-12-0-8.log",
+    "sha256": "698f420fa114b019d4e4c6b8c7102abf2140fd601e7f04b0c7e95a531c4fe1ac"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "1",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-12-1-1.log",
+    "sha256": "4cd2d1259dff0c604521acd52770cb362dc26725f38d04c30b520a9308a387db"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "2",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-12-1-2.log",
+    "sha256": "c801d8731296f24ada3d31d6bb89bfcab249dd5fa82a14c0921e0d6fc88083af"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "4",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-12-1-4.log",
+    "sha256": "a3aaa313d70972df6960e45456052f2434bba4161403f702cc8288aba3ab9594"
+  },
+  {
+    "argv": [
+      "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port-wago_regalloccheck-native.test",
+      "-test.run=^TestFinalMeasurementLargeOldNurseryFill$",
+      "-test.v",
+      "-test.count=1",
+      "-test.timeout=5m"
+    ],
+    "cwd": "/home/dev/.t3/worktrees/wago/experiment-rfwgc-port/docs/rfwgc-evidence/final-measurement/.prepared/review-port/src/core/runtime/gc/native",
+    "env": {
+      "PATH": "/home/dev/.local/share/mise/installs/go/1.27.1/bin:/usr/bin:/bin",
+      "HOME": "/home/dev",
+      "GOROOT": "/home/dev/.local/share/mise/installs/go/1.27.1",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off",
+      "GOMAXPROCS": "8",
+      "GOFLAGS": "-p=1",
+      "GOGC": "100",
+      "GOMEMLIMIT": "off",
+      "GODEBUG": "",
+      "GOEXPERIMENT": "",
+      "FM_SHIFT": "12",
+      "FM_WORKERS": "8",
+      "FM_OBJECT_EDGES": "1"
+    },
+    "exit": 0,
+    "log": "additions-v2/port-wago_regalloccheck-old-12-1-8.log",
+    "sha256": "8248cda0d6004d0e30b9de7a55b8fe7fd396650b847f8632c71e934c61d6e2e7"
+  }
+]

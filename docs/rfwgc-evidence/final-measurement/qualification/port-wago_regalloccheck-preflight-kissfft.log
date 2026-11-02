@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/kissfft
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/kissfft
+--- PASS: TestFinalPreparationCompile (0.01s)
+    --- PASS: TestFinalPreparationCompile/kissfft (0.01s)
+PASS

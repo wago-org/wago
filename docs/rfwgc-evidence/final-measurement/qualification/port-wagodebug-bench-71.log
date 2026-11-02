@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/age-decrypt
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/age-decrypt
+--- PASS: TestFinalPreparationRuntime (0.58s)
+    --- PASS: TestFinalPreparationRuntime/age-decrypt (0.57s)
+PASS

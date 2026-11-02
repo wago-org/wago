@@ -1,0 +1,30 @@
+//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo
+package wago
+import ("testing";"time";"fmt";"github.com/wago-org/wago/tests/support/wasmtest")
+func fmDomainCycle(t testing.TB,kind string,shared bool,n int) {
+ cfg:=NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+
+ imp:=func(mod,name string,typ byte) []byte {return append(append(append(wasmtest.Name(mod),wasmtest.Name(name)...),0),typ)}
+ sections:=[][]byte{wasmtest.Section(1,wasmtest.Vec([]byte{0x60,0,1,0x7f},[]byte{0x60,0,0})),wasmtest.Section(2,wasmtest.Vec(imp("p","f",0),imp("h","wait",1))),wasmtest.Section(3,wasmtest.Vec([]byte{0}))}
+ if kind=="table" {sections=append(sections,wasmtest.Section(4,wasmtest.Vec([]byte{0x6f,0,1})))}
+ if kind=="global" {sections=append(sections,wasmtest.Section(6,wasmtest.Vec([]byte{0x6f,1,0xd0,0x6f,0x0b})))}
+ sections=append(sections,wasmtest.Section(7,wasmtest.Vec(wasmtest.ExportEntry("run",0,2))),wasmtest.Section(10,wasmtest.Vec(wasmtest.Code([]byte{0x10,1,0x10,0,0x0b}))))
+ cc,err:=Compile(cfg,wasmtest.Module(sections...));if err!=nil {t.Fatal(err)};defer cc.Close()
+ rt:=NewRuntime();defer rt.Close();entered:=make(chan struct{},n);release:=make(chan struct{});done:=make(chan error,n)
+ consumers:=make([]*Instance,0,n)
+ for i:=0;i<n;i++ {store:=rt.refStore;if !shared {other:=NewRuntime();defer other.Close();store=other.refStore}
+  fields:=[]byte{0x5f,byte(i+1)};for k:=0;k<=i;k++ {fields=append(fields,0x7f,1)}
+  pc,err:=Compile(cfg,wasmtest.Module(wasmtest.Section(1,wasmtest.Vec(fields,[]byte{0x60,0,1,0x7f})),wasmtest.Section(3,wasmtest.Vec([]byte{1})),wasmtest.Section(7,wasmtest.Vec(wasmtest.ExportEntry("f",0,0))),wasmtest.Section(10,wasmtest.Vec(wasmtest.Code([]byte{0xfb,1,0,0x1a,0x41,7,0x0b})))));if err!=nil {t.Fatal(err)};defer pc.Close()
+  p,err:=instantiateCore(pc,InstantiateOptions{store:store,GC:GCConfig{NurseryBytes:8192}});if err!=nil {t.Fatal(err)};defer p.Close()
+  f,err:=p.ExportedFunc("f");if err!=nil {t.Fatal(err)}
+  c,err:=instantiateCore(cc,InstantiateOptions{store:store,Imports:testImports("p.f",f,"h.wait",func(HostCall){entered<-struct{}{};<-release})});if err!=nil {t.Fatal(err)};defer c.Close();consumers=append(consumers,c)
+ }
+ for _,c:=range consumers {go func(c *Instance){out,err:=c.Invoke("run");if err==nil&&(len(out)!=1||out[0]!=7){err=fmt.Errorf("oracle %v",out)};done<-err}(c)}
+ timer:=time.NewTimer(2*time.Second);defer timer.Stop();overlap:=true
+ for i:=0;i<n;i++ {select {case <-entered:case <-timer.C:overlap=false};if !overlap {break}}
+ close(release)
+ for i:=0;i<n;i++ {if err:=<-done;err!=nil {t.Error(err)}}
+ if !overlap {t.Error("independent-domain overlap blocked; timeout is a correctness watchdog, not a speed result")}
+}
+func TestFinalMeasurementIndependentDomains(t *testing.T) {for _,kind:=range []string{"none","global","table"}{for _,shared:=range []bool{false,true}{for _,n:=range []int{1,2}{t.Run(fmt.Sprintf("%s/shared=%t/participants=%d",kind,shared,n),func(t *testing.T){fmDomainCycle(t,kind,shared,n)})}}}}
+func BenchmarkFinalMeasurementIndependentDomains(b *testing.B) {for _,kind:=range []string{"none","global","table"}{for _,shared:=range []bool{false,true}{for _,n:=range []int{1,2}{b.Run(fmt.Sprintf("%s/shared=%t/participants=%d",kind,shared,n),func(b *testing.B){for i:=0;i<b.N;i++ {fmDomainCycle(b,kind,shared,n)}})}}}}

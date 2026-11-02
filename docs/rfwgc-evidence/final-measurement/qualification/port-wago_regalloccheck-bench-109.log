@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/matmul.run
+    final_preparation_test.go:28: FM_LEAF BenchmarkExec/matmul.run
+--- PASS: TestFinalPreparationRuntime (0.00s)
+    --- PASS: TestFinalPreparationRuntime/matmul.run (0.00s)
+PASS

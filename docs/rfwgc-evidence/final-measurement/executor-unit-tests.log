@@ -1,0 +1,15 @@
+test_changed_leaf (test_executor.Contracts.test_changed_leaf) ... ok
+test_controls_both_orders (test_executor.Contracts.test_controls_both_orders) ... ok
+test_duplicate (test_executor.Contracts.test_duplicate) ... ok
+test_every_leaf (test_executor.Contracts.test_every_leaf) ... ok
+test_invalid_before_lock (test_executor.Contracts.test_invalid_before_lock) ... ok
+test_one_leaf_rejects_block (test_executor.Contracts.test_one_leaf_rejects_block) ... ok
+test_parent_only (test_executor.Contracts.test_parent_only) ... ok
+test_skip (test_executor.Contracts.test_skip) ... ok
+test_testcycle_is_one_process_metric (test_executor.Contracts.test_testcycle_is_one_process_metric) ... ok
+test_zero_leaf (test_executor.Contracts.test_zero_leaf) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.002s
+
+OK

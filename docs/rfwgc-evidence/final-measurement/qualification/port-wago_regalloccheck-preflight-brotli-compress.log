@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/brotli-compress
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/brotli-compress
+--- PASS: TestFinalPreparationCompile (0.12s)
+    --- PASS: TestFinalPreparationCompile/brotli-compress (0.11s)
+PASS

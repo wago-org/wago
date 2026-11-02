@@ -1,0 +1,18 @@
+{
+  "scope": "this preparation only, PID namespace visible to this process",
+  "known_build_and_test_jobs_joined": true,
+  "owned_executable_process_matches": [],
+  "global_drain": false,
+  "outside_owners_still_required": true,
+  "no_flock_acquired": true,
+  "retained_inert_exports_and_binaries": ".prepared",
+  "exec_sessions_completed": [
+    21283,
+    4364,
+    14628,
+    2554,
+    74509,
+    58885,
+    55943
+  ]
+}

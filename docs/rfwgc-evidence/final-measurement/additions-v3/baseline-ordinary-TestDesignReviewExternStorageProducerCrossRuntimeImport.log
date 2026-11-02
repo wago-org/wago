@@ -1,0 +1,21 @@
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone
+    final_review_cross_runtime_test.go:63: producer dynamic=false
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime
+    final_review_cross_runtime_test.go:63: producer dynamic=false
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone
+    final_review_cross_runtime_test.go:63: producer dynamic=false
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime
+    final_review_cross_runtime_test.go:63: producer dynamic=false
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone
+    final_review_cross_runtime_test.go:63: producer dynamic=false
+=== RUN   TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime
+    final_review_cross_runtime_test.go:63: producer dynamic=false
+--- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/none/standalone (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/none/other-runtime (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/global/standalone (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/global/other-runtime (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/table/standalone (0.00s)
+    --- PASS: TestDesignReviewExternStorageProducerCrossRuntimeImport/table/other-runtime (0.00s)
+PASS

@@ -1,6 +1,13 @@
 # Final port measurement preparation
 
-**PREPARATION ONLY — READY FOR LEASE, not authorized to measure.** No lease,
+**PREPARATION ONLY — CANDIDATE INVALID; not ready for a lease or measurement.**
+
+Parent steering after the design review invalidates source `5345bd365` as a
+final candidate (DR-1/DR-2 verified; DR-3 source-only). See
+`candidate-status.json` and `CONTINUATION.md`. All new receipts for that pin are
+historical adapter qualification only. Repair, new pin and new qualification
+are mandatory. The original 316-cell matrix is retained; required additional
+workloads are separate pending a revised bounded plan. No lease,
 benchmark invocation or intentional timing is part of this assignment. This
 harness does not enter shipped builds and cannot affect production performance.
 The implementation still needs an independent measurement campaign. This report

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/linked_list
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/linked_list
+--- PASS: TestFinalPreparationCompile (0.01s)
+    --- PASS: TestFinalPreparationCompile/linked_list (0.00s)
+PASS

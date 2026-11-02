@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/fannkuch
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/fannkuch
+--- PASS: TestFinalPreparationCompile (0.01s)
+    --- PASS: TestFinalPreparationCompile/fannkuch (0.00s)
+PASS

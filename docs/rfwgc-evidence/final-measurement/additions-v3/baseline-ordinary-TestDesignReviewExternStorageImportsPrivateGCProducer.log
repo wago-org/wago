@@ -1,0 +1,84 @@
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    final_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    final_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    final_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none
+    final_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global
+    final_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table
+    final_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=true
+    final_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    final_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=true
+    final_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    final_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=true
+    final_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    final_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=true
+    final_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=true
+    final_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=true
+    final_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    final_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    final_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table
+    final_review_probe_test.go:109: producer gc=true store=true domain=true privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=true leasedDomains=1
+    final_review_probe_test.go:135: unrelated lease while consumer lease held: err=<nil>
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none
+    final_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global
+    final_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+=== RUN   TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table
+    final_review_probe_test.go:109: producer gc=true store=false domain=false privateDomain=false
+    final_review_probe_test.go:125: consumer dynamic=false imported=false leasedDomains=0
+--- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer (0.01s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=true/externref-table (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/alloc/runtime=false/externref-table (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=true/externref-table (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/convert/runtime=false/externref-table (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=true/externref-table (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/none (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-global (0.00s)
+    --- PASS: TestDesignReviewExternStorageImportsPrivateGCProducer/global/runtime=false/externref-table (0.00s)
+PASS

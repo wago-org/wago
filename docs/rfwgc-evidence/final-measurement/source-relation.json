@@ -1,0 +1,7 @@
+{
+  "qualification_pin": "5345bd365c13963f1bf60e26bb80789ab9ead4cc",
+  "comment_commit": "942fe6c7d731ffacfac61c4aaa51bf13d5063cd3",
+  "production_diff": "diff --git a/src/core/runtime/gc/native/collector.go b/src/core/runtime/gc/native/collector.go\nindex 87449d0a7..38c7c41ce 100644\n--- a/src/core/runtime/gc/native/collector.go\n+++ b/src/core/runtime/gc/native/collector.go\n@@ -92,7 +92,9 @@ type Config struct {\n \t// Zero preserves the default; 6..30 selects 1<<shift bytes per region.\n \t// Requires fixed divisible NurseryBytes and at most 65536 regions.\n \t// Exhaustion first reclaims empty regions by exact tracing, then evacuates.\n-\t// Native allocation batches are disabled in this mode.\n+\t// Bounded region-owned native batches support small structs and arrays;\n+\t// cancellation returns only their unused owned tail. The baseline direct-bump\n+\t// and native large-array allocation paths remain disabled in this mode.\n \tNurseryRegionShift uint8\n \t// MatureEvacuation opts into pressure-triggered sparse old-space relocation.\n \tMatureEvacuation bool\n",
+  "relation": "Only production change through 942fe6c7d is replacement of a Config.NurseryRegionShift doc comment; declarations/statements unchanged. No silent substitution of pin. Neither pin fixes DR-1/DR-2/DR-3. Subsequent repairs require independent new qualification.",
+  "binary_caveat": "Comments shift source positions and may alter debug metadata; semantic source equality is not a claim of byte-identical binaries."
+}

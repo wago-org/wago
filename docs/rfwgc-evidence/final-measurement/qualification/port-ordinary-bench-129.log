@@ -1,0 +1,12 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/blake3.blake3_hash
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/blake3.blake3_hash
+=== RUN   TestFinalPreparationRuntime/blake3.blake3_keyed_hash
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/blake3.blake3_keyed_hash
+=== RUN   TestFinalPreparationRuntime/blake3.blake3_derive_key
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/blake3.blake3_derive_key
+--- PASS: TestFinalPreparationRuntime (0.05s)
+    --- PASS: TestFinalPreparationRuntime/blake3.blake3_hash (0.01s)
+    --- PASS: TestFinalPreparationRuntime/blake3.blake3_keyed_hash (0.01s)
+    --- PASS: TestFinalPreparationRuntime/blake3.blake3_derive_key (0.01s)
+PASS

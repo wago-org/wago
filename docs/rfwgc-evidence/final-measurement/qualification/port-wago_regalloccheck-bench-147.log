@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/nanosvg.nanosvg_run
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/nanosvg.nanosvg_run
+--- PASS: TestFinalPreparationRuntime (0.05s)
+    --- PASS: TestFinalPreparationRuntime/nanosvg.nanosvg_run (0.02s)
+PASS

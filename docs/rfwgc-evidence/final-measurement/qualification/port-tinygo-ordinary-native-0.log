@@ -1,0 +1,4 @@
+=== RUN   TestFinalMeasurementEvacuation
+    {"Kind":"major","Result":"success","Evacuation":"disabled","RequiredCause":null,"Pressure":true,"Demand":0,"Credit":0,"Need":0,"MovedBytes":0,"MovedPhysical":0,"Candidates":0,"Runs":0,"ReservationWorkers":0,"CopyWorkers":0}
+--- PASS: TestFinalMeasurementEvacuation (0.12s)
+PASS

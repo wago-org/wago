@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/fastfloat.fastfloat_run
+    final_preparation_test.go:33: FM_LEAF BenchmarkExec/fastfloat.fastfloat_run
+--- PASS: TestFinalPreparationRuntime (0.01s)
+    --- PASS: TestFinalPreparationRuntime/fastfloat.fastfloat_run (0.00s)
+PASS

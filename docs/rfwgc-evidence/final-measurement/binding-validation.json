@@ -1,0 +1,11 @@
+{
+  "status": "PASS_HISTORICAL_BINDINGS_NOT_CANDIDATE",
+  "cells": 316,
+  "sides": 632,
+  "paired_leaf_matches": 316,
+  "unbound_sides": 0,
+  "input_references_checked_per_pin": 47,
+  "source_candidate_status": "INVALID",
+  "benchmark_or_calibration_commands_executed": 0,
+  "expanded_manifest_sha256": "633d2de504f0fb2095da9a95df8122ed7196d2321d02f587fac431e7d3956924"
+}

@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/ecppack-bitstream
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/ecppack-bitstream
+--- PASS: TestFinalPreparationRuntime (1.10s)
+    --- PASS: TestFinalPreparationRuntime/ecppack-bitstream (1.09s)
+PASS

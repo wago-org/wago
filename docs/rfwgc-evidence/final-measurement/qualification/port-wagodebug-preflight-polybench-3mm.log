@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/polybench-3mm
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-3mm
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/polybench-3mm (0.00s)
+PASS

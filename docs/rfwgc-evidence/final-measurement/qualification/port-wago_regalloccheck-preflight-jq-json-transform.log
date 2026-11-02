@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/jq-json-transform
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/jq-json-transform
+--- PASS: TestFinalPreparationCompile (0.20s)
+    --- PASS: TestFinalPreparationCompile/jq-json-transform (0.20s)
+PASS

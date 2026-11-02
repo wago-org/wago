@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/embench-qrduino
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/embench-qrduino
+--- PASS: TestFinalPreparationRuntime (0.00s)
+    --- PASS: TestFinalPreparationRuntime/embench-qrduino (0.00s)
+PASS

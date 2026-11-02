@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/clang-cpp-kernels
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/clang-cpp-kernels
+--- PASS: TestFinalPreparationCompile (6.98s)
+    --- PASS: TestFinalPreparationCompile/clang-cpp-kernels (6.96s)
+PASS

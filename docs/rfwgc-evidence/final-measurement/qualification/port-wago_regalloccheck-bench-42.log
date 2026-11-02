@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/yosys-counter
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/yosys-counter
+--- PASS: TestFinalPreparationCompile (4.58s)
+    --- PASS: TestFinalPreparationCompile/yosys-counter (4.55s)
+PASS

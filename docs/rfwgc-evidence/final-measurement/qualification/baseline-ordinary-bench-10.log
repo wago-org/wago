@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/fasttree-phylogeny
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/fasttree-phylogeny
+--- PASS: TestFinalPreparationCompile (0.02s)
+    --- PASS: TestFinalPreparationCompile/fasttree-phylogeny (0.02s)
+PASS
