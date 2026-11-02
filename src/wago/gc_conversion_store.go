@@ -247,11 +247,3 @@ func stageConversionInitialTable(rows *[]conversionInitialTable, t *Table, start
 func (t *Table) SetValue(index uint64, value Value) error {
 	return setConversionTablePublic(t, index, value)
 }
-
-// Unauthenticated adapters remain available for unsupported-platform controls.
-func (in *Instance) publishConversionStore(owner *Instance, storage []byte, index, word uint64, publish func() error) error {
-	return in.publishConversionStoreInvocation(gcConversionInvocation{}, owner, storage, index, word, publish)
-}
-func (in *Instance) publishConversionRange(owner *Instance, storage []byte, start, limit uint64, words []uint64, publish func()) error {
-	return in.publishConversionRangeInvocation(gcConversionInvocation{}, owner, storage, start, limit, words, publish)
-}

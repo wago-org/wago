@@ -1,0 +1,43 @@
+[
+  {
+    "mode": "ordinary",
+    "command": [
+      "go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestDesignRepairUnsupportedBulkAtomicity$",
+      "-exec=true"
+    ],
+    "exit": 0,
+    "scope": "compile-only"
+  },
+  {
+    "mode": "wagodebug",
+    "command": [
+      "go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestDesignRepairUnsupportedBulkAtomicity$",
+      "-exec=true",
+      "-tags=wagodebug"
+    ],
+    "exit": 0,
+    "scope": "compile-only"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "command": [
+      "go",
+      "test",
+      "./src/wago",
+      "-run",
+      "^TestDesignRepairUnsupportedBulkAtomicity$",
+      "-exec=true",
+      "-tags=wago_regalloccheck"
+    ],
+    "exit": 0,
+    "scope": "compile-only"
+  }
+]
