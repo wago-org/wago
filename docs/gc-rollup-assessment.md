@@ -1,5 +1,7 @@
 # GC rollup assessment
 
+Coordination checkpoint: assessed production/source head `35c36bc594d2a027317cfcd321379f2d40c6b219`; observed port head `8a3defbcc1027b6c4afdd37e2fec5de5c54e0425` adds only the coordination log, with no `src` changes. Source conclusions remain pinned to the assessed head. The port orchestrator is the sole implementation authority; this document is advisory integration input, not a landing decision.
+
 Assessment base: `35c36bc594d2a027317cfcd321379f2d40c6b219`, production `501e9ab46c4f68090c7bbeb17a6ad14f4fadda6d`, captured from `experiment/rfwgc-port` on 2026-11-02. Support branch: `docs/gc-port-astra-support`.
 
 All seven verified topics belong in the port. **INCLUDED means the port should carry the topic**, as requested in this brief; it is an advisory scope verdict, not the parent's final acceptance, PR closure, or a claim that final combined gates/reviews passed. Parent retains final bucket authority. References below are repository-relative file:line at this base unless an explicit source ref precedes them.
