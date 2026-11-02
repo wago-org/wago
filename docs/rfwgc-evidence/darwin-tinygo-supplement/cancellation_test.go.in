@@ -4,6 +4,7 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	grt "runtime"
 	"testing"
@@ -25,41 +26,50 @@ func TestDarwinTinyGoCancellationAndGC(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	for _, closeInstead := range []bool{false, true} {
-		entered := make(chan struct{})
-		in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.entered", slotHostFunc(func(_ HostModule, _, _ []uint64) { close(entered) }))})
-		if err != nil {
-			t.Fatal(err)
-		}
-		ctx, cancel := context.WithCancel(context.Background())
-		done := make(chan error, 1)
-		go func() { _, e := in.InvokeContext(ctx, "spin"); done <- e }()
-		select {
-		case <-entered:
-		case <-time.After(5 * time.Second):
-			panic("cancel guest did not enter")
-		}
-		for i := 0; i < 8; i++ {
+	for _, name := range []string{"cancel", "close"} {
+		t.Run(name, func(t *testing.T) {
+			closeInstead := name == "close"
+			entered := make(chan struct{})
+			in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.entered", slotHostFunc(func(_ HostModule, _, _ []uint64) { close(entered) }))})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { _, e := in.InvokeContext(ctx, "spin"); done <- e }()
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				panic("cancel guest did not enter")
+			}
+			for i := 0; i < 8; i++ {
+				grt.GC()
+			}
+			if closeInstead {
+				if err := in.Close(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				cancel()
+			}
+			select {
+			case e := <-done:
+				if closeInstead {
+					requireInterruptedTrap(t, e)
+				} else if !errors.Is(e, context.Canceled) {
+					t.Fatalf("InvokeContext error = %v, want context.Canceled", e)
+				}
+			case <-time.After(5 * time.Second):
+				panic("TinyGo cancellation did not unwind")
+			}
+			cancel()
 			grt.GC()
-		}
-		if closeInstead {
 			if err := in.Close(); err != nil {
 				t.Fatal(err)
 			}
-		} else {
-			cancel()
-		}
-		select {
-		case e := <-done:
-			requireInterruptedTrap(t, e)
-		case <-time.After(5 * time.Second):
-			panic("TinyGo cancellation did not unwind")
-		}
-		cancel()
-		grt.GC()
-		if err := in.Close(); err != nil {
-			t.Fatal(err)
-		}
-		grt.GC()
+			grt.GC()
+		})
 	}
 }
