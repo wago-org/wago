@@ -1,0 +1,49 @@
+{
+  "source": "76cdc5cb77f505176f74abb7c17e4bf454da8650",
+  "source_files": {
+    "src/wago/design_repair_table_test.go": "e4d355c3da8eab81cb9d01f78b5bcae4cb95cb3ff349a120925643140a415fd9",
+    "src/wago/design_repair_unsupported_test.go": "799a0ce7621ed4445fc4b877cd3d996152fa9b0dd0ec5662b8a01a813dd17047",
+    "src/wago/design_repair_unsupported_token_test.go": "9e349fad6b7fcc8b0a24c47f1b347daf82c1b6aaf7ce402bc580c5b9a480dc90",
+    "src/wago/config.go": "9f2ec3a0b8a07f4d2f6b0af100a9bd8b6a96eaa101eaaf3a6ab39be065d562c3",
+    "scripts/patch-tinygo-042.sh": "ab4cdf4446a0e3c29174f62ed147adeeee5254fe3da8c0aad794485a4cb9d883",
+    "scripts/patch-tinygo-foreign-stack.py": "d9af82178511c3275ae57dcfcd092ee05ce88bb45026f14265107a9fc316fcf4",
+    "scripts/tinygo-042/wago_foreign_stack.go.in": "5d5f2ed3febafa41527d4817d1404d972f40b3fc1803be83e140b78edcb2f9ac",
+    "src/wago/rfwgc_stage3_measurement_bench_test.go": "7571b96fe4693232f97b545d93de6d97300f0055ee709e2db7c48a940a98ef20",
+    "src/wago/shared_entry_guard_arm64_test.go": "a7a719c91e0afe10dab1440814b572a77815b5b219928fe4ef80d80225c445ac",
+    "src/wago/wasmtime_core3_port_test.go": "dc81e6f5ace513f173faefd04fa8435c5c542f3e5404310b6af7fe68f6ffbff6",
+    "src/wago/spectest_exec_test.go": "eede7f3e3876ffc5e13f689cbdb2135b5c69b8cd1945b5fd11633983fcaac67b",
+    "src/wago/regression_core_test.go": "a6d2b08e3e87a0f0ffef35f970f1dad06b8c109bd1ccfdef1b9c7b19852f8ad8",
+    "src/wago/externref_global_conversion_test.go": "7cebac080950df45d3e4f2f7beb90992169c19898b26086257b7ff4bcf50a5c5",
+    "src/wago/gc_extern_multi_table_test.go": "dacb21954c3c6a8c030197d12e1696c0afc2144c4f4b931422ab57b0de9f200e"
+  },
+  "fixtures": {
+    "_fixtures/graph.wasm": "55a4ae64f44b5de433012ca0b075a75206fcc7954295c99a4d18640c9e7507d6",
+    "_fixtures/graph_test.go": "be828e247b0e6286d18f9b159414c7ccd2baf7bfa5af6ddeebcd1d85b661b101",
+    "_fixtures/noGC.wasm": "b386dcc6718e966cb7b13740f9152dff5136acbac409ad104c58cf4896e63db0",
+    "_fixtures/scalar.wasm": "ed35fcda2278f0fe2b4ff6fb783367f65ad28504d01d4ca2d873dd07b29164a8",
+    "_fixtures/windows_admission_test.go": "448256b41cf12b6e6e93c4d2ab5deab273b5598c2a25bcbec7a0007fff46b416"
+  },
+  "tests": {
+    "darwin": [
+      "TestDesignRepairPublicTableOrdinary",
+      "TestDesignRepairUnsupportedBulkAtomicity",
+      "TestDesignRepairUnsupportedConvertedPublicToken",
+      "TestDesignRepairUnsupportedConvertedPublication",
+      "TestRFWStage3MeasurementGuest"
+    ],
+    "windows": [
+      "TestDesignRepairPublicTableOrdinary",
+      "TestDesignRepairUnsupportedBulkAtomicity",
+      "TestDesignRepairUnsupportedConvertedPublicToken",
+      "TestQualificationWindowsGCAdmission"
+    ]
+  },
+  "graph_subtests": [
+    "TestRFWStage3MeasurementGuest/noGC/false",
+    "TestRFWStage3MeasurementGuest/noGC/true",
+    "TestRFWStage3MeasurementGuest/scalar/false",
+    "TestRFWStage3MeasurementGuest/scalar/true",
+    "TestRFWStage3MeasurementGuest/graph/false",
+    "TestRFWStage3MeasurementGuest/graph/true"
+  ]
+}

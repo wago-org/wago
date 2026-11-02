@@ -1,0 +1,80 @@
+{
+  "source": "da19f1a8d29fec7305d937a42622a198b8e79717",
+  "export": "/home/dev/darwin-harness-archive-twct_y0p/source",
+  "go": "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+  "go_sha256": "30969f97169d7f43fe6a085873d75613adc21e30818a8c61d95bd27275df4624",
+  "native_darwin": "NOT_RUN",
+  "commands": [
+    {
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "./tests/integration/cipolicy",
+        "-count=1"
+      ],
+      "exit": 0,
+      "log": "ordinary-cipolicy.log"
+    },
+    {
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "./tests/tools/ci-plan",
+        "-count=1"
+      ],
+      "exit": 0,
+      "log": "ordinary-ci-plan.log"
+    },
+    {
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wagodebug",
+        "./tests/integration/cipolicy",
+        "-count=1"
+      ],
+      "exit": 0,
+      "log": "wagodebug-cipolicy.log"
+    },
+    {
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wagodebug",
+        "./tests/tools/ci-plan",
+        "-count=1"
+      ],
+      "exit": 0,
+      "log": "wagodebug-ci-plan.log"
+    },
+    {
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_regalloccheck",
+        "./tests/integration/cipolicy",
+        "-count=1"
+      ],
+      "exit": 0,
+      "log": "wago_regalloccheck-cipolicy.log"
+    },
+    {
+      "argv": [
+        "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+        "test",
+        "-tags=wago_regalloccheck",
+        "./tests/tools/ci-plan",
+        "-count=1"
+      ],
+      "exit": 0,
+      "log": "wago_regalloccheck-ci-plan.log"
+    }
+  ],
+  "verified_blobs": 17895,
+  "declared_overlay": {
+    ".github/workflows/ci.yml": "119c36cff1999d0cf49679fb58e12fea5c5398d003dfeefc60d7513ca3d58d19"
+  },
+  "go_version": "go version go1.27.1 linux/amd64",
+  "unexpected_changes": [],
+  "status": "PASS"
+}

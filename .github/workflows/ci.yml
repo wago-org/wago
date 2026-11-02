@@ -1377,6 +1377,7 @@ jobs:
         with:
           just-version: '1.58.0'
       - name: Provision native tools and official interpreter
+        id: darwin-setup
         shell: bash
         run: |
           mkdir -p setup-receipts
@@ -1387,6 +1388,7 @@ jobs:
           python3 harness/docs/rfwgc-evidence/final-darwin/contracts.py
           source contracts-${{ matrix.mode }} --target darwin --mode ${{ matrix.mode }}
       - name: Execute correctness and retain census
+        if: ${{ !cancelled() && steps.darwin-setup.outcome == 'success' }}
         run: >-
           python3 harness/docs/rfwgc-evidence/final-darwin/run.py
           source receipts-${{ matrix.mode }} --mode '${{ matrix.mode }}'
@@ -1394,7 +1396,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: darwin-f2bb27287-${{ matrix.mode }}-${{ github.run_attempt }}
+          name: darwin-da19f1a8d-${{ matrix.mode }}-${{ github.run_attempt }}
           path: |
             setup-receipts
             receipts-${{ matrix.mode }}
@@ -1446,7 +1448,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: windows-f2bb27287-${{ matrix.mode }}-${{ github.run_attempt }}
+          name: windows-da19f1a8d-${{ matrix.mode }}-${{ github.run_attempt }}
           path: contracts-${{ matrix.mode }}
           if-no-files-found: error
           retention-days: 7
