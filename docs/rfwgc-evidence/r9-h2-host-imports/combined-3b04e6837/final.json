@@ -5,5 +5,5 @@
   "failure": null,
   "export_changes": [],
   "commands": 174,
-  "remaining_gates": "All unexecuted cells/drivers remain required; no H2 closure."
+  "remaining_gates": "All specified pinned gates and full-package race passed. Later compiler/diagnostic/lint changes require a new combined pin; diagnostics/staticcheck and parent closure remain pending."
 }

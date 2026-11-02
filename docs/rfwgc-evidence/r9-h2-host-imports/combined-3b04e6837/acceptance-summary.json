@@ -299,8 +299,31 @@
     ]
   },
   "pending": [
-    "Full-package race all three modes (currently running)",
     "Next combined pin must include compiler fixes, diagnostic-contract fix and lint cleanup; current pin predates them",
     "Separate diagnostics/staticcheck and final parent combined closure remain required"
-  ]
+  ],
+  "full_package_race": [
+    {
+      "mode": "ordinary",
+      "exit": 0,
+      "top_level_PASS": 2511,
+      "SKIP_assertions": 44,
+      "FAIL_assertions": 0
+    },
+    {
+      "mode": "wagodebug",
+      "exit": 0,
+      "top_level_PASS": 2505,
+      "SKIP_assertions": 50,
+      "FAIL_assertions": 0
+    },
+    {
+      "mode": "wago_regalloccheck",
+      "exit": 0,
+      "top_level_PASS": 2511,
+      "SKIP_assertions": 44,
+      "FAIL_assertions": 0
+    }
+  ],
+  "full_package_race_export_unchanged": true
 }

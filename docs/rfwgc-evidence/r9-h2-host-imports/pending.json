@@ -1,6 +1,6 @@
 {
   "base": "67ef1f39e61dd61ee891bdefa5f8218a74aba806",
-  "status": "B COMMITTED; pinned combined matrix/integrated/QEMU/TinyGo PASS; full-package race running; no H2 closure",
+  "status": "B COMMITTED; pinned combined matrix/integrated/QEMU/TinyGo and full-package race PASS; later-head combined qualification and H2 closure pending",
   "paths": {
     "src/wago/gc_conversion_store.go": "e4f017b67a10b821cab52af1d820524fc0574b4452aa2725ce6b120d2ac76fd7",
     "src/wago/gc_conversion_host_import_host_test.go": "120e0355f388acade09946730a23e6a33c40a54ab2ed4cb61b3240bfe9e82751",

@@ -1,0 +1,78 @@
+[
+  {
+    "label": "ordinary-host-census",
+    "args": [
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImport"
+    ],
+    "exit": 0,
+    "passed": 0,
+    "listed": [
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportTable",
+      "TestR9H2HostImportBulk",
+      "TestR9H2HostImportInitialization",
+      "TestR9H2HostImportCycle",
+      "TestR9H2HostImportTableIndependentPhysical",
+      "TestR9H2HostImportAuthority",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards",
+      "TestR9H2HostImportTableOrdinaryAndGuards"
+    ],
+    "skips": [],
+    "expected": 9,
+    "accepted": true
+  },
+  {
+    "label": "wagodebug-host-census",
+    "args": [
+      "-tags",
+      "wagodebug",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImport"
+    ],
+    "exit": 0,
+    "passed": 0,
+    "listed": [
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportTable",
+      "TestR9H2HostImportBulk",
+      "TestR9H2HostImportInitialization",
+      "TestR9H2HostImportCycle",
+      "TestR9H2HostImportTableIndependentPhysical",
+      "TestR9H2HostImportAuthority",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards",
+      "TestR9H2HostImportTableOrdinaryAndGuards"
+    ],
+    "skips": [],
+    "expected": 9,
+    "accepted": true
+  },
+  {
+    "label": "wago_regalloccheck-host-census",
+    "args": [
+      "-tags",
+      "wago_regalloccheck",
+      "./src/wago",
+      "-list",
+      "^TestR9H2HostImport"
+    ],
+    "exit": 0,
+    "passed": 0,
+    "listed": [
+      "TestR9H2HostImportGlobal",
+      "TestR9H2HostImportTable",
+      "TestR9H2HostImportBulk",
+      "TestR9H2HostImportInitialization",
+      "TestR9H2HostImportCycle",
+      "TestR9H2HostImportTableIndependentPhysical",
+      "TestR9H2HostImportAuthority",
+      "TestR9H2HostImportGlobalOrdinaryAndGuards",
+      "TestR9H2HostImportTableOrdinaryAndGuards"
+    ],
+    "skips": [],
+    "expected": 9,
+    "accepted": true
+  }
+]
