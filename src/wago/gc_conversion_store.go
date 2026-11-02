@@ -29,18 +29,7 @@ func (in *Instance) dispatchConversionStore(helper uint32, args, results []uint6
 		}
 		table := args[2]
 		index, word = args[0], args[1]
-		if table >= uint64(in.c.tableCount()) || in.c.tableElementType(int(table)) != ValExternRef {
-			panic(gcHelperFailuref("extern table metadata"))
-		}
-		storage = in.tableDescriptor(int(table))
-		owner = in
-		if table < uint64(in.c.tableImportCount()) {
-			t, ok := in.imports.table(in.c.tableImportBindingKey(int(table)))
-			if !ok || t.owner == nil {
-				panic(gcHelperFailuref("extern table owner unavailable"))
-			}
-			owner = t.instanceOwner()
-		}
+		storage, owner = in.conversionTableStorage(table)
 		if len(storage) < 8 || index >= uint64(binary.LittleEndian.Uint32(storage)) {
 			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
 		}
@@ -54,12 +43,16 @@ func (in *Instance) dispatchConversionStore(helper uint32, args, results []uint6
 			panic(gcHelperFailuref("extern global metadata"))
 		}
 		g := in.globalCells[i]
+		if g == nil || len(g.cell) < 8 {
+			panic(gcHelperFailuref("extern global storage unavailable"))
+		}
 		storage, owner = g.cell, in
 		if i < len(in.c.GlobalImports) {
 			if g.owner == nil {
 				panic(gcHelperFailuref("extern global owner unavailable"))
 			}
-			owner = g.owner.instance
+			// A nil Instance names a real host cell, never the publishing instance.
+			owner = g.instanceOwner()
 		}
 	}
 	publish := func() error {
@@ -84,16 +77,24 @@ func (in *Instance) conversionTableStorage(table uint64) ([]byte, *Instance) {
 		panic(gcHelperFailuref("extern table metadata"))
 	}
 	owner := in
+	var desc []byte
 	if table < uint64(in.c.tableImportCount()) {
 		t, ok := in.imports.table(in.c.tableImportBindingKey(int(table)))
-		if !ok {
+		if !ok || t == nil || t.owner == nil {
 			panic(gcHelperFailuref("extern table import"))
 		}
-		owner = t.instanceOwner()
+		// Keep physical storage and identity together for both single and bulk
+		// stores. The adapter authenticates host authority in the current store.
+		desc, owner = t.desc, t.instanceOwner()
+	} else {
+		desc = in.tableDescriptor(int(table))
 	}
-	desc := in.tableDescriptor(int(table))
 	if len(desc) < 8 {
 		panic(gcHelperFailuref("extern table descriptor"))
+	}
+	length, capacity := uint64(binary.LittleEndian.Uint32(desc)), uint64(binary.LittleEndian.Uint32(desc[4:]))
+	if length > capacity || capacity > uint64((len(desc)-8)/8) {
+		panic(gcHelperFailuref("extern table descriptor extent"))
 	}
 	return desc, owner
 }
@@ -231,7 +232,7 @@ func stageConversionInitialTable(rows *[]conversionInitialTable, t *Table, start
 }
 
 // SetValue replaces one externref entry. A null ValueExternRef clears its exact
-// physical receipt. The table's canonical instance owner supplies authority.
+// physical receipt. The adapter resolves the canonical module or host authority.
 func (t *Table) SetValue(index uint64, value Value) error {
 	return setConversionTablePublic(t, index, value)
 }
