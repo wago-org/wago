@@ -168,6 +168,174 @@
     }
   },
   {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:13:32.922922992Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/clang-c-kernels/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/clang-c-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-c-kernels/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:13:35.667052644Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/clang-cpp-kernels/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/clang-cpp-kernels/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/clang-cpp-kernels/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:14:08.065840702Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/fasttree-phylogeny/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/fasttree-phylogeny/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/fasttree-phylogeny/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:14:08.074080706Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/gnu-seq-range/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/gnu-seq-range/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/gnu-seq-range/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:14:08.081436688Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/gnu-tr-uppercase/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/gnu-tr-uppercase/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/gnu-tr-uppercase/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:14:12.169512603Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/lcs-substrings/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/lcs-substrings/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lcs-substrings/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:14:12.457335604Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/lua-cli-buckets/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/lua-cli-buckets/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/lua-cli-buckets/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:14:13.096505653Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/micropython-squares/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/micropython-squares/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured wasmtime oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/micropython-squares/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:14:13.107114497Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/needleman-wunsch-dna/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/needleman-wunsch-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/needleman-wunsch-dna/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:14:24.054909847Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/sed-records/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/sed-records/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/sed-records/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:14:24.068966912Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wazero (0.00s)\n"
+    }
+  },
+  {
+    "suite": "baseline-corpus-wagodebug",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:14:24.131036294Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestApplicationCorpusRuns/smith-waterman-dna/wazero",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestApplicationCorpusRuns/smith-waterman-dna/wazero\n    command_corpus_test.go:644: in-process wazero comparison unavailable; independently captured v8 oracle is pinned\n--- SKIP: TestApplicationCorpusRuns/smith-waterman-dna/wazero (0.00s)\n"
+    }
+  },
+  {
     "suite": "cli-ordinary",
     "kind": "go-json",
     "detail": {
@@ -36930,6 +37098,20 @@
     }
   },
   {
+    "suite": "guard-corpus-ordinary",
+    "kind": "go-json",
+    "detail": {
+      "event": {
+        "Time": "2026-11-02T14:16:19.16779569Z",
+        "Action": "skip",
+        "Package": "github.com/wago-org/wago/bench/suite",
+        "Test": "TestJsonAsGuardCorrect",
+        "Elapsed": 0
+      },
+      "detail": "=== RUN   TestJsonAsGuardCorrect\n    jsonas_test.go:29: json-as module not present (set WAGO_JSON_MODULE): open corpus/json-as.wasm: no such file or directory\n--- SKIP: TestJsonAsGuardCorrect (0.00s)\n"
+    }
+  },
+  {
     "suite": "guard-ordinary",
     "kind": "go-json",
     "detail": {
@@ -40979,6 +41161,26 @@
       },
       "detail": "=== RUN   TestGCFrameRootPlanFootprint\n    gc_frame_roots_test.go:11: 64-bit fixed-footprint assertion\n--- SKIP: TestGCFrameRootPlanFootprint (0.00s)\n"
     }
+  },
+  {
+    "suite": "tinygo-34/guest-threads-ordinary",
+    "kind": "plain-with-reason",
+    "detail": "=== RUN   TestArenaAllocatedRange\n--- PASS: TestArenaAllocatedRange (0.00s)\n=== RUN   TestPreparedScalarHostAdmission\n    live bridge unavailable\n--- SKIP: TestPreparedScalarHostAdmission (0.00s)"
+  },
+  {
+    "suite": "tinygo-34/guest-threads-ordinary",
+    "kind": "plain-with-reason",
+    "detail": "    live bridge unavailable\n--- SKIP: TestPreparedScalarHostAdmission (0.00s)\n=== RUN   TestPreparedScalarHostEngineRelease\n    live bridge unavailable\n--- SKIP: TestPreparedScalarHostEngineRelease (0.00s)"
+  },
+  {
+    "suite": "tinygo-34/guest-threads-ordinary",
+    "kind": "plain-with-reason",
+    "detail": "    live bridge unavailable\n--- SKIP: TestPreparedScalarHostEngineRelease (0.00s)\n=== RUN   TestPreparedScalarHostViewAdmissionAndMode\n    live bridge unavailable\n--- SKIP: TestPreparedScalarHostViewAdmissionAndMode (0.00s)"
+  },
+  {
+    "suite": "tinygo-34/guest-threads-ordinary",
+    "kind": "plain-with-reason",
+    "detail": "    live bridge unavailable\n--- SKIP: TestPreparedScalarHostViewAdmissionAndMode (0.00s)\n=== RUN   TestPreparedScalarHostIntegerModeRequiresDetachedProof\n    live bridge unavailable\n--- SKIP: TestPreparedScalarHostIntegerModeRequiresDetachedProof (0.00s)"
   },
   {
     "suite": "tinygo-34/host-ordinary",
