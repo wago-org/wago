@@ -1,0 +1,29 @@
+{
+  "base_source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "base_checkpoint": "7496854a54467817e78204f70bad20d9d23f5992",
+  "base_required_count": 220,
+  "base_counts": {
+    "PASS": 216,
+    "FAIL": 4
+  },
+  "base_unrun": 0,
+  "base_status": "FAILED; complete execution",
+  "delta_source": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
+  "delta_counts": {
+    "PASS": 8
+  },
+  "reused_tinygo_source": "4913c91e1ad5636543d0ea7eed740b16de1b9bf2",
+  "reused_positive_passes": 3,
+  "retained_expected_negative_failures": 3,
+  "launcher_provenance_limit": "Executed via shell here-document; no retained launcher file/hash. Parent explicitly authorizes recipe/tool/env/source/raw proof reuse with this limit, not reconstructed launcher provenance.",
+  "production_source_identical": true,
+  "final_head_acceptance_supported": false,
+  "remaining_acceptance_blockers": [
+    "Three ARM64 QEMU repair cells fail the original RR return timer and shared-entry cancellation checks. No failure waived or relabeled.",
+    "Native final-pin Linux ARM64/Darwin qualification and final approval remain parent-owned. Older native passes and new parent native overlay run are not local final-pin qualification."
+  ],
+  "formatting_disposition": "5b02 formatting FAIL retained; fresh041f formatting PASS recorded separately",
+  "final_process_drain": "process-drain.json",
+  "full_suite_executed_on_delta_pin": false,
+  "canonical_base_summary_sha256": "0fda6a969714471450c260e7d40be694cf26628f66a4988b986fd54c10cb952b"
+}

@@ -1,0 +1,120 @@
+{
+  "source": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T15:00:36.337595737Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestGCExternConversionAcrossReferenceTables",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:36.339590183Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRecheckStorageOnlyReturnBehindDynamicReader/none",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:36.341272284Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRecheckStorageOnlyReturnBehindDynamicReader/table",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:36.341277514Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRecheckStorageOnlyReturnBehindDynamicReader",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:36.64334227Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRecheckCanceledAdmissionBehindDynamicReader",
+      "Elapsed": 0.3
+    },
+    {
+      "Time": "2026-11-02T15:00:37.146053647Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRecheckSharedMemoryHandoff",
+      "Elapsed": 0.5
+    },
+    {
+      "Time": "2026-11-02T15:00:37.146118449Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementLastPinAndRevival/none",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:37.146140821Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementLastPinAndRevival/claim",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:37.146161229Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementLastPinAndRevival/registration",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:37.146200242Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementLastPinAndRevival/store-close",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:37.146206434Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementLastPinAndRevival",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:37.146493413Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementCallbackAndExitWakeups",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:37.146503803Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementBorrowedRootLatePublisher",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:37.146548356Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementCanceledPartialLastPins",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:37.146560309Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Test": "TestRRRetirementCallbackRefreshBehindReader",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T15:00:37.147229636Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 0.813
+    }
+  ],
+  "raw_sha256": "7dc04e4c5cf31518ea0ed208df31cd8f1ed1519ae859653a7898c2be89495cf2",
+  "driver_unchanged": true
+}
