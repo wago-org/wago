@@ -5,6 +5,7 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
+	"math/bits"
 )
 
 func compiledConversionStoreHooks(*Compiled) bool { return false }
@@ -17,8 +18,18 @@ func unsupportedConversionWord(store *referenceStore, word uint64) error {
 		return nil
 	}
 	if store != nil {
-		if _, ok := store.resolveExternref(word); ok {
-			return nil
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		raw := bits.RotateLeft64(word, -17) ^ store.externKey
+		index, generation := uint32(raw), uint32(raw>>32)
+		if store.externKey != 0 && index != 0 && uint64(index) <= uint64(len(store.externrefs)) {
+			slot := &store.externrefs[index-1]
+			// Compact converted public tokens also occupy this directory.
+			// Inspect their ownership wrapper before public-value unwrapping.
+			_, converted := slot.value.(interface{ externrefPublicValue() any })
+			if slot.generation == generation && slot.value != releasedExternrefValue && slot.nextFree != externrefInternalSlot && !converted {
+				return nil
+			}
 		}
 	}
 	return fmt.Errorf("opaque converted publication is unsupported on this target")
