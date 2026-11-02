@@ -1,0 +1,19 @@
+{
+  "reads": [
+    {
+      "repo": "/home/dev/Projects/slipstream",
+      "pin": "dcb45b56386327a1f71fb039ed02e13562e1e2d7",
+      "path": "src/facts_scalar.goose",
+      "sha256": "f3d0f9de884bee3d46b8da612ae7d10b2ff483b73282f9b71247d528ef5ff2f1",
+      "read_only": true
+    },
+    {
+      "repo": "/home/dev/Projects/starshine-master-base",
+      "pin": "1d6c0af47140299d8f3c01ed03060d279c43ee03",
+      "path": "docs/wiki/wasm-gc-core-boundary.md",
+      "sha256": "64dd3aa84eea16f5f52b402e6be6acf87b9b47cc8986a20753f99e628c73a340",
+      "read_only": true
+    }
+  ],
+  "disposition": "Read-only cross-check before triage, supplementing combined-store-hook-gates initial audit. Slipstream has distinct scalar plan/replay representation; Starshine boundary is model/codec/validation/generation. No exact Railshot deferred address swap analogue established; no sibling execution or blanket absence claim."
+}

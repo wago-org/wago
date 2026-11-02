@@ -1,0 +1,162 @@
+[
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/owned/mov32"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/owned/mov64"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/owned/partial"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/owned/call"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/owned/tree"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/owned/popped"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/borrowed/mov32"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/borrowed/mov64"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/borrowed/partial"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/borrowed/call"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/borrowed/tree"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i32/borrowed/popped"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/owned/mov32"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/owned/mov64"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/owned/partial"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/owned/call"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/owned/tree"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/owned/popped"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/borrowed/mov32"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/borrowed/mov64"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/borrowed/partial"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/borrowed/call"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/borrowed/tree"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites/i64/borrowed/popped"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressRejectsWrites"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressSharedBorrow"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressNormalization"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressCopiedBorrow"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressKeepsSiblingLive"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressOverwriteKeepsSharedBorrowLive"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressObserverScopes"
+  },
+  {
+    "Action": "pass",
+    "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+    "Test": "TestRegallocDeferredLoadAddressHintedSink"
+  }
+]

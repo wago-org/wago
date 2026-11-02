@@ -1,0 +1,6158 @@
+[
+  {
+    "id": "sed-records",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/sed-records/Decode": "pass",
+      "TestCorpus/sed-records/Validate": "pass",
+      "TestCorpus/sed-records/Compile": "pass",
+      "TestCorpus/sed-records/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sed-records/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "seqtk-fastq-to-fasta",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/seqtk-fastq-to-fasta/Decode": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/Validate": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/Compile": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/CompileFull": "pass",
+      "TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lcs-substrings",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/lcs-substrings/Decode": "pass",
+      "TestCorpus/lcs-substrings/Validate": "pass",
+      "TestCorpus/lcs-substrings/Compile": "pass",
+      "TestCorpus/lcs-substrings/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lcs-substrings/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "needleman-wunsch-dna",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/needleman-wunsch-dna/Decode": "pass",
+      "TestCorpus/needleman-wunsch-dna/Validate": "pass",
+      "TestCorpus/needleman-wunsch-dna/Compile": "pass",
+      "TestCorpus/needleman-wunsch-dna/CompileFull": "pass",
+      "TestApplicationCorpusRuns/needleman-wunsch-dna/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "smith-waterman-dna",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/smith-waterman-dna/Decode": "pass",
+      "TestCorpus/smith-waterman-dna/Validate": "pass",
+      "TestCorpus/smith-waterman-dna/Compile": "pass",
+      "TestCorpus/smith-waterman-dna/CompileFull": "pass",
+      "TestApplicationCorpusRuns/smith-waterman-dna/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fasttree-phylogeny",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/fasttree-phylogeny/Decode": "pass",
+      "TestCorpus/fasttree-phylogeny/Validate": "pass",
+      "TestCorpus/fasttree-phylogeny/Compile": "pass",
+      "TestCorpus/fasttree-phylogeny/CompileFull": "pass",
+      "TestApplicationCorpusRuns/fasttree-phylogeny/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "gnu-seq-range",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/gnu-seq-range/Decode": "pass",
+      "TestCorpus/gnu-seq-range/Validate": "pass",
+      "TestCorpus/gnu-seq-range/Compile": "pass",
+      "TestCorpus/gnu-seq-range/CompileFull": "pass",
+      "TestApplicationCorpusRuns/gnu-seq-range/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "gnu-tr-uppercase",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/gnu-tr-uppercase/Decode": "pass",
+      "TestCorpus/gnu-tr-uppercase/Validate": "pass",
+      "TestCorpus/gnu-tr-uppercase/Compile": "pass",
+      "TestCorpus/gnu-tr-uppercase/CompileFull": "pass",
+      "TestApplicationCorpusRuns/gnu-tr-uppercase/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "php-buckets",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/php-buckets/Decode": "pass",
+      "TestCorpus/php-buckets/Validate": "pass",
+      "TestCorpus/php-buckets/Compile": "pass",
+      "TestCorpus/php-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/php-buckets/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ruby-buckets",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/ruby-buckets/Decode": "pass",
+      "TestCorpus/ruby-buckets/Validate": "pass",
+      "TestCorpus/ruby-buckets/Compile": "pass",
+      "TestCorpus/ruby-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ruby-buckets/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "clang-cpp-kernels",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/clang-cpp-kernels/Decode": "pass",
+      "TestCorpus/clang-cpp-kernels/Validate": "pass",
+      "TestCorpus/clang-cpp-kernels/Compile": "pass",
+      "TestCorpus/clang-cpp-kernels/CompileFull": "pass",
+      "TestApplicationCorpusRuns/clang-cpp-kernels/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "clang-c-kernels",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/clang-c-kernels/Decode": "pass",
+      "TestCorpus/clang-c-kernels/Validate": "pass",
+      "TestCorpus/clang-c-kernels/Compile": "pass",
+      "TestCorpus/clang-c-kernels/CompileFull": "pass",
+      "TestApplicationCorpusRuns/clang-c-kernels/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lua-cli-buckets",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/lua-cli-buckets/Decode": "pass",
+      "TestCorpus/lua-cli-buckets/Validate": "pass",
+      "TestCorpus/lua-cli-buckets/Compile": "pass",
+      "TestCorpus/lua-cli-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lua-cli-buckets/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "micropython-squares",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/micropython-squares/Decode": "pass",
+      "TestCorpus/micropython-squares/Validate": "pass",
+      "TestCorpus/micropython-squares/Compile": "pass",
+      "TestApplicationCorpusRuns/micropython-squares/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecpunpack-config",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/ecpunpack-config/Decode": "pass",
+      "TestCorpus/ecpunpack-config/Validate": "pass",
+      "TestCorpus/ecpunpack-config/Compile": "pass",
+      "TestCorpus/ecpunpack-config/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecpunpack-config/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecppack-bitstream",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/ecppack-bitstream/Decode": "pass",
+      "TestCorpus/ecppack-bitstream/Validate": "pass",
+      "TestCorpus/ecppack-bitstream/Compile": "pass",
+      "TestCorpus/ecppack-bitstream/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecppack-bitstream/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-sort",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/coreutils-sort/Decode": "pass",
+      "TestCorpus/coreutils-sort/Validate": "pass",
+      "TestCorpus/coreutils-sort/Compile": "pass",
+      "TestCorpus/coreutils-sort/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-sort/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-sha256sum",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/coreutils-sha256sum/Decode": "pass",
+      "TestCorpus/coreutils-sha256sum/Validate": "pass",
+      "TestCorpus/coreutils-sha256sum/Compile": "pass",
+      "TestCorpus/coreutils-sha256sum/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-sha256sum/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-base64",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/coreutils-base64/Decode": "pass",
+      "TestCorpus/coreutils-base64/Validate": "pass",
+      "TestCorpus/coreutils-base64/Compile": "pass",
+      "TestCorpus/coreutils-base64/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-base64/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-wc",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/coreutils-wc/Decode": "pass",
+      "TestCorpus/coreutils-wc/Validate": "pass",
+      "TestCorpus/coreutils-wc/Compile": "pass",
+      "TestCorpus/coreutils-wc/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-wc/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ripgrep-source",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/ripgrep-source/Decode": "pass",
+      "TestCorpus/ripgrep-source/Validate": "pass",
+      "TestCorpus/ripgrep-source/Compile": "pass",
+      "TestCorpus/ripgrep-source/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ripgrep-source/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "yosys-counter",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/yosys-counter/Decode": "pass",
+      "TestCorpus/yosys-counter/Validate": "pass",
+      "TestCorpus/yosys-counter/Compile": "pass",
+      "TestCorpus/yosys-counter/CompileFull": "pass",
+      "TestApplicationCorpusRuns/yosys-counter/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icemulti-image",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/icemulti-image/Decode": "pass",
+      "TestCorpus/icemulti-image/Validate": "pass",
+      "TestCorpus/icemulti-image/Compile": "pass",
+      "TestCorpus/icemulti-image/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icemulti-image/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icepack-pack",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/icepack-pack/Decode": "pass",
+      "TestCorpus/icepack-pack/Validate": "pass",
+      "TestCorpus/icepack-pack/Compile": "pass",
+      "TestCorpus/icepack-pack/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icepack-pack/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "iceunpack-unpack",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/iceunpack-unpack/Decode": "pass",
+      "TestCorpus/iceunpack-unpack/Validate": "pass",
+      "TestCorpus/iceunpack-unpack/Compile": "pass",
+      "TestCorpus/iceunpack-unpack/CompileFull": "pass",
+      "TestApplicationCorpusRuns/iceunpack-unpack/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecpbram-generate",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/ecpbram-generate/Decode": "pass",
+      "TestCorpus/ecpbram-generate/Validate": "pass",
+      "TestCorpus/ecpbram-generate/Compile": "pass",
+      "TestCorpus/ecpbram-generate/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecpbram-generate/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icebram-generate",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/icebram-generate/Decode": "pass",
+      "TestCorpus/icebram-generate/Validate": "pass",
+      "TestCorpus/icebram-generate/Compile": "pass",
+      "TestCorpus/icebram-generate/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icebram-generate/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecppll-clock",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/ecppll-clock/Decode": "pass",
+      "TestCorpus/ecppll-clock/Validate": "pass",
+      "TestCorpus/ecppll-clock/Compile": "pass",
+      "TestCorpus/ecppll-clock/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecppll-clock/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icepll-clock",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/icepll-clock/Decode": "pass",
+      "TestCorpus/icepll-clock/Validate": "pass",
+      "TestCorpus/icepll-clock/Compile": "pass",
+      "TestCorpus/icepll-clock/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icepll-clock/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "json2csv-people",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/json2csv-people/Decode": "pass",
+      "TestCorpus/json2csv-people/Validate": "pass",
+      "TestCorpus/json2csv-people/Compile": "pass",
+      "TestCorpus/json2csv-people/CompileFull": "pass",
+      "TestApplicationCorpusRuns/json2csv-people/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tree-ashell-list",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/tree-ashell-list/Decode": "pass",
+      "TestCorpus/tree-ashell-list/Validate": "pass",
+      "TestCorpus/tree-ashell-list/Compile": "pass",
+      "TestCorpus/tree-ashell-list/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tree-ashell-list/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tree-list",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/tree-list/Decode": "pass",
+      "TestCorpus/tree-list/Validate": "pass",
+      "TestCorpus/tree-list/Compile": "pass",
+      "TestCorpus/tree-list/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tree-list/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "brotli-compress",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/brotli-compress/Decode": "pass",
+      "TestCorpus/brotli-compress/Validate": "pass",
+      "TestCorpus/brotli-compress/Compile": "pass",
+      "TestCorpus/brotli-compress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/brotli-compress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "brotli-decompress",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/brotli-decompress/Decode": "pass",
+      "TestCorpus/brotli-decompress/Validate": "pass",
+      "TestCorpus/brotli-decompress/Compile": "pass",
+      "TestCorpus/brotli-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/brotli-decompress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "jq-json-transform",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/jq-json-transform/Decode": "pass",
+      "TestCorpus/jq-json-transform/Validate": "pass",
+      "TestCorpus/jq-json-transform/Compile": "pass",
+      "TestCorpus/jq-json-transform/CompileFull": "pass",
+      "TestApplicationCorpusRuns/jq-json-transform/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "age-decrypt",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/age-decrypt/Decode": "pass",
+      "TestCorpus/age-decrypt/Validate": "pass",
+      "TestCorpus/age-decrypt/Compile": "pass",
+      "TestCorpus/age-decrypt/CompileFull": "pass",
+      "TestApplicationCorpusRuns/age-decrypt/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "age-keygen-public",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/age-keygen-public/Decode": "pass",
+      "TestCorpus/age-keygen-public/Validate": "pass",
+      "TestCorpus/age-keygen-public/Compile": "pass",
+      "TestCorpus/age-keygen-public/CompileFull": "pass",
+      "TestApplicationCorpusRuns/age-keygen-public/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lzmainfo-header",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/lzmainfo-header/Decode": "pass",
+      "TestCorpus/lzmainfo-header/Validate": "pass",
+      "TestCorpus/lzmainfo-header/Compile": "pass",
+      "TestCorpus/lzmainfo-header/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lzmainfo-header/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lzmadec-decompress",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/lzmadec-decompress/Decode": "pass",
+      "TestCorpus/lzmadec-decompress/Validate": "pass",
+      "TestCorpus/lzmadec-decompress/Compile": "pass",
+      "TestCorpus/lzmadec-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lzmadec-decompress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "xzdec-decompress",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/xzdec-decompress/Decode": "pass",
+      "TestCorpus/xzdec-decompress/Validate": "pass",
+      "TestCorpus/xzdec-decompress/Compile": "pass",
+      "TestCorpus/xzdec-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/xzdec-decompress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sqlite3-query",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/sqlite3-query/Decode": "pass",
+      "TestCorpus/sqlite3-query/Validate": "pass",
+      "TestCorpus/sqlite3-query/Compile": "pass",
+      "TestCorpus/sqlite3-query/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sqlite3-query/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "duktape-script",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/duktape-script/Decode": "pass",
+      "TestCorpus/duktape-script/Validate": "pass",
+      "TestCorpus/duktape-script/Compile": "pass",
+      "TestCorpus/duktape-script/CompileFull": "pass",
+      "TestApplicationCorpusRuns/duktape-script/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "quickjs-script",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/quickjs-script/Decode": "pass",
+      "TestCorpus/quickjs-script/Validate": "pass",
+      "TestCorpus/quickjs-script/Compile": "pass",
+      "TestCorpus/quickjs-script/CompileFull": "pass",
+      "TestApplicationCorpusRuns/quickjs-script/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "swift-format-source",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/swift-format-source/Decode": "pass",
+      "TestCorpus/swift-format-source/Validate": "pass",
+      "TestCorpus/swift-format-source/Compile": "pass",
+      "TestCorpus/swift-format-source/CompileFull": "pass",
+      "TestApplicationCorpusRuns/swift-format-source/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "esbuild-minify",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/esbuild-minify/Decode": "pass",
+      "TestCorpus/esbuild-minify/Validate": "pass",
+      "TestCorpus/esbuild-minify/Compile": "pass",
+      "TestCorpus/esbuild-minify/CompileFull": "pass",
+      "TestApplicationCorpusRuns/esbuild-minify/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tiny",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/tiny/Decode": "pass",
+      "TestCorpus/tiny/Validate": "pass",
+      "TestCorpus/tiny/Compile": "pass",
+      "TestCorpus/tiny/CompileFull": "pass",
+      "TestCorpus/tiny/Instantiate": "pass",
+      "TestCorpus/tiny/Exec/add": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fib_rec",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/fib_rec/Decode": "pass",
+      "TestCorpus/fib_rec/Validate": "pass",
+      "TestCorpus/fib_rec/Compile": "pass",
+      "TestCorpus/fib_rec/CompileFull": "pass",
+      "TestCorpus/fib_rec/Instantiate": "pass",
+      "TestCorpus/fib_rec/Exec/fib": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "memory",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/memory/Decode": "pass",
+      "TestCorpus/memory/Validate": "pass",
+      "TestCorpus/memory/Compile": "pass",
+      "TestCorpus/memory/CompileFull": "pass",
+      "TestCorpus/memory/Instantiate": "pass",
+      "TestCorpus/memory/Exec/sum": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "memory_tree",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/memory_tree/Decode": "pass",
+      "TestCorpus/memory_tree/Validate": "pass",
+      "TestCorpus/memory_tree/Compile": "pass",
+      "TestCorpus/memory_tree/CompileFull": "pass",
+      "TestCorpus/memory_tree/Instantiate": "pass",
+      "TestCorpus/memory_tree/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "dispatch",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/dispatch/Decode": "pass",
+      "TestCorpus/dispatch/Validate": "pass",
+      "TestCorpus/dispatch/Compile": "pass",
+      "TestCorpus/dispatch/CompileFull": "pass",
+      "TestCorpus/dispatch/Instantiate": "pass",
+      "TestCorpus/dispatch/Exec/apply": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "many_funcs",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/many_funcs/Decode": "pass",
+      "TestCorpus/many_funcs/Validate": "pass",
+      "TestCorpus/many_funcs/Compile": "pass",
+      "TestCorpus/many_funcs/CompileFull": "pass",
+      "TestCorpus/many_funcs/Instantiate": "pass",
+      "TestCorpus/many_funcs/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "linked_list",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/linked_list/Decode": "pass",
+      "TestCorpus/linked_list/Validate": "pass",
+      "TestCorpus/linked_list/Compile": "pass",
+      "TestCorpus/linked_list/CompileFull": "pass",
+      "TestCorpus/linked_list/Instantiate": "pass",
+      "TestCorpus/linked_list/Exec/sum": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "nbody",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/nbody/Decode": "pass",
+      "TestCorpus/nbody/Validate": "pass",
+      "TestCorpus/nbody/Compile": "pass",
+      "TestCorpus/nbody/CompileFull": "pass",
+      "TestCorpus/nbody/Instantiate": "pass",
+      "TestCorpus/nbody/Exec/step": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fannkuch",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/fannkuch/Decode": "pass",
+      "TestCorpus/fannkuch/Validate": "pass",
+      "TestCorpus/fannkuch/Compile": "pass",
+      "TestCorpus/fannkuch/CompileFull": "pass",
+      "TestCorpus/fannkuch/Instantiate": "pass",
+      "TestCorpus/fannkuch/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "matmul",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/matmul/Decode": "pass",
+      "TestCorpus/matmul/Validate": "pass",
+      "TestCorpus/matmul/Compile": "pass",
+      "TestCorpus/matmul/CompileFull": "pass",
+      "TestCorpus/matmul/Instantiate": "pass",
+      "TestCorpus/matmul/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sha256",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/sha256/Decode": "pass",
+      "TestCorpus/sha256/Validate": "pass",
+      "TestCorpus/sha256/Compile": "pass",
+      "TestCorpus/sha256/CompileFull": "pass",
+      "TestCorpus/sha256/Instantiate": "pass",
+      "TestCorpus/sha256/Exec/hashN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "raytrace",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/raytrace/Decode": "pass",
+      "TestCorpus/raytrace/Validate": "pass",
+      "TestCorpus/raytrace/Compile": "pass",
+      "TestCorpus/raytrace/CompileFull": "pass",
+      "TestCorpus/raytrace/Instantiate": "pass",
+      "TestCorpus/raytrace/Exec/render": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "json-as",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/json-as/Decode": "pass",
+      "TestCorpus/json-as/Validate": "pass",
+      "TestCorpus/json-as/Compile": "pass",
+      "TestCorpus/json-as/CompileFull": "pass",
+      "TestCorpus/json-as/Instantiate": "pass",
+      "TestCorpus/json-as/Exec/serializeN": "pass",
+      "TestCorpus/json-as/Exec/deserializeN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "blake-as",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/blake-as/Decode": "pass",
+      "TestCorpus/blake-as/Validate": "pass",
+      "TestCorpus/blake-as/Compile": "pass",
+      "TestCorpus/blake-as/CompileFull": "pass",
+      "TestCorpus/blake-as/Instantiate": "pass",
+      "TestCorpus/blake-as/Exec/hashN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "utf-as",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/utf-as/Decode": "pass",
+      "TestCorpus/utf-as/Validate": "pass",
+      "TestCorpus/utf-as/Compile": "pass",
+      "TestCorpus/utf-as/CompileFull": "pass",
+      "TestCorpus/utf-as/Instantiate": "pass",
+      "TestCorpus/utf-as/Exec/convertN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "json-as-simd",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/json-as-simd/Decode": "pass",
+      "TestCorpus/json-as-simd/Validate": "pass",
+      "TestCorpus/json-as-simd/Compile": "pass",
+      "TestCorpus/json-as-simd/CompileFull": "pass",
+      "TestCorpus/json-as-simd/Instantiate": "pass",
+      "TestCorpus/json-as-simd/Exec/serializeN": "pass",
+      "TestCorpus/json-as-simd/Exec/deserializeN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "blake-as-simd",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/blake-as-simd/Decode": "pass",
+      "TestCorpus/blake-as-simd/Validate": "pass",
+      "TestCorpus/blake-as-simd/Compile": "pass",
+      "TestCorpus/blake-as-simd/CompileFull": "pass",
+      "TestCorpus/blake-as-simd/Instantiate": "pass",
+      "TestCorpus/blake-as-simd/Exec/hashN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "utf-as-simd",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/utf-as-simd/Decode": "pass",
+      "TestCorpus/utf-as-simd/Validate": "pass",
+      "TestCorpus/utf-as-simd/Compile": "pass",
+      "TestCorpus/utf-as-simd/CompileFull": "pass",
+      "TestCorpus/utf-as-simd/Instantiate": "pass",
+      "TestCorpus/utf-as-simd/Exec/convertN": "pass",
+      "TestCorpus/utf-as-simd/Exec/validateN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coremark",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/coremark/Decode": "pass",
+      "TestCorpus/coremark/Validate": "pass",
+      "TestCorpus/coremark/Compile": "pass",
+      "TestCorpus/coremark/CompileFull": "pass",
+      "TestCorpus/coremark/Instantiate": "pass",
+      "TestCorpusSemanticExec/coremark/2k-performance": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "blake3",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/blake3/Decode": "pass",
+      "TestCorpus/blake3/Validate": "pass",
+      "TestCorpus/blake3/Compile": "pass",
+      "TestCorpus/blake3/CompileFull": "pass",
+      "TestCorpus/blake3/Instantiate": "pass",
+      "TestCorpusSemanticExec/blake3/hash": "pass",
+      "TestCorpusSemanticExec/blake3/keyed_hash": "pass",
+      "TestCorpusSemanticExec/blake3/derive_key": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "qoi",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/qoi/Decode": "pass",
+      "TestCorpus/qoi/Validate": "pass",
+      "TestCorpus/qoi/Compile": "pass",
+      "TestCorpus/qoi/CompileFull": "pass",
+      "TestCorpus/qoi/Instantiate": "pass",
+      "TestCorpusSemanticExec/qoi/encode": "pass",
+      "TestCorpusSemanticExec/qoi/decode": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lz4",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/lz4/Decode": "pass",
+      "TestCorpus/lz4/Validate": "pass",
+      "TestCorpus/lz4/Compile": "pass",
+      "TestCorpus/lz4/CompileFull": "pass",
+      "TestCorpus/lz4/Instantiate": "pass",
+      "TestCorpusSemanticExec/lz4/compress": "pass",
+      "TestCorpusSemanticExec/lz4/decompress": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "zlib",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/zlib/Decode": "pass",
+      "TestCorpus/zlib/Validate": "pass",
+      "TestCorpus/zlib/Compile": "pass",
+      "TestCorpus/zlib/CompileFull": "pass",
+      "TestCorpus/zlib/Instantiate": "pass",
+      "TestCorpusSemanticExec/zlib/inflate": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "zstd",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/zstd/Decode": "pass",
+      "TestCorpus/zstd/Validate": "pass",
+      "TestCorpus/zstd/Compile": "pass",
+      "TestCorpus/zstd/CompileFull": "pass",
+      "TestCorpus/zstd/Instantiate": "pass",
+      "TestCorpusSemanticExec/zstd/decompress": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "yyjson",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/yyjson/Decode": "pass",
+      "TestCorpus/yyjson/Validate": "pass",
+      "TestCorpus/yyjson/Compile": "pass",
+      "TestCorpus/yyjson/CompileFull": "pass",
+      "TestCorpus/yyjson/Instantiate": "pass",
+      "TestCorpusSemanticExec/yyjson/parse-edit-write": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "utf8proc",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/utf8proc/Decode": "pass",
+      "TestCorpus/utf8proc/Validate": "pass",
+      "TestCorpus/utf8proc/Compile": "pass",
+      "TestCorpus/utf8proc/CompileFull": "pass",
+      "TestCorpus/utf8proc/Instantiate": "pass",
+      "TestCorpusSemanticExec/utf8proc/normalize-casefold": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "xxhash",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/xxhash/Decode": "pass",
+      "TestCorpus/xxhash/Validate": "pass",
+      "TestCorpus/xxhash/Compile": "pass",
+      "TestCorpus/xxhash/CompileFull": "pass",
+      "TestCorpus/xxhash/Instantiate": "pass",
+      "TestCorpusSemanticExec/xxhash/xxh64-boundaries": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "libtommath",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/libtommath/Decode": "pass",
+      "TestCorpus/libtommath/Validate": "pass",
+      "TestCorpus/libtommath/Compile": "pass",
+      "TestCorpus/libtommath/CompileFull": "pass",
+      "TestCorpus/libtommath/Instantiate": "pass",
+      "TestCorpusSemanticExec/libtommath/modular-arithmetic": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "nanosvg",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/nanosvg/Decode": "pass",
+      "TestCorpus/nanosvg/Validate": "pass",
+      "TestCorpus/nanosvg/Compile": "pass",
+      "TestCorpus/nanosvg/CompileFull": "pass",
+      "TestCorpus/nanosvg/Instantiate": "pass",
+      "TestCorpusSemanticExec/nanosvg/parse-structure": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "kissfft",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/kissfft/Decode": "pass",
+      "TestCorpus/kissfft/Validate": "pass",
+      "TestCorpus/kissfft/Compile": "pass",
+      "TestCorpus/kissfft/CompileFull": "pass",
+      "TestCorpus/kissfft/Instantiate": "pass",
+      "TestCorpusSemanticExec/kissfft/complex-roundtrip": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "miniz",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/miniz/Decode": "pass",
+      "TestCorpus/miniz/Validate": "pass",
+      "TestCorpus/miniz/Compile": "pass",
+      "TestCorpus/miniz/CompileFull": "pass",
+      "TestCorpus/miniz/Instantiate": "pass",
+      "TestCorpusSemanticExec/miniz/deflate-roundtrip": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "monocypher",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/monocypher/Decode": "pass",
+      "TestCorpus/monocypher/Validate": "pass",
+      "TestCorpus/monocypher/Compile": "pass",
+      "TestCorpus/monocypher/CompileFull": "pass",
+      "TestCorpus/monocypher/Instantiate": "pass",
+      "TestCorpusSemanticExec/monocypher/aead-blake2b": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "drwav",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/drwav/Decode": "pass",
+      "TestCorpus/drwav/Validate": "pass",
+      "TestCorpus/drwav/Compile": "pass",
+      "TestCorpus/drwav/CompileFull": "pass",
+      "TestCorpus/drwav/Instantiate": "pass",
+      "TestCorpusSemanticExec/drwav/pcm-decode-seek": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fastfloat",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/fastfloat/Decode": "pass",
+      "TestCorpus/fastfloat/Validate": "pass",
+      "TestCorpus/fastfloat/Compile": "pass",
+      "TestCorpus/fastfloat/CompileFull": "pass",
+      "TestCorpus/fastfloat/Instantiate": "pass",
+      "TestCorpusSemanticExec/fastfloat/decimal-parse": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "pcre2",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/pcre2/Decode": "pass",
+      "TestCorpus/pcre2/Validate": "pass",
+      "TestCorpus/pcre2/Compile": "pass",
+      "TestCorpus/pcre2/CompileFull": "pass",
+      "TestCorpus/pcre2/Instantiate": "pass",
+      "TestCorpusSemanticExec/pcre2/compile-match": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "cjson",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/cjson/Decode": "pass",
+      "TestCorpus/cjson/Validate": "pass",
+      "TestCorpus/cjson/Compile": "pass",
+      "TestCorpus/cjson/CompileFull": "pass",
+      "TestApplicationCorpusRuns/cjson/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lodepng",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/lodepng/Decode": "pass",
+      "TestCorpus/lodepng/Validate": "pass",
+      "TestCorpus/lodepng/Compile": "pass",
+      "TestCorpus/lodepng/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lodepng/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "wren",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/wren/Decode": "pass",
+      "TestCorpus/wren/Validate": "pass",
+      "TestCorpus/wren/Compile": "pass",
+      "TestCorpus/wren/CompileFull": "pass",
+      "TestApplicationCorpusRuns/wren/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tinyxml2",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/tinyxml2/Decode": "pass",
+      "TestCorpus/tinyxml2/Validate": "pass",
+      "TestCorpus/tinyxml2/Compile": "pass",
+      "TestCorpus/tinyxml2/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tinyxml2/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lua",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/lua/Decode": "pass",
+      "TestCorpus/lua/Validate": "pass",
+      "TestCorpus/lua/Compile": "pass",
+      "TestCorpus/lua/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lua/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-crc32",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/embench-crc32/Decode": "pass",
+      "TestCorpus/embench-crc32/Validate": "pass",
+      "TestCorpus/embench-crc32/Compile": "pass",
+      "TestCorpus/embench-crc32/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-crc32/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-huffbench",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/embench-huffbench/Decode": "pass",
+      "TestCorpus/embench-huffbench/Validate": "pass",
+      "TestCorpus/embench-huffbench/Compile": "pass",
+      "TestCorpus/embench-huffbench/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-huffbench/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-matmult-int",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/embench-matmult-int/Decode": "pass",
+      "TestCorpus/embench-matmult-int/Validate": "pass",
+      "TestCorpus/embench-matmult-int/Compile": "pass",
+      "TestCorpus/embench-matmult-int/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-matmult-int/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-nettle-aes",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/embench-nettle-aes/Decode": "pass",
+      "TestCorpus/embench-nettle-aes/Validate": "pass",
+      "TestCorpus/embench-nettle-aes/Compile": "pass",
+      "TestCorpus/embench-nettle-aes/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-nettle-aes/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-nettle-sha256",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/embench-nettle-sha256/Decode": "pass",
+      "TestCorpus/embench-nettle-sha256/Validate": "pass",
+      "TestCorpus/embench-nettle-sha256/Compile": "pass",
+      "TestCorpus/embench-nettle-sha256/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-nettle-sha256/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-qrduino",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/embench-qrduino/Decode": "pass",
+      "TestCorpus/embench-qrduino/Validate": "pass",
+      "TestCorpus/embench-qrduino/Compile": "pass",
+      "TestCorpus/embench-qrduino/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-qrduino/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sightglass-shootout-base64",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/sightglass-shootout-base64/Decode": "pass",
+      "TestCorpus/sightglass-shootout-base64/Validate": "pass",
+      "TestCorpus/sightglass-shootout-base64/Compile": "pass",
+      "TestCorpus/sightglass-shootout-base64/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sightglass-shootout-base64/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sightglass-libsodium-hash",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/sightglass-libsodium-hash/Decode": "pass",
+      "TestCorpus/sightglass-libsodium-hash/Validate": "pass",
+      "TestCorpus/sightglass-libsodium-hash/Compile": "pass",
+      "TestCorpus/sightglass-libsodium-hash/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sightglass-libsodium-hash/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tacle-bsort",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/tacle-bsort/Decode": "pass",
+      "TestCorpus/tacle-bsort/Validate": "pass",
+      "TestCorpus/tacle-bsort/Compile": "pass",
+      "TestCorpus/tacle-bsort/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tacle-bsort/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-2mm",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-2mm/Decode": "pass",
+      "TestCorpus/polybench-2mm/Validate": "pass",
+      "TestCorpus/polybench-2mm/Compile": "pass",
+      "TestCorpus/polybench-2mm/CompileFull": "pass",
+      "TestCorpus/polybench-2mm/Instantiate": "pass",
+      "TestCorpus/polybench-2mm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-3mm",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-3mm/Decode": "pass",
+      "TestCorpus/polybench-3mm/Validate": "pass",
+      "TestCorpus/polybench-3mm/Compile": "pass",
+      "TestCorpus/polybench-3mm/CompileFull": "pass",
+      "TestCorpus/polybench-3mm/Instantiate": "pass",
+      "TestCorpus/polybench-3mm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-adi",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-adi/Decode": "pass",
+      "TestCorpus/polybench-adi/Validate": "pass",
+      "TestCorpus/polybench-adi/Compile": "pass",
+      "TestCorpus/polybench-adi/CompileFull": "pass",
+      "TestCorpus/polybench-adi/Instantiate": "pass",
+      "TestCorpus/polybench-adi/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-atax",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-atax/Decode": "pass",
+      "TestCorpus/polybench-atax/Validate": "pass",
+      "TestCorpus/polybench-atax/Compile": "pass",
+      "TestCorpus/polybench-atax/CompileFull": "pass",
+      "TestCorpus/polybench-atax/Instantiate": "pass",
+      "TestCorpus/polybench-atax/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-bicg",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-bicg/Decode": "pass",
+      "TestCorpus/polybench-bicg/Validate": "pass",
+      "TestCorpus/polybench-bicg/Compile": "pass",
+      "TestCorpus/polybench-bicg/CompileFull": "pass",
+      "TestCorpus/polybench-bicg/Instantiate": "pass",
+      "TestCorpus/polybench-bicg/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-cholesky",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-cholesky/Decode": "pass",
+      "TestCorpus/polybench-cholesky/Validate": "pass",
+      "TestCorpus/polybench-cholesky/Compile": "pass",
+      "TestCorpus/polybench-cholesky/CompileFull": "pass",
+      "TestCorpus/polybench-cholesky/Instantiate": "pass",
+      "TestCorpus/polybench-cholesky/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-correlation",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-correlation/Decode": "pass",
+      "TestCorpus/polybench-correlation/Validate": "pass",
+      "TestCorpus/polybench-correlation/Compile": "pass",
+      "TestCorpus/polybench-correlation/CompileFull": "pass",
+      "TestCorpus/polybench-correlation/Instantiate": "pass",
+      "TestCorpus/polybench-correlation/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-covariance",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-covariance/Decode": "pass",
+      "TestCorpus/polybench-covariance/Validate": "pass",
+      "TestCorpus/polybench-covariance/Compile": "pass",
+      "TestCorpus/polybench-covariance/CompileFull": "pass",
+      "TestCorpus/polybench-covariance/Instantiate": "pass",
+      "TestCorpus/polybench-covariance/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-deriche",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-deriche/Decode": "pass",
+      "TestCorpus/polybench-deriche/Validate": "pass",
+      "TestCorpus/polybench-deriche/Compile": "pass",
+      "TestCorpus/polybench-deriche/CompileFull": "pass",
+      "TestCorpus/polybench-deriche/Instantiate": "pass",
+      "TestCorpus/polybench-deriche/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-doitgen",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-doitgen/Decode": "pass",
+      "TestCorpus/polybench-doitgen/Validate": "pass",
+      "TestCorpus/polybench-doitgen/Compile": "pass",
+      "TestCorpus/polybench-doitgen/CompileFull": "pass",
+      "TestCorpus/polybench-doitgen/Instantiate": "pass",
+      "TestCorpus/polybench-doitgen/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-durbin",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-durbin/Decode": "pass",
+      "TestCorpus/polybench-durbin/Validate": "pass",
+      "TestCorpus/polybench-durbin/Compile": "pass",
+      "TestCorpus/polybench-durbin/CompileFull": "pass",
+      "TestCorpus/polybench-durbin/Instantiate": "pass",
+      "TestCorpus/polybench-durbin/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-fdtd-2d",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-fdtd-2d/Decode": "pass",
+      "TestCorpus/polybench-fdtd-2d/Validate": "pass",
+      "TestCorpus/polybench-fdtd-2d/Compile": "pass",
+      "TestCorpus/polybench-fdtd-2d/CompileFull": "pass",
+      "TestCorpus/polybench-fdtd-2d/Instantiate": "pass",
+      "TestCorpus/polybench-fdtd-2d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-floyd-warshall",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-floyd-warshall/Decode": "pass",
+      "TestCorpus/polybench-floyd-warshall/Validate": "pass",
+      "TestCorpus/polybench-floyd-warshall/Compile": "pass",
+      "TestCorpus/polybench-floyd-warshall/CompileFull": "pass",
+      "TestCorpus/polybench-floyd-warshall/Instantiate": "pass",
+      "TestCorpus/polybench-floyd-warshall/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gemm",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-gemm/Decode": "pass",
+      "TestCorpus/polybench-gemm/Validate": "pass",
+      "TestCorpus/polybench-gemm/Compile": "pass",
+      "TestCorpus/polybench-gemm/CompileFull": "pass",
+      "TestCorpus/polybench-gemm/Instantiate": "pass",
+      "TestCorpus/polybench-gemm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gemver",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-gemver/Decode": "pass",
+      "TestCorpus/polybench-gemver/Validate": "pass",
+      "TestCorpus/polybench-gemver/Compile": "pass",
+      "TestCorpus/polybench-gemver/CompileFull": "pass",
+      "TestCorpus/polybench-gemver/Instantiate": "pass",
+      "TestCorpus/polybench-gemver/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gesummv",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-gesummv/Decode": "pass",
+      "TestCorpus/polybench-gesummv/Validate": "pass",
+      "TestCorpus/polybench-gesummv/Compile": "pass",
+      "TestCorpus/polybench-gesummv/CompileFull": "pass",
+      "TestCorpus/polybench-gesummv/Instantiate": "pass",
+      "TestCorpus/polybench-gesummv/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gramschmidt",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-gramschmidt/Decode": "pass",
+      "TestCorpus/polybench-gramschmidt/Validate": "pass",
+      "TestCorpus/polybench-gramschmidt/Compile": "pass",
+      "TestCorpus/polybench-gramschmidt/CompileFull": "pass",
+      "TestCorpus/polybench-gramschmidt/Instantiate": "pass",
+      "TestCorpus/polybench-gramschmidt/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-heat-3d",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-heat-3d/Decode": "pass",
+      "TestCorpus/polybench-heat-3d/Validate": "pass",
+      "TestCorpus/polybench-heat-3d/Compile": "pass",
+      "TestCorpus/polybench-heat-3d/CompileFull": "pass",
+      "TestCorpus/polybench-heat-3d/Instantiate": "pass",
+      "TestCorpus/polybench-heat-3d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-jacobi-1d",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-jacobi-1d/Decode": "pass",
+      "TestCorpus/polybench-jacobi-1d/Validate": "pass",
+      "TestCorpus/polybench-jacobi-1d/Compile": "pass",
+      "TestCorpus/polybench-jacobi-1d/CompileFull": "pass",
+      "TestCorpus/polybench-jacobi-1d/Instantiate": "pass",
+      "TestCorpus/polybench-jacobi-1d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-jacobi-2d",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-jacobi-2d/Decode": "pass",
+      "TestCorpus/polybench-jacobi-2d/Validate": "pass",
+      "TestCorpus/polybench-jacobi-2d/Compile": "pass",
+      "TestCorpus/polybench-jacobi-2d/CompileFull": "pass",
+      "TestCorpus/polybench-jacobi-2d/Instantiate": "pass",
+      "TestCorpus/polybench-jacobi-2d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-lu",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-lu/Decode": "pass",
+      "TestCorpus/polybench-lu/Validate": "pass",
+      "TestCorpus/polybench-lu/Compile": "pass",
+      "TestCorpus/polybench-lu/CompileFull": "pass",
+      "TestCorpus/polybench-lu/Instantiate": "pass",
+      "TestCorpus/polybench-lu/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-ludcmp",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-ludcmp/Decode": "pass",
+      "TestCorpus/polybench-ludcmp/Validate": "pass",
+      "TestCorpus/polybench-ludcmp/Compile": "pass",
+      "TestCorpus/polybench-ludcmp/CompileFull": "pass",
+      "TestCorpus/polybench-ludcmp/Instantiate": "pass",
+      "TestCorpus/polybench-ludcmp/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-mvt",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-mvt/Decode": "pass",
+      "TestCorpus/polybench-mvt/Validate": "pass",
+      "TestCorpus/polybench-mvt/Compile": "pass",
+      "TestCorpus/polybench-mvt/CompileFull": "pass",
+      "TestCorpus/polybench-mvt/Instantiate": "pass",
+      "TestCorpus/polybench-mvt/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-nussinov",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-nussinov/Decode": "pass",
+      "TestCorpus/polybench-nussinov/Validate": "pass",
+      "TestCorpus/polybench-nussinov/Compile": "pass",
+      "TestCorpus/polybench-nussinov/CompileFull": "pass",
+      "TestCorpus/polybench-nussinov/Instantiate": "pass",
+      "TestCorpus/polybench-nussinov/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-seidel-2d",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-seidel-2d/Decode": "pass",
+      "TestCorpus/polybench-seidel-2d/Validate": "pass",
+      "TestCorpus/polybench-seidel-2d/Compile": "pass",
+      "TestCorpus/polybench-seidel-2d/CompileFull": "pass",
+      "TestCorpus/polybench-seidel-2d/Instantiate": "pass",
+      "TestCorpus/polybench-seidel-2d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-symm",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-symm/Decode": "pass",
+      "TestCorpus/polybench-symm/Validate": "pass",
+      "TestCorpus/polybench-symm/Compile": "pass",
+      "TestCorpus/polybench-symm/CompileFull": "pass",
+      "TestCorpus/polybench-symm/Instantiate": "pass",
+      "TestCorpus/polybench-symm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-syr2k",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-syr2k/Decode": "pass",
+      "TestCorpus/polybench-syr2k/Validate": "pass",
+      "TestCorpus/polybench-syr2k/Compile": "pass",
+      "TestCorpus/polybench-syr2k/CompileFull": "pass",
+      "TestCorpus/polybench-syr2k/Instantiate": "pass",
+      "TestCorpus/polybench-syr2k/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-syrk",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-syrk/Decode": "pass",
+      "TestCorpus/polybench-syrk/Validate": "pass",
+      "TestCorpus/polybench-syrk/Compile": "pass",
+      "TestCorpus/polybench-syrk/CompileFull": "pass",
+      "TestCorpus/polybench-syrk/Instantiate": "pass",
+      "TestCorpus/polybench-syrk/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-trisolv",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-trisolv/Decode": "pass",
+      "TestCorpus/polybench-trisolv/Validate": "pass",
+      "TestCorpus/polybench-trisolv/Compile": "pass",
+      "TestCorpus/polybench-trisolv/CompileFull": "pass",
+      "TestCorpus/polybench-trisolv/Instantiate": "pass",
+      "TestCorpus/polybench-trisolv/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-trmm",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/polybench-trmm/Decode": "pass",
+      "TestCorpus/polybench-trmm/Validate": "pass",
+      "TestCorpus/polybench-trmm/Compile": "pass",
+      "TestCorpus/polybench-trmm/CompileFull": "pass",
+      "TestCorpus/polybench-trmm/Instantiate": "pass",
+      "TestCorpus/polybench-trmm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "wren-modulo",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/wren-modulo/Decode": "pass",
+      "TestCorpus/wren-modulo/Validate": "pass",
+      "TestCorpus/wren-modulo/Compile": "pass",
+      "TestCorpus/wren-modulo/CompileFull": "pass",
+      "TestApplicationCorpusRuns/wren-modulo/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "grain-stdlib-array",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/grain-stdlib-array/Decode": "pass",
+      "TestCorpus/grain-stdlib-array/Validate": "pass",
+      "TestCorpus/grain-stdlib-array/Compile": "pass",
+      "TestCorpus/grain-stdlib-array/CompileFull": "pass",
+      "TestApplicationCorpusRuns/grain-stdlib-array/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "grain-stdlib-string",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/grain-stdlib-string/Decode": "pass",
+      "TestCorpus/grain-stdlib-string/Validate": "pass",
+      "TestCorpus/grain-stdlib-string/Compile": "pass",
+      "TestCorpus/grain-stdlib-string/CompileFull": "pass",
+      "TestApplicationCorpusRuns/grain-stdlib-string/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "grain-stdlib-json-subset",
+    "mode": "ordinary",
+    "checks": {
+      "TestCorpus/grain-stdlib-json-subset/Decode": "pass",
+      "TestCorpus/grain-stdlib-json-subset/Validate": "pass",
+      "TestCorpus/grain-stdlib-json-subset/Compile": "pass",
+      "TestCorpus/grain-stdlib-json-subset/CompileFull": "pass",
+      "TestApplicationCorpusRuns/grain-stdlib-json-subset/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sed-records",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/sed-records/Decode": "pass",
+      "TestCorpus/sed-records/Validate": "pass",
+      "TestCorpus/sed-records/Compile": "pass",
+      "TestCorpus/sed-records/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sed-records/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "seqtk-fastq-to-fasta",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/seqtk-fastq-to-fasta/Decode": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/Validate": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/Compile": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/CompileFull": "pass",
+      "TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lcs-substrings",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/lcs-substrings/Decode": "pass",
+      "TestCorpus/lcs-substrings/Validate": "pass",
+      "TestCorpus/lcs-substrings/Compile": "pass",
+      "TestCorpus/lcs-substrings/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lcs-substrings/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "needleman-wunsch-dna",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/needleman-wunsch-dna/Decode": "pass",
+      "TestCorpus/needleman-wunsch-dna/Validate": "pass",
+      "TestCorpus/needleman-wunsch-dna/Compile": "pass",
+      "TestCorpus/needleman-wunsch-dna/CompileFull": "pass",
+      "TestApplicationCorpusRuns/needleman-wunsch-dna/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "smith-waterman-dna",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/smith-waterman-dna/Decode": "pass",
+      "TestCorpus/smith-waterman-dna/Validate": "pass",
+      "TestCorpus/smith-waterman-dna/Compile": "pass",
+      "TestCorpus/smith-waterman-dna/CompileFull": "pass",
+      "TestApplicationCorpusRuns/smith-waterman-dna/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fasttree-phylogeny",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/fasttree-phylogeny/Decode": "pass",
+      "TestCorpus/fasttree-phylogeny/Validate": "pass",
+      "TestCorpus/fasttree-phylogeny/Compile": "pass",
+      "TestCorpus/fasttree-phylogeny/CompileFull": "pass",
+      "TestApplicationCorpusRuns/fasttree-phylogeny/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "gnu-seq-range",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/gnu-seq-range/Decode": "pass",
+      "TestCorpus/gnu-seq-range/Validate": "pass",
+      "TestCorpus/gnu-seq-range/Compile": "pass",
+      "TestCorpus/gnu-seq-range/CompileFull": "pass",
+      "TestApplicationCorpusRuns/gnu-seq-range/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "gnu-tr-uppercase",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/gnu-tr-uppercase/Decode": "pass",
+      "TestCorpus/gnu-tr-uppercase/Validate": "pass",
+      "TestCorpus/gnu-tr-uppercase/Compile": "pass",
+      "TestCorpus/gnu-tr-uppercase/CompileFull": "pass",
+      "TestApplicationCorpusRuns/gnu-tr-uppercase/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "php-buckets",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/php-buckets/Decode": "pass",
+      "TestCorpus/php-buckets/Validate": "pass",
+      "TestCorpus/php-buckets/Compile": "pass",
+      "TestCorpus/php-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/php-buckets/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ruby-buckets",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/ruby-buckets/Decode": "pass",
+      "TestCorpus/ruby-buckets/Validate": "pass",
+      "TestCorpus/ruby-buckets/Compile": "pass",
+      "TestCorpus/ruby-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ruby-buckets/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "clang-cpp-kernels",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/clang-cpp-kernels/Decode": "pass",
+      "TestCorpus/clang-cpp-kernels/Validate": "pass",
+      "TestCorpus/clang-cpp-kernels/Compile": "pass",
+      "TestCorpus/clang-cpp-kernels/CompileFull": "pass",
+      "TestApplicationCorpusRuns/clang-cpp-kernels/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "clang-c-kernels",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/clang-c-kernels/Decode": "pass",
+      "TestCorpus/clang-c-kernels/Validate": "pass",
+      "TestCorpus/clang-c-kernels/Compile": "pass",
+      "TestCorpus/clang-c-kernels/CompileFull": "pass",
+      "TestApplicationCorpusRuns/clang-c-kernels/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lua-cli-buckets",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/lua-cli-buckets/Decode": "pass",
+      "TestCorpus/lua-cli-buckets/Validate": "pass",
+      "TestCorpus/lua-cli-buckets/Compile": "pass",
+      "TestCorpus/lua-cli-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lua-cli-buckets/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "micropython-squares",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/micropython-squares/Decode": "pass",
+      "TestCorpus/micropython-squares/Validate": "pass",
+      "TestCorpus/micropython-squares/Compile": "pass",
+      "TestApplicationCorpusRuns/micropython-squares/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecpunpack-config",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/ecpunpack-config/Decode": "pass",
+      "TestCorpus/ecpunpack-config/Validate": "pass",
+      "TestCorpus/ecpunpack-config/Compile": "pass",
+      "TestCorpus/ecpunpack-config/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecpunpack-config/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecppack-bitstream",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/ecppack-bitstream/Decode": "pass",
+      "TestCorpus/ecppack-bitstream/Validate": "pass",
+      "TestCorpus/ecppack-bitstream/Compile": "pass",
+      "TestCorpus/ecppack-bitstream/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecppack-bitstream/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-sort",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/coreutils-sort/Decode": "pass",
+      "TestCorpus/coreutils-sort/Validate": "pass",
+      "TestCorpus/coreutils-sort/Compile": "pass",
+      "TestCorpus/coreutils-sort/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-sort/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-sha256sum",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/coreutils-sha256sum/Decode": "pass",
+      "TestCorpus/coreutils-sha256sum/Validate": "pass",
+      "TestCorpus/coreutils-sha256sum/Compile": "pass",
+      "TestCorpus/coreutils-sha256sum/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-sha256sum/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-base64",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/coreutils-base64/Decode": "pass",
+      "TestCorpus/coreutils-base64/Validate": "pass",
+      "TestCorpus/coreutils-base64/Compile": "pass",
+      "TestCorpus/coreutils-base64/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-base64/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-wc",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/coreutils-wc/Decode": "pass",
+      "TestCorpus/coreutils-wc/Validate": "pass",
+      "TestCorpus/coreutils-wc/Compile": "pass",
+      "TestCorpus/coreutils-wc/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-wc/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ripgrep-source",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/ripgrep-source/Decode": "pass",
+      "TestCorpus/ripgrep-source/Validate": "pass",
+      "TestCorpus/ripgrep-source/Compile": "pass",
+      "TestCorpus/ripgrep-source/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ripgrep-source/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "yosys-counter",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/yosys-counter/Decode": "pass",
+      "TestCorpus/yosys-counter/Validate": "pass",
+      "TestCorpus/yosys-counter/Compile": "pass",
+      "TestCorpus/yosys-counter/CompileFull": "pass",
+      "TestApplicationCorpusRuns/yosys-counter/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icemulti-image",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/icemulti-image/Decode": "pass",
+      "TestCorpus/icemulti-image/Validate": "pass",
+      "TestCorpus/icemulti-image/Compile": "pass",
+      "TestCorpus/icemulti-image/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icemulti-image/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icepack-pack",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/icepack-pack/Decode": "pass",
+      "TestCorpus/icepack-pack/Validate": "pass",
+      "TestCorpus/icepack-pack/Compile": "pass",
+      "TestCorpus/icepack-pack/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icepack-pack/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "iceunpack-unpack",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/iceunpack-unpack/Decode": "pass",
+      "TestCorpus/iceunpack-unpack/Validate": "pass",
+      "TestCorpus/iceunpack-unpack/Compile": "pass",
+      "TestCorpus/iceunpack-unpack/CompileFull": "pass",
+      "TestApplicationCorpusRuns/iceunpack-unpack/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecpbram-generate",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/ecpbram-generate/Decode": "pass",
+      "TestCorpus/ecpbram-generate/Validate": "pass",
+      "TestCorpus/ecpbram-generate/Compile": "pass",
+      "TestCorpus/ecpbram-generate/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecpbram-generate/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icebram-generate",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/icebram-generate/Decode": "pass",
+      "TestCorpus/icebram-generate/Validate": "pass",
+      "TestCorpus/icebram-generate/Compile": "pass",
+      "TestCorpus/icebram-generate/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icebram-generate/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecppll-clock",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/ecppll-clock/Decode": "pass",
+      "TestCorpus/ecppll-clock/Validate": "pass",
+      "TestCorpus/ecppll-clock/Compile": "pass",
+      "TestCorpus/ecppll-clock/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecppll-clock/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icepll-clock",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/icepll-clock/Decode": "pass",
+      "TestCorpus/icepll-clock/Validate": "pass",
+      "TestCorpus/icepll-clock/Compile": "pass",
+      "TestCorpus/icepll-clock/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icepll-clock/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "json2csv-people",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/json2csv-people/Decode": "pass",
+      "TestCorpus/json2csv-people/Validate": "pass",
+      "TestCorpus/json2csv-people/Compile": "pass",
+      "TestCorpus/json2csv-people/CompileFull": "pass",
+      "TestApplicationCorpusRuns/json2csv-people/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tree-ashell-list",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/tree-ashell-list/Decode": "pass",
+      "TestCorpus/tree-ashell-list/Validate": "pass",
+      "TestCorpus/tree-ashell-list/Compile": "pass",
+      "TestCorpus/tree-ashell-list/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tree-ashell-list/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tree-list",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/tree-list/Decode": "pass",
+      "TestCorpus/tree-list/Validate": "pass",
+      "TestCorpus/tree-list/Compile": "pass",
+      "TestCorpus/tree-list/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tree-list/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "brotli-compress",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/brotli-compress/Decode": "pass",
+      "TestCorpus/brotli-compress/Validate": "pass",
+      "TestCorpus/brotli-compress/Compile": "pass",
+      "TestCorpus/brotli-compress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/brotli-compress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "brotli-decompress",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/brotli-decompress/Decode": "pass",
+      "TestCorpus/brotli-decompress/Validate": "pass",
+      "TestCorpus/brotli-decompress/Compile": "pass",
+      "TestCorpus/brotli-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/brotli-decompress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "jq-json-transform",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/jq-json-transform/Decode": "pass",
+      "TestCorpus/jq-json-transform/Validate": "pass",
+      "TestCorpus/jq-json-transform/Compile": "pass",
+      "TestCorpus/jq-json-transform/CompileFull": "pass",
+      "TestApplicationCorpusRuns/jq-json-transform/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "age-decrypt",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/age-decrypt/Decode": "pass",
+      "TestCorpus/age-decrypt/Validate": "pass",
+      "TestCorpus/age-decrypt/Compile": "pass",
+      "TestCorpus/age-decrypt/CompileFull": "pass",
+      "TestApplicationCorpusRuns/age-decrypt/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "age-keygen-public",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/age-keygen-public/Decode": "pass",
+      "TestCorpus/age-keygen-public/Validate": "pass",
+      "TestCorpus/age-keygen-public/Compile": "pass",
+      "TestCorpus/age-keygen-public/CompileFull": "pass",
+      "TestApplicationCorpusRuns/age-keygen-public/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lzmainfo-header",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/lzmainfo-header/Decode": "pass",
+      "TestCorpus/lzmainfo-header/Validate": "pass",
+      "TestCorpus/lzmainfo-header/Compile": "pass",
+      "TestCorpus/lzmainfo-header/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lzmainfo-header/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lzmadec-decompress",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/lzmadec-decompress/Decode": "pass",
+      "TestCorpus/lzmadec-decompress/Validate": "pass",
+      "TestCorpus/lzmadec-decompress/Compile": "pass",
+      "TestCorpus/lzmadec-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lzmadec-decompress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "xzdec-decompress",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/xzdec-decompress/Decode": "pass",
+      "TestCorpus/xzdec-decompress/Validate": "pass",
+      "TestCorpus/xzdec-decompress/Compile": "pass",
+      "TestCorpus/xzdec-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/xzdec-decompress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sqlite3-query",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/sqlite3-query/Decode": "pass",
+      "TestCorpus/sqlite3-query/Validate": "pass",
+      "TestCorpus/sqlite3-query/Compile": "pass",
+      "TestCorpus/sqlite3-query/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sqlite3-query/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "duktape-script",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/duktape-script/Decode": "pass",
+      "TestCorpus/duktape-script/Validate": "pass",
+      "TestCorpus/duktape-script/Compile": "pass",
+      "TestCorpus/duktape-script/CompileFull": "pass",
+      "TestApplicationCorpusRuns/duktape-script/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "quickjs-script",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/quickjs-script/Decode": "pass",
+      "TestCorpus/quickjs-script/Validate": "pass",
+      "TestCorpus/quickjs-script/Compile": "pass",
+      "TestCorpus/quickjs-script/CompileFull": "pass",
+      "TestApplicationCorpusRuns/quickjs-script/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "swift-format-source",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/swift-format-source/Decode": "pass",
+      "TestCorpus/swift-format-source/Validate": "pass",
+      "TestCorpus/swift-format-source/Compile": "pass",
+      "TestCorpus/swift-format-source/CompileFull": "pass",
+      "TestApplicationCorpusRuns/swift-format-source/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "esbuild-minify",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/esbuild-minify/Decode": "pass",
+      "TestCorpus/esbuild-minify/Validate": "pass",
+      "TestCorpus/esbuild-minify/Compile": "pass",
+      "TestCorpus/esbuild-minify/CompileFull": "pass",
+      "TestApplicationCorpusRuns/esbuild-minify/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tiny",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/tiny/Decode": "pass",
+      "TestCorpus/tiny/Validate": "pass",
+      "TestCorpus/tiny/Compile": "pass",
+      "TestCorpus/tiny/CompileFull": "pass",
+      "TestCorpus/tiny/Instantiate": "pass",
+      "TestCorpus/tiny/Exec/add": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fib_rec",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/fib_rec/Decode": "pass",
+      "TestCorpus/fib_rec/Validate": "pass",
+      "TestCorpus/fib_rec/Compile": "pass",
+      "TestCorpus/fib_rec/CompileFull": "pass",
+      "TestCorpus/fib_rec/Instantiate": "pass",
+      "TestCorpus/fib_rec/Exec/fib": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "memory",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/memory/Decode": "pass",
+      "TestCorpus/memory/Validate": "pass",
+      "TestCorpus/memory/Compile": "pass",
+      "TestCorpus/memory/CompileFull": "pass",
+      "TestCorpus/memory/Instantiate": "pass",
+      "TestCorpus/memory/Exec/sum": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "memory_tree",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/memory_tree/Decode": "pass",
+      "TestCorpus/memory_tree/Validate": "pass",
+      "TestCorpus/memory_tree/Compile": "pass",
+      "TestCorpus/memory_tree/CompileFull": "pass",
+      "TestCorpus/memory_tree/Instantiate": "pass",
+      "TestCorpus/memory_tree/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "dispatch",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/dispatch/Decode": "pass",
+      "TestCorpus/dispatch/Validate": "pass",
+      "TestCorpus/dispatch/Compile": "pass",
+      "TestCorpus/dispatch/CompileFull": "pass",
+      "TestCorpus/dispatch/Instantiate": "pass",
+      "TestCorpus/dispatch/Exec/apply": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "many_funcs",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/many_funcs/Decode": "pass",
+      "TestCorpus/many_funcs/Validate": "pass",
+      "TestCorpus/many_funcs/Compile": "pass",
+      "TestCorpus/many_funcs/CompileFull": "pass",
+      "TestCorpus/many_funcs/Instantiate": "pass",
+      "TestCorpus/many_funcs/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "linked_list",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/linked_list/Decode": "pass",
+      "TestCorpus/linked_list/Validate": "pass",
+      "TestCorpus/linked_list/Compile": "pass",
+      "TestCorpus/linked_list/CompileFull": "pass",
+      "TestCorpus/linked_list/Instantiate": "pass",
+      "TestCorpus/linked_list/Exec/sum": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "nbody",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/nbody/Decode": "pass",
+      "TestCorpus/nbody/Validate": "pass",
+      "TestCorpus/nbody/Compile": "pass",
+      "TestCorpus/nbody/CompileFull": "pass",
+      "TestCorpus/nbody/Instantiate": "pass",
+      "TestCorpus/nbody/Exec/step": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fannkuch",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/fannkuch/Decode": "pass",
+      "TestCorpus/fannkuch/Validate": "pass",
+      "TestCorpus/fannkuch/Compile": "pass",
+      "TestCorpus/fannkuch/CompileFull": "pass",
+      "TestCorpus/fannkuch/Instantiate": "pass",
+      "TestCorpus/fannkuch/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "matmul",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/matmul/Decode": "pass",
+      "TestCorpus/matmul/Validate": "pass",
+      "TestCorpus/matmul/Compile": "pass",
+      "TestCorpus/matmul/CompileFull": "pass",
+      "TestCorpus/matmul/Instantiate": "pass",
+      "TestCorpus/matmul/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sha256",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/sha256/Decode": "pass",
+      "TestCorpus/sha256/Validate": "pass",
+      "TestCorpus/sha256/Compile": "pass",
+      "TestCorpus/sha256/CompileFull": "pass",
+      "TestCorpus/sha256/Instantiate": "pass",
+      "TestCorpus/sha256/Exec/hashN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "raytrace",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/raytrace/Decode": "pass",
+      "TestCorpus/raytrace/Validate": "pass",
+      "TestCorpus/raytrace/Compile": "pass",
+      "TestCorpus/raytrace/CompileFull": "pass",
+      "TestCorpus/raytrace/Instantiate": "pass",
+      "TestCorpus/raytrace/Exec/render": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "json-as",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/json-as/Decode": "pass",
+      "TestCorpus/json-as/Validate": "pass",
+      "TestCorpus/json-as/Compile": "pass",
+      "TestCorpus/json-as/CompileFull": "pass",
+      "TestCorpus/json-as/Instantiate": "pass",
+      "TestCorpus/json-as/Exec/serializeN": "pass",
+      "TestCorpus/json-as/Exec/deserializeN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "blake-as",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/blake-as/Decode": "pass",
+      "TestCorpus/blake-as/Validate": "pass",
+      "TestCorpus/blake-as/Compile": "pass",
+      "TestCorpus/blake-as/CompileFull": "pass",
+      "TestCorpus/blake-as/Instantiate": "pass",
+      "TestCorpus/blake-as/Exec/hashN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "utf-as",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/utf-as/Decode": "pass",
+      "TestCorpus/utf-as/Validate": "pass",
+      "TestCorpus/utf-as/Compile": "pass",
+      "TestCorpus/utf-as/CompileFull": "pass",
+      "TestCorpus/utf-as/Instantiate": "pass",
+      "TestCorpus/utf-as/Exec/convertN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "json-as-simd",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/json-as-simd/Decode": "pass",
+      "TestCorpus/json-as-simd/Validate": "pass",
+      "TestCorpus/json-as-simd/Compile": "pass",
+      "TestCorpus/json-as-simd/CompileFull": "pass",
+      "TestCorpus/json-as-simd/Instantiate": "pass",
+      "TestCorpus/json-as-simd/Exec/serializeN": "pass",
+      "TestCorpus/json-as-simd/Exec/deserializeN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "blake-as-simd",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/blake-as-simd/Decode": "pass",
+      "TestCorpus/blake-as-simd/Validate": "pass",
+      "TestCorpus/blake-as-simd/Compile": "pass",
+      "TestCorpus/blake-as-simd/CompileFull": "pass",
+      "TestCorpus/blake-as-simd/Instantiate": "pass",
+      "TestCorpus/blake-as-simd/Exec/hashN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "utf-as-simd",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/utf-as-simd/Decode": "pass",
+      "TestCorpus/utf-as-simd/Validate": "pass",
+      "TestCorpus/utf-as-simd/Compile": "pass",
+      "TestCorpus/utf-as-simd/CompileFull": "pass",
+      "TestCorpus/utf-as-simd/Instantiate": "pass",
+      "TestCorpus/utf-as-simd/Exec/convertN": "pass",
+      "TestCorpus/utf-as-simd/Exec/validateN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coremark",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/coremark/Decode": "pass",
+      "TestCorpus/coremark/Validate": "pass",
+      "TestCorpus/coremark/Compile": "pass",
+      "TestCorpus/coremark/CompileFull": "pass",
+      "TestCorpus/coremark/Instantiate": "pass",
+      "TestCorpusSemanticExec/coremark/2k-performance": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "blake3",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/blake3/Decode": "pass",
+      "TestCorpus/blake3/Validate": "pass",
+      "TestCorpus/blake3/Compile": "pass",
+      "TestCorpus/blake3/CompileFull": "pass",
+      "TestCorpus/blake3/Instantiate": "pass",
+      "TestCorpusSemanticExec/blake3/hash": "pass",
+      "TestCorpusSemanticExec/blake3/keyed_hash": "pass",
+      "TestCorpusSemanticExec/blake3/derive_key": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "qoi",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/qoi/Decode": "pass",
+      "TestCorpus/qoi/Validate": "pass",
+      "TestCorpus/qoi/Compile": "pass",
+      "TestCorpus/qoi/CompileFull": "pass",
+      "TestCorpus/qoi/Instantiate": "pass",
+      "TestCorpusSemanticExec/qoi/encode": "pass",
+      "TestCorpusSemanticExec/qoi/decode": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lz4",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/lz4/Decode": "pass",
+      "TestCorpus/lz4/Validate": "pass",
+      "TestCorpus/lz4/Compile": "pass",
+      "TestCorpus/lz4/CompileFull": "pass",
+      "TestCorpus/lz4/Instantiate": "pass",
+      "TestCorpusSemanticExec/lz4/compress": "pass",
+      "TestCorpusSemanticExec/lz4/decompress": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "zlib",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/zlib/Decode": "pass",
+      "TestCorpus/zlib/Validate": "pass",
+      "TestCorpus/zlib/Compile": "pass",
+      "TestCorpus/zlib/CompileFull": "pass",
+      "TestCorpus/zlib/Instantiate": "pass",
+      "TestCorpusSemanticExec/zlib/inflate": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "zstd",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/zstd/Decode": "pass",
+      "TestCorpus/zstd/Validate": "pass",
+      "TestCorpus/zstd/Compile": "pass",
+      "TestCorpus/zstd/CompileFull": "pass",
+      "TestCorpus/zstd/Instantiate": "pass",
+      "TestCorpusSemanticExec/zstd/decompress": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "yyjson",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/yyjson/Decode": "pass",
+      "TestCorpus/yyjson/Validate": "pass",
+      "TestCorpus/yyjson/Compile": "pass",
+      "TestCorpus/yyjson/CompileFull": "pass",
+      "TestCorpus/yyjson/Instantiate": "pass",
+      "TestCorpusSemanticExec/yyjson/parse-edit-write": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "utf8proc",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/utf8proc/Decode": "pass",
+      "TestCorpus/utf8proc/Validate": "pass",
+      "TestCorpus/utf8proc/Compile": "pass",
+      "TestCorpus/utf8proc/CompileFull": "pass",
+      "TestCorpus/utf8proc/Instantiate": "pass",
+      "TestCorpusSemanticExec/utf8proc/normalize-casefold": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "xxhash",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/xxhash/Decode": "pass",
+      "TestCorpus/xxhash/Validate": "pass",
+      "TestCorpus/xxhash/Compile": "pass",
+      "TestCorpus/xxhash/CompileFull": "pass",
+      "TestCorpus/xxhash/Instantiate": "pass",
+      "TestCorpusSemanticExec/xxhash/xxh64-boundaries": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "libtommath",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/libtommath/Decode": "pass",
+      "TestCorpus/libtommath/Validate": "pass",
+      "TestCorpus/libtommath/Compile": "pass",
+      "TestCorpus/libtommath/CompileFull": "pass",
+      "TestCorpus/libtommath/Instantiate": "pass",
+      "TestCorpusSemanticExec/libtommath/modular-arithmetic": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "nanosvg",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/nanosvg/Decode": "pass",
+      "TestCorpus/nanosvg/Validate": "pass",
+      "TestCorpus/nanosvg/Compile": "pass",
+      "TestCorpus/nanosvg/CompileFull": "pass",
+      "TestCorpus/nanosvg/Instantiate": "pass",
+      "TestCorpusSemanticExec/nanosvg/parse-structure": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "kissfft",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/kissfft/Decode": "pass",
+      "TestCorpus/kissfft/Validate": "pass",
+      "TestCorpus/kissfft/Compile": "pass",
+      "TestCorpus/kissfft/CompileFull": "pass",
+      "TestCorpus/kissfft/Instantiate": "pass",
+      "TestCorpusSemanticExec/kissfft/complex-roundtrip": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "miniz",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/miniz/Decode": "pass",
+      "TestCorpus/miniz/Validate": "pass",
+      "TestCorpus/miniz/Compile": "pass",
+      "TestCorpus/miniz/CompileFull": "pass",
+      "TestCorpus/miniz/Instantiate": "pass",
+      "TestCorpusSemanticExec/miniz/deflate-roundtrip": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "monocypher",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/monocypher/Decode": "pass",
+      "TestCorpus/monocypher/Validate": "pass",
+      "TestCorpus/monocypher/Compile": "pass",
+      "TestCorpus/monocypher/CompileFull": "pass",
+      "TestCorpus/monocypher/Instantiate": "pass",
+      "TestCorpusSemanticExec/monocypher/aead-blake2b": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "drwav",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/drwav/Decode": "pass",
+      "TestCorpus/drwav/Validate": "pass",
+      "TestCorpus/drwav/Compile": "pass",
+      "TestCorpus/drwav/CompileFull": "pass",
+      "TestCorpus/drwav/Instantiate": "pass",
+      "TestCorpusSemanticExec/drwav/pcm-decode-seek": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fastfloat",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/fastfloat/Decode": "pass",
+      "TestCorpus/fastfloat/Validate": "pass",
+      "TestCorpus/fastfloat/Compile": "pass",
+      "TestCorpus/fastfloat/CompileFull": "pass",
+      "TestCorpus/fastfloat/Instantiate": "pass",
+      "TestCorpusSemanticExec/fastfloat/decimal-parse": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "pcre2",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/pcre2/Decode": "pass",
+      "TestCorpus/pcre2/Validate": "pass",
+      "TestCorpus/pcre2/Compile": "pass",
+      "TestCorpus/pcre2/CompileFull": "pass",
+      "TestCorpus/pcre2/Instantiate": "pass",
+      "TestCorpusSemanticExec/pcre2/compile-match": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "cjson",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/cjson/Decode": "pass",
+      "TestCorpus/cjson/Validate": "pass",
+      "TestCorpus/cjson/Compile": "pass",
+      "TestCorpus/cjson/CompileFull": "pass",
+      "TestApplicationCorpusRuns/cjson/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lodepng",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/lodepng/Decode": "pass",
+      "TestCorpus/lodepng/Validate": "pass",
+      "TestCorpus/lodepng/Compile": "pass",
+      "TestCorpus/lodepng/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lodepng/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "wren",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/wren/Decode": "pass",
+      "TestCorpus/wren/Validate": "pass",
+      "TestCorpus/wren/Compile": "pass",
+      "TestCorpus/wren/CompileFull": "pass",
+      "TestApplicationCorpusRuns/wren/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tinyxml2",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/tinyxml2/Decode": "pass",
+      "TestCorpus/tinyxml2/Validate": "pass",
+      "TestCorpus/tinyxml2/Compile": "pass",
+      "TestCorpus/tinyxml2/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tinyxml2/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lua",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/lua/Decode": "pass",
+      "TestCorpus/lua/Validate": "pass",
+      "TestCorpus/lua/Compile": "pass",
+      "TestCorpus/lua/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lua/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-crc32",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/embench-crc32/Decode": "pass",
+      "TestCorpus/embench-crc32/Validate": "pass",
+      "TestCorpus/embench-crc32/Compile": "pass",
+      "TestCorpus/embench-crc32/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-crc32/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-huffbench",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/embench-huffbench/Decode": "pass",
+      "TestCorpus/embench-huffbench/Validate": "pass",
+      "TestCorpus/embench-huffbench/Compile": "pass",
+      "TestCorpus/embench-huffbench/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-huffbench/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-matmult-int",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/embench-matmult-int/Decode": "pass",
+      "TestCorpus/embench-matmult-int/Validate": "pass",
+      "TestCorpus/embench-matmult-int/Compile": "pass",
+      "TestCorpus/embench-matmult-int/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-matmult-int/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-nettle-aes",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/embench-nettle-aes/Decode": "pass",
+      "TestCorpus/embench-nettle-aes/Validate": "pass",
+      "TestCorpus/embench-nettle-aes/Compile": "pass",
+      "TestCorpus/embench-nettle-aes/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-nettle-aes/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-nettle-sha256",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/embench-nettle-sha256/Decode": "pass",
+      "TestCorpus/embench-nettle-sha256/Validate": "pass",
+      "TestCorpus/embench-nettle-sha256/Compile": "pass",
+      "TestCorpus/embench-nettle-sha256/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-nettle-sha256/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-qrduino",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/embench-qrduino/Decode": "pass",
+      "TestCorpus/embench-qrduino/Validate": "pass",
+      "TestCorpus/embench-qrduino/Compile": "pass",
+      "TestCorpus/embench-qrduino/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-qrduino/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sightglass-shootout-base64",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/sightglass-shootout-base64/Decode": "pass",
+      "TestCorpus/sightglass-shootout-base64/Validate": "pass",
+      "TestCorpus/sightglass-shootout-base64/Compile": "pass",
+      "TestCorpus/sightglass-shootout-base64/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sightglass-shootout-base64/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sightglass-libsodium-hash",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/sightglass-libsodium-hash/Decode": "pass",
+      "TestCorpus/sightglass-libsodium-hash/Validate": "pass",
+      "TestCorpus/sightglass-libsodium-hash/Compile": "pass",
+      "TestCorpus/sightglass-libsodium-hash/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sightglass-libsodium-hash/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tacle-bsort",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/tacle-bsort/Decode": "pass",
+      "TestCorpus/tacle-bsort/Validate": "pass",
+      "TestCorpus/tacle-bsort/Compile": "pass",
+      "TestCorpus/tacle-bsort/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tacle-bsort/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-2mm",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-2mm/Decode": "pass",
+      "TestCorpus/polybench-2mm/Validate": "pass",
+      "TestCorpus/polybench-2mm/Compile": "pass",
+      "TestCorpus/polybench-2mm/CompileFull": "pass",
+      "TestCorpus/polybench-2mm/Instantiate": "pass",
+      "TestCorpus/polybench-2mm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-3mm",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-3mm/Decode": "pass",
+      "TestCorpus/polybench-3mm/Validate": "pass",
+      "TestCorpus/polybench-3mm/Compile": "pass",
+      "TestCorpus/polybench-3mm/CompileFull": "pass",
+      "TestCorpus/polybench-3mm/Instantiate": "pass",
+      "TestCorpus/polybench-3mm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-adi",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-adi/Decode": "pass",
+      "TestCorpus/polybench-adi/Validate": "pass",
+      "TestCorpus/polybench-adi/Compile": "pass",
+      "TestCorpus/polybench-adi/CompileFull": "pass",
+      "TestCorpus/polybench-adi/Instantiate": "pass",
+      "TestCorpus/polybench-adi/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-atax",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-atax/Decode": "pass",
+      "TestCorpus/polybench-atax/Validate": "pass",
+      "TestCorpus/polybench-atax/Compile": "pass",
+      "TestCorpus/polybench-atax/CompileFull": "pass",
+      "TestCorpus/polybench-atax/Instantiate": "pass",
+      "TestCorpus/polybench-atax/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-bicg",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-bicg/Decode": "pass",
+      "TestCorpus/polybench-bicg/Validate": "pass",
+      "TestCorpus/polybench-bicg/Compile": "pass",
+      "TestCorpus/polybench-bicg/CompileFull": "pass",
+      "TestCorpus/polybench-bicg/Instantiate": "pass",
+      "TestCorpus/polybench-bicg/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-cholesky",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-cholesky/Decode": "pass",
+      "TestCorpus/polybench-cholesky/Validate": "pass",
+      "TestCorpus/polybench-cholesky/Compile": "pass",
+      "TestCorpus/polybench-cholesky/CompileFull": "pass",
+      "TestCorpus/polybench-cholesky/Instantiate": "pass",
+      "TestCorpus/polybench-cholesky/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-correlation",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-correlation/Decode": "pass",
+      "TestCorpus/polybench-correlation/Validate": "pass",
+      "TestCorpus/polybench-correlation/Compile": "pass",
+      "TestCorpus/polybench-correlation/CompileFull": "pass",
+      "TestCorpus/polybench-correlation/Instantiate": "pass",
+      "TestCorpus/polybench-correlation/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-covariance",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-covariance/Decode": "pass",
+      "TestCorpus/polybench-covariance/Validate": "pass",
+      "TestCorpus/polybench-covariance/Compile": "pass",
+      "TestCorpus/polybench-covariance/CompileFull": "pass",
+      "TestCorpus/polybench-covariance/Instantiate": "pass",
+      "TestCorpus/polybench-covariance/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-deriche",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-deriche/Decode": "pass",
+      "TestCorpus/polybench-deriche/Validate": "pass",
+      "TestCorpus/polybench-deriche/Compile": "pass",
+      "TestCorpus/polybench-deriche/CompileFull": "pass",
+      "TestCorpus/polybench-deriche/Instantiate": "pass",
+      "TestCorpus/polybench-deriche/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-doitgen",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-doitgen/Decode": "pass",
+      "TestCorpus/polybench-doitgen/Validate": "pass",
+      "TestCorpus/polybench-doitgen/Compile": "pass",
+      "TestCorpus/polybench-doitgen/CompileFull": "pass",
+      "TestCorpus/polybench-doitgen/Instantiate": "pass",
+      "TestCorpus/polybench-doitgen/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-durbin",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-durbin/Decode": "pass",
+      "TestCorpus/polybench-durbin/Validate": "pass",
+      "TestCorpus/polybench-durbin/Compile": "pass",
+      "TestCorpus/polybench-durbin/CompileFull": "pass",
+      "TestCorpus/polybench-durbin/Instantiate": "pass",
+      "TestCorpus/polybench-durbin/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-fdtd-2d",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-fdtd-2d/Decode": "pass",
+      "TestCorpus/polybench-fdtd-2d/Validate": "pass",
+      "TestCorpus/polybench-fdtd-2d/Compile": "pass",
+      "TestCorpus/polybench-fdtd-2d/CompileFull": "pass",
+      "TestCorpus/polybench-fdtd-2d/Instantiate": "pass",
+      "TestCorpus/polybench-fdtd-2d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-floyd-warshall",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-floyd-warshall/Decode": "pass",
+      "TestCorpus/polybench-floyd-warshall/Validate": "pass",
+      "TestCorpus/polybench-floyd-warshall/Compile": "pass",
+      "TestCorpus/polybench-floyd-warshall/CompileFull": "pass",
+      "TestCorpus/polybench-floyd-warshall/Instantiate": "pass",
+      "TestCorpus/polybench-floyd-warshall/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gemm",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-gemm/Decode": "pass",
+      "TestCorpus/polybench-gemm/Validate": "pass",
+      "TestCorpus/polybench-gemm/Compile": "pass",
+      "TestCorpus/polybench-gemm/CompileFull": "pass",
+      "TestCorpus/polybench-gemm/Instantiate": "pass",
+      "TestCorpus/polybench-gemm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gemver",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-gemver/Decode": "pass",
+      "TestCorpus/polybench-gemver/Validate": "pass",
+      "TestCorpus/polybench-gemver/Compile": "pass",
+      "TestCorpus/polybench-gemver/CompileFull": "pass",
+      "TestCorpus/polybench-gemver/Instantiate": "pass",
+      "TestCorpus/polybench-gemver/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gesummv",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-gesummv/Decode": "pass",
+      "TestCorpus/polybench-gesummv/Validate": "pass",
+      "TestCorpus/polybench-gesummv/Compile": "pass",
+      "TestCorpus/polybench-gesummv/CompileFull": "pass",
+      "TestCorpus/polybench-gesummv/Instantiate": "pass",
+      "TestCorpus/polybench-gesummv/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gramschmidt",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-gramschmidt/Decode": "pass",
+      "TestCorpus/polybench-gramschmidt/Validate": "pass",
+      "TestCorpus/polybench-gramschmidt/Compile": "pass",
+      "TestCorpus/polybench-gramschmidt/CompileFull": "pass",
+      "TestCorpus/polybench-gramschmidt/Instantiate": "pass",
+      "TestCorpus/polybench-gramschmidt/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-heat-3d",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-heat-3d/Decode": "pass",
+      "TestCorpus/polybench-heat-3d/Validate": "pass",
+      "TestCorpus/polybench-heat-3d/Compile": "pass",
+      "TestCorpus/polybench-heat-3d/CompileFull": "pass",
+      "TestCorpus/polybench-heat-3d/Instantiate": "pass",
+      "TestCorpus/polybench-heat-3d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-jacobi-1d",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-jacobi-1d/Decode": "pass",
+      "TestCorpus/polybench-jacobi-1d/Validate": "pass",
+      "TestCorpus/polybench-jacobi-1d/Compile": "pass",
+      "TestCorpus/polybench-jacobi-1d/CompileFull": "pass",
+      "TestCorpus/polybench-jacobi-1d/Instantiate": "pass",
+      "TestCorpus/polybench-jacobi-1d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-jacobi-2d",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-jacobi-2d/Decode": "pass",
+      "TestCorpus/polybench-jacobi-2d/Validate": "pass",
+      "TestCorpus/polybench-jacobi-2d/Compile": "pass",
+      "TestCorpus/polybench-jacobi-2d/CompileFull": "pass",
+      "TestCorpus/polybench-jacobi-2d/Instantiate": "pass",
+      "TestCorpus/polybench-jacobi-2d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-lu",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-lu/Decode": "pass",
+      "TestCorpus/polybench-lu/Validate": "pass",
+      "TestCorpus/polybench-lu/Compile": "pass",
+      "TestCorpus/polybench-lu/CompileFull": "pass",
+      "TestCorpus/polybench-lu/Instantiate": "pass",
+      "TestCorpus/polybench-lu/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-ludcmp",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-ludcmp/Decode": "pass",
+      "TestCorpus/polybench-ludcmp/Validate": "pass",
+      "TestCorpus/polybench-ludcmp/Compile": "pass",
+      "TestCorpus/polybench-ludcmp/CompileFull": "pass",
+      "TestCorpus/polybench-ludcmp/Instantiate": "pass",
+      "TestCorpus/polybench-ludcmp/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-mvt",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-mvt/Decode": "pass",
+      "TestCorpus/polybench-mvt/Validate": "pass",
+      "TestCorpus/polybench-mvt/Compile": "pass",
+      "TestCorpus/polybench-mvt/CompileFull": "pass",
+      "TestCorpus/polybench-mvt/Instantiate": "pass",
+      "TestCorpus/polybench-mvt/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-nussinov",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-nussinov/Decode": "pass",
+      "TestCorpus/polybench-nussinov/Validate": "pass",
+      "TestCorpus/polybench-nussinov/Compile": "pass",
+      "TestCorpus/polybench-nussinov/CompileFull": "pass",
+      "TestCorpus/polybench-nussinov/Instantiate": "pass",
+      "TestCorpus/polybench-nussinov/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-seidel-2d",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-seidel-2d/Decode": "pass",
+      "TestCorpus/polybench-seidel-2d/Validate": "pass",
+      "TestCorpus/polybench-seidel-2d/Compile": "pass",
+      "TestCorpus/polybench-seidel-2d/CompileFull": "pass",
+      "TestCorpus/polybench-seidel-2d/Instantiate": "pass",
+      "TestCorpus/polybench-seidel-2d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-symm",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-symm/Decode": "pass",
+      "TestCorpus/polybench-symm/Validate": "pass",
+      "TestCorpus/polybench-symm/Compile": "pass",
+      "TestCorpus/polybench-symm/CompileFull": "pass",
+      "TestCorpus/polybench-symm/Instantiate": "pass",
+      "TestCorpus/polybench-symm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-syr2k",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-syr2k/Decode": "pass",
+      "TestCorpus/polybench-syr2k/Validate": "pass",
+      "TestCorpus/polybench-syr2k/Compile": "pass",
+      "TestCorpus/polybench-syr2k/CompileFull": "pass",
+      "TestCorpus/polybench-syr2k/Instantiate": "pass",
+      "TestCorpus/polybench-syr2k/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-syrk",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-syrk/Decode": "pass",
+      "TestCorpus/polybench-syrk/Validate": "pass",
+      "TestCorpus/polybench-syrk/Compile": "pass",
+      "TestCorpus/polybench-syrk/CompileFull": "pass",
+      "TestCorpus/polybench-syrk/Instantiate": "pass",
+      "TestCorpus/polybench-syrk/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-trisolv",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-trisolv/Decode": "pass",
+      "TestCorpus/polybench-trisolv/Validate": "pass",
+      "TestCorpus/polybench-trisolv/Compile": "pass",
+      "TestCorpus/polybench-trisolv/CompileFull": "pass",
+      "TestCorpus/polybench-trisolv/Instantiate": "pass",
+      "TestCorpus/polybench-trisolv/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-trmm",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/polybench-trmm/Decode": "pass",
+      "TestCorpus/polybench-trmm/Validate": "pass",
+      "TestCorpus/polybench-trmm/Compile": "pass",
+      "TestCorpus/polybench-trmm/CompileFull": "pass",
+      "TestCorpus/polybench-trmm/Instantiate": "pass",
+      "TestCorpus/polybench-trmm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "wren-modulo",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/wren-modulo/Decode": "pass",
+      "TestCorpus/wren-modulo/Validate": "pass",
+      "TestCorpus/wren-modulo/Compile": "pass",
+      "TestCorpus/wren-modulo/CompileFull": "pass",
+      "TestApplicationCorpusRuns/wren-modulo/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "grain-stdlib-array",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/grain-stdlib-array/Decode": "pass",
+      "TestCorpus/grain-stdlib-array/Validate": "pass",
+      "TestCorpus/grain-stdlib-array/Compile": "pass",
+      "TestCorpus/grain-stdlib-array/CompileFull": "pass",
+      "TestApplicationCorpusRuns/grain-stdlib-array/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "grain-stdlib-string",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/grain-stdlib-string/Decode": "pass",
+      "TestCorpus/grain-stdlib-string/Validate": "pass",
+      "TestCorpus/grain-stdlib-string/Compile": "pass",
+      "TestCorpus/grain-stdlib-string/CompileFull": "pass",
+      "TestApplicationCorpusRuns/grain-stdlib-string/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "grain-stdlib-json-subset",
+    "mode": "wagodebug",
+    "checks": {
+      "TestCorpus/grain-stdlib-json-subset/Decode": "pass",
+      "TestCorpus/grain-stdlib-json-subset/Validate": "pass",
+      "TestCorpus/grain-stdlib-json-subset/Compile": "pass",
+      "TestCorpus/grain-stdlib-json-subset/CompileFull": "pass",
+      "TestApplicationCorpusRuns/grain-stdlib-json-subset/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sed-records",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/sed-records/Decode": "pass",
+      "TestCorpus/sed-records/Validate": "pass",
+      "TestCorpus/sed-records/Compile": "pass",
+      "TestCorpus/sed-records/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sed-records/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "seqtk-fastq-to-fasta",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/seqtk-fastq-to-fasta/Decode": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/Validate": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/Compile": "pass",
+      "TestCorpus/seqtk-fastq-to-fasta/CompileFull": "pass",
+      "TestApplicationCorpusRuns/seqtk-fastq-to-fasta/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lcs-substrings",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/lcs-substrings/Decode": "pass",
+      "TestCorpus/lcs-substrings/Validate": "pass",
+      "TestCorpus/lcs-substrings/Compile": "pass",
+      "TestCorpus/lcs-substrings/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lcs-substrings/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "needleman-wunsch-dna",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/needleman-wunsch-dna/Decode": "pass",
+      "TestCorpus/needleman-wunsch-dna/Validate": "pass",
+      "TestCorpus/needleman-wunsch-dna/Compile": "pass",
+      "TestCorpus/needleman-wunsch-dna/CompileFull": "pass",
+      "TestApplicationCorpusRuns/needleman-wunsch-dna/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "smith-waterman-dna",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/smith-waterman-dna/Decode": "pass",
+      "TestCorpus/smith-waterman-dna/Validate": "pass",
+      "TestCorpus/smith-waterman-dna/Compile": "pass",
+      "TestCorpus/smith-waterman-dna/CompileFull": "pass",
+      "TestApplicationCorpusRuns/smith-waterman-dna/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fasttree-phylogeny",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/fasttree-phylogeny/Decode": "pass",
+      "TestCorpus/fasttree-phylogeny/Validate": "pass",
+      "TestCorpus/fasttree-phylogeny/Compile": "pass",
+      "TestCorpus/fasttree-phylogeny/CompileFull": "pass",
+      "TestApplicationCorpusRuns/fasttree-phylogeny/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "gnu-seq-range",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/gnu-seq-range/Decode": "pass",
+      "TestCorpus/gnu-seq-range/Validate": "pass",
+      "TestCorpus/gnu-seq-range/Compile": "pass",
+      "TestCorpus/gnu-seq-range/CompileFull": "pass",
+      "TestApplicationCorpusRuns/gnu-seq-range/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "gnu-tr-uppercase",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/gnu-tr-uppercase/Decode": "pass",
+      "TestCorpus/gnu-tr-uppercase/Validate": "pass",
+      "TestCorpus/gnu-tr-uppercase/Compile": "pass",
+      "TestCorpus/gnu-tr-uppercase/CompileFull": "pass",
+      "TestApplicationCorpusRuns/gnu-tr-uppercase/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "v8"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "php-buckets",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/php-buckets/Decode": "pass",
+      "TestCorpus/php-buckets/Validate": "pass",
+      "TestCorpus/php-buckets/Compile": "pass",
+      "TestCorpus/php-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/php-buckets/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ruby-buckets",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/ruby-buckets/Decode": "pass",
+      "TestCorpus/ruby-buckets/Validate": "pass",
+      "TestCorpus/ruby-buckets/Compile": "pass",
+      "TestCorpus/ruby-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ruby-buckets/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "clang-cpp-kernels",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/clang-cpp-kernels/Decode": "pass",
+      "TestCorpus/clang-cpp-kernels/Validate": "pass",
+      "TestCorpus/clang-cpp-kernels/Compile": "pass",
+      "TestCorpus/clang-cpp-kernels/CompileFull": "pass",
+      "TestApplicationCorpusRuns/clang-cpp-kernels/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "clang-c-kernels",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/clang-c-kernels/Decode": "pass",
+      "TestCorpus/clang-c-kernels/Validate": "pass",
+      "TestCorpus/clang-c-kernels/Compile": "pass",
+      "TestCorpus/clang-c-kernels/CompileFull": "pass",
+      "TestApplicationCorpusRuns/clang-c-kernels/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lua-cli-buckets",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/lua-cli-buckets/Decode": "pass",
+      "TestCorpus/lua-cli-buckets/Validate": "pass",
+      "TestCorpus/lua-cli-buckets/Compile": "pass",
+      "TestCorpus/lua-cli-buckets/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lua-cli-buckets/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "micropython-squares",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/micropython-squares/Decode": "pass",
+      "TestCorpus/micropython-squares/Validate": "pass",
+      "TestCorpus/micropython-squares/Compile": "pass",
+      "TestApplicationCorpusRuns/micropython-squares/wago": "pass"
+    },
+    "reference": {
+      "terminal": "skip",
+      "pinned_external_runtime": "wasmtime"
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecpunpack-config",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/ecpunpack-config/Decode": "pass",
+      "TestCorpus/ecpunpack-config/Validate": "pass",
+      "TestCorpus/ecpunpack-config/Compile": "pass",
+      "TestCorpus/ecpunpack-config/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecpunpack-config/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecppack-bitstream",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/ecppack-bitstream/Decode": "pass",
+      "TestCorpus/ecppack-bitstream/Validate": "pass",
+      "TestCorpus/ecppack-bitstream/Compile": "pass",
+      "TestCorpus/ecppack-bitstream/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecppack-bitstream/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-sort",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/coreutils-sort/Decode": "pass",
+      "TestCorpus/coreutils-sort/Validate": "pass",
+      "TestCorpus/coreutils-sort/Compile": "pass",
+      "TestCorpus/coreutils-sort/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-sort/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-sha256sum",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/coreutils-sha256sum/Decode": "pass",
+      "TestCorpus/coreutils-sha256sum/Validate": "pass",
+      "TestCorpus/coreutils-sha256sum/Compile": "pass",
+      "TestCorpus/coreutils-sha256sum/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-sha256sum/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-base64",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/coreutils-base64/Decode": "pass",
+      "TestCorpus/coreutils-base64/Validate": "pass",
+      "TestCorpus/coreutils-base64/Compile": "pass",
+      "TestCorpus/coreutils-base64/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-base64/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coreutils-wc",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/coreutils-wc/Decode": "pass",
+      "TestCorpus/coreutils-wc/Validate": "pass",
+      "TestCorpus/coreutils-wc/Compile": "pass",
+      "TestCorpus/coreutils-wc/CompileFull": "pass",
+      "TestApplicationCorpusRuns/coreutils-wc/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ripgrep-source",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/ripgrep-source/Decode": "pass",
+      "TestCorpus/ripgrep-source/Validate": "pass",
+      "TestCorpus/ripgrep-source/Compile": "pass",
+      "TestCorpus/ripgrep-source/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ripgrep-source/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "yosys-counter",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/yosys-counter/Decode": "pass",
+      "TestCorpus/yosys-counter/Validate": "pass",
+      "TestCorpus/yosys-counter/Compile": "pass",
+      "TestCorpus/yosys-counter/CompileFull": "pass",
+      "TestApplicationCorpusRuns/yosys-counter/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icemulti-image",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/icemulti-image/Decode": "pass",
+      "TestCorpus/icemulti-image/Validate": "pass",
+      "TestCorpus/icemulti-image/Compile": "pass",
+      "TestCorpus/icemulti-image/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icemulti-image/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icepack-pack",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/icepack-pack/Decode": "pass",
+      "TestCorpus/icepack-pack/Validate": "pass",
+      "TestCorpus/icepack-pack/Compile": "pass",
+      "TestCorpus/icepack-pack/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icepack-pack/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "iceunpack-unpack",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/iceunpack-unpack/Decode": "pass",
+      "TestCorpus/iceunpack-unpack/Validate": "pass",
+      "TestCorpus/iceunpack-unpack/Compile": "pass",
+      "TestCorpus/iceunpack-unpack/CompileFull": "pass",
+      "TestApplicationCorpusRuns/iceunpack-unpack/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecpbram-generate",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/ecpbram-generate/Decode": "pass",
+      "TestCorpus/ecpbram-generate/Validate": "pass",
+      "TestCorpus/ecpbram-generate/Compile": "pass",
+      "TestCorpus/ecpbram-generate/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecpbram-generate/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icebram-generate",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/icebram-generate/Decode": "pass",
+      "TestCorpus/icebram-generate/Validate": "pass",
+      "TestCorpus/icebram-generate/Compile": "pass",
+      "TestCorpus/icebram-generate/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icebram-generate/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "ecppll-clock",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/ecppll-clock/Decode": "pass",
+      "TestCorpus/ecppll-clock/Validate": "pass",
+      "TestCorpus/ecppll-clock/Compile": "pass",
+      "TestCorpus/ecppll-clock/CompileFull": "pass",
+      "TestApplicationCorpusRuns/ecppll-clock/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "icepll-clock",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/icepll-clock/Decode": "pass",
+      "TestCorpus/icepll-clock/Validate": "pass",
+      "TestCorpus/icepll-clock/Compile": "pass",
+      "TestCorpus/icepll-clock/CompileFull": "pass",
+      "TestApplicationCorpusRuns/icepll-clock/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "json2csv-people",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/json2csv-people/Decode": "pass",
+      "TestCorpus/json2csv-people/Validate": "pass",
+      "TestCorpus/json2csv-people/Compile": "pass",
+      "TestCorpus/json2csv-people/CompileFull": "pass",
+      "TestApplicationCorpusRuns/json2csv-people/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tree-ashell-list",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/tree-ashell-list/Decode": "pass",
+      "TestCorpus/tree-ashell-list/Validate": "pass",
+      "TestCorpus/tree-ashell-list/Compile": "pass",
+      "TestCorpus/tree-ashell-list/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tree-ashell-list/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tree-list",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/tree-list/Decode": "pass",
+      "TestCorpus/tree-list/Validate": "pass",
+      "TestCorpus/tree-list/Compile": "pass",
+      "TestCorpus/tree-list/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tree-list/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "brotli-compress",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/brotli-compress/Decode": "pass",
+      "TestCorpus/brotli-compress/Validate": "pass",
+      "TestCorpus/brotli-compress/Compile": "pass",
+      "TestCorpus/brotli-compress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/brotli-compress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "brotli-decompress",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/brotli-decompress/Decode": "pass",
+      "TestCorpus/brotli-decompress/Validate": "pass",
+      "TestCorpus/brotli-decompress/Compile": "pass",
+      "TestCorpus/brotli-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/brotli-decompress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "jq-json-transform",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/jq-json-transform/Decode": "pass",
+      "TestCorpus/jq-json-transform/Validate": "pass",
+      "TestCorpus/jq-json-transform/Compile": "pass",
+      "TestCorpus/jq-json-transform/CompileFull": "pass",
+      "TestApplicationCorpusRuns/jq-json-transform/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "age-decrypt",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/age-decrypt/Decode": "pass",
+      "TestCorpus/age-decrypt/Validate": "pass",
+      "TestCorpus/age-decrypt/Compile": "pass",
+      "TestCorpus/age-decrypt/CompileFull": "pass",
+      "TestApplicationCorpusRuns/age-decrypt/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "age-keygen-public",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/age-keygen-public/Decode": "pass",
+      "TestCorpus/age-keygen-public/Validate": "pass",
+      "TestCorpus/age-keygen-public/Compile": "pass",
+      "TestCorpus/age-keygen-public/CompileFull": "pass",
+      "TestApplicationCorpusRuns/age-keygen-public/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lzmainfo-header",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/lzmainfo-header/Decode": "pass",
+      "TestCorpus/lzmainfo-header/Validate": "pass",
+      "TestCorpus/lzmainfo-header/Compile": "pass",
+      "TestCorpus/lzmainfo-header/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lzmainfo-header/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lzmadec-decompress",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/lzmadec-decompress/Decode": "pass",
+      "TestCorpus/lzmadec-decompress/Validate": "pass",
+      "TestCorpus/lzmadec-decompress/Compile": "pass",
+      "TestCorpus/lzmadec-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lzmadec-decompress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "xzdec-decompress",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/xzdec-decompress/Decode": "pass",
+      "TestCorpus/xzdec-decompress/Validate": "pass",
+      "TestCorpus/xzdec-decompress/Compile": "pass",
+      "TestCorpus/xzdec-decompress/CompileFull": "pass",
+      "TestApplicationCorpusRuns/xzdec-decompress/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sqlite3-query",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/sqlite3-query/Decode": "pass",
+      "TestCorpus/sqlite3-query/Validate": "pass",
+      "TestCorpus/sqlite3-query/Compile": "pass",
+      "TestCorpus/sqlite3-query/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sqlite3-query/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "duktape-script",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/duktape-script/Decode": "pass",
+      "TestCorpus/duktape-script/Validate": "pass",
+      "TestCorpus/duktape-script/Compile": "pass",
+      "TestCorpus/duktape-script/CompileFull": "pass",
+      "TestApplicationCorpusRuns/duktape-script/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "quickjs-script",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/quickjs-script/Decode": "pass",
+      "TestCorpus/quickjs-script/Validate": "pass",
+      "TestCorpus/quickjs-script/Compile": "pass",
+      "TestCorpus/quickjs-script/CompileFull": "pass",
+      "TestApplicationCorpusRuns/quickjs-script/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "swift-format-source",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/swift-format-source/Decode": "pass",
+      "TestCorpus/swift-format-source/Validate": "pass",
+      "TestCorpus/swift-format-source/Compile": "pass",
+      "TestCorpus/swift-format-source/CompileFull": "pass",
+      "TestApplicationCorpusRuns/swift-format-source/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "esbuild-minify",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/esbuild-minify/Decode": "pass",
+      "TestCorpus/esbuild-minify/Validate": "pass",
+      "TestCorpus/esbuild-minify/Compile": "pass",
+      "TestCorpus/esbuild-minify/CompileFull": "pass",
+      "TestApplicationCorpusRuns/esbuild-minify/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tiny",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/tiny/Decode": "pass",
+      "TestCorpus/tiny/Validate": "pass",
+      "TestCorpus/tiny/Compile": "pass",
+      "TestCorpus/tiny/CompileFull": "pass",
+      "TestCorpus/tiny/Instantiate": "pass",
+      "TestCorpus/tiny/Exec/add": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fib_rec",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/fib_rec/Decode": "pass",
+      "TestCorpus/fib_rec/Validate": "pass",
+      "TestCorpus/fib_rec/Compile": "pass",
+      "TestCorpus/fib_rec/CompileFull": "pass",
+      "TestCorpus/fib_rec/Instantiate": "pass",
+      "TestCorpus/fib_rec/Exec/fib": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "memory",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/memory/Decode": "pass",
+      "TestCorpus/memory/Validate": "pass",
+      "TestCorpus/memory/Compile": "pass",
+      "TestCorpus/memory/CompileFull": "pass",
+      "TestCorpus/memory/Instantiate": "pass",
+      "TestCorpus/memory/Exec/sum": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "memory_tree",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/memory_tree/Decode": "pass",
+      "TestCorpus/memory_tree/Validate": "pass",
+      "TestCorpus/memory_tree/Compile": "pass",
+      "TestCorpus/memory_tree/CompileFull": "pass",
+      "TestCorpus/memory_tree/Instantiate": "pass",
+      "TestCorpus/memory_tree/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "dispatch",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/dispatch/Decode": "pass",
+      "TestCorpus/dispatch/Validate": "pass",
+      "TestCorpus/dispatch/Compile": "pass",
+      "TestCorpus/dispatch/CompileFull": "pass",
+      "TestCorpus/dispatch/Instantiate": "pass",
+      "TestCorpus/dispatch/Exec/apply": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "many_funcs",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/many_funcs/Decode": "pass",
+      "TestCorpus/many_funcs/Validate": "pass",
+      "TestCorpus/many_funcs/Compile": "pass",
+      "TestCorpus/many_funcs/CompileFull": "pass",
+      "TestCorpus/many_funcs/Instantiate": "pass",
+      "TestCorpus/many_funcs/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "linked_list",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/linked_list/Decode": "pass",
+      "TestCorpus/linked_list/Validate": "pass",
+      "TestCorpus/linked_list/Compile": "pass",
+      "TestCorpus/linked_list/CompileFull": "pass",
+      "TestCorpus/linked_list/Instantiate": "pass",
+      "TestCorpus/linked_list/Exec/sum": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "nbody",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/nbody/Decode": "pass",
+      "TestCorpus/nbody/Validate": "pass",
+      "TestCorpus/nbody/Compile": "pass",
+      "TestCorpus/nbody/CompileFull": "pass",
+      "TestCorpus/nbody/Instantiate": "pass",
+      "TestCorpus/nbody/Exec/step": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fannkuch",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/fannkuch/Decode": "pass",
+      "TestCorpus/fannkuch/Validate": "pass",
+      "TestCorpus/fannkuch/Compile": "pass",
+      "TestCorpus/fannkuch/CompileFull": "pass",
+      "TestCorpus/fannkuch/Instantiate": "pass",
+      "TestCorpus/fannkuch/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "matmul",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/matmul/Decode": "pass",
+      "TestCorpus/matmul/Validate": "pass",
+      "TestCorpus/matmul/Compile": "pass",
+      "TestCorpus/matmul/CompileFull": "pass",
+      "TestCorpus/matmul/Instantiate": "pass",
+      "TestCorpus/matmul/Exec/run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sha256",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/sha256/Decode": "pass",
+      "TestCorpus/sha256/Validate": "pass",
+      "TestCorpus/sha256/Compile": "pass",
+      "TestCorpus/sha256/CompileFull": "pass",
+      "TestCorpus/sha256/Instantiate": "pass",
+      "TestCorpus/sha256/Exec/hashN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "raytrace",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/raytrace/Decode": "pass",
+      "TestCorpus/raytrace/Validate": "pass",
+      "TestCorpus/raytrace/Compile": "pass",
+      "TestCorpus/raytrace/CompileFull": "pass",
+      "TestCorpus/raytrace/Instantiate": "pass",
+      "TestCorpus/raytrace/Exec/render": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "json-as",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/json-as/Decode": "pass",
+      "TestCorpus/json-as/Validate": "pass",
+      "TestCorpus/json-as/Compile": "pass",
+      "TestCorpus/json-as/CompileFull": "pass",
+      "TestCorpus/json-as/Instantiate": "pass",
+      "TestCorpus/json-as/Exec/serializeN": "pass",
+      "TestCorpus/json-as/Exec/deserializeN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "blake-as",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/blake-as/Decode": "pass",
+      "TestCorpus/blake-as/Validate": "pass",
+      "TestCorpus/blake-as/Compile": "pass",
+      "TestCorpus/blake-as/CompileFull": "pass",
+      "TestCorpus/blake-as/Instantiate": "pass",
+      "TestCorpus/blake-as/Exec/hashN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "utf-as",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/utf-as/Decode": "pass",
+      "TestCorpus/utf-as/Validate": "pass",
+      "TestCorpus/utf-as/Compile": "pass",
+      "TestCorpus/utf-as/CompileFull": "pass",
+      "TestCorpus/utf-as/Instantiate": "pass",
+      "TestCorpus/utf-as/Exec/convertN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "json-as-simd",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/json-as-simd/Decode": "pass",
+      "TestCorpus/json-as-simd/Validate": "pass",
+      "TestCorpus/json-as-simd/Compile": "pass",
+      "TestCorpus/json-as-simd/CompileFull": "pass",
+      "TestCorpus/json-as-simd/Instantiate": "pass",
+      "TestCorpus/json-as-simd/Exec/serializeN": "pass",
+      "TestCorpus/json-as-simd/Exec/deserializeN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "blake-as-simd",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/blake-as-simd/Decode": "pass",
+      "TestCorpus/blake-as-simd/Validate": "pass",
+      "TestCorpus/blake-as-simd/Compile": "pass",
+      "TestCorpus/blake-as-simd/CompileFull": "pass",
+      "TestCorpus/blake-as-simd/Instantiate": "pass",
+      "TestCorpus/blake-as-simd/Exec/hashN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "utf-as-simd",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/utf-as-simd/Decode": "pass",
+      "TestCorpus/utf-as-simd/Validate": "pass",
+      "TestCorpus/utf-as-simd/Compile": "pass",
+      "TestCorpus/utf-as-simd/CompileFull": "pass",
+      "TestCorpus/utf-as-simd/Instantiate": "pass",
+      "TestCorpus/utf-as-simd/Exec/convertN": "pass",
+      "TestCorpus/utf-as-simd/Exec/validateN": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "coremark",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/coremark/Decode": "pass",
+      "TestCorpus/coremark/Validate": "pass",
+      "TestCorpus/coremark/Compile": "pass",
+      "TestCorpus/coremark/CompileFull": "pass",
+      "TestCorpus/coremark/Instantiate": "pass",
+      "TestCorpusSemanticExec/coremark/2k-performance": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "blake3",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/blake3/Decode": "pass",
+      "TestCorpus/blake3/Validate": "pass",
+      "TestCorpus/blake3/Compile": "pass",
+      "TestCorpus/blake3/CompileFull": "pass",
+      "TestCorpus/blake3/Instantiate": "pass",
+      "TestCorpusSemanticExec/blake3/hash": "pass",
+      "TestCorpusSemanticExec/blake3/keyed_hash": "pass",
+      "TestCorpusSemanticExec/blake3/derive_key": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "qoi",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/qoi/Decode": "pass",
+      "TestCorpus/qoi/Validate": "pass",
+      "TestCorpus/qoi/Compile": "pass",
+      "TestCorpus/qoi/CompileFull": "pass",
+      "TestCorpus/qoi/Instantiate": "pass",
+      "TestCorpusSemanticExec/qoi/encode": "pass",
+      "TestCorpusSemanticExec/qoi/decode": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lz4",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/lz4/Decode": "pass",
+      "TestCorpus/lz4/Validate": "pass",
+      "TestCorpus/lz4/Compile": "pass",
+      "TestCorpus/lz4/CompileFull": "pass",
+      "TestCorpus/lz4/Instantiate": "pass",
+      "TestCorpusSemanticExec/lz4/compress": "pass",
+      "TestCorpusSemanticExec/lz4/decompress": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "zlib",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/zlib/Decode": "pass",
+      "TestCorpus/zlib/Validate": "pass",
+      "TestCorpus/zlib/Compile": "pass",
+      "TestCorpus/zlib/CompileFull": "pass",
+      "TestCorpus/zlib/Instantiate": "pass",
+      "TestCorpusSemanticExec/zlib/inflate": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "zstd",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/zstd/Decode": "pass",
+      "TestCorpus/zstd/Validate": "pass",
+      "TestCorpus/zstd/Compile": "pass",
+      "TestCorpus/zstd/CompileFull": "pass",
+      "TestCorpus/zstd/Instantiate": "pass",
+      "TestCorpusSemanticExec/zstd/decompress": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "yyjson",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/yyjson/Decode": "pass",
+      "TestCorpus/yyjson/Validate": "pass",
+      "TestCorpus/yyjson/Compile": "pass",
+      "TestCorpus/yyjson/CompileFull": "pass",
+      "TestCorpus/yyjson/Instantiate": "pass",
+      "TestCorpusSemanticExec/yyjson/parse-edit-write": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "utf8proc",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/utf8proc/Decode": "pass",
+      "TestCorpus/utf8proc/Validate": "pass",
+      "TestCorpus/utf8proc/Compile": "pass",
+      "TestCorpus/utf8proc/CompileFull": "pass",
+      "TestCorpus/utf8proc/Instantiate": "pass",
+      "TestCorpusSemanticExec/utf8proc/normalize-casefold": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "xxhash",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/xxhash/Decode": "pass",
+      "TestCorpus/xxhash/Validate": "pass",
+      "TestCorpus/xxhash/Compile": "pass",
+      "TestCorpus/xxhash/CompileFull": "pass",
+      "TestCorpus/xxhash/Instantiate": "pass",
+      "TestCorpusSemanticExec/xxhash/xxh64-boundaries": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "libtommath",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/libtommath/Decode": "pass",
+      "TestCorpus/libtommath/Validate": "pass",
+      "TestCorpus/libtommath/Compile": "pass",
+      "TestCorpus/libtommath/CompileFull": "pass",
+      "TestCorpus/libtommath/Instantiate": "pass",
+      "TestCorpusSemanticExec/libtommath/modular-arithmetic": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "nanosvg",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/nanosvg/Decode": "pass",
+      "TestCorpus/nanosvg/Validate": "pass",
+      "TestCorpus/nanosvg/Compile": "pass",
+      "TestCorpus/nanosvg/CompileFull": "pass",
+      "TestCorpus/nanosvg/Instantiate": "pass",
+      "TestCorpusSemanticExec/nanosvg/parse-structure": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "kissfft",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/kissfft/Decode": "pass",
+      "TestCorpus/kissfft/Validate": "pass",
+      "TestCorpus/kissfft/Compile": "pass",
+      "TestCorpus/kissfft/CompileFull": "pass",
+      "TestCorpus/kissfft/Instantiate": "pass",
+      "TestCorpusSemanticExec/kissfft/complex-roundtrip": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "miniz",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/miniz/Decode": "pass",
+      "TestCorpus/miniz/Validate": "pass",
+      "TestCorpus/miniz/Compile": "pass",
+      "TestCorpus/miniz/CompileFull": "pass",
+      "TestCorpus/miniz/Instantiate": "pass",
+      "TestCorpusSemanticExec/miniz/deflate-roundtrip": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "monocypher",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/monocypher/Decode": "pass",
+      "TestCorpus/monocypher/Validate": "pass",
+      "TestCorpus/monocypher/Compile": "pass",
+      "TestCorpus/monocypher/CompileFull": "pass",
+      "TestCorpus/monocypher/Instantiate": "pass",
+      "TestCorpusSemanticExec/monocypher/aead-blake2b": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "drwav",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/drwav/Decode": "pass",
+      "TestCorpus/drwav/Validate": "pass",
+      "TestCorpus/drwav/Compile": "pass",
+      "TestCorpus/drwav/CompileFull": "pass",
+      "TestCorpus/drwav/Instantiate": "pass",
+      "TestCorpusSemanticExec/drwav/pcm-decode-seek": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "fastfloat",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/fastfloat/Decode": "pass",
+      "TestCorpus/fastfloat/Validate": "pass",
+      "TestCorpus/fastfloat/Compile": "pass",
+      "TestCorpus/fastfloat/CompileFull": "pass",
+      "TestCorpus/fastfloat/Instantiate": "pass",
+      "TestCorpusSemanticExec/fastfloat/decimal-parse": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "pcre2",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/pcre2/Decode": "pass",
+      "TestCorpus/pcre2/Validate": "pass",
+      "TestCorpus/pcre2/Compile": "pass",
+      "TestCorpus/pcre2/CompileFull": "pass",
+      "TestCorpus/pcre2/Instantiate": "pass",
+      "TestCorpusSemanticExec/pcre2/compile-match": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "cjson",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/cjson/Decode": "pass",
+      "TestCorpus/cjson/Validate": "pass",
+      "TestCorpus/cjson/Compile": "pass",
+      "TestCorpus/cjson/CompileFull": "pass",
+      "TestApplicationCorpusRuns/cjson/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lodepng",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/lodepng/Decode": "pass",
+      "TestCorpus/lodepng/Validate": "pass",
+      "TestCorpus/lodepng/Compile": "pass",
+      "TestCorpus/lodepng/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lodepng/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "wren",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/wren/Decode": "pass",
+      "TestCorpus/wren/Validate": "pass",
+      "TestCorpus/wren/Compile": "pass",
+      "TestCorpus/wren/CompileFull": "pass",
+      "TestApplicationCorpusRuns/wren/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tinyxml2",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/tinyxml2/Decode": "pass",
+      "TestCorpus/tinyxml2/Validate": "pass",
+      "TestCorpus/tinyxml2/Compile": "pass",
+      "TestCorpus/tinyxml2/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tinyxml2/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "lua",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/lua/Decode": "pass",
+      "TestCorpus/lua/Validate": "pass",
+      "TestCorpus/lua/Compile": "pass",
+      "TestCorpus/lua/CompileFull": "pass",
+      "TestApplicationCorpusRuns/lua/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-crc32",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/embench-crc32/Decode": "pass",
+      "TestCorpus/embench-crc32/Validate": "pass",
+      "TestCorpus/embench-crc32/Compile": "pass",
+      "TestCorpus/embench-crc32/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-crc32/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-huffbench",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/embench-huffbench/Decode": "pass",
+      "TestCorpus/embench-huffbench/Validate": "pass",
+      "TestCorpus/embench-huffbench/Compile": "pass",
+      "TestCorpus/embench-huffbench/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-huffbench/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-matmult-int",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/embench-matmult-int/Decode": "pass",
+      "TestCorpus/embench-matmult-int/Validate": "pass",
+      "TestCorpus/embench-matmult-int/Compile": "pass",
+      "TestCorpus/embench-matmult-int/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-matmult-int/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-nettle-aes",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/embench-nettle-aes/Decode": "pass",
+      "TestCorpus/embench-nettle-aes/Validate": "pass",
+      "TestCorpus/embench-nettle-aes/Compile": "pass",
+      "TestCorpus/embench-nettle-aes/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-nettle-aes/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-nettle-sha256",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/embench-nettle-sha256/Decode": "pass",
+      "TestCorpus/embench-nettle-sha256/Validate": "pass",
+      "TestCorpus/embench-nettle-sha256/Compile": "pass",
+      "TestCorpus/embench-nettle-sha256/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-nettle-sha256/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "embench-qrduino",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/embench-qrduino/Decode": "pass",
+      "TestCorpus/embench-qrduino/Validate": "pass",
+      "TestCorpus/embench-qrduino/Compile": "pass",
+      "TestCorpus/embench-qrduino/CompileFull": "pass",
+      "TestApplicationCorpusRuns/embench-qrduino/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sightglass-shootout-base64",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/sightglass-shootout-base64/Decode": "pass",
+      "TestCorpus/sightglass-shootout-base64/Validate": "pass",
+      "TestCorpus/sightglass-shootout-base64/Compile": "pass",
+      "TestCorpus/sightglass-shootout-base64/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sightglass-shootout-base64/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "sightglass-libsodium-hash",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/sightglass-libsodium-hash/Decode": "pass",
+      "TestCorpus/sightglass-libsodium-hash/Validate": "pass",
+      "TestCorpus/sightglass-libsodium-hash/Compile": "pass",
+      "TestCorpus/sightglass-libsodium-hash/CompileFull": "pass",
+      "TestApplicationCorpusRuns/sightglass-libsodium-hash/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "tacle-bsort",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/tacle-bsort/Decode": "pass",
+      "TestCorpus/tacle-bsort/Validate": "pass",
+      "TestCorpus/tacle-bsort/Compile": "pass",
+      "TestCorpus/tacle-bsort/CompileFull": "pass",
+      "TestApplicationCorpusRuns/tacle-bsort/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-2mm",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-2mm/Decode": "pass",
+      "TestCorpus/polybench-2mm/Validate": "pass",
+      "TestCorpus/polybench-2mm/Compile": "pass",
+      "TestCorpus/polybench-2mm/CompileFull": "pass",
+      "TestCorpus/polybench-2mm/Instantiate": "pass",
+      "TestCorpus/polybench-2mm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-3mm",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-3mm/Decode": "pass",
+      "TestCorpus/polybench-3mm/Validate": "pass",
+      "TestCorpus/polybench-3mm/Compile": "pass",
+      "TestCorpus/polybench-3mm/CompileFull": "pass",
+      "TestCorpus/polybench-3mm/Instantiate": "pass",
+      "TestCorpus/polybench-3mm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-adi",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-adi/Decode": "pass",
+      "TestCorpus/polybench-adi/Validate": "pass",
+      "TestCorpus/polybench-adi/Compile": "pass",
+      "TestCorpus/polybench-adi/CompileFull": "pass",
+      "TestCorpus/polybench-adi/Instantiate": "pass",
+      "TestCorpus/polybench-adi/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-atax",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-atax/Decode": "pass",
+      "TestCorpus/polybench-atax/Validate": "pass",
+      "TestCorpus/polybench-atax/Compile": "pass",
+      "TestCorpus/polybench-atax/CompileFull": "pass",
+      "TestCorpus/polybench-atax/Instantiate": "pass",
+      "TestCorpus/polybench-atax/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-bicg",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-bicg/Decode": "pass",
+      "TestCorpus/polybench-bicg/Validate": "pass",
+      "TestCorpus/polybench-bicg/Compile": "pass",
+      "TestCorpus/polybench-bicg/CompileFull": "pass",
+      "TestCorpus/polybench-bicg/Instantiate": "pass",
+      "TestCorpus/polybench-bicg/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-cholesky",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-cholesky/Decode": "pass",
+      "TestCorpus/polybench-cholesky/Validate": "pass",
+      "TestCorpus/polybench-cholesky/Compile": "pass",
+      "TestCorpus/polybench-cholesky/CompileFull": "pass",
+      "TestCorpus/polybench-cholesky/Instantiate": "pass",
+      "TestCorpus/polybench-cholesky/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-correlation",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-correlation/Decode": "pass",
+      "TestCorpus/polybench-correlation/Validate": "pass",
+      "TestCorpus/polybench-correlation/Compile": "pass",
+      "TestCorpus/polybench-correlation/CompileFull": "pass",
+      "TestCorpus/polybench-correlation/Instantiate": "pass",
+      "TestCorpus/polybench-correlation/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-covariance",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-covariance/Decode": "pass",
+      "TestCorpus/polybench-covariance/Validate": "pass",
+      "TestCorpus/polybench-covariance/Compile": "pass",
+      "TestCorpus/polybench-covariance/CompileFull": "pass",
+      "TestCorpus/polybench-covariance/Instantiate": "pass",
+      "TestCorpus/polybench-covariance/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-deriche",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-deriche/Decode": "pass",
+      "TestCorpus/polybench-deriche/Validate": "pass",
+      "TestCorpus/polybench-deriche/Compile": "pass",
+      "TestCorpus/polybench-deriche/CompileFull": "pass",
+      "TestCorpus/polybench-deriche/Instantiate": "pass",
+      "TestCorpus/polybench-deriche/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-doitgen",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-doitgen/Decode": "pass",
+      "TestCorpus/polybench-doitgen/Validate": "pass",
+      "TestCorpus/polybench-doitgen/Compile": "pass",
+      "TestCorpus/polybench-doitgen/CompileFull": "pass",
+      "TestCorpus/polybench-doitgen/Instantiate": "pass",
+      "TestCorpus/polybench-doitgen/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-durbin",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-durbin/Decode": "pass",
+      "TestCorpus/polybench-durbin/Validate": "pass",
+      "TestCorpus/polybench-durbin/Compile": "pass",
+      "TestCorpus/polybench-durbin/CompileFull": "pass",
+      "TestCorpus/polybench-durbin/Instantiate": "pass",
+      "TestCorpus/polybench-durbin/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-fdtd-2d",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-fdtd-2d/Decode": "pass",
+      "TestCorpus/polybench-fdtd-2d/Validate": "pass",
+      "TestCorpus/polybench-fdtd-2d/Compile": "pass",
+      "TestCorpus/polybench-fdtd-2d/CompileFull": "pass",
+      "TestCorpus/polybench-fdtd-2d/Instantiate": "pass",
+      "TestCorpus/polybench-fdtd-2d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-floyd-warshall",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-floyd-warshall/Decode": "pass",
+      "TestCorpus/polybench-floyd-warshall/Validate": "pass",
+      "TestCorpus/polybench-floyd-warshall/Compile": "pass",
+      "TestCorpus/polybench-floyd-warshall/CompileFull": "pass",
+      "TestCorpus/polybench-floyd-warshall/Instantiate": "pass",
+      "TestCorpus/polybench-floyd-warshall/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gemm",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-gemm/Decode": "pass",
+      "TestCorpus/polybench-gemm/Validate": "pass",
+      "TestCorpus/polybench-gemm/Compile": "pass",
+      "TestCorpus/polybench-gemm/CompileFull": "pass",
+      "TestCorpus/polybench-gemm/Instantiate": "pass",
+      "TestCorpus/polybench-gemm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gemver",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-gemver/Decode": "pass",
+      "TestCorpus/polybench-gemver/Validate": "pass",
+      "TestCorpus/polybench-gemver/Compile": "pass",
+      "TestCorpus/polybench-gemver/CompileFull": "pass",
+      "TestCorpus/polybench-gemver/Instantiate": "pass",
+      "TestCorpus/polybench-gemver/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gesummv",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-gesummv/Decode": "pass",
+      "TestCorpus/polybench-gesummv/Validate": "pass",
+      "TestCorpus/polybench-gesummv/Compile": "pass",
+      "TestCorpus/polybench-gesummv/CompileFull": "pass",
+      "TestCorpus/polybench-gesummv/Instantiate": "pass",
+      "TestCorpus/polybench-gesummv/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-gramschmidt",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-gramschmidt/Decode": "pass",
+      "TestCorpus/polybench-gramschmidt/Validate": "pass",
+      "TestCorpus/polybench-gramschmidt/Compile": "pass",
+      "TestCorpus/polybench-gramschmidt/CompileFull": "pass",
+      "TestCorpus/polybench-gramschmidt/Instantiate": "pass",
+      "TestCorpus/polybench-gramschmidt/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-heat-3d",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-heat-3d/Decode": "pass",
+      "TestCorpus/polybench-heat-3d/Validate": "pass",
+      "TestCorpus/polybench-heat-3d/Compile": "pass",
+      "TestCorpus/polybench-heat-3d/CompileFull": "pass",
+      "TestCorpus/polybench-heat-3d/Instantiate": "pass",
+      "TestCorpus/polybench-heat-3d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-jacobi-1d",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-jacobi-1d/Decode": "pass",
+      "TestCorpus/polybench-jacobi-1d/Validate": "pass",
+      "TestCorpus/polybench-jacobi-1d/Compile": "pass",
+      "TestCorpus/polybench-jacobi-1d/CompileFull": "pass",
+      "TestCorpus/polybench-jacobi-1d/Instantiate": "pass",
+      "TestCorpus/polybench-jacobi-1d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-jacobi-2d",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-jacobi-2d/Decode": "pass",
+      "TestCorpus/polybench-jacobi-2d/Validate": "pass",
+      "TestCorpus/polybench-jacobi-2d/Compile": "pass",
+      "TestCorpus/polybench-jacobi-2d/CompileFull": "pass",
+      "TestCorpus/polybench-jacobi-2d/Instantiate": "pass",
+      "TestCorpus/polybench-jacobi-2d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-lu",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-lu/Decode": "pass",
+      "TestCorpus/polybench-lu/Validate": "pass",
+      "TestCorpus/polybench-lu/Compile": "pass",
+      "TestCorpus/polybench-lu/CompileFull": "pass",
+      "TestCorpus/polybench-lu/Instantiate": "pass",
+      "TestCorpus/polybench-lu/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-ludcmp",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-ludcmp/Decode": "pass",
+      "TestCorpus/polybench-ludcmp/Validate": "pass",
+      "TestCorpus/polybench-ludcmp/Compile": "pass",
+      "TestCorpus/polybench-ludcmp/CompileFull": "pass",
+      "TestCorpus/polybench-ludcmp/Instantiate": "pass",
+      "TestCorpus/polybench-ludcmp/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-mvt",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-mvt/Decode": "pass",
+      "TestCorpus/polybench-mvt/Validate": "pass",
+      "TestCorpus/polybench-mvt/Compile": "pass",
+      "TestCorpus/polybench-mvt/CompileFull": "pass",
+      "TestCorpus/polybench-mvt/Instantiate": "pass",
+      "TestCorpus/polybench-mvt/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-nussinov",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-nussinov/Decode": "pass",
+      "TestCorpus/polybench-nussinov/Validate": "pass",
+      "TestCorpus/polybench-nussinov/Compile": "pass",
+      "TestCorpus/polybench-nussinov/CompileFull": "pass",
+      "TestCorpus/polybench-nussinov/Instantiate": "pass",
+      "TestCorpus/polybench-nussinov/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-seidel-2d",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-seidel-2d/Decode": "pass",
+      "TestCorpus/polybench-seidel-2d/Validate": "pass",
+      "TestCorpus/polybench-seidel-2d/Compile": "pass",
+      "TestCorpus/polybench-seidel-2d/CompileFull": "pass",
+      "TestCorpus/polybench-seidel-2d/Instantiate": "pass",
+      "TestCorpus/polybench-seidel-2d/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-symm",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-symm/Decode": "pass",
+      "TestCorpus/polybench-symm/Validate": "pass",
+      "TestCorpus/polybench-symm/Compile": "pass",
+      "TestCorpus/polybench-symm/CompileFull": "pass",
+      "TestCorpus/polybench-symm/Instantiate": "pass",
+      "TestCorpus/polybench-symm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-syr2k",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-syr2k/Decode": "pass",
+      "TestCorpus/polybench-syr2k/Validate": "pass",
+      "TestCorpus/polybench-syr2k/Compile": "pass",
+      "TestCorpus/polybench-syr2k/CompileFull": "pass",
+      "TestCorpus/polybench-syr2k/Instantiate": "pass",
+      "TestCorpus/polybench-syr2k/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-syrk",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-syrk/Decode": "pass",
+      "TestCorpus/polybench-syrk/Validate": "pass",
+      "TestCorpus/polybench-syrk/Compile": "pass",
+      "TestCorpus/polybench-syrk/CompileFull": "pass",
+      "TestCorpus/polybench-syrk/Instantiate": "pass",
+      "TestCorpus/polybench-syrk/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-trisolv",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-trisolv/Decode": "pass",
+      "TestCorpus/polybench-trisolv/Validate": "pass",
+      "TestCorpus/polybench-trisolv/Compile": "pass",
+      "TestCorpus/polybench-trisolv/CompileFull": "pass",
+      "TestCorpus/polybench-trisolv/Instantiate": "pass",
+      "TestCorpus/polybench-trisolv/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "polybench-trmm",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/polybench-trmm/Decode": "pass",
+      "TestCorpus/polybench-trmm/Validate": "pass",
+      "TestCorpus/polybench-trmm/Compile": "pass",
+      "TestCorpus/polybench-trmm/CompileFull": "pass",
+      "TestCorpus/polybench-trmm/Instantiate": "pass",
+      "TestCorpus/polybench-trmm/Exec/polybench_run": "pass"
+    },
+    "reference": null,
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "wren-modulo",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/wren-modulo/Decode": "pass",
+      "TestCorpus/wren-modulo/Validate": "pass",
+      "TestCorpus/wren-modulo/Compile": "pass",
+      "TestCorpus/wren-modulo/CompileFull": "pass",
+      "TestApplicationCorpusRuns/wren-modulo/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "grain-stdlib-array",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/grain-stdlib-array/Decode": "pass",
+      "TestCorpus/grain-stdlib-array/Validate": "pass",
+      "TestCorpus/grain-stdlib-array/Compile": "pass",
+      "TestCorpus/grain-stdlib-array/CompileFull": "pass",
+      "TestApplicationCorpusRuns/grain-stdlib-array/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "grain-stdlib-string",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/grain-stdlib-string/Decode": "pass",
+      "TestCorpus/grain-stdlib-string/Validate": "pass",
+      "TestCorpus/grain-stdlib-string/Compile": "pass",
+      "TestCorpus/grain-stdlib-string/CompileFull": "pass",
+      "TestApplicationCorpusRuns/grain-stdlib-string/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  },
+  {
+    "id": "grain-stdlib-json-subset",
+    "mode": "wago_regalloccheck",
+    "checks": {
+      "TestCorpus/grain-stdlib-json-subset/Decode": "pass",
+      "TestCorpus/grain-stdlib-json-subset/Validate": "pass",
+      "TestCorpus/grain-stdlib-json-subset/Compile": "pass",
+      "TestCorpus/grain-stdlib-json-subset/CompileFull": "pass",
+      "TestApplicationCorpusRuns/grain-stdlib-json-subset/wago": "pass"
+    },
+    "reference": {
+      "terminal": "pass",
+      "pinned_external_runtime": null
+    },
+    "command_exit": 0,
+    "verdict": "PASS"
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "pin": "bbe9ae5201e9d43907146e6af9262e8a2a0216d4",
+  "source": "/tmp/wago-compiler-repairs-probe/source",
+  "source_commit": "5c0309145c49cf95560d86c0102f0d0faa9b660b",
+  "test_commit": "bbe9ae5201e9d43907146e6af9262e8a2a0216d4",
+  "go": "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+  "go_sha256": "30969f97169d7f43fe6a085873d75613adc21e30818a8c61d95bd27275df4624",
+  "baseline": "3b04e68376024c689ec651adf1817955ea75d707",
+  "baseline_overlay": "commute_mem_address_test.go only",
+  "baseline_overlay_sha256": "fa3231212c240807b03f42e917c90178f14fbabc68126c0571b6794cbe185d69"
+}
