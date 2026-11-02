@@ -1,0 +1,10 @@
+{
+  "command": [
+    "go",
+    "run",
+    "./tests/tools/staticcheck-baseline",
+    "verify"
+  ],
+  "exit": 1,
+  "source": "working tree; two-file cleanup"
+}

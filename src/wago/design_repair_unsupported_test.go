@@ -67,10 +67,10 @@ func TestDesignRepairUnsupportedBulkAtomicity(t *testing.T) {
 		t.Fatal(err)
 	}
 	published := false
-	if err = in.publishConversionRange(nil, nil, 0, 2, []uint64{ref.token, ^uint64(0)}, func() { published = true }); err == nil || published {
+	if err = in.publishConversionRangeInvocation(gcConversionInvocation{}, nil, nil, 0, 2, []uint64{ref.token, ^uint64(0)}, func() { published = true }); err == nil || published {
 		t.Fatal("partial unsupported bulk publication")
 	}
-	if err = in.publishConversionRange(nil, nil, 0, 2, []uint64{ref.token, 0}, func() { published = true }); err != nil || !published {
+	if err = in.publishConversionRangeInvocation(gcConversionInvocation{}, nil, nil, 0, 2, []uint64{ref.token, 0}, func() { published = true }); err != nil || !published {
 		t.Fatalf("ordinary bulk rejected: %v", err)
 	}
 	original := make([]byte, 16)
