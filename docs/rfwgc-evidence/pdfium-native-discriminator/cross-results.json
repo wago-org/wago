@@ -1,0 +1,46 @@
+[
+  {
+    "mode": "ordinary",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-overlay=/tmp/_pdfium_overlay_0epqlv3o/overlay.json",
+      "-o",
+      "/tmp/_pdfium_overlay_0epqlv3o/test.bin",
+      "./src/wago"
+    ],
+    "exit": 0,
+    "scope": "Darwin ARM64 compile-only, no race, local source runtime equals candidate; not native acceptance"
+  },
+  {
+    "mode": "wagodebug",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-overlay=/tmp/_pdfium_overlay_0epqlv3o/overlay.json",
+      "-o",
+      "/tmp/_pdfium_overlay_0epqlv3o/test.bin",
+      "-tags=wagodebug",
+      "./src/wago"
+    ],
+    "exit": 0,
+    "scope": "Darwin ARM64 compile-only, no race, local source runtime equals candidate; not native acceptance"
+  },
+  {
+    "mode": "wago_regalloccheck",
+    "argv": [
+      "/home/dev/.local/share/mise/installs/go/1.27.1/bin/go",
+      "test",
+      "-c",
+      "-overlay=/tmp/_pdfium_overlay_0epqlv3o/overlay.json",
+      "-o",
+      "/tmp/_pdfium_overlay_0epqlv3o/test.bin",
+      "-tags=wago_regalloccheck",
+      "./src/wago"
+    ],
+    "exit": 0,
+    "scope": "Darwin ARM64 compile-only, no race, local source runtime equals candidate; not native acceptance"
+  }
+]
