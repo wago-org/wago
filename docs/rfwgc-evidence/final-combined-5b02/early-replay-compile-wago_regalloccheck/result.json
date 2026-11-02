@@ -1,0 +1,1131 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T13:30:26.320848585Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T13:30:26.324881326Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/installer",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:26.327099967Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/automation",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:26.328954313Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/command",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:26.402017895Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/handoff",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:26.402598086Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/internal/parallel",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:26.404046369Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/pluginmenu",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:26.40602048Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/profiling",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:26.408074862Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/project",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:26.692730256Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/settings",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:26.693373565Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/internal/settings/cmd/genschema",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:26.694564554Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/tui",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:26.695061178Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/internal/ui",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:26.76130015Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/wasmcall",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:26.763195203Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/internal/watchsupervisor",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.854939091Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T13:30:27.857664213Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/auth",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.859687166Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/auth/login",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:27.860202846Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/auth/logout",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.860211893Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/auth/whoami",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.860219377Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/cache",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.861748131Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/cache/clean",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:27.862318043Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/cache/dir",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.862327721Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/cache/options",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.863540581Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/cache/prune",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.864049377Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/cache/size",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.865596055Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/compile",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:27.867437957Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/config",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.867994123Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/config/completions",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.868006185Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/config/diff",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.868015062Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/config/get",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.868025482Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/config/list",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.868033497Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/config/options",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.868042744Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/config/reset",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.86805137Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/config/set",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.869837859Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/init",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:27.872031803Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.874001376Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/add",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.874592156Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/catalog",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.875991487Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/config",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.876557882Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/deprecate",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.877965989Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/grant",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.878647009Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/outdated",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.878657549Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/publish",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.878667147Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/rebuild",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.880026923Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/remove",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.880698085Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/tree",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.880708675Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/unpublish",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.882209837Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/plugin/update",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.882801449Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/self",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.882812129Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/self/uninstall",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.884125788Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/self/update",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.884652448Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/status",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.886042712Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/update",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.887991536Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/version",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.888547401Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/version/current",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.889847635Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/version/install",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.890305656Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/version/list",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.891602254Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/version/switch",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.892131779Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/version/uninstall",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.8934942Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/version/update",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.894011352Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/commands/version/which",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:27.895256633Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/cache",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:27.897141416Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/config",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:28.416322073Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/plugin",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T13:30:28.418984407Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/plugin/build",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:28.42099644Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/plugin/gocommand",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:28.42270985Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/progress",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:28.625747801Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/registry",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T13:30:28.821435914Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/self",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:28.822489384Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/self/replace",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:28.954835071Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/standalone",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:29.105504583Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/status",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:29.60544085Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/manager/internal/version",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T13:30:30.161452962Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:30.162927524Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/runtime/commands/module",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:30.162939937Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/runtime/commands/module/capabilities",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:30.164240232Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime/commands",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:30.164421252Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime/commands/module/exports",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:30.164746834Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/runtime/commands/module/imports",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:30.16475544Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/runtime/commands/plugin",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:30.322675092Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime/commands/plugin/inspect",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:30.352589428Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime/commands/plugin/list",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:31.109969759Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime/commands/run",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:31.113197587Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime/commands/validate",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:31.135068522Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime/internal/module",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:31.137664402Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime/internal/modulefile",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:31.387180685Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime/internal/plugin",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:31.387993333Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/cli/runtime/internal/profile",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:31.389757269Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/runtime/internal/version",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:31.72895921Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/standalone",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:31.793848886Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/cli/wago",
+      "Elapsed": 0.003
+    },
+    {
+      "Time": "2026-11-02T13:30:31.795257183Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/codegen",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:31.795270047Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/codegen/amd64",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:31.795282681Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/codegen/arm64",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:31.795292219Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/codegen/riscv64",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:32.042256513Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/01-hello",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:32.10444956Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/02-runtime-typed",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:32.341009876Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/03-host-import",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:32.399334369Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/04-memory",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:32.644376039Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/05-globals",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:32.709508421Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/06-runtime-service",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:32.947024333Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/07-runtime-limits",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:33.126331279Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/08-custom-plugin",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:33.240568802Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/09-plugin-config-lifecycle",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:33.446674066Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/10-hooks",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:33.541181268Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/11-source-transform",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:33.765511022Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/12-caller-context",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:33.843646498Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/13-plugin-contracts",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:33.970596498Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/14-handles",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:34.15499703Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/15-config",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:34.285968159Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/17-managed-instances",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:34.472506439Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/18-custom-instruction",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:34.609108665Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/19-custom-type",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:34.797800362Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/20-core-handles",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:34.94210063Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/21-guest-storage",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.122639511Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/22-language-guests",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.251185943Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/23-public-api",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.385227414Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/internal/exampleplugin",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.617273392Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/examples/internal/mods",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.620875614Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/actionartifact",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.623366877Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/atomicfile",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.625465402Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/filelock",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.627348522Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/functionworkers",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:35.629618058Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/genfacade",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.632418382Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/httpclient",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.634790963Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/installbootstrap",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:35.636631934Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jitprofile",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:35.702957107Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/jsonstrict",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.75369624Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/managedrelease",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:35.799400408Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/namecheck",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:36.411616899Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/profcapture",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:36.41215995Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/internal/profilecmd",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:36.700820054Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/regalloccheck",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:36.702592586Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/regularfile",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:36.702985425Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/internal/runtimebridge",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:36.709875668Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/sourcearchive",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:36.710475015Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/internal/standalonegen",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:36.800651004Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/internal/wagopaths",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:36.975031298Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/plugin",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:36.976989288Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/profile",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:37.045924768Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/scripts/compilemem",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:37.045938214Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/src/core/codeimage",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:37.130760037Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:44.860469343Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:44.862898129Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:45.687305282Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:45.904541775Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:45.942673577Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/codegen",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:46.946398729Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/frontend",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:46.948587724Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/ir",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:46.950421822Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/optimization",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:49.645794694Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/compiler/wasm",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:49.646827766Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/src/core/compiler/wasm/internal/geninstrnames",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:49.648251392Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/encoder/amd64",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:49.650216205Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/encoder/arm64",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:49.652244368Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/encoder/riscv64",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:49.654102651Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/nativeabi",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:49.65601196Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/plugins",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:49.698278024Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:49.74870031Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/abi",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:49.799733925Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:49.881809154Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/gc/native",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:49.94015242Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/hostthunk",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:50.129814955Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/runtime/riscv64",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:50.131508068Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/core/semver",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:50.411108782Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/src/wago",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:50.417413274Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/conformance/spectest",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:50.419160819Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/conformance/wasmtime",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:50.769917865Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/fuzz/engine/oracle",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:50.771269977Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/tests/fuzz/engine/worker",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:50.772604636Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:51.071571856Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/runtimeconcurrency",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:51.074557248Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/support/compilerpair",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:51.097615404Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/support/regressioncorpus",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:51.172581919Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/support/regressiontest",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:51.245256034Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/support/ruleguide",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:51.32182941Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/support/simdfixture",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:51.322383481Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/tests/support/summaryfixtures",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.589293679Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/support/wasmtest",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:51.589819187Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/tests/tools/amd64-sse2-check",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.591293779Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/tools/ci-plan",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:51.593054098Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/tools/docs-check",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:51.669208205Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/tools/regression-corpus",
+      "Elapsed": 0.002
+    },
+    {
+      "Time": "2026-11-02T13:30:51.669930954Z",
+      "Action": "skip",
+      "Package": "github.com/wago-org/wago/tests/tools/release-qualification",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.733199037Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/tools/staticcheck-baseline",
+      "Elapsed": 0.001
+    },
+    {
+      "Time": "2026-11-02T13:30:51.75892583Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/tools/tinygo-cache",
+      "Elapsed": 0.001
+    }
+  ],
+  "raw_sha256": "fcc6a36d2a5f8d7509decdbec8732eaad8c049ca38ed5d05ee5d21f5137cca5d",
+  "driver_unchanged": true
+}

@@ -1,6 +1,6 @@
 {
   "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-  "remaining_count": 220,
+  "remaining_count": 207,
   "remaining": [
     {
       "suite": "full-root-replay-ordinary",
@@ -198,7 +198,7 @@
       "suite": "catalog-wago_regalloccheck",
       "receipt_suite": "catalog-wago_regalloccheck",
       "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
-      "verdict": "NOT_RUN"
+      "verdict": "RUNNING"
     },
     {
       "suite": "graphs-port-ordinary",
@@ -1173,30 +1173,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "early-replay-discovery-ordinary",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "early-replay-compile-ordinary",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "early-replay-cipolicy-ordinary",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "repair-census-ordinary",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "tinygo-repair-ordinary",
       "receipt_suite": null,
       "source": null,
@@ -1215,30 +1191,6 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "early-replay-discovery-wagodebug",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "early-replay-compile-wagodebug",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "early-replay-cipolicy-wagodebug",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "repair-census-wagodebug",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "tinygo-repair-wagodebug",
       "receipt_suite": null,
       "source": null,
@@ -1252,30 +1204,6 @@
     },
     {
       "suite": "qemu-repairs/riscv64-wagodebug-guest",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "early-replay-discovery-wago_regalloccheck",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "early-replay-compile-wago_regalloccheck",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "early-replay-cipolicy-wago_regalloccheck",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
-      "suite": "repair-census-wago_regalloccheck",
       "receipt_suite": null,
       "source": null,
       "verdict": "NOT_RUN"
@@ -1305,16 +1233,10 @@
       "verdict": "NOT_RUN"
     },
     {
-      "suite": "tinygo-unsupported-global-ordinary",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
-    },
-    {
       "suite": "tinygo-unsupported-global-wagodebug",
-      "receipt_suite": null,
-      "source": null,
-      "verdict": "NOT_RUN"
+      "receipt_suite": "tinygo-unsupported-global-wagodebug",
+      "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+      "verdict": "RUNNING"
     },
     {
       "suite": "tinygo-unsupported-global-wago_regalloccheck",
@@ -1323,5 +1245,19 @@
       "verdict": "NOT_RUN"
     }
   ],
-  "completed": []
+  "completed": [
+    "early-replay-discovery-ordinary",
+    "early-replay-compile-ordinary",
+    "early-replay-cipolicy-ordinary",
+    "repair-census-ordinary",
+    "early-replay-discovery-wagodebug",
+    "early-replay-compile-wagodebug",
+    "early-replay-cipolicy-wagodebug",
+    "repair-census-wagodebug",
+    "early-replay-discovery-wago_regalloccheck",
+    "early-replay-compile-wago_regalloccheck",
+    "early-replay-cipolicy-wago_regalloccheck",
+    "repair-census-wago_regalloccheck",
+    "tinygo-unsupported-global-ordinary"
+  ]
 }

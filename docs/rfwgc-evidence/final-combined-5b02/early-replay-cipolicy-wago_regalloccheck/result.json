@@ -1,0 +1,134 @@
+{
+  "source": "5b02ec67afe0dce181a7f8d508e270c7ecb0ecfc",
+  "exit": 0,
+  "verdict": "PASS",
+  "events": [
+    {
+      "Time": "2026-11-02T13:30:51.936999208Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestJustInstallUsesCurrentHeadAndLocalInstallerOverrides",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.937342894Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestWorkflowActionsUseImmutableCommits",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.93744191Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestCIUsesPinnedJustTaskRunner",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.937621438Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestLongNativeCorpusRunsAreShardedAndVerified",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.937780447Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestCorpusDownloadsAreBoundedAndSeparateFromTests",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.937830281Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestCanaryPublishesCommitAddressedArtifactsWithoutTags",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.937886196Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestRegressionStressUsesReusableWorkflowProfiles",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.937907977Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestInstallerPublishStagesRemovedBootstraps",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.938144641Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestAggregateCIRequiresEveryWorkflowJob",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.938300034Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestWebAssemblyV1ConformanceIsRequiredOnLinuxTargets",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.938444235Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestCIDoesNotScheduleCoverage",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.938786198Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestReleasePublishesOnlyExactQualifiedArtifacts",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.938846902Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestWindowsWABTInstallIsPinnedAndVerified",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.938934887Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestRuntimeConcurrencyHarnessRunsOnLinuxAMD64AndARM64",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.938992585Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestDocsChangesRunDocumentationValidation",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.939049543Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestDocsOnlyChangesSkipCodeMatrix",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.939252093Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Test": "TestPinnedQualificationIsolatedAndAcyclic",
+      "Elapsed": 0
+    },
+    {
+      "Time": "2026-11-02T13:30:51.939475603Z",
+      "Action": "pass",
+      "Package": "github.com/wago-org/wago/tests/integration/cipolicy",
+      "Elapsed": 0.004
+    }
+  ],
+  "raw_sha256": "54f04beb7e4502ef4926fef4e5f665bd1f1e7d7de73379906339d65489c53ba4",
+  "driver_unchanged": true
+}
