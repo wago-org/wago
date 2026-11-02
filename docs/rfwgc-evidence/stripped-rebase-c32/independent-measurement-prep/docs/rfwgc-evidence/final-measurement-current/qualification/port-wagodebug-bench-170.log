@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/embench-crc32
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/embench-crc32
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/embench-crc32 (0.00s)
+PASS

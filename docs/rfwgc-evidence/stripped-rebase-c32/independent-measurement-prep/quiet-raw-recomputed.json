@@ -1,0 +1,74 @@
+[
+  {
+    "case": "qualifying",
+    "variant": "baseline-off",
+    "n": 10,
+    "median_ns": 130332.0
+  },
+  {
+    "case": "qualifying",
+    "variant": "port-off",
+    "n": 10,
+    "median_ns": 127954.5
+  },
+  {
+    "case": "qualifying",
+    "variant": "port-on",
+    "n": 10,
+    "median_ns": 157820.5
+  },
+  {
+    "case": "qualifying",
+    "variant": "analysis",
+    "n": 10,
+    "median_ns": 28791.5
+  },
+  {
+    "case": "nonqualifying",
+    "variant": "baseline-off",
+    "n": 10,
+    "median_ns": 127484.5
+  },
+  {
+    "case": "nonqualifying",
+    "variant": "port-off",
+    "n": 10,
+    "median_ns": 125702.0
+  },
+  {
+    "case": "nonqualifying",
+    "variant": "port-on",
+    "n": 10,
+    "median_ns": 131004.5
+  },
+  {
+    "case": "nonqualifying",
+    "variant": "analysis",
+    "n": 10,
+    "median_ns": 4599.0
+  },
+  {
+    "case": "no-gc",
+    "variant": "baseline-off",
+    "n": 10,
+    "median_ns": 42282.5
+  },
+  {
+    "case": "no-gc",
+    "variant": "port-off",
+    "n": 10,
+    "median_ns": 41620.0
+  },
+  {
+    "case": "no-gc",
+    "variant": "port-on",
+    "n": 10,
+    "median_ns": 42599.5
+  },
+  {
+    "case": "no-gc",
+    "variant": "analysis",
+    "n": 10,
+    "median_ns": 820.3
+  }
+]

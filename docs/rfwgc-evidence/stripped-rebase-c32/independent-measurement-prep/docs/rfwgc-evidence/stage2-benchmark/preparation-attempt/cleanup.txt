@@ -1,0 +1,1 @@
+TemporaryDirectory exited: all archives, binaries, GOTMPDIR and private GOCACHE removed.

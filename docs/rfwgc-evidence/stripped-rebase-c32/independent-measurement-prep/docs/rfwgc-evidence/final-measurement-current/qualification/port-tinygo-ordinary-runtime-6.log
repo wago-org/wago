@@ -1,0 +1,3 @@
+=== RUN   TestTinyGoForeignStackGCPreparedEntry
+--- PASS: TestTinyGoForeignStackGCPreparedEntry (0.00s)
+PASS

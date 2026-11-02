@@ -1,0 +1,36 @@
+{
+  "utc": "2026-11-02T21:40:06.836147+00:00",
+  "candidate": "c32ebece3674cc2a4c79099753f3238202c7226d",
+  "baseline": "90f2b57dafa7f8c3cc7e3aca38b91148f15e1d1e",
+  "archive": "e404c5a7b74953d5588c36fe508601dc5046eee8",
+  "status": "BLOCKED_BEFORE_ACQUISITION",
+  "benchmarks": 0,
+  "calibrations": 0,
+  "accepted_samples": 0,
+  "rejected_samples": 0,
+  "locks_acquired": false,
+  "owned_background_processes": [],
+  "new_builds_or_tests": false,
+  "lock_files": [
+    {
+      "path": "/home/dev/Projects/wago/.performance-measurement.lock",
+      "device": 66306,
+      "inode": 23986265,
+      "size": 0
+    },
+    {
+      "path": "/tmp/gc-trim-regate-laptop-timing.lock",
+      "device": 88,
+      "inode": 15622735,
+      "size": 0
+    }
+  ],
+  "sensors": [
+    {
+      "driver": "k10temp",
+      "path": "/sys/devices/pci0000:00/0000:00:18.3/hwmon/hwmon6/temp1_input",
+      "millidegrees": "72625"
+    }
+  ],
+  "standard_throttle_counter_paths": []
+}

@@ -1,0 +1,12 @@
+{
+  "head": "c32ebece3674cc2a4c79099753f3238202c7226d",
+  "attempt": 1,
+  "conclusion": "cancelled",
+  "jobs": {
+    "cancelled": 17,
+    "skipped": 2,
+    "failure": 1
+  },
+  "cause": "Cancellation initiator/cause unknown; required job cancellation caused aggregate failure, no demonstrated port test failure",
+  "retry": "Not started; coordinate with measurement no-new-starts"
+}

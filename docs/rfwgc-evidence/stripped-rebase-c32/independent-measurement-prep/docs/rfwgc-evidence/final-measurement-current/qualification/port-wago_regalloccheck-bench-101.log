@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/many_funcs.run
+    final_preparation_test.go:28: FM_LEAF BenchmarkExec/many_funcs.run
+--- PASS: TestFinalPreparationRuntime (0.01s)
+    --- PASS: TestFinalPreparationRuntime/many_funcs.run (0.00s)
+PASS

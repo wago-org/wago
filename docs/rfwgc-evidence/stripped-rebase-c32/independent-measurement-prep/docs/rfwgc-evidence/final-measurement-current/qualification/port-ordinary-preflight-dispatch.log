@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/dispatch
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/dispatch
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/dispatch (0.00s)
+PASS

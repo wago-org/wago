@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/grain-stdlib-array
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/grain-stdlib-array
+--- PASS: TestFinalPreparationRuntime (0.08s)
+    --- PASS: TestFinalPreparationRuntime/grain-stdlib-array (0.07s)
+PASS

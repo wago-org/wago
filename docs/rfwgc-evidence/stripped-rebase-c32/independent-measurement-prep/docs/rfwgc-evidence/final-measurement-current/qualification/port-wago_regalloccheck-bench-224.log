@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/polybench-jacobi-1d
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/polybench-jacobi-1d
+--- PASS: TestFinalPreparationCompile (0.00s)
+    --- PASS: TestFinalPreparationCompile/polybench-jacobi-1d (0.00s)
+PASS

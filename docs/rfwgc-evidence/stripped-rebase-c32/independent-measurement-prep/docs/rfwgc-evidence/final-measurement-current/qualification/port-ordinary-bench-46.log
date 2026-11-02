@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationCompile
+=== RUN   TestFinalPreparationCompile/icepack-pack
+    final_preparation_test.go:14: FM_LEAF BenchmarkCompile/icepack-pack
+--- PASS: TestFinalPreparationCompile (0.05s)
+    --- PASS: TestFinalPreparationCompile/icepack-pack (0.04s)
+PASS

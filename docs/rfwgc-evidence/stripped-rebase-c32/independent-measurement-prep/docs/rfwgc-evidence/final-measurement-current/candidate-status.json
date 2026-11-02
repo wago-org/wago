@@ -1,0 +1,6 @@
+{
+  "status": "PREPARATION_ONLY",
+  "candidate_valid": false,
+  "source": "041f7ed4c376e2a33ce21b22075cd617ddca6597",
+  "reason": "Fresh build/check evidence does not qualify candidate. Parent QEMU failure unresolved; native Darwin/TinyGo audits, review, global drain, dual owner locks, qualified thermal/throttle visibility and measurement grant remain gates."
+}

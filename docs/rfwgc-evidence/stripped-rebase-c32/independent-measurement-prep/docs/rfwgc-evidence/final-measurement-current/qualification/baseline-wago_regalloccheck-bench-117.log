@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/blake-as.hashN
+    final_preparation_test.go:28: FM_LEAF BenchmarkExec/blake-as.hashN
+--- PASS: TestFinalPreparationRuntime (0.01s)
+    --- PASS: TestFinalPreparationRuntime/blake-as.hashN (0.00s)
+PASS

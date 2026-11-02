@@ -1,0 +1,6 @@
+=== RUN   TestFinalPreparationRuntime
+=== RUN   TestFinalPreparationRuntime/brotli-decompress
+    final_preparation_test.go:41: FM_LEAF BenchmarkCommandExec/brotli-decompress
+--- PASS: TestFinalPreparationRuntime (0.08s)
+    --- PASS: TestFinalPreparationRuntime/brotli-decompress (0.08s)
+PASS
