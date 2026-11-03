@@ -5,12 +5,18 @@ package wago
 import (
 	"context"
 	"encoding/binary"
+	"os"
+	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestExternStoreOrdinaryNonNullDispatchAvoidsStoreLock(t *testing.T) {
+	if runExternStoreLockProbe(t) {
+		return
+	}
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
 	defer rt.Close()
 	compiled, err := rt.Compile(benchExternrefTableModule())
@@ -41,6 +47,9 @@ func TestExternStoreOrdinaryNonNullDispatchAvoidsStoreLock(t *testing.T) {
 }
 
 func TestExternStoreBulkDispatchAvoidsStoreLockAndStaging(t *testing.T) {
+	if runExternStoreLockProbe(t) {
+		return
+	}
 	rt := NewRuntime()
 	defer rt.Close()
 	compiled, err := rt.Compile(watToWasm(t, `(module
@@ -181,4 +190,26 @@ func TestExternStoreByteBackedInitializerRetainsReceipt(t *testing.T) {
 			t.Fatal("byte-backed initializer product has no physical receipt")
 		}
 	})
+}
+
+// Isolate deliberate lock-held dispatch so a locking regression cannot strand
+// the suite. This deadline bounds deadlock failure; it is not a speed oracle.
+func runExternStoreLockProbe(t *testing.T) bool {
+	t.Helper()
+	const key = "WAGO_EXTERN_STORE_LOCK_PROBE"
+	if os.Getenv(key) == t.Name() {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+t.Name()+"$", "-test.count=1")
+	cmd.Env = append(os.Environ(), key+"="+t.Name())
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("lock-held dispatch did not complete before watchdog: %v\n%s", ctx.Err(), output)
+	}
+	if err != nil {
+		t.Fatalf("isolated lock-held dispatch: %v\n%s", err, output)
+	}
+	return true
 }
