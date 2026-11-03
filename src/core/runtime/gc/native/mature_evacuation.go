@@ -259,6 +259,56 @@ func (h *throughputHeap) restoreEvacuation(s evacuationCheckpoint) {
 func rawExtent(s throughputFreeSpan) handleEntry {
 	return handleEntry{off: s.off, size: s.size, space: spaceOld, class: uint16(len(throughputClassSizes))}
 }
+
+// runClaimPlanner mirrors the collector's shared old-run claim discipline.
+// Planning is serial, so nextRun needs no atomic operation; a run remains owned
+// by the worker that claimed it until that worker exhausts it.
+type runClaimPlanner struct {
+	runs      []throughputFreeSpan
+	workerRun []int
+	nextRun   int
+}
+
+func newRunClaimPlanner(runs []throughputFreeSpan, workers int) runClaimPlanner {
+	p := runClaimPlanner{
+		runs:      runs,
+		workerRun: make([]int, workers),
+	}
+	for i := range p.workerRun {
+		p.workerRun[i] = -1
+	}
+	return p
+}
+
+func (p *runClaimPlanner) destination(worker int, size uint32) (uint32, bool) {
+	r := p.workerRun[worker]
+	if r < 0 || p.runs[r].size < size {
+		if p.nextRun >= len(p.runs) {
+			return 0, false
+		}
+		r = p.nextRun
+		p.nextRun++
+		if p.runs[r].size < size {
+			return 0, false
+		}
+		p.workerRun[worker] = r
+	}
+	destination := p.runs[r].off
+	p.runs[r].off += size
+	p.runs[r].size -= size
+	return destination, true
+}
+
+func (p *runClaimPlanner) releaseTails(h *throughputHeap) error {
+	for _, run := range p.runs {
+		if run.size != 0 {
+			if err := h.free(rawExtent(run)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 func (h *throughputHeap) reserveEvacuationRun(s throughputFreeSpan) error {
 	end := uint64(s.off) + uint64(s.size)
 	if end > uint64(h.limit) {
@@ -356,32 +406,21 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 			return nil
 		}
 	}
-	// Deterministic per-participant streams: no helper allocation or claim race.
-	cursors := make([]uint32, len(runs))
-	for i, r := range runs {
-		cursors[i] = r.off
-	}
-	workerRun := make([]int, max(1, c.cfg.Workers))
-	for i := range workerRun {
-		workerRun[i] = i
-	}
+	// Deterministic per-participant streams share the serial run-claim cursor.
+	workers := max(1, c.cfg.Workers)
+	claims := newRunClaimPlanner(runs, workers)
 	plans := make([]plannedPromotion, 0, len(s.moves))
 	live := make([]matureMove, 0, len(s.moves))
 	for i, move := range s.moves {
 		n := h.handleAllocSize(move.before)
-		w := i % len(workerRun)
-		r := workerRun[w]
-		for r < len(runs) && uint64(cursors[r])+uint64(n) > uint64(runs[r].off)+uint64(runs[r].size) {
-			r += len(workerRun)
-		}
-		if r >= len(runs) {
+		w := i % workers
+		off, ok := claims.destination(w, n)
+		if !ok {
 			m.diagnostics.Evacuation = "packing"
 			return nil
 		}
-		workerRun[w] = r
 		dst := move.before
-		dst.off = cursors[r]
-		cursors[r] += n
+		dst.off = off
 		// Keep the original class/tail representation: exact physical bytes were reserved.
 		move.destination = dst
 		if c.mark[move.handle] {
@@ -394,14 +433,9 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 			}
 		}
 	}
-	for i, r := range runs {
-		end := r.off + r.size
-		if cursors[i] < end {
-			if err = h.free(rawExtent(throughputFreeSpan{cursors[i], end - cursors[i]})); err != nil {
-				m.diagnostics.Evacuation = "metadata"
-				return nil
-			}
-		}
+	if err = claims.releaseTails(h); err != nil {
+		m.diagnostics.Evacuation = "metadata"
+		return nil
 	}
 	for _, move := range live {
 		n := h.handleAllocSize(move.destination)
@@ -523,48 +557,31 @@ func (c *Collector) promoteWithRuns(plans []plannedPromotion, toSpace uint8, toB
 			return
 		}
 	}
-	cursors := make([]uint32, len(runs))
-	for i, r := range runs {
-		cursors[i] = r.off
-	}
-	next := make([]int, workers)
-	for i := range next {
-		next[i] = i
-	}
+	claims := newRunClaimPlanner(runs, workers)
 	index := 0
 	for i := range plans {
 		if plans[i].entry.space == spaceFree {
 			src := c.handles[plans[i].handle]
 			n := h.promotionAllocSize(src.size)
 			w := index % workers
-			r := next[w]
-			for r < len(runs) && uint64(cursors[r])+uint64(n) > uint64(runs[r].off)+uint64(runs[r].size) {
-				r += workers
-			}
-			if r >= len(runs) {
+			off, ok := claims.destination(w, n)
+			if !ok {
 				err = errors.New("gc: promotion run packing refused")
 				return
 			}
-			next[w] = r
 			index++
 			class := uint16(len(throughputClassSizes))
 			if n <= h.classLimit {
 				class = uint16(h.classFor(n))
 			}
-			plans[i].entry = handleEntry{off: cursors[r], size: src.size, space: spaceOld, class: class}
-			cursors[r] += n
+			plans[i].entry = handleEntry{off: off, size: src.size, space: spaceOld, class: class}
 		}
 		if err = injectFailure(c, failPromotionDestination); err != nil {
 			return
 		}
 	}
-	for i, r := range runs {
-		end := r.off + r.size
-		if cursors[i] < end {
-			if err = h.free(rawExtent(throughputFreeSpan{cursors[i], end - cursors[i]})); err != nil {
-				return
-			}
-		}
+	if err = claims.releaseTails(h); err != nil {
+		return
 	}
 	for range plans {
 		if err = injectFailure(c, failPromotionCommit); err != nil {
