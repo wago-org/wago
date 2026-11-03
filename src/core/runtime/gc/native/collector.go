@@ -100,7 +100,9 @@ type Config struct {
 	NurseryRegionShift uint8
 	// MatureEvacuation opts into pressure-triggered sparse old-space relocation.
 	MatureEvacuation bool
-	// Workers includes the coordinator; zero selects one, maximum eight.
+	// Workers is the maximum total including the coordinator; zero selects one,
+	// maximum eight. Helpers are subject to processor availability and a
+	// process-wide budget, so collection always permits coordinator-only progress.
 	Workers int
 }
 

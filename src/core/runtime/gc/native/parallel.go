@@ -64,6 +64,7 @@ type parallelCollector struct {
 	taskHook         func(phase uint8, worker int)
 	collector        *Collector
 	workers          []traceWorker
+	ownedHelpers     int // includes idle helpers until their goroutines terminate
 	joined           sync.WaitGroup
 	stopped          sync.WaitGroup
 	mu               sync.Mutex
@@ -181,33 +182,52 @@ func (c *Collector) parallelPool() *parallelCollector {
 	if p == nil {
 		p = &parallelCollector{collector: c, queue: make([]traceTask, 0, parallelQueueLimit)}
 		p.ready = sync.NewCond(&p.mu)
-		p.workers = make([]traceWorker, min(c.cfg.Workers, runtime.GOMAXPROCS(0)))
-		for i := range p.workers {
-			w := &p.workers[i]
-			w.pool = p
-			w.index = i
-			if i != 0 {
-				w.wake = make(chan *parallelPhase)
-				p.stopped.Add(1)
-				go w.loop()
-			}
-		}
+		// Helpers retain pointers to their worker records. Fix the backing store
+		// before any goroutine starts so later quiescent top-ups cannot relocate it.
+		p.workers = make([]traceWorker, 1, maxProcessGCHelpers+1)
+		p.workers[0].pool = p
 		c.parallel = p
 	}
+	p.growHelpers()
 	return p
+}
+
+// Collector operations are serialized, so pool admission and growth happen
+// only between phases. A GOMAXPROCS decrease does not revoke retained leases;
+// the next phase clamps its active set instead. An increase or released budget
+// may allow a denied pool to top up on its next eligible phase.
+func (p *parallelCollector) growHelpers() {
+	processorLimit := min(maxProcessGCHelpers, runtime.GOMAXPROCS(0)-1)
+	wanted := min(p.collector.cfg.Workers-1, processorLimit) - p.ownedHelpers
+	grant := claimProcessGCHelpers(wanted, processorLimit)
+	for range grant {
+		index := len(p.workers)
+		p.workers = append(p.workers, traceWorker{
+			pool:  p,
+			wake:  make(chan *parallelPhase),
+			index: index,
+		})
+		p.ownedHelpers++
+		p.stopped.Add(1)
+		go p.workers[index].loop()
+	}
+}
+
+func (p *parallelCollector) availableParticipants() int {
+	return min(1+p.ownedHelpers, max(1, runtime.GOMAXPROCS(0)))
 }
 
 // Participant policy is independent of exact destination reservation: all spans
 // are reserved by the coordinator before copy dispatch, even when only two run.
 func (p *parallelCollector) selectParticipants(work int) {
-	p.participants = min(len(p.workers), max(2, 1+(work-1)/parallelMinObjects))
+	available := p.availableParticipants()
+	p.participants = min(available, max(2, 1+(work-1)/parallelMinObjects))
 	c := p.collector
 	if !c.cfg.MatureEvacuation {
 		return
 	}
 	// Source byte quanta are policy only. Reservation workers and run credit
 	// remain fixed independently, including when history selects owner-only.
-	available := len(p.workers)
 	if p.hook != nil || p.taskHook != nil {
 		p.participants = available
 		return
@@ -455,7 +475,7 @@ func (c *Collector) copyMatureParallel(plans []plannedPromotion) bool {
 	p.phase = parallelCopy
 	p.selectParticipants(len(plans))
 	if m.diagnostics.Pressure {
-		p.participants = len(p.workers)
+		p.participants = p.availableParticipants()
 	}
 	m.diagnostics.CopyWorkers = p.participants
 	p.plans = plans
@@ -498,6 +518,8 @@ func (c *Collector) closeParallel() {
 			close(p.workers[i].wake)
 		}
 		p.stopped.Wait()
+		releaseProcessGCHelpers(p.ownedHelpers)
+		p.ownedHelpers = 0
 		c.parallel = nil
 	}
 }
