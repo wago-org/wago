@@ -847,7 +847,7 @@ func (h *throughputHeap) freeSpans() []throughputFreeSpan {
 	return out
 }
 
-func (h *throughputHeap) verify(handles []handleEntry) error {
+func (h *throughputHeap) verify(handles []handleEntry, reservations ...throughputFreeSpan) error {
 	if err := h.verifyMature(handles); err != nil {
 		return err
 	}
@@ -860,6 +860,18 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 	}
 	live := make([]throughputFreeSpan, 0)
 	var liveBytes uint64
+	if len(reservations) > 1 {
+		return errors.New("gc: multiple native throughput reservations")
+	}
+	if len(reservations) == 1 {
+		reservation := reservations[0]
+		if reservation.size == 0 || reservation.off%16 != 0 || reservation.size%16 != 0 ||
+			reservation.off+reservation.size < reservation.off || reservation.off+reservation.size > h.bump {
+			return errors.New("gc: native throughput reservation out of bounds")
+		}
+		liveBytes = uint64(reservation.size)
+		live = append(live, reservation)
+	}
 	for i, e := range handles {
 		if i == 0 || e.space == spaceFree || e.space == spaceNursery || e.space == spaceTiny {
 			continue
