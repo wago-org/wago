@@ -641,7 +641,7 @@ func tableSetMayCall(m *wasm.Module, index uint32) bool {
 	// references, without allocating a type lookup table during hint collection.
 	if tt.Ref.Heap().Kind() == wasm.HeapAbs {
 		switch tt.Ref.Heap().Abs() {
-		case wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern:
+		case wasm.HeapFunc, wasm.HeapNoFunc:
 			return false
 		}
 	}
@@ -677,7 +677,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
 				h.flags.set(hintModuleSIMD)
 			}
-			if gcOrAtomicInstructionMayCall(in.Kind) || shared.SharedMemoryGrowMayCall(m, in.Kind, in.Index) {
+			if gcOrAtomicInstructionMayCall(in.Kind) || shared.ExternStoreMayCall(m, in.Kind, in.Index) || shared.SharedMemoryGrowMayCall(m, in.Kind, in.Index) {
 				sub = true
 				h.flags.set(hintHasCall)
 				h.flags.set(hintHasNonDirectCall)
@@ -1342,6 +1342,17 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err != nil {
 				return true, 0, err
 			}
+			if op == 0x24 && shared.ExternStoreMayCall(s.m, wasm.InstrGlobalSet, idx) {
+				s.h.flags.set(hintHasCall)
+				s.h.markUnsupportedDynamicCall()
+				s.h.noteBoundaryEvent(shared.LocalEventCall, depth)
+				subHasCall = true
+				s.h.flags.set(hintHasNonDirectCall)
+				if loopDepth != 0 {
+					s.h.flags.set(hintHasLoopCall)
+				}
+			}
+
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
 					addGlobalHotness(s.globalHints, idx, 2*hotnessWeight)
@@ -1444,6 +1455,16 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 				subHasCall = true
 			}
+			if shared.ExternStoreMayCall(s.m, imm.Kind, imm.Index) {
+				s.h.flags.set(hintHasCall | hintHasNonDirectCall)
+				s.h.markUnsupportedDynamicCall()
+				s.h.noteBoundaryEvent(shared.LocalEventCall, depth)
+				if loopDepth != 0 {
+					s.h.flags.set(hintHasLoopCall)
+				}
+				subHasCall = true
+			}
+
 			switch imm.Kind {
 			case wasm.InstrMemoryGrow:
 				if !shared.SharedMemoryGrowMayCall(s.m, imm.Kind, imm.Index) {

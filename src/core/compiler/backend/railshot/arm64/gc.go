@@ -923,11 +923,12 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 }
 
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
+	mayAllocate := arm64GCHelperMayAllocate(helper) || f.gcFunctionMutationMayAllocate(helper, params)
 	before := f.a.Len()
 	defer func() {
 		n := f.a.Len() - before
 		f.stats.addGCHelperCallBytes(n)
-		if arm64GCHelperMayAllocate(helper) {
+		if mayAllocate {
 			f.stats.addGCAllocationBytes(n)
 		}
 		switch helper {
@@ -936,7 +937,7 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		}
 	}()
 	safepoint := uint32(0)
-	if f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && arm64GCHelperMayAllocate(helper) {
+	if f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && mayAllocate {
 		safepoint = f.recordGCFrameSafepoint(len(params))
 	}
 	dispatchHelper := helper
@@ -1167,4 +1168,22 @@ func stagedArrayType(m *wasm.Module, typeIndex uint32) (wasm.FieldType, bool) {
 		index -= uint32(len(group.SubTypes))
 	}
 	return wasm.FieldType{}, false
+}
+
+// Opaque function mutations can allocate a traced producer environment. Keep
+// numeric, collector-reference and ordinary extern storage nonallocating.
+func (f *fn) gcFunctionMutationMayAllocate(helper uint32, params []wasm.ValType) bool {
+	switch helper {
+	case gcStructSet:
+		return len(params) > 1 && wasm.FunctionReferenceType(f.m, params[1])
+	case gcArraySet, gcArrayFill:
+		return len(params) > 2 && wasm.FunctionReferenceType(f.m, params[2])
+	case gcArrayInitElem:
+		if len(params) == 0 || params[0].Kind() != wasm.ValRef {
+			return false
+		}
+		heap := params[0].Ref().Heap()
+		return heap.Kind() == wasm.HeapTypeIndex && wasm.FunctionStorageMutation(f.m, wasm.InstrArrayInitElem, heap.Type().Index, 0)
+	}
+	return false
 }

@@ -188,6 +188,11 @@ func (f *fn) globalSetIndex(x uint32) error {
 	}
 	f.materializePendingTraps()
 	gtv := wasm.GlobalValueType(gt)
+	if wasm.ExternReferenceType(gtv) {
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(x)})
+		return f.callGCStructHelper(54, []wasm.ValType{gtv, wasm.I32}, nil)
+	}
+
 	if wasm.EqualValType(gtv, wasm.V128) {
 		xmm := f.materializeV128(f.popValue())
 		f.fpinned = f.fpinned.add(xmm)

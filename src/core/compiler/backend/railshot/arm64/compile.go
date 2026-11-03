@@ -3257,6 +3257,11 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 				combined := append(code, make([]byte, padding)...)
 				combined = append(combined, fastCode...)
 				combinedAsm := &a64.Asm{B: combined}
+				// PatchBranch19 fills an initially empty immediate with OR. The
+				// router already names the +4 fallback: clear that displacement
+				// before retargeting, or its low bit can skip the fast prologue.
+				fallbackWord := rdWord(combined, router)
+				combinedAsm.PatchU32(router, fallbackWord&^(0x7ffff<<5))
 				if combinedAsm.PatchBranch19(router, oldLen+padding+fastInternal) {
 					code = combined
 					sc.asm.B = combined
@@ -3275,6 +3280,8 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 						stats.GCCodeBytes.Total += padding
 						stats.peep("native-import-guarded-variant")
 					}
+				} else {
+					combinedAsm.PatchU32(router, fallbackWord)
 				}
 			}
 		}
