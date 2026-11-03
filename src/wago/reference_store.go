@@ -32,6 +32,12 @@ import (
 // code and mmap-backed Wasm state carry the generation-checked uint64 handle.
 type referenceStore struct {
 	mu sync.Mutex
+	// conversionDomainEverEnabled is published before a conversion-capable
+	// instance can expose an identity or write a receipt into physical storage.
+	// It is monotonic: a false load proves that every externref word currently
+	// reachable in this Store is an ordinary Store token (or null), while true
+	// retains the authenticated conversion-store path forever.
+	conversionDomainEverEnabled atomic.Bool
 
 	private       bool
 	runtimeClosed bool

@@ -536,6 +536,10 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		if conversionStore == nil {
 			conversionStore = newReferenceStore(true)
 		}
+		// Publish the Store-wide conversion epoch before the state which can
+		// mint conversion identities becomes reachable. The bit never clears,
+		// including when this construction later rolls back.
+		conversionStore.conversionDomainEverEnabled.Store(true)
 		gcExternConversion, err = newGCExternConversionState(conversionStore, b.collector)
 		if err != nil {
 			return nil, err
