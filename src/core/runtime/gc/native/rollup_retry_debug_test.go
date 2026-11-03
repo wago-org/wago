@@ -53,7 +53,7 @@ func TestRollupEvacuationFailureKeepsCards(t *testing.T) {
 					t.Fatal("failure cleared cards")
 				}
 				if shift != 0 {
-					stage5Occupancy(t, &c.throughput, 32, 0, 0)
+					stage5Occupancy(t, &c.throughput, 32, 0)
 				}
 				if err = c.Verify(roots); err != nil {
 					t.Fatal(err)
@@ -72,7 +72,7 @@ func TestRollupEvacuationFailureKeepsCards(t *testing.T) {
 					t.Fatal("lost remembered child", err)
 				}
 				if shift != 0 {
-					stage5Occupancy(t, &c.throughput, 96, 0, 0)
+					stage5Occupancy(t, &c.throughput, 96, 0)
 				}
 			})
 		}
@@ -100,7 +100,7 @@ func TestRollupLargeAdmissionRetry(t *testing.T) {
 				if c.nativeStructAlloc.Count != 0 || c.throughput.bump != 0 || len(c.throughput.mem) != 0 || c.throughput.mature.admission {
 					t.Fatal("failed LOS retained reservation")
 				}
-				stage5Occupancy(t, &c.throughput, 0, 0, 0)
+				stage5Occupancy(t, &c.throughput, 0, 0)
 				large, err := c.NewArrayDefault(2, 2048)
 				if err != nil {
 					t.Fatal(err)
@@ -108,7 +108,7 @@ func TestRollupLargeAdmissionRetry(t *testing.T) {
 				if c.entry(large).off != 0 {
 					t.Fatal("retry lost extent")
 				}
-				stage5Occupancy(t, &c.throughput, 8208, 0, 8208)
+				stage5Occupancy(t, &c.throughput, 8208, 0)
 				if err = c.Verify(RefSliceRoots{large}); err != nil {
 					t.Fatal(err)
 				}

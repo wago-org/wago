@@ -33,7 +33,7 @@ func TestRFWGCMatureStage5MetadataRollback(t *testing.T) {
 	if !reflect.DeepEqual(before, c.handles) || !reflect.DeepEqual(source, c.nursery) || bump != c.nurseryBump {
 		t.Fatal("source publication during failed metadata admission")
 	}
-	stage5Occupancy(t, &c.throughput, 0, 0, 0)
+	stage5Occupancy(t, &c.throughput, 0, 0)
 	if c.throughput.bump != 0 || len(c.throughput.mem) != 0 || c.throughput.mature.admission || !c.throughput.mature.pressure {
 		t.Fatal("incomplete metadata rollback")
 	}
@@ -43,7 +43,7 @@ func TestRFWGCMatureStage5MetadataRollback(t *testing.T) {
 	if err = c.CollectMinor(stressRootSlots(roots)); err != nil {
 		t.Fatal(err)
 	}
-	stage5Occupancy(t, &c.throughput, 130*32, 0, 0)
+	stage5Occupancy(t, &c.throughput, 130*32, 0)
 	for i, r := range roots {
 		v, err := c.StructGet(Ref(r), 1)
 		if err != nil || v.I64() != int64(i) {
@@ -79,14 +79,14 @@ func TestRFWGCMatureStage5LateRollback(t *testing.T) {
 		if !reflect.DeepEqual(before, c.handles) || !reflect.DeepEqual(source, c.nursery) {
 			t.Fatal("partial handle/source publication")
 		}
-		stage5Occupancy(t, &c.throughput, 32, 0, 0)
+		stage5Occupancy(t, &c.throughput, 32, 0)
 		if err = c.Verify(roots); err != nil {
 			t.Fatal(err)
 		}
 		if err = c.CollectMinor(roots); err != nil {
 			t.Fatal(err)
 		}
-		stage5Occupancy(t, &c.throughput, 96, 0, 0)
+		stage5Occupancy(t, &c.throughput, 96, 0)
 		if c.entry(grandchild).space != spaceOld {
 			t.Fatal("lost consumed remembered edge on retry")
 		}
@@ -106,7 +106,7 @@ func TestRFWGCMatureStage5LargePreparationFailures(t *testing.T) {
 		if !errors.Is(err, errInjectedFailure) {
 			t.Fatalf("point %d: %v", point, err)
 		}
-		stage5Occupancy(t, &c.throughput, 0, 0, 0)
+		stage5Occupancy(t, &c.throughput, 0, 0)
 		if c.throughput.bump != 0 || len(c.throughput.mem) != 0 || c.throughput.mature.admission {
 			t.Fatal("large failure leaked reservation")
 		}
@@ -114,7 +114,7 @@ func TestRFWGCMatureStage5LargePreparationFailures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		stage5Occupancy(t, &c.throughput, 8208, 0, 8208)
+		stage5Occupancy(t, &c.throughput, 8208, 0)
 		if c.entry(r).off != 0 {
 			t.Fatal("retry lost extent")
 		}
@@ -135,7 +135,7 @@ func TestRFWGCMatureStage5RetirementRetry(t *testing.T) {
 	if len(c.throughput.pendingFree) == 0 {
 		t.Fatal("lost retirement debt")
 	}
-	stage5Occupancy(t, &c.throughput, 0, 0, 0)
+	stage5Occupancy(t, &c.throughput, 0, 0)
 	if err = c.CollectFull(EmptyRoots{}); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestRFWGCMatureStage5HighCardsRollback(t *testing.T) {
 	if *c.entry(child) != entry || *c.entry(slotChild) != slotEntry || *c.entry(array) != largeEntry {
 		t.Fatal("handle rollback changed source")
 	}
-	stage5Occupancy(t, &c.throughput, 65536+40016, 0, 65536+40016)
+	stage5Occupancy(t, &c.throughput, 65536+40016, 0)
 	if err = c.Verify(roots); err != nil {
 		t.Fatal(err)
 	}
@@ -198,5 +198,5 @@ func TestRFWGCMatureStage5HighCardsRollback(t *testing.T) {
 	if err != nil || v.I64() != 42 {
 		t.Fatal("lost high-card child")
 	}
-	stage5Occupancy(t, &c.throughput, 65536+40016+64, 0, 65536+40016)
+	stage5Occupancy(t, &c.throughput, 65536+40016+64, 0)
 }
