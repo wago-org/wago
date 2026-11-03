@@ -8,6 +8,138 @@ import (
 	goruntime "runtime"
 )
 
+// publishPublicGCScalarCertificate records immutable export, signature and
+// entry facts after the ordinary Invoke cache has checked them. The live call
+// still acquires the ordinary lifetime/gate and collector topology leases.
+func (in *Instance) publishPublicGCScalarCertificate(ic *invokeCache, sig FuncSig) {
+	if in == nil || ic == nil || ic.li < 0 || in.gc == nil || !in.syncMode ||
+		in.c == nil || in.c.NumImports != 0 || in.c.usesAtomicWaitHelpers() ||
+		len(sig.Params) != 0 || len(sig.Results) != 1 ||
+		sig.Results[0] == ValV128 || hasReferenceValType(sig.Results) {
+		return
+	}
+	fn := &WasmFunc{
+		in:              in,
+		export:          ic.export,
+		entry:           in.base + uintptr(in.c.Entry[ic.li]),
+		resultSlots:     1,
+		resultWide:      append([]bool(nil), ic.slotWide...),
+		gcMaintenance:   in.c.genericGCBoundaryCollectionSafe() || in.c.hasGCRefGlobals(),
+		gcPrepared:      true,
+		gcBoundarySafe:  in.c.genericGCBoundaryCollectionSafe(),
+		gcHasRefGlobals: in.c.hasGCRefGlobals(),
+		boundedWrapper:  ic.boundedWrapper,
+	}
+	if roots := in.c.genericGCFrameRoots(); roots != nil && ic.li < len(roots.deadInductionLayouts) && roots.deadInductionLayouts[ic.li] == ^uint64(0) {
+		fn.gcLifetimeScalar = true
+		fn.boundedWrapper = true
+	}
+	if !fn.gcMaintenance {
+		return
+	}
+	// The public certificate may use the private gate only when collection is
+	// already performed by the allocation helper with an exact native root
+	// plan. Certificates that need boundary collection or root reconciliation
+	// retain the ordinary checked route.
+	fn.configurePrivateGCContext(!codeProfileEnabled && !fn.gcHasRefGlobals && len(in.hostLog) == 0 &&
+		(!fn.gcBoundarySafe || in.c.genericGCFrameRoots() != nil && in.gc.CollectsOnAllocation()))
+	in.ensurePluginState().numericCacheState().publicGCScalar.Store(fn)
+}
+
+func (in *Instance) publicGCScalarCertificate(export string) *WasmFunc {
+	state := in.pluginState.Load()
+	if state == nil {
+		return nil
+	}
+	cache := state.numericCache.Load()
+	if cache == nil {
+		return nil
+	}
+	fn := cache.publicGCScalar.Load()
+	if fn == nil || fn.in != in || !sameExportName(fn.export, export) {
+		return nil
+	}
+	return fn
+}
+
+// invokePublicGCScalar is the checked public Invoke boundary for the narrow
+// cached signature. It specializes orchestration only: execution uses the
+// normal safe GC/native trampoline and the same live maintenance operations.
+func (fn *WasmFunc) invokePublicGCScalar() (result []uint64, resultErr error) {
+	if state := fn.tryBeginPrivateGCState(); state != nil {
+		return fn.invokePrivatePublicGCScalar(state)
+	}
+	in := fn.in
+	var lease preparedGCInvocationLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		if err := in.beginPreparedGCInvocation(&lease); err != nil {
+			resultErr = fmt.Errorf("invoke %q: %w", fn.export, err)
+			return
+		}
+		leaseOwned = true
+		result, resultErr = fn.invokePublicGCScalarAdmitted()
+	})
+	if leaseOwned {
+		cleanup.run(lease.unlockGCInvocation)
+	}
+	cleanup.finish()
+	return result, resultErr
+}
+
+// invokePrivatePublicGCScalar runs the zero-parameter public certificate under
+// the same revocable combined gate as the private one-parameter route. The
+// certificate proof excludes boundary collection and post-call global work.
+func (fn *WasmFunc) invokePrivatePublicGCScalar(state *instancePluginState) (out []uint64, err error) {
+	in := fn.in
+	defer in.endPrivateGCInvocation(state)
+	if err = validateNativeGCEntry(in); err != nil {
+		return nil, err
+	}
+	defer in.recoverBoundedNativeSyncPanic(&err)
+	state.invocationID = newInvocationID()
+	if activeHostInvocationBindings.Load() != 0 {
+		restore := bindHostInvocationParent(in, nil)
+		defer restore()
+	}
+	if err = fn.callPrivateGCBounded(state); err != nil {
+		return nil, err
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out = in.resultVals[:1]
+	if fn.resultWide[0] {
+		out[0] = binary.LittleEndian.Uint64(in.results)
+	} else {
+		out[0] = uint64(binary.LittleEndian.Uint32(in.results))
+	}
+	return out, nil
+}
+
+func (fn *WasmFunc) invokePublicGCScalarAdmitted() ([]uint64, error) {
+	in := fn.in
+	if err := in.collectGenericGCAtBoundary(); err != nil {
+		return nil, err
+	}
+	if len(in.hostLog) > 0 {
+		binary.LittleEndian.PutUint32(in.hostLog, 0)
+	}
+	executionErr := fn.callGCPrepared()
+	if err := in.reconcileGCGlobalRootsAfter(executionErr); err != nil {
+		return nil, err
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:1]
+	if fn.resultWide[0] {
+		out[0] = binary.LittleEndian.Uint64(in.results)
+	} else {
+		out[0] = uint64(binary.LittleEndian.Uint32(in.results))
+	}
+	return out, nil
+}
+
 // callGCPrepared runs under the ordinary invocation and GC domain leases. It
 // caches validated buffer/entry metadata. Certified private entries reuse
 // unchanged bindings; each helper return retains full GC rebinding.
@@ -42,10 +174,14 @@ func (fn *WasmFunc) callGCPrepared() (err error) {
 	}
 	if fn.boundedWrapper {
 		// Only compiler-proven bounded entries reach this path. Preserve the
-		// safepoint bits for the ordinary GC dispatcher while checking tags,
-		// helpers 42/43, root frame, and the two-argument/no-result ABI.
+		// safepoint bits for the ordinary GC dispatcher while checking the
+		// exact helper identity, root frame, and parked signature.
 		mask := ^uint32((shared.GCDispatchPayloadMask &^ shared.GCHelperIDMask) | 1)
-		err = fn.hostPrepared.CallBoundedHelper(runtimebridge.GrantHostScalarCall(), mask, gcStructDispatchBit|gcStructReserveDeadBatch, activation.dispatch)
+		if fn.gcLifetimeScalar {
+			err = fn.hostPrepared.CallBoundedHelperOne(runtimebridge.GrantHostScalarCall(), mask, fn.boundedGCHelper(), activation.dispatch)
+		} else {
+			err = fn.hostPrepared.CallBoundedHelper(runtimebridge.GrantHostScalarCall(), mask, fn.boundedGCHelper(), activation.dispatch)
+		}
 	} else {
 		err = fn.hostPrepared.Call(activation.dispatch, profileScalarFallback)
 	}
@@ -182,6 +318,14 @@ func gcPrivateNumericSignatures(c *Compiled) bool {
 	return true
 }
 
+// configurePrivateGCContext centralizes the immutable module and ownership
+// proof used by both prepared handles and the public zero-parameter certificate.
+func (fn *WasmFunc) configurePrivateGCContext(entryEligible bool) {
+	in := fn.in
+	fn.gcPrivateContext = entryEligible && fn.boundedWrapper && in.c.memoryCount() == 0 && !in.c.HasTable && len(in.c.Globals) == 0
+	fn.gcRevocableContext = fn.gcPrivateContext && in.rt == nil && !fn.directIntFast && !fn.directFloatFast && fn.directMixedInfo == 0 && gcPrivateNumericSignatures(in.c)
+}
+
 func (fn *WasmFunc) tryBeginPrivateGCState() *instancePluginState {
 	if !fn.gcRevocableContext {
 		return nil
@@ -241,13 +385,7 @@ func (fn *WasmFunc) invokePrivateGCScalarSlow(arg uint64, state *instancePluginS
 	}
 
 	binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(arg)))
-	if !fn.privateGCNativeContextValid(state) {
-		err = fn.callGCPrepared()
-	} else {
-		activation := hostLoopActivation{root: in, ctrl: offHeapSlicePtr(in.ctrl), state: state}
-		mask := ^uint32((shared.GCDispatchPayloadMask &^ shared.GCHelperIDMask) | 1)
-		err = fn.hostPrepared.CallBoundedHelper(runtimebridge.GrantHostScalarCall(), mask, gcStructDispatchBit|gcStructReserveDeadBatch, activation.dispatch)
-	}
+	err = fn.callPrivateGCBounded(state)
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	if err != nil {
@@ -256,6 +394,26 @@ func (fn *WasmFunc) invokePrivateGCScalarSlow(arg uint64, state *instancePluginS
 	out = in.resultVals[:1]
 	out[0] = uint64(binary.LittleEndian.Uint32(in.results))
 	return out, nil
+}
+
+func (fn *WasmFunc) callPrivateGCBounded(state *instancePluginState) error {
+	if !fn.privateGCNativeContextValid(state) {
+		return fn.callGCPrepared()
+	}
+	in := fn.in
+	activation := hostLoopActivation{root: in, ctrl: offHeapSlicePtr(in.ctrl), state: state}
+	mask := ^uint32((shared.GCDispatchPayloadMask &^ shared.GCHelperIDMask) | 1)
+	if fn.gcLifetimeScalar {
+		return fn.hostPrepared.CallBoundedHelperOne(runtimebridge.GrantHostScalarCall(), mask, fn.boundedGCHelper(), activation.dispatch)
+	}
+	return fn.hostPrepared.CallBoundedHelper(runtimebridge.GrantHostScalarCall(), mask, fn.boundedGCHelper(), activation.dispatch)
+}
+
+func (fn *WasmFunc) boundedGCHelper() uint32 {
+	if fn.gcLifetimeScalar {
+		return gcStructDispatchBit | gcStructReserveDeadNative
+	}
+	return gcStructDispatchBit | gcStructReserveDeadBatch
 }
 
 // Called before external access acquires collector or native-context locks.

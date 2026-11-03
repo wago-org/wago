@@ -32,7 +32,8 @@ func boundedMultiHostShapes(bindings []syncHostBinding) []uint32 {
 
 func (in *Instance) tryInvokeCachedMultiNumeric(export string, args []uint64) ([]uint64, error, bool) {
 	state := in.pluginState.Load()
-	if codeProfileEnabled || state == nil || state.multiHost == nil || !in.boundedHostSegments() ||
+	layout := state.multiHostLayout()
+	if codeProfileEnabled || layout == nil || !in.boundedHostSegments() ||
 		!in.tryBeginOrdinaryInvocation(state) {
 		return nil, nil, false
 	}
@@ -51,7 +52,7 @@ func (in *Instance) tryInvokeCachedMultiNumeric(export string, args []uint64) ([
 	}()
 	copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots], ic.paramWidthClass)
 	entry := in.base + uintptr(in.c.Entry[ic.li])
-	if err := in.callCachedBoundedMultiHost(entry, state.multiHost); err != nil {
+	if err := in.callCachedBoundedMultiHost(entry, layout); err != nil {
 		return nil, err, true
 	}
 	out := in.resultVals[:ic.resultSlots]
@@ -92,7 +93,7 @@ type boundedMultiHostLayout struct{ shapes []uint32 }
 
 func (in *Instance) hasBoundedMultiHostView() bool {
 	state := in.pluginState.Load()
-	return state != nil && state.multiHost != nil && in.boundedHostSegments() && in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0
+	return state.multiHostLayout() != nil && in.boundedHostSegments() && in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0
 }
 
 func (a *hostLoopActivation) dispatchBoundedMultiHostView(args, results []uint64) {

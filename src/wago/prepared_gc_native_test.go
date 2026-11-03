@@ -9,6 +9,7 @@ import (
 	rt "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -19,6 +20,209 @@ func preparedGCTrapModule() []byte {
 		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x45, 0x04, 0x40, 0, 0x0b, 0x20, 0, 0xfb, 0, 0, 0xfb, 2, 0, 0, 0x0b}))))
+}
+
+func publicGCScalarModule(result wasm.ValType, resultCode byte, body []byte) []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, resultCode, 0}, wasmtest.FuncType(nil, []wasm.ValType{result}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("value", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func publicGCScalarLifetimeModule(result wasm.ValType, resultCode byte, value []byte) []byte {
+	body := append(append([]byte(nil), value...), 0xfb, 0, 0, 0x21, 0, 0x20, 0, 0x22, 1, 0x1a, 0x01, 0x20, 1, 0xfb, 2, 0, 0, 0x0b)
+	code := append([]byte{1, 2, 0x63, 0}, body...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, resultCode, 0}, wasmtest.FuncType(nil, []wasm.ValType{result}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("value", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(code))), code...))),
+	)
+}
+
+func TestPublicGCScalarCertificateUsesSafePreparedBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		result     wasm.ValType
+		resultCode byte
+		value      []byte
+		want       uint64
+	}{
+		{"i32", wasm.I32, 0x7f, []byte{0x41, 42}, 42},
+		{"i64", wasm.I64, 0x7e, []byte{0x42, 43}, 43},
+		{"f32", wasm.F32, 0x7d, []byte{0x43, 0, 0, 0x80, 0x3f}, 0x3f800000},
+		{"f64", wasm.F64, 0x7c, []byte{0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f}, 0x3ff0000000000000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+			data := publicGCScalarModule(tc.result, tc.resultCode, append(append([]byte(nil), tc.value...), 0xfb, 0, 0, 0xfb, 2, 0, 0, 0x0b))
+			if runtime.GOARCH == "amd64" {
+				config = config.WithOptimization("gc-lifetime-analyze", true)
+				data = publicGCScalarLifetimeModule(tc.result, tc.resultCode, tc.value)
+			}
+			c, err := Compile(config, data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			got, err := in.Invoke("value")
+			if err != nil || len(got) != 1 || got[0] != tc.want {
+				t.Fatalf("cold result=%v err=%v", got, err)
+			}
+			fn := in.publicGCScalarCertificate("value")
+			if fn == nil || fn.hostPrepared != nil {
+				t.Fatalf("certificate=%p prepared=%p bounded=%v lifetime=%v private=%v revocable=%v", fn, fn.hostPrepared, fn != nil && fn.boundedWrapper, fn != nil && fn.gcLifetimeScalar, fn != nil && fn.gcPrivateContext, fn != nil && fn.gcRevocableContext)
+			}
+			got, err = in.Invoke("value")
+			if err != nil || len(got) != 1 || got[0] != tc.want || fn.hostPrepared == nil {
+				t.Fatalf("warm result=%v err=%v prepared=%p", got, err, fn.hostPrepared)
+			}
+			if fn.gcRevocableContext {
+				state := fn.tryBeginPrivateGCState()
+				if state == nil {
+					t.Fatal("warm public certificate did not acquire private gate")
+				}
+				got, err = fn.invokePrivatePublicGCScalar(state)
+				if err != nil || len(got) != 1 || got[0] != tc.want {
+					t.Fatalf("private result=%v err=%v", got, err)
+				}
+				// A changed version must fail the exact cached-context proof. The
+				// public call then takes the ordinary route and refreshes the cache.
+				in.ensurePluginState().nativeContextVersion.Add(1)
+				if state = fn.tryBeginPrivateGCState(); state != nil {
+					in.endPrivateGCInvocation(state)
+					t.Fatal("stale public context was admitted")
+				}
+				got, err = in.Invoke("value")
+				if err != nil || len(got) != 1 || got[0] != tc.want {
+					t.Fatalf("stale fallback result=%v err=%v", got, err)
+				}
+			}
+			if _, err = in.Invoke("value", 1); err == nil {
+				t.Fatal("ineligible arity did not use checked fallback")
+			}
+			in.Close()
+			if _, err = in.Invoke("value"); err == nil {
+				t.Fatal("closed instance accepted certified call")
+			}
+		})
+	}
+}
+
+func TestPublicGCScalarCertificateRevocationFallsBack(t *testing.T) {
+	if codeProfileEnabled {
+		t.Skip("profile builds retain ordinary GC entry")
+	}
+	if runtime.GOARCH != "amd64" {
+		t.Skip("lifetime scalar certificate is currently emitted on amd64")
+	}
+	for _, kind := range []string{"collection", "guarded-access", "reference-store", "publication"} {
+		t.Run(kind, func(t *testing.T) {
+			config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("gc-lifetime-analyze", true)
+			c, err := Compile(config, publicGCScalarLifetimeModule(wasm.I32, 0x7f, []byte{0x41, 42}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 128}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			for i := 0; i < 2; i++ {
+				if got, err := in.Invoke("value"); err != nil || len(got) != 1 || got[0] != 42 {
+					t.Fatalf("warm %d result=%v err=%v", i, got, err)
+				}
+			}
+			fn := in.publicGCScalarCertificate("value")
+			if !fn.gcRevocableContext {
+				t.Skip("diagnostic mode retained the ordinary checked route")
+			}
+			state := fn.tryBeginPrivateGCState()
+			if state == nil {
+				t.Fatal("warm public entry not admitted")
+			}
+			in.endPrivateGCInvocation(state)
+			switch kind {
+			case "collection":
+				err = in.CollectGC()
+			case "guarded-access":
+				unlock := in.lockInstanceNativeStateForHostAccess()
+				unlock()
+			case "reference-store":
+				_, err = in.NewExternRef("publication")
+			case "publication":
+				in.markNativeControlShared()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if state = fn.tryBeginPrivateGCState(); state != nil {
+				in.endPrivateGCInvocation(state)
+				t.Fatal("revoked public entry was admitted")
+			}
+			got, err := in.Invoke("value")
+			if err != nil || len(got) != 1 || got[0] != 42 {
+				t.Fatalf("fallback result=%v err=%v", got, err)
+			}
+		})
+	}
+}
+
+func TestPublicGCScalarCertificateRetainsCollectorLeaseAndTrap(t *testing.T) {
+	data := publicGCScalarModule(wasm.I32, 0x7f, []byte{0x41, 1, 0x04, 0x40, 0, 0x0b, 0x41, 7, 0xfb, 0, 0, 0xfb, 2, 0, 0, 0x0b})
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	store := newReferenceStore(false)
+	defer store.closeRuntime()
+	in, err := instantiateCore(c, InstantiateOptions{store: store, GC: GCConfig{NurseryBytes: 256, SurvivorBytes: 256}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err = in.Invoke("value"); err == nil {
+		t.Fatal("cold unreachable did not trap")
+	}
+	if in.publicGCScalarCertificate("value") == nil {
+		t.Fatal("trapping cold call did not publish checked certificate")
+	}
+	if _, err = in.Invoke("value"); err == nil {
+		t.Fatal("certified unreachable did not trap")
+	} else {
+		var trap *rt.TrapError
+		if !errors.As(err, &trap) || trap.Code != rt.TrapUnreachable {
+			t.Fatalf("wrong trap: %v", err)
+		}
+	}
+
+	lease := in.lockGCInvocation(newInvocationID())
+	done := make(chan error, 1)
+	go func() { _, callErr := in.Invoke("value"); done <- callErr }()
+	select {
+	case callErr := <-done:
+		lease.unlock()
+		t.Fatalf("certified call bypassed collector lease: %v", callErr)
+	case <-time.After(20 * time.Millisecond):
+	}
+	lease.unlock()
+	select {
+	case callErr := <-done:
+		if callErr == nil {
+			t.Fatal("resumed certified call lost trap")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("certified call did not resume")
+	}
 }
 
 func TestPreparedGCFrameRebindsAfterCollectionAndTrap(t *testing.T) {

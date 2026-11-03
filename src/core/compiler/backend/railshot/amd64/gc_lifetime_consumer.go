@@ -69,11 +69,20 @@ func (f *fn) emitGCLifetime(p *gcLifetimePlan) error {
 	}
 	if emittedEnd {
 		f.gcLifetimeSelected = true
+		if f.opt(optPreparedBoundedEntry) && len(f.localType) <= 128 {
+			// Reuse the per-function dead-allocation sidecar. All-ones is not a
+			// valid packed object-count/size layout and identifies the checked
+			// scalar lifetime wrapper without growing Compiled or Instance.
+			f.gcDeadBatchLayout = ^uint64(0)
+		}
 		return nil
 	}
 	if !ok {
 		return errors.New("gc lifetime emission replay mismatch")
 	}
 	f.gcLifetimeSelected = true
+	if f.opt(optPreparedBoundedEntry) && len(f.localType) <= 128 {
+		f.gcDeadBatchLayout = ^uint64(0)
+	}
 	return nil
 }

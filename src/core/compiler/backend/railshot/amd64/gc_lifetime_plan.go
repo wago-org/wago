@@ -71,32 +71,34 @@ func (f *fn) sealGCLifetime(code []byte) *gcLifetimePlan {
 	if sc.gcLifetimeFacts == nil {
 		sc.gcLifetimeFacts = newGCLifetimeModuleFacts()
 	}
+	fact, ok := sc.gcLifetimeFacts.typeFact(f, proof.Type)
+	if !ok || !fact.layout.pointerFree || len(f.ft.Params) > gcLifetimeMaxSlots || len(f.ft.Results) > 1 {
+		return nil
+	}
+	p := sc.acquireGCLifetimePlan()
+	if p == nil {
+		return nil
+	}
 	records := sc.prepareGCLifetimeRecords(proof.Rewrites)
 	if records == nil && proof.Rewrites != 0 {
+		sc.releaseGCLifetimePlan(p)
 		return nil
 	}
 	filled := analyzeGCLifetimeWithRecords(f.m, i, gcLifetimeMaxRecords, records, false)
 	if !filled.Candidate || filled.Rewrites != proof.Rewrites || filled.Type != proof.Type {
-		sc.releaseGCLifetimeRecords()
+		sc.releaseGCLifetimePlan(p)
 		return nil
 	}
-	fact, ok := sc.gcLifetimeFacts.typeFact(f, proof.Type)
-	if !ok || !fact.layout.pointerFree {
-		sc.releaseGCLifetimeRecords()
-		return nil
-	}
-	ctx := gcLifetimeContext{fact: fact, function: i, pcBase: f.tracePCBase, bodyHash: lifetimeBodyHash(code)}
-	if len(f.ft.Params) > gcLifetimeMaxSlots || len(f.ft.Results) > 1 {
-		sc.releaseGCLifetimeRecords()
-		return nil
-	}
+	p.body, p.policy, p.records, p.typ = f.m.Code[i].BodyBytes, f.policy, records, proof.Type
+	ctx := &p.context
+	ctx.fact, ctx.function, ctx.pcBase, ctx.bodyHash = fact, i, f.tracePCBase, lifetimeBodyHash(code)
 	ctx.parameters, ctx.results = uint8(len(f.ft.Params)), uint8(len(f.ft.Results))
 	copy(ctx.paramTypes[:], f.ft.Params)
 	n := len(f.ft.Params)
 	copy(ctx.localTypes[:], f.ft.Params)
 	for _, run := range f.m.Code[i].Locals.Runs {
 		if run.Count > uint32(gcLifetimeMaxSlots-n) {
-			sc.releaseGCLifetimeRecords()
+			sc.releaseGCLifetimePlan(p)
 			return nil
 		}
 		for range run.Count {
@@ -108,11 +110,23 @@ func (f *fn) sealGCLifetime(code []byte) *gcLifetimePlan {
 	if len(f.ft.Results) != 0 {
 		ctx.resultType = f.ft.Results[0]
 	}
-	return &gcLifetimePlan{body: f.m.Code[i].BodyBytes, context: ctx, policy: f.policy, records: records, typ: proof.Type}
+	return p
+}
+
+func (sc *scratch) acquireGCLifetimePlan() *gcLifetimePlan {
+	if sc.gcLifetimePlanLive || sc.gcLifetimeRecordsLive {
+		return nil
+	}
+	if sc.gcLifetimePlan == nil {
+		sc.gcLifetimePlan = new(gcLifetimePlan)
+	}
+	*sc.gcLifetimePlan = gcLifetimePlan{}
+	sc.gcLifetimePlanLive = true
+	return sc.gcLifetimePlan
 }
 
 func (sc *scratch) prepareGCLifetimeRecords(count int) []gcLifetimeRewrite {
-	if count < 0 || count > gcLifetimeMaxRecords || sc.gcLifetimeRecordsLive {
+	if count < 0 || count > gcLifetimeMaxRecords || !sc.gcLifetimePlanLive || sc.gcLifetimeRecordsLive {
 		return nil
 	}
 	if cap(sc.gcLifetimeRecords) < count {
@@ -128,6 +142,21 @@ func (sc *scratch) prepareGCLifetimeRecords(count int) []gcLifetimeRewrite {
 func (sc *scratch) releaseGCLifetimeRecords() {
 	sc.gcLifetimeRecords = sc.gcLifetimeRecords[:0]
 	sc.gcLifetimeRecordsLive = false
+}
+
+func (sc *scratch) releaseGCLifetimePlan(p *gcLifetimePlan) {
+	if !sc.gcLifetimePlanLive {
+		return
+	}
+	if p != sc.gcLifetimePlan {
+		panic("amd64: released foreign GC lifetime plan")
+	}
+	if sc.gcLifetimePending == p {
+		sc.gcLifetimePending = nil
+	}
+	*p = gcLifetimePlan{}
+	sc.releaseGCLifetimeRecords()
+	sc.gcLifetimePlanLive = false
 }
 
 func (f *fn) replayGCLifetime(p *gcLifetimePlan, code []byte) bool {
@@ -371,13 +400,13 @@ func (f *fn) consumeGCLifetime(p *gcLifetimePlan, code []byte) (bool, error) {
 	}
 	if !valid {
 		if f.sc != nil {
-			f.sc.releaseGCLifetimeRecords()
+			f.sc.releaseGCLifetimePlan(p)
 		}
 		return false, nil
 	}
 	err := f.emitGCLifetime(p)
 	if f.sc != nil {
-		f.sc.releaseGCLifetimeRecords()
+		f.sc.releaseGCLifetimePlan(p)
 	}
 	return true, err
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -89,15 +90,34 @@ func nativeGCArrayLayoutForMode(enabled bool, m *wasm.Module, typeIndex uint32, 
 }
 
 func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativeGCStructAllocField, objectSize, objectAlign uint32, pointerFree bool, ok bool) {
+	return nativeGCStructAllocLayoutBuild(m, typeIndex, nativeGCStructAllocPlan{}, false)
+}
+
+// nativeGCStructAllocLayoutMatches validates a published fallback plan without
+// rebuilding either of its layout slices. This preserves module mutation
+// detection on cache hits while keeping publication bounded to one layout per
+// referenced type.
+func nativeGCStructAllocLayoutMatches(m *wasm.Module, typeIndex uint32, expected nativeGCStructAllocPlan) bool {
+	_, size, align, pointerFree, ok := nativeGCStructAllocLayoutBuild(m, typeIndex, expected, true)
+	return ok && size == expected.objectSize && align == expected.objectAlign && pointerFree == expected.pointerFree
+}
+
+func nativeGCStructAllocLayoutBuild(m *wasm.Module, typeIndex uint32, expected nativeGCStructAllocPlan, match bool) (fields []nativeGCStructAllocField, objectSize, objectAlign uint32, pointerFree bool, ok bool) {
 	st, found := nativeGCFlatType(m, typeIndex)
 	if !found || st.Comp.Kind != wasm.CompStruct {
 		return nil, 0, 0, false, false
 	}
-	fields = make([]nativeGCStructAllocField, 0, len(st.Comp.Fields))
+	if match {
+		if len(expected.fields) != len(st.Comp.Fields) {
+			return nil, 0, 0, false, false
+		}
+	} else {
+		fields = make([]nativeGCStructAllocField, 0, len(st.Comp.Fields))
+	}
 	var off, slot uint32
 	maxAlign := uint32(1)
 	pointerFree = true
-	for _, field := range st.Comp.Fields {
+	for fieldIndex, field := range st.Comp.Fields {
 		align, size, valid := nativeGCStorageLayout(m, typeIndex, field.Storage())
 		if !valid || field.Storage().Packed() || align == 0 || off > math.MaxUint32-(align-1) {
 			return nil, 0, 0, false, false
@@ -135,7 +155,14 @@ func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativ
 		} else if field.Storage().Val().Kind() != wasm.ValNum && field.Storage().Val().Kind() != wasm.ValVec {
 			return nil, 0, 0, false, false
 		}
-		fields = append(fields, entry)
+		if match {
+			want := expected.fields[fieldIndex]
+			if want != (codegen.GCFieldLayout{Offset: entry.offset, Size: entry.size, Slot: entry.slot, Nullable: entry.nullable, CollectorRef: entry.ref}) {
+				return nil, 0, 0, false, false
+			}
+		} else {
+			fields = append(fields, entry)
+		}
 		if off > math.MaxUint32-size {
 			return nil, 0, 0, false, false
 		}

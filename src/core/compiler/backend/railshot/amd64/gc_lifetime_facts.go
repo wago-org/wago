@@ -12,8 +12,9 @@ import (
 // entry is published. The map is populated only for types referenced by an
 // accepted proof; there is no module-wide sizing or preparation pass.
 type gcLifetimeModuleFacts struct {
-	mu    sync.Mutex
-	types map[uint32]*gcLifetimeTypeFact
+	mu     sync.Mutex
+	module *wasm.Module
+	types  map[uint32]*gcLifetimeTypeFact
 }
 
 type gcLifetimeTypeFact struct {
@@ -25,16 +26,37 @@ func newGCLifetimeModuleFacts() *gcLifetimeModuleFacts {
 	return &gcLifetimeModuleFacts{}
 }
 
+func (c *gcLifetimeModuleFacts) cachedLayout(f *fn, typeIndex uint32) (nativeGCStructAllocPlan, bool) {
+	if c == nil {
+		return nativeGCStructAllocPlan{}, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.module != f.m {
+		return nativeGCStructAllocPlan{}, false
+	}
+	fact := c.types[typeIndex]
+	if fact == nil || !fact.matches(f, typeIndex) {
+		return nativeGCStructAllocPlan{}, false
+	}
+	return fact.layout, true
+}
+
 func (c *gcLifetimeModuleFacts) typeFact(f *fn, typeIndex uint32) (*gcLifetimeTypeFact, bool) {
 	if c == nil {
 		return nil, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.module == nil {
+		c.module = f.m
+	} else if c.module != f.m {
+		return nil, false
+	}
 	if fact := c.types[typeIndex]; fact != nil {
 		return fact, fact.matches(f, typeIndex)
 	}
-	layout, ok := f.nativeGCStructAllocLayout(typeIndex)
+	layout, ok := f.deriveNativeGCStructAllocLayout(typeIndex)
 	if !ok {
 		return nil, false
 	}
@@ -64,8 +86,20 @@ func (f *gcLifetimeTypeFact) matches(fn *fn, typeIndex uint32) bool {
 	if !ok || !lifetimeSubTypeEqual(typ, f.typ) {
 		return false
 	}
-	layout, ok := fn.nativeGCStructAllocLayout(typeIndex)
-	return ok && lifetimeLayoutEqual(layout, f.layout)
+	if layout, ok := fn.gcTypeLayout(typeIndex, wasm.CompStruct); ok {
+		if !layout.NativeAlloc {
+			return false
+		}
+		align := layout.Align
+		if align < 8 {
+			align = 8
+		}
+		return lifetimeLayoutEqual(nativeGCStructAllocPlan{
+			fields: layout.FieldLayout, objectSize: layout.ObjectSize,
+			objectAlign: align, pointerFree: layout.PointerFree,
+		}, f.layout)
+	}
+	return nativeGCStructAllocLayoutMatches(fn.m, typeIndex, f.layout)
 }
 
 func lifetimeCompCopy(c wasm.CompType) wasm.CompType {

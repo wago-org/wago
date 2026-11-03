@@ -874,6 +874,8 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
 type scratch struct {
 	scalar                shared.ScalarState
 	gcLifetimeFacts       *gcLifetimeModuleFacts
+	gcLifetimePlan        *gcLifetimePlan
+	gcLifetimePlanLive    bool
 	gcLifetimeRecords     []gcLifetimeRewrite
 	gcLifetimeRecordsLive bool
 	gcLifetimeBaseline    bool
@@ -1175,8 +1177,11 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 }
 
 func (sc *scratch) reset() {
-	if sc.gcLifetimeRecordsLive && sc.gcLifetimePending == nil {
-		panic("amd64: live GC lifetime rewrite records at scratch reset")
+	if sc.gcLifetimePlanLive != sc.gcLifetimeRecordsLive {
+		panic("amd64: inconsistent GC lifetime scratch ownership at reset")
+	}
+	if sc.gcLifetimePlanLive && sc.gcLifetimePending == nil {
+		panic("amd64: live GC lifetime plan at scratch reset")
 	}
 	if !sc.gcLifetimeRecordsLive {
 		sc.gcLifetimeRecords = sc.gcLifetimeRecords[:0]
@@ -3650,6 +3655,17 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	if !policy.Valid() {
 		policy = currentCodegenPolicy()
 	}
+	if policy.EnabledOption(optGCLifetimeAnalyze) {
+		// A sealed plan is a worker-owned lease spanning the retained baseline
+		// and private candidate. Unwind it on errors and panics; ordinary
+		// candidate consumption releases it earlier. Keep the Off path free of
+		// this defer because it can never acquire the lease.
+		defer func() {
+			if sc.gcLifetimePlanLive {
+				sc.releaseGCLifetimePlan(sc.gcLifetimePlan)
+			}
+		}()
+	}
 	// Keep the ordinary function as the retained transaction variant. The first
 	// attempt seals the compact proof but deliberately lowers the baseline; the
 	// second attempt consumes that same proof privately. Exact root-plan metadata
@@ -3709,10 +3725,9 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		if selected {
 			code, relocs, internalOff = candidateCode, candidateRelocs, candidateInternal
 		} else {
-			if sc.gcLifetimeRecordsLive {
-				sc.releaseGCLifetimeRecords()
+			if sc.gcLifetimePlanLive {
+				sc.releaseGCLifetimePlan(sc.gcLifetimePlan)
 			}
-			sc.gcLifetimePending = nil
 			code, relocs = sc.gcLifetimeCode, sc.gcLifetimeRelocs
 			baselineFn.restore(&sc.fnState, sc.gcLifetimeLiterals)
 			baselineScratch.restore(sc)
