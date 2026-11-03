@@ -53,6 +53,51 @@ type gcConversionTransaction struct {
 	done      bool
 }
 
+// acquireReceiptRoot reuses only roots detached by detachReceiptRoot in this
+// exact collector domain. Receipt roots share the collector's table directory
+// with public roots, so the domain-owned free list is the authority that keeps
+// ordinary table slots out of this reuse path.
+func acquireReceiptRoot(domain *gcStoreDomain, ref gc.Ref) (uint32, error) {
+	if n := len(domain.receiptFreeSlots); n != 0 {
+		root := domain.receiptFreeSlots[n-1]
+		if err := domain.collector.SetTableSlot(root, ref); err != nil {
+			return 0, err
+		}
+		domain.receiptFreeSlots = domain.receiptFreeSlots[:n-1]
+		return root, nil
+	}
+	return domain.collector.NewCheckedTableSlot(ref)
+}
+
+func clearReceiptRoot(domain *gcStoreDomain, root uint32) {
+	if err := domain.collector.SetTableSlot(root, gc.Null()); err != nil {
+		panic(gcHelperFailure(err))
+	}
+}
+
+// detachReceiptRoot makes a cleared root reusable only after every ownership
+// directory has been detached. A retired domain is detached without publishing
+// its closed collector storage to the free list.
+func detachReceiptRoot(state *managedFunctionCollector, domain *gcStoreDomain, root uint32, recycle bool) {
+	state.graph.mu.Lock()
+	delete(state.conversionHostSlots, root)
+	member := state.tableOwners[root]
+	delete(state.tableOwners, root)
+	if member != nil {
+		for i, slot := range member.slots {
+			if slot.collector == domain.collector && slot.kind == gc.SlotTable && slot.index == root {
+				member.slots = append(member.slots[:i], member.slots[i+1:]...)
+				break
+			}
+		}
+	}
+	state.graph.epoch.Add(1)
+	state.graph.mu.Unlock()
+	if recycle {
+		domain.receiptFreeSlots = append(domain.receiptFreeSlots, root)
+	}
+}
+
 func bindGCConversionCore(in *Instance) error {
 	s := in.existingGCExternConversionState()
 	if s == nil || in.refStore == nil {
@@ -271,7 +316,7 @@ func (c *gcConversionContainer) prepareLimit(index, word, limit uint64, source *
 		panic("conversion collector graph absent")
 	}
 	state := stateValue.(*managedFunctionCollector)
-	root, err := domain.collector.NewCheckedTableSlot(identity.ref)
+	root, err := acquireReceiptRoot(domain, identity.ref)
 	if err != nil {
 		queueConversionClaim(state.graph, domain)
 		return nil, err
@@ -280,7 +325,10 @@ func (c *gcConversionContainer) prepareLimit(index, word, limit uint64, source *
 		err = state.bindPersistentSlot(c.owner, gc.SlotTable, root)
 	}
 	if err != nil {
-		_ = domain.collector.SetTableSlot(root, gc.Null())
+		clearReceiptRoot(domain, root)
+		// bindPersistentSlot changes no ownership metadata on failure. The
+		// acquired root was either new or already detached by this domain.
+		domain.receiptFreeSlots = append(domain.receiptFreeSlots, root)
 		queueConversionClaim(state.graph, domain)
 		return nil, err
 	}
@@ -368,9 +416,7 @@ func (r *gcConversionReceipt) release() {
 	// Store retirement may have consumed the domain. Its pointer is then metadata
 	// only; do not touch the closed heap or infer authority from a remaining owner.
 	if registered {
-		if err := domain.collector.SetTableSlot(r.root, gc.Null()); err != nil {
-			panic(gcHelperFailure(err))
-		}
+		clearReceiptRoot(domain, r.root)
 	}
 	delete(identity.receipts, r)
 	if r.container.slots[r.index] == r {
@@ -378,20 +424,7 @@ func (r *gcConversionReceipt) release() {
 	}
 	if stateValue, ok := managedFunctionCollectors.Load(domain.collector); ok {
 		state := stateValue.(*managedFunctionCollector)
-		state.graph.mu.Lock()
-		delete(state.conversionHostSlots, r.root)
-		member := state.tableOwners[r.root]
-		delete(state.tableOwners, r.root)
-		if member != nil {
-			for i, slot := range member.slots {
-				if slot.collector == domain.collector && slot.kind == gc.SlotTable && slot.index == r.root {
-					member.slots = append(member.slots[:i], member.slots[i+1:]...)
-					break
-				}
-			}
-		}
-		state.graph.epoch.Add(1)
-		state.graph.mu.Unlock()
+		detachReceiptRoot(state, domain, r.root, registered)
 		if registered {
 			queueConversionClaim(state.graph, domain)
 		}

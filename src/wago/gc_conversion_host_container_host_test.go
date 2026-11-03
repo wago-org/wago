@@ -286,7 +286,7 @@ func TestR9H2HostContainerAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	next := h2HostReceipt(t, store, table.desc, 0)
-	if next == r || next.released || s.conversionHostSlots[next.root] != next.container {
+	if next == r || next.root != r.root || next.released || s.conversionHostSlots[next.root] != next.container {
 		t.Fatal("new receipt reused stale binding")
 	}
 	table.Close()
