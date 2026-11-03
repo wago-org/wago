@@ -1,6 +1,7 @@
 package gc
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"unsafe"
@@ -20,6 +21,66 @@ func seedMaintainedOccupancy(t *testing.T, c *Collector) {
 		if err := h.claimOccupancy(e); err != nil {
 			t.Fatalf("seed maintained occupancy for handle %d: %v", i, err)
 		}
+	}
+}
+
+func TestMaintainedOccupancyIndexedGrowthRollback(t *testing.T) {
+	h := newMatureRunHeap(t)
+	h.limit = 65536
+	h.mem = makeAlignedBytes(65536, 16)
+	h.bump = 32768
+	h.ensureOccupancy(h.bump)
+	guard := handleEntry{off: 32736, size: 32, space: spaceOld}
+	if err := h.claimOccupancy(guard); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.insertFreeSpan(throughputFreeSpan{off: 0, size: 32736}); err != nil {
+		t.Fatal(err)
+	}
+	h.mature.occupancy = slices.Clip(h.mature.occupancy)
+	before := slices.Clone(h.mature.occupancy)
+	h.reserveOccupancyCapacity(uint64(h.bump) + 32 + 32768)
+	tx := h.beginAllocTransaction()
+	a, err := h.alloc(32, spaceOld)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := h.alloc(32768, spaceOld)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.off != 0 || b.off != 32768 {
+		t.Fatalf("unexpected destinations %+v %+v", a, b)
+	}
+	h.rollbackSuccessfulAlloc(b, tx.bump)
+	h.rollbackSuccessfulAlloc(a, tx.bump)
+	h.restoreAllocTransaction(tx)
+	if !slices.Equal(before, h.mature.occupancy) {
+		t.Fatalf("rollback resurrected indexed claim: refs=%d starts=%x", h.mature.occupancy[0].lineRefs[0], h.mature.occupancy[0].oldStarts[0])
+	}
+}
+
+func TestOccupancyBlockLineRangePortableBounds(t *testing.T) {
+	tests := []struct {
+		name        string
+		off, end    uint64
+		block       uint32
+		first, last uint32
+	}{
+		{"final-block-first-line", 0xffff8000, 0xffff8010, 131071, 0, 0},
+		{"final-block-partial-end", 0xfffffff0, 0x100000000, 131071, 127, 127},
+		{"full-block", 32768, 65536, 1, 0, 127},
+		{"cross-line-left", 32752, 32784, 0, 127, 127},
+		{"cross-line-right", 32752, 32784, 1, 0, 0},
+		{"cross-line", 240, 272, 0, 0, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			first, last := occupancyBlockLineRange(tc.off, tc.end, tc.block)
+			if first != tc.first || last != tc.last {
+				t.Fatalf("range = %d..%d, want %d..%d", first, last, tc.first, tc.last)
+			}
+		})
 	}
 }
 

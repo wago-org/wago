@@ -105,6 +105,9 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 		return out, errors.New("gc: mature occupancy table does not cover committed range")
 	}
 	out.excluded = make([]bool, activeBlocks)
+	// High bits map every selected block to its component root; low bits hold
+	// the remaining exact-start census at that root.
+	componentCensus := make([]uint64, activeBlocks)
 	count := 0
 	// cursor is a logical rotating seed, not a configured-block ordinal. When
 	// the active span shrinks its old value is reduced modulo the new span; this
@@ -119,7 +122,7 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 		}
 		end, starts, bad := i, 0, false
 		for {
-			b := h.mature.occupancy[end]
+			b := &h.mature.occupancy[end]
 			occupied := 0
 			for _, refs := range b.lineRefs {
 				if refs != 0 {
@@ -147,11 +150,12 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 		}
 		for b := i; b <= end; b++ {
 			out.excluded[b] = true
+			componentCensus[b] = uint64(uint32(i)+1) << 32
 		}
+		componentCensus[i] |= uint64(uint32(starts))
 		count += starts
 	}
 	out.moves = make([]matureMove, 0, count)
-	materialized := 0
 	for i, e := range c.handles {
 		if e.space != spaceOld && e.space != spaceLarge {
 			continue
@@ -162,6 +166,7 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 			return matureSelection{}, errors.New("gc: invalid evacuation source extent")
 		}
 		if e.space == spaceOld && out.excluded[uint64(e.off)/evacuationBlock] {
+			component := uint32(componentCensus[e.off/matureOccupancyBlock]>>32) - 1
 			granule := (e.off % matureOccupancyBlock) / 16
 			if h.mature.occupancy[e.off/matureOccupancyBlock].oldStarts[granule/64]&(uint64(1)<<(granule%64)) == 0 {
 				return matureSelection{}, errors.New("gc: selected mature start is missing")
@@ -169,11 +174,16 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 			out.demand += uint64(n)
 			out.largest = max(out.largest, n)
 			out.moves = append(out.moves, matureMove{handle: uint32(i), before: e})
-			materialized++
+			if uint32(componentCensus[component]) == 0 {
+				return matureSelection{}, errors.New("gc: mature component start census underflow")
+			}
+			componentCensus[component]--
 		}
 	}
-	if materialized != count {
-		return matureSelection{}, errors.New("gc: mature start census does not match selected handles")
+	for _, census := range componentCensus {
+		if uint32(census) != 0 {
+			return matureSelection{}, errors.New("gc: mature component start census does not match selected handles")
+		}
 	}
 	m.cursor = uint32((start + 1) % max(1, activeBlocks))
 	m.diagnostics.Candidates = len(out.moves)
