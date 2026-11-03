@@ -173,9 +173,6 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		if grouped, err := f.tryDeadGCDefaultGroup(r, typeIndex); grouped || err != nil {
-			return err
-		}
 		if _, ok := f.stagedStructType(typeIndex); !ok {
 			return fmt.Errorf("amd64: struct.new_default type %d is unavailable", typeIndex)
 		}

@@ -1460,10 +1460,6 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	nativeDeadStructType := f.nativeDeadStructType
 	f.nativeDeadStructType = 0
-	nativeDeadArrayBatchBytes := f.nativeDeadArrayBatchBytes
-	f.nativeDeadArrayBatchBytes = 0
-	nativeDeadStructBatchType := f.nativeDeadStructBatchType
-	f.nativeDeadStructBatchType = 0
 	nativeArrayHelper, nativeArrayType := f.nativeArrayHelper, f.nativeArrayType
 	f.nativeArrayHelper = 0
 	nativeDeadArrayBytes := f.nativeDeadArrayBytes
@@ -1563,12 +1559,6 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 
 	gcDone := -1
-	if nativeDeadArrayBatchBytes != 0 && !wide {
-		gcDone = f.deadObjectCountShortcut(nativeDeadArrayBatchBytes, 8, int(slotOf[d-p]))
-	}
-	if nativeDeadStructBatchType != 0 && !wide {
-		gcDone = f.deadStructBatchShortcut(nativeDeadStructBatchType-1, int(slotOf[d-p]))
-	}
 	if nativeDeadStructType != 0 && !wide {
 		gcDone = f.deadStructShortcut(nativeDeadStructType - 1)
 	}

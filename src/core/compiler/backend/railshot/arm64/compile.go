@@ -449,25 +449,23 @@ type fn struct {
 	// host call in the module uses the synchronous control frame (callHostSync)
 	// rather than the async log — the two share offCustomCtx and must not both be
 	// live. Computed once per module in compileFunc.
-	syncHostCalls             bool
-	dynamicHostFast           bool
-	syncHostSlots             int
-	gcTypeSubtypingRefTest    bool
-	nativeDeadArrayBytes      uint32
-	nativeArrayHelper         uint32
-	nativeArrayType           uint32
-	nativeDeadStructType      uint32
-	nativeDeadStructBatchType uint32
-	nativeDeadArrayBatchBytes uint32
-	gcReducedBounded          bool
-	gcDeadBatchLayout         uint64
-	gcI31Induction            bool
-	gcStructHelpers           bool
-	gcArrayHelpers            bool
-	gcFrameRoots              *shared.GCFrameRootPlan
-	gcCallsiteIndex           int
-	moduleEH                  bool // reserve the handler register and fixed EH frame area
-	compactFrameHeader        bool // register ABI: no wrapper results-pointer header
+	syncHostCalls          bool
+	dynamicHostFast        bool
+	syncHostSlots          int
+	gcTypeSubtypingRefTest bool
+	nativeDeadArrayBytes   uint32
+	nativeArrayHelper      uint32
+	nativeArrayType        uint32
+	nativeDeadStructType   uint32
+	gcReducedBounded       bool
+	gcDeadBatchLayout      uint64
+	gcI31Induction         bool
+	gcStructHelpers        bool
+	gcArrayHelpers         bool
+	gcFrameRoots           *shared.GCFrameRootPlan
+	gcCallsiteIndex        int
+	moduleEH               bool // reserve the handler register and fixed EH frame area
+	compactFrameHeader     bool // register ABI: no wrapper results-pointer header
 
 	// stats collects per-function codegen counters. nil
 	// unless the caller requested collection, in which case every counter method
