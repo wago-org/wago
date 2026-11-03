@@ -86,6 +86,9 @@ func conversionBoundaryWord(in *Instance, word uint64, incoming bool) (uint64, b
 		return 0, false
 	}
 	store := in.refStore
+	if !store.conversionDomainEverEnabled.Load() {
+		return 0, false
+	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	if store.gcDomains == nil {
@@ -179,6 +182,10 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 				return true, fmt.Errorf("invalid externref token")
 			}
 		}
+	}
+	if !owner.refStore.conversionDomainEverEnabled.Load() {
+		writeGlobalObject(g, ValExternRef, word)
+		return true, nil
 	}
 	container, err := newGCConversionContainer(owner, g.cell)
 	if err != nil {
@@ -411,6 +418,10 @@ func setConversionTablePublic(t *Table, index uint64, value Value) error {
 		} else if _, ok := owner.refStore.resolveExternref(word); !ok {
 			return fmt.Errorf("invalid externref token")
 		}
+	}
+	if !owner.refStore.conversionDomainEverEnabled.Load() {
+		binary.LittleEndian.PutUint64(t.desc[8+index*8:], word)
+		return nil
 	}
 	for i := 0; i < lease.domains.len(); i++ {
 		lease.domains.at(i).mu.Lock()
