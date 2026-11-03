@@ -9,7 +9,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func newGCFrameRootPlanWithInstructions(m *wasm.Module, exact, generic, _ bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis, instructions map[uint32]railcore.CustomInstruction) *shared.GCModuleFrameRootPlan {
+func newGCFrameRootPlanWithInstructions(m *wasm.Module, exact, generic bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis, instructions map[uint32]railcore.CustomInstruction) *shared.GCModuleFrameRootPlan {
 	if !exact || len(instructions) == 0 {
 		return newGCFrameRootPlan(m, exact, generic, diagnostic, analysis)
 	}

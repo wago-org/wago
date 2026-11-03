@@ -8,8 +8,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func newGCFrameRootPlanWithInstructions(m *wasm.Module, exact, generic, unwindOnly bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis, _ map[uint32]railcore.CustomInstruction) *shared.GCModuleFrameRootPlan {
-	return newGCFrameRootPlanMode(m, exact, generic, unwindOnly, diagnostic, analysis)
+func newGCFrameRootPlanWithInstructions(m *wasm.Module, exact, generic bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis, _ map[uint32]railcore.CustomInstruction) *shared.GCModuleFrameRootPlan {
+	return newGCFrameRootPlan(m, exact, generic, diagnostic, analysis)
 }
 
 func railshotGCRootedScalarCustomModule(*wasm.Module, map[uint32]railcore.CustomInstruction) bool {
