@@ -81,7 +81,7 @@ func TestRollupEvacuationFailureKeepsCards(t *testing.T) {
 
 func TestRollupLargeAdmissionRetry(t *testing.T) {
 	for _, shift := range []uint8{6, 12} {
-		for _, point := range []failurePoint{failMatureMetadata, failBackingGrowth, failHandlePublication} {
+		for _, point := range []failurePoint{failBackingGrowth, failHandlePublication} {
 			t.Run(fmt.Sprintf("shift=%d/point=%d", shift, point), func(t *testing.T) {
 				c := stage4Collector(t, shift)
 				if !c.PrepareNativeAllocation(32) {

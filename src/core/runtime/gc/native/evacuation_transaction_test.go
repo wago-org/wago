@@ -8,62 +8,44 @@ import (
 )
 
 type exactEvacuationState struct {
-	mem, spanNodes, pendingFree, regions, touched unsafe.Pointer
-	bump, spanRoot, freeNodeHead                  uint32
-	freeBytes, pendingBytes                       uint64
-	spanCount                                     uint32
-	memLen, memCap                                int
-	nodesLen, nodesCap                            int
-	pendingLen, pendingCap                        int
-	regionsLen, regionsCap                        int
-	touchedLen, touchedCap                        int
-	nodes                                         []throughputSpanNode
-	pending                                       []throughputFreeSpan
-	matureRegions                                 []matureRegion
-	matureValue                                   matureHeap
+	mem, spanNodes, pendingFree  unsafe.Pointer
+	bump, spanRoot, freeNodeHead uint32
+	freeBytes, pendingBytes      uint64
+	spanCount                    uint32
+	memLen, memCap               int
+	nodesLen, nodesCap           int
+	pendingLen, pendingCap       int
+	nodes                        []throughputSpanNode
+	pending                      []throughputFreeSpan
+	matureValue                  matureHeap
 }
 
 func exactEvacuationSnapshot(h *throughputHeap) exactEvacuationState {
 	matureValue := *h.mature
-	matureValue.regions = slices.Clone(h.mature.regions)
-	matureValue.touched = slices.Clone(h.mature.touched)
 	return exactEvacuationState{
 		mem: unsafe.Pointer(unsafe.SliceData(h.mem)), spanNodes: unsafe.Pointer(unsafe.SliceData(h.spanNodes)),
-		pendingFree: unsafe.Pointer(unsafe.SliceData(h.pendingFree)), regions: unsafe.Pointer(unsafe.SliceData(h.mature.regions)),
-		touched: unsafe.Pointer(unsafe.SliceData(h.mature.touched)), bump: h.bump, spanRoot: h.spanRoot,
+		pendingFree: unsafe.Pointer(unsafe.SliceData(h.pendingFree)), bump: h.bump, spanRoot: h.spanRoot,
 		freeNodeHead: h.freeNodeHead, freeBytes: h.freeBytes, pendingBytes: h.pendingBytes, spanCount: h.spanCount,
 		memLen: len(h.mem), memCap: cap(h.mem), nodesLen: len(h.spanNodes), nodesCap: cap(h.spanNodes),
-		pendingLen: len(h.pendingFree), pendingCap: cap(h.pendingFree), regionsLen: len(h.mature.regions), regionsCap: cap(h.mature.regions),
-		touchedLen: len(h.mature.touched), touchedCap: cap(h.mature.touched), nodes: slices.Clone(h.spanNodes),
-		pending: slices.Clone(h.pendingFree), matureRegions: slices.Clone(h.mature.regions), matureValue: matureValue,
+		pendingLen: len(h.pendingFree), pendingCap: cap(h.pendingFree), nodes: slices.Clone(h.spanNodes),
+		pending: slices.Clone(h.pendingFree), matureValue: matureValue,
 	}
 }
 
 func assertExactEvacuationState(t *testing.T, h *throughputHeap, want exactEvacuationState) {
 	t.Helper()
 	got := exactEvacuationSnapshot(h)
-	if got.mem != want.mem || got.spanNodes != want.spanNodes || got.pendingFree != want.pendingFree || got.regions != want.regions || got.touched != want.touched ||
+	if got.mem != want.mem || got.spanNodes != want.spanNodes || got.pendingFree != want.pendingFree ||
 		got.bump != want.bump || got.spanRoot != want.spanRoot || got.freeNodeHead != want.freeNodeHead || got.freeBytes != want.freeBytes ||
 		got.pendingBytes != want.pendingBytes || got.spanCount != want.spanCount || got.memLen != want.memLen || got.memCap != want.memCap ||
-		got.nodesLen != want.nodesLen || got.nodesCap != want.nodesCap || got.pendingLen != want.pendingLen || got.pendingCap != want.pendingCap ||
-		got.regionsLen != want.regionsLen || got.regionsCap != want.regionsCap || got.touchedLen != want.touchedLen || got.touchedCap != want.touchedCap {
-		t.Fatalf("evacuation rollback changed storage headers: got mem=%p/%d/%d nodes=%p/%d/%d pending=%p/%d/%d regions=%p/%d/%d touched=%p/%d/%d scalars=%d/%d/%d/%d/%d/%d; want mem=%p/%d/%d nodes=%p/%d/%d pending=%p/%d/%d regions=%p/%d/%d touched=%p/%d/%d scalars=%d/%d/%d/%d/%d/%d",
-			got.mem, got.memLen, got.memCap, got.spanNodes, got.nodesLen, got.nodesCap, got.pendingFree, got.pendingLen, got.pendingCap, got.regions, got.regionsLen, got.regionsCap, got.touched, got.touchedLen, got.touchedCap, got.bump, got.spanRoot, got.freeNodeHead, got.freeBytes, got.pendingBytes, got.spanCount,
-			want.mem, want.memLen, want.memCap, want.spanNodes, want.nodesLen, want.nodesCap, want.pendingFree, want.pendingLen, want.pendingCap, want.regions, want.regionsLen, want.regionsCap, want.touched, want.touchedLen, want.touchedCap, want.bump, want.spanRoot, want.freeNodeHead, want.freeBytes, want.pendingBytes, want.spanCount)
+		got.nodesLen != want.nodesLen || got.nodesCap != want.nodesCap || got.pendingLen != want.pendingLen || got.pendingCap != want.pendingCap {
+		t.Fatal("evacuation rollback changed allocator storage headers or scalars")
 	}
 	if !slices.Equal(got.nodes, want.nodes) {
 		t.Fatal("evacuation rollback changed AVL/index/node-free storage")
 	}
 	if !slices.Equal(got.pending, want.pending) {
 		t.Fatal("evacuation rollback changed pending debt storage")
-	}
-	if !slices.Equal(got.matureRegions, want.matureRegions) {
-		for i := range got.matureRegions {
-			if got.matureRegions[i] != want.matureRegions[i] {
-				t.Fatalf("evacuation rollback changed mature region %d: got %#v want %#v", i, got.matureRegions[i], want.matureRegions[i])
-			}
-		}
-		t.Fatal("evacuation rollback changed mature occupancy/reservations")
 	}
 	if !reflect.DeepEqual(got.matureValue, want.matureValue) {
 		t.Fatalf("evacuation rollback changed mature state: got %#v want %#v", got.matureValue, want.matureValue)
@@ -116,8 +98,8 @@ func TestEvacuationTransactionRestoresExactAllocatorStorage(t *testing.T) {
 	if err := claims.releaseTails(&h); err != nil {
 		t.Fatal(err)
 	}
-	if len(tx.spanNodes) == 0 || len(tx.regions) == 0 {
-		t.Fatalf("transaction did not observe metadata writes: nodes=%d regions=%d", len(tx.spanNodes), len(tx.regions))
+	if len(tx.spanNodes) == 0 {
+		t.Fatal("transaction did not observe allocator metadata writes")
 	}
 	h.rollbackEvacuation(tx)
 	assertExactEvacuationState(t, &h, before)

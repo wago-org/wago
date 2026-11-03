@@ -24,7 +24,7 @@ func TestRFWGCMatureStage5MetadataRollback(t *testing.T) {
 	before := append([]handleEntry(nil), c.handles...)
 	source := append([]byte(nil), c.nursery...)
 	bump := c.nurseryBump
-	cleanup := armFailure(&c.throughput, failMatureMetadata, 1)
+	cleanup := armFailure(&c.throughput, failBackingGrowth, 1)
 	err := c.CollectMinor(stressRootSlots(roots))
 	cleanup()
 	if !errors.Is(err, errInjectedFailure) {
@@ -94,7 +94,7 @@ func TestRFWGCMatureStage5LateRollback(t *testing.T) {
 }
 
 func TestRFWGCMatureStage5LargePreparationFailures(t *testing.T) {
-	for _, point := range []failurePoint{failMatureMetadata, failBackingGrowth, failHandlePublication} {
+	for _, point := range []failurePoint{failBackingGrowth, failHandlePublication} {
 		c := stage4Collector(t, 6)
 		var target any = &c.throughput
 		if point == failHandlePublication {

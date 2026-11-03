@@ -63,19 +63,13 @@ type throughputSpanNodeUndo struct {
 	node   throughputSpanNode
 }
 
-type matureRegionUndo struct {
-	target *matureRegion
-	region matureRegion
-}
-
 // evacuationTransaction journals only metadata actually overwritten by one
 // admitted run attempt. Slice headers and allocator scalars restore growth and
-// arena ownership; node/region records restore writes to pre-existing backing.
+// arena ownership; node records restore writes to pre-existing backing.
 type evacuationTransaction struct {
 	heap      throughputHeap
 	mature    matureHeap
 	spanNodes []throughputSpanNodeUndo
-	regions   []matureRegionUndo
 	active    bool
 }
 
@@ -103,12 +97,6 @@ func (h *throughputHeap) journalSpanNode(index uint32) {
 	}
 	if tx := h.mature.transaction; tx != nil && tx.active && int(index) < len(h.spanNodes) {
 		tx.spanNodes = append(tx.spanNodes, throughputSpanNodeUndo{target: &h.spanNodes[index], node: h.spanNodes[index]})
-	}
-}
-
-func (h *throughputHeap) journalMatureRegion(index uint32) {
-	if tx := h.mature.transaction; tx != nil && tx.active && int(index) < len(h.mature.regions) {
-		tx.regions = append(tx.regions, matureRegionUndo{target: &h.mature.regions[index], region: h.mature.regions[index]})
 	}
 }
 
@@ -251,7 +239,6 @@ func (h *throughputHeap) restoreAllocTransaction(tx throughputAllocTransaction) 
 // restores the bump and backing slice after all indexed allocations are freed.
 func (h *throughputHeap) rollbackSuccessfulAlloc(e handleEntry, initialBump uint32) {
 	if e.off >= initialBump {
-		h.releaseMature(e)
 		return
 	}
 	if err := h.free(e); err != nil {
@@ -267,7 +254,6 @@ func (h *throughputHeap) free(e handleEntry) error {
 	if err := h.insertFreeSpan(throughputFreeSpan{off: e.off, size: allocSize}); err != nil {
 		return err
 	}
-	h.releaseMature(e)
 	return nil
 }
 
@@ -278,7 +264,6 @@ func (h *throughputHeap) deferFree(e handleEntry) error {
 	}
 	h.pendingFree = append(h.pendingFree, throughputFreeSpan{off: e.off, size: allocSize})
 	h.pendingBytes += uint64(allocSize)
-	h.releaseMature(e)
 	return nil
 }
 
@@ -1026,26 +1011,14 @@ func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (thro
 			lastAllocSize += span.size - consumed
 		}
 		run := throughputAllocRun{off: span.off, allocSize: allocSize, lastAllocSize: lastAllocSize, class: class}
-		if h.mature != nil {
-			if err := h.prepareMatureRun(run, size, count, sp); err != nil {
-				h.matureRefusal(err)
-				return throughputAllocRun{}, false, err
-			}
-		}
 		if span.size-consumed >= 32 {
 			if !h.replaceFreeSpan(span.off, throughputFreeSpan{off: span.off + consumed, size: span.size - consumed}) {
-				if h.mature != nil {
-					h.releaseMatureRun(run, size, count, sp)
-				}
 				return throughputAllocRun{}, false, errors.New("gc: throughput free-span index changed during run allocation")
 			}
 			h.freeBytes -= uint64(consumed)
 		} else {
 			reusable, ok := h.removeFreeSpan(span.off)
 			if !ok {
-				if h.mature != nil {
-					h.releaseMatureRun(run, size, count, sp)
-				}
 				return throughputAllocRun{}, false, errors.New("gc: throughput free-span index changed during run allocation")
 			}
 			h.releaseSpanNode(reusable)
@@ -1061,12 +1034,6 @@ func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (thro
 		return throughputAllocRun{}, false, nil
 	}
 	run := throughputAllocRun{off: off, allocSize: allocSize, lastAllocSize: allocSize, class: class}
-	if h.mature != nil {
-		if err := h.prepareMatureRun(run, size, count, sp); err != nil {
-			h.matureRefusal(err)
-			return throughputAllocRun{}, false, err
-		}
-	}
 	h.bump = uint32(end)
 	return run, true, nil
 }

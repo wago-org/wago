@@ -7,52 +7,33 @@ import (
 	"testing"
 )
 
-func TestMatureAllocRunMetadataFailureAndRetry(t *testing.T) {
-	h := newMatureRunHeap(t)
+// The removed page ledger no longer has a private metadata-allocation failure.
+// Preserve failure ordering at the surviving admission boundary: backing must
+// fail before allocator publication, and the exact same admission must retry.
+func TestMatureAdmissionBackingFailureAndRetry(t *testing.T) {
+	var h throughputHeap
+	if err := h.Init(Config{ThroughputHeapBytes: 16 << 10, ThroughputPageBytes: 4096, ThroughputClassLimit: 4096, NurseryRegionShift: 6}); err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
 	h.beginMatureAdmission(true)
-	beforeBump := h.bump
-	cleanup := armFailure(&h, failMatureMetadata, 0)
-	_, ok, err := h.tryAllocRun(24, 160, spaceOld)
+	cleanup := armFailure(&h, failBackingGrowth, 0)
+	_, err := h.alloc(4096, spaceOld)
 	cleanup()
-	if !errors.Is(err, errInjectedFailure) || ok {
-		t.Fatalf("metadata failure ok=%t err=%v", ok, err)
+	if !errors.Is(err, errInjectedFailure) {
+		t.Fatalf("backing admission failure = %v", err)
 	}
-	if h.bump != beforeBump || len(h.mature.regions) != 0 || len(h.mature.touched) != 0 {
-		t.Fatal("metadata refusal changed allocator or mature transaction state")
+	if h.bump != 0 || len(h.mem) != 0 || h.freeBytes != 0 || h.pendingBytes != 0 {
+		t.Fatal("failed admission published allocator state")
 	}
-	h.restoreAllocTransaction(throughputAllocTransaction{mem: h.mem, bump: beforeBump})
+	h.cancelMatureAdmission()
 	h.beginMatureAdmission(true)
-	if _, ok, err = h.tryAllocRun(24, 160, spaceOld); err != nil || !ok {
-		t.Fatalf("retry ok=%t err=%v", ok, err)
+	e, err := h.alloc(4096, spaceOld)
+	if err != nil {
+		t.Fatal(err)
 	}
 	h.commitMatureAdmission()
-	if h.mature.regions[0].live != 4096 || h.mature.regions[1].live != 1024 {
-		t.Fatalf("retry occupancy = %d, %d", h.mature.regions[0].live, h.mature.regions[1].live)
-	}
-}
-
-func TestMatureAllocRunTouchedGrowthFailureWithCoveredDescriptors(t *testing.T) {
-	h := newMatureRunHeap(t)
-	h.mature.regions = make([]matureRegion, 2)
-	h.beginMatureAdmission(true)
-	beforeBump := h.bump
-	cleanup := armFailure(&h, failMatureMetadata, 0)
-	_, ok, err := h.tryAllocRun(24, 160, spaceOld)
-	cleanup()
-	if !errors.Is(err, errInjectedFailure) || ok {
-		t.Fatalf("touched growth failure ok=%t err=%v", ok, err)
-	}
-	if h.bump != beforeBump || len(h.mature.regions) != 2 || len(h.mature.touched) != 0 {
-		t.Fatal("touched growth refusal changed allocator or mature transaction state")
-	}
-
-	h.restoreAllocTransaction(throughputAllocTransaction{mem: h.mem, bump: beforeBump})
-	h.beginMatureAdmission(true)
-	if _, ok, err = h.tryAllocRun(24, 160, spaceOld); err != nil || !ok {
-		t.Fatalf("retry ok=%t err=%v", ok, err)
-	}
-	h.commitMatureAdmission()
-	if h.mature.regions[0].live != 4096 || h.mature.regions[1].live != 1024 {
-		t.Fatalf("retry occupancy = %d, %d", h.mature.regions[0].live, h.mature.regions[1].live)
+	if e.off != 0 || h.bump != 4096 {
+		t.Fatalf("retry extent=%+v bump=%d", e, h.bump)
 	}
 }

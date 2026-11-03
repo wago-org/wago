@@ -233,8 +233,8 @@ func planEvacuationRuns(free []throughputFreeSpan, excluded []bool, demand uint6
 }
 
 // Exact reservations never absorb an unrepresented tail. The transaction
-// journals only overwritten AVL nodes and mature descriptors; slice headers
-// restore any arena, debt, descriptor, touched-index, or backing growth.
+// journals only overwritten AVL nodes; slice headers restore any arena, debt,
+// or backing growth.
 func (h *throughputHeap) beginEvacuationTransaction() *evacuationTransaction {
 	if h.mature.transaction != nil {
 		panic("gc: nested evacuation transaction")
@@ -250,10 +250,6 @@ func (h *throughputHeap) rollbackEvacuation(tx *evacuationTransaction) {
 		panic("gc: invalid evacuation rollback")
 	}
 	tx.active = false
-	for i := len(tx.regions) - 1; i >= 0; i-- {
-		u := tx.regions[i]
-		*u.target = u.region
-	}
 	for i := len(tx.spanNodes) - 1; i >= 0; i-- {
 		u := tx.spanNodes[i]
 		*u.target = u.node
@@ -367,7 +363,7 @@ func (h *throughputHeap) reserveEvacuationRun(s throughputFreeSpan) error {
 			}
 		}
 	}
-	return h.prepareMature(rawExtent(s))
+	return nil
 }
 func (h *throughputHeap) growBackingIfNeeded(end uint32) error {
 	if end <= uint32(len(h.mem)) {
@@ -505,7 +501,6 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 		c.handles[move.handle] = move.destination
 		h.pendingFree = append(h.pendingFree, throughputFreeSpan{move.before.off, n})
 		h.pendingBytes += uint64(n)
-		h.releaseMature(move.before)
 		if c.cfg.PoisonFreed {
 			for i := range h.bytes(move.before) {
 				h.bytes(move.before)[i] = 0xdd
