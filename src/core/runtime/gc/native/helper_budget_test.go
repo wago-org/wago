@@ -3,10 +3,14 @@
 package gc
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 )
 
 func helperBudgetProcessors(t *testing.T, processors int) {
@@ -101,12 +105,23 @@ func TestProcessHelperBudgetWorkersAndProcessors(t *testing.T) {
 }
 
 func TestProcessHelperBudgetConcurrentClaimRelease(t *testing.T) {
+	if helperBudgetSubprocess(t) {
+		return
+	}
 	requireHelperBudget(t, 0)
 	const contenders = 32
 	start := make(chan struct{})
 	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
 	grants := make(chan int, contenders)
 	var wg sync.WaitGroup
+	defer func() {
+		unblock()
+		done := make(chan struct{})
+		go func() { wg.Wait(); close(done) }()
+		helperBudgetAwait(t, done, "claim/release cleanup")
+	}()
 	for range contenders {
 		wg.Add(1)
 		go func() {
@@ -121,18 +136,28 @@ func TestProcessHelperBudgetConcurrentClaimRelease(t *testing.T) {
 	close(start)
 	var total int
 	for range contenders {
-		total += <-grants
+		select {
+		case grant := <-grants:
+			total += grant
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for grants")
+		}
 	}
 	if total != maxProcessGCHelpers {
 		t.Fatalf("concurrent grants = %d, want %d", total, maxProcessGCHelpers)
 	}
 	requireHelperBudget(t, maxProcessGCHelpers)
-	close(release)
-	wg.Wait()
+	unblock()
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	helperBudgetAwait(t, done, "claim/release completion")
 	requireHelperBudget(t, 0)
 }
 
 func TestProcessHelperBudgetProcessorChanges(t *testing.T) {
+	if helperBudgetSubprocess(t) {
+		return
+	}
 	helperBudgetProcessors(t, 8)
 	requireHelperBudget(t, 0)
 	c := helperBudgetCollector(t, 8)
@@ -157,6 +182,10 @@ func TestProcessHelperBudgetProcessorChanges(t *testing.T) {
 	// Participant selection is frozen for an in-flight phase. A processor
 	// change affects only the next phase and never revokes a running helper.
 	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	// Cleanup is LIFO: unblock before collector Close, including Fatal paths.
+	t.Cleanup(unblock)
 	p.hook = func(_ uint8, worker int) {
 		if worker == 1 {
 			close(entered)
@@ -167,13 +196,14 @@ func TestProcessHelperBudgetProcessorChanges(t *testing.T) {
 	p.selectParticipants(parallelMinObjects * 8)
 	done := make(chan struct{})
 	go func() { p.run(); close(done) }()
-	<-entered
+	t.Cleanup(func() { unblock(); helperBudgetAwait(t, done, "phase cleanup") })
+	helperBudgetAwait(t, entered, "worker entry")
 	runtime.GOMAXPROCS(1)
 	if p.participants != 8 {
 		t.Fatalf("in-flight participants changed to %d", p.participants)
 	}
-	close(release)
-	<-done
+	unblock()
+	helperBudgetAwait(t, done, "phase completion")
 	p.hook = nil
 	c.Close()
 
@@ -217,4 +247,30 @@ func TestProcessHelperBudgetConstructorFailureHasNoCharge(t *testing.T) {
 		t.Fatal("invalid constructor succeeded")
 	}
 	requireHelperBudget(t, 0)
+}
+
+// A broken join can also block collector cleanup. Bound the entire fixture in
+// a child process, not just channel receives. No sleeps or performance samples.
+func helperBudgetSubprocess(t *testing.T) bool {
+	t.Helper()
+	if os.Getenv("WAGO_HELPER_BUDGET_CHILD") == t.Name() {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+t.Name()+"$", "-test.timeout=10s", "-test.count=1")
+	cmd.Env = append(os.Environ(), "WAGO_HELPER_BUDGET_CHILD="+t.Name())
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("bounded fixture: %v (context %v)\n%s", err, ctx.Err(), out)
+	}
+	return true
+}
+func helperBudgetAwait(t *testing.T, ch <-chan struct{}, what string) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for %s", what)
+	}
 }
