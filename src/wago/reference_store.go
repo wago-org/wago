@@ -335,9 +335,10 @@ type gcStoreDomain struct {
 	id                   uint64
 	collector            *gc.Collector
 	private              bool
-	conversionClaims     uint32 // includes deferred receipt releases until post-gate drain
-	conversionPublishers uint32 // topology-protected live opaque conversion authority
-	conversionOwned      bool   // registered private type universe; lifetime belongs to receipts
+	conversionClaims     uint32   // includes deferred receipt releases until post-gate drain
+	conversionPublishers uint32   // topology-protected live opaque conversion authority
+	conversionOwned      bool     // registered private type universe; lifetime belongs to receipts
+	receiptFreeSlots     []uint32 // detached conversion receipt roots, local to this collector domain
 	config               gc.Config
 	types                []gc.TypeDesc
 	typeReps             []gcDomainTypeRepresentative

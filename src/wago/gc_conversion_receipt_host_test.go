@@ -125,6 +125,86 @@ func h2AssertReceipt(t *testing.T, c *gcConversionContainer, index uint64) *gcCo
 	}
 	return r
 }
+
+func TestConversionReceiptRootsReuseBoundedPhysicalSlots(t *testing.T) {
+	store := newReferenceStore(false)
+	publisher, provider, table, word := h2ReceiptFixture(t, store, 0)
+	defer publisher.Close()
+	defer provider.Close()
+
+	conversion := publisher.existingGCExternConversionState()
+	domain := conversion.core.domain
+	collector := domain.collector
+	initial := collector.PersistentSlotCount(gc.SlotTable)
+	floating := conversion.entries[0].rootSlot
+	var recycled uint32
+	for i := 0; i < 128; i++ {
+		h2TableSet(t, table, 0, word)
+		receipt := h2AssertReceipt(t, table.conversionContainers[0], 0)
+		if receipt.root == floating {
+			t.Fatal("receipt reused an ordinary conversion root")
+		}
+		if i == 0 {
+			recycled = receipt.root
+		} else if receipt.root != recycled {
+			t.Fatalf("receipt root was not recycled: got %d want %d", receipt.root, recycled)
+		}
+		// Re-publishing the same identity is a no-op and must retain the exact
+		// receipt instead of cycling its physical root.
+		h2TableSet(t, table, 0, word)
+		if table.conversionContainers[0].slots[0] != receipt {
+			t.Fatal("same identity replaced its receipt")
+		}
+		h2TableSet(t, table, 0, 0)
+		if ref, err := collector.CheckedTableSlot(recycled); err != nil || !ref.IsNull() {
+			t.Fatal("released receipt root was not cleared", ref, err)
+		}
+	}
+	if got := collector.PersistentSlotCount(gc.SlotTable); got != initial+1 {
+		t.Fatalf("serial receipt churn grew physical roots: got %d want %d", got, initial+1)
+	}
+	// Two prepared cells are the maximum simultaneous receipt demand here.
+	// Rejecting both publications must restore the old cells and leave exactly
+	// those two roots available for retry, without appending on every failure.
+	h2WithAuthority(t, store, func() {
+		first, err := table.conversionContainers[0].prepare(0, word, conversion)
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := table.conversionContainers[0].prepare(1, word, conversion)
+		if err != nil {
+			first.rollback()
+			t.Fatal(err)
+		}
+		for _, tx := range []*gcConversionTransaction{first, second} {
+			if err = tx.commit(func() error { return fmt.Errorf("reject") }); err == nil {
+				t.Fatal("rejecting callback committed")
+			}
+		}
+	})
+	drainManagedFunctionStoreReclaims(store)
+	if got := collector.PersistentSlotCount(gc.SlotTable); got != initial+2 {
+		t.Fatalf("partial preparation rollback grew physical roots: got %d want %d", got, initial+2)
+	}
+	if len(table.conversionContainers[0].slots) != 0 {
+		t.Fatal("rollback retained receipt ownership")
+	}
+	for i := uint64(0); i < 2; i++ {
+		h2TableSet(t, table, i, word)
+		h2AssertReceipt(t, table.conversionContainers[0], i)
+	}
+	if got := collector.PersistentSlotCount(gc.SlotTable); got != initial+2 {
+		t.Fatalf("retry did not reuse prepared high-water: got %d want %d", got, initial+2)
+	}
+	if err := collector.CollectFull(nil); err != nil {
+		t.Fatal(err)
+	}
+	for i := uint64(0); i < 2; i++ {
+		h2AssertReceipt(t, table.conversionContainers[0], i)
+		h2TableSet(t, table, i, 0)
+	}
+}
+
 func TestR9H2ReceiptPublisherRetirement(t *testing.T) {
 	for _, shift := range []uint8{0, 6} {
 		t.Run(fmt.Sprintf("region=%d", shift), func(t *testing.T) {
