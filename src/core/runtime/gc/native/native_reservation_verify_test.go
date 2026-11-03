@@ -18,7 +18,7 @@ func consumeNativeLargeArrayReservationForVerifyTest(t *testing.T, c *Collector,
 	}
 	ref := makeObjRef(h)
 	c.writeHeader(ref, ObjHeader{Size: bytes, Aux: (bytes - HeaderSize) / 4, Flags: flags})
-	s.ChunkCursor = s.ChunkEnd
+	s.ChunkCursor = s.ChunkStart + bytes
 	s.Cursor = 1
 	c.stats.Allocations++
 	return ref
@@ -161,11 +161,16 @@ func TestPublicVerifyRejectsMalformedNativeLargeArrayReservation(t *testing.T) {
 	}
 	c.nativeLargeArrayAlloc = want
 	c.nativeLargeArrayNurseryIndex = -1
+	if err := c.Verify(nil); err != nil {
+		t.Fatalf("stale index hint: %v", err)
+	}
+	c.nurseryHandles[wantIndex] = 0
 	if err := c.Verify(nil); err == nil || !strings.Contains(err.Error(), "handle ledger") {
 		t.Fatalf("missing ledger entry: %v", err)
 	}
 	c.nativeLargeArrayAlloc = want
 	c.nativeLargeArrayNurseryIndex = wantIndex
+	c.nurseryHandles[wantIndex] = want.Handle
 	c.handles[want.Handle] = handleEntry{off: want.ChunkStart, size: 40 << 10, class: uint16(want.ChunkBump), space: spaceLarge}
 	if err := c.Verify(nil); err == nil || !strings.Contains(err.Error(), "unpublished") {
 		t.Fatalf("premature handle publication: %v", err)
@@ -176,7 +181,7 @@ func TestPublicVerifyRejectsMalformedNativeLargeArrayReservation(t *testing.T) {
 	if err := c.Verify(Slots{&root}); err != nil {
 		t.Fatalf("valid consumed publication: %v", err)
 	}
-	c.handles[want.Handle].off += 16
+	c.handles[want.Handle].size += 16
 	if err := c.Verify(Slots{&root}); err == nil || !strings.Contains(err.Error(), "publication mismatch") {
 		t.Fatalf("mismatched consumed publication: %v", err)
 	}
