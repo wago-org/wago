@@ -107,7 +107,7 @@ func TestParallelStage6FailureMatrix(t *testing.T) {
 						t.Fatalf("failed copy changed source %d", h)
 					}
 				}
-				if p.active != 0 || len(p.queue) != 0 {
+				if p.outstanding.Load() != 0 || len(p.queue) != 0 {
 					t.Fatal("phase not drained")
 				}
 				if err = c.Verify(roots); err != nil {
@@ -269,14 +269,14 @@ func TestParallelStage6QueueOverflowRetained(t *testing.T) {
 	for i := range p.queue {
 		p.queue[i].handle = uint32(i + 1)
 	}
-	w.local = []traceTask{{handle: 9001}, {handle: 9002}}
+	w.local[0], w.local[1], w.localLen = traceTask{handle: 9001}, traceTask{handle: 9002}, 2
 	w.share()
-	if len(p.queue) != parallelQueueLimit || len(w.local) != 2 || w.local[0].handle != 9001 || w.local[1].handle != 9002 {
+	if len(p.queue) != parallelQueueLimit || w.localLen != 2 || w.local[0].handle != 9001 || w.local[1].handle != 9002 {
 		t.Fatal("full shared queue lost private overflow")
 	}
 	p.queue = p.queue[:0]
 	w.share()
-	if len(p.queue) != 1 || len(w.local) != 1 || p.queue[0].handle != 9002 {
+	if len(p.queue) != 1 || w.localLen != 1 || p.queue[0].handle != 9002 {
 		t.Fatal("overflow cannot resume sharing")
 	}
 }
