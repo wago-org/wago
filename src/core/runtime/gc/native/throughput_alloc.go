@@ -675,9 +675,8 @@ func (h *throughputHeap) replaceFreeSpanAVL(root, oldOff uint32, span throughput
 	if root == throughputNoSlot {
 		return root, false
 	}
-	n := &h.spanNodes[root]
 	h.journalSpanNode(root)
-	n = &h.spanNodes[root]
+	n := &h.spanNodes[root]
 	var ok bool
 	switch {
 	case oldOff < n.off:
