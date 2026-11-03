@@ -1259,7 +1259,9 @@ explicitly enable collection with
 `wago_profile` or `wago_codegenstats`. The legacy JSON-only profiler, GC cycle
 telemetry, and process-wide GC helper counters have been removed. Compiler
 statistics and static WasmGC native-code attribution remain available to the
-new profiler.
+new profiler. The native collector's process-wide helper admission word is
+resource ownership required to bound live goroutines, not a telemetry counter:
+it is neither recorded nor exported and is touched only when pools grow or stop.
 The removal contract is checked by `scripts/check-diagnostic-dce.sh`, which
 inspects unstripped manager, standard-runtime, minimal-runtime, and embedding binaries for
 AMD64 and ARM64 on Linux, macOS, and Windows, plus RV64 on Linux. It also
