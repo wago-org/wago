@@ -20,6 +20,7 @@ func TestRunClaimsRollbackAndRetry(t *testing.T) {
 				t.Run(fmt.Sprintf("workers%d/optional%t/point%d", workers, optional, point), func(t *testing.T) {
 					c, all, objects, s := newAsymmetricRunCollector(t, workers, optional)
 					h := &c.throughput
+					allocatorBefore := exactEvacuationSnapshot(h)
 					before := append([]handleEntry(nil), c.handles...)
 					free := h.freeSpans()
 					bump := h.bump
@@ -40,6 +41,14 @@ func TestRunClaimsRollbackAndRetry(t *testing.T) {
 					if !reflect.DeepEqual(before, c.handles) || !reflect.DeepEqual(free, h.freeSpans()) || bump != h.bump {
 						t.Fatal("rollback ownership")
 					}
+					// Attempt diagnostics, pressure, cursor, and poison intentionally survive
+					// rollback; every allocator-owned field and backing must be exact.
+					allocatorAfter := exactEvacuationSnapshot(h)
+					allocatorBefore.matureValue.diagnostics = allocatorAfter.matureValue.diagnostics
+					allocatorBefore.matureValue.pressure = allocatorAfter.matureValue.pressure
+					allocatorBefore.matureValue.cursor = allocatorAfter.matureValue.cursor
+					allocatorBefore.matureValue.poison = allocatorAfter.matureValue.poison
+					assertExactEvacuationState(t, h, allocatorBefore)
 					for i, r := range objects {
 						if !bytes.Equal(payload[i], c.bytes(r)) {
 							t.Fatal("source changed")
