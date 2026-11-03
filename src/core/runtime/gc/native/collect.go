@@ -500,6 +500,13 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 		finish()
 		return 0, 0, false, err
 	}
+	var occupancyDemand uint64
+	for _, plan := range plans {
+		if plan.entry.space == spaceFree {
+			occupancyDemand += uint64(c.throughput.promotionAllocSize(c.handles[plan.handle].size))
+		}
+	}
+	c.throughput.reserveOccupancyCapacity(uint64(c.throughput.bump) + occupancyDemand)
 	tx := c.throughput.beginAllocTransaction()
 	rollback := func(current *handleEntry) {
 		c.throughput.matureRefusal(err)
@@ -694,6 +701,13 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 		finish()
 		return 0, 0, err
 	}
+	var occupancyDemand uint64
+	for _, plan := range plans {
+		if plan.entry.space == spaceFree {
+			occupancyDemand += uint64(c.throughput.promotionAllocSize(c.handles[plan.handle].size))
+		}
+	}
+	c.throughput.reserveOccupancyCapacity(uint64(c.throughput.bump) + occupancyDemand)
 	tx := c.throughput.beginAllocTransaction()
 	rollback := func(current *handleEntry) {
 		c.throughput.matureRefusal(err)

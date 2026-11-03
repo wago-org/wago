@@ -62,12 +62,6 @@ func (c *Collector) finishAttempt(result *error) {
 	c.endAttempt(*result)
 }
 
-type evacuationOverlay struct {
-	lines   [2]uint64
-	parent  int
-	blocked bool
-	count   int
-}
 type matureMove struct {
 	handle              uint32
 	before, destination handleEntry
@@ -100,98 +94,88 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 	}
 	out.considered = true
 	h := &c.throughput
-	// Wago's old and LOS objects share a dynamically committed address range,
-	// unlike the reference's fixed old-space block table. Prove the complete
-	// active range before allocating its temporary overlay. Each source is
-	// validated in the occupancy pass before indexing; scratch writes made
-	// before a later invalid source are private and can be discarded. The
-	// uncommitted configured tail is still usable by destination admission: an
-	// excluded index beyond this overlay is deliberately treated as unselected.
+	// The maintained table is bounded by the dynamically committed range. The
+	// uncommitted configured tail remains usable by destination admission: an
+	// excluded index beyond this table is deliberately treated as unselected.
 	if h.bump > h.limit || uint64(h.bump) > uint64(len(h.mem)) {
 		return out, errors.New("gc: invalid evacuation heap span")
 	}
 	activeBlocks := int((uint64(h.bump) + evacuationBlock - 1) / evacuationBlock)
-	overlay := make([]evacuationOverlay, activeBlocks)
-	for i := range overlay {
-		overlay[i].parent = i
+	if len(h.mature.occupancy) < activeBlocks {
+		return out, errors.New("gc: mature occupancy table does not cover committed range")
 	}
-	find := func(i int) int {
-		for overlay[i].parent != i {
-			i = overlay[i].parent
+	out.excluded = make([]bool, activeBlocks)
+	count := 0
+	// cursor is a logical rotating seed, not a configured-block ordinal. When
+	// the active span shrinks its old value is reduced modulo the new span; this
+	// can change the next selected/failed component relative to the former
+	// configured-limit modulus, while preserving bounded rotation and safety.
+	start := int(m.cursor) % max(1, activeBlocks)
+	budget := false
+	for step := 0; step < activeBlocks; step++ {
+		i := (start + step) % activeBlocks
+		if i > 0 && h.mature.occupancy[i-1].crossNext {
+			continue
 		}
-		return i
+		end, starts, bad := i, 0, false
+		for {
+			b := h.mature.occupancy[end]
+			occupied := 0
+			for _, refs := range b.lineRefs {
+				if refs != 0 {
+					occupied++
+				}
+			}
+			for _, word := range b.oldStarts {
+				starts += bits.OnesCount64(word)
+			}
+			bad = bad || b.blockers != 0 || occupied == 0 || occupied > 32
+			if b.crossNext && end+1 == activeBlocks {
+				return matureSelection{}, errors.New("gc: mature occupancy crosses committed range")
+			}
+			if !b.crossNext {
+				break
+			}
+			end++
+		}
+		if bad || starts == 0 {
+			continue
+		}
+		if starts > candidateLimit-count {
+			budget = true
+			continue
+		}
+		for b := i; b <= end; b++ {
+			out.excluded[b] = true
+		}
+		count += starts
 	}
-	for _, e := range c.handles {
+	out.moves = make([]matureMove, 0, count)
+	materialized := 0
+	for i, e := range c.handles {
 		if e.space != spaceOld && e.space != spaceLarge {
 			continue
 		}
 		n := h.handleAllocSize(e)
 		end := uint64(e.off) + uint64(n)
 		if n == 0 || end > uint64(h.bump) || end > uint64(len(h.mem)) || end > uint64(h.limit) {
-			return out, errors.New("gc: invalid evacuation source extent")
+			return matureSelection{}, errors.New("gc: invalid evacuation source extent")
 		}
-		first, last := int(uint64(e.off)/evacuationBlock), int((end-1)/evacuationBlock)
-		for b := first; b <= last; b++ {
-			lo := max(uint64(e.off), uint64(b)*evacuationBlock)
-			hi := min(end, uint64(b+1)*evacuationBlock)
-			for line := lo / evacuationLine; line <= (hi-1)/evacuationLine; line++ {
-				k := line % 128
-				overlay[b].lines[k/64] |= uint64(1) << (k % 64)
-			}
-			if e.space == spaceLarge || uint64(n) > evacuationBlock {
-				overlay[b].blocked = true
-			}
-			if e.space == spaceOld && b > first {
-				overlay[find(b)].parent = find(first)
-			}
-		}
-		if e.space == spaceOld {
-			overlay[first].count++
-		}
-	}
-	// Aggregate sparse status and counts only after every union is known.
-	counts := make([]int, len(overlay))
-	bad := make([]bool, len(overlay))
-	for i, b := range overlay {
-		r := find(i)
-		count := bits.OnesCount64(b.lines[0]) + bits.OnesCount64(b.lines[1])
-		counts[r] += b.count
-		bad[r] = bad[r] || b.blocked || count == 0 || count > 32
-	}
-	selected := make([]bool, len(overlay))
-	count := 0
-	// cursor is a logical rotating seed, not a configured-block ordinal. When
-	// the active span shrinks its old value is reduced modulo the new span; this
-	// can change the next selected/failed component relative to the former
-	// configured-limit modulus, while preserving bounded rotation and safety.
-	start := int(m.cursor) % max(1, len(overlay))
-	budget := false
-	for step := 0; step < len(overlay); step++ {
-		i := (start + step) % len(overlay)
-		if find(i) != i || bad[i] || counts[i] == 0 {
-			continue
-		}
-		if counts[i] > candidateLimit-count {
-			budget = true
-			continue
-		}
-		selected[i] = true
-		count += counts[i]
-	}
-	m.cursor = uint32((start + 1) % max(1, len(overlay)))
-	out.excluded = make([]bool, len(overlay))
-	for i := range overlay {
-		out.excluded[i] = selected[find(i)]
-	}
-	out.moves = make([]matureMove, 0, count)
-	for i, e := range c.handles {
 		if e.space == spaceOld && out.excluded[uint64(e.off)/evacuationBlock] {
-			n := h.handleAllocSize(e)
+			granule := (e.off % matureOccupancyBlock) / 16
+			if h.mature.occupancy[e.off/matureOccupancyBlock].oldStarts[granule/64]&(uint64(1)<<(granule%64)) == 0 {
+				return matureSelection{}, errors.New("gc: selected mature start is missing")
+			}
 			out.demand += uint64(n)
 			out.largest = max(out.largest, n)
 			out.moves = append(out.moves, matureMove{handle: uint32(i), before: e})
+			materialized++
 		}
 	}
+	if materialized != count {
+		return matureSelection{}, errors.New("gc: mature start census does not match selected handles")
+	}
+	m.cursor = uint32((start + 1) % max(1, activeBlocks))
 	m.diagnostics.Candidates = len(out.moves)
 	m.diagnostics.Demand = out.demand
 	m.diagnostics.Evacuation = "no-candidates"
@@ -331,11 +315,12 @@ func (p *runClaimPlanner) destination(worker int, size uint32) (uint32, bool) {
 func (p *runClaimPlanner) releaseTails(h *throughputHeap) error {
 	for _, run := range p.runs {
 		if run.size != 0 {
-			if err := h.free(rawExtent(run)); err != nil {
+			if err := h.freeRaw(rawExtent(run)); err != nil {
 				return err
 			}
 		}
 	}
+	h.trimOccupancy()
 	return nil
 }
 func (h *throughputHeap) reserveEvacuationRun(s throughputFreeSpan) error {
@@ -439,14 +424,23 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 		m.diagnostics.Evacuation = "credit"
 		return nil
 	}
+	for _, run := range runs {
+		h.reserveOccupancyCapacity(uint64(run.off) + uint64(run.size))
+	}
 	transaction := h.beginEvacuationTransaction()
 	committed := false
+	claimed := 0
 	defer func() {
 		if r := recover(); r != nil {
 			m.poison = fmt.Errorf("gc: destructive evacuation failure: %v", r)
 			err = m.poison
 		}
 		if !committed {
+			for i := claimed - 1; i >= 0; i-- {
+				if inverseErr := h.releaseOccupancy(s.moves[i].destination); inverseErr != nil {
+					panic("gc: cannot reverse evacuation destination occupancy: " + inverseErr.Error())
+				}
+			}
 			h.rollbackEvacuation(transaction)
 		}
 	}()
@@ -476,6 +470,13 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 		s.moves[i] = move
 		plans = append(plans, plannedPromotion{handle: move.handle, entry: dst})
 	}
+	for i := range s.moves {
+		if err = h.claimOccupancy(s.moves[i].destination); err != nil {
+			m.diagnostics.Evacuation = "metadata"
+			return nil
+		}
+		claimed++
+	}
 	if err = claims.releaseTails(h); err != nil {
 		m.diagnostics.Evacuation = "metadata"
 		return nil
@@ -486,6 +487,12 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 	}
 	// All source debt storage exists before the commit barrier.
 	h.pendingFree = slices.Grow(h.pendingFree, len(s.moves))
+	for _, move := range s.moves {
+		if err = h.validateOccupancy(move.before, false); err != nil {
+			m.diagnostics.Evacuation = "metadata"
+			return err
+		}
+	}
 	if err = injectFailure(c, failEvacuationCopy); err != nil {
 		m.diagnostics.Evacuation = "copy-abort"
 		return err
@@ -517,6 +524,7 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 		c.handles[move.handle] = move.destination
 		h.pendingFree = append(h.pendingFree, throughputFreeSpan{move.before.off, n})
 		h.pendingBytes += uint64(n)
+		h.mutateOccupancy(move.before, false)
 		if c.cfg.PoisonFreed {
 			for i := range h.bytes(move.before) {
 				h.bytes(move.before)[i] = 0xdd
@@ -580,14 +588,26 @@ func (c *Collector) promoteWithRuns(plans []plannedPromotion, toSpace uint8, toB
 	if err != nil {
 		return 0, 0, false, err
 	}
+	for _, run := range runs {
+		h.reserveOccupancyCapacity(uint64(run.off) + uint64(run.size))
+	}
 	transaction := h.beginEvacuationTransaction()
 	committed := false
+	claimedUntil := 0
 	defer func() {
 		if r := recover(); r != nil {
 			m.poison = fmt.Errorf("gc: destructive run promotion failure: %v", r)
 			err = m.poison
 		}
 		if !committed {
+			for i := claimedUntil - 1; i >= 0; i-- {
+				if plans[i].entry.space != spaceOld {
+					continue
+				}
+				if inverseErr := h.releaseOccupancy(plans[i].entry); inverseErr != nil {
+					panic("gc: cannot reverse promotion destination occupancy: " + inverseErr.Error())
+				}
+			}
 			h.rollbackEvacuation(transaction)
 		}
 	}()
@@ -619,6 +639,16 @@ func (c *Collector) promoteWithRuns(plans []plannedPromotion, toSpace uint8, toB
 		if err = injectFailure(c, failPromotionDestination); err != nil {
 			return
 		}
+	}
+	for i := range plans {
+		if plans[i].entry.space != spaceOld {
+			claimedUntil = i + 1
+			continue
+		}
+		if err = h.claimOccupancy(plans[i].entry); err != nil {
+			return
+		}
+		claimedUntil = i + 1
 	}
 	if err = claims.releaseTails(h); err != nil {
 		return

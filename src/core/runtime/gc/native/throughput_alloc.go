@@ -4,11 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"math/bits"
+	"slices"
 )
 
 var errThroughputHeapExhausted = errors.New("gc: throughput heap exhausted")
 
 const throughputNoSlot = ^uint32(0)
+
+const (
+	matureOccupancyBlock = uint32(32768)
+	matureOccupancyLine  = uint32(256)
+)
 
 var throughputClassSizes = [...]uint32{32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 8192, 16384, 32768}
 
@@ -40,8 +46,19 @@ type throughputSpanNode struct {
 // rollbackSuccessfulAlloc; the AVL arena is reusable and does not need a full
 // metadata snapshot on the successful path.
 type throughputAllocTransaction struct {
-	mem  []byte
-	bump uint32
+	mem       []byte
+	occupancy []matureOccupancyBlockState
+	bump      uint32
+}
+
+// matureOccupancyBlockState mirrors stable physical ownership for one committed
+// 32 KiB block. It is allocation-policy metadata only when mature regions are
+// enabled; ordinary throughput configurations retain no table or per-line work.
+type matureOccupancyBlockState struct {
+	lineRefs  [128]uint8
+	oldStarts [32]uint64
+	blockers  uint16
+	crossNext bool
 }
 
 type throughputAllocRun struct {
@@ -212,15 +229,147 @@ func (h *throughputHeap) handleAllocSize(e handleEntry) uint32 {
 	return allocSize
 }
 
+func occupancyBlockCount(end uint32) int {
+	return int((uint64(end) + uint64(matureOccupancyBlock) - 1) / uint64(matureOccupancyBlock))
+}
+
+func (h *throughputHeap) ensureOccupancy(end uint32) {
+	if h.mature == nil {
+		return
+	}
+	need := occupancyBlockCount(end)
+	if need > len(h.mature.occupancy) {
+		h.mature.occupancy = append(h.mature.occupancy, make([]matureOccupancyBlockState, need-len(h.mature.occupancy))...)
+	}
+}
+
+func (h *throughputHeap) reserveOccupancyCapacity(end uint64) {
+	if h.mature == nil || end > uint64(h.limit) {
+		return
+	}
+	need := occupancyBlockCount(uint32(end))
+	if need > cap(h.mature.occupancy) {
+		h.mature.occupancy = slices.Grow(h.mature.occupancy, need-len(h.mature.occupancy))
+	}
+}
+
+func (h *throughputHeap) validateOccupancy(e handleEntry, claim bool) error {
+	n := h.handleAllocSize(e)
+	end := uint64(e.off) + uint64(n)
+	if h.mature == nil {
+		return nil
+	}
+	if n == 0 || e.off%16 != 0 || end > uint64(h.bump) || end > uint64(h.limit) || end > uint64(len(h.mem)) ||
+		(e.space != spaceOld && e.space != spaceLarge) || occupancyBlockCount(uint32(end)) > len(h.mature.occupancy) {
+		return errors.New("gc: invalid mature occupancy extent")
+	}
+	first, last := e.off/matureOccupancyBlock, (uint32(end)-1)/matureOccupancyBlock
+	blocked := e.space == spaceLarge || n > matureOccupancyBlock
+	for b := first; b <= last; b++ {
+		state := &h.mature.occupancy[b]
+		lo := max(e.off, b*matureOccupancyBlock)
+		hi := min(uint32(end), (b+1)*matureOccupancyBlock)
+		for p := lo / matureOccupancyLine; p <= (hi-1)/matureOccupancyLine; p++ {
+			refs := state.lineRefs[p%128]
+			if (claim && refs == ^uint8(0)) || (!claim && refs == 0) {
+				return errors.New("gc: mature occupancy line counter corruption")
+			}
+		}
+		if blocked && ((claim && state.blockers == ^uint16(0)) || (!claim && state.blockers == 0)) {
+			return errors.New("gc: mature occupancy blocker counter corruption")
+		}
+		if e.space == spaceOld && b < last && state.crossNext == claim {
+			return errors.New("gc: mature occupancy cross-boundary corruption")
+		}
+	}
+	if e.space == spaceOld {
+		granule := (e.off % matureOccupancyBlock) / 16
+		word, bit := granule/64, uint64(1)<<(granule%64)
+		set := h.mature.occupancy[first].oldStarts[word]&bit != 0
+		if set == claim {
+			return errors.New("gc: mature occupancy start corruption")
+		}
+	}
+	return nil
+}
+
+func (h *throughputHeap) mutateOccupancy(e handleEntry, claim bool) {
+	if h.mature == nil {
+		return
+	}
+	n := h.handleAllocSize(e)
+	end := e.off + n
+	first, last := e.off/matureOccupancyBlock, (end-1)/matureOccupancyBlock
+	blocked := e.space == spaceLarge || n > matureOccupancyBlock
+	for b := first; b <= last; b++ {
+		state := &h.mature.occupancy[b]
+		lo := max(e.off, b*matureOccupancyBlock)
+		hi := min(end, (b+1)*matureOccupancyBlock)
+		for p := lo / matureOccupancyLine; p <= (hi-1)/matureOccupancyLine; p++ {
+			if claim {
+				state.lineRefs[p%128]++
+			} else {
+				state.lineRefs[p%128]--
+			}
+		}
+		if blocked {
+			if claim {
+				state.blockers++
+			} else {
+				state.blockers--
+			}
+		}
+		if e.space == spaceOld && b < last {
+			state.crossNext = claim
+		}
+	}
+	if e.space == spaceOld {
+		granule := (e.off % matureOccupancyBlock) / 16
+		word, bit := granule/64, uint64(1)<<(granule%64)
+		if claim {
+			h.mature.occupancy[first].oldStarts[word] |= bit
+		} else {
+			h.mature.occupancy[first].oldStarts[word] &^= bit
+		}
+	}
+}
+
+func (h *throughputHeap) claimOccupancy(e handleEntry) error {
+	if h.mature == nil {
+		return nil
+	}
+	h.ensureOccupancy(h.bump)
+	if err := h.validateOccupancy(e, true); err != nil {
+		return err
+	}
+	h.mutateOccupancy(e, true)
+	return nil
+}
+
+func (h *throughputHeap) releaseOccupancy(e handleEntry) error {
+	if err := h.validateOccupancy(e, false); err != nil {
+		return err
+	}
+	h.mutateOccupancy(e, false)
+	return nil
+}
+
 func (h *throughputHeap) beginAllocTransaction() throughputAllocTransaction {
 	if h.mature != nil {
 		h.beginMatureAdmission(true)
 	}
-	return throughputAllocTransaction{mem: h.mem, bump: h.bump}
+	var occupancy []matureOccupancyBlockState
+	if h.mature != nil {
+		occupancy = h.mature.occupancy
+	}
+	return throughputAllocTransaction{mem: h.mem, occupancy: occupancy, bump: h.bump}
 }
 
 func (h *throughputHeap) restoreAllocTransaction(tx throughputAllocTransaction) {
 	h.mem = tx.mem
+	if h.mature != nil {
+		h.mature.occupancy = tx.occupancy
+	}
 	h.bump = tx.bump
 	h.cancelMatureAdmission()
 }
@@ -231,15 +380,18 @@ func (h *throughputHeap) restoreAllocTransaction(tx throughputAllocTransaction) 
 // allocations require no per-allocation restoration because the transaction
 // restores the bump and backing slice after all indexed allocations are freed.
 func (h *throughputHeap) rollbackSuccessfulAlloc(e handleEntry, initialBump uint32) {
+	if err := h.releaseOccupancy(e); err != nil {
+		panic("gc: cannot roll back successful throughput occupancy: " + err.Error())
+	}
 	if e.off >= initialBump {
 		return
 	}
-	if err := h.free(e); err != nil {
+	if err := h.freeRaw(e); err != nil {
 		panic("gc: cannot roll back successful throughput allocation: " + err.Error())
 	}
 }
 
-func (h *throughputHeap) free(e handleEntry) error {
+func (h *throughputHeap) freeRaw(e handleEntry) error {
 	allocSize := h.handleAllocSize(e)
 	if allocSize == 0 || e.off%16 != 0 || e.off+allocSize < e.off || e.off+allocSize > h.bump {
 		return errors.New("gc: invalid throughput free span")
@@ -250,13 +402,35 @@ func (h *throughputHeap) free(e handleEntry) error {
 	return nil
 }
 
+func (h *throughputHeap) free(e handleEntry) error {
+	if err := h.validateOccupancy(e, false); err != nil {
+		return err
+	}
+	if err := h.freeRaw(e); err != nil {
+		return err
+	}
+	h.mutateOccupancy(e, false)
+	h.trimOccupancy()
+	return nil
+}
+
+func (h *throughputHeap) trimOccupancy() {
+	if h.mature != nil {
+		h.mature.occupancy = h.mature.occupancy[:occupancyBlockCount(h.bump)]
+	}
+}
+
 func (h *throughputHeap) deferFree(e handleEntry) error {
 	allocSize := h.handleAllocSize(e)
 	if allocSize == 0 || e.off%16 != 0 || e.off+allocSize < e.off || e.off+allocSize > h.bump {
 		return errors.New("gc: invalid deferred throughput free span")
 	}
+	if err := h.validateOccupancy(e, false); err != nil {
+		return err
+	}
 	h.pendingFree = append(h.pendingFree, throughputFreeSpan{off: e.off, size: allocSize})
 	h.pendingBytes += uint64(allocSize)
+	h.mutateOccupancy(e, false)
 	return nil
 }
 
@@ -272,6 +446,7 @@ func (h *throughputHeap) sweepOnePending() error {
 	if err := h.insertFreeSpan(span); err != nil {
 		return err
 	}
+	h.trimOccupancy()
 	h.pendingFree[last] = throughputFreeSpan{}
 	h.pendingFree = h.pendingFree[:last]
 	h.pendingBytes -= uint64(span.size)
@@ -884,6 +1059,9 @@ func (h *throughputHeap) verify(handles []handleEntry, reservations ...throughpu
 		liveBytes += uint64(allocSize)
 		live = append(live, throughputFreeSpan{off: e.off, size: allocSize})
 	}
+	if err := h.verifyMaintainedOccupancy(handles, reservations...); err != nil {
+		return err
+	}
 
 	seen := make([]uint8, len(h.spanNodes))
 	var spanCount uint32
@@ -984,6 +1162,41 @@ func (h *throughputHeap) verify(handles []handleEntry, reservations ...throughpu
 	return nil
 }
 
+func (h *throughputHeap) verifyMaintainedOccupancy(handles []handleEntry, reservations ...throughputFreeSpan) error {
+	if h.mature == nil {
+		return nil
+	}
+	need := occupancyBlockCount(h.bump)
+	if len(h.mature.occupancy) != need {
+		return fmt.Errorf("gc: mature occupancy committed range mismatch: have %d blocks, want %d for bump %d", len(h.mature.occupancy), need, h.bump)
+	}
+	want := throughputHeap{
+		mature: &matureHeap{}, mem: h.mem, limit: h.limit, classLimit: h.classLimit,
+		bump: h.bump,
+	}
+	want.mature.occupancy = make([]matureOccupancyBlockState, need)
+	for i, e := range handles {
+		if i == 0 || (e.space != spaceOld && e.space != spaceLarge) {
+			continue
+		}
+		if err := want.claimOccupancy(e); err != nil {
+			return fmt.Errorf("gc: cannot reconstruct mature occupancy for handle %d: %w", i, err)
+		}
+	}
+	for _, reservation := range reservations {
+		e := handleEntry{off: reservation.off, size: reservation.size, space: spaceLarge, class: uint16(len(throughputClassSizes))}
+		if err := want.claimOccupancy(e); err != nil {
+			return fmt.Errorf("gc: cannot reconstruct native reservation occupancy: %w", err)
+		}
+	}
+	for i := range h.mature.occupancy {
+		if h.mature.occupancy[i] != want.mature.occupancy[i] {
+			return fmt.Errorf("gc: mature occupancy mismatch in block %d", i)
+		}
+	}
+	return nil
+}
+
 func spansOverlap(aOff, aSize, bOff, bSize uint32) bool {
 	return aOff < bOff+bSize && bOff < aOff+aSize
 }
@@ -1035,6 +1248,12 @@ func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (thro
 			}
 			h.releaseSpanNode(reusable)
 		}
+		if err := h.claimAllocRun(run, size, count, sp); err != nil {
+			if freeErr := h.freeRaw(rawExtent(throughputFreeSpan{off: run.off, size: uint32(count-1)*run.allocSize + run.lastAllocSize})); freeErr != nil {
+				panic("gc: cannot undo failed indexed run occupancy: " + freeErr.Error())
+			}
+			return throughputAllocRun{}, false, err
+		}
 		return run, true, nil
 	}
 	if len(h.pendingFree) != 0 {
@@ -1047,5 +1266,34 @@ func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (thro
 	}
 	run := throughputAllocRun{off: off, allocSize: allocSize, lastAllocSize: allocSize, class: class}
 	h.bump = uint32(end)
+	if err := h.claimAllocRun(run, size, count, sp); err != nil {
+		h.bump = off
+		if h.mature != nil {
+			h.mature.occupancy = h.mature.occupancy[:occupancyBlockCount(off)]
+		}
+		return throughputAllocRun{}, false, err
+	}
 	return run, true, nil
+}
+
+func (h *throughputHeap) claimAllocRun(run throughputAllocRun, size uint32, count int, sp spaceKind) error {
+	claimed := 0
+	for i := 0; i < count; i++ {
+		class := run.class
+		if i == count-1 && run.lastAllocSize != run.allocSize {
+			class |= handleAbsorbedTailBit
+		}
+		e := handleEntry{off: run.off + uint32(i)*run.allocSize, size: size, class: class, space: sp}
+		if err := h.claimOccupancy(e); err != nil {
+			for j := claimed - 1; j >= 0; j-- {
+				prior := handleEntry{off: run.off + uint32(j)*run.allocSize, size: size, class: run.class, space: sp}
+				if releaseErr := h.releaseOccupancy(prior); releaseErr != nil {
+					panic("gc: cannot reverse partial run occupancy: " + releaseErr.Error())
+				}
+			}
+			return err
+		}
+		claimed++
+	}
+	return nil
 }

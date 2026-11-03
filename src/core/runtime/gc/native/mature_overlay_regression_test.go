@@ -62,6 +62,7 @@ func TestMatureBoundedActualLimits(t *testing.T) {
 	for i := 0; i < 65537; i++ {
 		c.handles = append(c.handles, handleEntry{off: uint32(i/128)*uint32(evacuationBlock) + uint32(i%128)*32, size: 32, space: spaceOld, class: uint16(len(throughputClassSizes))})
 	}
+	seedMaintainedOccupancy(t, c)
 	s, err := c.selectMatureEvacuation()
 	if err != nil || len(s.moves) != 65536 || c.CollectionDiagnostics().Evacuation != "budget" {
 		t.Fatal(len(s.moves), err, c.CollectionDiagnostics())
@@ -97,6 +98,10 @@ func TestMatureBoundedLaterMalformedSource(t *testing.T) {
 				off = 32
 			}
 			c.handles = []handleEntry{{}, {off: 0, size: 32, space: spaceOld, class: uint16(len(throughputClassSizes))}, {off: off, size: 32, space: sp, class: cls}}
+			h.ensureOccupancy(h.bump)
+			if err := h.claimOccupancy(c.handles[1]); err != nil {
+				t.Fatal(err)
+			}
 			before := append([]handleEntry(nil), c.handles...)
 			if _, err := c.selectMatureEvacuation(); err == nil {
 				t.Fatal("accepted malformed later source", sp, tail)
