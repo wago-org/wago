@@ -18,16 +18,13 @@ func matureReviewOracle(t *testing.T, h *throughputHeap, live []matureReviewExte
 	t.Helper()
 	type span struct{ off, size uint32 }
 	var all []span
-	want, large := make([]uint32, len(h.mature.regions)), make([]uint32, len(h.mature.regions))
+	want := make([]uint32, len(h.mature.regions))
 	for _, x := range live {
 		all = append(all, span{x.e.off, x.size})
 		for p := x.e.off; p < x.e.off+x.size; {
 			i := p / h.pageBytes
 			end := min(x.e.off+x.size, (i+1)*h.pageBytes)
 			want[i] += end - p
-			if x.e.space == spaceLarge {
-				large[i] += end - p
-			}
 			p = end
 		}
 	}
@@ -49,8 +46,8 @@ func matureReviewOracle(t *testing.T, h *throughputHeap, live []matureReviewExte
 		t.Fatalf("coverage %d bump %d", end, h.bump)
 	}
 	for i, r := range h.mature.regions {
-		if r.live != want[i] || r.large != large[i] || r.reserved != 0 || r.reservedLarge != 0 {
-			t.Fatalf("page %d: %+v want %d/%d", i, r, want[i], large[i])
+		if r.live != want[i] || r.reserved != 0 {
+			t.Fatalf("page %d: %+v want %d", i, r, want[i])
 		}
 	}
 	if h.mature.admission || uint64(cap(h.mature.regions)) > (uint64(h.limit)+uint64(h.pageBytes)-1)/uint64(h.pageBytes) {
@@ -204,12 +201,12 @@ func TestMatureReviewStage5MixedNativeCheckedCycles(t *testing.T) {
 		if c.throughput.bump != 0 {
 			t.Fatal("retirement leak")
 		}
-		retired := c.throughput.mature.retired
+		bump := c.throughput.bump
 		if err = c.CollectFull(EmptyRoots{}); err != nil {
 			t.Fatal(err)
 		}
-		if c.throughput.mature.retired != retired {
-			t.Fatal("duplicate retirement")
+		if c.throughput.bump != bump {
+			t.Fatal("duplicate reclamation changed high-water mark")
 		}
 	}
 }

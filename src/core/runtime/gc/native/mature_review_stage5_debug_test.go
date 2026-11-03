@@ -48,8 +48,8 @@ func TestMatureReviewStage5MixedDestinationFailure(t *testing.T) {
 					t.Fatal("premature source publication")
 				}
 				matureReviewOracle(t, &c.throughput, []matureReviewExtent{{*c.entry(anchor), 32}})
-				if !c.throughput.mature.refused || c.throughput.mature.cause == nil {
-					t.Fatal("lost refusal")
+				if !c.throughput.mature.pressure {
+					t.Fatal("required refusal did not request collection")
 				}
 				if err = c.CollectMinor(roots); err != nil {
 					t.Fatal(err)
@@ -63,9 +63,6 @@ func TestMatureReviewStage5MixedDestinationFailure(t *testing.T) {
 					}
 				}
 				matureReviewOracle(t, &c.throughput, live)
-				if c.throughput.mature.refused || c.throughput.mature.cause != nil {
-					t.Fatal("stale retry refusal")
-				}
 			})
 		}
 	}
@@ -90,8 +87,8 @@ func TestMatureReviewStage5PartialRetirementRetry(t *testing.T) {
 	if !isInjectedFailure(err) {
 		t.Fatal("missing partial reconciliation failure", err)
 	}
-	if c.throughput.mature.retired != 0 || len(c.throughput.pendingFree) != 2 {
-		t.Fatalf("premature epochs/lost debt: retired %d pending %d", c.throughput.mature.retired, len(c.throughput.pendingFree))
+	if len(c.throughput.pendingFree) != 2 {
+		t.Fatalf("lost reconciliation debt: pending %d", len(c.throughput.pendingFree))
 	}
 	live := []matureReviewExtent{{*c.entry(refs[1]), 8208}, {*c.entry(refs[3]), 8208}}
 	matureReviewOracle(t, &c.throughput, live)

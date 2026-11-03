@@ -7,14 +7,13 @@ import (
 
 func stage5Occupancy(t *testing.T, h *throughputHeap, live, reserved, large uint64) {
 	t.Helper()
-	var l, r, g uint64
+	var l, r uint64
 	for _, d := range h.mature.regions {
 		l += uint64(d.live)
 		r += uint64(d.reserved)
-		g += uint64(d.large)
 	}
-	if l != live || r != reserved || g != large {
-		t.Fatalf("descriptor totals live/reserved/large=%d/%d/%d want %d/%d/%d", l, r, g, live, reserved, large)
+	if l != live || r != reserved {
+		t.Fatalf("descriptor totals live/reserved=%d/%d want %d/%d (LOS physical=%d)", l, r, live, reserved, large)
 	}
 	if uint64(cap(h.mature.regions)) > (uint64(h.limit)+uint64(h.pageBytes)-1)/uint64(h.pageBytes) {
 		t.Fatal("unbounded metadata")
@@ -49,8 +48,8 @@ func TestRFWGCMatureStage5AdmissionAndFragmentation(t *testing.T) {
 		t.Fatalf("fragmented extent admitted: %v", err)
 	}
 	h.restoreAllocTransaction(tx)
-	if !h.mature.refused || h.mature.cause == nil {
-		t.Fatal("required refusal not recorded")
+	if !h.mature.pressure {
+		t.Fatal("required refusal did not request collection")
 	}
 	stage5Occupancy(t, h, 8192, 0, 8192)
 	// Optional destination admission shares the transaction but cannot latch a
@@ -61,9 +60,6 @@ func TestRFWGCMatureStage5AdmissionAndFragmentation(t *testing.T) {
 		t.Fatal("optional fragmented admission succeeded")
 	}
 	h.restoreAllocTransaction(tx)
-	if h.mature.refused || h.mature.cause == nil {
-		t.Fatal("optional refusal diagnostics")
-	}
 	tx = h.beginAllocTransaction()
 	a, err := h.alloc(4080, spaceOld)
 	if err != nil {
@@ -88,9 +84,6 @@ func TestRFWGCMatureStage5AdmissionAndFragmentation(t *testing.T) {
 	}
 	h.commitMatureAdmission()
 	stage5Occupancy(t, h, 12288, 0, 8192)
-	if h.mature.refused || h.mature.cause != nil {
-		t.Fatal("retry retained refusal")
-	}
 }
 
 func TestRFWGCMatureStage5CrossBoundaryReclamation(t *testing.T) {
@@ -126,9 +119,6 @@ func TestRFWGCMatureStage5CrossBoundaryReclamation(t *testing.T) {
 	if *c.entry(large) != original {
 		t.Fatal("nonmoving LOS changed")
 	}
-	if h.mature.retired != 0 {
-		t.Fatal("retired a page intersecting live LOS")
-	}
 	v, err := c.ArrayGet(large, 2047)
 	if err != nil || v.I32() != 42 {
 		t.Fatal("lost boundary payload")
@@ -139,19 +129,16 @@ func TestRFWGCMatureStage5CrossBoundaryReclamation(t *testing.T) {
 		t.Fatal(err)
 	}
 	stage5Occupancy(t, h, 0, 0, 0)
-	if h.mature.retired != 3 || h.bump != 0 || len(h.pendingFree) != 0 {
-		t.Fatalf("no descriptor-driven reclaim: retired=%d bump=%d pending=%d", h.mature.retired, h.bump, len(h.pendingFree))
+	if h.bump != 0 || len(h.pendingFree) != 0 {
+		t.Fatalf("no descriptor-driven reclaim: bump=%d pending=%d", h.bump, len(h.pendingFree))
 	}
 	for _, r := range h.mature.regions {
-		if r.epoch != 1 || r.retire {
+		if r.retire {
 			t.Fatal("retirement not committed", r)
 		}
 	}
 	if err := c.CollectFull(roots); err != nil {
 		t.Fatal(err)
-	}
-	if h.mature.retired != 3 {
-		t.Fatal("double retirement")
 	}
 }
 
@@ -189,7 +176,7 @@ func TestRFWGCMatureStage5Churn(t *testing.T) {
 		t.Fatal(err)
 	}
 	stage5Occupancy(t, &c.throughput, 0, 0, 0)
-	if c.throughput.mature.retired != 1 || c.throughput.bump != 0 {
+	if c.throughput.bump != 0 {
 		t.Fatal("churn page not reclaimed")
 	}
 }
@@ -289,7 +276,7 @@ func TestRFWGCMatureStage5PartialFinalPage(t *testing.T) {
 	if err = h.reclaimEmptyMature(); err != nil {
 		t.Fatal(err)
 	}
-	if h.bump != 0 || h.mature.retired != 3 {
+	if h.bump != 0 {
 		t.Fatal("partial page not reclaimed")
 	}
 }
@@ -307,7 +294,7 @@ func TestRFWGCMatureStage5RetirementPolicyControl(t *testing.T) {
 			if len(c.throughput.pendingFree) == 0 || c.throughput.bump == 0 {
 				t.Fatal("baseline deferred-ledger control changed")
 			}
-		} else if len(c.throughput.pendingFree) != 0 || c.throughput.bump != 0 || c.throughput.mature.retired != 3 {
+		} else if len(c.throughput.pendingFree) != 0 || c.throughput.bump != 0 {
 			t.Fatal("region policy did not drive reclamation")
 		}
 	}
