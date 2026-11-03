@@ -52,10 +52,8 @@ type throughputAllocTransaction struct {
 }
 
 // matureOccupancyBlockState mirrors stable physical ownership for one committed
-// 32 KiB block. Lines, starts, and cross-block links describe old extents; LOS
-// extents contribute only per-block blockers. It is allocation-policy metadata
-// only when mature regions are enabled; ordinary throughput configurations
-// retain no table or per-line work.
+// 32 KiB block. It is allocation-policy metadata only when mature regions are
+// enabled; ordinary throughput configurations retain no table or per-line work.
 type matureOccupancyBlockState struct {
 	lineRefs  [128]uint8
 	oldStarts [32]uint64
@@ -273,13 +271,11 @@ func (h *throughputHeap) validateOccupancy(e handleEntry, claim bool) error {
 	blocked := e.space == spaceLarge || n > matureOccupancyBlock
 	for b := first; b <= last; b++ {
 		state := &h.mature.occupancy[b]
-		if e.space == spaceOld {
-			lineFirst, lineLast := occupancyBlockLineRange(uint64(e.off), end, b)
-			for p := lineFirst; p <= lineLast; p++ {
-				refs := state.lineRefs[p]
-				if (claim && refs == ^uint8(0)) || (!claim && refs == 0) {
-					return errors.New("gc: mature occupancy line counter corruption")
-				}
+		lineFirst, lineLast := occupancyBlockLineRange(uint64(e.off), end, b)
+		for p := lineFirst; p <= lineLast; p++ {
+			refs := state.lineRefs[p]
+			if (claim && refs == ^uint8(0)) || (!claim && refs == 0) {
+				return errors.New("gc: mature occupancy line counter corruption")
 			}
 		}
 		if blocked && ((claim && state.blockers == ^uint16(0)) || (!claim && state.blockers == 0)) {
@@ -310,14 +306,12 @@ func (h *throughputHeap) mutateOccupancy(e handleEntry, claim bool) {
 	blocked := e.space == spaceLarge || n > matureOccupancyBlock
 	for b := first; b <= last; b++ {
 		state := &h.mature.occupancy[b]
-		if e.space == spaceOld {
-			lineFirst, lineLast := occupancyBlockLineRange(uint64(e.off), end, b)
-			for p := lineFirst; p <= lineLast; p++ {
-				if claim {
-					state.lineRefs[p]++
-				} else {
-					state.lineRefs[p]--
-				}
+		lineFirst, lineLast := occupancyBlockLineRange(uint64(e.off), end, b)
+		for p := lineFirst; p <= lineLast; p++ {
+			if claim {
+				state.lineRefs[p]++
+			} else {
+				state.lineRefs[p]--
 			}
 		}
 		if blocked {
