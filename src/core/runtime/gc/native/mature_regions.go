@@ -24,9 +24,10 @@ type matureHeap struct {
 	touched             []uint32
 	// First cause belongs to this attempt. Optional refusal cannot latch a
 	// required failure; a new attempt clears the previous outcome.
-	cause   error
-	refused bool
-	retired uint64
+	cause       error
+	refused     bool
+	retired     uint64
+	transaction *evacuationTransaction
 }
 
 func (h *throughputHeap) beginMatureAdmission(required bool) {
@@ -61,6 +62,7 @@ func (h *throughputHeap) commitMatureAdmission() {
 		return
 	}
 	for _, i := range h.mature.touched {
+		h.journalMatureRegion(i)
 		r := &h.mature.regions[i]
 		r.live += r.reserved
 		r.large += r.reservedLarge
@@ -77,6 +79,7 @@ func (h *throughputHeap) cancelMatureAdmission() {
 	}
 	omitted := false
 	for _, i := range h.mature.touched {
+		h.journalMatureRegion(i)
 		r := &h.mature.regions[i]
 		omitted = omitted || r.reserved != 0 || r.reservedLarge != 0
 		r.admissionTouched = false
@@ -133,6 +136,7 @@ func (h *throughputHeap) prepareMature(e handleEntry) error {
 		h.mature.touched = slices.Grow(h.mature.touched, newTouched)
 	}
 	h.matureIntersections(e, func(i uint32, r *matureRegion, n uint32) {
+		h.journalMatureRegion(i)
 		if uint64(r.live)+uint64(r.reserved)+uint64(n) > uint64(h.pageBytes) {
 			panic("gc: overlapping mature reservation")
 		}
@@ -233,6 +237,7 @@ func (h *throughputHeap) prepareMatureRun(run throughputAllocRun, size uint32, c
 		start := max(uint64(run.off), page*uint64(h.pageBytes))
 		stop := min(end, (page+1)*uint64(h.pageBytes))
 		n := uint32(stop - start)
+		h.journalMatureRegion(uint32(page))
 		r := &h.mature.regions[page]
 		if h.mature.admission {
 			if !r.admissionTouched {
@@ -293,7 +298,8 @@ func (h *throughputHeap) releaseMature(e handleEntry) {
 	if h.mature == nil {
 		return
 	}
-	h.matureIntersections(e, func(_ uint32, r *matureRegion, n uint32) {
+	h.matureIntersections(e, func(i uint32, r *matureRegion, n uint32) {
+		h.journalMatureRegion(i)
 		if h.mature.admission {
 			if r.reserved < n {
 				panic("gc: mature reserved underflow")

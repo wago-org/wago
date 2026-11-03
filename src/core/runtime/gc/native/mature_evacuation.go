@@ -232,29 +232,46 @@ func planEvacuationRuns(free []throughputFreeSpan, excluded []bool, demand uint6
 	return nil, credit, need, errThroughputHeapExhausted
 }
 
-// Exact reservations never absorb an unrepresented tail. A rollback snapshot
-// owns allocator metadata only (bounded by the heap and existing index); payload
-// backing is shared read-only until disjoint copies. No helper sees this state.
-type evacuationCheckpoint struct {
-	heap   throughputHeap
-	mature matureHeap
+// Exact reservations never absorb an unrepresented tail. The transaction
+// journals only overwritten AVL nodes and mature descriptors; slice headers
+// restore any arena, debt, descriptor, touched-index, or backing growth.
+func (h *throughputHeap) beginEvacuationTransaction() *evacuationTransaction {
+	if h.mature.transaction != nil {
+		panic("gc: nested evacuation transaction")
+	}
+	tx := &evacuationTransaction{heap: *h, mature: *h.mature, active: true}
+	tx.mature.transaction = nil
+	h.mature.transaction = tx
+	return tx
 }
 
-func (h *throughputHeap) evacuationCheckpoint() evacuationCheckpoint {
-	s := evacuationCheckpoint{heap: *h, mature: *h.mature}
-	s.heap.spanNodes = slices.Clone(h.spanNodes)
-	s.heap.pendingFree = slices.Clone(h.pendingFree)
-	s.mature.regions = slices.Clone(h.mature.regions)
-	s.mature.touched = slices.Clone(h.mature.touched)
-	return s
-}
-func (h *throughputHeap) restoreEvacuation(s evacuationCheckpoint) {
+func (h *throughputHeap) rollbackEvacuation(tx *evacuationTransaction) {
+	if h.mature.transaction != tx || !tx.active {
+		panic("gc: invalid evacuation rollback")
+	}
+	tx.active = false
+	for i := len(tx.regions) - 1; i >= 0; i-- {
+		u := tx.regions[i]
+		*u.target = u.region
+	}
+	for i := len(tx.spanNodes) - 1; i >= 0; i-- {
+		u := tx.spanNodes[i]
+		*u.target = u.node
+	}
 	// Diagnostics and pressure describe this attempt, even after rollback.
 	d, p, cur, poisoned := h.mature.diagnostics, h.mature.pressure, h.mature.cursor, h.mature.poison
-	*h = s.heap
-	*h.mature = s.mature
+	*h = tx.heap
+	*h.mature = tx.mature
 	h.mature.diagnostics, h.mature.pressure, h.mature.cursor = d, p, cur
 	h.mature.poison = poisoned
+}
+
+func (h *throughputHeap) commitEvacuation(tx *evacuationTransaction) {
+	if h.mature.transaction != tx || !tx.active {
+		panic("gc: invalid evacuation commit")
+	}
+	tx.active = false
+	h.mature.transaction = nil
 }
 func rawExtent(s throughputFreeSpan) handleEntry {
 	return handleEntry{off: s.off, size: s.size, space: spaceOld, class: uint16(len(throughputClassSizes))}
@@ -410,7 +427,7 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 		m.diagnostics.Evacuation = "credit"
 		return nil
 	}
-	checkpoint := h.evacuationCheckpoint()
+	transaction := h.beginEvacuationTransaction()
 	committed := false
 	defer func() {
 		if r := recover(); r != nil {
@@ -418,7 +435,7 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 			err = m.poison
 		}
 		if !committed {
-			h.restoreEvacuation(checkpoint)
+			h.rollbackEvacuation(transaction)
 		}
 	}()
 	h.beginMatureAdmission(false)
@@ -481,6 +498,7 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 	}
 	// No fallible operation, callback, or allocator insertion beyond this barrier.
 	committed = true
+	h.commitEvacuation(transaction)
 	h.commitMatureAdmission()
 	for _, move := range s.moves {
 		n := h.handleAllocSize(move.before)
@@ -551,7 +569,7 @@ func (c *Collector) promoteWithRuns(plans []plannedPromotion, toSpace uint8, toB
 	if err != nil {
 		return 0, 0, false, err
 	}
-	checkpoint := h.evacuationCheckpoint()
+	transaction := h.beginEvacuationTransaction()
 	committed := false
 	defer func() {
 		if r := recover(); r != nil {
@@ -559,7 +577,7 @@ func (c *Collector) promoteWithRuns(plans []plannedPromotion, toSpace uint8, toB
 			err = m.poison
 		}
 		if !committed {
-			h.restoreEvacuation(checkpoint)
+			h.rollbackEvacuation(transaction)
 		}
 	}()
 	h.beginMatureAdmission(true)
@@ -604,6 +622,7 @@ func (c *Collector) promoteWithRuns(plans []plannedPromotion, toSpace uint8, toB
 		return
 	}
 	committed = true
+	h.commitEvacuation(transaction)
 	h.commitMatureAdmission()
 	return c.commitPromotionPlans(plans, toSpace, toBump, parallelCopied)
 }

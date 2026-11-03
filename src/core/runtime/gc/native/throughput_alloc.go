@@ -51,6 +51,27 @@ type throughputAllocRun struct {
 	class         uint16
 }
 
+type throughputSpanNodeUndo struct {
+	target *throughputSpanNode
+	node   throughputSpanNode
+}
+
+type matureRegionUndo struct {
+	target *matureRegion
+	region matureRegion
+}
+
+// evacuationTransaction journals only metadata actually overwritten by one
+// admitted run attempt. Slice headers and allocator scalars restore growth and
+// arena ownership; node/region records restore writes to pre-existing backing.
+type evacuationTransaction struct {
+	heap      throughputHeap
+	mature    matureHeap
+	spanNodes []throughputSpanNodeUndo
+	regions   []matureRegionUndo
+	active    bool
+}
+
 type throughputHeap struct {
 	mature *matureHeap
 
@@ -67,6 +88,21 @@ type throughputHeap struct {
 	freeBytes    uint64
 	pendingBytes uint64
 	spanCount    uint32
+}
+
+func (h *throughputHeap) journalSpanNode(index uint32) {
+	if h.mature == nil {
+		return
+	}
+	if tx := h.mature.transaction; tx != nil && tx.active && int(index) < len(h.spanNodes) {
+		tx.spanNodes = append(tx.spanNodes, throughputSpanNodeUndo{target: &h.spanNodes[index], node: h.spanNodes[index]})
+	}
+}
+
+func (h *throughputHeap) journalMatureRegion(index uint32) {
+	if tx := h.mature.transaction; tx != nil && tx.active && int(index) < len(h.mature.regions) {
+		tx.regions = append(tx.regions, matureRegionUndo{target: &h.mature.regions[index], region: h.mature.regions[index]})
+	}
 }
 
 func (h *throughputHeap) Init(cfg Config) error {
@@ -592,6 +628,7 @@ func (h *throughputHeap) insertFreeSpan(span throughputFreeSpan) error {
 }
 
 func (h *throughputHeap) insertFreeSpanNode(span throughputFreeSpan, idx uint32) {
+	h.journalSpanNode(idx)
 	h.spanNodes[idx] = throughputSpanNode{
 		off: span.off, size: span.size, maxSize: span.size,
 		left: throughputNoSlot, right: throughputNoSlot, nextFree: throughputNoSlot, height: 1,
@@ -632,6 +669,8 @@ func (h *throughputHeap) replaceFreeSpanAVL(root, oldOff uint32, span throughput
 		return root, false
 	}
 	n := &h.spanNodes[root]
+	h.journalSpanNode(root)
+	n = &h.spanNodes[root]
 	var ok bool
 	switch {
 	case oldOff < n.off:
@@ -652,6 +691,7 @@ func (h *throughputHeap) acquireSpanNode() (uint32, error) {
 	if h.freeNodeHead != throughputNoSlot {
 		idx := h.freeNodeHead
 		h.freeNodeHead = h.spanNodes[idx].nextFree
+		h.journalSpanNode(idx)
 		h.spanNodes[idx] = throughputSpanNode{}
 		return idx, nil
 	}
@@ -664,6 +704,7 @@ func (h *throughputHeap) acquireSpanNode() (uint32, error) {
 }
 
 func (h *throughputHeap) releaseSpanNode(idx uint32) {
+	h.journalSpanNode(idx)
 	h.spanNodes[idx] = throughputSpanNode{left: throughputNoSlot, right: throughputNoSlot, nextFree: h.freeNodeHead}
 	h.freeNodeHead = idx
 }
@@ -683,6 +724,7 @@ func (h *throughputHeap) nodeMax(idx uint32) uint32 {
 }
 
 func (h *throughputHeap) updateNode(idx uint32) {
+	h.journalSpanNode(idx)
 	n := &h.spanNodes[idx]
 	leftHeight, rightHeight := h.nodeHeight(n.left), h.nodeHeight(n.right)
 	n.height = max(leftHeight, rightHeight) + 1
@@ -692,7 +734,9 @@ func (h *throughputHeap) updateNode(idx uint32) {
 func (h *throughputHeap) rotateLeft(root uint32) uint32 {
 	right := h.spanNodes[root].right
 	middle := h.spanNodes[right].left
+	h.journalSpanNode(right)
 	h.spanNodes[right].left = root
+	h.journalSpanNode(root)
 	h.spanNodes[root].right = middle
 	h.updateNode(root)
 	h.updateNode(right)
@@ -702,7 +746,9 @@ func (h *throughputHeap) rotateLeft(root uint32) uint32 {
 func (h *throughputHeap) rotateRight(root uint32) uint32 {
 	left := h.spanNodes[root].left
 	middle := h.spanNodes[left].right
+	h.journalSpanNode(left)
 	h.spanNodes[left].right = root
+	h.journalSpanNode(root)
 	h.spanNodes[root].left = middle
 	h.updateNode(root)
 	h.updateNode(left)
@@ -719,6 +765,7 @@ func (h *throughputHeap) rebalance(root uint32) uint32 {
 	if balance > 1 {
 		left := n.left
 		if h.nodeHeight(h.spanNodes[left].left) < h.nodeHeight(h.spanNodes[left].right) {
+			h.journalSpanNode(root)
 			n.left = h.rotateLeft(left)
 		}
 		return h.rotateRight(root)
@@ -726,6 +773,7 @@ func (h *throughputHeap) rebalance(root uint32) uint32 {
 	if balance < -1 {
 		right := n.right
 		if h.nodeHeight(h.spanNodes[right].right) < h.nodeHeight(h.spanNodes[right].left) {
+			h.journalSpanNode(root)
 			n.right = h.rotateRight(right)
 		}
 		return h.rotateLeft(root)
@@ -738,8 +786,10 @@ func (h *throughputHeap) insertAVL(root, idx uint32) uint32 {
 		return idx
 	}
 	if h.spanNodes[idx].off < h.spanNodes[root].off {
+		h.journalSpanNode(root)
 		h.spanNodes[root].left = h.insertAVL(h.spanNodes[root].left, idx)
 	} else {
+		h.journalSpanNode(root)
 		h.spanNodes[root].right = h.insertAVL(h.spanNodes[root].right, idx)
 	}
 	return h.rebalance(root)
@@ -753,6 +803,8 @@ func (h *throughputHeap) removeAVL(root, off uint32) (uint32, uint32, bool) {
 	if off < n.off {
 		var removed uint32
 		var ok bool
+		h.journalSpanNode(root)
+		n = &h.spanNodes[root]
 		n.left, removed, ok = h.removeAVL(n.left, off)
 		if !ok {
 			return root, removed, false
@@ -762,6 +814,8 @@ func (h *throughputHeap) removeAVL(root, off uint32) (uint32, uint32, bool) {
 	if off > n.off {
 		var removed uint32
 		var ok bool
+		h.journalSpanNode(root)
+		n = &h.spanNodes[root]
 		n.right, removed, ok = h.removeAVL(n.right, off)
 		if !ok {
 			return root, removed, false
@@ -778,6 +832,8 @@ func (h *throughputHeap) removeAVL(root, off uint32) (uint32, uint32, bool) {
 	for h.spanNodes[succ].left != throughputNoSlot {
 		succ = h.spanNodes[succ].left
 	}
+	h.journalSpanNode(root)
+	n = &h.spanNodes[root]
 	n.off, n.size = h.spanNodes[succ].off, h.spanNodes[succ].size
 	var removed uint32
 	n.right, removed, _ = h.removeAVL(n.right, n.off)
