@@ -1,4 +1,4 @@
-//go:build (linux && amd64) || ((linux || darwin) && arm64)
+//go:build !wago_standalone && ((linux && amd64) || ((linux || darwin) && arm64))
 
 package wago
 
@@ -177,7 +177,7 @@ func TestConservativeUnwindPreparationOldPlanOracle(t *testing.T) {
 }
 
 func TestConservativeUnwindPreparationFallbackMatrix(t *testing.T) {
-	base, valid := unwindPreparationFixture(t, false, false)
+	base, _ := unwindPreparationFixture(t, false, false)
 	assertFallback := func(t *testing.T, m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) {
 		t.Helper()
 		if gcFrameCanUseConservativeUnwind(m, analysis) {
@@ -198,11 +198,6 @@ func TestConservativeUnwindPreparationFallbackMatrix(t *testing.T) {
 			_ = wasm.ValidateModuleWithAnalysis(other, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, a)
 			return a
 		}())
-	})
-	t.Run("numeric-global-declaration", func(t *testing.T) {
-		m := *base
-		m.Globals = []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32}}}
-		assertFallback(t, &m, valid)
 	})
 	t.Run("unreachable-call", func(t *testing.T) {
 		m, err := wasm.DecodeModule(wasmtest.Module(
@@ -239,5 +234,41 @@ func TestConservativeUnwindSummaryPositiveAllowlist(t *testing.T) {
 		if flag&gcFrameUnwindValidatedFlags != 0 {
 			t.Fatalf("excluded flag %#x is allowlisted", flag)
 		}
+	}
+}
+
+func TestConservativeUnwindValidatedDeclarationFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		extra []byte
+	}{
+		{"global", wasmtest.Section(6, wasmtest.Vec([]byte{0x7f, 0, 0x41, 0, 0x0b}))},
+		{"memory", wasmtest.Section(5, wasmtest.Vec([]byte{0, 0}))},
+		{"imported-start", wasmtest.Section(8, []byte{0})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			imp := append(append(wasmtest.Name("env"), wasmtest.Name("f")...), byte(wasm.ExternFunc), 0)
+			m, err := wasm.DecodeModule(wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(2, wasmtest.Vec(imp)), wasmtest.Section(3, wasmtest.Vec([]byte{0})), tc.extra, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x0b})))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := new(wasm.ValidatedModuleAnalysis)
+			if err = wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, a); err != nil {
+				t.Fatal(err)
+			}
+			if !a.ValidFor(m) {
+				t.Fatal("fresh analysis identity invalid")
+			}
+			var od, nd string
+			old := newGCFrameRootPlan(m, true, false, &od, a)
+			got := newGCFrameRootPlanMode(m, true, false, true, &nd, a)
+			if od != nd || !reflect.DeepEqual(old, got) {
+				t.Fatalf("old=%q new=%q", od, nd)
+			}
+			if tc.name != "imported-start" && gcFrameCanUseConservativeUnwind(m, a) {
+				t.Fatal("declaration admitted")
+			}
+			t.Logf("diagnostic=%q plan-present=%t", nd, got != nil)
+		})
 	}
 }
