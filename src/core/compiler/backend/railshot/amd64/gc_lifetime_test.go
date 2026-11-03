@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"unsafe"
 
@@ -68,6 +69,27 @@ func TestGCLifetimePublicationFallback(t *testing.T) {
 				t.Fatal("clean retry after rejected candidate emitted no code")
 			}
 		})
+	}
+}
+
+func TestGCLifetimePanicUnwindsWorkerPlan(t *testing.T) {
+	if !gc.NativeDeadBatchSupported || profileEnabled {
+		t.Skip("consumer profile fallback")
+	}
+	m := lifetimeFixture(t, "qualifying", 1)
+	t.Cleanup(func() { gcLifetimePlanTestHook = nil })
+	gcLifetimePlanTestHook = func(*gcLifetimePlan) { panic("injected plan verifier panic") }
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("injected verifier panic did not propagate")
+			}
+		}()
+		compileGCLifetimeCode(t, m, true)
+	}()
+	gcLifetimePlanTestHook = nil
+	if got := compileGCLifetimeCode(t, m, true); len(got) == 0 {
+		t.Fatal("worker scratch was not reusable after panic unwind")
 	}
 }
 
@@ -326,32 +348,43 @@ func TestGCLifetimeReplay(t *testing.T) {
 	}
 	ft, _ := m.LocalFuncType(0)
 	f := &fn{m: m, ft: ft, gcStructHelpers: true, policy: shared.DefaultCodegenPolicy(selection)}
-	p := f.sealGCLifetime(m.Code[0].BodyBytes)
-	if p == nil || !f.replayGCLifetime(p, m.Code[0].BodyBytes) {
-		t.Fatal("missing sealed replay")
+	mutations := []func(*gcLifetimePlan){
+		func(p *gcLifetimePlan) { p.context.bodyHash++ }, func(p *gcLifetimePlan) { p.context.fact.layout.objectSize++ },
+		func(p *gcLifetimePlan) { p.records[0].Offset++ }, func(p *gcLifetimePlan) { p.records[len(p.records)-1].Descriptor++ },
+		func(p *gcLifetimePlan) { p.policy.MaxMachineWindow++ }, func(p *gcLifetimePlan) { p.typ++ },
 	}
-	for _, mutate := range []func(){
-		func() { p.context.bodyHash++ }, func() { p.context.fact.layout.objectSize++ }, func() { p.records[0].Offset++ },
-		func() { p.records[len(p.records)-1].Descriptor++ }, func() { p.policy.MaxMachineWindow++ }, func() { p.typ++ },
-	} {
-		saved := *p
-		savedFact := *p.context.fact
-		saved.records = append([]gcLifetimeRewrite(nil), p.records...)
-		mutate()
+	for _, mutate := range mutations {
+		p := f.sealGCLifetime(m.Code[0].BodyBytes)
+		if p == nil || !f.replayGCLifetime(p, m.Code[0].BodyBytes) {
+			t.Fatal("missing sealed replay")
+		}
+		var originalFact, savedFact *gcLifetimeTypeFact
+		if p.context.fact != nil {
+			originalFact = p.context.fact
+			copyFact := *p.context.fact
+			savedFact = &copyFact
+		}
+		mutate(p)
 		if f.replayGCLifetime(p, m.Code[0].BodyBytes) {
 			t.Fatal("accepted mismatched certificate")
 		}
 		if consumed, err := f.consumeGCLifetime(p, m.Code[0].BodyBytes); consumed || err != nil || f.a != nil {
 			t.Fatal("mismatch did not cleanly fall back before emission")
 		}
-		*p = saved
-		*p.context.fact = savedFact
+		if savedFact != nil {
+			*originalFact = *savedFact
+		}
 	}
 	// Diagnostic hashes do not occur in certificates and cannot authorize a replay.
+	p := f.sealGCLifetime(m.Code[0].BodyBytes)
+	if p == nil {
+		t.Fatal("seal before body mutation")
+	}
 	m.Code[0].BodyBytes = append([]byte{1}, m.Code[0].BodyBytes...)
 	if f.replayGCLifetime(p, m.Code[0].BodyBytes) {
 		t.Fatal("accepted changed complete body")
 	}
+	f.sc.releaseGCLifetimePlan(p)
 }
 
 func TestGCLifetimeReplayContextFallback(t *testing.T) {
@@ -405,6 +438,9 @@ func TestGCLifetimeCompactRecordsAndScratchLifecycle(t *testing.T) {
 	selection, _ := optimizationBindings.ResolveSnapshot(lifetimeSelection(true), OptimizationSnapshot{}, nil)
 	sc := &scratch{gcLifetimeFacts: newGCLifetimeModuleFacts()}
 	f := &fn{m: m, ft: ft, gcStructHelpers: true, policy: shared.DefaultCodegenPolicy(selection), sc: sc}
+	if sc.gcLifetimePlan != nil || sc.gcLifetimePlanLive {
+		t.Fatal("unused worker eagerly materialized lifetime plan storage")
+	}
 	p := f.sealGCLifetime(m.Code[0].BodyBytes)
 	proof := analyzeGCLifetimeWithRecords(m, 0, gcLifetimeMaxRecords, nil, false)
 	if p == nil || len(p.records) != proof.Rewrites || !sc.gcLifetimeRecordsLive {
@@ -415,13 +451,18 @@ func TestGCLifetimeCompactRecordsAndScratchLifecycle(t *testing.T) {
 			t.Fatal("records not in strict source order")
 		}
 	}
+	if nested := f.sealGCLifetime(m.Code[0].BodyBytes); nested != nil || !f.replayGCLifetime(p, m.Code[0].BodyBytes) {
+		t.Fatal("nested admission reused or damaged the live worker slot")
+	}
+	retainedPlan := p
 	retained := cap(sc.gcLifetimeRecords)
-	sc.releaseGCLifetimeRecords()
-	if sc.gcLifetimeRecordsLive || len(sc.gcLifetimeRecords) != 0 {
+	sc.releaseGCLifetimePlan(p)
+	if sc.gcLifetimePlanLive || sc.gcLifetimeRecordsLive || len(sc.gcLifetimeRecords) != 0 ||
+		p.body != nil || p.context.fact != nil || p.records != nil || p.typ != 0 {
 		t.Fatal("release did not reset worker scratch")
 	}
 	p = f.sealGCLifetime(m.Code[0].BodyBytes)
-	if p == nil || cap(sc.gcLifetimeRecords) != retained {
+	if p == nil || p != retainedPlan || cap(sc.gcLifetimeRecords) != retained {
 		t.Fatal("retry did not reuse retained rewrite storage")
 	}
 	// A failed attempt releases its lease and a following retry may reuse it.
@@ -432,11 +473,120 @@ func TestGCLifetimeCompactRecordsAndScratchLifecycle(t *testing.T) {
 	if p = f.sealGCLifetime(m.Code[0].BodyBytes); p == nil || !f.replayGCLifetime(p, m.Code[0].BodyBytes) {
 		t.Fatal("clean retry after corruption failed")
 	}
-	sc.releaseGCLifetimeRecords()
+	sc.releaseGCLifetimePlan(p)
+	// The same worker slot admits bounded record growth, then shrinks without
+	// changing plan identity or retaining pointer-bearing state from either use.
+	smallBody := append([]byte(nil), m.Code[0].BodyBytes...)
+	largeBody := []byte{0x41, 42, 0xfb, 0, 0, 0x21, 0}
+	for range 60 {
+		largeBody = append(largeBody, 0x20, 0, 0x1a)
+	}
+	m.Code[0].BodyBytes = append(largeBody, 0x20, 0, 0xfb, 2, 0, 0, 0x0b)
+	p = f.sealGCLifetime(m.Code[0].BodyBytes)
+	if p == nil || p != retainedPlan || len(p.records) <= retained || cap(sc.gcLifetimeRecords) > gcLifetimeMaxRecords {
+		t.Fatal("bounded record growth did not reuse the worker plan")
+	}
+	sc.releaseGCLifetimePlan(p)
+	m.Code[0].BodyBytes = smallBody
+	p = f.sealGCLifetime(m.Code[0].BodyBytes)
+	if p == nil || p != retainedPlan || len(p.records) >= cap(sc.gcLifetimeRecords) {
+		t.Fatal("small retry did not reuse grown worker storage")
+	}
+	sc.releaseGCLifetimePlan(p)
 	// Rejection/partial candidate failure leaves no live record bank.
 	m.Code[0].BodyBytes = []byte{0xfb, 1, 0, 0xfb, 1, 0, 0x0b}
 	if p = f.sealGCLifetime(m.Code[0].BodyBytes); p != nil || sc.gcLifetimeRecordsLive {
 		t.Fatal("rejected candidate retained worker records")
+	}
+}
+
+func TestGCLifetimeFactsReuseFallbackLayouts(t *testing.T) {
+	m := gcLayoutTestModule(2, 3)
+	selection, err := optimizationBindings.ResolveSnapshot(lifetimeSelection(true), OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts := newGCLifetimeModuleFacts()
+	newFn := func() *fn {
+		return &fn{m: m, policy: shared.DefaultCodegenPolicy(selection), sc: &scratch{gcLifetimeFacts: facts}}
+	}
+
+	// Simulate independent workers admitting two referenced types. Publication
+	// must converge on one immutable fact and one field slice per type.
+	const workers = 8
+	type result struct {
+		typeIndex uint32
+		fact      *gcLifetimeTypeFact
+	}
+	got := make(chan result, workers*2)
+	var wg sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		for typeIndex := uint32(0); typeIndex < 2; typeIndex++ {
+			wg.Add(1)
+			go func(typeIndex uint32) {
+				defer wg.Done()
+				fact, ok := facts.typeFact(newFn(), typeIndex)
+				if !ok {
+					t.Errorf("type %d was not admitted", typeIndex)
+					return
+				}
+				got <- result{typeIndex: typeIndex, fact: fact}
+			}(typeIndex)
+		}
+	}
+	wg.Wait()
+	close(got)
+	var published [2]*gcLifetimeTypeFact
+	for result := range got {
+		if published[result.typeIndex] == nil {
+			published[result.typeIndex] = result.fact
+		} else if published[result.typeIndex] != result.fact {
+			t.Fatalf("type %d published multiple facts", result.typeIndex)
+		}
+	}
+	if len(facts.types) != 2 || published[0] == nil || published[1] == nil || published[0] == published[1] {
+		t.Fatalf("published facts = %#v, cache size = %d", published, len(facts.types))
+	}
+
+	// Baseline/candidate/helper retries reuse the published field storage.
+	f := newFn()
+	for typeIndex := uint32(0); typeIndex < 2; typeIndex++ {
+		for retry := 0; retry < 4; retry++ {
+			layout, ok := f.nativeGCStructAllocLayout(typeIndex)
+			if !ok || len(layout.fields) == 0 || &layout.fields[0] != &facts.types[typeIndex].layout.fields[0] {
+				t.Fatalf("type %d retry %d did not reuse published layout", typeIndex, retry)
+			}
+		}
+	}
+
+	// Unsupported indices and a changed module never acquire authority from a
+	// cached plan. Restoring the immutable source makes the original fact usable.
+	if _, ok := facts.typeFact(f, 2); ok || len(facts.types) != 2 {
+		t.Fatal("unsupported type was cached")
+	}
+	otherModule := gcLayoutTestModule(2, 3)
+	other := &fn{m: otherModule, policy: f.policy, sc: &scratch{gcLifetimeFacts: facts}}
+	if _, ok := facts.typeFact(other, 0); ok {
+		t.Fatal("fact crossed module identity")
+	}
+	disabledSelection := lifetimeSelection(true)
+	disabledSelection["gc-native-alloc"] = false
+	disabledSnapshot, err := optimizationBindings.ResolveSnapshot(disabledSelection, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled := &fn{m: m, policy: shared.DefaultCodegenPolicy(disabledSnapshot), sc: &scratch{gcLifetimeFacts: newGCLifetimeModuleFacts()}}
+	if _, ok := disabled.sc.gcLifetimeFacts.typeFact(disabled, 0); ok {
+		t.Fatal("disabled native allocation populated a fact")
+	}
+	saved := m.Types[0].SubTypes[0].Comp.Fields[0]
+	m.Types[0].SubTypes[0].Comp.Fields[0] = wasm.NewFieldType(wasm.StorageVal(wasm.I32), wasm.Const)
+	if _, ok := facts.typeFact(f, 0); ok {
+		t.Fatal("changed type reused cached layout")
+	}
+	m.Types[0].SubTypes[0].Comp.Fields[0] = saved
+	if fact, ok := facts.typeFact(f, 0); !ok || fact != published[0] {
+		t.Fatal("restored type did not reuse original fact")
 	}
 }
 
@@ -466,6 +616,6 @@ func TestGCLifetimeCorruptAndReorderedRecords(t *testing.T) {
 		if f.replayGCLifetime(p, m.Code[0].BodyBytes) {
 			t.Fatal("accepted corrupted/reordered compact records")
 		}
-		f.sc.releaseGCLifetimeRecords()
+		f.sc.releaseGCLifetimePlan(p)
 	}
 }

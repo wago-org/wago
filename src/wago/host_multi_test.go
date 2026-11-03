@@ -43,7 +43,7 @@ func TestBoundedMultiTypedThenUnwrittenViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	layout := in.ensurePluginState().multiHost
+	layout := in.ensurePluginState().multiHostLayout()
 	if layout == nil {
 		t.Fatal("mixed bindings were not admitted")
 	}
@@ -120,16 +120,16 @@ func TestBoundedMultiHostMixedShapes(t *testing.T) {
 		t.Fatal(counts)
 	}
 	// A corrupted admission must fail before invoking the selected callback.
-	shape := in.ensurePluginState().multiHost.shapes[1]
-	in.ensurePluginState().multiHost.shapes[1] ^= 1 << 16
+	shape := in.ensurePluginState().multiHostLayout().shapes[1]
+	in.ensurePluginState().multiHostLayout().shapes[1] ^= 1 << 16
 	if _, err := in.Invoke("run"); err == nil {
 		t.Fatal("mismatched shape admitted")
 	}
 	if counts[1] != 3 || counts[2] != 3 {
 		t.Fatal("callback ran after shape failure", counts)
 	}
-	in.ensurePluginState().multiHost.shapes[1] = shape
-	in.ensurePluginState().multiHost.shapes = in.ensurePluginState().multiHost.shapes[:2]
+	in.ensurePluginState().multiHostLayout().shapes[1] = shape
+	in.ensurePluginState().multiHostLayout().shapes = in.ensurePluginState().multiHostLayout().shapes[:2]
 	if _, err := in.Invoke("run"); err == nil {
 		t.Fatal("out of range import admitted")
 	}
@@ -347,7 +347,7 @@ func TestBoundedMultiRejectsLegacyAndReferences(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			if in.hasBoundedMultiHostView() || in.ensurePluginState().multiHost != nil {
+			if in.hasBoundedMultiHostView() || in.ensurePluginState().multiHostLayout() != nil {
 				t.Fatal("unsupported binding admitted")
 			}
 			want := uint64(7)

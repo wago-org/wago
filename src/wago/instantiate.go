@@ -1936,7 +1936,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	}
 	if c.boundedHostSegments() && len(syncHosts) > 1 {
 		if shapes := boundedMultiHostShapes(syncHosts); shapes != nil {
-			in.ensurePluginState().multiHost = &boundedMultiHostLayout{shapes: shapes}
+			in.ensurePluginState().numericCacheState().multiHost = &boundedMultiHostLayout{shapes: shapes}
 		}
 	}
 	if opts.InvokeCacheSlots != 0 && opts.InvokeCacheSlots != 4 {

@@ -18,3 +18,7 @@ import (
 func (p *PreparedHostScalarCall) CallBoundedHelper(_ runtimebridge.HostScalarCallAccess, _, _ uint32, _ HostCall) error {
 	return fmt.Errorf("jit: bounded helper calls are not supported on riscv64")
 }
+
+func (p *PreparedHostScalarCall) CallBoundedHelperOne(_ runtimebridge.HostScalarCallAccess, _, _ uint32, _ HostCall) error {
+	return fmt.Errorf("jit: bounded helper calls are not supported on riscv64")
+}

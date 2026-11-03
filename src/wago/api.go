@@ -3882,6 +3882,11 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if codeProfileEnabled && in.boundaryProfile() != nil {
 		return in.invokeEntry(export, args, invocationContextSet{}, false, true)
 	}
+	if in != nil && len(args) == 0 {
+		if fn := in.publicGCScalarCertificate(export); fn != nil {
+			return fn.invokePublicGCScalar()
+		}
+	}
 	if in != nil && in.syncMode && (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && in.rt == nil {
 		if out, err, ok := in.tryInvokeCachedHostScalar1(export, args); ok {
 			return out, err
@@ -5323,6 +5328,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	if slot.directIntFast || slot.directFloatFast {
 		slot.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[slot.li]))
 	}
+	in.publishPublicGCScalarCertificate(slot, sig)
 	return slot, nil
 }
 

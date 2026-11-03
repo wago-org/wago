@@ -48,6 +48,7 @@ type WasmFunc struct {
 	gcRevocableContext    bool
 	gcI31Induction        bool
 	gcDeadInductionLayout uint64
+	gcLifetimeScalar      bool
 	gcDeadBatch           gc.PreparedDeadAllocationBatch
 	gcBoundarySafe        bool
 	gcHasRefGlobals       bool
@@ -298,7 +299,7 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		(!fn.gcBoundarySafe || in.c.genericGCFrameRoots() != nil && in.gc.CollectsOnAllocation())
 	// These modules cannot replace resource-context pointers during execution.
 	// The instance GC view itself is stable; collector contents remain live.
-	fn.gcPrivateContext = fn.gcScalar32Plain && fn.boundedWrapper && in.c.memoryCount() == 0 && !in.c.HasTable && len(in.c.Globals) == 0
+	fn.configurePrivateGCContext(fn.gcScalar32Plain)
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
 		entryMode := in.preparedEntryMode()
 		if entryMode != preparedEntryGeneral {
@@ -356,11 +357,16 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		}
 	}
 	// Preserve direct numeric ABI priority when GC types are otherwise unused.
-	fn.gcRevocableContext = fn.gcPrivateContext && in.rt == nil && !fn.directIntFast && !fn.directFloatFast && fn.directMixedInfo == 0 && gcPrivateNumericSignatures(in.c)
+	fn.configurePrivateGCContext(fn.gcScalar32Plain)
 	if fn.gcRevocableContext && preparedDirectIntSupported && preparedDirectIntEnabled && !in.c.registerABIDisabled {
 		if roots := in.c.genericGCFrameRoots(); roots != nil && ic.li < len(roots.deadInductionLayouts) {
 			fn.gcDeadInductionLayout = roots.deadInductionLayouts[ic.li]
-			fn.gcDeadBatch = in.gc.PrepareDeadAllocationBatch(uint32(fn.gcDeadInductionLayout), uint32(fn.gcDeadInductionLayout>>32))
+			if fn.gcDeadInductionLayout == ^uint64(0) {
+				fn.gcLifetimeScalar = true
+				fn.gcDeadInductionLayout = 0
+			} else {
+				fn.gcDeadBatch = in.gc.PrepareDeadAllocationBatch(uint32(fn.gcDeadInductionLayout), uint32(fn.gcDeadInductionLayout>>32))
+			}
 		}
 	}
 	if gcI31InductionSupported && !codeProfileEnabled && fn.directIntFast && fn.directIsolated && fn.directIntBounded && fn.paramSlots == 1 && fn.resultSlots == 1 {
