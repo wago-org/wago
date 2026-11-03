@@ -11,8 +11,18 @@ func (c *Collector) Verify(roots RootSet) error {
 		return err
 	}
 	if c.cfg.Profile == ProfileThroughput && c.throughput.limit != 0 {
-		if err := c.throughput.verify(c.handles); err != nil {
+		reservation, ownsThroughput, err := c.verifyNativeLargeArrayReservation()
+		if err != nil {
 			return err
+		}
+		var verifyErr error
+		if ownsThroughput {
+			verifyErr = c.throughput.verify(c.handles, reservation)
+		} else {
+			verifyErr = c.throughput.verify(c.handles)
+		}
+		if verifyErr != nil {
+			return verifyErr
 		}
 	}
 	if c.cfg.Profile == ProfileTiny {
@@ -87,6 +97,89 @@ func (c *Collector) Verify(roots RootSet) error {
 		return err
 	}
 	return nil
+}
+
+// verifyNativeLargeArrayReservation validates the stable public-call boundary
+// of the generated allocation ABI. Generated code publishes the handle before
+// advancing Cursor, so callers must not race Verify with native execution.
+// At a supported boundary Cursor is either zero with one free owning handle, or
+// one with the complete handle publication. Only the former owns an extent not
+// already represented by the handle traversal.
+func (c *Collector) verifyNativeLargeArrayReservation() (throughputFreeSpan, bool, error) {
+	s := c.nativeLargeArrayAlloc
+	if s.Epoch != c.nativeLargeArrayEpoch {
+		return throughputFreeSpan{}, false, errors.New("gc: native large-array reservation epoch mismatch")
+	}
+	if s.Count == 0 {
+		want := nativeLargeArrayAllocState{Epoch: c.nativeLargeArrayEpoch}
+		if s != want {
+			return throughputFreeSpan{}, false, errors.New("gc: malformed inactive native large-array reservation")
+		}
+		return throughputFreeSpan{}, false, nil
+	}
+	if s.Count != 1 || s.Cursor > 1 || s.Handle == 0 || s.HandleBase != s.Handle ||
+		int(s.Handle) >= len(c.handles) || s.ChunkStart%16 != 0 ||
+		s.ChunkCursor < s.ChunkStart || s.ChunkCursor > s.ChunkEnd || s.ChunkEnd <= s.ChunkStart {
+		return throughputFreeSpan{}, false, errors.New("gc: malformed native large-array reservation")
+	}
+	space := spaceKind((s.ChunkBump >> 16) & 0xff)
+	if space != spaceNursery && space != spaceLarge {
+		return throughputFreeSpan{}, false, errors.New("gc: invalid native large-array reservation space")
+	}
+	class := uint16(s.ChunkBump)
+	if s.ChunkBump != uint32(class)|uint32(space)<<16 || class&^(handleAllocationMask|handleYoungBit) != 0 ||
+		(space == spaceNursery && class != 0) ||
+		(space == spaceLarge && (class&handleClassMask != uint16(len(throughputClassSizes)) || class&handleYoungBit == 0)) {
+		return throughputFreeSpan{}, false, errors.New("gc: invalid native large-array reservation allocation class")
+	}
+	if c.nativeLargeArrayNurseryIndex < 0 || c.nativeLargeArrayNurseryIndex >= len(c.nurseryHandles) ||
+		c.nurseryHandles[c.nativeLargeArrayNurseryIndex] != s.Handle {
+		return throughputFreeSpan{}, false, errors.New("gc: native large-array reservation is missing its handle ledger entry")
+	}
+	occurrences := 0
+	for _, h := range c.nurseryHandles {
+		if h == s.Handle {
+			occurrences++
+		}
+	}
+	if occurrences != 1 {
+		return throughputFreeSpan{}, false, errors.New("gc: duplicate native large-array reservation handle")
+	}
+	entry := handleEntry{
+		off: s.ChunkStart, size: s.ChunkEnd - s.ChunkStart,
+		class: class, space: space,
+	}
+	physical := entry.size
+	if space == spaceLarge {
+		physical = c.throughput.handleAllocSize(entry)
+	}
+	if physical == 0 || entry.off+physical < entry.off {
+		return throughputFreeSpan{}, false, errors.New("gc: native large-array reservation extent overflow")
+	}
+	if space == spaceNursery {
+		if s.Rewind > s.ChunkStart || s.ChunkEnd > c.edenBytes() || physical != entry.size {
+			return throughputFreeSpan{}, false, errors.New("gc: native nursery reservation out of bounds")
+		}
+	} else if s.Rewind != 0 || entry.off+physical > c.throughput.bump {
+		return throughputFreeSpan{}, false, errors.New("gc: native throughput reservation out of bounds")
+	}
+	if s.Cursor == 0 {
+		if s.ChunkCursor != s.ChunkStart || c.handles[s.Handle].space != spaceFree {
+			return throughputFreeSpan{}, false, errors.New("gc: unpublished native large-array reservation has published state")
+		}
+		return throughputFreeSpan{off: entry.off, size: physical}, space == spaceLarge, nil
+	}
+	published := c.handles[s.Handle]
+	publishedPhysical := Align16(published.size)
+	if space == spaceLarge {
+		publishedPhysical = c.throughput.handleAllocSize(published)
+	}
+	if s.ChunkCursor != s.ChunkEnd || published.space != space || published.off != s.ChunkStart ||
+		published.class != entry.class || published.size == 0 ||
+		Align16(published.size) != entry.size || publishedPhysical != physical {
+		return throughputFreeSpan{}, false, errors.New("gc: consumed native large-array reservation publication mismatch")
+	}
+	return throughputFreeSpan{}, false, nil
 }
 
 // verifyRememberedShadow independently reconstructs the old-to-nursery parent
