@@ -115,6 +115,7 @@ func TestEvacuationStage7Selection(t *testing.T) {
 		return handleEntry{off: off, size: size, space: space, class: uint16(len(throughputClassSizes))}
 	}
 	c.handles = []handleEntry{{}, extent(0, 256, spaceOld), extent(32768, 32*256, spaceOld), extent(2*32768, 33*256, spaceOld), extent(4*32768-256, 512, spaceOld), extent(5*32768, 32, spaceOld), extent(5*32768+32, 32768, spaceLarge)}
+	seedMaintainedOccupancy(t, c)
 	h.mature.pressure = true
 	s, err := c.selectMatureEvacuation()
 	if err != nil {
@@ -132,6 +133,7 @@ func TestEvacuationStage7Selection(t *testing.T) {
 	}
 	// A dense second half excludes an otherwise sparse crossing component.
 	c.handles = append(c.handles, extent(4*32768+256, 32*256, spaceOld))
+	seedMaintainedOccupancy(t, c)
 	s, err = c.selectMatureEvacuation()
 	if err != nil {
 		t.Fatal(err)
@@ -141,6 +143,7 @@ func TestEvacuationStage7Selection(t *testing.T) {
 	}
 	// Tiny budgets rotate the selected root without truncating a component.
 	c.handles = []handleEntry{{}, extent(0, 32, spaceOld), extent(32768, 32, spaceOld), extent(65536, 32, spaceOld)}
+	seedMaintainedOccupancy(t, c)
 	seen := map[uint32]bool{}
 	for range 8 {
 		s, err = c.selectMatureEvacuationBounded(1)

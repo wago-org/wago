@@ -10,6 +10,7 @@ type matureHeap struct {
 	poison              error
 	cursor              uint32
 	diagnostics         CollectionDiagnostics
+	occupancy           []matureOccupancyBlockState
 	admission, required bool
 	transaction         *evacuationTransaction
 }
@@ -55,10 +56,21 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 		h.matureRefusal(err)
 		return handleEntry{}, err
 	}
+	initialBump := h.bump
 	e, err := h.allocRaw(size, sp)
 	if err != nil {
 		if !h.mature.admission {
 			h.mature.pressure = true
+		}
+		h.matureRefusal(err)
+		return handleEntry{}, err
+	}
+	if err := h.claimOccupancy(e); err != nil {
+		if e.off >= initialBump {
+			h.bump = initialBump
+			h.mature.occupancy = h.mature.occupancy[:occupancyBlockCount(initialBump)]
+		} else if freeErr := h.freeRaw(e); freeErr != nil {
+			panic("gc: cannot undo unclaimed mature allocation: " + freeErr.Error())
 		}
 		h.matureRefusal(err)
 		return handleEntry{}, err
