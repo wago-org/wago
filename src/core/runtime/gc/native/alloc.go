@@ -25,7 +25,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	}
 	if c.cfg.DisableCollection {
 		var tx throughputAllocTransaction
-		if failureInjectionEnabled {
+		if failureInjectionEnabled || c.throughput.mature != nil {
 			if err := c.throughput.sweepAllPending(); err != nil {
 				return Null(), err
 			}
@@ -33,17 +33,23 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		}
 		e, err := c.throughput.alloc(size, spaceLarge)
 		if err != nil {
-			if isInjectedFailure(err) {
+			if failureInjectionEnabled || c.throughput.mature != nil {
 				c.throughput.restoreAllocTransaction(tx)
+			}
+			if isInjectedFailure(err) {
 				return Null(), err
 			}
 			return Null(), fmt.Errorf("gc: collection-disabled heap exhausted: %w", err)
 		}
 		if err := injectFailure(c, failHandlePublication); err != nil {
+			if c.throughput.mature != nil && c.throughput.mature.admission {
+				c.throughput.matureRefusal(err)
+			}
 			c.throughput.rollbackSuccessfulAlloc(e, tx.bump)
 			c.throughput.restoreAllocTransaction(tx)
 			return Null(), err
 		}
+		c.throughput.commitMatureAdmission()
 		h := c.newHandle(e)
 		r := makeObjRef(h)
 		flags := uint32(FlagLarge)
@@ -79,7 +85,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	var allocationTx throughputAllocTransaction
 	if c.shouldAllocateLarge(size) {
 		var err error
-		if failureInjectionEnabled {
+		if failureInjectionEnabled || c.throughput.mature != nil {
 			if err := c.throughput.sweepAllPending(); err != nil {
 				return Null(), err
 			}
@@ -87,8 +93,10 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		}
 		e, err = c.throughput.alloc(size, spaceLarge)
 		if err != nil {
-			if isInjectedFailure(err) {
+			if failureInjectionEnabled || c.throughput.mature != nil {
 				c.throughput.restoreAllocTransaction(allocationTx)
+			}
+			if isInjectedFailure(err) {
 				return Null(), err
 			}
 			if errors.Is(err, ErrAllocationTooLarge) {
@@ -100,7 +108,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			if err := c.CollectFull(roots); err != nil {
 				return Null(), err
 			}
-			if failureInjectionEnabled {
+			if failureInjectionEnabled || c.throughput.mature != nil {
 				if err := c.throughput.sweepAllPending(); err != nil {
 					return Null(), err
 				}
@@ -108,6 +116,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			}
 			e, err = c.throughput.alloc(size, spaceLarge)
 			if err != nil {
+				if failureInjectionEnabled || c.throughput.mature != nil {
+					c.throughput.restoreAllocTransaction(allocationTx)
+				}
 				return Null(), err
 			}
 		}
@@ -122,6 +133,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			objectAlign = 8
 		}
 		nurseryOffset := func() (uint32, bool) {
+			if len(c.edenRegions) != 0 {
+				return c.regionAllocationOffset(size, objectAlign)
+			}
 			off := align(c.nurseryBump, objectAlign)
 			limit := c.edenBytes()
 			return off, off <= limit && size <= limit-off
@@ -132,23 +146,37 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			if roots == nil {
 				return Null(), errors.New("gc: nursery exhausted and no roots were supplied")
 			}
-			if err := c.CollectMinor(roots); err != nil {
-				if err := c.retryAllocationMinorAfterPromotionFailure(roots, err); err != nil {
+			if len(c.edenRegions) != 0 {
+				if err := c.CollectFull(roots); err != nil {
 					return Null(), err
 				}
+				off, fits = nurseryOffset()
 			}
-			off, fits = nurseryOffset()
+			if !fits {
+				if err := c.CollectMinor(roots); err != nil {
+					if err := c.retryAllocationMinorAfterPromotionFailure(roots, err); err != nil {
+						return Null(), err
+					}
+				}
+				off, fits = nurseryOffset()
+			}
 			if !fits {
 				return Null(), errors.New("gc: nursery exhausted without roots")
 			}
 		}
 		oldNurseryBump = c.nurseryBump
 		c.nurseryBump = off + size
+		if len(c.edenRegions) != 0 {
+			c.nurseryBump = max(oldNurseryBump, c.nurseryBump)
+		}
 	}
 	if sp == spaceNursery {
 		e = handleEntry{off: off, size: size, space: sp}
 	}
 	if err := injectFailure(c, failHandlePublication); err != nil {
+		if c.throughput.mature != nil && c.throughput.mature.admission {
+			c.throughput.matureRefusal(err)
+		}
 		if sp == spaceNursery {
 			c.nurseryBump = oldNurseryBump
 		} else {
@@ -156,6 +184,12 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			c.throughput.restoreAllocTransaction(allocationTx)
 		}
 		return Null(), err
+	}
+	if sp == spaceNursery && len(c.edenRegions) != 0 {
+		c.commitRegionAllocation(off, size)
+	}
+	if sp == spaceLarge {
+		c.throughput.commitMatureAdmission()
 	}
 	h := c.newHandle(e)
 	if sp == spaceNursery || (sp == spaceLarge && e.young()) {
@@ -199,7 +233,8 @@ func (c *Collector) shouldAllocateLarge(size uint32) bool {
 	// a hard safety boundary: an object that cannot fit in an empty nursery must
 	// be allocated in non-moving large space even when tests choose a higher
 	// threshold to stress tiny nurseries.
-	return size >= c.cfg.LargeObjectBytes || size > c.edenBytes()
+	return size >= c.cfg.LargeObjectBytes || size > c.edenBytes() ||
+		(c.cfg.NurseryRegionShift != 0 && size > (uint32(1)<<c.cfg.NurseryRegionShift))
 }
 
 func (c *Collector) newHandle(e handleEntry) uint32 {
@@ -263,7 +298,22 @@ func (c *Collector) refDescPtrBytes(r Ref) (*TypeDesc, []byte, error) {
 	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
 		return nil, nil, errors.New("gc: invalid object ref")
 	}
-	object := c.bytes(r)
+	entry := &c.handles[h]
+	var span []byte
+	switch entry.space {
+	case spaceNursery:
+		span = c.nursery
+	case spaceOld, spaceLarge:
+		span = c.throughput.mem
+	case spaceTiny:
+		span = c.tiny.mem
+	default:
+		return nil, nil, errors.New("gc: invalid object ref")
+	}
+	if entry.size < HeaderSize || uint64(entry.off)+uint64(entry.size) > uint64(len(span)) {
+		return nil, nil, errors.New("gc: invalid object ref")
+	}
+	object := span[entry.off : uint64(entry.off)+uint64(entry.size)]
 	id := TypeID(binary.LittleEndian.Uint32(object))
 	if int(id) >= len(c.types) {
 		return nil, nil, fmt.Errorf("gc: unknown type id %d", id)

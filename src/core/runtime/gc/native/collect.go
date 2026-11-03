@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func (c *Collector) CollectFull(roots RootSet) error {
+func (c *Collector) CollectFull(roots RootSet) (result error) {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
@@ -31,19 +31,44 @@ func (c *Collector) CollectFull(roots RootSet) error {
 		}
 		return nil
 	}
+	if err := c.beginParallelCollection(); err != nil {
+		return err
+	}
+	c.beginAttempt("major")
+	defer c.finishAttempt(&result)
+	selection, selectionErr := c.selectMatureEvacuation()
+	if selectionErr != nil {
+		c.throughput.mature.poison = selectionErr
+		return selectionErr
+	}
 	c.stats.FullCollections++
 	c.clearMarks()
 	c.markRoots(roots)
+	if err := c.parallelError(); err != nil {
+		return err
+	}
+	if err := c.evacuateMature(selection); err != nil {
+		return err
+	}
 	c.sweepAll()
+	if err := c.parallelError(); err != nil {
+		return err
+	}
+	if len(c.edenRegions) != 0 {
+		c.reclaimEmptyEdenRegions()
+	}
 	c.pruneRemembered()
 	c.finishFullCardMetadata()
+	if err := c.throughput.reclaimEmptyMature(); err != nil {
+		return err
+	}
 	if c.cfg.VerifyAfterCollect {
 		return c.Verify(roots)
 	}
 	return nil
 }
 
-func (c *Collector) CollectMinor(roots RootSet) error {
+func (c *Collector) CollectMinor(roots RootSet) (result error) {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
@@ -51,6 +76,11 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	c.discardNativeStructHandles()
 	c.discardNativeLargeArrayAllocation()
 	defer c.refreshNativeView()
+	if err := c.beginParallelCollection(); err != nil {
+		return err
+	}
+	c.beginAttempt("minor")
+	defer c.finishAttempt(&result)
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {
@@ -95,6 +125,11 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 			scanned = c.drainNurseryMarkStack()
 		}
 	}
+	if err := c.parallelError(); err != nil {
+		c.clearNurseryMarks()
+		c.restoreDeadNurseryAccounting()
+		return err
+	}
 	if scanned != 0 {
 		var err error
 		if capturedPromotion && scanned < uint64(len(c.nurseryHandles)) {
@@ -112,6 +147,10 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		if scanned != 0 || !c.finishDeadNurseryEvacuation() {
 			c.finishMinorEvacuation(scanned)
 		}
+	}
+	if len(c.edenRegions) != 0 {
+		clear(c.edenRegions)
+		c.edenRegionCursor = 0
 	}
 	c.finishMinorCardMetadata()
 	pauseNS := uint64(0)
@@ -149,6 +188,12 @@ func (c *Collector) finishFullCardMetadata() {
 }
 
 func (c *Collector) sweepAll() {
+	if c.cfg.Workers > 1 && c.sweepParallel() {
+		if nativeCollectorFastPaths {
+			c.prepareMajorBlocks()
+		}
+		return
+	}
 	// A refilled table uses the original sweep before spending work indexing
 	// its young ledger. If that sweep makes it sparse again, retain the dirty
 	// ledger until the next indexed sweep (or reset it when disabling the map).
@@ -336,7 +381,7 @@ func (c *Collector) promoteCapturedNursery() (copiedBytes, promotedBytes uint64,
 }
 
 func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
-	if c.survivorBytes == 0 && c.tenuringThreshold == 1 {
+	if c.survivorBytes == 0 && c.tenuringThreshold == 1 && !c.cfg.MatureEvacuation {
 		copiedBytes, promotedBytes, err = c.promoteMarkedNurseryImmediate()
 		return copiedBytes, promotedBytes, false, err
 	}
@@ -445,7 +490,15 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 				return 0, 0, false, err
 			}
 		}
-		return c.commitPromotionPlans(plans, toSpace, toBump)
+		parallelCopied := c.cfg.Workers > 1 && c.copyPromotionParallel(plans)
+		if err = c.parallelError(); err != nil {
+			finish()
+			return 0, 0, false, err
+		}
+		return c.commitPromotionPlans(plans, toSpace, toBump, parallelCopied)
+	}
+	if c.promotionRunEligible(plans) {
+		return c.promoteWithRuns(plans, toSpace, toBump)
 	}
 	if err = c.throughput.sweepAllPending(); err != nil {
 		finish()
@@ -453,6 +506,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 	}
 	tx := c.throughput.beginAllocTransaction()
 	rollback := func(current *handleEntry) {
+		c.throughput.matureRefusal(err)
 		if current != nil {
 			c.throughput.rollbackSuccessfulAlloc(*current, tx.bump)
 		}
@@ -516,10 +570,16 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 			return 0, 0, false, err
 		}
 	}
-	return c.commitPromotionPlans(plans, toSpace, toBump)
+	parallelCopied := c.cfg.Workers > 1 && c.copyPromotionParallel(plans)
+	if err = c.parallelError(); err != nil {
+		rollback(nil)
+		return 0, 0, false, err
+	}
+	c.throughput.commitMatureAdmission()
+	return c.commitPromotionPlans(plans, toSpace, toBump, parallelCopied)
 }
 
-func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8, toBump uint32) (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
+func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8, toBump uint32, parallelCopied bool) (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
 	// Like V8's scavenger, merge copying and final young-list publication when
 	// every young handle survived. On the measured pure-survivor path, the last
 	// plan represents the most recent allocation run; limit this AMD64 path to
@@ -536,13 +596,19 @@ func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8
 		size := src.size
 		switch p.entry.space {
 		case spaceNursery:
-			dst := c.nursery[p.entry.off : p.entry.off+p.entry.size]
-			copy(dst, c.bytes(makeObjRef(p.handle)))
+			if !parallelCopied {
+				dst := c.nursery[p.entry.off : p.entry.off+p.entry.size]
+				copy(dst, c.bytes(makeObjRef(p.handle)))
+			}
 			c.poisonYoungSource(src)
 			c.handles[p.handle] = p.entry
 			copiedBytes += uint64(size)
 		case spaceOld:
-			c.promoteHandleTo(p.handle, p.entry)
+			if parallelCopied {
+				c.publishPromotedHandle(p.handle, p.entry)
+			} else {
+				c.promoteHandleTo(p.handle, p.entry)
+			}
 			copiedBytes += uint64(size)
 			promotedBytes += uint64(size)
 		case spaceLarge:
@@ -634,6 +700,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 	}
 	tx := c.throughput.beginAllocTransaction()
 	rollback := func(current *handleEntry) {
+		c.throughput.matureRefusal(err)
 		if current != nil {
 			c.throughput.rollbackSuccessfulAlloc(*current, tx.bump)
 		}
@@ -697,13 +764,23 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			return 0, 0, err
 		}
 	}
+	parallelCopied := c.cfg.Workers > 1 && c.copyPromotionParallel(plans)
+	if err = c.parallelError(); err != nil {
+		rollback(nil)
+		return 0, 0, err
+	}
+	c.throughput.commitMatureAdmission()
 	for _, p := range plans {
 		size := c.handles[p.handle].size
 		if p.entry.space == spaceLarge {
 			c.tenureLargeInPlace(p.handle)
 			promotedBytes += uint64(size)
 		} else {
-			c.promoteHandleTo(p.handle, p.entry)
+			if parallelCopied {
+				c.publishPromotedHandle(p.handle, p.entry)
+			} else {
+				c.promoteHandleTo(p.handle, p.entry)
+			}
 			copiedBytes += uint64(size)
 			promotedBytes += uint64(size)
 		}
@@ -780,14 +857,14 @@ func (c *Collector) promoteHandle(h uint32) error {
 		c.throughput.restoreAllocTransaction(tx)
 		return err
 	}
+	c.throughput.commitMatureAdmission()
 	c.promoteHandleTo(h, oldEntry)
 	c.removeYoungHandle(h)
 	return nil
 }
 
 func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
-	// Native nursery objects may not be indexed yet. Cover a survivor before
-	// promotion removes it from the dense nursery ledger used by the next major.
+	// Preserve the serial copy/publication loop for the one-worker path.
 	if nativeCollectorFastPaths && c.majorYoungDirty {
 		c.noteMajorHandle(h)
 	}
@@ -803,6 +880,16 @@ func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
 		}
 	}
 	*e = oldEntry
+}
+
+func (c *Collector) publishPromotedHandle(h uint32, oldEntry handleEntry) {
+	// Native nursery objects may not be indexed yet. Cover a survivor before
+	// promotion removes it from the dense nursery ledger used by the next major.
+	if nativeCollectorFastPaths && c.majorYoungDirty {
+		c.noteMajorHandle(h)
+	}
+	c.poisonYoungSource(c.handles[h])
+	c.handles[h] = oldEntry
 }
 func (c *Collector) free(h uint32) { c.releaseHandle(h, false, true) }
 

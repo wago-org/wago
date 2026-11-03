@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build !linux || !riscv64 || tinygo || wago_target_tinygo
+//go:build !(linux || (darwin && arm64)) || tinygo || wago_target_tinygo
 
 package gc
 

@@ -7,13 +7,22 @@
 
 package gc
 
+// Every mark must remain covered by markStack or markHighWater. Helper
+// drains merge their exclusive bounds after joining, including failure
+// paths, before dropping private queues or allowing another reset.
 func (c *Collector) clearMarks() {
 	if len(c.mark) < len(c.handles) {
 		c.mark = make([]bool, len(c.handles))
+	} else {
+		// The handle table retains its allocation high-water capacity. Only
+		// marks set since the last reset can require clearing. Queued roots may
+		// not have reached a drain yet (for example in scan-only callers).
+		for _, h := range c.markStack {
+			c.markHighWater = max(c.markHighWater, h+1)
+		}
+		clear(c.mark[:c.markHighWater])
 	}
-	for i := range c.mark {
-		c.mark[i] = false
-	}
+	c.markHighWater = 0
 	c.markStack = c.markStack[:0]
 }
 func (c *Collector) clearNurseryMarks() {
@@ -24,6 +33,11 @@ func (c *Collector) clearNurseryMarks() {
 		if h != 0 && int(h) < len(c.mark) {
 			c.mark[h] = false
 		}
+	}
+	// An interrupted full trace may have queued old handles whose marks must
+	// still be cleared by the next full reset after this queue is discarded.
+	for _, h := range c.markStack {
+		c.markHighWater = max(c.markHighWater, h+1)
 	}
 	c.markStack = c.markStack[:0]
 }
@@ -145,16 +159,22 @@ func (c *Collector) markRootForMode(r Ref, mode uint8) {
 }
 
 func (c *Collector) drainNurseryMarkStack() uint64 {
+	if c.cfg.Workers > 1 {
+		if scanned, ok := c.drainParallel(false, true); ok {
+			return scanned
+		}
+	}
 	var scanned uint64
 	for len(c.markStack) > 0 {
 		n := len(c.markStack) - 1
 		h := c.markStack[n]
 		c.markStack = c.markStack[:n]
+		c.markHighWater = max(c.markHighWater, h+1)
 		c.stats.MinorObjectsScanned++
 		scanned++
 		// The mark stack contains validated live handles. Scalar payloads carry
 		// this flag from construction, so they need no descriptor or ref walk.
-		if nativeCollectorFastPaths && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
+		if nativeCollectorFastPaths && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 && c.objectEdgeCount(makeObjRef(h)) == 0 {
 			continue
 		}
 		c.scanNurseryObject(h)
@@ -163,6 +183,11 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
 }
 
 func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
+	if c.cfg.Workers > 1 {
+		if scanned, ok := c.drainParallel(true, true); ok {
+			return scanned
+		}
+	}
 	// Keep this hot loop separate from the general drain. A capture-mode branch
 	// per live object costs more than the duplicated control flow on AMD64.
 	c.promotionScratch = c.promotionScratch[:0]
@@ -171,6 +196,7 @@ func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
 		n := len(c.markStack) - 1
 		h := c.markStack[n]
 		c.markStack = c.markStack[:n]
+		c.markHighWater = max(c.markHighWater, h+1)
 		c.stats.MinorObjectsScanned++
 		scanned++
 		plan := len(c.promotionScratch)
@@ -183,7 +209,7 @@ func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
 		// overwrites the complete entry before reading it, so publish only the
 		// handle into this already-zero scratch slot.
 		c.promotionScratch[plan].handle = h
-		if nativeCollectorFastPaths && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
+		if nativeCollectorFastPaths && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 && c.objectEdgeCount(makeObjRef(h)) == 0 {
 			continue
 		}
 		c.scanNurseryObject(h)
@@ -204,10 +230,16 @@ func (c *Collector) markNurseryRef(r Ref) {
 }
 
 func (c *Collector) drainMarkStack() {
+	if c.cfg.Workers > 1 {
+		if _, ok := c.drainParallel(false, false); ok {
+			return
+		}
+	}
 	for len(c.markStack) > 0 {
 		n := len(c.markStack) - 1
 		h := c.markStack[n]
 		c.markStack = c.markStack[:n]
+		c.markHighWater = max(c.markHighWater, h+1)
 		c.scanObject(h)
 	}
 }
@@ -226,7 +258,7 @@ func (c *Collector) markRef(r Ref) {
 	c.markStack = append(c.markStack, h)
 }
 func (c *Collector) scanObject(h uint32) {
-	if nativeCollectorFastPaths {
+	if nativeCollectorFastPaths && c.objectEdgeCount(makeObjRef(h)) == 0 {
 		c.scanObjectMark(h)
 		return
 	}
@@ -234,7 +266,7 @@ func (c *Collector) scanObject(h uint32) {
 }
 
 func (c *Collector) scanNurseryObject(h uint32) {
-	if nativeCollectorFastPaths {
+	if nativeCollectorFastPaths && c.objectEdgeCount(makeObjRef(h)) == 0 {
 		c.scanObjectNursery(h)
 		return
 	}
