@@ -234,7 +234,8 @@ func (c *Collector) sweepAll() {
 // tenured every marked object transactionally.
 
 func (c *Collector) finishMinorEvacuation(liveCount uint64) {
-	if nativeCollectorFastPaths && !c.cfg.PoisonFreed && liveCount <= uint64(len(c.nurseryHandles))/8 {
+	hasReclaimObservers := c.hasReclaimObservers()
+	if nativeCollectorFastPaths && !c.cfg.PoisonFreed && !hasReclaimObservers && liveCount <= uint64(len(c.nurseryHandles))/8 {
 		c.finishSparseMinorEvacuation()
 		return
 	}
@@ -252,7 +253,7 @@ func (c *Collector) finishMinorEvacuation(liveCount uint64) {
 			continue
 		}
 		e := &c.handles[h]
-		if nativeCollectorFastPaths && e.space == spaceNursery && !c.cfg.PoisonFreed && e.cardSlot == 0 {
+		if nativeCollectorFastPaths && e.space == spaceNursery && !c.cfg.PoisonFreed && !hasReclaimObservers && e.cardSlot == 0 {
 			// Nursery payload has no individual allocator ownership to release.
 			// The space byte invalidates the identity. Both native and Go reuse
 			// overwrite the complete entry before publishing it again; leave the
@@ -330,7 +331,7 @@ func (c *Collector) finishSparseMinorEvacuation() {
 // common card-free nursery case can recycle identities without repeating
 // liveness and generation tests for every object.
 func (c *Collector) finishDeadNurseryEvacuation() bool {
-	if !nativeCollectorFastPaths || c.cfg.PoisonFreed {
+	if !nativeCollectorFastPaths || c.cfg.PoisonFreed || c.hasReclaimObservers() {
 		return false
 	}
 	nursery := c.nurseryHandles
