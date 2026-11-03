@@ -5,6 +5,7 @@ package gc
 import (
 	"encoding/binary"
 	"fmt"
+	"math/bits"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -25,15 +26,6 @@ const (
 // Tasks with end == 0 scan an object; other tasks scan disjoint array ranges.
 type traceTask struct{ handle, first, end uint32 }
 
-// overflowEntry is protected by parallelCollector.mu. Object work and array
-// continuations are distinct: an empty continuation set can never manufacture
-// an object task. Config validation limits workers, and therefore chains, to 8.
-type overflowEntry struct {
-	array  [8]uint32 // encoded first index; zero means no continuation
-	object bool
-	queued bool
-}
-
 type traceWorker struct {
 	pool      *parallelCollector
 	wake      chan *parallelPhase
@@ -44,6 +36,7 @@ type traceWorker struct {
 	tasks     uint64
 	index     int
 	highWater uint32
+	pendingAt uint32
 }
 
 // The mutator is stopped by the caller. Helpers only read heap/descriptor data
@@ -67,12 +60,8 @@ type parallelCollector struct {
 	err           error // protected by mu until join
 	poison        error // sticky for unexpected panics; close is the only teardown
 	// Tests install hooks while the collector is stopped. Hooks must not mutate heap.
-	hook     func(phase uint8, worker int)
-	taskHook func(phase uint8, worker int)
-	// overflowHook runs with mu held after overflow state is installed and before
-	// its handle is made ready. It exists only for deterministic protocol tests.
-	overflowHook func()
-
+	hook             func(phase uint8, worker int)
+	taskHook         func(phase uint8, worker int)
 	collector        *Collector
 	workers          []traceWorker
 	joined           sync.WaitGroup
@@ -80,8 +69,8 @@ type parallelCollector struct {
 	mu               sync.Mutex
 	ready            *sync.Cond
 	queue            []traceTask
-	overflow         map[uint32]*overflowEntry // protected by mu; allocated on first overflow
-	overflowReady    []uint32                  // handles with consumable overflow state; protected by mu
+	pending          []uint64 // one fixed bit per admitted handle; object tasks only
+	overflowTasks    atomic.Int64
 	idle             atomic.Int32
 	claims           []uint32     // per-handle epoch; separate from the serial mark representation
 	outstanding      atomic.Int64 // published tasks not yet completely scanned
@@ -119,6 +108,13 @@ func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 	if len(p.claims) < len(c.handles) {
 		p.claims = make([]uint32, len(c.handles))
 	}
+	words := (len(c.handles) + 63) / 64
+	if len(p.pending) < words {
+		p.pending = make([]uint64, words)
+	} else {
+		clear(p.pending)
+	}
+	p.overflowTasks.Store(0)
 	p.epoch++
 	if p.epoch == 0 {
 		clear(p.claims)
@@ -134,6 +130,7 @@ func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 		w.scanned = 0
 		w.tasks = 0
 		w.highWater = 0
+		w.pendingAt = 0
 	}
 	// Seeds were marked by the serial root/remembered scan. Claim all of them
 	// before dispatch, so an edge back to a seed cannot scan it a second time.
@@ -309,10 +306,8 @@ func (p *parallelCollector) run() {
 		p.activity.Copy[p.participants-1]++
 	}
 	p.queue = p.queue[:0]
-	p.mu.Lock()
-	clear(p.overflow)
-	p.overflowReady = p.overflowReady[:0]
-	p.mu.Unlock()
+	clear(p.pending)
+	p.overflowTasks.Store(0)
 	p.outstanding.Store(0)
 	for i := range p.workers {
 		p.workers[i].localLen = 0
@@ -544,7 +539,7 @@ func (w *traceWorker) trace() {
 			continue
 		}
 		p.mu.Lock()
-		for !p.failed.Load() && p.outstanding.Load() != 0 && len(p.queue) == 0 && len(p.overflowReady) == 0 {
+		for !p.failed.Load() && p.outstanding.Load() != 0 && len(p.queue) == 0 && p.overflowTasks.Load() == 0 {
 			p.idle.Add(1)
 			p.ready.Wait()
 			p.idle.Add(-1)
@@ -571,25 +566,12 @@ func (w *traceWorker) share() {
 }
 
 func (p *parallelCollector) pendingVisible() bool {
-	p.mu.Lock()
-	visible := len(p.overflowReady) != 0
-	p.mu.Unlock()
-	return visible
+	return p.overflowTasks.Load() != 0
 }
 
 func (w *traceWorker) enqueue(task traceTask) {
 	p := w.pool
 	p.outstanding.Add(1) // publication and termination are ordered after this increment
-	if task.end != 0 && p.idle.Load() != 0 {
-		p.mu.Lock()
-		if len(p.queue) < parallelQueueLimit {
-			p.queue = append(p.queue, task)
-			p.ready.Signal()
-			p.mu.Unlock()
-			return
-		}
-		p.mu.Unlock()
-	}
 	if w.localLen < len(w.local) {
 		w.local[w.localLen] = task
 		w.localLen++
@@ -602,31 +584,41 @@ func (w *traceWorker) enqueue(task traceTask) {
 		p.mu.Unlock()
 		return
 	}
-	p.mu.Unlock()
-	p.mu.Lock()
-	if p.overflow == nil {
-		p.overflow = make(map[uint32]*overflowEntry)
+	// Only uniquely claimed object work reaches this path. Array ranges use
+	// enqueueArray and are scanned by their producer when the fixed queue is full.
+	word, bit := task.handle/64, uint(task.handle%64)
+	pending := &p.pending[word]
+	mask := uint64(1) << bit
+	for {
+		old := atomic.LoadUint64(pending)
+		if old&mask != 0 {
+			p.mu.Unlock()
+			panic("gc: duplicate parallel object overflow")
+		}
+		if atomic.CompareAndSwapUint64(pending, old, old|mask) {
+			break
+		}
 	}
-	entry := p.overflow[task.handle]
-	if entry == nil {
-		entry = new(overflowEntry)
-		p.overflow[task.handle] = entry
-	}
-	if task.end == 0 {
-		entry.object = true
-	} else {
-		chain := int(task.first/uint32(parallelArrayChunk)) % p.participants
-		entry.array[chain] = task.first + 1
-	}
-	if p.overflowHook != nil {
-		p.overflowHook()
-	}
-	if !entry.queued {
-		entry.queued = true
-		p.overflowReady = append(p.overflowReady, task.handle)
-	}
+	p.overflowTasks.Add(1)
 	p.ready.Broadcast()
 	p.mu.Unlock()
+}
+
+// enqueueArray admits a continuation only when the fixed shared queue has
+// room. Refusal does not create a task or change outstanding; the producer
+// scans the range locally, matching Slipstream's bounded overflow protocol.
+func (w *traceWorker) enqueueArray(task traceTask) bool {
+	p := w.pool
+	p.mu.Lock()
+	if len(p.queue) == parallelQueueLimit {
+		p.mu.Unlock()
+		return false
+	}
+	p.outstanding.Add(1)
+	p.queue = append(p.queue, task)
+	p.ready.Signal()
+	p.mu.Unlock()
+	return true
 }
 
 func (w *traceWorker) pop() (traceTask, bool) {
@@ -638,43 +630,27 @@ func (w *traceWorker) pop() (traceTask, bool) {
 		p.mu.Unlock()
 		return task, true
 	}
-	if len(p.overflowReady) == 0 {
-		p.mu.Unlock()
+	p.mu.Unlock()
+	if p.overflowTasks.Load() == 0 {
 		return traceTask{}, false
 	}
-	last := len(p.overflowReady) - 1
-	h := p.overflowReady[last]
-	p.overflowReady = p.overflowReady[:last]
-	entry := p.overflow[h]
-	entry.queued = false
-	task := traceTask{handle: h}
-	if entry.object {
-		entry.object = false
-	} else {
-		for chain := 0; chain < p.participants; chain++ {
-			if encoded := entry.array[chain]; encoded != 0 {
-				entry.array[chain] = 0
-				task.first = encoded - 1
-				break
+	words := uint32(len(p.pending))
+	for offset := uint32(0); offset < words; offset++ {
+		index := (w.pendingAt + offset) % words
+		wordBits := atomic.LoadUint64(&p.pending[index])
+		for wordBits != 0 {
+			bit := uint32(bits.TrailingZeros64(wordBits))
+			mask := uint64(1) << bit
+			if atomic.CompareAndSwapUint64(&p.pending[index], wordBits, wordBits&^mask) {
+				p.overflowTasks.Add(-1)
+				w.pendingAt = index
+				return traceTask{handle: index*64 + bit}, true
 			}
+			wordBits = atomic.LoadUint64(&p.pending[index])
 		}
 	}
-	more := entry.object
-	for chain := 0; chain < p.participants && !more; chain++ {
-		more = entry.array[chain] != 0
-	}
-	if more {
-		entry.queued = true
-		p.overflowReady = append(p.overflowReady, h)
-	} else {
-		delete(p.overflow, h)
-	}
-	p.mu.Unlock()
-	if task.first != 0 {
-		count := p.collector.header(makeObjRef(h)).Aux
-		task.end = task.first + min(uint32(parallelArrayChunk), count-task.first)
-	}
-	return task, true
+	w.pendingAt = 0
+	return traceTask{}, false
 }
 
 func (w *traceWorker) mark(r Ref) {
@@ -706,13 +682,19 @@ func (w *traceWorker) scan(task traceTask) {
 	r := makeObjRef(task.handle)
 	b := c.bytes(r)
 	if task.end != 0 {
-		for i := task.first; i < task.end; i++ {
-			w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+i*4:])))
-		}
 		count := binary.LittleEndian.Uint32(b[8:])
-		next := task.first + uint32(w.pool.participants*parallelArrayChunk)
-		if next < count {
-			w.enqueue(traceTask{handle: task.handle, first: next, end: next + min(uint32(parallelArrayChunk), count-next)})
+		for {
+			for i := task.first; i < task.end; i++ {
+				w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+i*4:])))
+			}
+			next := task.first + uint32(w.pool.participants*parallelArrayChunk)
+			if next >= count {
+				break
+			}
+			task.first, task.end = next, next+min(uint32(parallelArrayChunk), count-next)
+			if w.enqueueArray(task) {
+				break
+			}
 		}
 		return
 	}
@@ -742,9 +724,13 @@ func (w *traceWorker) scan(task traceTask) {
 	} else if d.ArrayElementsAreRefs() {
 		count := binary.LittleEndian.Uint32(b[8:])
 		// Admit at most one continuation chain per participant. Each completed
-		// chunk admits its successor, so task storage is independent of array length.
+		// chunk admits its successor. Queue refusal scans that chain locally, so
+		// task storage is independent of array length and no range work is lost.
 		for first, admitted := uint32(parallelArrayChunk), 0; first < count && admitted < w.pool.participants; first, admitted = first+parallelArrayChunk, admitted+1 {
-			w.enqueue(traceTask{handle: task.handle, first: first, end: first + min(uint32(parallelArrayChunk), count-first)})
+			rangeTask := traceTask{handle: task.handle, first: first, end: first + min(uint32(parallelArrayChunk), count-first)}
+			if !w.enqueueArray(rangeTask) {
+				w.scan(rangeTask)
+			}
 		}
 		for i := uint32(0); i < min(count, uint32(parallelArrayChunk)); i++ {
 			w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+i*d.ElemSize:])))
