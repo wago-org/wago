@@ -85,6 +85,21 @@ type Config struct {
 	DisableCollection     bool
 	TinyCollectEveryAlloc bool
 	TinyStepEveryAlloc    bool
+	// NurseryRegionShift opts into experimental region-first Eden allocation
+	// and page-sized mature/LOS descriptors over the shared ThroughputHeapBytes
+	// budget. Zero disables both policies. Mature metadata grows lazily; large
+	// objects remain contiguous and nonmoving across descriptor boundaries.
+	// Zero preserves the default; 6..30 selects 1<<shift bytes per region.
+	// Requires fixed divisible NurseryBytes and at most 65536 regions.
+	// Exhaustion first reclaims empty regions by exact tracing, then evacuates.
+	// Bounded region-owned native batches support small structs and arrays;
+	// cancellation returns only their unused owned tail. The baseline direct-bump
+	// and native large-array allocation paths remain disabled in this mode.
+	NurseryRegionShift uint8
+	// MatureEvacuation opts into pressure-triggered sparse old-space relocation.
+	MatureEvacuation bool
+	// Workers includes the coordinator; zero selects one, maximum eight.
+	Workers int
 }
 
 type Stats struct {
@@ -158,7 +173,8 @@ type Collector struct {
 	slotCards             []slotCard
 	globalCardBits        []uint64
 	tableCardBits         []uint64
-	cardFallback          bool // shared full remembered-object/persistent-root scan
+	cardFallback          bool   // shared full remembered-object/persistent-root scan
+	markHighWater         uint32 // exclusive reset bound; uses padding before globalSlots
 	globalSlots           []Ref
 	tableSlots            []Ref
 	stats                 Stats
@@ -173,6 +189,9 @@ type Collector struct {
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
+	edenRegions                  []edenRegion
+	edenRegionCursor             uint32
+	parallel                     *parallelCollector
 }
 
 const defaultNursery = 64 << 10
@@ -234,6 +253,9 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := c.throughput.Init(config); err != nil {
 		return nil, err
 	}
+	if config.NurseryRegionShift != 0 {
+		c.edenRegions = make([]edenRegion, config.NurseryBytes/(uint32(1)<<config.NurseryRegionShift))
+	}
 	c.initNativeView()
 	return c, nil
 }
@@ -242,12 +264,14 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // errCollectorClosed. It is idempotent; Stats remains safe for post-close
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
+	c.closeParallel()
 	c.notifyCollectorClosed()
 	c.discardNativeStructHandles()
 	c.discardNativeLargeArrayAllocation()
 	c.stats.LiveObjects = 0
 	c.closed = true
 	c.nursery = nil
+	c.edenRegions = nil
 	c.tiny.Close()
 	c.throughput.Close()
 	c.handles = nil
@@ -255,6 +279,7 @@ func (c *Collector) Close() {
 	c.freeHandles = nil
 	c.nurseryHandles = nil
 	c.mark = nil
+	c.markHighWater = 0
 	c.majorBlocks = nil
 	c.majorYoungDirty = false
 	c.markStack = nil
@@ -329,6 +354,9 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 			return err
 		}
 	}
+	if c.cfg.NurseryRegionShift != 0 {
+		c.discardNativeStructHandles()
+	}
 	c.refreshNativeView()
 	return nil
 }
@@ -350,7 +378,10 @@ func (c *Collector) errIfClosed() error {
 	if c.closed {
 		return errCollectorClosed
 	}
-	return nil
+	if c.throughput.mature != nil && c.throughput.mature.poison != nil {
+		return c.throughput.mature.poison
+	}
+	return c.parallelPoisonError()
 }
 
 // Stats returns collection/allocation counters. It remains safe after Close;

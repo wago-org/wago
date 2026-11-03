@@ -66,7 +66,7 @@ const (
 )
 
 func (c *Collector) nativeAllocationAllowed(minObjectBytes uint32) bool {
-	return c != nil && !c.closed && c.cfg.Profile == ProfileThroughput && !c.cfg.DisableCollection && !c.cfg.CollectEveryAlloc &&
+	return c != nil && !c.closed && c.cfg.Profile == ProfileThroughput && !c.cfg.DisableCollection && c.cfg.NurseryRegionShift == 0 && !c.cfg.CollectEveryAlloc &&
 		minObjectBytes < c.cfg.LargeObjectBytes && minObjectBytes <= NativeAllocationChunkBytes && minObjectBytes <= ^uint32(0)-15
 }
 
@@ -144,10 +144,13 @@ func (c *Collector) reserveNativeHandles(batch int) {
 	c.refreshNativeHandles()
 }
 
-// PrepareNativeStructAllocation retains the original direct nursery-bump struct
-// path. Array chunks therefore add no cursor checks or reserved-byte gaps to the
-// established native struct hot path.
+// PrepareNativeStructAllocation retains direct nursery-bump reservations for
+// the baseline policy. Region mode instead reserves an exclusively owned chunk
+// shared with small arrays; generated code selects its bounded cursor.
 func (c *Collector) PrepareNativeStructAllocation(minObjectBytes uint32) bool {
+	if c != nil && c.cfg.NurseryRegionShift != 0 {
+		return c.prepareNativeRegionAllocation(minObjectBytes)
+	}
 	return c.prepareNativeStructAllocation(minObjectBytes, 0)
 }
 
@@ -179,6 +182,9 @@ func (c *Collector) prepareNativeStructAllocation(minObjectBytes uint32, batch i
 // PrepareNativeAllocation publishes a fresh bounded handle batch and reserves a
 // nursery chunk for native arrays. Existing usable array reservations are kept.
 func (c *Collector) PrepareNativeAllocation(minObjectBytes uint32) bool {
+	if c != nil && c.cfg.NurseryRegionShift != 0 {
+		return c.prepareNativeRegionAllocation(minObjectBytes)
+	}
 	if !c.nativeAllocationAllowed(minObjectBytes) {
 		return false
 	}
@@ -248,7 +254,7 @@ func (c *Collector) PrepareNativeArrayAllocationImmediate(objectBytes uint32) bo
 }
 
 func (c *Collector) prepareNativeLargeArrayAllocation(objectBytes uint32) bool {
-	if c == nil || c.closed || c.cfg.Profile != ProfileThroughput || c.cfg.DisableCollection || c.cfg.CollectEveryAlloc ||
+	if c == nil || c.closed || c.cfg.Profile != ProfileThroughput || c.cfg.DisableCollection || c.cfg.NurseryRegionShift != 0 || c.cfg.CollectEveryAlloc ||
 		objectBytes <= NativeArrayAllocMaxBytes || objectBytes > NativeLargeArrayAllocMaxBytes {
 		return false
 	}
@@ -424,19 +430,18 @@ func (c *Collector) discardNativeStructHandles() {
 	// The chunk is exclusively reserved while the collector-wide bump equals its
 	// end. Rewind only in that exact state; any intervening allocation keeps the
 	// harmless bounded tail gap rather than risking overlap.
-	if s.ChunkEnd != 0 && c.nurseryBump == s.ChunkEnd && s.ChunkCursor >= s.ChunkStart && s.ChunkCursor <= s.ChunkEnd {
+	if c.cfg.NurseryRegionShift != 0 {
+		c.cancelNativeRegionChunk()
+	} else if s.ChunkEnd != 0 && c.nurseryBump == s.ChunkEnd && s.ChunkCursor >= s.ChunkStart && s.ChunkCursor <= s.ChunkEnd {
 		rewind := s.ChunkCursor
 		if rewind == s.ChunkStart {
 			rewind = s.ChunkBump
 		}
 		c.nurseryBump = rewind
 	}
-	chargedBump := c.nurseryBump
 	if canceled {
-		// Reserved handles are appended as one tail batch and no Go allocation or
-		// collection can append another nursery identity before cancellation. Trim
-		// that bounded tail directly and retain only consumed live handles. Keep the
-		// full compaction as a fail-closed fallback if the invariant is not exact.
+		// Usually this batch is the ledger tail. An independent large-array
+		// reservation can follow it, so use the bounded trim only when exact.
 		trimmed := false
 		if int(end) <= len(c.nurseryHandles) {
 			start := len(c.nurseryHandles) - int(end)
@@ -459,15 +464,25 @@ func (c *Collector) discardNativeStructHandles() {
 			}
 		}
 		if !trimmed {
-			// A failed collection can return before normal nursery compaction, and
-			// later handle reuse must not append a duplicate identity to the dense
-			// young set.
-			c.compactNurseryHandles()
-			if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
-				// Native dead-struct charges have no handle extent for compaction
-				// to discover. Keep their high-water mark until collection reclaims
-				// the charged bytes and clears the pending object count.
-				c.nurseryBump = chargedBump
+			reserved := &c.nativeLargeArrayAlloc
+			if reserved.Cursor < reserved.Count {
+				// An unpublished array owns bytes and a free handle that ordinary
+				// nursery compaction cannot see. Preserve both until it commits.
+				out := c.nurseryHandles[:0]
+				for _, h := range c.nurseryHandles {
+					if c.isYoungHandle(h) || h == reserved.Handle {
+						out = append(out, h)
+					}
+				}
+				clear(c.nurseryHandles[len(out):])
+				c.nurseryHandles = out
+			} else {
+				chargedBump := c.nurseryBump
+				c.compactNurseryHandles()
+				if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
+					// Dead native structs have no handle extent to reconstruct.
+					c.nurseryBump = chargedBump
+				}
 			}
 		}
 	}
