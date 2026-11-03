@@ -375,14 +375,19 @@ func (fn *WasmFunc) invokePrivateGCScalar(arg uint64, state *instancePluginState
 	if err = validateNativeGCEntry(in); err != nil {
 		return nil, err
 	}
+	// Consume pending interruption before native helper dispatch can replace
+	// the trap word, preserving pre-charge failure and later-call recovery.
+	if err = clearPreparedInductionTrap(in); err != nil {
+		return nil, err
+	}
 	return fn.invokePrivateGCScalarSlow(arg, state)
 }
 
 func (fn *WasmFunc) invokePrivateGCScalarSlow(arg uint64, state *instancePluginState) (out []uint64, err error) {
 	in := fn.in
 	defer in.recoverBoundedNativeSyncPanic(&err)
-	// Only helper dispatch can expose an invocation identity or host parent.
-	// The successful induction reduction cannot invoke helpers or host code.
+	// Internal collecting helpers may expose the invocation identity or host
+	// parent while the native wrapper retains exclusive admission.
 	state.invocationID = newInvocationID()
 	if activeHostInvocationBindings.Load() != 0 {
 		restore := bindHostInvocationParent(in, nil)

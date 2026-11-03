@@ -384,9 +384,8 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 				if !in.privateGCStateValid(state) || !fn.privateGCNativeContextValid(state) {
 					in.endFastInvocation(state)
 				} else {
-					// This proven Go-only path cannot call guest/host code or collect.
-					// Every successful admission is released here or transferred to
-					// the ordinary driver, whose defer owns all collecting fallbacks.
+					// Transfer exclusive admission to the native wrapper. Its deferred
+					// cleanup also covers internal collecting helpers and failures.
 					return fn.invokePrivateGCScalar(args[0], state)
 				}
 			}
