@@ -30,7 +30,9 @@ func TestParallelCaptureDenseAndSparse(t *testing.T) {
 		}
 	}
 	roots := RefSliceRoots{parent}
-	for _, sparse := range []bool{false, true, false} {
+	c.promotionScratch = make([]plannedPromotion, 0, count+100)
+	backing := &c.promotionScratch[:cap(c.promotionScratch)][0]
+	for _, sparse := range []bool{false, true, true, false} {
 		var dead Ref
 		if sparse {
 			dead, err = c.NewStructDefault(0)
@@ -50,6 +52,9 @@ func TestParallelCaptureDenseAndSparse(t *testing.T) {
 		}
 		if len(c.promotionScratch) != want {
 			t.Fatalf("sparse=%v captured=%d want=%d", sparse, len(c.promotionScratch), want)
+		}
+		if &c.promotionScratch[:cap(c.promotionScratch)][0] != backing {
+			t.Fatal("capture discarded sufficient retained storage")
 		}
 		seen := make(map[uint32]bool)
 		for _, p := range c.promotionScratch {

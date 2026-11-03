@@ -163,7 +163,9 @@ func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 					live++
 				}
 			}
-			c.promotionScratch = make([]plannedPromotion, 0, live)
+			if cap(c.promotionScratch) < live {
+				c.promotionScratch = make([]plannedPromotion, 0, live)
+			}
 			for _, h := range c.nurseryHandles {
 				if c.mark[h] {
 					c.promotionScratch = append(c.promotionScratch, plannedPromotion{handle: h})
