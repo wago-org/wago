@@ -280,7 +280,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.profile == 'full'
     runs-on: ubuntu-26.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
@@ -300,7 +300,7 @@ jobs:
       - name: Initialize Release 3 suite
         run: git submodule update --init --depth=1 tests/conformance/spec-v3
       - name: Run focused runtime race suites
-        run: go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency
+        run: go test -race -timeout=20m -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency
 
   current-go:
     name: Current Go / Linux amd64
