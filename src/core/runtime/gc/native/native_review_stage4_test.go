@@ -3,8 +3,9 @@ package gc
 import "testing"
 
 // A checked 24-byte object leaves an eight-byte alignment gap before a chunk.
-// Rejected metadata must preserve the existing reservation; accepted metadata
-// must return that gap as well as the unused bytes, without losing the object.
+// Rejected metadata and accepted type appends preserve type-independent
+// identity and byte reservations. Explicit cancellation returns the alignment
+// gap and unused owned tail without losing the published object.
 func TestNativeReviewStage4MetadataAndAlignment(t *testing.T) {
 	d, err := NewStructDesc(0, []StorageKind{StorageI64})
 	if err != nil {
@@ -49,7 +50,7 @@ func TestNativeReviewStage4MetadataAndAlignment(t *testing.T) {
 			t.Fatal(err)
 		}
 		if c.nativeStructAlloc != state || c.nativeAllocEpoch != epoch || c.nurseryBump != state.ChunkEnd {
-			t.Fatal("accepted append disturbed contiguous direct-handle reservation")
+			t.Fatal("accepted append disturbed type-independent byte reservation")
 		}
 		c.CancelNativeAllocationBatch()
 		c.CancelNativeAllocationBatch()
