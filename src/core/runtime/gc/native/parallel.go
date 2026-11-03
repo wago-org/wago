@@ -5,7 +5,6 @@ package gc
 import (
 	"encoding/binary"
 	"fmt"
-	"math/bits"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -25,6 +24,15 @@ const (
 
 // Tasks with end == 0 scan an object; other tasks scan disjoint array ranges.
 type traceTask struct{ handle, first, end uint32 }
+
+// overflowEntry is protected by parallelCollector.mu. Object work and array
+// continuations are distinct: an empty continuation set can never manufacture
+// an object task. Config validation limits workers, and therefore chains, to 8.
+type overflowEntry struct {
+	array  [8]uint32 // encoded first index; zero means no continuation
+	object bool
+	queued bool
+}
 
 type traceWorker struct {
 	pool      *parallelCollector
@@ -61,6 +69,9 @@ type parallelCollector struct {
 	// Tests install hooks while the collector is stopped. Hooks must not mutate heap.
 	hook     func(phase uint8, worker int)
 	taskHook func(phase uint8, worker int)
+	// overflowHook runs with mu held after overflow state is installed and before
+	// its handle is made ready. It exists only for deterministic protocol tests.
+	overflowHook func()
 
 	collector        *Collector
 	workers          []traceWorker
@@ -69,11 +80,11 @@ type parallelCollector struct {
 	mu               sync.Mutex
 	ready            *sync.Cond
 	queue            []traceTask
+	overflow         map[uint32]*overflowEntry // protected by mu; allocated on first overflow
+	overflowReady    []uint32                  // handles with consumable overflow state; protected by mu
 	idle             atomic.Int32
-	claims           []uint32        // per-handle epoch; separate from the serial mark representation
-	pending          []atomic.Uint64 // one overflow bit per admitted stable handle
-	arrayNext        []atomic.Uint32 // per-handle/worker lazy chunk cursors; zero denotes no chunk
-	outstanding      atomic.Int64    // published tasks not yet completely scanned
+	claims           []uint32     // per-handle epoch; separate from the serial mark representation
+	outstanding      atomic.Int64 // published tasks not yet completely scanned
 	epoch            uint32
 	nursery, capture bool
 	phase            uint8
@@ -108,31 +119,12 @@ func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 	if len(p.claims) < len(c.handles) {
 		p.claims = make([]uint32, len(c.handles))
 	}
-	words := (len(c.handles) + 63) / 64
-	if len(p.pending) < words {
-		p.pending = make([]atomic.Uint64, words)
-	}
-	arraySlots := len(c.handles) * len(p.workers)
-	if len(p.arrayNext) < arraySlots {
-		p.arrayNext = make([]atomic.Uint32, arraySlots)
-	}
-	for i := range p.pending {
-		p.pending[i].Store(0)
-	}
-	for i := range p.arrayNext {
-		p.arrayNext[i].Store(0)
-	}
 	p.epoch++
 	if p.epoch == 0 {
 		clear(p.claims)
 		p.epoch = 1
 	}
 	p.nursery, p.capture = nursery, capture
-	if capture && cap(c.promotionScratch) < len(c.nurseryHandles) {
-		// Admission bounds capture scratch by the nursery census before helpers
-		// start. The coordinator later retains only sparse live entries.
-		c.promotionScratch = make([]plannedPromotion, 0, len(c.nurseryHandles))
-	}
 	p.phase = parallelTrace
 	p.selectParticipants(objects)
 	for i := range p.workers {
@@ -160,8 +152,18 @@ func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 	if capture {
 		c.promotionScratch = c.promotionScratch[:0]
 		// CollectMinor uses the nursery ledger when every young object survives.
-		// Do not materialize a captured list that the planner will discard.
+		// Do not materialize a captured list that the planner will discard. Sparse
+		// plans deliberately use nursery-ledger order, not worker discovery order:
+		// stable handles preserve logical identity, but physical placement and the
+		// object at an injected failure ordinal are not promised to be identical.
 		if scanned < uint64(len(c.nurseryHandles)) {
+			live := 0
+			for _, h := range c.nurseryHandles {
+				if c.mark[h] {
+					live++
+				}
+			}
+			c.promotionScratch = make([]plannedPromotion, 0, live)
 			for _, h := range c.nurseryHandles {
 				if c.mark[h] {
 					c.promotionScratch = append(c.promotionScratch, plannedPromotion{handle: h})
@@ -305,6 +307,10 @@ func (p *parallelCollector) run() {
 		p.activity.Copy[p.participants-1]++
 	}
 	p.queue = p.queue[:0]
+	p.mu.Lock()
+	clear(p.overflow)
+	p.overflowReady = p.overflowReady[:0]
+	p.mu.Unlock()
 	p.outstanding.Store(0)
 	for i := range p.workers {
 		p.workers[i].localLen = 0
@@ -536,7 +542,7 @@ func (w *traceWorker) trace() {
 			continue
 		}
 		p.mu.Lock()
-		for !p.failed.Load() && p.outstanding.Load() != 0 && len(p.queue) == 0 && !p.pendingVisible() {
+		for !p.failed.Load() && p.outstanding.Load() != 0 && len(p.queue) == 0 && len(p.overflowReady) == 0 {
 			p.idle.Add(1)
 			p.ready.Wait()
 			p.idle.Add(-1)
@@ -563,12 +569,10 @@ func (w *traceWorker) share() {
 }
 
 func (p *parallelCollector) pendingVisible() bool {
-	for i := range p.pending {
-		if p.pending[i].Load() != 0 {
-			return true
-		}
-	}
-	return false
+	p.mu.Lock()
+	visible := len(p.overflowReady) != 0
+	p.mu.Unlock()
+	return visible
 }
 
 func (w *traceWorker) enqueue(task traceTask) {
@@ -597,12 +601,28 @@ func (w *traceWorker) enqueue(task traceTask) {
 		return
 	}
 	p.mu.Unlock()
-	if task.end != 0 {
-		chain := int(task.first/uint32(parallelArrayChunk)) % p.participants
-		p.arrayNext[int(task.handle)*len(p.workers)+chain].Store(task.first + 1)
-	}
-	p.publishPending(task.handle)
 	p.mu.Lock()
+	if p.overflow == nil {
+		p.overflow = make(map[uint32]*overflowEntry)
+	}
+	entry := p.overflow[task.handle]
+	if entry == nil {
+		entry = new(overflowEntry)
+		p.overflow[task.handle] = entry
+	}
+	if task.end == 0 {
+		entry.object = true
+	} else {
+		chain := int(task.first/uint32(parallelArrayChunk)) % p.participants
+		entry.array[chain] = task.first + 1
+	}
+	if p.overflowHook != nil {
+		p.overflowHook()
+	}
+	if !entry.queued {
+		entry.queued = true
+		p.overflowReady = append(p.overflowReady, task.handle)
+	}
 	p.ready.Broadcast()
 	p.mu.Unlock()
 }
@@ -616,46 +636,43 @@ func (w *traceWorker) pop() (traceTask, bool) {
 		p.mu.Unlock()
 		return task, true
 	}
+	if len(p.overflowReady) == 0 {
+		p.mu.Unlock()
+		return traceTask{}, false
+	}
+	last := len(p.overflowReady) - 1
+	h := p.overflowReady[last]
+	p.overflowReady = p.overflowReady[:last]
+	entry := p.overflow[h]
+	entry.queued = false
+	task := traceTask{handle: h}
+	if entry.object {
+		entry.object = false
+	} else {
+		for chain := 0; chain < p.participants; chain++ {
+			if encoded := entry.array[chain]; encoded != 0 {
+				entry.array[chain] = 0
+				task.first = encoded - 1
+				break
+			}
+		}
+	}
+	more := entry.object
+	for chain := 0; chain < p.participants && !more; chain++ {
+		more = entry.array[chain] != 0
+	}
+	if more {
+		entry.queued = true
+		p.overflowReady = append(p.overflowReady, h)
+	} else {
+		delete(p.overflow, h)
+	}
 	p.mu.Unlock()
-	for wi := range p.pending {
-		for pendingBits := p.pending[wi].Load(); pendingBits != 0; pendingBits = p.pending[wi].Load() {
-			bit := uint(bits.TrailingZeros64(pendingBits))
-			mask := uint64(1) << bit
-			if !p.pending[wi].CompareAndSwap(pendingBits, pendingBits&^mask) {
-				continue
-			}
-			h := uint32(wi*64) + uint32(bit)
-			base := int(h) * len(p.workers)
-			for chain := 0; chain < p.participants; chain++ {
-				encoded := p.arrayNext[base+chain].Swap(0)
-				if encoded == 0 {
-					continue
-				}
-				for rest := chain + 1; rest < p.participants; rest++ {
-					if p.arrayNext[base+rest].Load() != 0 {
-						p.publishPending(h)
-						break
-					}
-				}
-				first := encoded - 1
-				count := p.collector.header(makeObjRef(h)).Aux
-				return traceTask{handle: h, first: first, end: first + min(uint32(parallelArrayChunk), count-first)}, true
-			}
-			return traceTask{handle: h}, true
-		}
+	if task.first != 0 {
+		count := p.collector.header(makeObjRef(h)).Aux
+		task.end = task.first + min(uint32(parallelArrayChunk), count-task.first)
 	}
-	return traceTask{}, false
-}
-
-func (p *parallelCollector) publishPending(h uint32) {
-	word, bit := h/64, uint(h%64)
-	mask := uint64(1) << bit
-	for {
-		old := p.pending[word].Load()
-		if old&mask != 0 || p.pending[word].CompareAndSwap(old, old|mask) {
-			return
-		}
-	}
+	return task, true
 }
 
 func (w *traceWorker) mark(r Ref) {
