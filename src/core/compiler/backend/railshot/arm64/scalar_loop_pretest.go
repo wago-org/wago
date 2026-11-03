@@ -230,6 +230,9 @@ func (f *fn) unrollScalarCounter(start int, words []uint32, exit int, owner *ctr
 	if increment < 0 {
 		return false
 	}
+	if f.unrollRemainderPair(start, words, exit, increment, owner) {
+		return true
+	}
 	update := words[increment]
 	f.a.B = f.a.B[:start]
 	var exits [3]int

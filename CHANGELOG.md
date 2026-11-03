@@ -50,6 +50,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Avoid redundant ARM64 register transfers in bounded unsigned-remainder loops,
+  preserving early exits, visible locals and wrapping iteration counters.
+- Remove obsolete cooperative-poll padding from ARM64 poll-free loop headers.
+
 - Keep bounded AMD64 integer block parameters and private tuple-helper inputs
   in registers, and unroll short register-only post-tested integer loops while
   retaining every iteration's exit check.

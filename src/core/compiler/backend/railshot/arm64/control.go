@@ -1525,11 +1525,9 @@ func (f *fn) zeroBranchJump(fr *ctrlFrame, condition Reg) bool {
 
 const pollFreeLoopPhaseMaxLocals = 16
 
-// alignLoopHeader keeps poll-free loop bodies in the same half of a 32-byte
-// fetch block that the former four-instruction cooperative poll selected. The
-// padding precedes loopStart, so it executes only on initial entry and never on
-// a backedge. Large, loop-dense functions skip it: their extra code footprint
-// costs more than preserving the fetch phase.
+// alignLoopHeader uses the policy's loop alignment without padding for a
+// cooperative poll that poll-free loops no longer execute. Scoped float loops
+// retain their complete fetch boundary when cached constants shorten the body.
 func (f *fn) alignLoopHeader() {
 	// Materialize any phase debt before choosing this hot loop's address. This
 	// preserves the exact alignment decision the unoptimized stream would have
@@ -1548,9 +1546,6 @@ func (f *fn) alignLoopHeader() {
 		loopAlign = 5
 	}
 	f.alignCode(loopAlign)
-	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals && !scopedFloat {
-		f.a.Nop4()
-	}
 }
 
 // --- control opcodes ---
