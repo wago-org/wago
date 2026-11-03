@@ -596,11 +596,13 @@ type fn struct {
 	gcArrayHelpers         bool // exact staged numeric array ops use the same parked Go re-entry frame
 	gcFrameRoots           *shared.GCFrameRootPlan
 	gcCallsiteIndex        int
-	compactFrameHeader     bool   // register ABI: no wrapper results-pointer header
+	compactFrameHeader     bool // register ABI: no wrapper results-pointer header
+	compactI32Frame        bool
 	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
 	nativeStructAllocDead  bool   // next native struct allocation may omit unreachable scalar payload stores
 	nativeStructDirectUsed bool   // preceding struct helper retained pinned registers
 	nativeArrayAlloc       gcArrayAllocStubSite
+	gcLifetimeSelected     bool
 
 	// stats collects per-function codegen counters. nil
 	// unless the caller requested collection, in which case every counter method
@@ -824,6 +826,8 @@ type gcStructAllocStubSite struct {
 	site      int
 }
 
+var gcLifetimePlanTestHook func(*gcLifetimePlan)
+
 type gcArrayAllocMode uint8
 
 const (
@@ -868,7 +872,20 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
 }
 
 type scratch struct {
-	scalar shared.ScalarState
+	scalar                shared.ScalarState
+	gcLifetimeFacts       *gcLifetimeModuleFacts
+	gcLifetimeRecords     []gcLifetimeRewrite
+	gcLifetimeRecordsLive bool
+	gcLifetimeBaseline    bool
+	gcLifetimeCandidate   bool
+	gcLifetimePending     *gcLifetimePlan
+	gcLifetimeCode        []byte
+	gcLifetimeRelocs      []callReloc
+	gcLifetimeLiterals    []uint64
+	gcLifetimeSafepoints  [2][]uint32
+	gcLifetimeCallsites   [2][]uint32
+	gcLifetimeRootBank    uint8
+	gcLifetimePrepared    gcLifetimeAttemptPreparation
 
 	amd64Features         shared.AMD64Features
 	usedAMD64Features     shared.AMD64Features
@@ -927,6 +944,17 @@ type scratch struct {
 	controlRootPeak         uint32
 	controlRootDiscarded    uint32
 	transient
+}
+
+// gcLifetimeAttemptPreparation names immutable facts already installed in the
+// fn's worker-owned backing by the retained baseline. It contains no slice
+// headers or proof objects; emission and publication state are rebuilt.
+type gcLifetimeAttemptPreparation struct {
+	valid, dynamicHostFast, compactI32Frame bool
+	funcIdx, nLocals, nLocalSlots           int
+	localTypeLen, gcLocalTypesLen           int
+	localSlotLen                            int
+	scalarSummary                           shared.ScalarSummary
 }
 
 // scratchState keeps low-level backend tests able to exercise an isolated fn.
@@ -1147,6 +1175,12 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 }
 
 func (sc *scratch) reset() {
+	if sc.gcLifetimeRecordsLive && sc.gcLifetimePending == nil {
+		panic("amd64: live GC lifetime rewrite records at scratch reset")
+	}
+	if !sc.gcLifetimeRecordsLive {
+		sc.gcLifetimeRecords = sc.gcLifetimeRecords[:0]
+	}
 	sc.usedAMD64Features = 0
 	if len(sc.stack.chunks) != 0 {
 		sc.stack.reset()
@@ -1638,8 +1672,11 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
-	SourceMaps bool
-	UnwindMaps bool
+	// GCLifetimeReport receives Analyze diagnostics when gc-lifetime-analyze is
+	// enabled. Off clears the sink and performs no lifetime scan.
+	GCLifetimeReport **GCLifetimeReport
+	SourceMaps       bool
+	UnwindMaps       bool
 	// Profile records finalized code regions without changing emitted bytes. Requires Stats.
 	Profile bool
 	// AMD64Features selects optional instructions at compile time. An explicit
@@ -1808,6 +1845,9 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	if opts.GCLifetimeReport != nil {
+		*opts.GCLifetimeReport = nil
+	}
 	if !diagnosticsEnabled && (opts.Stats != nil || opts.CollectInlineReport) {
 		return nil, fmt.Errorf("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
 	}
@@ -1983,6 +2023,15 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 		}
 	}
+	if policy.EnabledOption(optGCLifetimeAnalyze) && (opts.GCLifetimeReport != nil || ms != nil) {
+		report := analyzeGCLifetimes(m)
+		if opts.GCLifetimeReport != nil {
+			*opts.GCLifetimeReport = report
+		}
+		if ms != nil {
+			ms.GCLifetime = report
+		}
+	}
 	// Compile scratch reused across every function in the module. The operand
 	// stack arena and the occurrence-tracking refs map are per-function scratch
 	// that never outlives a function's compile, so resetting them (rather than
@@ -2010,6 +2059,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	}
 	codeCap := moduleCodeCapacityAMD64(totalBody, n, policy)
 	moduleTypes := buildModuleTypeCache(m, totalBody)
+	var gcLifetimeFacts *gcLifetimeModuleFacts
+	if policy.EnabledOption(optGCLifetimeAnalyze) {
+		gcLifetimeFacts = newGCLifetimeModuleFacts()
+	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	// Serial compilation writes directly into a demand-paged RW image. Only
 	// emitted pages become resident; the public owner seals the same image at
@@ -2026,6 +2079,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		sc.policy = policy
 		sc.classifier = classifier
 		sc.moduleTypes = moduleTypes
+		sc.gcLifetimeFacts = gcLifetimeFacts
 		sc.reserveLocalScratch(serialLocalScratchCapacity(allHints, inlineTargets, hostAdapters))
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.reserveControlFrames(ctrlCap)
@@ -2264,6 +2318,10 @@ func serialLocalScratchCapacity(allHints []funcHints, inlineTargets inlineTarget
 // and its captured state cannot escape into or add allocations to the serial path.
 func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap, totalBody int, entry, internalEntry []int, relocs [][]callReloc, literalOffsets []uint32, allHints []funcHints, hintSidecar funcHintSidecar, immutableTables []immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters, referenceWrapperTargets []bool, inlineTargets inlineTargetTable, moduleTypes moduleTypeCache, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts, moduleHasSIMD bool, importedFuncs int) (*amd64.CompiledModule, error) {
 	n := len(m.Code)
+	var gcLifetimeFacts *gcLifetimeModuleFacts
+	if policy.EnabledOption(optGCLifetimeAnalyze) {
+		gcLifetimeFacts = newGCLifetimeModuleFacts()
+	}
 	// Parallel codegen starts only after every module-wide decision is complete.
 	// Each function has a deterministic stats destination, and each worker owns all
 	// mutable compiler state plus an append-only arena for completed function code.
@@ -2296,6 +2354,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		states[i].scratch.policy = policy
 		states[i].scratch.classifier = classifier
 		states[i].scratch.moduleTypes = moduleTypes
+		states[i].scratch.gcLifetimeFacts = gcLifetimeFacts
 		states[i].scratch.reserveLocalScratch(localCap)
 		if ctrlCap != 0 {
 			states[i].scratch.reserveControlFrames(ctrlCap)
@@ -3587,7 +3646,84 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		// generalized to pinned registers.
 		modGlobals = nil
 	}
+	policy := sc.policy
+	if !policy.Valid() {
+		policy = currentCodegenPolicy()
+	}
+	// Keep the ordinary function as the retained transaction variant. The first
+	// attempt seals the compact proof but deliberately lowers the baseline; the
+	// second attempt consumes that same proof privately. Exact root-plan metadata
+	// is caller-owned mutable state, so its completed baseline publication is
+	// retained in the worker's disjoint root bank during the private attempt.
+	sc.gcLifetimePrepared.valid = false
+	sc.gcLifetimeBaseline = policy.EnabledOption(optGCLifetimeAnalyze)
 	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD, modGlobals, hints, immutableTables, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, sc, wrapperTargets)
+	sc.gcLifetimeBaseline = false
+	if err == nil && sc.gcLifetimePending != nil {
+		sc.gcLifetimePrepared = gcLifetimeAttemptPreparation{
+			valid: true, funcIdx: funcIdx, nLocals: sc.fnState.nLocals,
+			dynamicHostFast: sc.fnState.dynamicHostFast, compactI32Frame: sc.fnState.compactI32Frame,
+			nLocalSlots: sc.fnState.nLocalSlots, localTypeLen: len(sc.fnState.localType),
+			gcLocalTypesLen: len(sc.fnState.gcLocalTypes), localSlotLen: len(sc.fnState.localSlot),
+			scalarSummary: sc.fnState.scalarSummary,
+		}
+		if gcLifetimePlanTestHook != nil {
+			gcLifetimePlanTestHook(sc.gcLifetimePending)
+		}
+		baselineFrame := sc.fnState.frameSize()
+		sc.gcLifetimeCode = append(sc.gcLifetimeCode[:0], code...)
+		sc.gcLifetimeRelocs = append(sc.gcLifetimeRelocs[:0], relocs...)
+		sc.gcLifetimeLiterals = append(sc.gcLifetimeLiterals[:0], sc.fnState.literalWords...)
+		baselineFn := gcLifetimePublishedFn{
+			adapterReturnOff: sc.fnState.adapterReturnOff, adapterEndOff: sc.fnState.adapterEndOff,
+			adapterReturnReferenced: sc.fnState.adapterReturnReferenced,
+			trapBodyOff:             sc.fnState.trapBodyOff, trapBodyEnd: sc.fnState.trapBodyEnd,
+			gcDeadBatchLayout: sc.fnState.gcDeadBatchLayout, gcI31Induction: sc.fnState.gcI31Induction,
+			gcReducedBounded: sc.fnState.gcReducedBounded,
+		}
+		baselineScratch := gcLifetimePublishedScratch{
+			usedAMD64Features: sc.usedAMD64Features, directPrepared: sc.directPrepared,
+			directPreparedBounded: sc.directPreparedBounded, usesBMI2: sc.asm.UsesBMI2,
+			bitCountState: sc.asm.BitCountState,
+		}
+		var baselineRoots shared.GCFrameRootPublication
+		if gcFrameRoots != nil {
+			bank := sc.gcLifetimeRootBank & 1
+			sc.gcLifetimeRootBank++
+			baselineRoots = gcFrameRoots.CapturePublication(sc.gcLifetimeSafepoints[bank], sc.gcLifetimeCallsites[bank])
+			sc.gcLifetimeSafepoints[bank], sc.gcLifetimeCallsites[bank] = baselineRoots.SafepointData, baselineRoots.CallsiteData
+			gcFrameRoots.Exact = true
+			gcFrameRoots.ResetSafepoints()
+			gcFrameRoots.ResetCallsites()
+			gcFrameRoots.FrameBytes, gcFrameRoots.AdapterReturnOffset = 0, 0
+		}
+		var baselineStats CodegenStats
+		if diagnosticsEnabled && stats != nil {
+			baselineStats = *stats
+		}
+		sc.gcLifetimeCandidate = true
+		candidateCode, candidateRelocs, candidateInternal, candidateErr := compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD, modGlobals, hints, immutableTables, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, sc, wrapperTargets)
+		sc.gcLifetimeCandidate = false
+		sc.gcLifetimePrepared.valid = false
+		selected := candidateErr == nil && sc.fnState.gcLifetimeSelected && len(candidateCode) <= len(sc.gcLifetimeCode) && sc.fnState.frameSize() <= baselineFrame
+		if selected {
+			code, relocs, internalOff = candidateCode, candidateRelocs, candidateInternal
+		} else {
+			if sc.gcLifetimeRecordsLive {
+				sc.releaseGCLifetimeRecords()
+			}
+			sc.gcLifetimePending = nil
+			code, relocs = sc.gcLifetimeCode, sc.gcLifetimeRelocs
+			baselineFn.restore(&sc.fnState, sc.gcLifetimeLiterals)
+			baselineScratch.restore(sc)
+			if gcFrameRoots != nil {
+				gcFrameRoots.RestorePublication(baselineRoots)
+			}
+			if diagnosticsEnabled && stats != nil {
+				*stats = baselineStats
+			}
+		}
+	}
 	if len(sc.stack.chunks) > 1 {
 		sc.finishStackFunction()
 	}
@@ -3595,6 +3731,34 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		sc.noteControlScratch()
 	}
 	return
+}
+
+type gcLifetimePublishedFn struct {
+	adapterReturnOff, adapterEndOff, trapBodyOff, trapBodyEnd int
+	adapterReturnReferenced                                   bool
+	gcDeadBatchLayout                                         uint64
+	gcI31Induction, gcReducedBounded                          bool
+}
+
+func (s gcLifetimePublishedFn) restore(f *fn, literals []uint64) {
+	f.adapterReturnOff, f.adapterEndOff = s.adapterReturnOff, s.adapterEndOff
+	f.adapterReturnReferenced = s.adapterReturnReferenced
+	f.trapBodyOff, f.trapBodyEnd = s.trapBodyOff, s.trapBodyEnd
+	f.gcDeadBatchLayout, f.gcI31Induction, f.gcReducedBounded = s.gcDeadBatchLayout, s.gcI31Induction, s.gcReducedBounded
+	f.literalWords = literals
+}
+
+type gcLifetimePublishedScratch struct {
+	usedAMD64Features                     shared.AMD64Features
+	directPrepared, directPreparedBounded bool
+	usesBMI2                              bool
+	bitCountState                         uint8
+}
+
+func (s gcLifetimePublishedScratch) restore(sc *scratch) {
+	sc.usedAMD64Features = s.usedAMD64Features
+	sc.directPrepared, sc.directPreparedBounded = s.directPrepared, s.directPreparedBounded
+	sc.asm.UsesBMI2, sc.asm.BitCountState = s.usesBMI2, s.bitCountState
 }
 
 // compilerPanicError reads diagnostic context only after an invariant failed.
@@ -3732,24 +3896,33 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.ehTryCap, f.ehRootCap = shape.TryRecords, shape.RootRecords
 	}
 	f.syncHostCalls = syncHostCalls
+	prepared := &sc.gcLifetimePrepared
+	reusePrepared := sc.gcLifetimeCandidate && prepared.valid && prepared.funcIdx == funcIdx &&
+		prepared.nLocals == nLocals && prepared.localTypeLen == nLocals && prepared.localSlotLen == nLocals &&
+		prepared.localTypeLen <= cap(f.localType) && prepared.gcLocalTypesLen <= cap(f.gcLocalTypes) &&
+		prepared.localSlotLen <= cap(f.localSlot)
 	// These instruction classes always fail the scalar CFG proof. The existing
 	// hint pass has already found them, so do not build and clear a proof graph
 	// merely to reject an ordinary memory/SIMD/table-mutating body.
 	hostCFGEligible := !hints.flags.has(hintTouchesMemory | hintHasSIMD | hintMutatesTable)
-	f.dynamicHostFast = hostCFGEligible && f.opt(optDirectGoHostImport) && syncHostCalls && !f.moduleEH && shared.BoundedHostSegments(c.BodyBytes, uint32(m.ImportedFuncCount()))
-	for _, typ := range ft.Params {
-		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
-			f.dynamicHostFast = false
+	if reusePrepared {
+		f.dynamicHostFast = prepared.dynamicHostFast
+	} else {
+		f.dynamicHostFast = hostCFGEligible && f.opt(optDirectGoHostImport) && syncHostCalls && !f.moduleEH && shared.BoundedHostSegments(c.BodyBytes, uint32(m.ImportedFuncCount()))
+		for _, typ := range ft.Params {
+			if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+				f.dynamicHostFast = false
+			}
 		}
-	}
-	for _, typ := range ft.Results {
-		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
-			f.dynamicHostFast = false
+		for _, typ := range ft.Results {
+			if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+				f.dynamicHostFast = false
+			}
 		}
-	}
-	for _, run := range c.Locals.Runs {
-		if run.Type.Kind() != wasm.ValNum || mtOf(run.Type) == mtV128 {
-			f.dynamicHostFast = false
+		for _, run := range c.Locals.Runs {
+			if run.Type.Kind() != wasm.ValNum || mtOf(run.Type) == mtV128 {
+				f.dynamicHostFast = false
+			}
 		}
 	}
 	f.syncHostSlots = syncHostSlots
@@ -3759,15 +3932,20 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if f.threadedMemory0 && f.opt(optSharedMemoryBase) || !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}
-	if cap(f.localType) < nLocals {
+	if reusePrepared {
+		f.localType = f.localType[:prepared.localTypeLen]
+		f.gcLocalTypes = f.gcLocalTypes[:prepared.gcLocalTypesLen]
+	} else if cap(f.localType) < nLocals {
 		f.localType = make([]machineType, nLocals)
 	} else {
 		f.localType = f.localType[:nLocals]
 	}
 	// A dead local can still supply a live operand-stack reference. Preserve
 	// its declared reference type independently of the compacted frame roots.
-	f.gcLocalTypes = f.gcLocalTypes[:0]
-	if gcFrameRoots != nil {
+	if !reusePrepared {
+		f.gcLocalTypes = f.gcLocalTypes[:0]
+	}
+	if gcFrameRoots != nil && !reusePrepared {
 		words := (nLocals + 63) / 64
 		if cap(f.gcLocalTypes) < words {
 			f.gcLocalTypes = make([]uint64, words)
@@ -3790,26 +3968,32 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 		return gcFrameRefType(m, typ)
 	}
-	i := 0
-	for _, p := range ft.Params {
-		if isGCType(p) {
-			f.gcLocalTypes[i/64] |= uint64(1) << uint(i%64)
-		}
-		f.localType[i] = mtOf(p)
-		i++
-	}
-	for _, run := range c.Locals.Runs {
-		gcRef := isGCType(run.Type)
-		for k := 0; k < int(run.Count); k++ {
-			if gcRef {
+	if !reusePrepared {
+		i := 0
+		for _, p := range ft.Params {
+			if isGCType(p) {
 				f.gcLocalTypes[i/64] |= uint64(1) << uint(i%64)
 			}
-			f.localType[i] = mtOf(run.Type)
+			f.localType[i] = mtOf(p)
 			i++
+		}
+		for _, run := range c.Locals.Runs {
+			gcRef := isGCType(run.Type)
+			for k := 0; k < int(run.Count); k++ {
+				if gcRef {
+					f.gcLocalTypes[i/64] |= uint64(1) << uint(i%64)
+				}
+				f.localType[i] = mtOf(run.Type)
+				i++
+			}
 		}
 	}
 
-	if cap(f.localSlot) < nLocals {
+	if reusePrepared {
+		f.localSlot = f.localSlot[:prepared.localSlotLen]
+		f.nLocalSlots = prepared.nLocalSlots
+		f.compactI32Frame = prepared.compactI32Frame
+	} else if cap(f.localSlot) < nLocals {
 		f.localSlot = make([]uint32, nLocals)
 	} else {
 		f.localSlot = f.localSlot[:nLocals]
@@ -3823,31 +4007,30 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller region. EH/GC layouts remain deliberately boring. Tiny functions stay
 	// on the old layout because their locals are normally register-homed and do not
 	// repay a second layout mode.
-	i32Locals := 0
-	for _, mt := range f.localType {
-		if mt == mtI32 {
-			i32Locals++
+	if !reusePrepared {
+		i32Locals := 0
+		for _, mt := range f.localType {
+			if mt == mtI32 {
+				i32Locals++
+			}
 		}
+		f.compactI32Frame = f.opt(optCompactI32Frame) && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
+		localBytes := 0
+		for i, mt := range f.localType {
+			if f.compactI32Frame && mt == mtI32 {
+				f.localSlot[i] = uint32(localBytes)
+				localBytes += 4
+				continue
+			}
+			localBytes = (localBytes + 7) &^ 7
+			f.localSlot[i] = uint32(localBytes)
+			localBytes += 8 * mt.stackSlots()
+		}
+		f.nLocalSlots = (localBytes + 7) / 8
 	}
-	compactI32Frame := f.opt(optCompactI32Frame) && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
-	if compactI32Frame {
+	if f.compactI32Frame {
 		f.stats.peep("compact-i32-frame")
 	}
-	localBytes := 0
-	for i, mt := range f.localType {
-		// Validation caps a function at 65,535 locals, so its pre-inline local
-		// area fits exactly in the packed offset. Synthetic locals are checked
-		// together below before code generation consumes any home.
-		if compactI32Frame && mt == mtI32 {
-			f.localSlot[i] = uint32(localBytes)
-			localBytes += 4
-			continue
-		}
-		localBytes = (localBytes + 7) &^ 7
-		f.localSlot[i] = uint32(localBytes)
-		localBytes += 8 * mt.stackSlots()
-	}
-	f.nLocalSlots = (localBytes + 7) / 8
 	hasCall := hints.flags.has(hintHasCall)
 	touchesMemory := hints.flags.has(hintTouchesMemory)
 	if hasCall && !touchesMemory && hints.globalCount == 0 && nLocals <= 8 && len(c.BodyBytes) <= 256 && f.onlyLocalTailTransfers(c.BodyBytes) {
@@ -3930,7 +4113,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			f.hasLoop = true
 		}
 	}
-	if !f.localTailLeaf && !hasInlineTailLoop {
+	if reusePrepared {
+		f.scalarSummary = prepared.scalarSummary
+	} else if !f.localTailLeaf && !hasInlineTailLoop {
 		f.scalarSummary = f.admitScalar(c)
 	}
 	if f.scalarSummary.Eligible {
@@ -3952,7 +4137,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// the direct-entry proof without changing the guest body.
 	nativeHostDirect := hostCFGEligible && coreruntime.NativeScalarLeafSupported && f.opt(optNativeLeafHost) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1)
 	directPrepared := !hasInlineTailLoop && !hasInlineTupleLoop(inlinedCallees) && f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall() || nativeHostDirect) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && (!hints.hasUnsupportedDynamicCall() || nativeHostDirect) &&
-		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && gcFrameRoots == nil) &&
+		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && (gcFrameRoots == nil || gcFrameRoots.UnwindOnly)) &&
 		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) || nativeHostDirect) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	if directPrepared {
 		for _, r := range [...]Reg{RBP, R12, R13, R14, R15} {

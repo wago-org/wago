@@ -536,6 +536,7 @@ var catalog = []Definition{
 	both("tail-loop-inline", "Tail-loop inlining", "inline bounded numeric tail-call bodies as call-free native loops"),
 	arm64("entry-init-elision", "Entry initialization elision", "skip initialization of locals overwritten before their first read"),
 	arm64("v128-direct-results", "Direct vector results", "write vector results directly into eligible pinned locals"),
+	experimentalAMD64("gc-lifetime-analyze", "GC lifetime analysis", "bounded lifetime diagnostics and checked scalar replacement; preserves allocation charges"),
 	amd64("dead-gc-new", "Dead GC constructors", "remove dropped GC constructor trees while preserving traps"),
 	amd64("gc-native-alloc", "Native GC allocation", "allocate admitted GC objects through native nursery fast paths"),
 	both("v128-const-cache", "Vector constant cache", "reserve repeated vector constants and target-specific masks"),

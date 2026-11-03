@@ -1558,7 +1558,11 @@ func (f *fn) alignLoopHeader() {
 // (the body start, just past the blocktype) to the matching `end`, recording the
 // locals it sets. The module-aware classifier keeps mixed memory-width
 // immediates synchronized. Any unexpected decode failure returns no proof.
-func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16, uses *scopedLoopConstUses) (setLocals []uint16, hasCall bool) {
+func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16, uses *scopedLoopConstUses, modules ...*wasm.Module) (setLocals []uint16, hasCall bool) {
+	var m *wasm.Module
+	if len(modules) != 0 {
+		m = modules[0]
+	}
 	start := r.Offset()
 	defer func() { _ = r.JumpTo(start) }()
 	base := len(dst)
@@ -1607,7 +1611,7 @@ func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifi
 			uses.blocked = true
 			uses.mask = 0
 		}
-		if loopInstructionMayCall(imm.Kind) {
+		if shared.ExternStoreMayCall(m, imm.Kind, imm.Index) || loopInstructionMayCall(imm.Kind) {
 			hasCall = true
 		}
 		switch op {
@@ -1722,7 +1726,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if collectConsts {
 			collect = &uses
 		}
-		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals, collect)
+		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals, collect, f.m)
 		if f.localBase != 0 && setLocals != nil {
 			for i := base; i < len(setLocals); i++ {
 				absolute := uint64(setLocals[i]) + uint64(f.localBase)
@@ -2320,6 +2324,22 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		}
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
 			f.ensureFrameEH(&f.ctrl[frame]).refResults |= 1 << (clause.payloadN - 1)
+		}
+		// Exception dispatch bypasses ordinary branch-result tracking. Its
+		// collector payloads must remain roots at the catch target, including
+		// when an operand survives a subsequent allocating/host call.
+		for j := 0; j < int(clause.scalarN); j++ {
+			if clause.gcParams&(1<<j) == 0 {
+				continue
+			}
+			target := &f.ctrl[frame]
+			if target.kind == cfLoop {
+				flags := f.ensureFrameGCRootFlags(target)
+				flags[target.height+j] = true
+				target.set(ctrlHasParamGCRoots, true)
+			} else {
+				f.setFrameResultGCRoot(target, j)
+			}
 		}
 		f.ctrl[frame].set(ctrlRegMerge1, false)
 		eh.catches = append(eh.catches, clause)

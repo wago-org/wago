@@ -189,8 +189,13 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// (the mirror of the memory-on-the-right case already folded by applyALU).
 	if node.deferredOp().commutative() && left.isValue() {
 		swapConst := left.st.kind == stConst && !(right.isValue() && right.st.kind == stConst)
+		// A target hint can own the left load's address (for example a merge
+		// register). Keep that load on the left so condenseInto reads the old
+		// address before replacing it. Swapping it onto the right would move
+		// the register operand into dest before the folded memory read.
 		swapMem := commuteMemLeftEnabled && right.isValue() && right.st.kind == stReg &&
-			(left.st.kind == stSlot || left.st.kind == stLocalRef || left.st.kind == stMemRef)
+			(left.st.kind == stSlot || left.st.kind == stLocalRef || left.st.kind == stMemRef) &&
+			!(left.st.kind == stMemRef && left.st.reg == dest)
 		if swapConst || swapMem {
 			left, right = right, left
 			if swapMem {

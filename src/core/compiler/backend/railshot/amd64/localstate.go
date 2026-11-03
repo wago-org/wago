@@ -240,8 +240,8 @@ func (f *fn) materializeGCFrameRootLocalsForCall(importIdx int) {
 	if dispatch&gcStructDispatchBit == 0 {
 		return
 	}
-	helper, _ := shared.DecodeGCDispatch(dispatch &^ gcStructDispatchBit)
-	if !gcHelperMayAllocate(helper) {
+	helper, safepoint := shared.DecodeGCDispatch(dispatch &^ gcStructDispatchBit)
+	if !gcHelperMayAllocate(helper) && safepoint == 0 {
 		return
 	}
 	f.materializeAllGCFrameLocals()
