@@ -144,11 +144,35 @@ func TestMatureEvacuationCandidateAndRunLimitsAreIndependent(t *testing.T) {
 	}
 }
 
+func TestMatureEvacuationRejectsCrossComponentCensusCompensation(t *testing.T) {
+	c := newTestCollector(t, Config{
+		NurseryBytes: 4096, NurseryRegionShift: 6, MatureEvacuation: true,
+		ThroughputHeapBytes: 2 * uint32(evacuationBlock), ThroughputPageBytes: 4096,
+	})
+	h := &c.throughput
+	h.bump = 2 * uint32(evacuationBlock)
+	h.mem = make([]byte, h.bump)
+	h.mature.pressure = true
+	c.handles = []handleEntry{{},
+		{off: 0, size: 32, space: spaceOld, class: uint16(len(throughputClassSizes))},
+		{off: uint32(evacuationBlock), size: 32, space: spaceOld, class: uint16(len(throughputClassSizes))},
+	}
+	seedMaintainedOccupancy(t, c)
+	// One phantom start in the first component and one duplicate handle in the
+	// second preserve the old global total while violating both components.
+	h.mature.occupancy[0].oldStarts[0] |= uint64(1) << 2
+	c.handles = append(c.handles, c.handles[2])
+	if _, err := c.selectMatureEvacuation(); err == nil || !strings.Contains(err.Error(), "component start census") {
+		t.Fatalf("compensating component corruption error = %v", err)
+	}
+}
+
 func TestMatureEvacuationScratchStorageCensus(t *testing.T) {
-	// Selection retains only one excluded bit per active block plus at most
-	// evacuationCandidateLimit moves. Maintained occupancy is 392 bytes per
-	// committed block on 64-bit and 388 on 32-bit. Later phases separately
-	// cap destination runs; plans and source debt are one record per live move.
+	// Selection retains one excluded bool and one uint64 component census per
+	// active block plus at most evacuationCandidateLimit moves. Maintained
+	// occupancy is 392 bytes per committed block on 64-bit and 388 on 32-bit.
+	// Later phases separately cap destination runs; plans and source debt are
+	// one record per live move.
 	wantOccupancy, wantUndo := uintptr(392), uintptr(40)
 	if unsafe.Sizeof(uintptr(0)) == 4 {
 		wantOccupancy = 388

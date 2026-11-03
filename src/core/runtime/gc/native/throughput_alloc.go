@@ -251,9 +251,13 @@ func (h *throughputHeap) ensureOccupancy(end uint32) {
 }
 
 func (h *throughputHeap) reserveOccupancyCapacity(end uint64) {
-	if h.mature == nil || end > uint64(h.limit) {
+	if h.mature == nil {
 		return
 	}
+	// A conservative promotion demand can exceed limit even when indexed reuse
+	// makes the actual plan fit. The transaction can nevertheless reach no
+	// farther than limit, so reserve that reachable bound before snapshotting.
+	end = min(end, uint64(h.limit))
 	need := occupancyBlockCount(uint32(end))
 	if need > cap(h.mature.occupancy) {
 		h.mature.occupancy = slices.Grow(h.mature.occupancy, need-len(h.mature.occupancy))
@@ -261,11 +265,11 @@ func (h *throughputHeap) reserveOccupancyCapacity(end uint64) {
 }
 
 func (h *throughputHeap) validateOccupancy(e handleEntry, claim bool) error {
-	n := h.handleAllocSize(e)
-	end := uint64(e.off) + uint64(n)
 	if h.mature == nil {
 		return nil
 	}
+	n := h.handleAllocSize(e)
+	end := uint64(e.off) + uint64(n)
 	if n == 0 || e.off%16 != 0 || end > uint64(h.bump) || end > uint64(h.limit) || end > uint64(len(h.mem)) ||
 		(e.space != spaceOld && e.space != spaceLarge) || occupancyBlockCount(uint32(end)) > len(h.mature.occupancy) {
 		return errors.New("gc: invalid mature occupancy extent")
@@ -274,10 +278,9 @@ func (h *throughputHeap) validateOccupancy(e handleEntry, claim bool) error {
 	blocked := e.space == spaceLarge || n > matureOccupancyBlock
 	for b := first; b <= last; b++ {
 		state := &h.mature.occupancy[b]
-		lo := max(e.off, b*matureOccupancyBlock)
-		hi := min(uint32(end), (b+1)*matureOccupancyBlock)
-		for p := lo / matureOccupancyLine; p <= (hi-1)/matureOccupancyLine; p++ {
-			refs := state.lineRefs[p%128]
+		lineFirst, lineLast := occupancyBlockLineRange(uint64(e.off), end, b)
+		for p := lineFirst; p <= lineLast; p++ {
+			refs := state.lineRefs[p]
 			if (claim && refs == ^uint8(0)) || (!claim && refs == 0) {
 				return errors.New("gc: mature occupancy line counter corruption")
 			}
@@ -305,18 +308,17 @@ func (h *throughputHeap) mutateOccupancy(e handleEntry, claim bool) {
 		return
 	}
 	n := h.handleAllocSize(e)
-	end := e.off + n
-	first, last := e.off/matureOccupancyBlock, (end-1)/matureOccupancyBlock
+	end := uint64(e.off) + uint64(n)
+	first, last := e.off/matureOccupancyBlock, uint32((end-1)/uint64(matureOccupancyBlock))
 	blocked := e.space == spaceLarge || n > matureOccupancyBlock
 	for b := first; b <= last; b++ {
 		state := &h.mature.occupancy[b]
-		lo := max(e.off, b*matureOccupancyBlock)
-		hi := min(end, (b+1)*matureOccupancyBlock)
-		for p := lo / matureOccupancyLine; p <= (hi-1)/matureOccupancyLine; p++ {
+		lineFirst, lineLast := occupancyBlockLineRange(uint64(e.off), end, b)
+		for p := lineFirst; p <= lineLast; p++ {
 			if claim {
-				state.lineRefs[p%128]++
+				state.lineRefs[p]++
 			} else {
-				state.lineRefs[p%128]--
+				state.lineRefs[p]--
 			}
 		}
 		if blocked {
@@ -339,6 +341,16 @@ func (h *throughputHeap) mutateOccupancy(e handleEntry, claim bool) {
 			h.mature.occupancy[first].oldStarts[word] &^= bit
 		}
 	}
+}
+
+// occupancyBlockLineRange returns block-relative inclusive line indexes. Wide
+// arithmetic is required for the final block, whose exclusive end is 2^32.
+func occupancyBlockLineRange(off, end uint64, block uint32) (first, last uint32) {
+	blockLo := uint64(block) * uint64(matureOccupancyBlock)
+	lo := max(off, blockLo)
+	hi := min(end, blockLo+uint64(matureOccupancyBlock))
+	return uint32((lo - blockLo) / uint64(matureOccupancyLine)),
+		uint32((hi - 1 - blockLo) / uint64(matureOccupancyLine))
 }
 
 func (h *throughputHeap) claimOccupancy(e handleEntry) error {
@@ -1284,6 +1296,9 @@ func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (thro
 }
 
 func (h *throughputHeap) claimAllocRun(run throughputAllocRun, size uint32, count int, sp spaceKind) error {
+	if h.mature == nil {
+		return nil
+	}
 	claimed := 0
 	for i := 0; i < count; i++ {
 		class := run.class
