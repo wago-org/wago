@@ -158,6 +158,11 @@ func (fn *WasmFunc) callGCPrepared() (err error) {
 	}
 	defer in.unlockNativeEntry(locked)
 	defer in.recoverBoundedNativeSyncPanic(&err)
+	// Cold and revoked prepared entries must consume pending interruption
+	// before a native helper can replace the trap word or charge an object.
+	if err = clearPreparedInductionTrap(in); err != nil {
+		return err
+	}
 	if activeHostInvocationBindings.Load() != 0 {
 		restore := bindHostInvocationParent(in, nil)
 		defer restore()
