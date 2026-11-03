@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"testing"
 )
 
@@ -31,9 +30,6 @@ func TestNativeReviewStage4CaughtNestedTrap(t *testing.T) {
 				defer func() { active = false }()
 				if _, err := in.InvokeFromHost(context.Background(), caller, "outer", 92); !errors.Is(err, trap) {
 					panic(fmt.Sprintf("nested trap: %v", err))
-				}
-				if shift != 0 && nativeRegionState(in, gc.NativeStructAllocCountOffset) != 0 {
-					panic("nested trap retained reservation")
 				}
 				if _, err := in.InvokeFromHost(context.Background(), caller, "inner"); err != nil {
 					panic(err)

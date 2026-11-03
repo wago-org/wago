@@ -126,9 +126,6 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			objectAlign = 8
 		}
 		nurseryOffset := func() (uint32, bool) {
-			if len(c.edenRegions) != 0 {
-				return c.regionAllocationOffset(size, objectAlign)
-			}
 			off := align(c.nurseryBump, objectAlign)
 			limit := c.edenBytes()
 			return off, off <= limit && size <= limit-off
@@ -139,37 +136,18 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			if roots == nil {
 				return Null(), errors.New("gc: nursery exhausted and no roots were supplied")
 			}
-			skippedRegionFull := false
-			if len(c.edenRegions) != 0 {
-				skippedRegionFull = c.shouldSkipRegionFull(size, objectAlign)
-				if !skippedRegionFull {
-					if err := c.CollectFull(roots); err != nil {
-						return Null(), err
-					}
-					off, fits = nurseryOffset()
-					c.noteRegionFullResult(size, objectAlign, fits)
+			if err := c.CollectMinor(roots); err != nil {
+				if err := c.retryAllocationMinorAfterPromotionFailure(roots, err); err != nil {
+					return Null(), err
 				}
 			}
-			if !fits {
-				if err := c.CollectMinor(roots); err != nil {
-					if err := c.retryAllocationMinorAfterPromotionFailure(roots, err); err != nil {
-						return Null(), err
-					}
-				}
-				off, fits = nurseryOffset()
-				if skippedRegionFull {
-					c.noteSkippedRegionFull()
-				}
-			}
+			off, fits = nurseryOffset()
 			if !fits {
 				return Null(), errors.New("gc: nursery exhausted without roots")
 			}
 		}
 		oldNurseryBump = c.nurseryBump
 		c.nurseryBump = off + size
-		if len(c.edenRegions) != 0 {
-			c.nurseryBump = max(oldNurseryBump, c.nurseryBump)
-		}
 	}
 	if sp == spaceNursery {
 		e = handleEntry{off: off, size: size, space: sp}
@@ -185,9 +163,6 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			c.throughput.restoreAllocTransaction(allocationTx)
 		}
 		return Null(), err
-	}
-	if sp == spaceNursery && len(c.edenRegions) != 0 {
-		c.commitRegionAllocation(off, size)
 	}
 	if sp == spaceLarge {
 		c.throughput.commitMatureAdmission()
@@ -234,8 +209,7 @@ func (c *Collector) shouldAllocateLarge(size uint32) bool {
 	// a hard safety boundary: an object that cannot fit in an empty nursery must
 	// be allocated in non-moving large space even when tests choose a higher
 	// threshold to stress tiny nurseries.
-	return size >= c.cfg.LargeObjectBytes || size > c.edenBytes() ||
-		(c.cfg.NurseryRegionShift != 0 && size > (uint32(1)<<c.cfg.NurseryRegionShift))
+	return size >= c.cfg.LargeObjectBytes || size > c.edenBytes()
 }
 
 func (c *Collector) newHandle(e handleEntry) uint32 {

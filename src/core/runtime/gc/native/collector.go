@@ -85,16 +85,11 @@ type Config struct {
 	DisableCollection     bool
 	TinyCollectEveryAlloc bool
 	TinyStepEveryAlloc    bool
-	// NurseryRegionShift opts into experimental region-first Eden allocation
-	// and page-sized mature/LOS descriptors over the shared ThroughputHeapBytes
-	// budget. Zero disables both policies. Mature metadata grows lazily; large
-	// objects remain contiguous and nonmoving across descriptor boundaries.
-	// Zero preserves the default; 6..30 selects 1<<shift bytes per region.
-	// Requires fixed divisible NurseryBytes and at most 65536 regions.
-	// Exhaustion first reclaims empty regions by exact tracing, then evacuates.
-	// Bounded region-owned native batches support small structs and arrays;
-	// cancellation returns only their unused owned tail. The baseline direct-bump
-	// and native large-array allocation paths remain disabled in this mode.
+	// NurseryRegionShift is the legacy opt-in for mature/LOS descriptors over the
+	// shared ThroughputHeapBytes budget. Eden remains one contiguous bump area;
+	// its exhaustion follows the minor-first generational schedule. Zero disables
+	// mature descriptors. Values 6..30 retain the experimental configuration's
+	// fixed, divisible NurseryBytes validation for compatibility.
 	NurseryRegionShift uint8
 	// MatureEvacuation opts into pressure-triggered sparse old-space relocation.
 	MatureEvacuation bool
@@ -134,43 +129,6 @@ type handleEntry struct {
 	class      uint16
 	space      spaceKind
 	remembered bool
-}
-
-const regionFullProbeInterval = 7
-const regionFeedbackSkipsMask uint32 = 7
-
-func regionFeedbackKey(size, align uint32) (uint32, bool) {
-	if size == 0 || size&7 != 0 || size >= 1<<30 || (align != 8 && align != 16) {
-		return 0, false
-	}
-	key := size >> 3
-	if align == 16 {
-		key |= 1 << 27
-	}
-	return key << 3, true
-}
-
-func (c *Collector) shouldSkipRegionFull(size, align uint32) bool {
-	key, ok := regionFeedbackKey(size, align)
-	return ok && c.regionExhaustion&^regionFeedbackSkipsMask == key && c.regionExhaustion&regionFeedbackSkipsMask != 0
-}
-
-func (c *Collector) noteSkippedRegionFull() {
-	c.regionExhaustion--
-}
-
-func (c *Collector) noteRegionFullResult(size, align uint32, fits bool) {
-	key, ok := regionFeedbackKey(size, align)
-	if !ok {
-		return
-	}
-	if fits {
-		if c.regionExhaustion&^regionFeedbackSkipsMask == key {
-			c.regionExhaustion = 0
-		}
-		return
-	}
-	c.regionExhaustion = key | regionFullProbeInterval
 }
 
 type Collector struct {
@@ -226,9 +184,6 @@ type Collector struct {
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
-	edenRegions                  []edenRegion
-	edenRegionCursor             uint32
-	regionExhaustion             uint32 // packed exact request key and bounded full-probe skip count
 	parallel                     *parallelCollector
 }
 
@@ -291,9 +246,6 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := c.throughput.Init(config); err != nil {
 		return nil, err
 	}
-	if config.NurseryRegionShift != 0 {
-		c.edenRegions = make([]edenRegion, config.NurseryBytes/(uint32(1)<<config.NurseryRegionShift))
-	}
 	c.initNativeView()
 	return c, nil
 }
@@ -309,7 +261,6 @@ func (c *Collector) Close() {
 	c.stats.LiveObjects = 0
 	c.closed = true
 	c.nursery = nil
-	c.edenRegions = nil
 	c.tiny.Close()
 	c.throughput.Close()
 	c.handles = nil
@@ -391,9 +342,6 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 			clear(combined[oldCount:])
 			return err
 		}
-	}
-	if c.cfg.NurseryRegionShift != 0 {
-		c.discardNativeStructHandles()
 	}
 	c.refreshNativeView()
 	return nil

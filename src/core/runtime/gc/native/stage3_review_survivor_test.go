@@ -18,8 +18,7 @@ func TestStage3ReviewSurvivorAndEdenReuse(t *testing.T) {
 	if err := c.CollectMinor(EmptyRoots{}); err != nil {
 		t.Fatal(err)
 	}
-	before := *c.entry(survivor)
-	if before.off < c.edenBytes() {
+	if c.entry(survivor).off < c.edenBytes() {
 		t.Fatal("probe failed to enter survivor space")
 	}
 	for i := 0; i < 3; i++ {
@@ -30,13 +29,17 @@ func TestStage3ReviewSurvivorAndEdenReuse(t *testing.T) {
 	if err := c.StructSet(eden, 1, I64Value(456)); err != nil {
 		t.Fatal(err)
 	}
-	edenBefore := *c.entry(eden)
 	for i := 0; i < 64; i++ {
 		regionStruct(t, c, 0, root)
+		// Exhaustion may now run a minor before this explicit full. Snapshot
+		// backing after allocation so this probe continues to isolate the full:
+		// a full must mark young/survivor payloads in place.
+		survivorBefore := *c.entry(survivor)
+		edenBefore := *c.entry(eden)
 		if err := c.CollectFull(root); err != nil {
 			t.Fatal(err)
 		}
-		if *c.entry(survivor) != before || *c.entry(eden) != edenBefore {
+		if *c.entry(survivor) != survivorBefore || *c.entry(eden) != edenBefore {
 			t.Fatal("full sweep moved retained payload")
 		}
 		for _, check := range []struct {

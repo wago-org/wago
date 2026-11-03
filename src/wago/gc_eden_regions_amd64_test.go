@@ -10,8 +10,7 @@ import (
 )
 
 // Run actual allocating guest code with a live caller local across a callee's
-// region exhaustion. The compiler's lifetime consumer must safely fall back
-// when the collector refuses contiguous native allocation reservations.
+// contiguous Eden exhaustion.
 func TestGCEdenRegionsCallerRoot(t *testing.T) {
 	callee := []byte{1, 2, 0x63, 0, 0x41, 42, 0xfb, 0, 0, 0x21, 0, 0x20, 0, 0x22, 1, 0x1a, 0x01, 0x20, 1, 0xfb, 2, 0, 0, 0x0b}
 	caller := []byte{2, 1, 0x63, 0, 1, 0x7f,
@@ -43,8 +42,8 @@ func TestGCEdenRegionsCallerRoot(t *testing.T) {
 					}
 				}
 				stats := in.gc.Stats()
-				if shift != 0 && (stats.FullCollections == 0 || stats.Allocations < 1024) {
-					t.Fatalf("region runtime not exercised: %+v", stats)
+				if shift != 0 && (stats.MinorCollections == 0 || stats.Allocations < 1024) {
+					t.Fatalf("contiguous mature-region runtime not exercised: %+v", stats)
 				}
 				if err := in.CollectGC(); err != nil {
 					t.Fatal(err)

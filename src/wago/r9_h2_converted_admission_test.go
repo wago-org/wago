@@ -116,7 +116,7 @@ func TestR9H2ConvertedAggregateCollectingLocalOwner(t *testing.T) {
 			if !ok || len(state.(*managedFunctionCollector).envs) != 1 {
 				t.Fatal("STOP missing function environment")
 			}
-			if got := reflect.ValueOf(in.gc).Elem().FieldByName("edenRegions").Len() != 0; got != (shift != 0) {
+			if got := reflect.ValueOf(in.gc).Elem().FieldByName("cfg").FieldByName("NurseryRegionShift").Uint(); got != uint64(shift) {
 				t.Fatal("STOP wrong actual region policy")
 			}
 			if err = in.CollectGC(); err != nil {

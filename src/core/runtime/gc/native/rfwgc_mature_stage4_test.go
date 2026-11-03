@@ -13,8 +13,8 @@ func stage4Collector(t *testing.T, shift uint8) *Collector {
 		t.Fatal(err)
 	}
 	t.Cleanup(c.Close)
-	if (len(c.edenRegions) != 0) != (shift != 0) {
-		t.Fatal("wrong Eden policy")
+	if c.nurseryBump != 0 {
+		t.Fatal("collector did not start with empty contiguous Eden")
 	}
 	return c
 }
@@ -92,8 +92,8 @@ func TestRFWGCMatureStage4PromotionChurn(t *testing.T) {
 			}
 			for cycle := 0; cycle < 20001; cycle++ {
 				child := regionStruct(t, c, 0, roots)
-				if shift != 0 && c.edenRegions[c.entry(child).off>>shift].bump == 0 {
-					t.Fatal("no region occupancy")
+				if c.entry(child).off+c.entry(child).size > c.nurseryBump {
+					t.Fatal("allocation not covered by contiguous Eden bump")
 				}
 				if err := c.StructSet(child, 1, I64Value(int64(cycle))); err != nil {
 					t.Fatal(err)

@@ -100,7 +100,7 @@ func TestGCScalarExceptionTransfer(t *testing.T) {
 				if provider.gc == nil || provider.gc != consumer.gc {
 					t.Fatal("scalar EH edge lost collector identity")
 				}
-				if enabled := reflect.ValueOf(consumer.gc).Elem().FieldByName("edenRegions").Len() != 0; enabled != (shift != 0) {
+				if actual := reflect.ValueOf(consumer.gc).Elem().FieldByName("cfg").FieldByName("NurseryRegionShift").Uint(); actual != uint64(shift) {
 					t.Fatal("incorrect actual allocation policy")
 				}
 				for i := 0; i < 3; i++ {

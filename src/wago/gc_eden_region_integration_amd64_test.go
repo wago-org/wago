@@ -14,37 +14,23 @@ import (
 	"testing"
 )
 
-// Keep all runtime admission rules intact. The only oracle difference is Eden
-// partitioning; neither Tiny nor the stress nursery override admits regions.
+// Keep all runtime admission rules intact while exercising both mature-region
+// metadata policies over the same contiguous Eden allocator.
 func edenIntegrationConfig(shift uint8) GCConfig {
 	return GCConfig{NurseryBytes: 1024, SurvivorBytes: 1024, NurseryRegionShift: shift,
 		CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
 }
 
-// The private metadata observation is deliberate: allocation charges alone can
-// also describe native handleless allocations and cannot qualify real regions.
-// Read reflection avoids unsafe pointers or a production diagnostics API.
 func edenIntegrationAssert(t *testing.T, in *Instance, shift uint8) {
 	t.Helper()
 	if in.gc == nil {
 		t.Fatal("missing collector")
 	}
-	regions := reflect.ValueOf(in.gc).Elem().FieldByName("edenRegions")
-	if shift == 0 {
-		if regions.Len() != 0 {
-			t.Fatal("baseline unexpectedly enabled regions")
-		}
-	} else {
-		if regions.Len() != 16 {
-			t.Fatalf("region directory length = %d, want 16", regions.Len())
-		}
-		used := uint64(0)
-		for i := 0; i < regions.Len(); i++ {
-			used += regions.Index(i).FieldByName("bump").Uint()
-		}
-		if used == 0 {
-			t.Fatal("no payload allocated in region storage")
-		}
+	if actual := reflect.ValueOf(in.gc).Elem().FieldByName("cfg").FieldByName("NurseryRegionShift").Uint(); actual != uint64(shift) {
+		t.Fatalf("mature-region shift = %d, want %d", actual, shift)
+	}
+	if in.gc.NativeView().NurseryAllocBytes != 1024 {
+		t.Fatal("configured collector did not expose contiguous Eden")
 	}
 	stats := in.gc.Stats()
 	if stats.Allocations == 0 || stats.FullCollections == 0 {

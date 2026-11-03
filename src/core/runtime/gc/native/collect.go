@@ -47,9 +47,6 @@ func (c *Collector) CollectFull(roots RootSet) (result error) {
 	if err := c.parallelError(); err != nil {
 		return err
 	}
-	if len(c.edenRegions) != 0 {
-		c.reclaimEmptyEdenRegions()
-	}
 	c.pruneRemembered()
 	c.finishFullCardMetadata()
 	if err := c.throughput.reclaimEmptyMature(); err != nil {
@@ -140,10 +137,6 @@ func (c *Collector) CollectMinor(roots RootSet) (result error) {
 		if scanned != 0 || !c.finishDeadNurseryEvacuation() {
 			c.finishMinorEvacuation(scanned)
 		}
-	}
-	if len(c.edenRegions) != 0 {
-		clear(c.edenRegions)
-		c.edenRegionCursor = 0
 	}
 	c.finishMinorCardMetadata()
 	pauseNS := uint64(0)

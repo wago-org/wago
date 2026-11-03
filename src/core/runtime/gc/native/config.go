@@ -26,14 +26,14 @@ func normalizeConfig(cfg Config) (Config, error) {
 	}
 
 	if cfg.MatureEvacuation && (cfg.NurseryRegionShift == 0 || cfg.Profile != ProfileThroughput || cfg.DisableCollection) {
-		return cfg, fmt.Errorf("gc: mature evacuation requires collecting region throughput")
+		return cfg, fmt.Errorf("gc: mature evacuation requires collecting throughput with mature regions")
 	}
 	if shift := cfg.NurseryRegionShift; shift != 0 {
 		n := uint32(1) << shift
 		if cfg.Profile != ProfileThroughput || cfg.DisableCollection || cfg.MinorPauseTargetMicros != 0 ||
 			cfg.StressNurseryBytes != 0 || shift < 6 || shift > 30 || cfg.NurseryBytes == 0 ||
 			cfg.NurseryBytes%n != 0 || cfg.NurseryBytes/n > 65536 {
-			return cfg, fmt.Errorf("gc: region Eden requires fixed divisible nursery, power-of-two regions >=64, <=65536 regions, and collecting throughput without pause target or stress override")
+			return cfg, fmt.Errorf("gc: mature regions require legacy shift 6..30, a fixed divisible nursery with at most 65536 shift-sized units, and collecting throughput without pause target or stress override")
 		}
 	}
 

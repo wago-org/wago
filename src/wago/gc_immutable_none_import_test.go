@@ -90,7 +90,7 @@ func TestGCImmutableNoneGlobalImport(t *testing.T) {
 					if consumer.gc == nil || consumer.gc.Stats().FullCollections == 0 {
 						t.Fatal("no collection")
 					}
-					if enabled := reflect.ValueOf(consumer.gc).Elem().FieldByName("edenRegions").Len() != 0; enabled != (shift != 0) {
+					if actual := reflect.ValueOf(consumer.gc).Elem().FieldByName("cfg").FieldByName("NurseryRegionShift").Uint(); actual != uint64(shift) {
 						t.Fatal("wrong actual policy")
 					}
 					consumer.Close()

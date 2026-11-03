@@ -37,14 +37,14 @@ func TestMatureReviewStage5MixedDestinationFailure(t *testing.T) {
 				}
 				entries := append([]handleEntry(nil), c.handles...)
 				nursery := append([]byte(nil), c.nursery...)
-				eden := append([]edenRegion(nil), c.edenRegions...)
+				bump := c.nurseryBump
 				cleanup := armFailure(c, point, after)
 				err := c.CollectMinor(roots)
 				cleanup()
 				if !isInjectedFailure(err) {
 					t.Fatal("missing failure", err)
 				}
-				if !reflect.DeepEqual(entries, c.handles) || !reflect.DeepEqual(nursery, c.nursery) || !reflect.DeepEqual(eden, c.edenRegions) {
+				if !reflect.DeepEqual(entries, c.handles) || !reflect.DeepEqual(nursery, c.nursery) || bump != c.nurseryBump {
 					t.Fatal("premature source publication")
 				}
 				matureReviewOracle(t, &c.throughput, []matureReviewExtent{{*c.entry(anchor), 32}})

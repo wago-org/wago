@@ -461,10 +461,10 @@ func TestCardMetadataFootprint(t *testing.T) {
 		t.Fatalf("tinyGC size=%d, want 88 with unbounded transient-root accounting", got)
 	}
 	// Bounds, lazy major-block state, and one large-array list-index hint have
-	// fixed descriptor costs. Region config adds 8 aligned bytes; the region
-	// ledger and cursor add 32; mature mode adds one lazy metadata pointer.
+	// fixed descriptor costs. Mature-region config adds 8 aligned bytes and
+	// mature mode adds one lazy metadata pointer; Eden has no region ledger.
 	// NativeCollectorView remains unchanged.
-	wantCollector := uintptr(1168+40+16) + unsafe.Sizeof((*matureHeap)(nil)) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
+	wantCollector := uintptr(1168+8+16) + unsafe.Sizeof((*matureHeap)(nil)) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}
