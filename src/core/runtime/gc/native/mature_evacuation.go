@@ -373,6 +373,28 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 	if len(s.moves) == 0 {
 		return nil
 	}
+	// Selection deliberately remains conservative because it runs before
+	// marking: every object in a selected source block keeps that block out of
+	// the destination set. Marking is complete here, so compact the existing
+	// candidate storage in place and admit only the objects that will move.
+	// Dead sources retain their original ownership for the ordinary sweep.
+	live := s.moves[:0]
+	s.demand, s.largest = 0, 0
+	for _, move := range s.moves {
+		if !c.mark[move.handle] {
+			continue
+		}
+		n := h.handleAllocSize(move.before)
+		s.demand += uint64(n)
+		s.largest = max(s.largest, n)
+		live = append(live, move)
+	}
+	s.moves = live
+	m.diagnostics.Demand = s.demand
+	if len(s.moves) == 0 {
+		m.diagnostics.Evacuation = "no-live"
+		return nil
+	}
 	m.diagnostics.ReservationWorkers = max(1, c.cfg.Workers)
 	if err = h.sweepAllPending(); err != nil {
 		m.diagnostics.Evacuation = "metadata"
@@ -410,7 +432,6 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 	workers := max(1, c.cfg.Workers)
 	claims := newRunClaimPlanner(runs, workers)
 	plans := make([]plannedPromotion, 0, len(s.moves))
-	live := make([]matureMove, 0, len(s.moves))
 	for i, move := range s.moves {
 		n := h.handleAllocSize(move.before)
 		w := i % workers
@@ -423,26 +444,19 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 		dst.off = off
 		// Keep the original class/tail representation: exact physical bytes were reserved.
 		move.destination = dst
-		if c.mark[move.handle] {
-			live = append(live, move)
-			plans = append(plans, plannedPromotion{handle: move.handle, entry: dst})
-		} else {
-			if err = h.free(rawExtent(throughputFreeSpan{dst.off, n})); err != nil {
-				m.diagnostics.Evacuation = "metadata"
-				return nil
-			}
-		}
+		s.moves[i] = move
+		plans = append(plans, plannedPromotion{handle: move.handle, entry: dst})
 	}
 	if err = claims.releaseTails(h); err != nil {
 		m.diagnostics.Evacuation = "metadata"
 		return nil
 	}
-	for _, move := range live {
+	for _, move := range s.moves {
 		n := h.handleAllocSize(move.destination)
 		clear(h.mem[move.destination.off+move.destination.size : move.destination.off+n])
 	}
 	// All source debt storage exists before the commit barrier.
-	h.pendingFree = slices.Grow(h.pendingFree, len(live))
+	h.pendingFree = slices.Grow(h.pendingFree, len(s.moves))
 	if err = injectFailure(c, failEvacuationCopy); err != nil {
 		m.diagnostics.Evacuation = "copy-abort"
 		return err
@@ -453,7 +467,7 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 		return err
 	}
 	if !used {
-		for _, move := range live {
+		for _, move := range s.moves {
 			copy(h.bytes(move.destination), h.bytes(move.before))
 			if err = injectFailure(c, failEvacuationCopy); err != nil {
 				m.diagnostics.Evacuation = "copy-abort"
@@ -468,7 +482,7 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 	// No fallible operation, callback, or allocator insertion beyond this barrier.
 	committed = true
 	h.commitMatureAdmission()
-	for _, move := range live {
+	for _, move := range s.moves {
 		n := h.handleAllocSize(move.before)
 		c.handles[move.handle] = move.destination
 		h.pendingFree = append(h.pendingFree, throughputFreeSpan{move.before.off, n})
@@ -484,9 +498,6 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 	}
 	c.lastCardBounds = objectCardBounds{}
 	m.diagnostics.Evacuation = "moved"
-	if len(live) == 0 {
-		m.diagnostics.Evacuation = "no-live"
-	}
 	return nil
 }
 
