@@ -8,6 +8,7 @@ import (
 )
 
 func TestLonePredicateExecution(t *testing.T) {
+	useEstablishedScalarPath(t)
 	requireCompilerDiagnostics(t)
 	saved := lonePredicateEnabled
 	defer func() { lonePredicateEnabled = saved }()

@@ -20,6 +20,12 @@ func TestSharedSingleNativePinsAndGoFallback(t *testing.T) {
 		if _, err = c.WriteCodeTo(&image); err != nil {
 			t.Fatal(err)
 		}
+		// nativeImportVariantEligible rejects Candidate frame maps, including
+		// the collector-free native unwind maps installed by api.go. Therefore
+		// neither the shared entry variant nor its native pins can be selected.
+		if c.genericGCFrameRoots() == nil {
+			t.Fatal("missing native unwind maps")
+		}
 		images[mode] = append([]byte(nil), image.Bytes()...)
 		for index, code := range []*Compiled{c} {
 			for _, kind := range []string{"go", "leaf", "pure-helper"} {
@@ -63,8 +69,8 @@ func TestSharedSingleNativePinsAndGoFallback(t *testing.T) {
 		}
 		c.Close()
 	}
-	if !codeProfileEnabled && bytes.Equal(images["0"], images["1"]) {
-		t.Fatal("native pin selector did not change shared loop")
+	if !bytes.Equal(images["0"], images["1"]) {
+		t.Fatal("native pin selector changed shared loop with native unwind maps")
 	}
 }
 

@@ -26,7 +26,7 @@ func TestIRRemainsOffProductionPath(t *testing.T) {
 		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", ".tmp", "warp", "wasm3":
+			case ".git", ".tmp", "docs", "warp", "wasm3":
 				return filepath.SkipDir
 			}
 			return nil

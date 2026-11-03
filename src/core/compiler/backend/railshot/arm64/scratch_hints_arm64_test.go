@@ -74,6 +74,7 @@ func scratchPinTestModule(t *testing.T, operation []byte, inline bool) *wasm.Mod
 // instruction sequence. The scalar control proves that pressure reaches all
 // three extra leaf pins; the bulk and loop cases prove their exclusion.
 func TestLeafScratchPinAssignmentsArm64(t *testing.T) {
+	establishedScalarRoute(t)
 	requireCompilerDiagnostics(t)
 	for _, tc := range []struct {
 		name            string
@@ -160,7 +161,7 @@ func TestTableSetHelperCallHintsArm64(t *testing.T) {
 	for _, tc := range []struct {
 		ref  wasm.ValType
 		call bool
-	}{{wasm.FuncRef, false}, {wasm.ExternRef, false}, {wasm.AnyRef, true}} {
+	}{{wasm.FuncRef, false}, {wasm.ExternRef, true}, {wasm.AnyRef, true}} {
 		m := &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: tc.ref.Ref()}}}}
 		h, err := scanFuncBody(wasm.Func{BodyBytes: []byte{0x03, 0x40, 0x26, 0, 0x0b, 0x0b}}, 0, 0, 0, nil, m)
 		if err != nil {

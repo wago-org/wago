@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_tiny_nonincremental
+//go:build linux && !tinygo && !wago_target_tinygo && !wago_tiny_nonincremental
 
 package gc
 

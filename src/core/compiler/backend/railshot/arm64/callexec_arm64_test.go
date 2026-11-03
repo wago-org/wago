@@ -3,9 +3,12 @@
 package arm64
 
 import (
+	"encoding/binary"
+	"errors"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 // TestCallExec compiles a 2-function module where f(x) = g(x) + 1 and g(x) = 2x,
@@ -96,9 +99,58 @@ func TestTwoIntegerResultRegisterCall(t *testing.T) {
 	if got := stats.Calls["regabi"]; got != 1 {
 		t.Fatalf("regabi calls = %d, want 1 (all: %v)", got, stats.Calls)
 	}
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	// The caller has a stack-fence load through its module context. Enter via
+	// the real wrapper/Engine contract instead of an uninitialized Call2 X26.
+	// Its internal call to g still returns both values in X0/X1, as asserted
+	// by the regabi census above.
+	eng, err := coreruntime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	jm, err := coreruntime.NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	arena, err := coreruntime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer arena.Close()
+	code, entry, err := coreruntime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coreruntime.Unmap(code)
+	args, results, trap := arena.Alloc(8), arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
+	jm.SetStackFence(eng.StackLimit())
 	for _, x := range []uint64{0, 1, 7, 100} {
-		if got := runArm64u(t, m, x); uint32(got) != uint32(2*x+1) {
+		binary.LittleEndian.PutUint64(args, x)
+		if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results); err != nil {
+			t.Fatal(err)
+		}
+		if got := binary.LittleEndian.Uint64(results); uint32(got) != uint32(2*x+1) {
 			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), 2*x+1)
 		}
+	}
+	// Prove that the same generated caller actually consumes the supplied
+	// fence and returns through the checked trap path, rather than disabling it.
+	jm.SetStackFence(^uintptr(0))
+	err = eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results)
+	var trapped *coreruntime.TrapError
+	if !errors.As(err, &trapped) || trapped.Code != coreruntime.TrapStackFenceBreached {
+		t.Fatalf("raised stack fence = %v, want stack-fence trap", err)
+	}
+	jm.SetStackFence(eng.StackLimit())
+	if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results); err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint64(results); uint32(got) != 201 {
+		t.Fatalf("post-trap result = %d, want 201", got)
 	}
 }
