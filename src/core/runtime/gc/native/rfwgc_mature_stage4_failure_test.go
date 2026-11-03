@@ -38,7 +38,7 @@ func TestRFWGCMatureStage4LateRollback(t *testing.T) {
 					}
 				}
 				entries := slices.Clone(c.handles)
-				regions := slices.Clone(c.edenRegions)
+				nurseryBump := c.nurseryBump
 				bump := c.throughput.bump
 				cleanup := armFailure(c, point, 1)
 				err := c.CollectMinor(roots)
@@ -46,8 +46,8 @@ func TestRFWGCMatureStage4LateRollback(t *testing.T) {
 				if !isInjectedFailure(err) {
 					t.Fatalf("missing injected refusal: %v", err)
 				}
-				if !slices.Equal(entries, c.handles) || !slices.Equal(regions, c.edenRegions) || c.throughput.bump != bump {
-					t.Fatalf("partial transaction publication: entries %v -> %v; regions %v -> %v; bump %d -> %d", entries, c.handles, regions, c.edenRegions, bump, c.throughput.bump)
+				if !slices.Equal(entries, c.handles) || c.nurseryBump != nurseryBump || c.throughput.bump != bump {
+					t.Fatalf("partial transaction publication: entries %v -> %v; nursery bump %d -> %d; mature bump %d -> %d", entries, c.handles, nurseryBump, c.nurseryBump, bump, c.throughput.bump)
 				}
 				if err := c.Verify(roots); err != nil {
 					t.Fatal(err)

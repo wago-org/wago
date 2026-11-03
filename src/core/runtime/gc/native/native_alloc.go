@@ -73,7 +73,7 @@ const (
 )
 
 func (c *Collector) nativeAllocationAllowed(minObjectBytes uint32) bool {
-	return c != nil && !c.closed && c.cfg.Profile == ProfileThroughput && !c.cfg.DisableCollection && c.cfg.NurseryRegionShift == 0 && !c.cfg.CollectEveryAlloc &&
+	return c != nil && !c.closed && c.cfg.Profile == ProfileThroughput && !c.cfg.DisableCollection && !c.cfg.CollectEveryAlloc &&
 		minObjectBytes < c.cfg.LargeObjectBytes && minObjectBytes <= NativeAllocationChunkBytes && minObjectBytes <= ^uint32(0)-15
 }
 
@@ -151,13 +151,8 @@ func (c *Collector) reserveNativeHandles(batch int) {
 	c.refreshNativeHandles()
 }
 
-// PrepareNativeStructAllocation retains direct nursery-bump reservations for
-// the baseline policy. Region mode instead reserves an exclusively owned chunk
-// shared with small arrays; generated code selects its bounded cursor.
+// PrepareNativeStructAllocation retains direct nursery-bump reservations.
 func (c *Collector) PrepareNativeStructAllocation(minObjectBytes uint32) bool {
-	if c != nil && c.cfg.NurseryRegionShift != 0 {
-		return c.prepareNativeRegionAllocation(minObjectBytes)
-	}
 	return c.prepareNativeStructAllocation(minObjectBytes, 0)
 }
 
@@ -189,9 +184,6 @@ func (c *Collector) prepareNativeStructAllocation(minObjectBytes uint32, batch i
 // PrepareNativeAllocation publishes a fresh bounded handle batch and reserves a
 // nursery chunk for native arrays. Existing usable array reservations are kept.
 func (c *Collector) PrepareNativeAllocation(minObjectBytes uint32) bool {
-	if c != nil && c.cfg.NurseryRegionShift != 0 {
-		return c.prepareNativeRegionAllocation(minObjectBytes)
-	}
 	if !c.nativeAllocationAllowed(minObjectBytes) {
 		return false
 	}
@@ -261,7 +253,7 @@ func (c *Collector) PrepareNativeArrayAllocationImmediate(objectBytes uint32) bo
 }
 
 func (c *Collector) prepareNativeLargeArrayAllocation(objectBytes uint32) bool {
-	if c == nil || c.closed || c.cfg.Profile != ProfileThroughput || c.cfg.DisableCollection || c.cfg.NurseryRegionShift != 0 || c.cfg.CollectEveryAlloc ||
+	if c == nil || c.closed || c.cfg.Profile != ProfileThroughput || c.cfg.DisableCollection || c.cfg.CollectEveryAlloc ||
 		objectBytes <= NativeArrayAllocMaxBytes || objectBytes > NativeLargeArrayAllocMaxBytes {
 		return false
 	}
@@ -437,9 +429,7 @@ func (c *Collector) discardNativeStructHandles() {
 	// The chunk is exclusively reserved while the collector-wide bump equals its
 	// end. Rewind only in that exact state; any intervening allocation keeps the
 	// harmless bounded tail gap rather than risking overlap.
-	if c.cfg.NurseryRegionShift != 0 {
-		c.cancelNativeRegionChunk()
-	} else if s.ChunkEnd != 0 && c.nurseryBump == s.ChunkEnd && s.ChunkCursor >= s.ChunkStart && s.ChunkCursor <= s.ChunkEnd {
+	if s.ChunkEnd != 0 && c.nurseryBump == s.ChunkEnd && s.ChunkCursor >= s.ChunkStart && s.ChunkCursor <= s.ChunkEnd {
 		rewind := s.ChunkCursor
 		if rewind == s.ChunkStart {
 			rewind = s.ChunkBump

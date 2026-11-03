@@ -5,9 +5,8 @@ import (
 	"testing"
 )
 
-// Pair the baseline native reservation protocol with both bounded Eden widths.
-// Large native reservations deliberately refuse in region mode; checked LOS is
-// the equivalent path and must invalidate the outstanding small chunk.
+// Pair the contiguous native reservation protocol with every mature-descriptor
+// width. Checked LOS must invalidate an outstanding small chunk.
 func TestRollupReservationPolicyCycles(t *testing.T) {
 	for _, shift := range []uint8{0, 6, 12} {
 		t.Run(fmt.Sprint(shift), func(t *testing.T) {
@@ -17,9 +16,6 @@ func TestRollupReservationPolicyCycles(t *testing.T) {
 					t.Fatal("small reservation refused")
 				}
 				s := &c.nativeStructAlloc
-				if shift != 0 && (s.ChunkEnd-s.ChunkStart > uint32(1)<<shift || s.ChunkStart>>shift != (s.ChunkEnd-1)>>shift) {
-					t.Fatal("chunk crosses region")
-				}
 				h := s.Handles[s.Cursor]
 				live := makeObjRef(h)
 				c.handles[h] = handleEntry{off: s.ChunkCursor, size: 32, space: spaceNursery}
@@ -32,9 +28,7 @@ func TestRollupReservationPolicyCycles(t *testing.T) {
 				}
 				roots := Slots{(*Root)(&live)}
 				epoch := c.nativeAllocEpoch
-				if shift != 0 && c.PrepareNativeArrayAllocationImmediate(8208) {
-					t.Fatal("region admitted native LOS")
-				}
+				_ = c.PrepareNativeArrayAllocationImmediate(8208)
 				large, err := c.NewArrayDefaultWithRoots(2, 2048, roots)
 				if err != nil {
 					t.Fatal(err)
@@ -72,9 +66,8 @@ func TestRollupReservationPolicyCycles(t *testing.T) {
 			if err = c.AddTypes([]TypeDesc{desc}); err != nil {
 				t.Fatal(err)
 			}
-			// Metadata invalidation is required for region chunks.
-			if shift != 0 && c.nativeStructAlloc.Count != 0 {
-				t.Fatal("metadata growth retained chunk")
+			if c.nativeStructAlloc.Count == 0 {
+				t.Fatal("metadata growth discarded type-independent reservation")
 			}
 			c.Close()
 			c.Close()

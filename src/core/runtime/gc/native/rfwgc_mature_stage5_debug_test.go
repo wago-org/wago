@@ -23,14 +23,14 @@ func TestRFWGCMatureStage5MetadataRollback(t *testing.T) {
 	}
 	before := append([]handleEntry(nil), c.handles...)
 	source := append([]byte(nil), c.nursery...)
-	regions := append([]edenRegion(nil), c.edenRegions...)
+	bump := c.nurseryBump
 	cleanup := armFailure(&c.throughput, failMatureMetadata, 1)
 	err := c.CollectMinor(stressRootSlots(roots))
 	cleanup()
 	if !errors.Is(err, errInjectedFailure) {
 		t.Fatalf("metadata failure: %v", err)
 	}
-	if !reflect.DeepEqual(before, c.handles) || !reflect.DeepEqual(source, c.nursery) || !reflect.DeepEqual(regions, c.edenRegions) {
+	if !reflect.DeepEqual(before, c.handles) || !reflect.DeepEqual(source, c.nursery) || bump != c.nurseryBump {
 		t.Fatal("source publication during failed metadata admission")
 	}
 	stage5Occupancy(t, &c.throughput, 0, 0, 0)

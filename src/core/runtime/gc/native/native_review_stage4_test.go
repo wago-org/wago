@@ -20,7 +20,7 @@ func TestNativeReviewStage4MetadataAndAlignment(t *testing.T) {
 	if err := c.StructSet(r, 0, I64Value(1234567)); err != nil {
 		t.Fatal(err)
 	}
-	before := c.edenRegions[0].bump
+	before := c.nurseryBump
 	if before != 24 {
 		t.Fatalf("fixture extent %d", before)
 	}
@@ -48,8 +48,8 @@ func TestNativeReviewStage4MetadataAndAlignment(t *testing.T) {
 		if err := c.AddTypes([]TypeDesc{next}); err != nil {
 			t.Fatal(err)
 		}
-		if c.nativeStructAlloc.Count != 0 || c.nativeAllocEpoch == epoch || c.edenRegions[0].bump != before {
-			t.Fatal("accepted append failed to return alignment gap")
+		if c.nativeStructAlloc != state || c.nativeAllocEpoch != epoch || c.nurseryBump != state.ChunkEnd {
+			t.Fatal("accepted append disturbed contiguous direct-handle reservation")
 		}
 		c.CancelNativeAllocationBatch()
 		c.CancelNativeAllocationBatch()

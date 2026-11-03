@@ -2,7 +2,6 @@ package gc
 
 import (
 	"testing"
-	"unsafe"
 )
 
 func regionCollector(t *testing.T) *Collector {
@@ -23,48 +22,44 @@ func regionStruct(t *testing.T, c *Collector, typ TypeID, roots RootSet) Ref {
 	return r
 }
 
-func TestEdenRegionsReuseWithoutEvacuatingLiveRegion(t *testing.T) {
+func TestContiguousEdenMinorFirstReusePreservesLiveIdentity(t *testing.T) {
 	c := regionCollector(t)
-	// Four 32-byte objects occupy two 64-byte regions. Retain only the final one.
+	// Fill the 128-byte Eden and retain only the final object.
 	for i := 0; i < 3; i++ {
 		regionStruct(t, c, 0, EmptyRoots{})
 	}
 	live := regionStruct(t, c, 0, EmptyRoots{})
 	root := live
 	roots := Slots{(*Root)(&root)}
-	before := *c.entry(live)
 	if err := c.StructSet(live, 1, I64Value(0x123456789)); err != nil {
 		t.Fatal(err)
 	}
 	for cycle := 0; cycle < 20000; cycle++ {
 		regionStruct(t, c, 0, roots)
 		regionStruct(t, c, 0, roots)
-		if *c.entry(live) != before || root != live {
-			t.Fatal("full tracing moved live identity/payload")
+		if root != live {
+			t.Fatal("minor collection changed stable identity")
 		}
 		value, err := c.StructGet(live, 1)
 		if err != nil || value.I64() != 0x123456789 {
 			t.Fatalf("payload=%v err=%v", value, err)
 		}
 	}
-	if c.Stats().FullCollections == 0 || c.Stats().MinorCollections != 0 || c.Stats().YoungBytesCopied != 0 {
-		t.Fatalf("not region reuse: %+v", c.Stats())
+	if c.Stats().FullCollections != 0 || c.Stats().MinorCollections == 0 || c.Stats().YoungBytesCopied == 0 {
+		t.Fatalf("not minor-first region reuse: %+v", c.Stats())
 	}
-	if c.nativeAllocationAllowed(32) || c.PrepareNativeArrayAllocationImmediate(5000) || c.PrepareDeadAllocationBatch(32, 8).TryReserve(1) {
-		t.Fatal("native allocator bypassed region bounds")
+	if c.NativeView().NurseryAllocBytes != c.edenBytes() {
+		t.Fatal("contiguous native Eden admission hidden")
 	}
-	if c.NativeView().NurseryAllocBytes != 0 {
-		t.Fatal("native Eden admission exposed")
-	}
-	if len(c.handles) > 5 || len(c.edenRegions) != 2 {
-		t.Fatal("region reuse grew handle/region metadata")
+	if len(c.handles) > nativeArrayHandleBatch+6 {
+		t.Fatalf("contiguous reuse grew handle metadata: handles=%d", len(c.handles))
 	}
 	if err := c.Verify(roots); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestEdenRegionsCrossRegionEdgeAndEvacuation(t *testing.T) {
+func TestContiguousEdenEdgeAndEvacuation(t *testing.T) {
 	c := regionCollector(t)
 	parent := regionStruct(t, c, 1, EmptyRoots{})
 	regionStruct(t, c, 0, Slots{(*Root)(&parent)})
@@ -74,19 +69,19 @@ func TestEdenRegionsCrossRegionEdgeAndEvacuation(t *testing.T) {
 	}
 	regionStruct(t, c, 0, Slots{(*Root)(&parent)})
 	roots := Slots{(*Root)(&parent)}
-	// Both full regions remain live, so exact full tracing cannot reset either.
+	// The live graph exhausts Eden; minor evacuation must preserve the edge.
 	regionStruct(t, c, 0, roots)
-	if c.Stats().MinorCollections != 1 || c.Stats().FullCollections != 1 {
-		t.Fatalf("missing fallback: %+v", c.Stats())
+	if c.Stats().MinorCollections != 1 || c.Stats().FullCollections != 0 {
+		t.Fatalf("ordinary exhaustion was not minor-only: %+v", c.Stats())
 	}
 	value, err := c.StructGet(parent, 0)
 	if err != nil || value.Ref != child {
-		t.Fatalf("lost cross-region child: %v %v", value, err)
+		t.Fatalf("lost child edge: %v %v", value, err)
 	}
 	if err := c.Verify(roots); err != nil {
 		t.Fatal(err)
 	}
-	// Promote the parent, store a new region object, and exercise old-to-young cards.
+	// Promote the parent, store a new Eden object, and exercise old-to-young cards.
 	if err := c.ForcePromote(parent); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +103,7 @@ func TestEdenRegionsCrossRegionEdgeAndEvacuation(t *testing.T) {
 	}
 }
 
-func TestEdenRegionsExhaustionFeedbackRecoveryAndSizes(t *testing.T) {
+func TestContiguousEdenExhaustionIsMinorFirstAcrossChangingRootsAndSizes(t *testing.T) {
 	c, err := NewCollector(Config{NurseryBytes: 256, NurseryRegionShift: 6, SurvivorBytes: 256, VerifyAfterCollect: true}, testTypes(t))
 	if err != nil {
 		t.Fatal(err)
@@ -128,87 +123,76 @@ func TestEdenRegionsExhaustionFeedbackRecoveryAndSizes(t *testing.T) {
 		}
 	}
 
-	// The first retained-live exhaustion probes full and falls back to minor.
-	allocateChain(9)
-	first := c.Stats()
-	if first.FullCollections != 1 || first.MinorCollections != 1 {
-		t.Fatalf("first exhaustion did not probe full then minor: %+v", first)
+	// Retained-live exhaustion starts with a minor and does not speculatively
+	// trace the mature heap.
+	for c.Stats().MinorCollections == 0 {
+		allocateChain(1)
 	}
-	// The equivalent exhaustion uses the learned minor path.
-	allocateChain(8)
+	first := c.Stats()
+	if first.FullCollections != 0 || first.MinorCollections != 1 {
+		t.Fatalf("first exhaustion was not minor-only: %+v", first)
+	}
+	// The same request has the same schedule without failed-fit feedback.
+	minorBefore := c.Stats().MinorCollections
+	for c.Stats().MinorCollections == minorBefore {
+		allocateChain(1)
+	}
 	steady := c.Stats()
 	if steady.FullCollections != first.FullCollections || steady.MinorCollections != first.MinorCollections+1 {
-		t.Fatalf("known futile full repeated: before=%+v after=%+v", first, steady)
+		t.Fatalf("equivalent exhaustion schedule: before=%+v after=%+v", first, steady)
 	}
 
-	// An explicit cleanup full must neither clear nor refresh allocation feedback.
+	// An explicit full does not change the next exhaustion's minor-first order.
 	if err := c.CollectFull(roots); err != nil {
 		t.Fatal(err)
 	}
 	before := c.Stats()
-	allocateChain(8)
+	minorBefore = c.Stats().MinorCollections
+	for c.Stats().MinorCollections == minorBefore {
+		allocateChain(1)
+	}
 	after := c.Stats()
 	if after.FullCollections != before.FullCollections || after.MinorCollections != before.MinorCollections+1 {
-		t.Fatalf("explicit full changed exhaustion feedback: before=%+v after=%+v", before, after)
+		t.Fatalf("explicit full changed exhaustion schedule: before=%+v after=%+v", before, after)
 	}
 
-	// A different allocation shape is not covered by the 32-byte failure.
+	// A different fitting allocation shape also starts with a minor.
 	before = c.Stats()
-	for i := 0; i < 8 && c.Stats().FullCollections == before.FullCollections; i++ {
+	for i := 0; i < 8 && c.Stats().MinorCollections == before.MinorCollections; i++ {
 		if _, err := c.NewArrayDefaultWithRoots(3, 4, roots); err != nil {
 			t.Fatal(err)
 		}
 	}
 	after = c.Stats()
-	if after.FullCollections != before.FullCollections+1 {
-		t.Fatalf("failure for another size suppressed full probe: before=%+v after=%+v", before, after)
+	if after.FullCollections != before.FullCollections || after.MinorCollections != before.MinorCollections+1 {
+		t.Fatalf("different size did not use minor-only schedule: before=%+v after=%+v", before, after)
 	}
 
-	// Drop the graph. The finite skip window must eventually re-probe and learn
-	// that exact tracing can reclaim regions again.
+	// Change the exact roots behind the same root-set object. Low survival must
+	// immediately reclaim Eden with a minor; no durable negative-fit decision can
+	// suppress collection or insert a full.
 	root = Root(Null())
-	fullBefore := c.Stats().FullCollections
-	for i := 0; i < 80 && c.Stats().FullCollections == fullBefore; i++ {
-		regionStruct(t, c, 1, roots)
-	}
-	if c.Stats().FullCollections == fullBefore {
-		t.Fatal("finite feedback window did not re-probe full")
-	}
-	minorBefore := c.Stats().MinorCollections
-	for i := 0; i < 32; i++ {
-		regionStruct(t, c, 1, roots)
-	}
-	if c.Stats().MinorCollections != minorBefore {
-		t.Fatalf("recovered low-survival workload kept bypassing profitable full: %+v", c.Stats())
-	}
-
-	// Returning to a retained graph probes again, then relearns the futile-full
-	// result for the same request shape.
 	before = c.Stats()
-	allocateChain(9)
-	after = c.Stats()
-	if after.FullCollections == before.FullCollections || after.MinorCollections == before.MinorCollections {
-		t.Fatalf("high-survival return did not probe and fall back: before=%+v after=%+v", before, after)
+	for i := 0; i < 16 && c.Stats().MinorCollections == before.MinorCollections; i++ {
+		regionStruct(t, c, 1, roots)
 	}
-	before = after
-	allocateChain(8)
 	after = c.Stats()
 	if after.FullCollections != before.FullCollections || after.MinorCollections != before.MinorCollections+1 {
-		t.Fatalf("high-survival return was not relearned: before=%+v after=%+v", before, after)
+		t.Fatalf("changed roots did not permit minor reclamation: before=%+v after=%+v", before, after)
 	}
 	if err := c.Verify(roots); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestEdenRegionsLargeAndNoRoots(t *testing.T) {
+func TestContiguousEdenLargeAndNoRoots(t *testing.T) {
 	c := regionCollector(t)
 	a, err := c.NewArrayDefault(2, 32)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.entry(a).space != spaceLarge {
-		t.Fatal("object spanned regions")
+		t.Fatal("oversized object did not use large space")
 	}
 	for i := 0; i < 4; i++ {
 		regionStruct(t, c, 0, nil)
@@ -228,7 +212,7 @@ func TestEdenRegionsLargeAndNoRoots(t *testing.T) {
 	}
 }
 
-func TestEdenRegionsAdmissionAndLayout(t *testing.T) {
+func TestMatureRegionConfigAdmission(t *testing.T) {
 	for _, cfg := range []Config{
 		{NurseryRegionShift: 5, NurseryBytes: 128}, {NurseryRegionShift: 31, NurseryBytes: 128},
 		{NurseryRegionShift: 6}, {NurseryRegionShift: 6, NurseryBytes: 127},
@@ -242,23 +226,14 @@ func TestEdenRegionsAdmissionAndLayout(t *testing.T) {
 			t.Fatalf("admitted %+v", cfg)
 		}
 	}
-	if unsafe.Sizeof(uintptr(0)) == 8 && unsafe.Sizeof(Config{}) != 80 {
-		t.Fatal("unexpected config layout")
-	}
-	if unsafe.Offsetof(Collector{}.edenRegions) <= unsafe.Offsetof(Collector{}.nativeLargeArrayNurseryIndex) {
-		t.Fatal("region state disturbed existing fields")
-	}
 	c, err := NewCollector(Config{}, testTypes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	if len(c.edenRegions) != 0 {
-		t.Fatal("default enabled regions")
-	}
 }
 
-func TestEdenRegionsCollectionPolicies(t *testing.T) {
+func TestContiguousEdenCollectionPolicies(t *testing.T) {
 	for _, policy := range []struct {
 		name      string
 		configure func(*Config)
@@ -308,8 +283,8 @@ func TestEdenRegionsCollectionPolicies(t *testing.T) {
 	}
 }
 
-func TestEdenRegionsArrayCycleAndInitializerOracle(t *testing.T) {
-	// Same observable graph contract with the explicit baseline and region policy.
+func TestContiguousEdenArrayCycleAndInitializerOracle(t *testing.T) {
+	// Same observable graph contract with and without mature descriptors.
 	for _, shift := range []uint8{0, 6} {
 		for _, length := range []uint32{2, 5, 32} {
 			cfg := Config{NurseryBytes: 128, NurseryRegionShift: shift, SurvivorBytes: 128, VerifyAfterCollect: true}
@@ -325,14 +300,10 @@ func TestEdenRegionsArrayCycleAndInitializerOracle(t *testing.T) {
 				t.Fatal(err)
 			}
 			// No explicit child root: constructor initializer staging must preserve it
-			// across the exhaustion collection. Small arrays stay inside one region;
-			// the oversized case uses the existing large-object span contract.
+			// across the exhaustion collection.
 			a, err := c.NewArrayWithRoots(3, length, RefValue(child), EmptyRoots{})
 			if err != nil {
 				t.Fatal(err)
-			}
-			if shift != 0 && length <= 5 && c.entry(a).space != spaceNursery {
-				t.Fatal("small array did not enter region storage")
 			}
 			if err := c.ArraySet(a, 1, RefValue(a)); err != nil {
 				t.Fatal(err)

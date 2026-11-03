@@ -46,8 +46,8 @@ func h2ReceiptFixture(t *testing.T, store *referenceStore, shift uint8) (*Instan
 	if _, err = publisher.Invoke("run"); err != nil {
 		t.Fatal(err)
 	}
-	if actual := reflect.ValueOf(publisher.gc).Elem().FieldByName("edenRegions").Len() != 0; actual != (shift != 0) {
-		t.Fatal("STOP receipt fixture has wrong actual region policy")
+	if actual := reflect.ValueOf(publisher.gc).Elem().FieldByName("cfg").FieldByName("NurseryRegionShift").Uint(); actual != uint64(shift) {
+		t.Fatal("STOP receipt fixture has wrong mature-region policy")
 	}
 	conversion := publisher.existingGCExternConversionState()
 	if conversion == nil || conversion.core == nil || conversion.count != 1 || !publisher.hasPhysicalResources() {

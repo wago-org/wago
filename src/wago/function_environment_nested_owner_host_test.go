@@ -76,7 +76,7 @@ func TestR9OwnershipStateH6FailedInitialization(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							if got := reflect.ValueOf(p.gc).Elem().FieldByName("edenRegions").Len() != 0; got != (shift != 0) {
+							if got := reflect.ValueOf(p.gc).Elem().FieldByName("cfg").FieldByName("NurseryRegionShift").Uint(); got != uint64(shift) {
 								t.Fatal("STOP wrong region policy")
 							}
 							var producer *Instance
@@ -362,7 +362,7 @@ func TestR9OwnershipStateH6CollectingMutations(t *testing.T) {
 						t.Fatal("repeated live-owner drops grew floating root slots")
 					}
 				}
-				if got := reflect.ValueOf(in.gc).Elem().FieldByName("edenRegions").Len() != 0; got != (shift != 0) {
+				if got := reflect.ValueOf(in.gc).Elem().FieldByName("cfg").FieldByName("NurseryRegionShift").Uint(); got != uint64(shift) {
 					t.Fatal("wrong actual region")
 				}
 				if stats := in.gc.Stats(); stats.MinorCollections+stats.FullCollections == 0 {

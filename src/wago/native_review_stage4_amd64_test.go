@@ -50,9 +50,6 @@ func TestNativeReviewStage4MixedBoundsTrap(t *testing.T) {
 							if err == nil {
 								t.Fatal("huge unsigned length did not trap")
 							}
-							if shift != 0 && nativeRegionState(in, gc.NativeStructAllocCountOffset) != 0 {
-								t.Fatal("trap retained reservation")
-							}
 							if err := in.CollectGC(); err != nil {
 								t.Fatal(err)
 							}

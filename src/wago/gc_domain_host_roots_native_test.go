@@ -92,9 +92,8 @@ func gcDomainHostRootsAcrossReentryPolicy(t *testing.T, shift uint8) {
 	if stats.MinorCollections+stats.FullCollections == 0 {
 		t.Fatal("no collection", stats)
 	}
-	regions := reflect.ValueOf(caller.gc).Elem().FieldByName("edenRegions")
-	if (regions.Len() != 0) != (shift != 0) {
-		t.Fatal("wrong actual region policy", regions.Len())
+	if actual := reflect.ValueOf(caller.gc).Elem().FieldByName("cfg").FieldByName("NurseryRegionShift").Uint(); actual != uint64(shift) {
+		t.Fatal("wrong actual mature-region policy", actual)
 	}
 	if state := caller.existingPublicGCState(); state != nil && state.hostActivationCount != 0 {
 		t.Fatal("leaked host activation")
