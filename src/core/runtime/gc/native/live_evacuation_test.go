@@ -15,10 +15,10 @@ func liveEvacuationAdmissionLimit(t *testing.T, c *Collector, s matureSelection,
 		if h.bump < limit {
 			free = append(free, throughputFreeSpan{h.bump, (limit - h.bump) &^ 15})
 		}
-		if _, _, _, err := planEvacuationRuns(free, s.excluded, liveDemand, liveLargest, workers, evacuationLimit); err != nil {
+		if _, _, _, err := planEvacuationRuns(free, s.excluded, liveDemand, liveLargest, workers, evacuationRunLimit); err != nil {
 			continue
 		}
-		if _, _, _, err := planEvacuationRuns(free, s.excluded, s.demand, s.largest, workers, evacuationLimit); err != nil {
+		if _, _, _, err := planEvacuationRuns(free, s.excluded, s.demand, s.largest, workers, evacuationRunLimit); err != nil {
 			return limit
 		}
 	}

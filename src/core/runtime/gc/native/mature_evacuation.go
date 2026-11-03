@@ -9,7 +9,8 @@ import (
 
 const evacuationBlock = uint64(32768)
 const evacuationLine = uint64(256)
-const evacuationLimit = 65536
+const evacuationCandidateLimit = 65536
+const evacuationRunLimit = 65536
 
 // CollectionDiagnostics distinguishes a required collection failure from an
 // optional evacuation refusal. Counts describe the last attempt, not timings.
@@ -82,11 +83,11 @@ type matureSelection struct {
 // Selection uses all physical starts before marking, including dead objects.
 // Cross-block objects join components; one dense or LOS block excludes all of it.
 func (c *Collector) selectMatureEvacuation() (matureSelection, error) {
-	return c.selectMatureEvacuationBounded(evacuationLimit)
+	return c.selectMatureEvacuationBounded(evacuationCandidateLimit)
 }
 func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSelection, error) {
 	var out matureSelection
-	if candidateLimit < 1 || candidateLimit > evacuationLimit {
+	if candidateLimit < 1 || candidateLimit > evacuationCandidateLimit {
 		return out, errors.New("gc: invalid candidate limit")
 	}
 	m := c.throughput.mature
@@ -99,7 +100,26 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 	}
 	out.considered = true
 	h := &c.throughput
-	overlay := make([]evacuationOverlay, (uint64(h.limit)+evacuationBlock-1)/evacuationBlock)
+	// Wago's old and LOS objects share a dynamically committed address range,
+	// unlike the reference's fixed old-space block table. Prove the complete
+	// active range before allocating or indexing its temporary overlay. The
+	// uncommitted configured tail is still usable by destination admission: an
+	// excluded index beyond this overlay is deliberately treated as unselected.
+	if h.bump > h.limit || uint64(h.bump) > uint64(len(h.mem)) {
+		return out, errors.New("gc: invalid evacuation heap span")
+	}
+	activeBlocks := int((uint64(h.bump) + evacuationBlock - 1) / evacuationBlock)
+	for _, e := range c.handles {
+		if e.space != spaceOld && e.space != spaceLarge {
+			continue
+		}
+		n := h.handleAllocSize(e)
+		end := uint64(e.off) + uint64(n)
+		if n == 0 || end > uint64(h.bump) || end > uint64(len(h.mem)) || end > uint64(h.limit) {
+			return out, errors.New("gc: invalid evacuation source extent")
+		}
+	}
+	overlay := make([]evacuationOverlay, activeBlocks)
 	for i := range overlay {
 		overlay[i].parent = i
 	}
@@ -115,9 +135,6 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 		}
 		n := h.handleAllocSize(e)
 		end := uint64(e.off) + uint64(n)
-		if n == 0 || end > uint64(h.bump) || end > uint64(h.limit) {
-			return out, errors.New("gc: invalid evacuation source extent")
-		}
 		first, last := int(uint64(e.off)/evacuationBlock), int((end-1)/evacuationBlock)
 		for b := first; b <= last; b++ {
 			lo := max(uint64(e.off), uint64(b)*evacuationBlock)
@@ -148,6 +165,10 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 	}
 	selected := make([]bool, len(overlay))
 	count := 0
+	// cursor is a logical rotating seed, not a configured-block ordinal. When
+	// the active span shrinks its old value is reduced modulo the new span; this
+	// can change the next selected/failed component relative to the former
+	// configured-limit modulus, while preserving bounded rotation and safety.
 	start := int(m.cursor) % max(1, len(overlay))
 	budget := false
 	for step := 0; step < len(overlay); step++ {
@@ -193,7 +214,7 @@ func planEvacuationRuns(free []throughputFreeSpan, excluded []bool, demand uint6
 	if demand == 0 {
 		return nil, 0, 0, nil
 	}
-	if workers < 1 || workers > 8 || uint64(largest) > evacuationBlock || capRuns < 1 || capRuns > evacuationLimit || demand > ^uint64(0)-uint64(workers)*evacuationBlock {
+	if workers < 1 || workers > 8 || uint64(largest) > evacuationBlock || capRuns < 1 || capRuns > evacuationRunLimit || demand > ^uint64(0)-uint64(workers)*evacuationBlock {
 		return nil, 0, 0, errors.New("gc: invalid run demand")
 	}
 	need := demand + uint64(workers)*evacuationBlock
@@ -417,7 +438,7 @@ func (c *Collector) evacuateMature(s matureSelection) (err error) {
 	if h.bump < h.limit {
 		free = append(free, throughputFreeSpan{h.bump, (h.limit - h.bump) &^ 15})
 	}
-	runs, credit, need, admit := planEvacuationRuns(free, s.excluded, s.demand, s.largest, max(1, c.cfg.Workers), evacuationLimit)
+	runs, credit, need, admit := planEvacuationRuns(free, s.excluded, s.demand, s.largest, max(1, c.cfg.Workers), evacuationRunLimit)
 	m.diagnostics.Credit, m.diagnostics.Need, m.diagnostics.Runs = credit, need, len(runs)
 	if admit != nil {
 		m.diagnostics.Evacuation = "credit"
@@ -558,7 +579,7 @@ func (c *Collector) promoteWithRuns(plans []plannedPromotion, toSpace uint8, toB
 	if h.bump < h.limit {
 		free = append(free, throughputFreeSpan{h.bump, (h.limit - h.bump) &^ 15})
 	}
-	runs, credit, need, err := planEvacuationRuns(free, nil, demand, largest, workers, evacuationLimit)
+	runs, credit, need, err := planEvacuationRuns(free, nil, demand, largest, workers, evacuationRunLimit)
 	m.diagnostics.Demand, m.diagnostics.Credit, m.diagnostics.Need = demand, credit, need
 	m.diagnostics.Runs, m.diagnostics.ReservationWorkers = len(runs), workers
 	if err != nil {
