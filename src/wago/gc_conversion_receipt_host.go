@@ -326,8 +326,10 @@ func (c *gcConversionContainer) prepareLimit(index, word, limit uint64, source *
 	}
 	if err != nil {
 		clearReceiptRoot(domain, root)
-		// bindPersistentSlot changes no ownership metadata on failure. The
-		// acquired root was either new or already detached by this domain.
+		// This call uses SlotTable and a validated, new or fully detached root,
+		// excluding bind errors for invalid kinds or prior owners. Its remaining
+		// owner/Runtime check fails before graph mutation; the general binding
+		// helper does not promise side-effect-free failure for arbitrary inputs.
 		domain.receiptFreeSlots = append(domain.receiptFreeSlots, root)
 		queueConversionClaim(state.graph, domain)
 		return nil, err
