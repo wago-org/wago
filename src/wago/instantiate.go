@@ -540,6 +540,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		// mint conversion identities becomes reachable. The bit never clears,
 		// including when this construction later rolls back.
 		conversionStore.conversionDomainEverEnabled.Store(true)
+		conversionPublicEnablementObservation()
 		gcExternConversion, err = newGCExternConversionState(conversionStore, b.collector)
 		if err != nil {
 			return nil, err
