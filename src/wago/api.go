@@ -1421,10 +1421,22 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		exactGCStructBasicSource || exactGCArrayFixedOfficialSource || exactGCArrayDefaultOfficialSource || exactGCArrayPackedDataSource
 	opaqueExternFrames := compiledArchitecture == 4 && len(m.Code) > 0 && (requiredByModule.IsEnabled(CoreFeatureGC) || moduleHasOpaqueExternTable(m)) && exactGCRootedScalarSource && moduleHasOpaqueExternSignatures(m) && !genericGCExecution && !boundedPersistentGCRoots && !ownedExceptionReferences && !collectorReferenceCallBoundary && !moduleHasInternalCollectorReferenceFunctions(m)
 	rootedReferenceDeclarations := opaqueExternFrames || compiledArchitecture == 4 && exactGCRootedScalarSource && (!metadataOnlyTypes || opaqueExternFrames) && gcStructProduct == 0 && gcArrayProduct == 0 && !gcAllocationSites && (opaqueExternFrames || moduleHasInternalCollectorReferenceFunctions(m) || collectorReferenceCallBoundary)
-	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary && !boundedPersistentGCRoots || ownedExceptionReferences || rootedReferenceDeclarations
+	// AMD64 and ARM64 extern bridges also retain live locals across allocation.
+	exactNativeGCRoots := genericGCExecution || compiledArchitecture != 4 && gcStructProduct == stagedGCStructExtern || collectorReferenceCallBoundary && !boundedPersistentGCRoots || ownedExceptionReferences || rootedReferenceDeclarations
 	functionEnvironmentFrames := compiledArchitecture == 4 && exactNativeGCRoots && !ownedExceptionReferences && !wasm.ModuleFunctionReferenceStorage(m) && wasm.ModuleFunctionReferenceCarriers(m)
 	var gcFrameRootDiagnostic string
-	gcFrameRoots := newGCFrameRootPlanWithInstructions(m, exactNativeGCRoots, genericGCExecution, &gcFrameRootDiagnostic, &validationAnalysis, customInstructions)
+	// Collector-free callers still need return maps when a scalar native call
+	// can reenter a collecting domain. These maps never grant a GC execution
+	// product or describe compact object slots.
+	nativeUnwind := !exactNativeGCRoots && (goruntime.GOARCH == "amd64" && goruntime.GOOS == "linux" || goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin")) && len(customInstructions) == 0 && !gc.HasHeapObjectTypes(gcDescs) && (importedFuncs != 0 || m.TableCount() != 0)
+	gcFrameRoots := newGCFrameRootPlanWithInstructions(m, exactNativeGCRoots || nativeUnwind, genericGCExecution, &gcFrameRootDiagnostic, &validationAnalysis, customInstructions)
+	if nativeUnwind {
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			if plan := gcFrameRoots.Function(function); plan != nil {
+				plan.UnwindOnly = true
+			}
+		}
+	}
 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	foreignFunctionSubtypeHelpers := railshotFunctionSubtypeHelpers(m)
@@ -1695,6 +1707,18 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	validGCFrameRoots := validGCModuleFrameRootPlanKinds(gcFrameRoots, compiledArchitecture == 4 && (ownedExceptionReferences || functionEnvironmentFrames || genericGCExecution && wasm.ModuleFunctionReferenceStorage(m)), compiledArchitecture == 4)
 	if (ownedExceptionReferences || compiledArchitecture == 4 && (genericGCExecution || collectorReferenceCallBoundary)) && len(m.Code) == 0 && gcFrameRoots != nil && gcFrameRoots.FunctionCount() == 0 {
 		validGCFrameRoots = true // State-only owned values have no native frame or return PC.
+	}
+	// A complete RootNone graph needs no parked frame slots. Keep an exact
+	// empty plan for non-allocating extern modules rather than changing their
+	// collector profile merely because no safepoint vector was needed.
+	if !validGCFrameRoots && compiledArchitecture != 4 && gcStructProduct == stagedGCStructExtern && !gcAllocationSites && importedFuncs == 0 && gcFrameRoots != nil && len(m.Code) != 0 && gcFrameRoots.FunctionCount() == len(m.Code) {
+		validGCFrameRoots = true
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			if gcFrameRoots.FunctionPending(function) || gcFrameRoots.Function(function) != nil {
+				validGCFrameRoots = false
+				break
+			}
+		}
 	}
 	if validGCFrameRoots && len(m.Code) != 0 && (gcAllocationSites || compiledArchitecture != 4 && genericGCExecution && !collectorReferenceCallBoundary) {
 		hasAllocationSafepoint := false
@@ -2112,7 +2136,7 @@ func asyncReplayable(sig FuncSig) bool {
 }
 
 func (c *Compiled) importsRequireSync(imports resolvedImports, force bool) bool {
-	if force || c.opaqueExternHelperSlots() != 0 || railshotRequiresNativeHostControl(c) || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
+	if force || compiledExternStoreHelperSlots(c) != 0 || c.opaqueExternHelperSlots() != 0 || railshotRequiresNativeHostControl(c) || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
 		return true
 	}
 	for i := range c.Imports {
@@ -2247,7 +2271,7 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports resolvedImports, s
 		if compiledArchitecture == 4 && c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) && (ehExternPayloads || ex.inst.c.exceptionExternPayloads()) && (store == nil || ex.inst.refStore != store) {
 			return fmt.Errorf("exception-handler transfer import %q requires the same reference store", key)
 		}
-		if ex.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 && ex.inst.refStore != store {
+		if ex.inst.requiresSameRuntimeInvocation() && ex.inst.refStore != store {
 			return fmt.Errorf("cross-instance import %q from a dynamic funcref producer requires the same Runtime", key)
 		}
 		if dynamicFuncrefReachability && ex.inst.refStore != store && (ex.inst.gc != nil || ex.inst.executionFlags.Load()&executionFlagImportedGCDomain != 0) {
@@ -2293,7 +2317,7 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports resolvedImports, s
 			}
 		}
 		if ehNativeCalls {
-			if !ex.inst.c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) {
+			if !(ex.inst.c.stagedFeatures() | ex.inst.c.requiredFeatures).IsEnabled(CoreFeatureExceptionHandling) {
 				return fmt.Errorf("exception-handler transfer import %q requires an exception-enabled producer", key)
 			}
 			if len(sig.Params) != 0 || len(sig.Results) != 0 {
@@ -2771,6 +2795,12 @@ func (c *Compiled) validateMetadata() error {
 		staged |= required & CoreFeatureExceptionHandling
 	}
 	staged |= c.stagedFeatures()
+	// Collector-free return maps can retain inert collector type declarations
+	// without selecting a collector execution product. Exact frame validation
+	// still rejects allocation sites, object slots, and collector-bearing calls.
+	if c.collectorFreeNativeUnwind(c.genericGCFrameRoots()) && validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()) == nil {
+		staged |= required & CoreFeatureGC
+	}
 	if required&(CoreFeatureGC|CoreFeatureTypedFunctionReferences) != 0 && (compiledFunctionOnlyTypeGraph(c) || compiledArchitecture == 4 && railshotPrimitiveReferenceDeclarations(c)) {
 		staged |= required & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
 	}
@@ -3659,13 +3689,13 @@ func (c *Compiled) validateArenaFootprint() error {
 			maxParams = internalHelperSlots
 		}
 	}
-	if slots := c.opaqueExternHelperSlots(); slots > maxParams {
+	if slots := max(c.opaqueExternHelperSlots(), compiledExternStoreHelperSlots(c)); slots > maxParams {
 		maxParams = slots
 	}
 	if c.syncHostSlots != 0 && int(c.syncHostSlots) != syncHostSlots {
 		return fmt.Errorf("compiled metadata invalid: synchronous host slot capacity %d, want %d", c.syncHostSlots, syncHostSlots)
 	}
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
+	if compiledExternStoreHelperSlots(c) != 0 || c.opaqueExternHelperSlots() != 0 || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
 		hostCallBytes, err = wruntime.HostCtrlFrameBytesForSlots(syncHostSlots)
 		if err != nil {
 			return wrapContextError("compiled metadata invalid", err)
@@ -5470,7 +5500,9 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 			if bits == 0 && !required.Ref.Nullable || bits != 0 && required.Ref.Heap.Abstract == AbstractHeapNoExtern {
 				return fmt.Errorf("%s: externref argument %d does not match its exact structural type", subject, i)
 			}
-			if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+			if internal, ok := conversionBoundaryWord(in, bits, true); ok {
+				bits = internal
+			} else if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
 				conversion := in.existingGCExternConversionState()
 				if conversion == nil {
 					return fmt.Errorf("%s: extern conversion state is unavailable for argument %d", subject, i)
@@ -5656,7 +5688,9 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 				clear(values)
 				return fmt.Errorf("%s: externref result %d does not match its exact structural type", subject, i)
 			}
-			if in.c.compactExternFrameRoots() && values[slot] != 0 {
+			if public, ok := conversionBoundaryWord(in, values[slot], false); ok {
+				values[slot] = public
+			} else if in.c.compactExternFrameRoots() && values[slot] != 0 {
 				public, issueErr := in.issueCompactExternPublicToken(values[slot])
 				if issueErr != nil {
 					clear(values)

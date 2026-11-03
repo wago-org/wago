@@ -65,6 +65,9 @@ func (in *Instance) dispatchGCHelperParked(ctrl uintptr, helper, safepoint uint3
 }
 
 func (in *Instance) dispatchGCHelperParkedOnStack(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) {
+	if in.dispatchConversionStore(helper, args, results) {
+		return
+	}
 	if in.dispatchCompactExternStore(ctrl, helper, safepoint, args, results, stack) {
 		return
 	}
@@ -865,7 +868,7 @@ func (in *Instance) gcRootedTableElementDescriptor(elemIndex uint32) ([]byte, El
 		panic(gcHelperFailuref("generic GC table element segment %d is unavailable", elemIndex))
 	}
 	elem := in.c.passiveElems[elemIndex]
-	if elem.Mode != ElemModePassive && (elem.Mode != ElemModeActive && elem.Mode != ElemModeDeclarative || len(elem.Values) != 0) || elemEntryBytes(elem.RefType) != 8 || !isGCRefValType(normalizedElemRefType(elem.RefType)) && (!in.c.compactExternFrameRoots() || normalizedElemRefType(elem.RefType) != ValExternRef) {
+	if elem.Mode != ElemModePassive && (elem.Mode != ElemModeActive && elem.Mode != ElemModeDeclarative || len(elem.Values) != 0) || elemEntryBytes(elem.RefType) != 8 || !isGCRefValType(normalizedElemRefType(elem.RefType)) && (normalizedElemRefType(elem.RefType) != ValExternRef) {
 		panic(gcHelperFailuref("generic GC table element segment %d is not passive aggregate reference data", elemIndex))
 	}
 	descOff := int(elemIndex) * coreruntime.PassiveElemDescBytes

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build (linux || (darwin && arm64)) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -101,7 +101,7 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 	}
 
 	if in.refStore == nil && in.c.compactExternFrameRoots() {
-		if _, err := in.compactExternCollector(in.gcInvocationDomain()); err != nil {
+		if err := in.managedFunctionEnsureStore(in.gcInvocationDomain()); err != nil {
 			panic(gcHelperFailure(err))
 		}
 	}
@@ -129,6 +129,9 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 			if opaqueAggregateStorage(field.Kind) {
 				args[cursor] = in.managedOpaqueTypedValue(field.Kind, in.c.Types[typeID].Fields[i].Storage.Value, args[cursor]).Bits
 			} else {
+				if field.Kind == gc.StorageRef || field.Kind == gc.StorageRefNull {
+					a.roots = append(a.roots, gc.Root(uint32(args[cursor])))
+				}
 				_ = in.gcStructValueKnown(typeID, uint32(i), field.Kind, in.c.Types[typeID].Fields[i].Storage.Value, args[cursor:cursor+slots])
 			}
 			cursor += slots

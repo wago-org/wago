@@ -32,6 +32,7 @@ const (
 	executionFlagNativeScalarLeaf
 	executionFlagForeignNativeCalls
 	executionFlagThreadedMemory
+	executionFlagManagedOwnership
 )
 
 type invocationID uint64

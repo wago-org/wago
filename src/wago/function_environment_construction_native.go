@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build (linux || (darwin && arm64)) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -125,7 +125,7 @@ func (j *managedFunctionConstruction) bind(in *Instance, domain *gcStoreDomain) 
 		return nil
 	}
 	if in.refStore == nil && in.c.compactExternFrameRoots() {
-		if _, err := in.compactExternCollector(domain); err != nil {
+		if err := in.managedFunctionEnsureStore(domain); err != nil {
 			return err
 		}
 	}

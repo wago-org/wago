@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build (linux || (darwin && arm64)) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -12,18 +12,14 @@ import (
 var errManagedFunctionMarkChanged = errors.New("managed function ownership changed during joint mark")
 
 type managedFunctionSlot struct {
-	kind  gc.SlotKind
-	index uint32
+	collector *gc.Collector // explicit domain: a container owner may have no collector
+	kind      gc.SlotKind
+	index     uint32
 }
 
 type managedFunctionObjectWork struct {
 	ref    gc.Ref
 	cursor gc.ObjectTraceCursor
-}
-
-type managedFunctionReceiptProof struct {
-	slot   int
-	record dependencyRecord
 }
 
 type managedFunctionMarkDomain struct {
@@ -39,29 +35,11 @@ type managedFunctionMarkDomain struct {
 	transient     gc.RootSet
 }
 
-type managedFunctionMark struct {
-	graph              *managedFunctionGraph
-	epoch              uint64
-	domains            []*managedFunctionMarkDomain
-	byCollector        map[*gc.Collector]*managedFunctionMarkDomain
-	live               map[*managedFunctionMember]bool
-	owners             []*managedFunctionMember
-	ownerAt, ownerSlot int
-	edges              map[*managedFunctionMember][]*managedFunctionMember
-	incoming           map[*managedFunctionMember]int
-	err                error
-	complete           bool
-	members            []*managedFunctionMember
-	receipts           []managedFunctionReceiptProof
-	nativeCursor       managedFunctionNativeRootCursor
-	nativeDone         bool
-}
-
 // bindPersistentSlot transfers a private instance slot from the unconditional
 // collector roots to its physical owner's conditional roots. Public token and
 // host argument slots must never be bound here. Slot indexes are append-only.
 func (s *managedFunctionCollector) bindPersistentSlot(owner *Instance, kind gc.SlotKind, index uint32) error {
-	if owner == nil || owner.gc != s.collector || owner.refStore != s.graph.store {
+	if owner == nil || owner.refStore != s.graph.store {
 		return fmt.Errorf("managed function slot has a different collector or Runtime")
 	}
 	if _, err := s.collector.PersistentSlotRef(kind, index); err != nil {
@@ -89,7 +67,7 @@ func (s *managedFunctionCollector) bindPersistentSlot(owner *Instance, kind gc.S
 		return nil
 	}
 	rows[index] = member
-	member.slots = append(member.slots, managedFunctionSlot{kind, index})
+	member.slots = append(member.slots, managedFunctionSlot{collector: s.collector, kind: kind, index: index})
 	s.graph.epoch.Add(1)
 	return nil
 }
@@ -110,23 +88,8 @@ func (g *managedFunctionGraph) newMark() *managedFunctionMark {
 	// Dependency receipt identity and physical counts are read under the same
 	// graph-to-lifetime order as the ordinary dependency collector. A target with
 	// a pending, external, releasing, or foreign consumer root stays strong.
-	dependencies := rv64FunctionDependencyGraph()
-	dependencies.mu.Lock()
-	defer dependencies.mu.Unlock()
-	for i := range dependencies.records {
-		record := &dependencies.records[i]
-		if record.state != dependencyTyped || record.target == nil || record.consumer == nil {
-			continue
-		}
-		target := g.members[record.target.owner]
-		consumer := g.members[record.consumer.owner]
-		if target == nil || consumer == nil || !dependencies.authoritativeLocked(record.target) || !dependencies.authoritativeLocked(record.consumer) {
-			continue
-		}
-		m.incoming[target]++
-		m.edges[consumer] = append(m.edges[consumer], target)
-		m.receipts = append(m.receipts, managedFunctionReceiptProof{i, *record})
-	}
+	unlockDependencies := m.lockDependencySnapshot()
+	defer unlockDependencies()
 	for _, member := range g.rows {
 		if member == nil {
 			continue
@@ -237,7 +200,7 @@ func (m *managedFunctionMark) step(budget uint32) (uint32, bool, error) {
 			if kind == gc.SlotTable {
 				owners = d.state.tableOwners
 			}
-			if owners[*index] == nil && (kind != gc.SlotGlobal || compactExternHostRootIsStrong(d.state.collector, *index)) {
+			if !(kind == gc.SlotTable && d.state.conversionFloating[*index] != nil) && owners[*index] == nil && (kind != gc.SlotTable || d.state.conversionHostSlots[*index] == nil || conversionHostRootIsStrong(d.state.conversionHostSlots[*index])) && (kind != gc.SlotGlobal || d.state.hostEnvSlots[*index] == gc.Null() && compactExternHostRootIsStrong(d.state.collector, *index)) {
 				ref, err := d.state.collector.PersistentSlotRef(kind, *index)
 				if err != nil {
 					return used, false, err
@@ -253,7 +216,7 @@ func (m *managedFunctionMark) step(budget uint32) (uint32, bool, error) {
 			owner := m.owners[m.ownerAt]
 			if m.ownerSlot < len(owner.slots) {
 				slot := owner.slots[m.ownerSlot]
-				d := m.byCollector[owner.owner.gc]
+				d := m.byCollector[slot.collector]
 				if d == nil {
 					return used, false, fmt.Errorf("owner root has no participating collector")
 				}
@@ -335,13 +298,9 @@ func (m *managedFunctionMark) collect() error {
 	}
 	// The caller's topology/execution lease freezes directories. Exact physical
 	// root revalidation and claims close the acquisition race at commit.
-	dependencies := rv64FunctionDependencyGraph()
-	dependencies.mu.Lock()
-	for _, proof := range m.receipts {
-		if proof.slot >= len(dependencies.records) || dependencies.records[proof.slot] != proof.record {
-			dependencies.mu.Unlock()
-			return errManagedFunctionMarkChanged
-		}
+	unlockDependencies, valid := m.lockDependencyCommit()
+	if !valid {
+		return errManagedFunctionMarkChanged
 	}
 	for _, member := range m.members {
 		member.owner.lifeMu.Lock()
@@ -350,7 +309,7 @@ func (m *managedFunctionMark) collect() error {
 		for i := len(m.members) - 1; i >= 0; i-- {
 			m.members[i].owner.lifeMu.Unlock()
 		}
-		dependencies.mu.Unlock()
+		unlockDependencies()
 		return errManagedFunctionMarkChanged
 	}
 	for _, member := range m.members {
@@ -361,7 +320,7 @@ func (m *managedFunctionMark) collect() error {
 	for i := len(m.members) - 1; i >= 0; i-- {
 		m.members[i].owner.lifeMu.Unlock()
 	}
-	dependencies.mu.Unlock()
+	unlockDependencies()
 	// Dead owners remain claimed until physical cleanup retires their member.
 	// Their native cells can still contain collected references while outgoing
 	// receipt cleanup runs; no external lifetime may resurrect that state.
@@ -381,11 +340,11 @@ func (m *managedFunctionMark) collect() error {
 		if m.live[member] {
 			continue
 		}
-		d := m.byCollector[member.owner.gc]
-		if d == nil && len(member.slots) != 0 {
-			return fmt.Errorf("owner slots have no participating collector")
-		}
 		for _, slot := range member.slots {
+			d := m.byCollector[slot.collector]
+			if d == nil {
+				return fmt.Errorf("owner slot has no participating collector")
+			}
 			var err error
 			if slot.kind == gc.SlotGlobal {
 				err = d.state.collector.SetGlobalSlot(slot.index, gc.Null())
@@ -398,6 +357,24 @@ func (m *managedFunctionMark) collect() error {
 		}
 	}
 	for _, d := range m.domains {
+		// Floating host roots protect raw native function words only until full
+		// store quiescence. They must not seed themselves through a live producer.
+		// Reuse cleared slots so repeated publication/drop has bounded metadata.
+		for slot, ref := range d.state.hostEnvSlots {
+			index := uint32(ref) >> 1
+			word, bit := int(index>>6), uint64(1)<<(index&63)
+			if word < len(d.seen) && d.seen[word]&bit != 0 {
+				continue
+			}
+			if err := d.state.collector.SetGlobalSlot(slot, gc.Null()); err != nil {
+				return err
+			}
+			delete(d.state.hostEnvSlots, slot)
+			d.state.hostFreeSlots = append(d.state.hostFreeSlots, slot)
+		}
+		if err := clearUnreachableConversionRoots(d); err != nil {
+			return err
+		}
 		if err := d.clearUnreachableHostExternRoots(); err != nil {
 			return err
 		}

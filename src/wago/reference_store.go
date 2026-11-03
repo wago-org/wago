@@ -210,6 +210,11 @@ func (s *referenceStore) unregisterGCFrameCodeRangeLocked(in *Instance) {
 // lease together with collector leases, allowing instantiation and teardown to
 // update the list before native resume.
 type gcDomainTopology struct {
+	conversions          map[uint64]*gcConversionIdentity
+	conversionContainers map[*byte]*gcConversionContainer
+	invocations          map[invocationID]*gcInvocationSnapshot
+	retirement           *gcInvocationRetirement
+
 	gcTopologyGate
 	first           *gcStoreDomain
 	last            *gcStoreDomain
@@ -318,19 +323,22 @@ type gcStoreDomain struct {
 	// and helper locks alone leave a window where another tenant can collect an
 	// as-yet-unrooted result from this shared collector. Arbitrary host callbacks
 	// suspend this lease while exact parked roots remain published.
-	invocationMu    invocationGate
-	invocationState sync.Mutex
-	invocationOwner invocationID
-	id              uint64
-	collector       *gc.Collector
-	private         bool
-	config          gc.Config
-	types           []gc.TypeDesc
-	typeReps        []gcDomainTypeRepresentative
-	refs            uint32
-	claims          uint32 // prepared instantiations not yet registered
-	prev            *gcStoreDomain
-	next            *gcStoreDomain
+	invocationMu         invocationGate
+	invocationState      sync.Mutex
+	invocationOwner      invocationID
+	id                   uint64
+	collector            *gc.Collector
+	private              bool
+	conversionClaims     uint32 // includes deferred receipt releases until post-gate drain
+	conversionPublishers uint32 // topology-protected live opaque conversion authority
+	conversionOwned      bool   // registered private type universe; lifetime belongs to receipts
+	config               gc.Config
+	types                []gc.TypeDesc
+	typeReps             []gcDomainTypeRepresentative
+	refs                 uint32
+	claims               uint32 // prepared instantiations not yet registered
+	prev                 *gcStoreDomain
+	next                 *gcStoreDomain
 }
 
 var nextGCDomainIdentity atomic.Uint64
@@ -351,8 +359,9 @@ type referenceStoreInstance struct {
 	// invocationDomains is allocated only when direct/transitive function imports
 	// reach a GC domain other than this instance's own domain. The common local-GC
 	// case uses gcDomain directly and pays no sidecar allocation.
-	invocationDomains        *gcInvocationDomainSet
-	dynamicInvocationDomains bool
+	invocationDomains               *gcInvocationDomainSet
+	dynamicInvocationDomains        bool
+	conversionOnlyInvocationDomains bool
 }
 
 const inlineGCInvocationDomains = 4
@@ -684,6 +693,7 @@ const (
 type gcNativeFrameRoots struct {
 	owner                *Instance
 	physicalStack        *coreruntime.Engine
+	entryReturnSlot      uintptr
 	base                 uintptr
 	offsets              []uint32
 	frameBytes           uint32
@@ -698,17 +708,21 @@ type gcNativeFrameRoots struct {
 }
 
 type gcHostActivation struct {
-	base         uintptr
-	ctrl         uintptr
-	stack        *coreruntime.Engine
-	callsite     uint32
-	noFrame      bool
-	savedControl gcHostSavedControl
+	base            uintptr
+	ctrl            uintptr
+	stack           *coreruntime.Engine
+	entryReturnSlot uintptr
+	callsite        uint32
+	noFrame         bool
+	savedControl    gcHostSavedControl
 }
 
 // Include the outer callback as well as every permitted nested host reentry.
 // Preserve the existing capacity for builds with a lower reentry limit.
 const gcHostActivationLimit = max(8, maxHostReentryDepth+1)
+
+// Skip foreign parked-chain discovery when AMD64/ARM64 have no parked GC host call.
+var gcNativeHostActivations atomic.Int64
 
 func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 	r.walk(fn, nil)
@@ -745,7 +759,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 	if !r.rangeSuspendedRoots(r.owner, r.suspended, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
 		return false
 	}
-	if r.domainHostRoots && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
+	if r.domainHostRoots && (compiledArchitecture == 4 || gcNativeHostActivations.Load() != 0) && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
 		return false
 	}
 	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
@@ -769,7 +783,8 @@ func (r *gcNativeFrameRoots) rangeSuspendedRoots(owner *Instance, state *gcPubli
 			}
 			callsite := &state.hostRootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
-				owner:                owner,
+				owner:                r.owner,
+				entryReturnSlot:      activation.entryReturnSlot,
 				base:                 activation.base,
 				offsets:              callsite.offsets,
 				frameBytes:           callsite.frameBytes,
@@ -780,7 +795,7 @@ func (r *gcNativeFrameRoots) rangeSuspendedRoots(owner *Instance, state *gcPubli
 				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
 				callsites:            state.hostRootPlan.callsites,
 			}
-			if !chain.rangeChain(fn, sink, activation.stack) {
+			if !chain.rangeChainFrom(owner, fn, sink, activation.stack) {
 				return false
 			}
 		}
@@ -805,7 +820,7 @@ func (r *gcNativeFrameRoots) rangeTransientRoots(fn func(gc.RootSlot) bool, sink
 	if !r.rangeSuspendedRoots(r.owner, r.suspended, fn, sink) {
 		return false
 	}
-	if r.domainHostRoots && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, fn, sink) {
+	if r.domainHostRoots && (compiledArchitecture == 4 || gcNativeHostActivations.Load() != 0) && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, fn, sink) {
 		return false
 	}
 
@@ -874,6 +889,7 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 	if in == nil || in.c == nil {
 		return true
 	}
+	mirrored := in.existingGCRefTestTableState()
 	if !rangeLocalCompactExternRoots(in, fn, sink) {
 		return false
 	}
@@ -886,6 +902,10 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 	if !rv64GCRefTestAbstract(in.c) && !rv64GCExtern(in.c) && !rv64GCRefCastAbstract(in.c) && !rv64GCBrOnCastAbstract(in.c) && !rv64GCBrOnCastFailAbstract(in.c) {
 		for tableIndex := 0; tableIndex < in.c.tableCount(); tableIndex++ {
 			if !isGCRefValType(in.c.tableElementType(tableIndex)) {
+				continue
+			}
+			// Staged mirrors retain checked collector roots and filter foreign identities.
+			if compiledArchitecture != 4 && mirrored != nil && tableIndex < len(mirrored.kinds) && mirrored.kinds[tableIndex] == gcRefTableRoot {
 				continue
 			}
 			desc := in.tableDescriptor(tableIndex)
@@ -941,7 +961,10 @@ func gcNativeFrameFitsStack(base uintptr, frameBytes uint32, stack *coreruntime.
 }
 
 func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink, stack *coreruntime.Engine) bool {
-	owner := r.owner
+	return r.rangeChainFrom(r.owner, fn, sink, stack)
+}
+
+func (r *gcNativeFrameRoots) rangeChainFrom(owner *Instance, fn func(gc.RootSlot) bool, sink gc.RootRefSink, stack *coreruntime.Engine) bool {
 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
 	codeBase, codeBytes := r.codeBase, r.codeBytes
 	adapterReturnOffsets, callsites := r.adapterReturnOffsets, r.callsites
@@ -973,7 +996,13 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		if r.owner != nil && !visitManagedFunctionOwnerFrameRoot(owner, r.owner.gc, fn, sink) {
 			return false
 		}
-		for _, off := range offsets {
+		frameOffsets := offsets
+		if owner != r.owner && r.owner != nil && owner != nil && owner.gc != r.owner.gc {
+			// Compact handles are local to a collector. Traverse a foreign
+			// frame's physical return map, never feed its words to this heap.
+			frameOffsets = nil
+		}
+		for _, off := range frameOffsets {
 			encoded := off
 			off = shared.GCFrameRootOffset(encoded)
 			if encoded&shared.GCFrameExternRefRootFlag != 0 {
@@ -989,6 +1018,15 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 					return false
 				}
 				continue
+			}
+			if r.frameLayout&gcNativeFrameLayoutMask != gcNativeFrameLayoutRISCV64 {
+				bits := nativeGCFrameWord(base + uintptr(off))
+				if bits != uint64(gc.Ref(uint32(bits))) {
+					if owner == nil || !owner.isForeignAnyref(bits) {
+						panic(gcHelperFailuref("generic GC frame-root offset %d contains non-compact reference %#x", off, bits))
+					}
+					continue
+				}
 			}
 			// gc.Ref is the low 32 bits of the validated little-endian native qword.
 			// Expose the actual off-heap word so a moving/reference-rewriting policy
@@ -1032,38 +1070,84 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			panic(gcHelperFailuref("generic GC native return address exceeds stack bounds"))
 		}
 		retPC := uintptr(nativeGCFrameWord(retAddr))
-		if retPC < codeBase || retPC-codeBase >= codeBytes {
-			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
-				return true
-			}
-			foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
-			if foreign == nil {
-				if r.allowExternalReturn {
-					return true
-				}
-				panic(gcHelperFailuref("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC))
-			}
-			owner = foreign
-			plan := foreign.c.genericGCFrameRoots()
-			codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.code))
-			adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
-		}
-		rel := uint32(retPC - codeBase)
-		adapterIndex := 0
-		if len(adapterReturnOffsets) <= 8 {
-			for adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] < rel {
-				adapterIndex++
-			}
-		} else {
-			adapterIndex = sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
-		}
-		if adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] == rel {
-			return true
-		}
+		calleeOwner := owner
 		if base > ^uintptr(0)-uintptr(frameBytes)-callerFrameBias {
 			panic(gcHelperFailuref("generic GC caller frame address overflows"))
 		}
 		returnBase := base + uintptr(frameBytes) + callerFrameBias
+		adapterRead := false
+		for {
+			if retPC < codeBase || retPC-codeBase >= codeBytes {
+				// A stack-ABI public entry has no register adapter. Its top return
+				// word is exactly the entry's existing trap landing slot. An unknown
+				// PC elsewhere in the stack must still fail ownership validation.
+				if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutAMD64 && stack != nil && owner != nil && owner.jm != nil {
+					landing := r.entryReturnSlot
+					if landing%8 == 0 && landing == retAddr && stackTop >= uintptr(stack.StackBytes()) && landing >= stackTop-uintptr(stack.StackBytes()) && landing < stackTop && stackTop-landing >= 8 {
+						return true
+					}
+				}
+				if r.owner == nil || r.owner.refStore == nil || !r.owner.refStore.ownsGCCollector(r.owner.gc) {
+					return true
+				}
+				foreign := r.owner.refStore.gcFrameOwner(retPC, owner.gc)
+				if foreign == nil && r.frameLayout&gcNativeFrameLayoutMask != gcNativeFrameLayoutRISCV64 {
+					foreign = r.owner.refStore.gcAnyFrameOwner(retPC, 0)
+				}
+				if foreign == nil {
+					if r.allowExternalReturn {
+						return true
+					}
+					panic(gcHelperFailuref("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC))
+				}
+				if foreign.c.genericGCFrameRoots() == nil {
+					panic(gcHelperFailuref("generic GC foreign return PC %#x has no native unwind map; recompile the caller", retPC))
+				}
+				owner = foreign
+				plan := foreign.c.genericGCFrameRoots()
+				codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.code))
+				adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
+			}
+			rel := uint32(retPC - codeBase)
+			adapterIndex := 0
+			if len(adapterReturnOffsets) <= 8 {
+				for adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] < rel {
+					adapterIndex++
+				}
+			} else {
+				adapterIndex = sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
+			}
+			if adapterIndex == len(adapterReturnOffsets) || adapterReturnOffsets[adapterIndex] != rel {
+				break
+			}
+			// RV64 keeps its validated adapter boundary. The physical record
+			// traversal below is specific to AMD64 and ARM64.
+			if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutRISCV64 {
+				return true
+			}
+			if owner == nil || owner.c == nil {
+				return true // This chain has no retained compiled wrapper.
+			}
+			if adapterRead {
+				panic(gcHelperFailuref("generic GC native return crosses nested adapters"))
+			}
+			// The validated register adapter saves one results-pointer word on
+			// AMD64, or an LR/results pair on ARM64. Neither is the end of a
+			// native cross-instance call: its caller can still own live roots.
+			// Include AMD64's outer CALL return word in the same 16-byte span.
+			if returnBase%8 != 0 || returnBase > ^uintptr(0)-16 || stackTop == 0 || returnBase > stackTop || stackTop-returnBase < 16 {
+				panic(gcHelperFailuref("generic GC native adapter record exceeds stack bounds"))
+			}
+			outerReturnOffset := uintptr(8)
+			if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64 {
+				outerReturnOffset = 0
+			}
+			retAddr = returnBase + outerReturnOffset
+			retPC = uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(retAddr)), 8)))
+			returnBase += 16
+			adapterRead = true
+		}
+		rel := uint32(retPC - codeBase)
 		// Tiny sorted tables beat binary-search setup; larger tables retain
 		// logarithmic lookup. The measured crossover is between 8 and 16.
 		callsiteIndex := 0
@@ -1081,8 +1165,42 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		offsets = callsite.offsets
 		frameBytes = callsite.frameBytes
 		stackAdjust := callsite.stackAdjust
+		if owner != calleeOwner && stackAdjust != 64 && r.frameLayout&gcNativeFrameLayoutMask != gcNativeFrameLayoutRISCV64 && owner != nil && calleeOwner != nil && owner.gc != calleeOwner.gc {
+			panic(gcHelperFailuref("generic GC cross-domain return lacks its saved caller context"))
+		}
 		if returnBase > ^uintptr(0)-uintptr(stackAdjust) {
 			panic(gcHelperFailuref("generic GC caller stack adjustment overflows"))
+		}
+		// Every production 64-byte wrapper is a dynamic import or a
+		// home-aware indirect/ref call. Both preserve the caller's immutable
+		// native-context pointer: AMD64 at record+8, ARM64 at record+0.
+		// Code can be shared by instances, so its representative owner only
+		// selects the immutable plan; this saved identity selects the roots.
+		if r.frameLayout&gcNativeFrameLayoutMask != gcNativeFrameLayoutRISCV64 && stackAdjust == 64 && owner != nil && owner.refStore != nil {
+			if returnBase > ^uintptr(0)-64 || stackTop != 0 && (returnBase > stackTop || stackTop-returnBase < 64) {
+				panic(gcHelperFailuref("generic GC caller context record exceeds stack bounds"))
+			}
+			contextOffset := uintptr(8)
+			arm64 := r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64
+			if arm64 {
+				contextOffset = 0
+			}
+			context := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnBase+contextOffset)), 8)))
+			// ARM64 writes zero only when no context switch occurred.
+			if context == 0 && arm64 && owner == calleeOwner {
+				// Keep the current exact instance identity.
+			} else if context == 0 {
+				panic(gcHelperFailuref("generic GC caller context is unavailable"))
+			} else if context != owner.nativeContext {
+				caller := r.owner.refStore.gcFrameContextOwner(retPC, owner.gc, context)
+				if caller == nil {
+					caller = r.owner.refStore.gcAnyFrameOwner(retPC, context)
+				}
+				if caller == nil {
+					panic(gcHelperFailuref("generic GC caller context %#x has no Runtime GC-domain code owner", context))
+				}
+				owner = caller
+			}
 		}
 		base = returnBase + uintptr(stackAdjust)
 	}
@@ -1304,7 +1422,8 @@ func (s *referenceStore) ownsGCCollector(collector *gc.Collector) bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.gcDomains.domainForCollectorLocked(collector) != nil
+	domain := s.gcDomains.domainForCollectorLocked(collector)
+	return domain != nil && !domain.conversionOwned
 }
 
 func (s *referenceStore) gcDomainForCollector(collector *gc.Collector) *gcStoreDomain {
@@ -1343,7 +1462,165 @@ func unlockGCCollector(domain *gcStoreDomain) {
 	}
 }
 
+// A conversion-only lease owns a stable sorted view, not the mutable topology.
+// claims pin registered collectors even while admission waits or a callback is
+// suspended. The store mutex protects the registry; the public invocation gate
+// serializes active/suspended transitions for a particular root.
+type gcInvocationSnapshot struct {
+	in       *Instance
+	owner    invocationID
+	domains  gcInvocationDomainView
+	previous *gcInvocationSnapshot
+	active   bool
+	pinned   bool
+}
+
+func (in *Instance) conversionInvocationSnapshot(owner invocationID) *gcInvocationSnapshot {
+	if in == nil || in.refStore == nil || owner == 0 {
+		return nil
+	}
+	s := in.refStore
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gcDomains == nil {
+		return nil
+	}
+	for snapshot := s.gcDomains.invocations[owner]; snapshot != nil; snapshot = snapshot.previous {
+		if snapshot.in == in && snapshot.active {
+			return snapshot
+		}
+	}
+	return nil
+}
+
+// A native nested entry cannot acquire a wider set while the root owns domain
+// gates. Inspect only store-protected metadata; never wait for another topology
+// reader, nor acquire a missing domain out of order. A callback's suspended
+// snapshots are excluded, so ordinary callback reentry still admits afresh.
+func (in *Instance) borrowConversionInvocation(owner invocationID) (gcInvocationLease, bool, error) {
+	if in == nil || in.refStore == nil {
+		return gcInvocationLease{}, false, nil
+	}
+	s := in.refStore
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gcDomains == nil {
+		return gcInvocationLease{}, false, nil
+	}
+	var root *gcInvocationSnapshot
+	for p := s.gcDomains.invocations[owner]; p != nil; p = p.previous {
+		if p.active {
+			root = p
+			break
+		}
+	}
+	if root == nil {
+		return gcInvocationLease{}, false, nil
+	}
+	contains := func(d *gcStoreDomain) bool {
+		if d == nil {
+			return true
+		}
+		for i := 0; i < root.domains.len(); i++ {
+			if root.domains.at(i) == d {
+				return true
+			}
+		}
+		return false
+	}
+	entry := s.instances[in]
+	if entry == nil || entry.dynamicInvocationDomains && !entry.conversionOnlyInvocationDomains {
+		return gcInvocationLease{}, true, fmt.Errorf("nested invocation exceeds conversion snapshot authority")
+	}
+	complete := contains(entry.gcDomain)
+	for i := 0; i < entry.invocationDomains.len(); i++ {
+		complete = complete && contains(entry.invocationDomains.at(i))
+	}
+	if entry.conversionOnlyInvocationDomains {
+		for d := s.gcDomains.first; d != nil; d = d.next {
+			if d.conversionPublishers != 0 || d.conversionClaims != 0 {
+				complete = complete && contains(d)
+			}
+		}
+	}
+	if !complete {
+		return gcInvocationLease{}, true, fmt.Errorf("nested invocation requires domains absent from the active root snapshot")
+	}
+	return gcInvocationLease{in: in, domains: root.domains, owner: owner}, true, nil
+}
+
+func (snapshot *gcInvocationSnapshot) setActive(active bool) {
+	s := snapshot.in.refStore
+	s.mu.Lock()
+	snapshot.active = active
+	s.mu.Unlock()
+}
+
+// Called with the topology reader, before waiting for any domain or native gate.
+func (in *Instance) pinConversionInvocation(domains gcInvocationDomainView, owner invocationID) (*gcInvocationSnapshot, error) {
+	s := in.refStore
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := 0; i < domains.len(); i++ {
+		d := domains.at(i)
+		if !d.private && (s.gcDomains.domainForCollectorLocked(d.collector) != d || d.claims == ^uint32(0)) {
+			return nil, fmt.Errorf("conversion invocation domain retired or claim overflow")
+		}
+	}
+	for i := 0; i < domains.len(); i++ {
+		if d := domains.at(i); !d.private {
+			d.claims++
+		}
+	}
+	snapshot := &gcInvocationSnapshot{in: in, owner: owner, domains: domains, pinned: true, previous: s.gcDomains.invocations[owner]}
+	if s.gcDomains.invocations == nil {
+		s.gcDomains.invocations = make(map[invocationID]*gcInvocationSnapshot)
+	}
+	s.gcDomains.invocations[owner] = snapshot
+	return snapshot, nil
+}
+
+// Pin release never waits for topology. Readers may continue using registered
+// zero-claim domains until the deferred writer atomically claims retirement.
+func (snapshot *gcInvocationSnapshot) unpin() {
+	if !snapshot.pinned {
+		return
+	}
+	s := snapshot.in.refStore
+	s.mu.Lock()
+	topology := s.gcDomains
+	if topology.invocations[snapshot.owner] != snapshot {
+		panic("wago: conversion invocation release order")
+	}
+	if snapshot.previous == nil {
+		delete(topology.invocations, snapshot.owner)
+	} else {
+		topology.invocations[snapshot.owner] = snapshot.previous
+	}
+	var retire []*gcStoreDomain
+	for i := 0; i < snapshot.domains.len(); i++ {
+		d := snapshot.domains.at(i)
+		if d.private {
+			continue
+		}
+		if topology.domainForCollectorLocked(d.collector) != d || d.claims == 0 {
+			panic("wago: conversion invocation pin lost")
+		}
+		d.claims--
+		if d.refs == 0 && d.claims == 0 {
+			retire = append(retire, d)
+		}
+	}
+	snapshot.pinned = false
+	start := s.queueInvocationRetirementLocked(retire, s.runtimeClosed)
+	s.mu.Unlock()
+	if start {
+		s.driveInvocationRetirement()
+	}
+}
+
 type gcInvocationLease struct {
+	snapshot *gcInvocationSnapshot
 	in       *Instance
 	topology *gcDomainTopology
 	domains  gcInvocationDomainView
@@ -1401,7 +1678,22 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 	entry := store.instances[in]
 	var domains gcInvocationDomainView
 	if entry != nil {
-		if entry.dynamicInvocationDomains {
+		if entry.dynamicInvocationDomains && entry.conversionOnlyInvocationDomains {
+			set := new(gcInvocationDomainSet)
+			set.add(entry.gcDomain)
+			for i := 0; i < entry.invocationDomains.len(); i++ {
+				set.add(entry.invocationDomains.at(i))
+			}
+			if topology := store.gcDomains; topology != nil {
+				for domain := topology.first; domain != nil; domain = domain.next {
+					if domain.conversionPublishers != 0 || domain.conversionClaims != 0 {
+						set.add(domain)
+					}
+				}
+			}
+			set.sort()
+			domains.set = set
+		} else if entry.dynamicInvocationDomains {
 			if entry.gcDomain != nil && entry.gcDomain.private {
 				domains.local = entry.gcDomain
 			}
@@ -1445,10 +1737,25 @@ func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocatio
 	if owner == 0 {
 		owner = newInvocationID()
 	}
+	// Borrowing existing authority must not wait behind a topology writer while
+	// the caller already holds native/domain gates.
+	if existing := in.conversionInvocationSnapshot(owner); existing != nil {
+		if !existing.domains.ownedBy(owner) {
+			panic("wago: partial conversion invocation ownership")
+		}
+		return gcInvocationLease{in: in, domains: existing.domains, owner: owner}, nil
+	}
+	if lease, borrowed, err := in.borrowConversionInvocation(owner); borrowed {
+		return lease, err
+	}
 	dynamic := in != nil && in.refStore != nil && in.executionFlags.Load()&executionFlagDynamicGCDomain != 0
 	var topology *gcDomainTopology
+	conversionOnly := false
 	if dynamic {
 		in.refStore.mu.Lock()
+		if entry := in.refStore.instances[in]; entry != nil {
+			conversionOnly = entry.conversionOnlyInvocationDomains
+		}
 		topology = in.refStore.gcDomains
 		in.refStore.mu.Unlock()
 		if topology == nil {
@@ -1459,6 +1766,26 @@ func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocatio
 		}
 	}
 	domains := in.gcInvocationDomains()
+	if dynamic && conversionOnly {
+		// A nested native entry can borrow its caller's authenticated owner ID.
+		// The caller's complete view supplies lifetime pins (or its dynamic reader).
+		if domains.len() != 0 && domains.ownedBy(owner) {
+			topology.RUnlock()
+			return gcInvocationLease{in: in, domains: domains, owner: owner}, nil
+		}
+		snapshot, err := in.pinConversionInvocation(domains, owner)
+		topology.RUnlock()
+		if err != nil {
+			return gcInvocationLease{}, err
+		}
+		if err = domains.lockContext(ctx); err != nil {
+			snapshot.unpin()
+			return gcInvocationLease{}, err
+		}
+		domains.claim(owner)
+		snapshot.setActive(true)
+		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, snapshot: snapshot}, nil
+	}
 	if domains.len() == 0 {
 		if dynamic {
 			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}, nil
@@ -1498,6 +1825,16 @@ func (l gcInvocationLease) unlock() {
 	if !l.acquired {
 		return
 	}
+	if l.snapshot != nil {
+		snapshot := l.snapshot
+		if snapshot.active {
+			snapshot.setActive(false)
+			snapshot.domains.release(l.owner)
+			snapshot.domains.unlock()
+		}
+		snapshot.unpin()
+		return
+	}
 	domains := l.domains
 	if l.dynamic && l.in != nil {
 		domains = l.in.gcInvocationDomains()
@@ -1521,6 +1858,7 @@ func (in *Instance) ownsGCInvocation(owner invocationID) bool {
 }
 
 type gcInvocationSuspension struct {
+	snapshot *gcInvocationSnapshot
 	in       *Instance
 	topology *gcDomainTopology
 	domains  gcInvocationDomainView
@@ -1540,6 +1878,15 @@ func (in *Instance) hostCallNeedsGCSuspension() bool {
 }
 
 func (in *Instance) suspendGCInvocation(owner invocationID) gcInvocationSuspension {
+	if snapshot := in.conversionInvocationSnapshot(owner); snapshot != nil {
+		if !snapshot.domains.ownedBy(owner) {
+			panic("wago: partial conversion invocation suspension")
+		}
+		snapshot.setActive(false)
+		snapshot.domains.release(owner)
+		snapshot.domains.unlock()
+		return gcInvocationSuspension{in: in, owner: owner, snapshot: snapshot, active: true}
+	}
 	dynamic := in != nil && in.refStore != nil && in.executionFlags.Load()&executionFlagDynamicGCDomain != 0
 	var topology *gcDomainTopology
 	if dynamic {
@@ -1576,6 +1923,23 @@ func (s *gcInvocationSuspension) resume() {
 		return
 	}
 	s.active = false
+	if s.snapshot != nil {
+		// Keep the outer lease object stable, but replace its pins and view before
+		// reacquiring native execution. No old domain lock survives this refresh.
+		old := s.snapshot
+		old.unpin()
+		lease := s.in.lockGCInvocation(s.owner)
+		if lease.snapshot == nil {
+			panic("wago: conversion invocation classification changed")
+		}
+		next := lease.snapshot
+		store := s.in.refStore
+		store.mu.Lock()
+		*old = *next
+		store.gcDomains.invocations[s.owner] = old
+		store.mu.Unlock()
+		return
+	}
 	domains := s.domains
 	if s.dynamic {
 		s.topology.RLock()
@@ -1631,13 +1995,13 @@ func (s *referenceStore) rangeGCDomainSuspendedRoots(collector *gc.Collector, ex
 	}
 	n := 0
 	s.mu.Lock()
-	for owner, registration := range s.instances {
-		if registration == nil || registration.resourcesReleased || owner == nil || owner.gc != collector {
-			continue
+	appendOwner := func(owner *Instance) bool {
+		if compiledArchitecture == 4 && owner.gc != collector {
+			return true
 		}
 		state := owner.existingPublicGCState()
 		if state == nil || state == exclude || state.hostActivationCount == 0 {
-			continue
+			return true
 		}
 		if n < len(owners) {
 			owners[n] = gcSuspendedRootOwner{owner, state}
@@ -1645,6 +2009,16 @@ func (s *referenceStore) rangeGCDomainSuspendedRoots(collector *gc.Collector, ex
 			extra = append(extra, gcSuspendedRootOwner{owner, state})
 		}
 		n++
+		return true
+	}
+	if compiledArchitecture == 4 {
+		for owner, registration := range s.instances {
+			if registration != nil && !registration.resourcesReleased && owner != nil {
+				appendOwner(owner)
+			}
+		}
+	} else {
+		s.rangeRetainedFrameOwnersLocked(appendOwner)
 	}
 	s.mu.Unlock()
 	if roots.suspended != nil {
@@ -1695,6 +2069,98 @@ func (s *referenceStore) rangeGCDomainPersistentRootsClassified(collector *gc.Co
 }
 
 func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Instance {
+	return s.gcFrameContextOwner(pc, collector, 0)
+}
+
+// gcAnyFrameOwner selects an immutable return plan across collector domains.
+// Shared code alone is not instance identity: the caller's saved context is
+// authenticated below before any frame slots are visited.
+func (s *referenceStore) gcAnyFrameOwner(pc, context uintptr) *Instance {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	matches := func(candidate *Instance) bool {
+		return candidate != nil && candidate.c != nil && (context == 0 || candidate.nativeContext == context) && pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code))
+	}
+	for candidate, state := range s.instances {
+		if state != nil && !state.resourcesReleased && candidate != nil && candidate.refStore == s && matches(candidate) {
+			return candidate
+		}
+	}
+	var found *Instance
+	s.rangeRetainedFrameOwnersLocked(func(candidate *Instance) bool {
+		if matches(candidate) {
+			found = candidate
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// rangeRetainedFrameOwnersLocked visits each retained local/import owner once.
+// Callers hold s.mu and must not take a foreign store lock in visit.
+func (s *referenceStore) rangeRetainedFrameOwnersLocked(visit func(*Instance) bool) bool {
+	// Scalar imports may leave and reenter a store through an immutable native
+	// relay. The local registration announces ResourcesReleased under s.mu
+	// BEFORE detaching imports. Holding s.mu therefore retains its entire
+	// transitive imported-code/context graph; no foreign store lock is needed.
+	// Owner lookup uses this graph only after its fast local scan fails.
+	// Parked-host discovery also uses it when a GC-capable callback is active.
+	var inlinePending, inlineSeen [32]*Instance
+	pending, seen := inlinePending[:0], inlineSeen[:0]
+	var wideSeen map[*Instance]struct{}
+	add := func(candidate *Instance) {
+		if candidate == nil {
+			return
+		}
+		if wideSeen != nil {
+			if _, exists := wideSeen[candidate]; exists {
+				return
+			}
+			wideSeen[candidate] = struct{}{}
+		} else {
+			for _, previous := range seen {
+				if previous == candidate {
+					return
+				}
+			}
+			if len(seen) < len(inlineSeen) {
+				seen = append(seen, candidate)
+			} else {
+				wideSeen = make(map[*Instance]struct{}, 64)
+				for _, previous := range seen {
+					wideSeen[previous] = struct{}{}
+				}
+				wideSeen[candidate] = struct{}{}
+			}
+		}
+		pending = append(pending, candidate)
+	}
+	for candidate, state := range s.instances {
+		if state != nil && !state.resourcesReleased && candidate != nil && candidate.refStore == s {
+			add(candidate)
+		}
+	}
+	for len(pending) != 0 {
+		last := len(pending) - 1
+		candidate := pending[last]
+		pending = pending[:last]
+		if !visit(candidate) {
+			return false
+		}
+		for _, binding := range candidate.imports {
+			if imported, ok := binding.(*InstanceExport); ok && imported != nil {
+				add(imported.inst)
+			}
+		}
+	}
+	return true
+}
+
+func (s *referenceStore) gcFrameContextOwner(pc uintptr, collector *gc.Collector, context uintptr) *Instance {
 	if s == nil || collector == nil {
 		return nil
 	}
@@ -1702,7 +2168,7 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 	defer s.mu.Unlock()
 	if topology := s.gcDomains; topology != nil && topology.singleCodeOwner != nil {
 		owner := topology.singleCodeOwner
-		if owner.gc == collector && pc >= owner.base && pc-owner.base < uintptr(len(owner.c.code)) {
+		if owner.gc == collector && (context == 0 || owner.nativeContext == context) && pc >= owner.base && pc-owner.base < uintptr(len(owner.c.code)) {
 			return owner
 		}
 		return nil
@@ -1711,7 +2177,14 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 		if ranges := topology.codeRanges.byCollector[collector]; ranges != nil {
 			for _, image := range ranges.byPage[pc>>gcFrameCodeRangePageShift] {
 				if pc >= image.key.base && pc-image.key.base < image.bytes {
-					return image.owner
+					if context == 0 {
+						return image.owner
+					}
+					for link := image.owners; link != nil; link = link.next {
+						if candidate := link.instance; candidate.nativeContext == context {
+							return candidate
+						}
+					}
 				}
 			}
 		}
@@ -1721,7 +2194,7 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil || candidate.c.genericGCFrameRoots() == nil {
 			continue
 		}
-		if pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
+		if (context == 0 || candidate.nativeContext == context) && pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
 			return candidate
 		}
 	}
@@ -1765,14 +2238,15 @@ func (s *referenceStore) releaseUnclaimedGCCollector(collector *gc.Collector) {
 		return
 	}
 	topology.Lock()
-	defer topology.Unlock()
 	s.mu.Lock()
 	domain = topology.domainForCollectorLocked(collector)
 	if domain == nil || domain.refs != 0 || domain.claims != 0 || !topology.unlinkDomainLocked(domain) {
 		s.mu.Unlock()
+		topology.Unlock()
 		return
 	}
 	s.mu.Unlock()
+	topology.Unlock()
 	collector.Close()
 }
 
@@ -1809,12 +2283,19 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 			s.mu.Unlock()
 			return nil, nil, fmt.Errorf("wago: imported WasmGC collector is not a live Runtime domain")
 		}
+		if selected.conversionOwned {
+			s.mu.Unlock()
+			return nil, nil, fmt.Errorf("wago: receipt-owned conversion collector is not a shared type domain")
+		}
 		if !equalGCConfigs(selected.config, config) {
 			s.mu.Unlock()
 			return nil, nil, fmt.Errorf("wago: WasmGC collector configuration is incompatible with the imported Runtime GC domain")
 		}
 	} else {
 		for domain := topology.first; domain != nil; domain = domain.next {
+			if domain.conversionOwned {
+				continue
+			}
 			if !gcModuleFitsDomain(c, domain) {
 				continue
 			}
@@ -1891,7 +2372,8 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 func (s *referenceStore) registerInstance(in *Instance) error {
 	managedFunctionPrepareRegistration(s, in)
 	var importedInvocationDomains gcInvocationDomainSet
-	dynamicInvocationDomains := in != nil && (compiledManagedFunctionReachability(in.c) || !s.private && compiledHasDynamicFuncrefReachability(in.c))
+	fullDynamic := in != nil && (compiledManagedFunctionReachability(in.c) || !s.private && compiledHasDynamicFuncrefReachability(in.c))
+	dynamicInvocationDomains := fullDynamic || in != nil && compiledConversionStoreHooks(in.c)
 	importsPrivateInvocationDomain := false
 	if in != nil && in.c != nil {
 		for i, displayKey := range in.c.Imports {
@@ -1901,10 +2383,33 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 			}
 			if export.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 || compiledManagedFunctionReachability(export.inst.c) {
 				if export.inst.refStore != s {
-					return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", displayKey)
+					if export.inst.requiresSameRuntimeInvocation() {
+						return fmt.Errorf("wago: dynamic funcref import %q requires the same Runtime", displayKey)
+					}
+					export.inst.refStore.mu.Lock()
+					producer := export.inst.refStore.instances[export.inst]
+					if producer != nil {
+						importedInvocationDomains.add(producer.gcDomain)
+						for j := 0; j < producer.invocationDomains.len(); j++ {
+							importedInvocationDomains.add(producer.invocationDomains.at(j))
+						}
+					}
+					export.inst.refStore.mu.Unlock()
+					continue
+				} else {
+					dynamicInvocationDomains = true
+					export.inst.refStore.mu.Lock()
+					producer := export.inst.refStore.instances[export.inst]
+					fullDynamic = fullDynamic || producer == nil || !producer.conversionOnlyInvocationDomains
+					if producer != nil && producer.conversionOnlyInvocationDomains {
+						importedInvocationDomains.add(producer.gcDomain)
+						for j := 0; j < producer.invocationDomains.len(); j++ {
+							importedInvocationDomains.add(producer.invocationDomains.at(j))
+						}
+					}
+					export.inst.refStore.mu.Unlock()
+					continue
 				}
-				dynamicInvocationDomains = true
-				continue
 			}
 			domains := export.inst.gcInvocationDomains()
 			for i := 0; i < domains.len(); i++ {
@@ -1916,7 +2421,7 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 			}
 		}
 	}
-	if dynamicInvocationDomains && importsPrivateInvocationDomain {
+	if fullDynamic && importsPrivateInvocationDomain {
 		return fmt.Errorf("wago: dynamic funcref imports cannot reach a private GC invocation domain")
 	}
 	if in != nil && in.c != nil {
@@ -2042,7 +2547,7 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	invocationDomains.add(domain)
 	invocationDomains.sort()
 	var storedInvocationDomains *gcInvocationDomainSet
-	if !dynamicInvocationDomains && invocationDomains.len() != 0 && (invocationDomains.len() != 1 || invocationDomains.at(0) != domain) {
+	if !fullDynamic && invocationDomains.len() != 0 && (invocationDomains.len() != 1 || invocationDomains.at(0) != domain) {
 		storedInvocationDomains = new(gcInvocationDomainSet)
 		*storedInvocationDomains = invocationDomains
 	}
@@ -2065,7 +2570,8 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	s.instanceTypes[in] = keys
 	s.instances[in] = &referenceStoreInstance{
 		gcDomain: domain, invocationDomains: storedInvocationDomains,
-		dynamicInvocationDomains: dynamicInvocationDomains,
+		dynamicInvocationDomains:        dynamicInvocationDomains,
+		conversionOnlyInvocationDomains: dynamicInvocationDomains && !fullDynamic,
 	}
 	s.registerGCFrameCodeRangeLocked(in)
 	s.liveInstances++
@@ -2177,8 +2683,16 @@ func (s *referenceStore) lockGCDomainTopology() *gcDomainTopology {
 }
 
 func (s *referenceStore) lockGCDomainTopologyForInstance(in *Instance) *gcDomainTopology {
-	if in == nil || in.gc == nil {
+	if in == nil {
 		return nil
+	}
+	if in.gc == nil {
+		s.mu.Lock()
+		receipts := s.gcDomains != nil && len(s.gcDomains.conversionContainers) != 0
+		s.mu.Unlock()
+		if !receipts {
+			return nil
+		}
 	}
 	return s.lockGCDomainTopology()
 }
@@ -2253,7 +2767,7 @@ func (s *referenceStore) allClosedInstancesQuiescedLocked() bool {
 }
 
 func (s *referenceStore) canReleaseEntriesLocked() bool {
-	return s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 && len(s.gcByToken) == 0 && s.allClosedInstancesQuiescedLocked()
+	return (s.gcDomains == nil || len(s.gcDomains.invocations) == 0) && s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 && len(s.gcByToken) == 0 && s.allClosedInstancesQuiescedLocked()
 }
 
 func (s *referenceStore) maybeReleaseEntriesLocked() referenceTokenEntries {
@@ -2833,7 +3347,7 @@ func (s *referenceStore) releaseGCRef(source *Instance, token uint64) error {
 	var release referenceTokenEntries
 	topology := s.lockGCDomainTopology()
 	s.mu.Lock()
-	if s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 && len(s.gcByToken) == 0 {
+	if s.canReleaseEntriesLocked() {
 		release = s.releaseEntriesLocked()
 	}
 	s.mu.Unlock()
@@ -3500,6 +4014,7 @@ type referenceTokenEntries struct {
 }
 
 func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
+	retireGCConversionStoreLocked(s)
 	var entries referenceTokenEntries
 	if len(s.byToken) != 0 {
 		entries.funcrefs = make([]*funcrefTokenEntry, 0, len(s.byToken))
@@ -3975,4 +4490,31 @@ func (in *Instance) hasPhysicalResources() bool {
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
 	return !in.resourcesClosed
+}
+
+// Storage alone is not cross-Runtime conversion authority. A scalar-only
+// collector-free producer remains importable; converted publications still
+// require the complete current invocation's authority before changing storage.
+func (in *Instance) requiresSameRuntimeInvocation() bool {
+	if in.executionFlags.Load()&executionFlagDynamicGCDomain == 0 {
+		return false
+	}
+	in.refStore.mu.Lock()
+	defer in.refStore.mu.Unlock()
+	entry := in.refStore.instances[in]
+	if entry == nil || !entry.conversionOnlyInvocationDomains {
+		return true
+	}
+	hasConversionAuthority := func(d *gcStoreDomain) bool {
+		return d != nil && (d.conversionPublishers != 0 || d.conversionClaims != 0)
+	}
+	if hasConversionAuthority(entry.gcDomain) {
+		return true
+	}
+	for i := 0; i < entry.invocationDomains.len(); i++ {
+		if hasConversionAuthority(entry.invocationDomains.at(i)) {
+			return true
+		}
+	}
+	return false
 }
