@@ -11,7 +11,6 @@ package arm64
 
 import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // gcArrayReduction proves the complete unsigned induction sum of immediately
@@ -118,12 +117,6 @@ func (f *fn) emitGCArrayReduction(typeIndex, length uint32) error {
 	f.pushReg(count, mtI32)
 	// Two raw slots: count and an exact pair of u32 type index / array length.
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: int64(uint64(typeIndex)<<32 | uint64(length))})
-	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompArray); ok && gc.NativeDeadBatchSupported && layout.Type.Final && layout.PointerFree && layout.ElemLayout.DirectAccess && layout.ElemLayout.Size == 4 {
-		f.nativeDeadArrayBatchBytes = gc.Align8(gc.PayloadOffset + length*4)
-		if f.gcReducedBounded && f.opt(optRegABI) && f.opt(optPreparedDirectEntry) {
-			f.gcDeadBatchLayout = uint64(f.nativeDeadArrayBatchBytes) | uint64(8)<<32
-		}
-	}
 	if err := f.callGCStructHelper(gcArrayReserveDeadBatch, []wasm.ValType{wasm.I32, wasm.I64}, nil); err != nil {
 		return err
 	}

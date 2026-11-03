@@ -342,8 +342,7 @@ func (fn *WasmFunc) tryBeginPrivateGCState() *instancePluginState {
 	if state == nil || state.invokeMu.state.shared != &in.invocationState.word || !in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
 		return nil
 	}
-	if !in.privateGCStateValid(state) ||
-		fn.gcDeadInductionLayout == 0 && !fn.privateGCNativeContextValid(state) {
+	if !in.privateGCStateValid(state) || !fn.privateGCNativeContextValid(state) {
 		in.endFastInvocation(state)
 		return nil
 	}
@@ -357,8 +356,7 @@ func (in *Instance) privateGCStateValid(state *instancePluginState) bool {
 		in.executionFlags.Load()&(executionFlagIndependent|preparedFastBlocked) == executionFlagIndependent
 }
 
-// The Go-only induction charge needs collector ownership but no native binding.
-// Check the cached native context only when execution must use the wrapper.
+// The prepared wrapper requires the cached native context.
 func (fn *WasmFunc) privateGCNativeContextValid(state *instancePluginState) bool {
 	version := state.nativeContextVersion.Load()
 	return fn.hostPrepared != nil && version != 0 && version != ^uint64(0) && fn.hostContextVersion == version && fn.hostMemBase == fn.in.jm.LinMemBase()

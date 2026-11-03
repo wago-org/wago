@@ -183,10 +183,6 @@ func (f *fn) emitGCStructReduction(typeIndex uint32) error {
 	// with a register-entry capability in low-level compilation without GC layouts.
 	f.sc.directPrepared = false
 	f.sc.directPreparedLight = false
-	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); f.gcReducedBounded && f.opt(optRegABI) && f.opt(optPreparedDirectEntry) && ok && layout.NativeAlloc && layout.PointerFree && layout.ObjectSize <= 4095 {
-		f.gcDeadBatchLayout = uint64(layout.ObjectSize) | uint64(max(layout.Align, 8))<<32
-	}
-
 	if reg, _, ok := f.pinReg(0); ok {
 		f.recoverLocal(0)
 		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: reg, idx: 0})
@@ -198,7 +194,6 @@ func (f *fn) emitGCStructReduction(typeIndex uint32) error {
 	f.a.Csinc32(count, count, ZR, condNE) // this do-while executes once for n=0
 	f.pushReg(count, mtI32)
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
-	f.nativeDeadStructBatchType = typeIndex + 1
 	if err := f.callGCStructHelper(gcStructReserveDeadBatch, []wasm.ValType{wasm.I32, wasm.I32}, nil); err != nil {
 		return err
 	}

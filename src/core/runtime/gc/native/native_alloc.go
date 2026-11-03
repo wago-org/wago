@@ -9,8 +9,9 @@ package gc
 
 import "slices"
 
-// NativeDeadBatchSupported keeps injected allocation failures on the checked
-// per-object path. Release builds may charge proven-dead batches natively.
+// NativeDeadBatchSupported is retained as the shared compiler/runtime gate for
+// scalar lifetime replacement. Failure-injection builds require its checked
+// allocation path and therefore disable that replacement.
 const NativeDeadBatchSupported = !failureInjectionEnabled
 
 // Native allocation reserves bounded identity batches. AMD64 struct allocation

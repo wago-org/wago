@@ -114,18 +114,12 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if err := in.gc.ReserveDeadArrayAllocationsWithPoll(in.requireGCDomainType(typeID), length, count, frameRoots, in.pollGCBatchInterrupt); err != nil {
 			panic(gcHelperFailure(err))
 		}
-		if gc.NativeDeadBatchSupported {
-			in.prepareNativeDeadArrayBatch(typeID, length, count)
-		}
 	case gcStructReserveDeadBatch:
 		if len(args) != 2 || len(results) != 0 {
 			panic(gcHelperFailuref("gc struct batch reservation arity = %d/%d, want 2/0", len(args), len(results)))
 		}
 		if err := in.gc.ReserveDeadStructAllocationsWithPoll(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots, in.pollGCBatchInterrupt); err != nil {
 			panic(gcHelperFailure(err))
-		}
-		if gc.NativeDeadBatchSupported {
-			in.prepareNativeDeadStructBatch(uint32(args[1]), uint32(args[0]))
 		}
 	case gcStructReserveDead, gcStructReserveDeadNative:
 		if len(args) != 1 {
