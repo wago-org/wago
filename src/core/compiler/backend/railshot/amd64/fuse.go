@@ -335,6 +335,9 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		// loads and stores before the conditional jump.
 		f.convergeBranchLocals(fr)
 	}
+	if f.tryScalarPosttestLoop(fr, fi, k, cc) {
+		return nil
+	}
 	a := fr.branchArity()
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
 	if coldExit {

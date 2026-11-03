@@ -1686,6 +1686,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 }
 
 func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
+	signature := *r
 	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
 	if err != nil {
 		return err
@@ -1703,7 +1704,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	fr.setFloatConstBase(len(f.fconsts))
 	fr.set(ctrlEntryUnreachable, f.unreachable)
-	if f.straightLineBlock(r, kind, pN, rN, res0) {
+	if f.straightLineBlock(r, kind, pN, rN, res0, signature) {
 		fr.controlSite = straightLineBlockSite
 	}
 	if kind == cfLoop {
@@ -1748,7 +1749,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 	}
 	if fr.isStraightLineBlock() {
 		fr.set(ctrlRegMerge1, false)
-		fr.height = f.depth()
+		fr.height = f.depth() - pN
 		f.pushCtrl(&fr)
 		f.stats.peep("straight-line-block")
 		return nil

@@ -50,6 +50,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Keep bounded AMD64 integer block parameters and private tuple-helper inputs
+  in registers, and unroll short register-only post-tested integer loops while
+  retaining every iteration's exit check.
+
 - Retain immutable ARM64 caller operands across bounded private integer-tuple
   control flow, including nested fallthrough blocks and trapping callees.
 - Reuse proved ARM64 pinned-local entry guards at bounded loop backedges when

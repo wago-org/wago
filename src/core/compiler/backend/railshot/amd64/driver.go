@@ -263,10 +263,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		forwarded := x32 < f.inlineForwardN
+		if forwarded {
+			x = f.inlineForward[x32]
+		}
 		if regallocCheckEnabled {
 			checkNativeSourceGet(f, x)
 		}
-		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}
@@ -278,7 +282,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			}
 		}
 		var value *elem
-		if f.hasIntervalLocal(int(x)) {
+		if !forwarded && f.hasIntervalLocal(int(x)) {
 			f.activateIntervalLocal(int(x), r.Offset(), true)
 			if !f.intervalControl {
 				if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {

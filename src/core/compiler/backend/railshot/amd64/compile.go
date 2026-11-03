@@ -550,10 +550,12 @@ type fn struct {
 	// prologue's zeroDeclaredLocals never touches them). localBase is added to every
 	// local index while a splice runs, remapping the callee's locals onto that base;
 	// it is 0 outside a splice.
-	inlineTargets inlineTargetTable
-	inlineBase    map[int]int
-	localBase     int
-	inlineDepth   int
+	inlineTargets  inlineTargetTable
+	inlineBase     map[int]int
+	localBase      int
+	inlineDepth    int
+	inlineForward  [4]uint32 // read-only pair parameters mapped to original caller locals
+	inlineForwardN uint32
 	// inlineRetFrame is the f.ctrl index of the synthetic block frame standing in
 	// for an inlined control-flow callee's function boundary: `return` inside the
 	// callee branches to it (not the real function frame). 0 when not inside such a

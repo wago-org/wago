@@ -458,7 +458,7 @@ var catalog = []Definition{
 	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
 	both("straight-line-block", "Straight-line blocks", "retain operand residency through bounded fallthrough blocks and fully spliced private callees"),
 	arm64("loop-local-params", "Loop parameter locals", "transfer bounded integer loop parameters directly into pinned local homes"),
-	arm64("scalar-loop-unroll", "Scalar loop unrolling", "replicate bounded register-only integer loops and streamline short pinned-local loop backedges"),
+	both("scalar-loop-unroll", "Scalar loop unrolling", "replicate bounded register-only integer loops and streamline short pinned-local loop backedges"),
 	arm64("cold-tuple-loop-exit", "Cold integer tuple loop exits", "defer local-only tuple exit arms so loop continuations fall through"),
 	arm64("guarded-div-rem", "Guarded integer division", "reuse an immediately preceding local zero guard for one integer division or remainder"),
 	arm64("tuple-if-select", "Integer pair selection", "select pinned integer pair operands without a structured merge"),

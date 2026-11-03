@@ -1043,7 +1043,10 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	// fast path above only needs the walk when its argument can trap.
 	f.materializeTrapsBefore(f.s.head)
 	base := f.inlineBase[t.globalIdx]
-	f.bindInlineParams(t, base)
+	previousForward, previousForwardN := f.inlineForward, f.inlineForwardN
+	if !f.forwardIntegerPairParams(t) {
+		f.bindInlineParams(t, base)
+	}
 
 	old := f.localBase
 	oldTraceFunc, oldTraceBase, oldPC := f.traceFuncIdx, f.tracePCBase, f.wasmPC
@@ -1061,6 +1064,7 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	} else {
 		err = f.inlineBody(t.body)
 	}
+	f.inlineForward, f.inlineForwardN = previousForward, previousForwardN
 	f.localBase = old
 	f.inlineDepth = oldInlineDepth
 	f.traceFuncIdx, f.tracePCBase, f.wasmPC = oldTraceFunc, oldTraceBase, oldPC
@@ -1077,6 +1081,70 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	f.realizeInlineRange(base, base+nLocals)
 	f.stats.addInlineSiteBytes(f.a.Len() - start)
 	return nil
+}
+
+// forwardIntegerPairParams keeps a bounded read-only tuple helper on the
+// caller's locals instead of copying its parameters into private frame slots.
+// Only nontrapping integer bodies qualify, so result trees may remain deferred
+// until a caller write materializes their original local reads.
+func (f *fn) forwardIntegerPairParams(t *inlineTarget) bool {
+	params := t.paramCount()
+	if f.inlineDepth != 0 || f.localBase != 0 || len(f.intervalLast) != 0 || f.policy.CompactNative ||
+		f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || profileEnabled || !f.pureIntegerPair(t) {
+		return false
+	}
+	var sources [4]uint32
+	localTypes := f.inlineTargets.localTypes(t)
+	e := f.s.back()
+	for i := params - 1; i >= 0; i-- {
+		if e == nil || e == f.s.head || !e.isValue() || (e.st.kind != stLocalRef && e.st.kind != stLocalReg) ||
+			int(e.st.idx) >= f.nLocals || e.st.typ != localTypes[i] || f.localType[e.st.idx] != localTypes[i] {
+			return false
+		}
+		sources[i] = e.st.idx
+		e = e.prev
+	}
+	for range params {
+		f.erase(f.s.back())
+	}
+	f.inlineForward, f.inlineForwardN = sources, uint32(params)
+	for range params {
+		f.stats.peep("inline-integer-pair-param-forward")
+	}
+	return true
+}
+
+// pureIntegerPair proves a bounded parameter-only tuple body has no traps,
+// control flow, writes, helpers, or calls. Lookahead never changes its reader.
+func (f *fn) pureIntegerPair(t *inlineTarget) bool {
+	params := t.paramCount()
+	if params == 0 || params > 4 || t.hasCtrl || t.touchesMem || t.recursive() ||
+		int(t.localTypeEnd-t.typeStart) != params || t.resultTypeEnd-t.localTypeEnd != 2 || len(t.body) > 16 {
+		return false
+	}
+	for _, typ := range f.inlineTargets.localTypes(t) {
+		if typ != mtI32 && typ != mtI64 {
+			return false
+		}
+	}
+	for _, typ := range f.inlineTargets.resultTypes(t) {
+		if typ != mtI32 && typ != mtI64 {
+			return false
+		}
+	}
+	r := wasm.NewReader(t.body)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		pure := op == 0x01 || op == 0x0b || op == 0x1a || op == 0x1b || op == 0x20 ||
+			op == 0x41 || op == 0x42 || op >= 0x45 && op <= 0x5a ||
+			op >= 0x67 && op <= 0x8a && !(op >= 0x6d && op <= 0x70 || op >= 0x7f && op <= 0x82) ||
+			op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4
+		if err != nil || !pure || f.classifier.ClassifyInto(r, op, &imm) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // bindInlineParams binds the p argument operands into the callee's param locals

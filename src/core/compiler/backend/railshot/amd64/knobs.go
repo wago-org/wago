@@ -29,6 +29,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("wide-loop-int-const", &wideLoopIntConstEnabled),
 	optimization.Bind("compact-loop-align32", &compactLoopAlign32Enabled),
 	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
+	optimization.Bind("scalar-loop-unroll", &scalarLoopUnrollEnabled),
 	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
 	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
 	optimization.Bind("callfree-loop-reg-state", &callFreeLoopRegStateEnabled),
@@ -108,6 +109,7 @@ var (
 	optWideLoopIntConst        = optimizationBindings.Option("wide-loop-int-const")
 	optCompactLoopAlign32      = optimizationBindings.Option("compact-loop-align32")
 	optCountedLoopLatch        = optimizationBindings.Option("counted-loop-latch")
+	optScalarLoopUnroll        = optimizationBindings.Option("scalar-loop-unroll")
 	optLinearSumLoop           = optimizationBindings.Option("linear-sum-loop")
 	optCallFreeLoopColdExit    = optimizationBindings.Option("callfree-loop-cold-exit")
 	optLoopRegState            = optimizationBindings.Option("callfree-loop-reg-state")
