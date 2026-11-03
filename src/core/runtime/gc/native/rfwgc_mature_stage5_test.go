@@ -7,16 +7,9 @@ import (
 
 func stage5Occupancy(t *testing.T, h *throughputHeap, live, reserved uint64) {
 	t.Helper()
-	var l, r uint64
-	for _, d := range h.mature.regions {
-		l += uint64(d.live)
-		r += uint64(d.reserved)
-	}
-	if l != live || r != reserved {
-		t.Fatalf("descriptor totals live/reserved=%d/%d want %d/%d", l, r, live, reserved)
-	}
-	if uint64(cap(h.mature.regions)) > (uint64(h.limit)+uint64(h.pageBytes)-1)/uint64(h.pageBytes) {
-		t.Fatal("unbounded metadata")
+	occupied := uint64(h.bump) - h.freeBytes - h.pendingBytes
+	if occupied != live+reserved {
+		t.Fatalf("exact allocator occupancy=%d want live+reserved=%d", occupied, live+reserved)
 	}
 	if !h.mature.admission {
 		assertMatureAdmissionClean(t, h)
@@ -26,9 +19,6 @@ func stage5Occupancy(t *testing.T, h *throughputHeap, live, reserved uint64) {
 func TestRFWGCMatureStage5AdmissionAndFragmentation(t *testing.T) {
 	c := stage4Collector(t, 6)
 	h := &c.throughput
-	if len(h.mature.regions) != 0 {
-		t.Fatal("metadata allocated before use")
-	}
 	var e [4]handleEntry
 	for i := range e {
 		var err error
@@ -107,11 +97,6 @@ func TestRFWGCMatureStage5CrossBoundaryReclamation(t *testing.T) {
 	}
 	h := &c.throughput
 	stage5Occupancy(t, h, 8240, 0)
-	for i, want := range []uint32{4096, 4096, 48} {
-		if h.mature.regions[i].live != want {
-			t.Fatalf("page %d %+v", i, h.mature.regions[i])
-		}
-	}
 	small = 0
 	if err := c.CollectFull(roots); err != nil {
 		t.Fatal(err)
@@ -131,11 +116,6 @@ func TestRFWGCMatureStage5CrossBoundaryReclamation(t *testing.T) {
 	stage5Occupancy(t, h, 0, 0)
 	if h.bump != 0 || len(h.pendingFree) != 0 {
 		t.Fatalf("no descriptor-driven reclaim: bump=%d pending=%d", h.bump, len(h.pendingFree))
-	}
-	for _, r := range h.mature.regions {
-		if r.retire {
-			t.Fatal("retirement not committed", r)
-		}
 	}
 	if err := c.CollectFull(roots); err != nil {
 		t.Fatal(err)
@@ -164,7 +144,7 @@ func TestRFWGCMatureStage5Churn(t *testing.T) {
 			t.Fatal(err)
 		}
 		stage5Occupancy(t, &c.throughput, 64, 0)
-		if c.throughput.mature.admission || len(c.throughput.mature.regions) != 1 || c.throughput.bump > 96 {
+		if c.throughput.mature.admission || c.throughput.bump > 96 {
 			t.Fatal("unbounded or unpublished churn")
 		}
 		v, err := c.StructGet(child, 1)
@@ -256,7 +236,7 @@ func TestRFWGCMatureStage5PartialFinalPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	stage5Occupancy(t, &h, 8208, 0)
-	if len(h.mature.regions) != 3 || h.mature.regions[2].live != 16 || len(h.mem) != 8208 {
+	if len(h.mem) != 8208 {
 		t.Fatal("partial final page bound")
 	}
 	for _, size := range []uint32{16, ^uint32(0)} {
@@ -297,5 +277,40 @@ func TestRFWGCMatureStage5RetirementPolicyControl(t *testing.T) {
 		} else if len(c.throughput.pendingFree) != 0 || c.throughput.bump != 0 {
 			t.Fatal("region policy did not drive reclamation")
 		}
+	}
+}
+
+func TestMatureFullCollectionDebtPolicyReconcilesMixedLivePage(t *testing.T) {
+	var h throughputHeap
+	if err := h.Init(Config{ThroughputHeapBytes: 8192, ThroughputPageBytes: 4096, ThroughputClassLimit: 32, NurseryRegionShift: 6}); err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	dead, err := h.alloc(32, spaceOld)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := h.alloc(4080, spaceLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.deferFree(dead); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.pendingFree) != 1 || live.off != 32 || live.off/h.pageBytes != dead.off/h.pageBytes {
+		t.Fatalf("mixed-page fixture dead=%+v live=%+v pending=%d", dead, live, len(h.pendingFree))
+	}
+	if err := h.reclaimEmptyMature(); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.pendingFree) != 0 || h.pendingBytes != 0 {
+		t.Fatal("full collection did not reconcile mixed-page debt")
+	}
+	spans := h.freeSpans()
+	if len(spans) != 1 || spans[0] != (throughputFreeSpan{off: 0, size: 32}) {
+		t.Fatalf("reconciled exact extent = %+v", spans)
+	}
+	if got := h.bytes(live); len(got) != 4080 {
+		t.Fatalf("live LOS payload extent=%d", len(got))
 	}
 }

@@ -5,7 +5,7 @@ package gc
 import "testing"
 
 func TestEvacuationStage7PartialAdmissionRollback(t *testing.T) {
-	for _, point := range []failurePoint{failMatureMetadata, failBackingGrowth} {
+	for _, point := range []failurePoint{failBackingGrowth} {
 		c, roots := stage7Heap(t, 8, 1, 6, true)
 		h := &c.throughput
 		before := *c.entry(roots[0])

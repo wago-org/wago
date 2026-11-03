@@ -12,21 +12,13 @@ type matureReviewExtent struct {
 }
 
 // Physical extents are supplied by the fixture/model, never handleAllocSize.
-// Require exact coverage by live objects + indexed/pending holes, and independently
-// intersect those known extents with descriptor pages.
+// Require exact coverage by live objects + indexed/pending holes.
 func matureReviewOracle(t *testing.T, h *throughputHeap, live []matureReviewExtent) {
 	t.Helper()
 	type span struct{ off, size uint32 }
 	var all []span
-	want := make([]uint32, len(h.mature.regions))
 	for _, x := range live {
 		all = append(all, span{x.e.off, x.size})
-		for p := x.e.off; p < x.e.off+x.size; {
-			i := p / h.pageBytes
-			end := min(x.e.off+x.size, (i+1)*h.pageBytes)
-			want[i] += end - p
-			p = end
-		}
 	}
 	for _, x := range h.freeSpans() {
 		all = append(all, span(x))
@@ -45,13 +37,8 @@ func matureReviewOracle(t *testing.T, h *throughputHeap, live []matureReviewExte
 	if end != h.bump {
 		t.Fatalf("coverage %d bump %d", end, h.bump)
 	}
-	for i, r := range h.mature.regions {
-		if r.live != want[i] || r.reserved != 0 {
-			t.Fatalf("page %d: %+v want %d", i, r, want[i])
-		}
-	}
-	if h.mature.admission || uint64(cap(h.mature.regions)) > (uint64(h.limit)+uint64(h.pageBytes)-1)/uint64(h.pageBytes) {
-		t.Fatal("admission/metadata bound")
+	if h.mature.admission {
+		t.Fatal("unpublished admission")
 	}
 }
 

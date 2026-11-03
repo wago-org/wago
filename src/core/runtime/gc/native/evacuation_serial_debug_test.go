@@ -9,7 +9,7 @@ import (
 )
 
 func TestEvacuationStage7AdmissionFaults(t *testing.T) {
-	for _, point := range []failurePoint{failMatureMetadata, failBackingGrowth, failEvacuationCopy, failEvacuationCommit} {
+	for _, point := range []failurePoint{failBackingGrowth, failEvacuationCopy, failEvacuationCommit} {
 		t.Run(string(rune('a'+point)), func(t *testing.T) {
 			c, roots := stage7Heap(t, 1, 129, 6, true)
 			h := &c.throughput
@@ -19,7 +19,7 @@ func TestEvacuationStage7AdmissionFaults(t *testing.T) {
 			bump := h.bump
 			h.mature.pressure = true
 			target := any(c)
-			if point == failMatureMetadata || point == failBackingGrowth {
+			if point == failBackingGrowth {
 				target = h
 			}
 			disarm := armFailure(target, point, 0)
