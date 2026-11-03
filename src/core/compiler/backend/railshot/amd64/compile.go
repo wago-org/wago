@@ -2071,10 +2071,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	}
 	codeCap := moduleCodeCapacityAMD64(totalBody, n, policy)
 	moduleTypes := buildModuleTypeCache(m, totalBody)
-	var gcLifetimeFacts *gcLifetimeModuleFacts
-	if policy.EnabledOption(optGCLifetimeAnalyze) {
-		gcLifetimeFacts = newGCLifetimeModuleFacts()
-	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	// Serial compilation writes directly into a demand-paged RW image. Only
 	// emitted pages become resident; the public owner seals the same image at
@@ -2091,7 +2087,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		sc.policy = policy
 		sc.classifier = classifier
 		sc.moduleTypes = moduleTypes
-		sc.gcLifetimeFacts = gcLifetimeFacts
 		sc.reserveLocalScratch(serialLocalScratchCapacity(allHints, inlineTargets, hostAdapters))
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.reserveControlFrames(ctrlCap)
