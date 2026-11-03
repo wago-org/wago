@@ -180,6 +180,28 @@ func (in *Instance) dispatchConversionTableBulk(authority gcConversionInvocation
 	if start > limit || count > limit-start {
 		panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
 	}
+	// A Store which has never enabled extern/GC conversion cannot contain an
+	// opaque conversion identity or a receipt. Keep the helper ABI so compiled
+	// code remains valid if a later module enables conversion, but complete the
+	// ordinary operation before allocating the bulk staging slice. The flag is
+	// monotonic and is published before conversion state can mint an identity.
+	if owner != nil && in.refStore != nil && !in.refStore.conversionDomainEverEnabled.Load() {
+		switch helper {
+		case 55: // table.fill
+			for i := uint64(0); i < count; i++ {
+				binary.LittleEndian.PutUint64(desc[8+(start+i)*8:], fill)
+			}
+		case 56, 58: // table.copy / table.init
+			copy(desc[8+start*8:8+(start+count)*8], source[sourceStart*8:(sourceStart+count)*8])
+		case 57: // table.grow
+			for i := uint64(0); i < count; i++ {
+				binary.LittleEndian.PutUint64(desc[8+(start+i)*8:], fill)
+			}
+			binary.LittleEndian.PutUint32(desc, uint32(limit))
+			results[0] = length
+		}
+		return
+	}
 	// Snapshot the complete source first, giving memmove semantics for aliases.
 	words := make([]uint64, int(count))
 	for i := range words {

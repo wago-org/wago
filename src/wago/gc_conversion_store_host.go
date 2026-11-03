@@ -35,6 +35,9 @@ func (in *Instance) publishConversionStoreInvocation(authority gcConversionInvoc
 	}
 	source := in.existingGCExternConversionState()
 	store := in.refStore
+	if owner != nil && !store.conversionDomainEverEnabled.Load() {
+		return publish()
+	}
 	store.mu.Lock()
 	topology := store.gcDomains
 	needed := topology != nil && (len(topology.conversions) != 0 || len(topology.conversionContainers) != 0) || source != nil && source.core != nil
@@ -209,6 +212,10 @@ func (in *Instance) publishConversionRangeInvocation(authority gcConversionInvoc
 	}
 	store := in.refStore
 	source := in.existingGCExternConversionState()
+	if owner != nil && !store.conversionDomainEverEnabled.Load() {
+		publish()
+		return nil
+	}
 	store.mu.Lock()
 	needed := store.gcDomains != nil && (len(store.gcDomains.conversions) != 0 || len(store.gcDomains.conversionContainers) != 0) || source != nil && source.core != nil
 	store.mu.Unlock()
