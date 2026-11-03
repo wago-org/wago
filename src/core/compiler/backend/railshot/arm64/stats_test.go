@@ -76,6 +76,7 @@ func TestPendingPacketIsBoundedArm64(t *testing.T) {
 }
 
 func TestCodegenStatsPeepholesArm64(t *testing.T) {
+	establishedScalarRoute(t)
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
 	v128x2 := []wasm.ValType{wasm.V128, wasm.V128}
@@ -350,6 +351,7 @@ func TestCallFreePinPoolUsesX8Arm64(t *testing.T) {
 }
 
 func TestEntryArgumentRegistersPromoteLeafLocalsArm64(t *testing.T) {
+	establishedScalarRoute(t)
 	if !entryArgPinsEnabled {
 		t.Skip("WAGO_ARM64_NO_ENTRY_ARG_PINS")
 	}

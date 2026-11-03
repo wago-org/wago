@@ -110,6 +110,7 @@ func TestDeferredRHSRelocationTracksForcedSpill(t *testing.T) {
 }
 
 func TestExecDeferredRHSRelocation(t *testing.T) {
+	useEstablishedScalarPath(t)
 	requireCompilerDiagnostics(t)
 	params := make([]wasm.ValType, 10)
 	for i := range params {

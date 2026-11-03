@@ -21,18 +21,21 @@ func TestExternrefGlobalHoldingConvertedGCReference(t *testing.T) {
 		t.Fatalf("GetValue: %v", err)
 	}
 	out, err := inst.InvokeValues(ctx, "roundtrip", v)
-	if err != nil || AsI32(out[0].Bits()) != 7 {
+	if err != nil || len(out) != 1 || AsI32(out[0].Bits()) != 7 {
 		t.Fatalf("roundtrip(GetValue) = %v, %v; want 7", out, err)
 	}
 	made, err := inst.InvokeValues(ctx, "make", ValueI32(42))
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || len(made) != 1 {
+		t.Fatalf("make(42) = %v, %v", made, err)
 	}
 	if err := g.SetValue(made[0]); err != nil {
 		t.Fatalf("SetValue: %v", err)
 	}
+	if err := inst.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
 	if got := invokeI32(t, inst, "readg"); got != 42 {
-		t.Fatalf("readg after SetValue = %d, want 42", got)
+		t.Fatalf("readg after SetValue and collection = %d, want 42", got)
 	}
 	if err := g.SetValue(ValueExternRef(NullExternRef())); err != nil {
 		t.Fatalf("SetValue(null): %v", err)

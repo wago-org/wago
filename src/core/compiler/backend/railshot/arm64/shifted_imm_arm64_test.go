@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompactShiftedAddImmediateArm64(t *testing.T) {
+	establishedScalarRoute(t)
 	requireCompilerDiagnostics(t)
 	// local.get 0; i64.const 4096; i64.add
 	m := mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64},

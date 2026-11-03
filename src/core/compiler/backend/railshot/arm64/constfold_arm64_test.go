@@ -170,6 +170,7 @@ func TestSameOperandCompareExecArm64(t *testing.T) {
 // emitted), a constant unary bumps "const-fold", and a same-local compare bumps
 // "same-operand". The whole body folds to a constant, so nothing condenses.
 func TestConstFoldPackPeepArm64(t *testing.T) {
+	establishedScalarRoute(t)
 	i32 := []wasm.ValType{wasm.I32}
 	cases := []struct {
 		name string

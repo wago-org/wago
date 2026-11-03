@@ -10,6 +10,7 @@ import (
 )
 
 func TestLazyIntervalBorrowsPreserveCode(t *testing.T) {
+	useEstablishedScalarPath(t)
 	saved := lazyIntervalBorrowsEnabled
 	defer func() { lazyIntervalBorrowsEnabled = saved }()
 	for _, control := range []bool{false, true} {

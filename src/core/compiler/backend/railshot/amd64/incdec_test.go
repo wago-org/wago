@@ -12,6 +12,7 @@ import (
 )
 
 func TestSizeIncDecImmediateForms(t *testing.T) {
+	useEstablishedScalarPath(t)
 	requireCompilerDiagnostics(t)
 	tests := []struct {
 		name    string

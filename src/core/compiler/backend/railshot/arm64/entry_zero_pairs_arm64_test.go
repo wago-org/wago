@@ -21,6 +21,7 @@ func entryZeroPairsModuleARM64(t testing.TB, locals, localType byte) *wasm.Modul
 }
 
 func TestEntryZeroPairsARM64(t *testing.T) {
+	establishedScalarRoute(t)
 	requireCompilerDiagnostics(t)
 	for _, tc := range []struct {
 		name      string

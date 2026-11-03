@@ -115,6 +115,7 @@ func intervalRegionModuleArm64(t *testing.T) *wasm.Module {
 }
 
 func TestIntervalRegionDynamicReuseArm64(t *testing.T) {
+	establishedScalarRoute(t)
 	saved := intervalRegionPinsEnabled
 	defer func() { intervalRegionPinsEnabled = saved }()
 	m := intervalRegionModuleArm64(t)
@@ -221,6 +222,7 @@ func TestIntervalRegionCachesMemSizeInLeafScratchArm64(t *testing.T) {
 }
 
 func TestEntryInitializedLocalSkipsZeroArm64(t *testing.T) {
+	establishedScalarRoute(t)
 	saved := entryInitElisionEnabled
 	defer func() { entryInitElisionEnabled = saved }()
 	body := []byte{

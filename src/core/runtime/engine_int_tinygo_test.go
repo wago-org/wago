@@ -26,8 +26,15 @@ func TestTinyGoNativeResumeUsesPhysicalStackTop(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	if got, want := e.nativeResumeStackTop(), e.preparedInt.stackTop; got != want || got == e.stackTop {
-		t.Fatalf("resume stack top = %#x, want physical top %#x distinct from entry %#x", got, want, e.stackTop)
+	if got, want := e.nativeResumeStackTop(), e.preparedInt.stackTop; got != want {
+		t.Fatalf("resume stack top = %#x, want physical top %#x", got, want)
+	}
+	entry := e.stackTop
+	e.stackTop = e.preparedInt.stackTop ^ uintptr(16)
+	got, want := e.nativeResumeStackTop(), e.preparedInt.stackTop
+	e.stackTop = entry
+	if got != want {
+		t.Fatalf("resume used controlled entry sentinel: got %#x want %#x", got, want)
 	}
 }
 

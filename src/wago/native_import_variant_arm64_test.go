@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"runtime"
 	"testing"
 )
 
@@ -35,6 +36,12 @@ func nativeImportVariantModule(pair bool) []byte {
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(types...)), wasmtest.Section(2, wasmtest.Vec(imp, imp)), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(ownType))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
 }
 
+// api.go installs collector-free unwind maps only where scalar native calls
+// can reenter a collecting domain. Windows ARM64 retains the no-plan route.
+func nativeImportVariantRequiresUnwindMaps() bool {
+	return runtime.GOOS == "linux" || runtime.GOOS == "darwin"
+}
+
 func TestNativeImportVariantSourceArtifactAndCalls(t *testing.T) {
 	if codeProfileEnabled {
 		t.Skip("profiling deliberately retains the general body")
@@ -54,6 +61,13 @@ func TestNativeImportVariantSourceArtifactAndCalls(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
+						// Keep both platform contracts: collecting-domain callers require
+						// unwind maps; the Windows no-plan caller can specialize.
+						roots := c.genericGCFrameRoots()
+						hasUnwind := roots != nil && len(roots.callsites) != 0
+						if hasUnwind != nativeImportVariantRequiresUnwindMaps() {
+							t.Fatalf("public imported caller unwind maps=%t on %s", hasUnwind, runtime.GOOS)
+						}
 						var image bytes.Buffer
 						if _, err := c.WriteCodeTo(&image); err != nil {
 							t.Fatal(err)
@@ -119,8 +133,8 @@ func TestNativeImportVariantSourceArtifactAndCalls(t *testing.T) {
 							}
 						}
 					}
-					if bytes.Equal(images["0"], images["1"]) || len(images["1"]) <= len(images["0"]) {
-						t.Fatal("guarded variant selector did not add a second body")
+					if same := bytes.Equal(images["0"], images["1"]); same != nativeImportVariantRequiresUnwindMaps() {
+						t.Fatalf("selector images equal=%t on %s: mapped callers exclude specialization, no-plan callers retain it", same, runtime.GOOS)
 					}
 				})
 			}

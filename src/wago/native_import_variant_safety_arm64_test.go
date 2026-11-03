@@ -52,6 +52,7 @@ func TestNativeImportVariantForeignFallback(t *testing.T) {
 }
 
 func TestNativeImportVariantTrap(t *testing.T) {
+	t.Setenv("WAGO_ARM64_NATIVE_IMPORT_TARGET_CACHE", "1")
 	module := watToWasm(t, `(module
  (import "env" "step" (func $a (param i32) (result i32)))
  (import "env" "step" (func $b (param i32) (result i32)))
@@ -69,6 +70,11 @@ func TestNativeImportVariantTrap(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
+		roots := c.genericGCFrameRoots()
+		hasUnwind := roots != nil && len(roots.callsites) != 0
+		if hasUnwind != nativeImportVariantRequiresUnwindMaps() {
+			t.Fatalf("public trap caller unwind maps=%t on %s", hasUnwind, runtime.GOOS)
+		}
 		var image bytes.Buffer
 		if _, err = c.WriteCodeTo(&image); err != nil {
 			t.Fatal(err)
@@ -87,8 +93,9 @@ func TestNativeImportVariantTrap(t *testing.T) {
 		}
 		in.Close()
 	}
-	if !codeProfileEnabled && bytes.Equal(images[0], images[1]) {
-		t.Fatal("trap fixture did not exercise guarded body")
+	wantSame := nativeImportVariantRequiresUnwindMaps() || codeProfileEnabled
+	if same := bytes.Equal(images[0], images[1]); same != wantSame {
+		t.Fatalf("trap selector images equal=%t, want=%t on %s", same, wantSame, runtime.GOOS)
 	}
 }
 
