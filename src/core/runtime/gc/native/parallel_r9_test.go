@@ -24,7 +24,8 @@ func (l *r9ProtocolUnlock) Unlock() {
 
 func TestR9ProtocolConditionPublication(t *testing.T) {
 	for _, epoch := range []uint32{0xfffffffe, 0xffffffff, 0} {
-		p := &parallelCollector{collector: &Collector{}, active: 2, epoch: epoch}
+		p := &parallelCollector{collector: &Collector{}, epoch: epoch}
+		p.outstanding.Store(1)
 		registered := make(chan struct{})
 		p.ready = sync.NewCond(&r9ProtocolUnlock{mu: &p.mu, registered: registered})
 		w := &traceWorker{pool: p}
@@ -34,7 +35,7 @@ func TestR9ProtocolConditionPublication(t *testing.T) {
 		p.mu.Lock()
 		// Force the last producer to finish at the registered-wait boundary.
 		// Neither the condition predicate nor this notification uses epoch.
-		p.active = 0
+		p.outstanding.Store(0)
 		p.ready.Broadcast()
 		p.mu.Unlock()
 		<-done

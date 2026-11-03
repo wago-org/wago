@@ -5,6 +5,7 @@ package gc
 import (
 	"encoding/binary"
 	"fmt"
+	"math/bits"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -14,6 +15,7 @@ const parallelCollectionSupported = true
 const parallelMinObjects = 8192
 const parallelArrayChunk = 1024
 const parallelQueueLimit = 4096
+const parallelPrivateLimit = 24
 
 const (
 	parallelTrace uint8 = iota
@@ -27,7 +29,8 @@ type traceTask struct{ handle, first, end uint32 }
 type traceWorker struct {
 	pool      *parallelCollector
 	wake      chan *parallelPhase
-	local     []traceTask
+	local     [parallelPrivateLimit]traceTask
+	localLen  int
 	live      []uint32
 	scanned   uint64
 	tasks     uint64
@@ -66,9 +69,11 @@ type parallelCollector struct {
 	mu               sync.Mutex
 	ready            *sync.Cond
 	queue            []traceTask
-	active           int // workers that can still publish work, including private stacks
 	idle             atomic.Int32
-	claims           []uint32 // per-handle epoch; separate from the serial mark representation
+	claims           []uint32        // per-handle epoch; separate from the serial mark representation
+	pending          []atomic.Uint64 // one overflow bit per admitted stable handle
+	arrayNext        []atomic.Uint32 // per-handle/worker lazy chunk cursors; zero denotes no chunk
+	outstanding      atomic.Int64    // published tasks not yet completely scanned
 	epoch            uint32
 	nursery, capture bool
 	phase            uint8
@@ -103,17 +108,36 @@ func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 	if len(p.claims) < len(c.handles) {
 		p.claims = make([]uint32, len(c.handles))
 	}
+	words := (len(c.handles) + 63) / 64
+	if len(p.pending) < words {
+		p.pending = make([]atomic.Uint64, words)
+	}
+	arraySlots := len(c.handles) * len(p.workers)
+	if len(p.arrayNext) < arraySlots {
+		p.arrayNext = make([]atomic.Uint32, arraySlots)
+	}
+	for i := range p.pending {
+		p.pending[i].Store(0)
+	}
+	for i := range p.arrayNext {
+		p.arrayNext[i].Store(0)
+	}
 	p.epoch++
 	if p.epoch == 0 {
 		clear(p.claims)
 		p.epoch = 1
 	}
 	p.nursery, p.capture = nursery, capture
+	if capture && cap(c.promotionScratch) < len(c.nurseryHandles) {
+		// Admission bounds capture scratch by the nursery census before helpers
+		// start. The coordinator later retains only sparse live entries.
+		c.promotionScratch = make([]plannedPromotion, 0, len(c.nurseryHandles))
+	}
 	p.phase = parallelTrace
 	p.selectParticipants(objects)
 	for i := range p.workers {
 		w := &p.workers[i]
-		w.local = w.local[:0]
+		w.localLen = 0
 		w.live = w.live[:0]
 		w.scanned = 0
 		w.tasks = 0
@@ -124,11 +148,9 @@ func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 	for i, h := range c.markStack {
 		p.claims[h] = p.epoch
 		c.markHighWater = max(c.markHighWater, h+1)
-		w := &p.workers[i%p.participants]
-		w.local = append(w.local, traceTask{handle: h})
+		p.workers[i%p.participants].enqueue(traceTask{handle: h})
 	}
 	c.markStack = c.markStack[:0]
-	p.active = p.participants
 	p.run()
 	var scanned uint64
 	for i := range p.workers {
@@ -140,8 +162,8 @@ func (c *Collector) drainParallel(capture, nursery bool) (uint64, bool) {
 		// CollectMinor uses the nursery ledger when every young object survives.
 		// Do not materialize a captured list that the planner will discard.
 		if scanned < uint64(len(c.nurseryHandles)) {
-			for i := range p.workers {
-				for _, h := range p.workers[i].live {
+			for _, h := range c.nurseryHandles {
+				if c.mark[h] {
 					c.promotionScratch = append(c.promotionScratch, plannedPromotion{handle: h})
 				}
 			}
@@ -283,9 +305,9 @@ func (p *parallelCollector) run() {
 		p.activity.Copy[p.participants-1]++
 	}
 	p.queue = p.queue[:0]
-	p.active = 0
+	p.outstanding.Store(0)
 	for i := range p.workers {
-		p.workers[i].local = p.workers[i].local[:0]
+		p.workers[i].localLen = 0
 	}
 }
 
@@ -490,56 +512,150 @@ func (w *traceWorker) loop() {
 func (w *traceWorker) trace() {
 	p := w.pool
 	for {
-		for len(w.local) != 0 && !p.failed.Load() {
-			last := len(w.local) - 1
+		for w.localLen != 0 && !p.failed.Load() {
+			last := w.localLen - 1
 			task := w.local[last]
-			w.local = w.local[:last]
+			w.localLen = last
 			w.tasks++
 			w.scan(task)
 			if p.taskHook != nil {
 				p.taskHook(p.phase, w.index)
 			}
 			// Publication is batched. Private chains do no queue locking or waking.
-			if len(w.local) >= 32 && p.idle.Load() != 0 {
+			if w.localLen >= 8 && p.idle.Load() != 0 {
 				w.share()
 			}
+			if p.outstanding.Add(-1) == 0 {
+				p.mu.Lock()
+				p.ready.Broadcast()
+				p.mu.Unlock()
+			}
+		}
+		if task, ok := w.pop(); ok {
+			w.local[0], w.localLen = task, 1
+			continue
 		}
 		p.mu.Lock()
-		if p.failed.Load() {
-			p.mu.Unlock()
-			return
-		}
-		p.active--
-		for len(p.queue) == 0 && p.active != 0 && !p.failed.Load() {
+		for !p.failed.Load() && p.outstanding.Load() != 0 && len(p.queue) == 0 && !p.pendingVisible() {
 			p.idle.Add(1)
 			p.ready.Wait()
 			p.idle.Add(-1)
 		}
-		if len(p.queue) == 0 || p.failed.Load() {
-			p.ready.Broadcast()
-			p.mu.Unlock()
+		done := p.failed.Load() || p.outstanding.Load() == 0
+		p.mu.Unlock()
+		if done {
 			return
 		}
-		n := min(32, len(p.queue))
-		start := len(p.queue) - n
-		w.local = append(w.local, p.queue[start:]...)
-		p.queue = p.queue[:start]
-		p.active++
-		p.mu.Unlock()
 	}
 }
 
 func (w *traceWorker) share() {
 	p := w.pool
 	p.mu.Lock()
-	n := min(len(w.local)/2, parallelQueueLimit-len(p.queue))
+	n := min(w.localLen/2, parallelQueueLimit-len(p.queue))
 	if n != 0 {
-		start := len(w.local) - n
-		p.queue = append(p.queue, w.local[start:]...)
-		w.local = w.local[:start]
+		start := w.localLen - n
+		p.queue = append(p.queue, w.local[start:w.localLen]...)
+		w.localLen = start
 		p.ready.Broadcast()
 	}
 	p.mu.Unlock()
+}
+
+func (p *parallelCollector) pendingVisible() bool {
+	for i := range p.pending {
+		if p.pending[i].Load() != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *traceWorker) enqueue(task traceTask) {
+	p := w.pool
+	p.outstanding.Add(1) // publication and termination are ordered after this increment
+	if task.end != 0 && p.idle.Load() != 0 {
+		p.mu.Lock()
+		if len(p.queue) < parallelQueueLimit {
+			p.queue = append(p.queue, task)
+			p.ready.Signal()
+			p.mu.Unlock()
+			return
+		}
+		p.mu.Unlock()
+	}
+	if w.localLen < len(w.local) {
+		w.local[w.localLen] = task
+		w.localLen++
+		return
+	}
+	p.mu.Lock()
+	if len(p.queue) < parallelQueueLimit {
+		p.queue = append(p.queue, task)
+		p.ready.Signal()
+		p.mu.Unlock()
+		return
+	}
+	p.mu.Unlock()
+	if task.end != 0 {
+		chain := int(task.first/uint32(parallelArrayChunk)) % p.participants
+		p.arrayNext[int(task.handle)*len(p.workers)+chain].Store(task.first + 1)
+	}
+	p.publishPending(task.handle)
+	p.mu.Lock()
+	p.ready.Broadcast()
+	p.mu.Unlock()
+}
+
+func (w *traceWorker) pop() (traceTask, bool) {
+	p := w.pool
+	p.mu.Lock()
+	if n := len(p.queue); n != 0 {
+		task := p.queue[n-1]
+		p.queue = p.queue[:n-1]
+		p.mu.Unlock()
+		return task, true
+	}
+	p.mu.Unlock()
+	for wi := range p.pending {
+		for pendingBits := p.pending[wi].Load(); pendingBits != 0; pendingBits = p.pending[wi].Load() {
+			bit := uint(bits.TrailingZeros64(pendingBits))
+			mask := uint64(1) << bit
+			if !p.pending[wi].CompareAndSwap(pendingBits, pendingBits&^mask) {
+				continue
+			}
+			h := uint32(wi*64) + uint32(bit)
+			base := int(h) * len(p.workers)
+			for chain := 0; chain < p.participants; chain++ {
+				encoded := p.arrayNext[base+chain].Swap(0)
+				if encoded == 0 {
+					continue
+				}
+				for rest := chain + 1; rest < p.participants; rest++ {
+					if p.arrayNext[base+rest].Load() != 0 {
+						p.publishPending(h)
+						break
+					}
+				}
+				first := encoded - 1
+				count := p.collector.header(makeObjRef(h)).Aux
+				return traceTask{handle: h, first: first, end: first + min(uint32(parallelArrayChunk), count-first)}, true
+			}
+			return traceTask{handle: h}, true
+		}
+	}
+	return traceTask{}, false
+}
+
+func (p *parallelCollector) publishPending(h uint32) {
+	word, bit := h/64, uint(h%64)
+	mask := uint64(1) << bit
+	for {
+		old := p.pending[word].Load()
+		if old&mask != 0 || p.pending[word].CompareAndSwap(old, old|mask) {
+			return
+		}
+	}
 }
 
 func (w *traceWorker) mark(r Ref) {
@@ -563,7 +679,7 @@ func (w *traceWorker) mark(r Ref) {
 	}
 	w.highWater = max(w.highWater, h+1)
 	c.mark[h] = true
-	w.local = append(w.local, traceTask{handle: h})
+	w.enqueue(traceTask{handle: h})
 }
 
 func (w *traceWorker) scan(task traceTask) {
@@ -574,12 +690,14 @@ func (w *traceWorker) scan(task traceTask) {
 		for i := task.first; i < task.end; i++ {
 			w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+i*4:])))
 		}
+		count := binary.LittleEndian.Uint32(b[8:])
+		next := task.first + uint32(w.pool.participants*parallelArrayChunk)
+		if next < count {
+			w.enqueue(traceTask{handle: task.handle, first: next, end: next + min(uint32(parallelArrayChunk), count-next)})
+		}
 		return
 	}
 	w.scanned++
-	if w.pool.capture {
-		w.live = append(w.live, task.handle)
-	}
 	typeID := binary.LittleEndian.Uint32(b)
 	if int(typeID) >= len(c.types) {
 		return
@@ -604,14 +722,10 @@ func (w *traceWorker) scan(task traceTask) {
 		}
 	} else if d.ArrayElementsAreRefs() {
 		count := binary.LittleEndian.Uint32(b[8:])
-		// Reference payloads have a four-byte physical stride, for collector-managed refs.
-		for first := uint32(parallelArrayChunk); first < count; {
-			end := first + min(uint32(parallelArrayChunk), count-first)
-			w.local = append(w.local, traceTask{handle: task.handle, first: first, end: end})
-			first = end
-		}
-		if len(w.local) != 0 {
-			w.share()
+		// Admit at most one continuation chain per participant. Each completed
+		// chunk admits its successor, so task storage is independent of array length.
+		for first, admitted := uint32(parallelArrayChunk), 0; first < count && admitted < w.pool.participants; first, admitted = first+parallelArrayChunk, admitted+1 {
+			w.enqueue(traceTask{handle: task.handle, first: first, end: first + min(uint32(parallelArrayChunk), count-first)})
 		}
 		for i := uint32(0); i < min(count, uint32(parallelArrayChunk)); i++ {
 			w.mark(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+i*d.ElemSize:])))
