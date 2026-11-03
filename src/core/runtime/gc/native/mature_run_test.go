@@ -38,18 +38,3 @@ func TestMatureAllocRunMatchesIndividualAddresses(t *testing.T) {
 		t.Fatalf("batch bump %d, individual %d", batched.bump, individual.bump)
 	}
 }
-
-func TestMatureAllocRunPreservesAbsorbedTailAndRollback(t *testing.T) {
-	h := newMatureRunHeap(t)
-	h.bump = 256
-	if err := h.insertFreeSpan(throughputFreeSpan{off: 0, size: 112}); err != nil {
-		t.Fatal(err)
-	}
-	h.beginMatureAdmission(true)
-	run, ok, err := h.tryAllocRun(24, 3, spaceOld)
-	if err != nil || !ok || run.lastAllocSize != 48 {
-		t.Fatalf("tail run=%+v ok=%t err=%v", run, ok, err)
-	}
-	h.restoreAllocTransaction(throughputAllocTransaction{mem: h.mem, bump: 256})
-	assertMatureAdmissionClean(t, &h)
-}

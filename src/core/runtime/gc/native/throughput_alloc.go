@@ -852,6 +852,7 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 		return errors.New("gc: throughput bump out of bounds")
 	}
 	live := make([]throughputFreeSpan, 0)
+	var liveBytes uint64
 	for i, e := range handles {
 		if i == 0 || e.space == spaceFree || e.space == spaceNursery || e.space == spaceTiny {
 			continue
@@ -868,6 +869,7 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 				return fmt.Errorf("gc: throughput live span overlap at handle %d", i)
 			}
 		}
+		liveBytes += uint64(allocSize)
 		live = append(live, throughputFreeSpan{off: e.off, size: allocSize})
 	}
 
@@ -961,6 +963,11 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 	}
 	if pendingBytes != h.pendingBytes {
 		return errors.New("gc: deferred throughput free-byte summary is stale")
+	}
+	// Bounds and pairwise disjointness above make total coverage an exact
+	// ownership check, including destinations omitted from rollback/publication.
+	if liveBytes+freeBytes+pendingBytes != uint64(h.bump) {
+		return errors.New("gc: throughput extent ownership is incomplete")
 	}
 	return nil
 }

@@ -88,7 +88,8 @@ func TestThroughputFreeSpanMetadataIsReused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.alloc(32, spaceOld); err != nil { // keep the reusable span below bump
+	anchor, err := h.alloc(32, spaceOld) // keep the reusable span below bump
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := h.free(free); err != nil {
@@ -109,7 +110,7 @@ func TestThroughputFreeSpanMetadataIsReused(t *testing.T) {
 	if got := len(h.spanNodes); got != 1 {
 		t.Fatalf("throughput span metadata grew to %d nodes, want one reusable node", got)
 	}
-	if err := h.verify(nil); err != nil {
+	if err := h.verify([]handleEntry{{}, anchor}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -322,7 +323,13 @@ func TestThroughputPrefixChurnRestoresExactIndexState(t *testing.T) {
 		!slices.Equal(h.spanNodes, nodes) || !slices.Equal(h.freeSpans(), spans) {
 		t.Fatal("prefix allocation and one-neighbor coalescing did not restore exact indexed state")
 	}
-	if err := h.verify(nil); err != nil {
+	// Represent the fixture's deliberately occupied gaps explicitly.
+	handles := []handleEntry{{}}
+	for i := range 64 {
+		handles = append(handles, handleEntry{off: uint32(i*128 + 32), size: 96, space: spaceLarge})
+	}
+	handles = append(handles, handleEntry{off: 64*128 + 128, size: 384, space: spaceLarge})
+	if err := h.verify(handles); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -361,7 +368,7 @@ func TestThroughputFreeSpanIndexTracksMutations(t *testing.T) {
 	if h.largestFree() != 128 || h.freeBytes != 192 || h.spanCount != 2 {
 		t.Fatalf("after free largest=%d free=%d spans=%d", h.largestFree(), h.freeBytes, h.spanCount)
 	}
-	if err := h.verify(nil); err != nil {
+	if err := h.verify([]handleEntry{{}, {off: 64, size: 64, space: spaceLarge}, {off: 256, size: 64, space: spaceLarge}}); err != nil {
 		t.Fatal(err)
 	}
 }

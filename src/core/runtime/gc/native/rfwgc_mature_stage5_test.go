@@ -115,7 +115,7 @@ func TestRFWGCMatureStage5CrossBoundaryReclamation(t *testing.T) {
 	}
 	stage5Occupancy(t, h, 0, 0)
 	if h.bump != 0 || len(h.pendingFree) != 0 {
-		t.Fatalf("no descriptor-driven reclaim: bump=%d pending=%d", h.bump, len(h.pendingFree))
+		t.Fatalf("no debt reconciliation: bump=%d pending=%d", h.bump, len(h.pendingFree))
 	}
 	if err := c.CollectFull(roots); err != nil {
 		t.Fatal(err)
