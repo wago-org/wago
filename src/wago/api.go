@@ -1429,7 +1429,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	// can reenter a collecting domain. These maps never grant a GC execution
 	// product or describe compact object slots.
 	nativeUnwind := !exactNativeGCRoots && (goruntime.GOARCH == "amd64" && goruntime.GOOS == "linux" || goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin")) && len(customInstructions) == 0 && !gc.HasHeapObjectTypes(gcDescs) && (importedFuncs != 0 || m.TableCount() != 0)
-	gcFrameRoots := newGCFrameRootPlanWithInstructions(m, exactNativeGCRoots || nativeUnwind, genericGCExecution, &gcFrameRootDiagnostic, &validationAnalysis, customInstructions)
+	gcFrameRoots := newGCFrameRootPlanWithInstructions(m, exactNativeGCRoots || nativeUnwind, genericGCExecution, nativeUnwind, &gcFrameRootDiagnostic, &validationAnalysis, customInstructions)
 	if nativeUnwind {
 		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
 			if plan := gcFrameRoots.Function(function); plan != nil {

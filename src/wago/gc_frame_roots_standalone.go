@@ -19,3 +19,7 @@ func newGCFrameRootPlan(_ *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 	}
 	return nil
 }
+
+func newGCFrameRootPlanMode(m *wasm.Module, exactRoots, generic, _ bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
+	return newGCFrameRootPlan(m, exactRoots, generic, diagnostic, analysis)
+}
