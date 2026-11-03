@@ -26,6 +26,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 	return newGCFrameRootPlanOwned(m, exactRoots, diagnostic, analysis, railshotManagedExceptionReferences(m))
 }
 
+func newGCFrameRootPlanMode(m *wasm.Module, exactRoots, generic, _ bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
+	return newGCFrameRootPlan(m, exactRoots, generic, diagnostic, analysis)
+}
+
 func newGCFrameRootPlanOwned(m *wasm.Module, exactRoots bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis, ownedExceptions bool, custom ...map[uint32]railcore.CustomInstruction) *shared.GCModuleFrameRootPlan {
 	var instructions map[uint32]railcore.CustomInstruction
 	if len(custom) != 0 {
