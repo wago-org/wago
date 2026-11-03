@@ -34,7 +34,7 @@ func TestRFWGCMatureStage5MetadataRollback(t *testing.T) {
 		t.Fatal("source publication during failed metadata admission")
 	}
 	stage5Occupancy(t, &c.throughput, 0, 0, 0)
-	if c.throughput.bump != 0 || len(c.throughput.mem) != 0 || c.throughput.mature.admission || !c.throughput.mature.refused {
+	if c.throughput.bump != 0 || len(c.throughput.mem) != 0 || c.throughput.mature.admission || !c.throughput.mature.pressure {
 		t.Fatal("incomplete metadata rollback")
 	}
 	if err = c.Verify(stressRootSlots(roots)); err != nil {
@@ -44,9 +44,6 @@ func TestRFWGCMatureStage5MetadataRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	stage5Occupancy(t, &c.throughput, 130*32, 0, 0)
-	if c.throughput.mature.refused || c.throughput.mature.cause != nil {
-		t.Fatal("successful retry retained refusal")
-	}
 	for i, r := range roots {
 		v, err := c.StructGet(Ref(r), 1)
 		if err != nil || v.I64() != int64(i) {
@@ -135,14 +132,14 @@ func TestRFWGCMatureStage5RetirementRetry(t *testing.T) {
 	if !errors.Is(err, errInjectedFailure) {
 		t.Fatalf("retirement failure: %v", err)
 	}
-	if c.throughput.mature.retired != 0 || len(c.throughput.pendingFree) == 0 {
+	if len(c.throughput.pendingFree) == 0 {
 		t.Fatal("lost retirement debt")
 	}
 	stage5Occupancy(t, &c.throughput, 0, 0, 0)
 	if err = c.CollectFull(EmptyRoots{}); err != nil {
 		t.Fatal(err)
 	}
-	if c.throughput.mature.retired != 3 || c.throughput.bump != 0 {
+	if c.throughput.bump != 0 {
 		t.Fatal("retirement retry failed")
 	}
 }

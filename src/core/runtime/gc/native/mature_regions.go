@@ -9,9 +9,8 @@ import (
 // ownership. Physical (including class padding/tails) intersections are counted
 // in every covered page. No descriptor address is exposed to generated code.
 type matureRegion struct {
-	live, large, reserved, reservedLarge uint32
-	epoch                                uint64
-	retire, admissionTouched             bool
+	live, reserved           uint32
+	retire, admissionTouched bool
 }
 
 type matureHeap struct {
@@ -22,12 +21,7 @@ type matureHeap struct {
 	admission, required bool
 	regions             []matureRegion
 	touched             []uint32
-	// First cause belongs to this attempt. Optional refusal cannot latch a
-	// required failure; a new attempt clears the previous outcome.
-	cause       error
-	refused     bool
-	retired     uint64
-	transaction *evacuationTransaction
+	transaction         *evacuationTransaction
 }
 
 func (h *throughputHeap) beginMatureAdmission(required bool) {
@@ -41,18 +35,13 @@ func (h *throughputHeap) beginMatureAdmission(required bool) {
 		panic("gc: stale mature admission indexes")
 	}
 	h.mature.admission, h.mature.required = true, required
-	h.mature.cause, h.mature.refused = nil, false
 }
 
 func (h *throughputHeap) matureRefusal(err error) {
 	if h.mature == nil || err == nil {
 		return
 	}
-	if h.mature.cause == nil {
-		h.mature.cause = err
-	}
 	if h.mature.required {
-		h.mature.refused = true
 		h.mature.pressure = true
 	}
 }
@@ -65,8 +54,7 @@ func (h *throughputHeap) commitMatureAdmission() {
 		h.journalMatureRegion(i)
 		r := &h.mature.regions[i]
 		r.live += r.reserved
-		r.large += r.reservedLarge
-		r.reserved, r.reservedLarge = 0, 0
+		r.reserved = 0
 		r.admissionTouched = false
 	}
 	h.mature.touched = h.mature.touched[:0]
@@ -81,7 +69,7 @@ func (h *throughputHeap) cancelMatureAdmission() {
 	for _, i := range h.mature.touched {
 		h.journalMatureRegion(i)
 		r := &h.mature.regions[i]
-		omitted = omitted || r.reserved != 0 || r.reservedLarge != 0
+		omitted = omitted || r.reserved != 0
 		r.admissionTouched = false
 	}
 	h.mature.touched = h.mature.touched[:0]
@@ -146,14 +134,8 @@ func (h *throughputHeap) prepareMature(e handleEntry) error {
 				h.mature.touched = append(h.mature.touched, i)
 			}
 			r.reserved += n
-			if e.space == spaceLarge {
-				r.reservedLarge += n
-			}
 		} else {
 			r.live += n
-			if e.space == spaceLarge {
-				r.large += n
-			}
 		}
 	})
 	return nil
@@ -245,14 +227,8 @@ func (h *throughputHeap) prepareMatureRun(run throughputAllocRun, size uint32, c
 				h.mature.touched = append(h.mature.touched, uint32(page))
 			}
 			r.reserved += n
-			if sp == spaceLarge {
-				r.reservedLarge += n
-			}
 		} else {
 			r.live += n
-			if sp == spaceLarge {
-				r.large += n
-			}
 		}
 	}
 	return nil
@@ -305,17 +281,11 @@ func (h *throughputHeap) releaseMature(e handleEntry) {
 				panic("gc: mature reserved underflow")
 			}
 			r.reserved -= n
-			if e.space == spaceLarge {
-				r.reservedLarge -= n
-			}
 		} else {
 			if r.live < n {
 				panic("gc: mature live underflow")
 			}
 			r.live -= n
-			if e.space == spaceLarge {
-				r.large -= n
-			}
 			if r.live == 0 {
 				r.retire = true
 			}
@@ -356,8 +326,6 @@ func (h *throughputHeap) reclaimEmptyMature() error {
 		r := &h.mature.regions[i]
 		if r.retire && r.live == 0 && r.reserved == 0 {
 			r.retire = false
-			r.epoch++
-			h.mature.retired++
 		}
 	}
 	return nil
@@ -383,14 +351,11 @@ func (h *throughputHeap) verifyMature(handles []handleEntry) error {
 			i := off / uint64(h.pageBytes)
 			next := min(end, (i+1)*uint64(h.pageBytes))
 			want[i].live += uint32(next - off)
-			if e.space == spaceLarge {
-				want[i].large += uint32(next - off)
-			}
 			off = next
 		}
 	}
 	for i, r := range h.mature.regions {
-		if r.live != want[i].live || r.large != want[i].large || r.reserved != 0 || r.reservedLarge != 0 {
+		if r.live != want[i].live || r.reserved != 0 {
 			return errors.New("gc: mature descriptor occupancy mismatch")
 		}
 	}

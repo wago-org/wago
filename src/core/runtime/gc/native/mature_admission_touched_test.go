@@ -1,6 +1,7 @@
 package gc
 
 import (
+	"reflect"
 	"testing"
 	"unsafe"
 )
@@ -11,7 +12,7 @@ func assertMatureAdmissionClean(t *testing.T, h *throughputHeap) {
 		t.Fatalf("mature admission retained state: admission=%v touched=%v", h.mature.admission, h.mature.touched)
 	}
 	for i, r := range h.mature.regions {
-		if r.reserved != 0 || r.reservedLarge != 0 || r.admissionTouched {
+		if r.reserved != 0 || r.admissionTouched {
 			t.Fatalf("mature region %d retained transaction state: %+v", i, r)
 		}
 	}
@@ -54,7 +55,7 @@ func TestMatureAdmissionTouchedIndexesDeduplicateAfterRollback(t *testing.T) {
 		t.Fatalf("retouch indexes/capacity = %v/%d, want [0]/%d", h.mature.touched, cap(h.mature.touched), retainedCap)
 	}
 	h.commitMatureAdmission()
-	if h.mature.regions[0].live != 4096 || h.mature.regions[0].large != 4096 {
+	if h.mature.regions[0].live != 4096 {
 		t.Fatalf("committed occupancy = %+v", h.mature.regions[0])
 	}
 	assertMatureAdmissionClean(t, &h)
@@ -97,9 +98,12 @@ func TestMatureAdmissionTouchedIndexesSpanPagesAndReset(t *testing.T) {
 	assertMatureAdmissionClean(t, &h)
 }
 
-func TestMatureAdmissionBookkeepingStorageIsRegionOnly(t *testing.T) {
-	if unsafe.Sizeof(matureRegion{}) != 32 {
-		t.Fatalf("mature descriptor footprint changed: %d", unsafe.Sizeof(matureRegion{}))
+func TestMatureAdmissionBookkeepingOperationCensus(t *testing.T) {
+	// Each page intersection now updates only authoritative live/reserved state
+	// plus the two admission/reclamation flags. LOS mirrors, epochs, and global
+	// refusal/retirement counters had no production consumer.
+	if typ := reflect.TypeFor[matureRegion](); typ.NumField() != 4 || unsafe.Sizeof(matureRegion{}) != 12 {
+		t.Fatalf("mature descriptor census = %d fields/%d bytes, want 4/12", typ.NumField(), unsafe.Sizeof(matureRegion{}))
 	}
 	var h throughputHeap
 	if err := h.Init(Config{ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, ThroughputClassLimit: 4096}); err != nil {
