@@ -1433,10 +1433,11 @@ func (f *fn) callFreeLoopExit(fi int) bool {
 }
 
 // branchJump emits the jump for a branch that targets frame fr.
-func (f *fn) branchJump(fr *ctrlFrame) {
+// Only explicit unconditional source branches supply the following Wasm reader.
+func (f *fn) branchJump(fr *ctrlFrame, after ...*wasm.Reader) {
 	switch fr.kind {
 	case cfLoop:
-		if f.unrollScalarPretest(fr) || f.tryPretestLoopLatch(fr) {
+		if f.unrollScalarPretest(fr, after...) || f.tryPretestLoopLatch(fr) {
 			return
 		}
 		// Backward unconditional branch to the loop top (imm26, ±128 MiB): emit a B
@@ -2892,13 +2893,13 @@ func (f *fn) restoreBranchHandlers(fi int) {
 // pinned locals, flush operands, move the branched values into the frame's
 // canonical slots (or merge register), and jump. Shared by opBr's unconditional
 // path and opReturn's inlined-callee routing. The caller sets f.unreachable.
-func (f *fn) branchToFrame(fi int) {
+func (f *fn) branchToFrame(fi int, after ...*wasm.Reader) {
 	fr := &f.ctrl[fi]
 	if f.loopLocalParams.depth == uint32(fi+1) {
 		f.materializePendingTraps()
 		f.bindLoopLocalParams(f.loopLocalParams, fr.paramN)
 		f.flush()
-		f.branchJump(fr)
+		f.branchJump(fr, after...)
 		f.stats.peep("loop-local-params-edge")
 		return
 	}
@@ -2911,7 +2912,7 @@ func (f *fn) branchToFrame(fi int) {
 		f.moveBranchValues(fr, d, a)
 	}
 	f.restoreBranchHandlers(fi)
-	f.branchJump(fr)
+	f.branchJump(fr, after...)
 }
 
 func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
@@ -2949,7 +2950,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		return errBadLabel
 	}
 	if !conditional {
-		f.branchToFrame(fi)
+		f.branchToFrame(fi, r)
 		f.unreachable = true
 		return nil
 	}

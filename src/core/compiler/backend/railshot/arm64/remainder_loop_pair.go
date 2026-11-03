@@ -2,12 +2,15 @@
 
 package arm64
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // For A,B = B,A%B, alternate the physical A/B roles and compute each
-// remainder in the old A. Four copies restore the original roles. The visible
-// remainder local is restored once per group and at every partial exit.
-func (f *fn) unrollRemainderPair(start int, words []uint32, exit, increment int, owner *ctrlFrame) bool {
+// remainder in the old A. Four copies restore the original roles. Restore the
+// remainder local unless a bounded forward suffix proves it unread.
+func (f *fn) unrollRemainderPair(start int, words []uint32, exit, increment int, owner *ctrlFrame, after ...*wasm.Reader) bool {
 	if len(words) != 6 || exit != 0 || increment != 5 || owner == nil {
 		return false
 	}
@@ -31,6 +34,7 @@ func (f *fn) unrollRemainderPair(start int, words []uint32, exit, increment int,
 	if !allocatable {
 		return false
 	}
+	deadRemainder := f.remainderLocalUnread(r, after...)
 	// The caller already proved the counter independent of every body operand.
 	update := words[increment]
 	f.a.B = f.a.B[:start]
@@ -49,16 +53,24 @@ func (f *fn) unrollRemainderPair(start int, words []uint32, exit, increment int,
 		appendWord(sf | 0x1ac00800 | uint32(right)<<16 | uint32(left)<<5 | uint32(q))
 		appendWord(sf | 0x1b008000 | uint32(right)<<16 | uint32(left)<<10 | uint32(q)<<5 | uint32(left))
 	}
-	move(r, b)
+	if !deadRemainder {
+		move(r, b)
+	}
 	appendWord(update&^uint32(0xfff<<10) | 4<<10)
 	f.patchBranch26(f.a.Branch(), start)
 	for phase, site := range exits {
 		f.patchBranch19(site, f.a.Len())
 		if phase&1 == 0 { // after one or three bodies, roles are exchanged
-			move(r, a)
-			move(a, b)
-			move(b, r)
-		} else {
+			if deadRemainder {
+				// The taken CBZ follows MSUB W/X, so the old A is fully zero.
+				move(a, b)
+				move(b, Reg(31))
+			} else {
+				move(r, a)
+				move(a, b)
+				move(b, r)
+			}
+		} else if !deadRemainder {
 			move(r, b)
 		}
 		appendWord(update&^uint32(0xfff<<10) | uint32(phase+1)<<10)
@@ -67,5 +79,8 @@ func (f *fn) unrollRemainderPair(start int, words []uint32, exit, increment int,
 	f.stats.peep("scalar-loop-unroll-pretest")
 	f.stats.peep("scalar-loop-unroll-counter")
 	f.stats.peep("scalar-loop-unroll-remainder-pair")
+	if deadRemainder {
+		f.stats.peep("scalar-loop-remainder-dead-local")
+	}
 	return true
 }

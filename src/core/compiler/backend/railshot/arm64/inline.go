@@ -1023,6 +1023,8 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 		// the splice. Only pure arithmetic may remain deferred across it.
 		f.materializePendingTraps()
 	}
+	resultHomes := f.coalesceInlineTupleResultHomes(t, storeLocals)
+	defer resultHomes.restore(f)
 	previousForward, previousForwardN := f.inlineForward, f.inlineForwardN
 	if !f.forwardIntegerPairParams(t) {
 		f.bindInlineParams(t, base)

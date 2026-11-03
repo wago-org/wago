@@ -2,13 +2,16 @@
 
 package arm64
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // unrollScalarPretest copies a bounded register-only loop with one exit. The
 // exit must be a proved pending block edge or a local-only cold tuple exit.
 // Every copied edge is registered with that same owner before its end is
 // resolved; no already-patched or unknown PC-relative instruction is copied.
-func (f *fn) unrollScalarPretest(fr *ctrlFrame) bool {
+func (f *fn) unrollScalarPretest(fr *ctrlFrame, after ...*wasm.Reader) bool {
 	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.stats != nil && f.stats.RecordSources {
 		return false
 	}
@@ -89,7 +92,7 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame) bool {
 	if owner == nil {
 		return false
 	}
-	if !coldExit && f.unrollScalarCounter(start, words[:n], exit, owner) {
+	if !coldExit && f.unrollScalarCounter(start, words[:n], exit, owner, after...) {
 		return true
 	}
 	pair, rotate := coldLoopPair{}, false
@@ -190,7 +193,7 @@ func (f *fn) emitScalarPretestLatch(start int, words []uint32, exit int, owner *
 // unrollScalarCounter batches a unit increment whose local is neither read nor
 // written elsewhere in the loop. An exit after k complete iterations restores
 // base+k in a cold stub. The original phase-zero exit remains at its old site.
-func (f *fn) unrollScalarCounter(start int, words []uint32, exit int, owner *ctrlFrame) bool {
+func (f *fn) unrollScalarCounter(start int, words []uint32, exit int, owner *ctrlFrame, after ...*wasm.Reader) bool {
 	increment := -1
 	for i, word := range words {
 		rd := Reg(word & 31)
@@ -230,7 +233,7 @@ func (f *fn) unrollScalarCounter(start int, words []uint32, exit int, owner *ctr
 	if increment < 0 {
 		return false
 	}
-	if f.unrollRemainderPair(start, words, exit, increment, owner) {
+	if f.unrollRemainderPair(start, words, exit, increment, owner, after...) {
 		return true
 	}
 	update := words[increment]

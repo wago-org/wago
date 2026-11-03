@@ -50,6 +50,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Reuse caller result registers in bounded ARM64 integer tuple helpers and omit
+  unsigned-remainder local restores when a forward suffix proves them unread.
 - Avoid redundant ARM64 register transfers in bounded unsigned-remainder loops,
   preserving early exits, visible locals and wrapping iteration counters.
 - Remove obsolete cooperative-poll padding from ARM64 poll-free loop headers.
