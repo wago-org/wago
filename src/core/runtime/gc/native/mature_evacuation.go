@@ -245,6 +245,7 @@ func (h *throughputHeap) evacuationCheckpoint() evacuationCheckpoint {
 	s.heap.spanNodes = slices.Clone(h.spanNodes)
 	s.heap.pendingFree = slices.Clone(h.pendingFree)
 	s.mature.regions = slices.Clone(h.mature.regions)
+	s.mature.touched = slices.Clone(h.mature.touched)
 	return s
 }
 func (h *throughputHeap) restoreEvacuation(s evacuationCheckpoint) {

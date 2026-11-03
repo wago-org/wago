@@ -4,3 +4,4 @@ package gc
 
 func (*Collector) notifyObjectReclaimed(Ref) {}
 func (*Collector) notifyCollectorClosed()    {}
+func (*Collector) hasReclaimObservers() bool { return false }

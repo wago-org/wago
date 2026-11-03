@@ -935,7 +935,7 @@ func spansOverlap(aOff, aSize, bOff, bSize uint32) bool {
 // injection points, while warmed promotion batches can remove one AVL span or
 // advance the bump once for the complete equal-sized run.
 func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (throughputAllocRun, bool, error) {
-	if h.mature != nil || count < 2 || size > ^uint32(0)-15 {
+	if count < 2 || size > ^uint32(0)-15 {
 		return throughputAllocRun{}, false, nil
 	}
 	allocSize := Align16(size)
@@ -960,20 +960,35 @@ func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (thro
 		}
 		consumed := uint32(total)
 		lastAllocSize := allocSize
+		if span.size-consumed < 32 {
+			lastAllocSize += span.size - consumed
+		}
+		run := throughputAllocRun{off: span.off, allocSize: allocSize, lastAllocSize: lastAllocSize, class: class}
+		if h.mature != nil {
+			if err := h.prepareMatureRun(run, size, count, sp); err != nil {
+				h.matureRefusal(err)
+				return throughputAllocRun{}, false, err
+			}
+		}
 		if span.size-consumed >= 32 {
 			if !h.replaceFreeSpan(span.off, throughputFreeSpan{off: span.off + consumed, size: span.size - consumed}) {
+				if h.mature != nil {
+					h.releaseMatureRun(run, size, count, sp)
+				}
 				return throughputAllocRun{}, false, errors.New("gc: throughput free-span index changed during run allocation")
 			}
 			h.freeBytes -= uint64(consumed)
 		} else {
 			reusable, ok := h.removeFreeSpan(span.off)
 			if !ok {
+				if h.mature != nil {
+					h.releaseMatureRun(run, size, count, sp)
+				}
 				return throughputAllocRun{}, false, errors.New("gc: throughput free-span index changed during run allocation")
 			}
-			lastAllocSize += span.size - consumed
 			h.releaseSpanNode(reusable)
 		}
-		return throughputAllocRun{off: span.off, allocSize: allocSize, lastAllocSize: lastAllocSize, class: class}, true, nil
+		return run, true, nil
 	}
 	if len(h.pendingFree) != 0 {
 		return throughputAllocRun{}, false, nil
@@ -983,6 +998,13 @@ func (h *throughputHeap) tryAllocRun(size uint32, count int, sp spaceKind) (thro
 	if end > uint64(h.limit) || end > uint64(len(h.mem)) {
 		return throughputAllocRun{}, false, nil
 	}
+	run := throughputAllocRun{off: off, allocSize: allocSize, lastAllocSize: allocSize, class: class}
+	if h.mature != nil {
+		if err := h.prepareMatureRun(run, size, count, sp); err != nil {
+			h.matureRefusal(err)
+			return throughputAllocRun{}, false, err
+		}
+	}
 	h.bump = uint32(end)
-	return throughputAllocRun{off: off, allocSize: allocSize, lastAllocSize: allocSize, class: class}, true, nil
+	return run, true, nil
 }
