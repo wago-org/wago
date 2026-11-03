@@ -184,6 +184,7 @@ func setConversionGlobalPublic(access *Instance, g *Global, value Value) (bool, 
 		}
 	}
 	if !owner.refStore.conversionDomainEverEnabled.Load() {
+		conversionPublicFalseObservation(owner)
 		writeGlobalObject(g, ValExternRef, word)
 		return true, nil
 	}
@@ -420,6 +421,7 @@ func setConversionTablePublic(t *Table, index uint64, value Value) error {
 		}
 	}
 	if !owner.refStore.conversionDomainEverEnabled.Load() {
+		conversionPublicFalseObservation(owner)
 		binary.LittleEndian.PutUint64(t.desc[8+index*8:], word)
 		return nil
 	}
