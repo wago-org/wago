@@ -98,12 +98,12 @@ func TestMatureAdmissionTouchedIndexesSpanPagesAndReset(t *testing.T) {
 	assertMatureAdmissionClean(t, &h)
 }
 
-func TestMatureAdmissionBookkeepingOperationCensus(t *testing.T) {
+func TestMatureAdmissionBookkeepingStorage(t *testing.T) {
 	// Each page intersection now updates only authoritative live/reserved state
 	// plus the two admission/reclamation flags. LOS mirrors, epochs, and global
 	// refusal/retirement counters had no production consumer.
 	if typ := reflect.TypeFor[matureRegion](); typ.NumField() != 4 || unsafe.Sizeof(matureRegion{}) != 12 {
-		t.Fatalf("mature descriptor census = %d fields/%d bytes, want 4/12", typ.NumField(), unsafe.Sizeof(matureRegion{}))
+		t.Fatalf("mature descriptor storage = %d fields/%d bytes, want 4/12", typ.NumField(), unsafe.Sizeof(matureRegion{}))
 	}
 	var h throughputHeap
 	if err := h.Init(Config{ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, ThroughputClassLimit: 4096}); err != nil {

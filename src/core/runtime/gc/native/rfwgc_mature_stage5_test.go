@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func stage5Occupancy(t *testing.T, h *throughputHeap, live, reserved, large uint64) {
+func stage5Occupancy(t *testing.T, h *throughputHeap, live, reserved uint64) {
 	t.Helper()
 	var l, r uint64
 	for _, d := range h.mature.regions {
@@ -13,7 +13,7 @@ func stage5Occupancy(t *testing.T, h *throughputHeap, live, reserved, large uint
 		r += uint64(d.reserved)
 	}
 	if l != live || r != reserved {
-		t.Fatalf("descriptor totals live/reserved=%d/%d want %d/%d (LOS physical=%d)", l, r, live, reserved, large)
+		t.Fatalf("descriptor totals live/reserved=%d/%d want %d/%d", l, r, live, reserved)
 	}
 	if uint64(cap(h.mature.regions)) > (uint64(h.limit)+uint64(h.pageBytes)-1)/uint64(h.pageBytes) {
 		t.Fatal("unbounded metadata")
@@ -42,7 +42,7 @@ func TestRFWGCMatureStage5AdmissionAndFragmentation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	stage5Occupancy(t, h, 8192, 0, 8192)
+	stage5Occupancy(t, h, 8192, 0)
 	tx := h.beginAllocTransaction()
 	if _, err := h.alloc(8192, spaceLarge); !errors.Is(err, errThroughputHeapExhausted) {
 		t.Fatalf("fragmented extent admitted: %v", err)
@@ -51,7 +51,7 @@ func TestRFWGCMatureStage5AdmissionAndFragmentation(t *testing.T) {
 	if !h.mature.pressure {
 		t.Fatal("required refusal did not request collection")
 	}
-	stage5Occupancy(t, h, 8192, 0, 8192)
+	stage5Occupancy(t, h, 8192, 0)
 	// Optional destination admission shares the transaction but cannot latch a
 	// required refusal. There is deliberately no evacuation driver in this slice.
 	tx = throughputAllocTransaction{mem: h.mem, bump: h.bump}
@@ -69,11 +69,11 @@ func TestRFWGCMatureStage5AdmissionAndFragmentation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stage5Occupancy(t, h, 8192, 8192, 8192) // class rounding, not payload bytes
+	stage5Occupancy(t, h, 8192, 8192) // class rounding, not payload bytes
 	h.rollbackSuccessfulAlloc(b, tx.bump)
 	h.rollbackSuccessfulAlloc(a, tx.bump)
 	h.restoreAllocTransaction(tx)
-	stage5Occupancy(t, h, 8192, 0, 8192)
+	stage5Occupancy(t, h, 8192, 0)
 	tx = h.beginAllocTransaction()
 	a, err = h.alloc(4096, spaceOld)
 	if err != nil {
@@ -83,7 +83,7 @@ func TestRFWGCMatureStage5AdmissionAndFragmentation(t *testing.T) {
 		t.Fatal("cancel lost lowest-address free run")
 	}
 	h.commitMatureAdmission()
-	stage5Occupancy(t, h, 12288, 0, 8192)
+	stage5Occupancy(t, h, 12288, 0)
 }
 
 func TestRFWGCMatureStage5CrossBoundaryReclamation(t *testing.T) {
@@ -106,7 +106,7 @@ func TestRFWGCMatureStage5CrossBoundaryReclamation(t *testing.T) {
 		t.Fatalf("fixture extent %+v", original)
 	}
 	h := &c.throughput
-	stage5Occupancy(t, h, 8240, 0, 8208)
+	stage5Occupancy(t, h, 8240, 0)
 	for i, want := range []uint32{4096, 4096, 48} {
 		if h.mature.regions[i].live != want {
 			t.Fatalf("page %d %+v", i, h.mature.regions[i])
@@ -123,12 +123,12 @@ func TestRFWGCMatureStage5CrossBoundaryReclamation(t *testing.T) {
 	if err != nil || v.I32() != 42 {
 		t.Fatal("lost boundary payload")
 	}
-	stage5Occupancy(t, h, 8208, 0, 8208)
+	stage5Occupancy(t, h, 8208, 0)
 	large = 0
 	if err := c.CollectFull(roots); err != nil {
 		t.Fatal(err)
 	}
-	stage5Occupancy(t, h, 0, 0, 0)
+	stage5Occupancy(t, h, 0, 0)
 	if h.bump != 0 || len(h.pendingFree) != 0 {
 		t.Fatalf("no descriptor-driven reclaim: bump=%d pending=%d", h.bump, len(h.pendingFree))
 	}
@@ -163,7 +163,7 @@ func TestRFWGCMatureStage5Churn(t *testing.T) {
 		if err := c.CollectFull(roots); err != nil {
 			t.Fatal(err)
 		}
-		stage5Occupancy(t, &c.throughput, 64, 0, 0)
+		stage5Occupancy(t, &c.throughput, 64, 0)
 		if c.throughput.mature.admission || len(c.throughput.mature.regions) != 1 || c.throughput.bump > 96 {
 			t.Fatal("unbounded or unpublished churn")
 		}
@@ -175,7 +175,7 @@ func TestRFWGCMatureStage5Churn(t *testing.T) {
 	if err := c.CollectFull(EmptyRoots{}); err != nil {
 		t.Fatal(err)
 	}
-	stage5Occupancy(t, &c.throughput, 0, 0, 0)
+	stage5Occupancy(t, &c.throughput, 0, 0)
 	if c.throughput.bump != 0 {
 		t.Fatal("churn page not reclaimed")
 	}
@@ -202,10 +202,10 @@ func TestRFWGCMatureStage5AbsorbedTail(t *testing.T) {
 	if h.handleAllocSize(e) != 48 {
 		t.Fatal("tail not absorbed")
 	}
-	stage5Occupancy(t, h, 32, 48, 0)
+	stage5Occupancy(t, h, 32, 48)
 	h.rollbackSuccessfulAlloc(e, tx.bump)
 	h.restoreAllocTransaction(tx)
-	stage5Occupancy(t, h, 32, 0, 0)
+	stage5Occupancy(t, h, 32, 0)
 }
 
 func TestRFWGCMatureStage5DefaultOff(t *testing.T) {
@@ -235,7 +235,7 @@ func TestRFWGCMatureStage5ZeroPromotionCredit(t *testing.T) {
 	if err := c.CollectMinor(roots); err != nil {
 		t.Fatal(err)
 	}
-	stage5Occupancy(t, &c.throughput, 16384, 0, 16384)
+	stage5Occupancy(t, &c.throughput, 16384, 0)
 	if c.entry(child).space != spaceNursery || c.throughput.mature.admission {
 		t.Fatal("zero-credit survivor not retained")
 	}
@@ -255,7 +255,7 @@ func TestRFWGCMatureStage5PartialFinalPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stage5Occupancy(t, &h, 8208, 0, 8208)
+	stage5Occupancy(t, &h, 8208, 0)
 	if len(h.mature.regions) != 3 || h.mature.regions[2].live != 16 || len(h.mem) != 8208 {
 		t.Fatal("partial final page bound")
 	}
@@ -265,7 +265,7 @@ func TestRFWGCMatureStage5PartialFinalPage(t *testing.T) {
 			t.Fatal("oversize admitted", size)
 		}
 		h.restoreAllocTransaction(tx)
-		stage5Occupancy(t, &h, 8208, 0, 8208)
+		stage5Occupancy(t, &h, 8208, 0)
 	}
 	if err = h.free(b); err != nil {
 		t.Fatal(err)
