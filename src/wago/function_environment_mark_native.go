@@ -44,7 +44,8 @@ type managedFunctionMarkDomain struct {
 
 // bindPersistentSlot transfers a private instance slot from the unconditional
 // collector roots to its physical owner's conditional roots. Public token and
-// host argument slots must never be bound here. Slot indexes are append-only.
+// host argument slots must never be bound here. Public slot allocation is
+// append-only; private receipt roots may be rebound after complete detachment.
 func (s *managedFunctionCollector) bindPersistentSlot(owner *Instance, kind gc.SlotKind, index uint32) error {
 	if owner == nil || owner.refStore != s.graph.store {
 		return fmt.Errorf("managed function slot has a different collector or Runtime")
