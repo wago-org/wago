@@ -102,23 +102,15 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 	h := &c.throughput
 	// Wago's old and LOS objects share a dynamically committed address range,
 	// unlike the reference's fixed old-space block table. Prove the complete
-	// active range before allocating or indexing its temporary overlay. The
+	// active range before allocating its temporary overlay. Each source is
+	// validated in the occupancy pass before indexing; scratch writes made
+	// before a later invalid source are private and can be discarded. The
 	// uncommitted configured tail is still usable by destination admission: an
 	// excluded index beyond this overlay is deliberately treated as unselected.
 	if h.bump > h.limit || uint64(h.bump) > uint64(len(h.mem)) {
 		return out, errors.New("gc: invalid evacuation heap span")
 	}
 	activeBlocks := int((uint64(h.bump) + evacuationBlock - 1) / evacuationBlock)
-	for _, e := range c.handles {
-		if e.space != spaceOld && e.space != spaceLarge {
-			continue
-		}
-		n := h.handleAllocSize(e)
-		end := uint64(e.off) + uint64(n)
-		if n == 0 || end > uint64(h.bump) || end > uint64(len(h.mem)) || end > uint64(h.limit) {
-			return out, errors.New("gc: invalid evacuation source extent")
-		}
-	}
 	overlay := make([]evacuationOverlay, activeBlocks)
 	for i := range overlay {
 		overlay[i].parent = i
@@ -135,6 +127,9 @@ func (c *Collector) selectMatureEvacuationBounded(candidateLimit int) (matureSel
 		}
 		n := h.handleAllocSize(e)
 		end := uint64(e.off) + uint64(n)
+		if n == 0 || end > uint64(h.bump) || end > uint64(len(h.mem)) || end > uint64(h.limit) {
+			return out, errors.New("gc: invalid evacuation source extent")
+		}
 		first, last := int(uint64(e.off)/evacuationBlock), int((end-1)/evacuationBlock)
 		for b := first; b <= last; b++ {
 			lo := max(uint64(e.off), uint64(b)*evacuationBlock)

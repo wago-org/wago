@@ -144,9 +144,13 @@ func TestMatureEvacuationScratchStorageCensus(t *testing.T) {
 	// Selection storage is one overlay/count/bad/selected/excluded record per
 	// active block plus at most evacuationCandidateLimit moves. Later phases separately
 	// cap destination runs; plans and source debt are one record per live move.
-	if unsafe.Sizeof(evacuationOverlay{}) != 40 || unsafe.Sizeof(matureMove{}) != 36 ||
+	wantOverlay, wantUndo := uintptr(40), uintptr(40)
+	if unsafe.Sizeof(uintptr(0)) == 4 {
+		wantOverlay, wantUndo = 28, 32
+	}
+	if unsafe.Sizeof(evacuationOverlay{}) != wantOverlay || unsafe.Sizeof(matureMove{}) != 36 ||
 		unsafe.Sizeof(plannedPromotion{}) != 20 || unsafe.Sizeof(throughputFreeSpan{}) != 8 ||
-		unsafe.Sizeof(throughputSpanNodeUndo{}) != 40 {
+		unsafe.Sizeof(throughputSpanNodeUndo{}) != wantUndo {
 		t.Fatalf("scratch record sizes changed: overlay=%d move=%d plan=%d span=%d undo=%d",
 			unsafe.Sizeof(evacuationOverlay{}), unsafe.Sizeof(matureMove{}), unsafe.Sizeof(plannedPromotion{}),
 			unsafe.Sizeof(throughputFreeSpan{}), unsafe.Sizeof(throughputSpanNodeUndo{}))
