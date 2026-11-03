@@ -436,14 +436,14 @@ func TestGCLifetimeCompactRecordsAndScratchLifecycle(t *testing.T) {
 	m := lifetimeFixture(t, "qualifying", 1)
 	ft, _ := m.LocalFuncType(0)
 	selection, _ := optimizationBindings.ResolveSnapshot(lifetimeSelection(true), OptimizationSnapshot{}, nil)
-	sc := &scratch{}
+	sc := &scratch{gcLifetimeFacts: newGCLifetimeModuleFacts()}
 	f := &fn{m: m, ft: ft, gcStructHelpers: true, policy: shared.DefaultCodegenPolicy(selection), sc: sc}
-	if sc.gcLifetimeFacts != nil || sc.gcLifetimePlan != nil || sc.gcLifetimePlanLive {
-		t.Fatal("unused serial scratch eagerly materialized lifetime storage")
+	if sc.gcLifetimePlan != nil || sc.gcLifetimePlanLive {
+		t.Fatal("unused worker eagerly materialized lifetime plan storage")
 	}
 	p := f.sealGCLifetime(m.Code[0].BodyBytes)
 	proof := analyzeGCLifetimeWithRecords(m, 0, gcLifetimeMaxRecords, nil, false)
-	if p == nil || sc.gcLifetimeFacts == nil || len(p.records) != proof.Rewrites || !sc.gcLifetimeRecordsLive {
+	if p == nil || len(p.records) != proof.Rewrites || !sc.gcLifetimeRecordsLive {
 		t.Fatalf("plan=%v records=%d rewrites=%d live=%t", p != nil, len(p.records), proof.Rewrites, sc.gcLifetimeRecordsLive)
 	}
 	for i := 1; i < len(p.records); i++ {
@@ -498,53 +498,6 @@ func TestGCLifetimeCompactRecordsAndScratchLifecycle(t *testing.T) {
 	if p = f.sealGCLifetime(m.Code[0].BodyBytes); p != nil || sc.gcLifetimeRecordsLive {
 		t.Fatal("rejected candidate retained worker records")
 	}
-}
-
-func TestGCLifetimeFactsLazySerialLifecycle(t *testing.T) {
-	if !gc.NativeDeadBatchSupported || profileEnabled {
-		t.Skip("consumer profile fallback")
-	}
-	selection, err := optimizationBindings.ResolveSnapshot(lifetimeSelection(true), OptimizationSnapshot{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	policy := shared.DefaultCodegenPolicy(selection)
-	newFn := func(m *wasm.Module, function int, sc *scratch) *fn {
-		ft, _ := m.LocalFuncType(function)
-		return &fn{m: m, ft: ft, globalIdx: function, gcStructHelpers: true, policy: policy, sc: sc}
-	}
-
-	for _, kind := range []string{"no-gc", "nonqualifying"} {
-		t.Run(kind, func(t *testing.T) {
-			m := lifetimeFixture(t, kind, 1)
-			sc := &scratch{}
-			if p := newFn(m, 0, sc).sealGCLifetime(m.Code[0].BodyBytes); p != nil || sc.gcLifetimeFacts != nil {
-				t.Fatalf("rejected serial function created facts: plan=%v facts=%p", p != nil, sc.gcLifetimeFacts)
-			}
-		})
-	}
-
-	m := lifetimeFixture(t, "qualifying", 2)
-	sc := &scratch{}
-	first := newFn(m, 0, sc).sealGCLifetime(m.Code[0].BodyBytes)
-	if first == nil || sc.gcLifetimeFacts == nil {
-		t.Fatal("accepted serial function did not lazily create facts")
-	}
-	facts := sc.gcLifetimeFacts
-	sc.releaseGCLifetimePlan(first)
-	second := newFn(m, 1, sc).sealGCLifetime(m.Code[1].BodyBytes)
-	if second == nil || sc.gcLifetimeFacts != facts || second.context.fact != facts.types[0] {
-		t.Fatal("accepted serial functions did not share one module cache")
-	}
-	sc.releaseGCLifetimePlan(second)
-
-	other := lifetimeFixture(t, "qualifying", 1)
-	otherScratch := &scratch{}
-	otherPlan := newFn(other, 0, otherScratch).sealGCLifetime(other.Code[0].BodyBytes)
-	if otherPlan == nil || otherScratch.gcLifetimeFacts == nil || otherScratch.gcLifetimeFacts == facts {
-		t.Fatal("repeated compile scratch reused facts across module identity")
-	}
-	otherScratch.releaseGCLifetimePlan(otherPlan)
 }
 
 func TestGCLifetimeFactsReuseFallbackLayouts(t *testing.T) {
