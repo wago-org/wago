@@ -385,11 +385,15 @@ func setConversionTablePublic(t *Table, index uint64, value Value) error {
 	defer unlock()
 	t.owner.mu.Lock()
 	valid := !t.owner.closed && t.owner.elementType == ValExternRef && t.owner.store == owner.refStore
+	exact, hasExact := t.owner.valueType, t.owner.hasValueType
 	t.owner.mu.Unlock()
 	if !valid || len(t.desc) < 8 || index >= uint64(binary.LittleEndian.Uint32(t.desc)) {
 		return fmt.Errorf("extern table metadata or index is invalid")
 	}
 	word := value.bits
+	if hasExact && (exact.Kind != ValueTypeReference || exact.Ref.Heap.Defined || exact.Ref.Heap.Abstract != AbstractHeapExtern && exact.Ref.Heap.Abstract != AbstractHeapNoExtern || word == 0 && !exact.Ref.Nullable || word != 0 && exact.Ref.Heap.Abstract == AbstractHeapNoExtern) {
+		return fmt.Errorf("extern table value has an incompatible exact structural type")
+	}
 	if word != 0 {
 		internal, handled, err := owner.internalExternForGlobal(word)
 		if err != nil {

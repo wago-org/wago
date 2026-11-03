@@ -14,6 +14,38 @@ import (
 	"unsafe"
 )
 
+func TestConversionPublicTableSetRejectsNonNullNoExtern(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	tableType := []byte{0x63, 0x72, 0x01, 0x01, 0x01} // (ref null noextern), min=1, max=1
+	module := wasmtest.Module(
+		wasmtest.Section(4, wasmtest.Vec(tableType)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table", 1, 0))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{store: rt.refStore})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	table, err := in.ExportedTable("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := append([]byte(nil), table.desc...)
+	token := ValueExternRef(issueExternref(t, rt, "noextern rejection"))
+	if err = table.SetValue(0, token); err == nil || !bytes.Equal(table.desc, before) {
+		t.Fatalf("SetValue(non-null) = %v; table changed = %t", err, !bytes.Equal(table.desc, before))
+	}
+	if err = table.SetValue(0, ValueExternRef(NullExternRef())); err != nil {
+		t.Fatalf("SetValue(null): %v", err)
+	}
+}
+
 // No payload reads, collections, escaped calls, or cleanup after STOP.
 var r9ConvertedStopped []*referenceStore
 
