@@ -25,10 +25,6 @@ import (
 // removed before variable-sized per-site vectors are emitted. Each function
 // gets independent compile state so workers may populate maps in parallel.
 func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
-	return newGCFrameRootPlanMode(m, exactRoots, false, false, diagnostic, analysis)
-}
-
-func newGCFrameRootPlanMode(m *wasm.Module, exactRoots, _ bool, requestedUnwindOnly bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
 	if diagnostic != nil {
 		*diagnostic = ""
 	}
@@ -91,33 +87,6 @@ func newGCFrameRootPlanMode(m *wasm.Module, exactRoots, _ bool, requestedUnwindO
 	}
 	importedFunctions := m.ImportedFuncCount()
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
-	if requestedUnwindOnly && gcFrameCanUseConservativeUnwind(m, analysis) {
-		modulePlan, err := gcFramePrepareModuleRootPlan(m, &classifier, analysis)
-		if err != nil {
-			return reject("%v", err)
-		}
-		for function := range m.Code {
-			if !modulePlan.FunctionPending(function) {
-				continue
-			}
-			if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier, externBridge) {
-				return reject("function %d contains an unsupported native call or frame shape", function)
-			}
-			masks, err := gcFrameConservativeUnwindMasks(m.Code[function].BodyBytes, &classifier)
-			if err != nil {
-				return reject("function %d exact local liveness: %v", function, err)
-			}
-			plan, ok := modulePlan.BeginFunction(function)
-			if !ok {
-				return reject("function %d root plan ownership is invalid", function)
-			}
-			*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true, UnwindOnly: true}
-			if !plan.SetLiveMasks(masks.words, 0, masks.callN) {
-				return reject("function %d has malformed conservative unwind masks", function)
-			}
-		}
-		return modulePlan
-	}
 	ehMaps, err := railamd64.BuildExceptionRootMaps(m)
 	if err != nil {
 		return reject("exception root maps: %v", err)
