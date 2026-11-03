@@ -110,6 +110,7 @@ func TestEvacuationStage7Selection(t *testing.T) {
 	c := newTestCollector(t, Config{NurseryRegionShift: 6, NurseryBytes: 4096, MatureEvacuation: true, ThroughputHeapBytes: 8 * 32768})
 	h := &c.throughput
 	h.bump = 8 * 32768
+	h.mem = make([]byte, h.bump)
 	extent := func(off, size uint32, space spaceKind) handleEntry {
 		return handleEntry{off: off, size: size, space: space, class: uint16(len(throughputClassSizes))}
 	}
