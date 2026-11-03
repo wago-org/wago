@@ -1,6 +1,9 @@
 package gc
 
-import "errors"
+import (
+	"errors"
+	"slices"
+)
 
 // Descriptors partition the existing shared old/LOS address space, never its
 // ownership. Physical (including class padding/tails) intersections are counted
@@ -8,7 +11,7 @@ import "errors"
 type matureRegion struct {
 	live, large, reserved, reservedLarge uint32
 	epoch                                uint64
-	retire                               bool
+	retire, admissionTouched             bool
 }
 
 type matureHeap struct {
@@ -18,6 +21,7 @@ type matureHeap struct {
 	diagnostics         CollectionDiagnostics
 	admission, required bool
 	regions             []matureRegion
+	touched             []uint32
 	// First cause belongs to this attempt. Optional refusal cannot latch a
 	// required failure; a new attempt clears the previous outcome.
 	cause   error
@@ -31,6 +35,9 @@ func (h *throughputHeap) beginMatureAdmission(required bool) {
 	}
 	if h.mature.admission {
 		panic("gc: nested mature admission")
+	}
+	if len(h.mature.touched) != 0 {
+		panic("gc: stale mature admission indexes")
 	}
 	h.mature.admission, h.mature.required = true, required
 	h.mature.cause, h.mature.refused = nil, false
@@ -53,12 +60,14 @@ func (h *throughputHeap) commitMatureAdmission() {
 	if h.mature == nil || !h.mature.admission {
 		return
 	}
-	for i := range h.mature.regions {
+	for _, i := range h.mature.touched {
 		r := &h.mature.regions[i]
 		r.live += r.reserved
 		r.large += r.reservedLarge
 		r.reserved, r.reservedLarge = 0, 0
+		r.admissionTouched = false
 	}
+	h.mature.touched = h.mature.touched[:0]
 	h.mature.admission = false
 }
 
@@ -66,20 +75,25 @@ func (h *throughputHeap) cancelMatureAdmission() {
 	if h.mature == nil {
 		return
 	}
-	for _, r := range h.mature.regions {
-		if r.reserved != 0 {
-			panic("gc: mature cancellation omitted destination rollback")
-		}
+	omitted := false
+	for _, i := range h.mature.touched {
+		r := &h.mature.regions[i]
+		omitted = omitted || r.reserved != 0 || r.reservedLarge != 0
+		r.admissionTouched = false
 	}
+	h.mature.touched = h.mature.touched[:0]
 	h.mature.admission = false
+	if omitted {
+		panic("gc: mature cancellation omitted destination rollback")
+	}
 }
 
-func (h *throughputHeap) matureIntersections(e handleEntry, visit func(*matureRegion, uint32)) {
+func (h *throughputHeap) matureIntersections(e handleEntry, visit func(uint32, *matureRegion, uint32)) {
 	end := uint64(e.off) + uint64(h.handleAllocSize(e))
 	for off := uint64(e.off); off < end; {
 		i := off / uint64(h.pageBytes)
 		next := min(end, (i+1)*uint64(h.pageBytes))
-		visit(&h.mature.regions[i], uint32(next-off))
+		visit(uint32(i), &h.mature.regions[i], uint32(next-off))
 		off = next
 	}
 }
@@ -90,10 +104,23 @@ func (h *throughputHeap) prepareMature(e handleEntry) error {
 		return errThroughputHeapExhausted
 	}
 	count := (end + uint64(h.pageBytes) - 1) / uint64(h.pageBytes)
-	if count > uint64(len(h.mature.regions)) {
+	first := uint64(e.off) / uint64(h.pageBytes)
+	needRegions := count > uint64(len(h.mature.regions))
+	newTouched := 0
+	if h.mature.admission {
+		for i := first; i < count; i++ {
+			if i >= uint64(len(h.mature.regions)) || !h.mature.regions[i].admissionTouched {
+				newTouched++
+			}
+		}
+	}
+	needTouched := newTouched > cap(h.mature.touched)-len(h.mature.touched)
+	if needRegions || needTouched {
 		if err := injectFailure(h, failMatureMetadata); err != nil {
 			return err
 		}
+	}
+	if needRegions {
 		// Geometric growth stays bounded by ceil(limit/pageBytes), including
 		// a partially configured final page. Default mode allocates nothing.
 		maximum := (uint64(h.limit) + uint64(h.pageBytes) - 1) / uint64(h.pageBytes)
@@ -102,11 +129,18 @@ func (h *throughputHeap) prepareMature(e handleEntry) error {
 		copy(regions, h.mature.regions)
 		h.mature.regions = regions
 	}
-	h.matureIntersections(e, func(r *matureRegion, n uint32) {
+	if needTouched {
+		h.mature.touched = slices.Grow(h.mature.touched, newTouched)
+	}
+	h.matureIntersections(e, func(i uint32, r *matureRegion, n uint32) {
 		if uint64(r.live)+uint64(r.reserved)+uint64(n) > uint64(h.pageBytes) {
 			panic("gc: overlapping mature reservation")
 		}
 		if h.mature.admission {
+			if !r.admissionTouched {
+				r.admissionTouched = true
+				h.mature.touched = append(h.mature.touched, i)
+			}
 			r.reserved += n
 			if e.space == spaceLarge {
 				r.reservedLarge += n
@@ -118,6 +152,104 @@ func (h *throughputHeap) prepareMature(e handleEntry) error {
 			}
 		}
 	})
+	return nil
+}
+
+// prepareMatureRun reserves the same per-object physical occupancy as repeated
+// prepareMature calls, but admits metadata for the contiguous run once. The
+// caller has not changed allocator state yet, so refusal needs no AVL rollback.
+func (h *throughputHeap) prepareMatureRun(run throughputAllocRun, size uint32, count int, sp spaceKind) error {
+	last := handleEntry{off: run.off + uint32(count-1)*run.allocSize, size: size, class: run.class, space: sp}
+	if run.lastAllocSize != run.allocSize {
+		last.class |= handleAbsorbedTailBit
+	}
+	end := uint64(last.off) + uint64(h.handleAllocSize(last))
+	if end > uint64(h.limit) {
+		return errThroughputHeapExhausted
+	}
+
+	// Reproduce the final geometric region length of sequential preparation.
+	regionCount := uint64(len(h.mature.regions))
+	metadataGrowths := 0
+	coveredRegions := end / uint64(h.pageBytes)
+	if end%uint64(h.pageBytes) != 0 {
+		coveredRegions++
+	}
+	if coveredRegions > regionCount {
+		maximum := (uint64(h.limit) + uint64(h.pageBytes) - 1) / uint64(h.pageBytes)
+		for i := 0; i < count; i++ {
+			e := handleEntry{off: run.off + uint32(i)*run.allocSize, size: size, class: run.class, space: sp}
+			if i == count-1 && run.lastAllocSize != run.allocSize {
+				e.class |= handleAbsorbedTailBit
+			}
+			need := (uint64(e.off) + uint64(h.handleAllocSize(e)) + uint64(h.pageBytes) - 1) / uint64(h.pageBytes)
+			if need > regionCount {
+				regionCount = min(maximum, max(need, regionCount*2))
+				metadataGrowths++
+			}
+		}
+	}
+	firstPage := uint64(run.off) / uint64(h.pageBytes)
+	lastPage := (end - 1) / uint64(h.pageBytes)
+	newTouched := 0
+	if h.mature.admission {
+		for i := firstPage; i <= lastPage; i++ {
+			if i >= uint64(len(h.mature.regions)) || !h.mature.regions[i].admissionTouched {
+				newTouched++
+			}
+		}
+	}
+	needRegions := regionCount > uint64(len(h.mature.regions))
+	needTouched := newTouched > cap(h.mature.touched)-len(h.mature.touched)
+	if needRegions || needTouched {
+		// Preserve the sequential path's observable injection opportunities at
+		// each geometric descriptor growth, while performing one allocation.
+		for range max(1, metadataGrowths) {
+			if err := injectFailure(h, failMatureMetadata); err != nil {
+				return err
+			}
+		}
+	}
+	if needRegions {
+		regions := make([]matureRegion, int(regionCount))
+		copy(regions, h.mature.regions)
+		h.mature.regions = regions
+	}
+	if needTouched {
+		h.mature.touched = slices.Grow(h.mature.touched, newTouched)
+	}
+
+	// The physical objects, including an absorbed tail, exactly partition this
+	// interval. Validate every page before publishing any batch reservation.
+	for page := firstPage; page <= lastPage; page++ {
+		start := max(uint64(run.off), page*uint64(h.pageBytes))
+		stop := min(end, (page+1)*uint64(h.pageBytes))
+		r := &h.mature.regions[page]
+		if uint64(r.live)+uint64(r.reserved)+stop-start > uint64(h.pageBytes) {
+			panic("gc: overlapping mature reservation")
+		}
+	}
+	for page := firstPage; page <= lastPage; page++ {
+		start := max(uint64(run.off), page*uint64(h.pageBytes))
+		stop := min(end, (page+1)*uint64(h.pageBytes))
+		n := uint32(stop - start)
+		r := &h.mature.regions[page]
+		if h.mature.admission {
+			if !r.admissionTouched {
+				r.admissionTouched = true
+				h.mature.touched = append(h.mature.touched, uint32(page))
+			}
+			r.reserved += n
+			if sp == spaceLarge {
+				r.reservedLarge += n
+			}
+		} else {
+			r.live += n
+			if sp == spaceLarge {
+				r.large += n
+			}
+		}
+	}
 	return nil
 }
 
@@ -161,7 +293,7 @@ func (h *throughputHeap) releaseMature(e handleEntry) {
 	if h.mature == nil {
 		return
 	}
-	h.matureIntersections(e, func(r *matureRegion, n uint32) {
+	h.matureIntersections(e, func(_ uint32, r *matureRegion, n uint32) {
 		if h.mature.admission {
 			if r.reserved < n {
 				panic("gc: mature reserved underflow")
@@ -183,6 +315,16 @@ func (h *throughputHeap) releaseMature(e handleEntry) {
 			}
 		}
 	})
+}
+
+func (h *throughputHeap) releaseMatureRun(run throughputAllocRun, size uint32, count int, sp spaceKind) {
+	for i := count - 1; i >= 0; i-- {
+		e := handleEntry{off: run.off + uint32(i)*run.allocSize, size: size, class: run.class, space: sp}
+		if i == count-1 && run.lastAllocSize != run.allocSize {
+			e.class |= handleAbsorbedTailBit
+		}
+		h.releaseMature(e)
+	}
 }
 
 // Full tracing has removed dead handles and left exact physical spans in the

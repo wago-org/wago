@@ -204,9 +204,18 @@ func (c *Collector) sweepAll() {
 		}
 		c.sweepMajorBlocks()
 	} else {
+		fastNurseryRelease := nativeCollectorFastPaths && !c.cfg.PoisonFreed && !c.hasReclaimObservers()
 		for h := uint32(1); int(h) < len(c.handles); h++ {
 			if c.handles[h].space != spaceFree && !c.mark[h] {
-				if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
+				e := &c.handles[h]
+				if fastNurseryRelease && e.space == spaceNursery && !e.remembered && e.cardSlot == 0 {
+					// Nursery payload has no individual allocator ownership. With no
+					// observer, poisoning, remembered bit, or cards, releaseHandle's
+					// only remaining effects are these operations in this order.
+					c.lastCardBounds = objectCardBounds{}
+					*e = handleEntry{}
+					c.freeHandles = append(c.freeHandles, h)
+				} else if e.space == spaceOld || e.space == spaceLarge {
 					c.deferThroughputFree(h)
 				} else {
 					c.free(h)

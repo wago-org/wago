@@ -108,6 +108,99 @@ func TestEdenRegionsCrossRegionEdgeAndEvacuation(t *testing.T) {
 	}
 }
 
+func TestEdenRegionsExhaustionFeedbackRecoveryAndSizes(t *testing.T) {
+	c, err := NewCollector(Config{NurseryBytes: 256, NurseryRegionShift: 6, SurvivorBytes: 256, VerifyAfterCollect: true}, testTypes(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	var root Root
+	roots := Slots{&root}
+	allocateChain := func(count int) {
+		t.Helper()
+		for i := 0; i < count; i++ {
+			r := regionStruct(t, c, 1, roots)
+			if err := c.StructSet(r, 0, RefValue(Ref(root))); err != nil {
+				t.Fatal(err)
+			}
+			root = Root(r)
+		}
+	}
+
+	// The first retained-live exhaustion probes full and falls back to minor.
+	allocateChain(9)
+	first := c.Stats()
+	if first.FullCollections != 1 || first.MinorCollections != 1 {
+		t.Fatalf("first exhaustion did not probe full then minor: %+v", first)
+	}
+	// The equivalent exhaustion uses the learned minor path.
+	allocateChain(8)
+	steady := c.Stats()
+	if steady.FullCollections != first.FullCollections || steady.MinorCollections != first.MinorCollections+1 {
+		t.Fatalf("known futile full repeated: before=%+v after=%+v", first, steady)
+	}
+
+	// An explicit cleanup full must neither clear nor refresh allocation feedback.
+	if err := c.CollectFull(roots); err != nil {
+		t.Fatal(err)
+	}
+	before := c.Stats()
+	allocateChain(8)
+	after := c.Stats()
+	if after.FullCollections != before.FullCollections || after.MinorCollections != before.MinorCollections+1 {
+		t.Fatalf("explicit full changed exhaustion feedback: before=%+v after=%+v", before, after)
+	}
+
+	// A different allocation shape is not covered by the 32-byte failure.
+	before = c.Stats()
+	for i := 0; i < 8 && c.Stats().FullCollections == before.FullCollections; i++ {
+		if _, err := c.NewArrayDefaultWithRoots(3, 4, roots); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after = c.Stats()
+	if after.FullCollections != before.FullCollections+1 {
+		t.Fatalf("failure for another size suppressed full probe: before=%+v after=%+v", before, after)
+	}
+
+	// Drop the graph. The finite skip window must eventually re-probe and learn
+	// that exact tracing can reclaim regions again.
+	root = Root(Null())
+	fullBefore := c.Stats().FullCollections
+	for i := 0; i < 80 && c.Stats().FullCollections == fullBefore; i++ {
+		regionStruct(t, c, 1, roots)
+	}
+	if c.Stats().FullCollections == fullBefore {
+		t.Fatal("finite feedback window did not re-probe full")
+	}
+	minorBefore := c.Stats().MinorCollections
+	for i := 0; i < 32; i++ {
+		regionStruct(t, c, 1, roots)
+	}
+	if c.Stats().MinorCollections != minorBefore {
+		t.Fatalf("recovered low-survival workload kept bypassing profitable full: %+v", c.Stats())
+	}
+
+	// Returning to a retained graph probes again, then relearns the futile-full
+	// result for the same request shape.
+	before = c.Stats()
+	allocateChain(9)
+	after = c.Stats()
+	if after.FullCollections == before.FullCollections || after.MinorCollections == before.MinorCollections {
+		t.Fatalf("high-survival return did not probe and fall back: before=%+v after=%+v", before, after)
+	}
+	before = after
+	allocateChain(8)
+	after = c.Stats()
+	if after.FullCollections != before.FullCollections || after.MinorCollections != before.MinorCollections+1 {
+		t.Fatalf("high-survival return was not relearned: before=%+v after=%+v", before, after)
+	}
+	if err := c.Verify(roots); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEdenRegionsLargeAndNoRoots(t *testing.T) {
 	c := regionCollector(t)
 	a, err := c.NewArrayDefault(2, 32)

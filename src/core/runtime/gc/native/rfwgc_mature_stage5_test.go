@@ -19,6 +19,9 @@ func stage5Occupancy(t *testing.T, h *throughputHeap, live, reserved, large uint
 	if uint64(cap(h.mature.regions)) > (uint64(h.limit)+uint64(h.pageBytes)-1)/uint64(h.pageBytes) {
 		t.Fatal("unbounded metadata")
 	}
+	if !h.mature.admission {
+		assertMatureAdmissionClean(t, h)
+	}
 }
 
 func TestRFWGCMatureStage5AdmissionAndFragmentation(t *testing.T) {

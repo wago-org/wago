@@ -143,6 +143,43 @@ type handleEntry struct {
 	remembered bool
 }
 
+const regionFullProbeInterval = 7
+const regionFeedbackSkipsMask uint32 = 7
+
+func regionFeedbackKey(size, align uint32) (uint32, bool) {
+	if size == 0 || size&7 != 0 || size >= 1<<30 || (align != 8 && align != 16) {
+		return 0, false
+	}
+	key := size >> 3
+	if align == 16 {
+		key |= 1 << 27
+	}
+	return key << 3, true
+}
+
+func (c *Collector) shouldSkipRegionFull(size, align uint32) bool {
+	key, ok := regionFeedbackKey(size, align)
+	return ok && c.regionExhaustion&^regionFeedbackSkipsMask == key && c.regionExhaustion&regionFeedbackSkipsMask != 0
+}
+
+func (c *Collector) noteSkippedRegionFull() {
+	c.regionExhaustion--
+}
+
+func (c *Collector) noteRegionFullResult(size, align uint32, fits bool) {
+	key, ok := regionFeedbackKey(size, align)
+	if !ok {
+		return
+	}
+	if fits {
+		if c.regionExhaustion&^regionFeedbackSkipsMask == key {
+			c.regionExhaustion = 0
+		}
+		return
+	}
+	c.regionExhaustion = key | regionFullProbeInterval
+}
+
 type Collector struct {
 	cfg                   Config
 	nativeView            *NativeCollectorView
@@ -198,6 +235,7 @@ type Collector struct {
 	nativeLargeArrayNurseryIndex int
 	edenRegions                  []edenRegion
 	edenRegionCursor             uint32
+	regionExhaustion             uint32 // packed exact request key and bounded full-probe skip count
 	parallel                     *parallelCollector
 }
 

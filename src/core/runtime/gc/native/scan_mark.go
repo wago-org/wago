@@ -49,7 +49,7 @@ func (c *Collector) scanObjectNursery(h uint32) {
 	// Keep reference order and filtering in step with scanObjectRefs.
 	// A separate loop lets the compiler inline marking without a callback.
 	r := makeObjRef(h)
-	d, err := c.refDesc(r)
+	d, err := c.refDescPtr(r)
 	if err != nil || !d.HasRefs {
 		return
 	}

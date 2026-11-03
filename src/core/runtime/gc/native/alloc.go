@@ -146,11 +146,16 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 			if roots == nil {
 				return Null(), errors.New("gc: nursery exhausted and no roots were supplied")
 			}
+			skippedRegionFull := false
 			if len(c.edenRegions) != 0 {
-				if err := c.CollectFull(roots); err != nil {
-					return Null(), err
+				skippedRegionFull = c.shouldSkipRegionFull(size, objectAlign)
+				if !skippedRegionFull {
+					if err := c.CollectFull(roots); err != nil {
+						return Null(), err
+					}
+					off, fits = nurseryOffset()
+					c.noteRegionFullResult(size, objectAlign, fits)
 				}
-				off, fits = nurseryOffset()
 			}
 			if !fits {
 				if err := c.CollectMinor(roots); err != nil {
@@ -159,6 +164,9 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 					}
 				}
 				off, fits = nurseryOffset()
+				if skippedRegionFull {
+					c.noteSkippedRegionFull()
+				}
 			}
 			if !fits {
 				return Null(), errors.New("gc: nursery exhausted without roots")

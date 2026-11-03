@@ -91,6 +91,15 @@ func (c *Collector) notifyObjectReclaimed(ref Ref) {
 		entry.fn(ref)
 	}
 }
+func (c *Collector) hasReclaimObservers() bool {
+	if reclaimObserverCount.Load() == 0 {
+		return false
+	}
+	reclaimObserverMu.RLock()
+	has := len(reclaimObservers[c]) != 0
+	reclaimObserverMu.RUnlock()
+	return has
+}
 func (c *Collector) notifyCollectorClosed() {
 	c.closeObjectEdgeSource()
 	reclaimObserverMu.Lock()
