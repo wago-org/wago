@@ -476,6 +476,7 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 	}
 	g := newGlobalInCell(ValExternRef, initial.token, V128{}, mutable, arena.Alloc(8), arena)
 	g.owner.store = rt.refStore
+	registerConversionHost(rt.refStore, g.cell, nil, g.owner)
 	return g, nil
 }
 
@@ -483,6 +484,8 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 // global importer closes. Instance-owned exported globals remain no-ops because
 // their producer instance owns the cell.
 func (g *Global) Close() error {
+	unlockConversion := lockConversionHostGlobalClose(g)
+	defer unlockConversion()
 	if handled, err := railshotTryCloseCompactExternHostGlobal(g); handled {
 		return err
 	}
@@ -508,6 +511,7 @@ func (g *Global) Close() error {
 	o.closed = true
 	arena, store := o.arena, o.store
 	o.arena = nil
+	conversionStorage := g.cell
 	g.cell = nil
 	var dependencies globalDescriptorDependencyBatch
 	for root, state := range o.retained {
@@ -521,6 +525,8 @@ func (g *Global) Close() error {
 	o.mu.Unlock()
 	// Root release may re-enter instance finalization, so it must not happen
 	// while globalOwner.mu is held.
+	releaseConversionHostStorage(store, conversionStorage)
+	unlockConversion()
 	var cleanup resourceCleanup
 	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
 	var err error
@@ -743,6 +749,9 @@ func (g *Global) getValueNoLease() (Value, error) {
 		return Value{typ: typ, bits: token}, nil
 	}
 	if typ == ValExternRef {
+		if public, ok := conversionHostPublicWord(store, bits); ok {
+			return Value{typ: ValExternRef, bits: public}, nil
+		}
 		public, handled, err := source.publicExternFromGlobal(bits)
 		if err != nil {
 			return Value{}, fmt.Errorf("global contains an invalid externref value: %w", err)
@@ -770,6 +779,9 @@ func (g *Global) getValueNoLease() (Value, error) {
 
 // SetValue updates a mutable reference global after exact token validation.
 func (g *Global) SetValue(v Value) (err error) {
+	if handled, e := setConversionGlobalPublic(nil, g, v); handled {
+		return e
+	}
 	if g == nil {
 		return fmt.Errorf("global owner instance is closed")
 	}
@@ -1805,6 +1817,9 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 	if !o.hasValueType {
 		actual, _ = valueTypeDescriptorFromValType(typ)
 	}
+	// Only an immutable exact nullable-none slot is permanently object-free.
+	// A mutable null slot may later contain objects and still requires a domain.
+	immutableNone := !o.mutable && o.hasValueType && actual.Kind == ValueTypeReference && actual.Ref.Nullable && !actual.Ref.Heap.Defined && actual.Ref.Heap.Abstract == AbstractHeapNone
 	bits := readGlobalObject(g, typ)
 	retained := make([]retainedSnapshot, 0, len(o.retained))
 	for root, state := range o.retained {
@@ -1817,6 +1832,11 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 		return fmt.Errorf("reference global owner instance is closed")
 	}
 	if isGCRefValType(typ) {
+		// Store identity, exact owner metadata and physical liveness were checked
+		// above. An immutable none/null provider needs no collector registration.
+		if immutableNone && bits == 0 && source != nil && source.gc == nil && source.refStore == store {
+			return nil
+		}
 		if source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
 			return fmt.Errorf("collector-reference global requires producer and importer in the same Runtime GC domain")
 		}
@@ -1841,6 +1861,9 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 		return nil
 	}
 	if typ == ValExternRef {
+		if _, ok := conversionHostPublicWord(store, bits); ok {
+			return nil
+		}
 		if railshotValidCompactExternHostGlobalWord(g, store, collector, bits) {
 			return nil
 		}

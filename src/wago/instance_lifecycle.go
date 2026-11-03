@@ -316,6 +316,7 @@ func (in *Instance) tryBeginDirectInvocation() bool {
 }
 
 func (in *Instance) endInvocation() {
+	defer managedFunctionAfterLifetimeBoundary(in)
 	if in == nil {
 		return
 	}
@@ -364,6 +365,7 @@ func (in *Instance) endRuntimeInvocation() {
 // endInvocation finalization path; Runtime-owned instances retain operation accounting.
 func (in *Instance) endDirectInvocation() {
 	if in.rt == nil && in.invocationState.word.CompareAndSwap(1, 0) {
+		managedFunctionAfterLifetimeBoundary(in)
 		return
 	}
 	in.endInvocation()
@@ -624,6 +626,7 @@ func (in *Instance) beginConstruction(reservation *pluginOperationReservation) {
 }
 
 func (in *Instance) endConstruction() {
+	defer managedFunctionAfterLifetimeBoundary(in)
 	if in == nil {
 		return
 	}
@@ -671,25 +674,28 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	cleanup.run(func() { detachImportedTags(in) })
 	cleanup.run(func() { releaseInstanceExceptionTags(in) })
 	cleanup.run(func() { releaseInstanceCompactExtern(in) })
-	if in.gc != nil {
-		closeCollector := func() {
-			if table := in.existingGCRefTestTableState(); table != nil {
-				table.drop(in.gc)
-			}
-			if elements := in.takeGCArrayElementState(); elements != nil {
-				elements.drop(in.gc)
-			}
-			if in.executionFlags.Load()&executionFlagStoreOwnedGCCollector == 0 {
-				in.gc.Close()
-			}
+	// Root retirement freezes receipt domains, but no collector Close callback
+	// runs under that topology writer. Cleanup failures cannot strand the gate.
+	cleanup.run(func() {
+		conversionUnlock := lockGCConversionRetirement(in)
+		defer conversionUnlock()
+		cleanup.run(func() { releaseGCConversionOwner(in) })
+		if in.gc == nil {
+			return
 		}
 		if state := in.existingPublicGCState(); state != nil {
 			state.mu.Lock()
-			closeCollector()
-			state.mu.Unlock()
-		} else {
-			closeCollector()
+			defer state.mu.Unlock()
 		}
+		if table := in.existingGCRefTestTableState(); table != nil {
+			cleanup.run(func() { table.drop(in.gc) })
+		}
+		if elements := in.takeGCArrayElementState(); elements != nil {
+			cleanup.run(func() { elements.drop(in.gc) })
+		}
+	})
+	if in.gc != nil && in.executionFlags.Load()&executionFlagStoreOwnedGCCollector == 0 {
+		cleanup.run(in.gc.Close)
 	}
 	// These containers consume their root units before producer callbacks run.
 	// A nested physical callback must not interrupt our remaining native teardown.

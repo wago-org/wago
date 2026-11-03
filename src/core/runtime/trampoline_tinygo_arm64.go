@@ -108,6 +108,10 @@ func (e *Engine) initNativeEntry() error {
 	if err != nil {
 		return fmt.Errorf("tinygo entry trampoline: %w", err)
 	}
+	if len(e.stack) != 0 {
+		e.preparedInt.foreignStack = registerTinyGoForeignStack(
+			uintptr(unsafe.Pointer(&e.stack[0])), stackTop, stackTop-176)
+	}
 	e.preparedInt.mem = mem
 	e.preparedInt.stackTop = stackTop
 	e.stackTop = uintptr(unsafe.Pointer(&mem[0]))

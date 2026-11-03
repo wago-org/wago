@@ -351,6 +351,11 @@ func (in *Instance) TableFunctionIndex(name string, entry uint64) (index uint32,
 // non-null externref tokens are validated only through the instance's exact
 // reference store before native-visible storage.
 func (in *Instance) SetGlobalValue(name string, v Value) (err error) {
+	if idx, e := in.exportedGlobalIndex(name); e == nil && in.c.Globals[idx].Type == ValExternRef {
+		if handled, e := setConversionGlobalPublic(in, in.globalCells[idx], v); handled {
+			return e
+		}
+	}
 	if err := in.beginInvocation(); err != nil {
 		return fmt.Errorf("set global %q: %w", name, err)
 	}

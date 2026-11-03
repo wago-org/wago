@@ -13,14 +13,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
+	nativegc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func gcFlags() []command.Flag {
 	return []command.Flag{
+		{Name: "gc-workers", Arg: "<count>", Help: "GC participants including coordinator: 0/1 serial, 2..8 helpers"},
+		{Name: "gc-region-shift", Arg: "<bits>", Help: "opt-in region GC: 0 off, 6..30 with explicit divisible nursery"},
+		{Name: "gc-mature-evacuation", Bool: true, Help: "opt-in pressure-triggered sparse mature relocation (requires region GC)"},
 		{Name: "gc-heap", Arg: "<size>", Help: "throughput GC heap capacity in bytes or KiB, MiB, GiB"},
 		{Name: "gc-nursery", Arg: "<size>", Help: "throughput GC nursery capacity in bytes or KiB, MiB, GiB"},
 	}
@@ -55,7 +60,27 @@ func gcConfiguration(ctx *command.Ctx) (wago.GCConfig, bool, error) {
 		}
 		cfg.NurseryBytes = value
 	}
-	return cfg, heap != "" || nursery != "", nil
+	workers, region := ctx.Str("gc-workers"), ctx.Str("gc-region-shift")
+	if workers != "" {
+		n, err := strconv.Atoi(workers)
+		if err != nil || n < 0 || n > 8 {
+			return cfg, false, fmt.Errorf("--gc-workers: expected 0 through 8")
+		}
+		cfg.Workers = n
+	}
+	if region != "" {
+		n, err := strconv.Atoi(region)
+		if err != nil || (n != 0 && (n < 6 || n > 30)) {
+			return cfg, false, fmt.Errorf("--gc-region-shift: expected 0 or 6 through 30")
+		}
+		cfg.NurseryRegionShift = uint8(n)
+	}
+	cfg.MatureEvacuation = ctx.Bool("gc-mature-evacuation")
+	configured := heap != "" || nursery != "" || workers != "" || region != "" || cfg.MatureEvacuation
+	if err := nativegc.ValidateConfig(cfg); err != nil {
+		return cfg, false, err
+	}
+	return cfg, configured, nil
 }
 
 func parseGCBytes(raw string) (uint32, error) {

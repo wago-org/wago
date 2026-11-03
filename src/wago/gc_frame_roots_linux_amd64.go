@@ -47,6 +47,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		return reject("table or element ownership is outside the exact native-root model")
 	}
 	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
+	externBridge := false
+	if !analysis.ValidFor(m) || analysis.Flags()&wasm.ValidatedFuncHasTailCall != 0 {
+		externBridge = moduleUsesGCExternConversion(m)
+	}
 	funcImport := uint32(0)
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
@@ -63,12 +67,12 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
-			if !collectorBoundary && !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) {
+			if !collectorBoundary && !collectorFrameRefType(m, global.Type) && !frameFunctionRefType(m, global.Type) && global.Type != wasm.ExternRef {
 				return reject("global import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternTable:
 			tableType := wasm.RefVal(m.Imports[i].Type.TableType().Ref)
-			if !collectorFrameRefType(m, tableType) && !frameFunctionRefType(m, tableType) {
+			if !collectorFrameRefType(m, tableType) && !frameFunctionRefType(m, tableType) && tableType != wasm.ExternRef {
 				return reject("table import %d has an unsupported reference ownership shape", i)
 			}
 		case wasm.ExternMem:
@@ -106,7 +110,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		if hasFixedRoots {
 			fixedOffsets = gcFrameFixedOffsets(&ehMaps[ehMapIndex-1])
 		}
-		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier) {
+		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier, externBridge) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
 		ft, ok := m.LocalFuncType(function)
@@ -153,9 +157,9 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		var err error
 		plan.Conservative = bodyUsesEH(m.Code[function].BodyBytes, &classifier) || len(plan.Locals) == 0 && !gcFrameNeedsReachableMasks(m.Code[function].BodyBytes, &classifier)
 		if plan.Conservative {
-			liveMasks, err = gcFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
+			liveMasks, err = gcFrameAllLiveMasksArenaWithClassifier(m.Code[function].BodyBytes, len(plan.Locals), &classifier, m)
 		} else {
-			liveMasks, err = gcFrameLocalLivenessArenaWithClassifier(m.Code[function].BodyBytes, plan.Locals, &classifier)
+			liveMasks, err = gcFrameLocalLivenessArenaWithClassifier(m.Code[function].BodyBytes, plan.Locals, &classifier, m)
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
@@ -189,7 +193,8 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
 	}
 	totalFuncs := m.ImportedFuncCount() + len(m.Code)
 	functionIndexOK := func(index uint32) bool { return int(index) < totalFuncs }
-	tableKinds := make([]uint8, m.TableCount()) // 1=funcref, 2=collector ref
+	externBridge := m.TableCount() != 0 && moduleUsesGCExternConversion(m)
+	tableKinds := make([]uint8, m.TableCount()) // 1=funcref, 2=collector ref, 3=private externref
 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 		tableType, ok := m.TableType(uint32(tableIndex))
 		if !ok {
@@ -201,6 +206,9 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
 			tableKinds[tableIndex] = 1
 		case collectorFrameRefType(m, typ):
 			tableKinds[tableIndex] = 2
+		case typ == wasm.ExternRef && externBridge:
+			// Opaque words are covered by physical container receipts, including imports.
+			tableKinds[tableIndex] = 3
 		default:
 			return false
 		}
@@ -271,7 +279,7 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
 }
 
 //go:noinline
-func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctions, localFunctions int, classifier *wasm.ModuleInstructionClassifier) bool {
+func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctions, localFunctions int, classifier *wasm.ModuleInstructionClassifier, externBridge bool) bool {
 	r := wasm.NewReader(body)
 	var imm wasm.InstructionImmediate
 	for r.HasNext() {
@@ -280,6 +288,12 @@ func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctio
 			return true
 		}
 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return true
+		}
+		// A foreign proper tail can insert an unmapped context-restoration
+		// trampoline. Keep the extern bridge collection-disabled for those
+		// shapes; a direct known-local tail retains the ordinary caller record.
+		if externBridge && (op == 0x13 || op == 0x15 || op == 0x12 && int(imm.Index) < m.ImportedFuncCount()) {
 			return true
 		}
 		if (op == 0x10 || op == 0x12) && int(imm.Index) >= importedFunctions+localFunctions {
@@ -312,10 +326,6 @@ func bodyUsesEH(body []byte, classifier *wasm.ModuleInstructionClassifier) bool 
 		}
 	}
 	return false
-}
-
-func gcFrameConservativeMasks(body []byte, localRoots int, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
-	return gcFrameAllLiveMasksArenaWithClassifier(body, localRoots, classifier)
 }
 
 //go:noinline

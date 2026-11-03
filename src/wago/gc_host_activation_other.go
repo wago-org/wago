@@ -20,7 +20,7 @@ type gcHostActivationToken struct {
 	index uint8
 }
 
-func (*Instance) pushGCHostActivation(uintptr, uint32, *coreruntime.Engine) gcHostActivationToken {
+func (*Instance) pushGCHostActivation(uintptr, uint32, *coreruntime.Engine, *Instance) gcHostActivationToken {
 	return gcHostActivationToken{}
 }
 

@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build (linux || (darwin && arm64)) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -14,12 +14,21 @@ package wago
 var managedFunctionInvocationStates managedFunctionPointerRegistry[*instancePluginState] // *instancePluginState -> *managedFunctionGraph
 
 func managedFunctionBindInvocationState(in *Instance, state *instancePluginState) {
-	if managedFunctionMemberCount.Load() == 0 || in == nil || state == nil {
+	if in == nil || state == nil || in.executionFlags.Load()&executionFlagManagedOwnership == 0 {
 		return
 	}
 	if value, ok := managedFunctionMembers.Load(in); ok {
-		managedFunctionInvocationStates.Store(state, value.(*managedFunctionMember).graph)
+		managedFunctionBindMemberInvocationState(in, state, value.(*managedFunctionMember))
 	}
+}
+
+func managedFunctionBindMemberInvocationState(in *Instance, state *instancePluginState, member *managedFunctionMember) {
+	g := member.graph
+	g.mu.Lock()
+	if g.members[in] == member {
+		managedFunctionInvocationStates.Store(state, g)
+	}
+	g.mu.Unlock()
 }
 
 func managedFunctionAfterInvocationUnlock(state *instancePluginState, id invocationID) {
@@ -32,7 +41,7 @@ func managedFunctionAfterInvocationUnlock(state *instancePluginState, id invocat
 }
 
 func drainManagedFunctionStoreReclaims(store *referenceStore) {
-	if managedFunctionMemberCount.Load() == 0 || store == nil {
+	if store == nil {
 		return
 	}
 	if value, ok := managedFunctionGraphs.Load(store); ok {
@@ -48,14 +57,7 @@ func (g *managedFunctionGraph) gateStillOwnedLocked(id invocationID) bool {
 		if member == nil {
 			continue
 		}
-		state := member.owner.pluginState.Load()
-		if state == nil {
-			continue
-		}
-		state.activations.mu.Lock()
-		owner := state.railshotInvocation.gateOwner
-		state.activations.mu.Unlock()
-		if owner != 0 && (id == 0 || owner == id) {
+		if managedFunctionMemberActive(member, id) {
 			return true
 		}
 	}
@@ -77,8 +79,10 @@ func (g *managedFunctionGraph) drainAfterGate(id invocationID) {
 	g.drainingReclaims = true
 	g.mu.Unlock()
 	var cleanup resourceCleanup
+	cleanup.run(func() { managedFunctionDrainDeadDependencies(g) })
 	for {
 		g.pendingMetadata.Store(false)
+		drainConversionClaims(g)
 		// A native pin can be the last reason a public converted token stayed
 		// live during Runtime close. This driver owns no invocation/native lock;
 		// release its root only after the last pin and closed-host proof agree.
@@ -122,6 +126,11 @@ func (g *managedFunctionGraph) drainAfterGate(id invocationID) {
 			break
 		}
 	}
+	managedFunctionRegistryMu.Lock()
+	g.mu.Lock()
+	g.retireEmptyLocked()
+	g.mu.Unlock()
+	managedFunctionRegistryMu.Unlock()
 	cleanup.finish()
 }
 
@@ -130,7 +139,7 @@ func (g *managedFunctionGraph) drainAfterGate(id invocationID) {
 // topology reader. Defer its finalization (not the root-count decrement) to the
 // same synchronous outer cleanup boundary as Env physical reclamation.
 func managedFunctionDeferFinalization(in *Instance) bool {
-	if managedFunctionMemberCount.Load() == 0 || in == nil || in.invocationState.Load()&instanceInvocationClosed == 0 {
+	if in == nil || in.invocationState.Load()&instanceInvocationClosed == 0 {
 		return false
 	}
 	value, ok := managedFunctionMembers.Load(in)

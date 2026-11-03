@@ -43,17 +43,18 @@ type gcRefTestTableSpec struct {
 type gcRefTestTableState struct {
 	// Descriptor, Slots and Count alias the first root table (RootTable), the
 	// one the single-table products and array element helpers address.
-	Descriptor    []byte
-	Descriptors   [][]byte
-	CanonicalType *gc.TypeCanonicalization
-	Conversion    *gcExternConversionState
-	Slots         []uint32
-	Count         uint32
-	TableCount    uint8
-	RootTable     uint8
-	kinds         []gcRefTableKind
-	entryBytes    []int
-	slots         [][]uint32
+	Descriptor           []byte
+	Descriptors          [][]byte
+	CanonicalType        *gc.TypeCanonicalization
+	Conversion           *gcExternConversionState
+	Slots                []uint32
+	Count                uint32
+	TableCount           uint8
+	RootTable            uint8
+	kinds                []gcRefTableKind
+	entryBytes           []int
+	slots                [][]uint32
+	conversionContainers []*gcConversionContainer
 }
 
 // newGCRefTestTableState builds the state for the historical fixed layouts:
@@ -190,6 +191,9 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 	if index >= size {
 		return fmt.Errorf("GC ref.test table %d index %d out of bounds", table, index)
 	}
+	if s.entryBytes[table] != 8 {
+		return fmt.Errorf("GC ref.test funcref table mutation must use native descriptor copying")
+	}
 	switch s.kinds[table] {
 	case gcRefTableRoot:
 		root := gc.Null()
@@ -220,12 +224,10 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 		}
 		off := 8 + int(index)*8
 		old := binary.LittleEndian.Uint64(descriptor[off : off+8])
-		if err := s.Conversion.replaceExtern(old, word); err != nil {
-			return err
-		}
-	}
-	if s.entryBytes[table] != 8 {
-		return fmt.Errorf("GC ref.test funcref table mutation must use native descriptor copying")
+		return publishGCConversionTable(s, table, index, old, word, func() error {
+			binary.LittleEndian.PutUint64(descriptor[off:off+8], word)
+			return nil
+		})
 	}
 	off := 8 + int(index)*8
 	binary.LittleEndian.PutUint64(descriptor[off:off+8], word)
@@ -280,20 +282,28 @@ func (s *gcRefTestTableState) drop(collector *gc.Collector) {
 	if s == nil || collector == nil {
 		return
 	}
+	imported := conversionImportedTableCount(s)
+	liveCollector := gcConversionCollectorRegistered(s.Conversion)
 	for table, slots := range s.slots {
 		descriptor := s.Descriptors[table]
 		for i, slot := range slots {
-			_ = collector.SetTableSlot(slot, gc.Null())
+			if liveCollector {
+				_ = collector.SetTableSlot(slot, gc.Null())
+			}
 			off := 8 + i*8
 			if off+8 <= len(descriptor) {
 				binary.LittleEndian.PutUint64(descriptor[off:off+8], 0)
 			}
 		}
 	}
+	releaseGCConversionTables(s)
 	if s.Conversion != nil {
 		_ = s.Conversion.close()
 	}
 	for table, descriptor := range s.Descriptors {
+		if table < imported {
+			continue
+		}
 		if len(descriptor) < 8 {
 			continue
 		}

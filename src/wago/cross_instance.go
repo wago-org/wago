@@ -218,6 +218,7 @@ func newHostTable(minSize, maxSize uint32, elementType ValType, store *reference
 	// Host tables are always bounded: maxSize defaulted to minSize above, so the
 	// reservation is the effective declared maximum.
 	owner := &tableOwner{arena: arena, store: store, elementType: elementType, declaredHasMax: true}
+	registerConversionHost(store, desc, owner, nil)
 	return &Table{desc: desc, owner: owner}, nil
 }
 
@@ -283,6 +284,8 @@ func (t *Table) runtimeCapacity() (uint32, bool) {
 // Close releases a host-created table after every importer closes. Instance-owned
 // export handles remain no-ops; their producer instance owns the descriptor.
 func (t *Table) Close() error {
+	unlockConversion := lockConversionHostTableClose(t)
+	defer unlockConversion()
 	if handled, err := railshotTryCloseCompactExternHostTable(t); handled || err != nil {
 		return err
 	}
@@ -320,6 +323,7 @@ func (t *Table) Close() error {
 	// because releasing a root may re-enter instance finalization.
 	t.mu.Lock()
 	t.closed = true
+	conversionStorage := t.desc
 	t.desc = nil
 	var dependencies tableDescriptorDependencyBatch
 	for root, state := range t.retained {
@@ -332,6 +336,8 @@ func (t *Table) Close() error {
 	t.mu.Unlock()
 	o.mu.Unlock()
 
+	releaseConversionHostStorage(store, conversionStorage)
+	unlockConversion()
 	var cleanup resourceCleanup
 	cleanup.run(func() { railshotFlushTableDescriptorDependencies(&dependencies) })
 	var err error

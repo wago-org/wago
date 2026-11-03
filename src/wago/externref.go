@@ -122,6 +122,9 @@ func (in *Instance) validExternrefToken(token uint64) bool {
 // an externref result, so global reads must use the result conversion. handled
 // is false when ordinary host-issued tokens apply.
 func (in *Instance) publicExternFromGlobal(bits uint64) (public uint64, handled bool, err error) {
+	if word, ok := conversionBoundaryWord(in, bits, false); ok {
+		return word, true, nil
+	}
 	if in == nil || in.c == nil || in.c.stagedGCStructProduct() != stagedGCStructExtern {
 		return bits, false, nil
 	}
@@ -135,6 +138,9 @@ func (in *Instance) publicExternFromGlobal(bits uint64) (public uint64, handled 
 
 // internalExternForGlobal is the inverse of publicExternFromGlobal for writes.
 func (in *Instance) internalExternForGlobal(bits uint64) (internal uint64, handled bool, err error) {
+	if word, ok := conversionBoundaryWord(in, bits, true); ok {
+		return word, true, nil
+	}
 	if in == nil || in.c == nil || in.c.stagedGCStructProduct() != stagedGCStructExtern {
 		return bits, false, nil
 	}

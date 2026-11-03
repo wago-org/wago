@@ -249,7 +249,11 @@ func gcFrameLocalLivenessArena(body []byte, locals []shared.GCFrameLocal) (gcFra
 	return gcFrameLocalLivenessArenaWithClassifier(body, locals, &classifier)
 }
 
-func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFrameLocal, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
+func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFrameLocal, classifier *wasm.ModuleInstructionClassifier, typedModule ...*wasm.Module) (gcFrameLiveMasks, error) {
+	var m *wasm.Module
+	if len(typedModule) != 0 {
+		m = typedModule[0]
+	}
 	if len(locals) > shared.GCFrameTrackedLocalLimit {
 		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness tracks %d locals, limit %d", len(locals), shared.GCFrameTrackedLocalLimit)
 	}
@@ -320,7 +324,7 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 		}
 		node.nativeCall = gcFrameNativeCall(imm.Kind)
 		keep := node.use != noGCLiveIndex || node.def != noGCLiveIndex || node.nativeCall || node.flow == gcLiveBrTable
-		if gcFrameInstructionMayAllocate(op, imm) {
+		if gcFrameInstructionMayAllocate(op, imm) || gcFrameStorageMayAllocate(m, imm) {
 			node.allocation = true
 			keep = true
 		}
@@ -833,7 +837,7 @@ func gcFrameInstructionMayAllocate(op byte, imm wasm.InstructionImmediate) bool 
 
 func gcFrameBodyMayAllocateWithClassifier(body []byte, classifier *wasm.ModuleInstructionClassifier, typedModule ...*wasm.Module) bool {
 	var m *wasm.Module
-	if compiledArchitecture == 4 && len(typedModule) != 0 {
+	if len(typedModule) != 0 {
 		m = typedModule[0]
 	}
 	r := wasm.NewReader(body)
@@ -846,7 +850,7 @@ func gcFrameBodyMayAllocateWithClassifier(body []byte, classifier *wasm.ModuleIn
 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return true
 		}
-		if gcFrameInstructionMayAllocate(op, imm) || wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
+		if gcFrameInstructionMayAllocate(op, imm) || gcFrameStorageMayAllocate(m, imm) {
 			return true
 		}
 	}
@@ -895,7 +899,7 @@ func gcFrameAllLiveMasksArenaWithClassifier(body []byte, localRoots int, classif
 					allocationN++
 				}
 			}
-			if wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
+			if gcFrameStorageMayAllocate(m, imm) {
 				allocationN++
 			}
 			if gcFrameNativeCall(imm.Kind) {
@@ -932,7 +936,7 @@ func gcFrameAllLiveMasksArenaWithClassifier(body []byte, localRoots int, classif
 				allocationIndex++
 			}
 		}
-		if wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
+		if gcFrameStorageMayAllocate(m, imm) {
 			appendMask(allocationIndex)
 			allocationIndex++
 		}
@@ -971,4 +975,11 @@ func gcFrameNeedsReachableMasks(body []byte, classifier *wasm.ModuleInstructionC
 		}
 	}
 	return false
+}
+
+func gcFrameStorageMayAllocate(m *wasm.Module, imm wasm.InstructionImmediate) bool {
+	if compiledArchitecture == 4 {
+		return wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2)
+	}
+	return wasm.FunctionStorageMutation(m, imm.Kind, imm.Index, imm.Index2)
 }

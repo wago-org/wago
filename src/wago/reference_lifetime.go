@@ -139,10 +139,11 @@ func (lifetime referenceLifetime) snapshot() referenceLifetimeSnapshot {
 // transferredImportAttachmentState records storage attachments whose persistent
 // roots took over an importing instance's lifetime obligation.
 type transferredImportAttachmentState struct {
-	mu       sync.Mutex
-	memories map[*Memory]struct{}
-	tables   map[*Table]struct{}
-	globals  map[*Global]struct{}
+	mu        sync.Mutex
+	functions map[*Instance]struct{}
+	memories  map[*Memory]struct{}
+	tables    map[*Table]struct{}
+	globals   map[*Global]struct{}
 }
 
 var transferredImportAttachments sync.Map // map[*Instance]*transferredImportAttachmentState
@@ -260,6 +261,33 @@ func (in *Instance) ownsTransferredTableAttachment(table *Table) bool {
 	state := value.(*transferredImportAttachmentState)
 	state.mu.Lock()
 	_, ok = state.tables[table]
+	state.mu.Unlock()
+	return ok
+}
+
+// A joint owner mark may consume unreachable function-import units before the
+// physical journals run. The transfer ledger makes ordinary teardown idempotent.
+func (in *Instance) transferImportedFunctionAttachment(producer *Instance) {
+	state := transferredImportState(in)
+	state.mu.Lock()
+	if state.functions == nil {
+		state.functions = make(map[*Instance]struct{})
+	}
+	_, exists := state.functions[producer]
+	state.functions[producer] = struct{}{}
+	state.mu.Unlock()
+	if !exists {
+		producer.releaseResourceRoot()
+	}
+}
+func (in *Instance) ownsTransferredFunctionAttachment(producer *Instance) bool {
+	value, ok := transferredImportAttachments.Load(in)
+	if !ok {
+		return false
+	}
+	state := value.(*transferredImportAttachmentState)
+	state.mu.Lock()
+	_, ok = state.functions[producer]
 	state.mu.Unlock()
 	return ok
 }

@@ -196,7 +196,7 @@ func detachImportedFunctions(in *Instance) {
 		if !ok || export == nil || export.inst == nil {
 			continue
 		}
-		if seen.add(export.inst) {
+		if seen.add(export.inst) && !in.ownsTransferredFunctionAttachment(export.inst) {
 			cleanup.run(func() { export.inst.releaseResourceRoot() })
 		}
 	}

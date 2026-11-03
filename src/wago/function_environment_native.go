@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build (linux || (darwin && arm64)) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -92,7 +92,9 @@ type managedFunctionGraph struct {
 	pendingMetadata   atomic.Bool
 	pendingFinalizers atomic.Uint64
 	pendingCollection atomic.Bool
-	collecting        atomic.Bool
+	collecting        sync.Mutex
+	hostRetry         managedFunctionRetryState
+	receiptReleases   []*gcStoreDomain // drained outside topology readers
 	drainingReclaims  bool
 }
 
@@ -137,26 +139,6 @@ type managedFunctionEnv struct {
 	descriptors []uint64
 }
 
-type managedFunctionCollector struct {
-	mu           sync.Mutex // observer journal only; maps are collector-domain serialized
-	graph        *managedFunctionGraph
-	collector    *gc.Collector
-	typeID       gc.TypeID
-	envs         map[gc.Ref]*managedFunctionEnv    // weak, removed before handle reuse
-	byOwner      map[*Instance]*managedFunctionEnv // same weak identity
-	byDescriptor map[uint64]*managedFunctionEnv
-	shadows      map[gc.Ref]managedFunctionEdge   // inline first producer; null tombstones preserve Tiny cursors
-	extraShadows map[gc.Ref][]managedFunctionEdge // cold overflow for multiple producers
-	aggregate    *managedFunctionAggregateScratch
-	globalOwners map[uint32]*managedFunctionMember
-	tableOwners  map[uint32]*managedFunctionMember
-	authorized   bool // only a validated joint mark may make slots conditional
-	liveOwners   map[*managedFunctionMember]bool
-	reclaimed    []*managedFunctionEnv
-	closed       bool
-	exception    *managedFunctionExceptionScratch
-}
-
 func (s *managedFunctionCollector) ObjectEdgeCount(ref gc.Ref) uint32 {
 	if _, ok := s.shadows[ref]; ok {
 		return 1 + uint32(len(s.extraShadows[ref]))
@@ -169,6 +151,17 @@ func (s *managedFunctionCollector) ObjectEdgeAt(ref gc.Ref, index uint32) gc.Ref
 func (s *managedFunctionCollector) ObjectEdgesMutated(gc.Ref)  { s.graph.epoch.Add(1) }
 func (s *managedFunctionCollector) ObjectRootPublished(gc.Ref) { s.graph.epoch.Add(1) }
 func (s *managedFunctionCollector) PersistentRootIsStrong(kind gc.SlotKind, index uint32) bool {
+	if kind == gc.SlotTable {
+		if c := s.conversionHostSlots[index]; c != nil {
+			return !s.authorized || conversionHostRootIsStrong(c)
+		}
+	}
+	if s.authorized && kind == gc.SlotTable && s.conversionFloating[index] != nil {
+		return false
+	}
+	if s.authorized && kind == gc.SlotGlobal && s.hostEnvSlots[index] != gc.Null() {
+		return false
+	}
 	if s.authorized && kind == gc.SlotGlobal && !compactExternHostRootIsStrong(s.collector, index) {
 		return false
 	}
@@ -243,19 +236,23 @@ func (g *managedFunctionGraph) registerMemberLocked(in *Instance, registered boo
 	if state := in.pluginState.Load(); state != nil {
 		managedFunctionInvocationStates.Store(state, g)
 	}
+	for flags := in.executionFlags.Load(); flags&executionFlagManagedOwnership == 0 && !in.executionFlags.CompareAndSwap(flags, flags|executionFlagManagedOwnership); flags = in.executionFlags.Load() {
+	}
 	managedFunctionMemberCount.Add(1)
 	g.epoch.Add(1)
 	return member
 }
 
 func (g *managedFunctionGraph) removeMemberLocked(member *managedFunctionMember) {
+	for flags := member.owner.executionFlags.Load(); flags&executionFlagManagedOwnership != 0 && !member.owner.executionFlags.CompareAndSwap(flags, flags&^executionFlagManagedOwnership); flags = member.owner.executionFlags.Load() {
+	}
 	if member.finalizationPending {
 		member.finalizationPending = false
 		g.pendingFinalizers.Add(^uint64(0))
 	}
 
-	if state := g.collectors[member.owner.gc]; state != nil {
-		for _, slot := range member.slots {
+	for _, slot := range member.slots {
+		if state := g.collectors[slot.collector]; state != nil {
 			if slot.kind == gc.SlotGlobal {
 				delete(state.globalOwners, slot.index)
 			} else {
@@ -383,6 +380,11 @@ func managedFunctionDescriptorOwner(source *Instance, descriptor uint64) *Instan
 	store := source.refStore
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	if store.hasInstanceResourcesLocked(source) {
+		if owner := managedFunctionPrivateProxyOwner(source, descriptor); owner != nil {
+			return owner
+		}
+	}
 	if entry := store.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil && store.hasInstanceResourcesLocked(entry.owner) {
 		return entry.owner
 	}
@@ -514,6 +516,9 @@ func (s *managedFunctionCollector) newManagedFunctionEnv(producer *Instance, roo
 	env.root = gc.Root(ref)
 	s.envs[ref] = env
 	s.byOwner[producer] = env
+	if err := s.publishHostEnvironment(env); err != nil {
+		return gc.Null(), err
+	}
 	return ref, nil
 }
 
@@ -558,15 +563,41 @@ func drainManagedFunctionReclaims(collector *gc.Collector) {
 		managedFunctionRegistryMu.Lock()
 		s.graph.mu.Lock()
 		delete(s.graph.collectors, collector)
-		if len(s.graph.collectors) == 0 {
-			s.graph.retired = true
-			for _, member := range s.graph.members {
-				s.graph.removeMemberLocked(member)
+		// A collector-free container can own slots in several domains. Drop
+		// only the retired domain's metadata, without reading its closed heap.
+		for _, member := range s.graph.members {
+			kept := member.slots[:0]
+			for _, slot := range member.slots {
+				if slot.collector != collector {
+					kept = append(kept, slot)
+				}
 			}
-			managedFunctionGraphs.Delete(s.graph.store)
+			clear(member.slots[len(kept):])
+			member.slots = kept
 		}
+		s.graph.retireEmptyLocked()
 		s.graph.mu.Unlock()
 		managedFunctionRegistryMu.Unlock()
 	}
 	cleanup.finish()
+}
+
+// Registry and graph locks are held. Collector retirement is not proof that
+// all physical cleanup has finished: a root release can queue finalization
+// while another topology reader still exists. Keep its graph/journal reachable
+// until the post-gate drain consumes it, even with zero collector domains.
+func (g *managedFunctionGraph) retireEmptyLocked() {
+	if g.retired || len(g.collectors) != 0 || len(g.receiptReleases) != 0 || g.pendingFinalizers.Load() != 0 || g.pendingReclaims.Load() != 0 {
+		return
+	}
+	for _, member := range g.members {
+		if member.envPins != 0 {
+			return
+		}
+	}
+	g.retired = true
+	for _, member := range g.members {
+		g.removeMemberLocked(member)
+	}
+	managedFunctionGraphs.Delete(g.store)
 }
