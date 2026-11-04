@@ -33,7 +33,7 @@ type pluginPlanReview struct {
 
 func reviewResolvedPluginPlan(plan ResolutionPlan, options pkgOpts) (reviewedPluginPlan, error) {
 	if len(plan.Reviews) == 0 && len(plan.ContractReviews) == 0 && len(options.scopes) == 0 {
-		return reviewedPluginPlan{Lock: plan.Lock}, nil
+		return reviewedPluginPlan{Lock: plan.Lock, Warnings: unmetPluginRequirementWarnings(plan.Lock)}, nil
 	}
 	choices, reviewKeys := map[string]bool{}, map[string]bool{}
 	requestedNames := map[string]bool{}
