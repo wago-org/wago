@@ -8,7 +8,6 @@ import (
 )
 
 const evacuationBlock = uint64(32768)
-const evacuationLine = uint64(256)
 const evacuationCandidateLimit = 65536
 const evacuationRunLimit = 65536
 
