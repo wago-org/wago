@@ -429,13 +429,31 @@ func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, er
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional branch.
 func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
-	return f.brIfFusedSet(top, labelIdx, regNone)
+	return f.brIfFusedSet(top, labelIdx, -1)
 }
 
-// brIfFusedSet is brIfFused with an optional `local.tee` destination. CSET is
-// flag-transparent, so storing the compare result between CMP and B.cond keeps
-// the flags live and avoids rematerializing/re-comparing the boolean.
-func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
+// setFusedCompareLocal writes the compare result held in NZCV to pinned local
+// x after the branch edge has already been converged. In a call-making
+// function that convergence fixed the target's view of x (possibly memory-only
+// after a call) before the new value existed, so the value is also written
+// through to the slot; CSET and STR both leave NZCV intact. Without calls,
+// edges never record slot state and the register alone carries the value.
+func (f *fn) setFusedCompareLocal(x int, cc Cond) {
+	reg := f.locals[x].reg
+	f.a.Cset32(reg, cc)
+	if f.usesCalls {
+		f.storeLocalReg(x, reg, false)
+		f.locals[x].state = lsStackReg
+		return
+	}
+	f.markLocalDirty(x)
+}
+
+// brIfFusedSet is brIfFused with an optional `local.tee` destination: setLocal
+// is a register-pinned i32 local, or -1. CSET is flag-transparent, so storing
+// the compare result between CMP and B.cond keeps the flags live and avoids
+// rematerializing/re-comparing the boolean.
+func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setLocal int) error {
 	fi := len(f.ctrl) - 1 - int(labelIdx)
 	if fi < 0 {
 		return errBadLabel
@@ -459,8 +477,8 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	}
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)
-	if setDst != regNone {
-		f.a.Cset32(setDst, cc)
+	if setLocal >= 0 {
+		f.setFusedCompareLocal(setLocal, cc)
 	}
 	a := fr.branchArity()
 	// Emit the edge and measure it. The edge helpers emit only LDR/STR/MOV, which
