@@ -630,6 +630,23 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || tailInstructionRecipeEligible(custom)) {
+			// Custom bundles have no ordinary Wasm return-carrier conversion.
+			// Their registered host shim is native-only, so it is not a fallback.
+			if custom.CustomOutput != nil {
+				return fmt.Errorf("return_call: custom output cannot cross a function boundary")
+			}
+			if err := f.emitCustomInstruction(custom, ft); err != nil {
+				return err
+			}
+			// The existing stack-compatible input recipe retains the physical
+			// i32 word. Canonicalize its narrow logical result on this new path.
+			if pluginAMD64Lowering(custom) == nil && custom.StackCompatible && custom.ResultWidth < 32 && custom.Nodes[custom.Output].Op == CustomInstructionInput {
+				f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64((uint64(1) << uint(custom.ResultWidth)) - 1)})
+				f.pushBinOp(opAnd, mtI32)
+			}
+			return f.opReturn()
+		}
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
 			binding := f.importBindings[idx]
 			if binding.Dynamic && sigFitsRegABI(f.ft) && sigFitsRegABI(ft) && sigFitsDirectCrossTailABI(ft) {
