@@ -321,8 +321,8 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 		f.releaseMemRef(right.st)
 	}
-	if !reused && f.inlineTailConstants != nil {
-		f.inlineTailConstants.lastCompare = compareStart
+	if !reused && f.inlineTailCompare.active {
+		f.inlineTailCompare.lastCompare = compareStart
 	}
 	f.pinned = f.pinned.remove(L)
 	if ownedL {

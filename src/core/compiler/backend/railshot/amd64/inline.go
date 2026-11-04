@@ -1156,6 +1156,12 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 // callee's `return` to that frame. The callee's own blocks/loops/ifs and its
 // result merge are lowered by the existing control-flow machinery.
 func (f *fn) inlineBodyCtrl(t *inlineTarget, constants *inlineTailConstants) error {
+	previousCompare := f.inlineTailCompare
+	f.inlineTailCompare = inlineTailCompare{active: t.tailLoop(), lastCompare: -1, reuseResume: -1}
+	defer func() {
+		f.inlineTailCompare = previousCompare
+		f.inlineTailCompare.reuseResume = -1
+	}()
 	minCtrl := len(f.ctrl)
 	resultTypes := f.inlineTargets.resultTypes(t)
 	rN := len(resultTypes)

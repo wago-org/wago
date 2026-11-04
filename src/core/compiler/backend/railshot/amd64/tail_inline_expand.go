@@ -32,6 +32,8 @@ func (f *fn) emitInlineTailCopy(t *inlineTarget, constants *inlineTailConstants,
 	previousArgument := f.inlineTailArgumentStart
 	f.inlineTailArgumentStart = argumentStart
 	previousConstants := f.inlineTailConstants
+	previousCompare := f.inlineTailCompare
+	f.inlineTailCompare = inlineTailCompare{active: true, lastCompare: -1, reuseResume: -1}
 	previousTrace, previousBase, previousPC := f.traceFuncIdx, f.tracePCBase, f.wasmPC
 	if previousConstants != nil && previousConstants.entry != nil {
 		if constants == nil {
@@ -45,6 +47,8 @@ func (f *fn) emitInlineTailCopy(t *inlineTarget, constants *inlineTailConstants,
 		f.inlineTailSourceFrame = previousSource
 		f.inlineTailArgumentStart = previousArgument
 		f.inlineTailConstants = previousConstants
+		f.inlineTailCompare = previousCompare
+		f.inlineTailCompare.reuseResume = -1
 		f.traceFuncIdx, f.tracePCBase, f.wasmPC = previousTrace, previousBase, previousPC
 	}()
 	// A tail transfer discards source operands below its arguments, but must

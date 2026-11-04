@@ -535,6 +535,7 @@ func moveCtrlSidecarSlot[T any](sidecar *[]T, stale, fresh uint32) {
 // Control frames are stack-disciplined, so depth is a stable bounded owner and
 // the sidecar arena grows with maximum depth rather than total blocks compiled.
 func (f *fn) pushCtrl(fr *ctrlFrame) {
+	f.inlineTailCompare.reuseResume = -1
 	depth := len(f.ctrl)
 	if depth < cap(f.ctrl) {
 		stale := f.ctrl[:cap(f.ctrl)][depth].mergeIndex
@@ -2302,6 +2303,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 }
 
 func (f *fn) opElse() error {
+	f.inlineTailCompare.reuseResume = -1
 	fr := &f.ctrl[len(f.ctrl)-1]
 	if fr.has(ctrlEntryUnreachable) {
 		return nil
@@ -2345,6 +2347,7 @@ func (f *fn) opElse() error {
 }
 
 func (f *fn) opEnd() error {
+	f.inlineTailCompare.reuseResume = -1
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
 	if fr.kind == cfLoop {

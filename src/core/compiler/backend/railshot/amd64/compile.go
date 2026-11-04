@@ -561,6 +561,7 @@ type fn struct {
 	inlineTailSourceFrame   int
 	inlineTailArgumentStart int
 	inlineTailConstants     *inlineTailConstants
+	inlineTailCompare       inlineTailCompare
 	inlineTailRoot          uint32
 	inlineTailPartner       uint32
 	inlineBase              map[int]int

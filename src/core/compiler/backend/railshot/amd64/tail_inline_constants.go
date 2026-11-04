@@ -8,11 +8,10 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // Each child has its own argument facts, and alternative source branches keep
 // their parent's facts. Nonconstant control conservatively blocks local writes.
 type inlineTailConstants struct {
-	lastCompare, reuseStart, reuseEnd, reuseResume int
-	values                                         [8]int64
-	base                                           int
-	known, blocked                                 uint8
-	entry                                          *inlineTailPeelEntry
+	values         [8]int64
+	base           int
+	known, blocked uint8
+	entry          *inlineTailPeelEntry
 }
 type inlineTailPeelEntry struct{ sites []int }
 
