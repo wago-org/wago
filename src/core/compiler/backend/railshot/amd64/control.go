@@ -2994,6 +2994,8 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	return nil
 }
 
+// opReturn is a branch to the function label: like br, its taken edge
+// reinstalls the handler that was active at entry when it exits live tries.
 func (f *fn) opReturn() error {
 	if f.unreachable {
 		return nil
@@ -3009,6 +3011,7 @@ func (f *fn) opReturn() error {
 	if f.singleRegResult {
 		f.materializePendingTraps()
 		f.placeSingleResult() // result straight to RAX/XMM0; epilogue does not reload
+		f.restoreBranchHandlers(0)
 		f.appendReturnSite(f.a.JmpPlaceholder())
 		f.unreachable = true
 		return nil
@@ -3017,6 +3020,7 @@ func (f *fn) opReturn() error {
 	a, d := fr.resultN, f.depth()
 	f.flush()
 	f.moveBranchValues(fr, d, a)
+	f.restoreBranchHandlers(0)
 	f.appendReturnSite(f.a.JmpPlaceholder())
 	f.unreachable = true
 	return nil
