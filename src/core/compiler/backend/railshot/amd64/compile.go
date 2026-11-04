@@ -395,6 +395,7 @@ type fn struct {
 	intervalControl   bool
 	moduleHasSIMD     bool
 	localWritten      uint64 // conservative lexical write history for the first 64 locals
+	loopLocalParams   loopLocalParamHomes
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -699,9 +700,9 @@ type deferredMixedArg struct {
 	float  bool
 }
 
-// alignPad is a shared zero source for inter-function 16-byte alignment padding,
+// alignPad is a shared zero source for inter-function alignment padding,
 // appended via alignPad[:pad] to avoid allocating a temporary per function.
-var alignPad [16]byte
+var alignPad [32]byte
 
 func align16(n int) int { return (n + 15) &^ 15 }
 
@@ -729,6 +730,11 @@ func functionStartPadding(off, bodyBytes int, hostAdapter bool, hints funcHints,
 }
 
 func functionStartPaddingFlags(off, bodyBytes int, flags uint8, policy CodegenPolicy) int {
+	// Loop padding is emitted relative to the function buffer. Preserve that
+	// phase when placing a small loop function into the final module image.
+	if !policy.CompactNative && policy.FunctionAlignLog2 >= 4 && policy.EnabledOption(optCompactLoopAlign32) && flags&layoutHasLoop != 0 && bodyBytes <= 64 {
+		return (-off) & 31
+	}
 	optional := (-off) & 15
 	if optional == 0 || policy.FunctionAlignLog2 < 4 {
 		return 0
@@ -3903,7 +3909,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// allocation constraint when bounded entry is disabled; the finalizer drops
 	// the direct-entry proof without changing the guest body.
 	nativeHostDirect := hostCFGEligible && coreruntime.NativeScalarLeafSupported && f.opt(optNativeLeafHost) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1)
-	directPrepared := f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall() || nativeHostDirect) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && (!hints.hasUnsupportedDynamicCall() || nativeHostDirect) &&
+	directPrepared := !hasInlineTupleLoop(inlinedCallees) && f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall() || nativeHostDirect) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && (!hints.hasUnsupportedDynamicCall() || nativeHostDirect) &&
 		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && gcFrameRoots == nil) &&
 		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) || nativeHostDirect) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	if directPrepared {

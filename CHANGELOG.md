@@ -50,6 +50,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Speed up AMD64 integer multi-value code by retaining tuple results and loop
+  parameters in registers, simplifying wrapping arithmetic and grouping proved
+  loop updates. Preserve zero-trip and partial exits, local initialization and
+  trap behavior.
 - Reuse caller result registers in bounded ARM64 integer tuple helpers and omit
   unsigned-remainder local restores when a forward suffix proves them unread.
 - Avoid redundant ARM64 register transfers in bounded unsigned-remainder loops,

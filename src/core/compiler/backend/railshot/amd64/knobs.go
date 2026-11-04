@@ -30,6 +30,9 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("compact-loop-align32", &compactLoopAlign32Enabled),
 	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
 	optimization.Bind("scalar-loop-unroll", &scalarLoopUnrollEnabled),
+	optimization.Bind("loop-local-params", &loopLocalParamsEnabled),
+	optimization.Bind("tuple-if-select", &tupleIfSelectEnabled),
+	optimization.Bind("linear-integer-tree", &linearIntegerTreeEnabled),
 	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
 	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
 	optimization.Bind("callfree-loop-reg-state", &callFreeLoopRegStateEnabled),
@@ -42,6 +45,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("memsize-regional-lease", &memSizeRegionalLeaseEnabled),
 	optimization.Bind("module-global-regional-lease", &moduleGlobalRegionalLeaseEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
+	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
 	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
 	optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
 	optimization.Bind("st-flags", &stFlagsEnabled),
@@ -110,6 +114,7 @@ var (
 	optCompactLoopAlign32      = optimizationBindings.Option("compact-loop-align32")
 	optCountedLoopLatch        = optimizationBindings.Option("counted-loop-latch")
 	optScalarLoopUnroll        = optimizationBindings.Option("scalar-loop-unroll")
+	optLoopLocalParams         = optimizationBindings.Option("loop-local-params")
 	optLinearSumLoop           = optimizationBindings.Option("linear-sum-loop")
 	optCallFreeLoopColdExit    = optimizationBindings.Option("callfree-loop-cold-exit")
 	optLoopRegState            = optimizationBindings.Option("callfree-loop-reg-state")
@@ -122,6 +127,7 @@ var (
 	optMemSizeRegionalLease    = optimizationBindings.Option("memsize-regional-lease")
 	optModuleGlobalRegionLease = optimizationBindings.Option("module-global-regional-lease")
 	optMagicDiv                = optimizationBindings.Option("magic-div")
+	optBorrowedDivRem          = optimizationBindings.Option("borrowed-div-rem")
 	optSharedTrapBody          = optimizationBindings.Option("shared-trap-body")
 	optSharedAdapters          = optimizationBindings.Option("shared-adapters")
 	optSTFlags                 = optimizationBindings.Option("st-flags")
@@ -165,6 +171,8 @@ var (
 	optRegABI                  = optimizationBindings.Option("reg-abi")
 	optDirectReferenceABI      = optimizationBindings.Option("direct-reference-abi")
 	optInline                  = optimizationBindings.Option("inline")
+	optTupleIfSelect           = optimizationBindings.Option("tuple-if-select")
+	optLinearIntegerTree       = optimizationBindings.Option("linear-integer-tree")
 	optStackFence              = optimizationBindings.Option("stack-fence")
 	optStackReg                = optimizationBindings.Option("stack-reg")
 )

@@ -42,7 +42,10 @@ func (f *fn) straightLineBlock(r *wasm.Reader, kind ctrlKind, params, results in
 	}
 	return shared.IsStraightLineBlockWithSplicedCalls(r, f.classifier, func(index uint32) bool {
 		t := f.selectedInlineTarget(index)
-		return t != nil && f.pureIntegerPair(t)
+		// The select class is a complete read-only condition and local-only
+		// pair if; every private path falls through its inlined boundary.
+		return t != nil && (f.pureIntegerPair(t) || t.tupleSelect() ||
+			f.inlineDepth == 0 && f.inlineTupleLoopFallthroughState(t))
 	})
 }
 

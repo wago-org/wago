@@ -47,6 +47,9 @@ const (
 	ctrlIfDeferredPrefix
 )
 
+// Bits 12 and 13 encode the floating-constant cache depth below.
+const ctrlInlineFallthrough ctrlFlags = 1 << 14
+
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
 	kind       ctrlKind
@@ -1434,6 +1437,9 @@ func (f *fn) callFreeLoopExit(fi int) bool {
 func (f *fn) branchJump(fr *ctrlFrame) {
 	switch fr.kind {
 	case cfLoop:
+		if f.tryScalarPretestLoop(fr) || f.tryScalarTuplePretestLoop(fr) {
+			return
+		}
 		f.a.JmpBack(fr.controlSite)
 	case cfFunc:
 		// Result slots are canonical; this taken edge leaves the function.
@@ -1701,6 +1707,11 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 	} else if op == 0x04 {
 		kind = cfIf
 	}
+	if kind == cfIf && !f.unreachable && pN == 0 && rN == 2 {
+		if done, err := f.tryTupleIfSelect(r, signature, resultTypes); done || err != nil {
+			return err
+		}
+	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	fr.setFloatConstBase(len(f.fconsts))
 	fr.set(ctrlEntryUnreachable, f.unreachable)
@@ -1796,6 +1807,24 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 		f.setFrameBaseTypePrefix(&fr, fr.height)
 		f.captureGCFrameShape(&fr)
 		if kind == cfLoop {
+			if homes, afterBindings, ok := f.planLoopLocalParams(r, &fr, signature); ok {
+				f.materializePendingTraps()
+				f.bindLoopLocalParams(homes, pN)
+				f.flush()
+				f.reconcileLocals()
+				if err := r.JumpTo(afterBindings); err != nil {
+					return err
+				}
+				homes.entryPadStart = uint32(f.a.Len())
+				f.a.AlignLoop()
+				fr.controlSite = f.a.Len()
+				fr.set(ctrlLoopCallFree, true)
+				f.pushCtrl(&fr)
+				homes.depth = uint32(len(f.ctrl))
+				f.loopLocalParams = homes
+				f.stats.peep("loop-local-params")
+				return nil
+			}
 			// Finish deferred work before establishing loop-header homes. Eager
 			// restoration hoists missing-pin reloads out of the loop body.
 			f.flush()
@@ -2327,6 +2356,14 @@ func (f *fn) opElse() error {
 
 func (f *fn) opEnd() error {
 	last := len(f.ctrl) - 1
+	if f.ctrl[last].has(ctrlInlineFallthrough) && !f.unreachable {
+		// Result expressions must retain the callee's trap origin even when
+		// their ordinary values can flow directly into the caller.
+		f.materializePendingTraps()
+	}
+	if f.loopLocalParams.depth == uint32(last+1) {
+		f.loopLocalParams = loopLocalParamHomes{}
+	}
 	fr := f.ctrl[last]
 	if fr.kind == cfLoop {
 		if regallocCheckEnabled {
@@ -2354,10 +2391,23 @@ func (f *fn) opEnd() error {
 	}
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
+	if fr.has(ctrlInlineFallthrough) && !f.unreachable && firstEnd == 0 && secondEnd == 0 && len(ends) == 0 {
+		if f.depth() != fr.height+fr.resultN {
+			return fmt.Errorf("inline fallthrough stack height mismatch")
+		}
+		f.freeLocStateBuf(branchState)
+		f.freeLocStateBuf(entryState)
+		f.releaseCtrlMerge(&fr)
+		f.releaseFrameBaseTypes(&fr)
+		f.stats.peep("inline-tuple-loop-fallthrough")
+		return nil
+	}
 
 	if fr.isStraightLineBlock() {
 		f.releaseCtrlMerge(&fr)
-		if f.unreachable || f.depth() != fr.height+fr.resultN {
+		// A fully spliced private loop can make the remainder unreachable.
+		// Such a path has no outgoing values and retains its polymorphic stack.
+		if !f.unreachable && f.depth() != fr.height+fr.resultN {
 			return fmt.Errorf("straight-line block stack height mismatch")
 		}
 		return nil
@@ -2527,6 +2577,15 @@ func (f *fn) restoreBranchHandlers(fi int) {
 // path and opReturn's inlined-callee routing. The caller sets f.unreachable.
 func (f *fn) branchToFrame(fi int) {
 	fr := &f.ctrl[fi]
+	if f.loopLocalParams.depth == uint32(fi+1) {
+		f.materializePendingTraps()
+		f.bindLoopLocalParams(f.loopLocalParams, fr.paramN)
+		f.flush()
+		f.reconcileLocals()
+		f.branchJump(fr)
+		f.stats.peep("loop-local-params-edge")
+		return
+	}
 	if f.opt(optDirectIntBranchMerge) && fr.has(ctrlRegMerge1) && !fr.res0.isFloat() {
 		// No fallthrough needs a stack copy. Preserve the base operands and
 		// deliver the result using the established merge-register contract.
