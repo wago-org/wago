@@ -431,6 +431,17 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginARM64Lowering(custom) != nil || instructionRecipeEligible(custom)) {
+			// Custom bundles have no ordinary Wasm return-carrier conversion.
+			// Their registered host shim is native-only, so it is not a fallback.
+			if custom.CustomOutput != nil {
+				return fmt.Errorf("return_call: custom output cannot cross a function boundary")
+			}
+			if err := f.emitCustomInstruction(custom, ft); err != nil {
+				return err
+			}
+			return f.opReturn()
+		}
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
 			binding := f.importBindings[idx]
 			if binding.Dynamic || binding.CrossInstance {
