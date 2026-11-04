@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -136,6 +137,127 @@ func TestPluginSetupFlagsSelectPluginModeWithoutPrompt(t *testing.T) {
 	}
 	if !bytes.Contains(catalog, []byte(`"$schema": "https://wago.sh/v1/providers.schema.json"`)) || !bytes.Contains(catalog, []byte(`"id": "github.com/acme/flagged"`)) {
 		t.Fatalf("provider catalog = %s", catalog)
+	}
+}
+
+func TestPluginSetupPreservesPackageMetadata(t *testing.T) {
+	dir := t.TempDir()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+
+	pkg := map[string]any{
+		"module": "github.com/acme/clock", "version": "1.2.3", "name": "Clock",
+		"description": "Clock imports.", "license": "MIT", "repository": "https://github.com/acme/clock",
+		"stability": "stable", "homepage": "https://example.com/clock", "category": "utilities",
+		"tags":      []any{"clock", "time"},
+		"engines":   map[string]any{"wago": "^0.1.0", "go": ">=1.22.0"},
+		"platforms": []any{"linux/amd64", "darwin/arm64"},
+		"authors": []any{
+			map[string]any{"name": "A. Maintainer", "email": "a@example.com", "github": "maintainer"},
+			map[string]any{"name": "B. Maintainer", "url": "https://example.com/b"},
+		},
+		"subpackages": []any{map[string]any{
+			"module": "github.com/acme/clock/timer", "name": "Timer", "description": "Timer imports.",
+			"engines": map[string]any{"wago": "^0.1.0"}, "platforms": []any{"linux/amd64"},
+		}},
+	}
+	manifest := map[string]any{
+		"package":  pkg,
+		"plugins":  map[string]any{"github.com/acme/dependency": "^1.0.0"},
+		"settings": map[string]any{"runtime": map[string]any{"parallel": "2"}},
+	}
+	if err := project.Write(dir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	ctx := command.NewContext(nil, map[string]string{
+		"name": "Clock", "description": "Updated clock imports.", "module": "github.com/acme/clock",
+		"version": "1.2.3", "license": "MIT", "repository": "https://github.com/acme/clock",
+		"author": "A. Maintainer", "stability": "stable",
+	}, map[string]bool{"plugin": true, "yes": true})
+	got, err := run(ctx, strings.NewReader(""), &bytes.Buffer{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Created || got.Mode != modePlugin || got.Plugins != 1 {
+		t.Fatalf("result = %#v", got)
+	}
+	saved, err := project.Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPackage := make(map[string]any, len(pkg))
+	for key, value := range pkg {
+		wantPackage[key] = value
+	}
+	wantPackage["description"] = "Updated clock imports."
+	gotPackage := saved["package"].(map[string]any)
+	if len(gotPackage) != len(wantPackage) {
+		t.Errorf("package contains %d fields, want %d", len(gotPackage), len(wantPackage))
+	}
+	for key, want := range wantPackage {
+		if !reflect.DeepEqual(gotPackage[key], want) {
+			t.Errorf("package.%s = %#v, want %#v", key, gotPackage[key], want)
+		}
+	}
+	for _, key := range []string{"plugins", "settings"} {
+		if !reflect.DeepEqual(saved[key], manifest[key]) {
+			t.Errorf("%s = %#v, want %#v", key, saved[key], manifest[key])
+		}
+	}
+
+	// Keeping subpackages must also keep their validation: renaming the parent
+	// to an unrelated module cannot silently erase them to make the update fit.
+	before, err := os.ReadFile(project.Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx = command.NewContext(nil, map[string]string{
+		"name": "Other", "description": "Other imports.", "module": "github.com/acme/other",
+		"version": "1.2.3", "license": "MIT", "author": "A. Maintainer",
+	}, map[string]bool{"plugin": true, "yes": true})
+	if _, err := run(ctx, strings.NewReader(""), &bytes.Buffer{}, false); err == nil || !strings.Contains(err.Error(), "must be below package.module") {
+		t.Fatalf("incompatible module update error = %v", err)
+	}
+	after, err := os.ReadFile(project.Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, before) {
+		t.Fatal("rejected module update changed wago.json")
+	}
+}
+
+func TestPluginManifestExplicitEditsDoNotMutateExistingPackage(t *testing.T) {
+	existing := map[string]any{"package": map[string]any{
+		"name": "Old name", "homepage": "https://example.com/old", "category": "old", "tags": []any{"old"},
+		"authors": []any{map[string]any{"name": "Old author", "email": "old@example.com"}},
+	}}
+	fields, _, err := pluginManifest(answers{
+		name: "New name", description: "Clock imports.", module: "github.com/acme/clock", license: "MIT",
+		homepage: "https://example.com/new", category: "new", tags: "clock, time", author: "New author",
+	}, existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := fields["package"].(map[string]any)
+	want := map[string]any{
+		"name": "New name", "homepage": "https://example.com/new", "category": "new", "tags": []string{"clock", "time"},
+		"authors": []any{map[string]any{"name": "New author"}},
+		"engines": map[string]any{"wago": "*"},
+	}
+	for key, value := range want {
+		if !reflect.DeepEqual(pkg[key], value) {
+			t.Errorf("package.%s = %#v, want %#v", key, pkg[key], value)
+		}
+	}
+	if original := existing["package"].(map[string]any); len(original) != 5 || original["name"] != "Old name" || firstAuthor(original["authors"]) != "Old author" {
+		t.Fatalf("pluginManifest mutated the original package: %#v", original)
 	}
 }
 
