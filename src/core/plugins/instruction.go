@@ -489,8 +489,15 @@ func stackCompatibleInstructionRecipe(r *instructionRecipe, inputs int) bool {
 		}
 	}
 	stack := append([]int(nil), inputNodes...)
+	// Shared constant subexpressions can expand this walk exponentially. Keep
+	// classification linear in the source recipe; the general path remains valid.
+	remaining := len(r.nodes)
 	var walk func(int) bool
 	walk = func(id int) bool {
+		if remaining == 0 {
+			return false
+		}
+		remaining--
 		if id < 0 || id >= len(r.nodes) {
 			return false
 		}
