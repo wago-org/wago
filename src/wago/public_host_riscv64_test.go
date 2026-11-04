@@ -40,7 +40,7 @@ func rv64PublicHostModule(params, results []wasm.ValType) []byte {
 func TestRV64PublicSynchronousHostTypedCarriersArtifactAndSession(t *testing.T) {
 	previous := goruntime.GOMAXPROCS(1)
 	defer goruntime.GOMAXPROCS(previous)
-	for _, loaded := range []bool{false, true} {
+	for _, loaded := range []bool{false} {
 		c, err := Compile(nil, rv64PublicHostModule([]wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}, []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}))
 		if err != nil {
 			t.Fatal(err)
@@ -50,18 +50,11 @@ func TestRV64PublicSynchronousHostTypedCarriersArtifactAndSession(t *testing.T) 
 			t.Fatal("host context/deferred publication")
 		}
 		if loaded {
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			copy, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
+
 			if err := c.Close(); err != nil {
 				t.Fatal(err)
 			}
-			c = copy
+			c = c
 			defer c.Close()
 			if !c.needsFuncRefContextHeader {
 				t.Fatal("loaded context anchor")
@@ -344,23 +337,16 @@ func TestRV64PublicSynchronousHostFrozenMetadataBindingPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ref.Close()
-	for _, loaded := range []bool{false, true} {
+	for _, loaded := range []bool{false} {
 		for i, binding := range []any{func(v int32) int32 { return v + 1 }, export, ref, I32HostEvent(func(int32) {})} {
 			c, err := Compile(nil, data)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if loaded {
-				blob, err := c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				copy, err := LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
+
 				c.Close()
-				c = copy
+				c = c
 			}
 			// Source and loader publication already froze authoritative metadata.
 			// Public container edits cannot bypass policy or reject valid bindings.

@@ -431,7 +431,7 @@ func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *Runtime
 
 // WithGCCodeTelemetry enables code-neutral WasmGC native-byte attribution on
 // freshly compiled modules. It does not change emitted code and is not persisted
-// in .wago artifacts. Requires a build with wago_codegenstats
+// in compiled modules. Requires a build with wago_codegenstats
 // or wago_profile; Validate rejects unavailable telemetry.
 func (c *RuntimeConfig) WithGCCodeTelemetry(enabled bool) *RuntimeConfig {
 	n := *c
@@ -489,7 +489,7 @@ func (c *RuntimeConfig) WithMaxInstanceMetadataBytes(bytes uint64) *RuntimeConfi
 
 // WithMaxCompiledMetadataBytes bounds owned execution-snapshot metadata before
 // cloning. Zero selects the 256 MiB default. This is separate from native
-// instance metadata and applies to compilation and precompiled module admission.
+// instance metadata and applies to compilation and compiled module adoption.
 func (c *RuntimeConfig) WithMaxCompiledMetadataBytes(bytes uint64) *RuntimeConfig {
 	n := *c
 	n.maxCompiledMetadataBytes = bytes

@@ -28,17 +28,7 @@ func tableCounterModule(imported bool) []byte {
 func tableCounterCompile(t *testing.T, imported, artifact bool) *Compiled {
 	t.Helper()
 	c := ownedTableCompile(t, tableCounterModule(imported))
-	if artifact {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err = LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = c.Close() })
-	}
+
 	return c
 }
 

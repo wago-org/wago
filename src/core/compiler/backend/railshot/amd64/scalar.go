@@ -25,6 +25,11 @@ func (f *fn) admitScalar(c *wasm.Func) shared.ScalarSummary {
 	if profileEnabled && f.stats != nil && (f.stats.RecordSources || f.stats.RecordUnwind || f.stats.RecordAdapterUnwind) {
 		return shared.ScalarSummary{}
 	}
+	// Scalar lowering rejects every loop. Keep its measured admission path
+	// when diagnostics request it; ordinary compilation already has this proof.
+	if f.hasLoop && (!diagnosticsEnabled || f.stats == nil) {
+		return shared.ScalarSummary{}
+	}
 	begin := time.Time{}
 	if diagnosticsEnabled && f.stats != nil {
 		begin = time.Now()

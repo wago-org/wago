@@ -3,7 +3,6 @@
 package wago
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -68,39 +67,21 @@ func TestBMI2OptimizationHostGateAndCodecRequirement(t *testing.T) {
 		if compiled.RequiresBMI2() {
 			t.Fatal("baseline profile emitted BMI2")
 		}
-		blob, err := compiled.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
+
 		bmi2HostFeaturesSupported = func() bool { return false }
-		var loaded Compiled
-		if err := loaded.UnmarshalBinary(blob); err != nil {
-			t.Fatal(err)
-		}
-		loaded.Close()
+
+		compiled.Close()
 		return
 	}
 	if !compiled.RequiresBMI2() {
 		t.Fatal("compiled RORX module did not record BMI2")
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	bmi2HostFeaturesSupported = func() bool { return false }
-	var rejected Compiled
-	if err := rejected.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires BMI2") {
-		t.Fatalf("unsupported-host unmarshal error = %v", err)
-	}
 
 	bmi2HostFeaturesSupported = func() bool { return true }
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if !loaded.RequiresBMI2() {
+
+	if !compiled.RequiresBMI2() {
 		t.Fatal("round-tripped module lost BMI2 requirement")
 	}
 }

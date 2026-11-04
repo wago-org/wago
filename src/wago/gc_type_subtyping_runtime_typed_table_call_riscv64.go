@@ -41,7 +41,7 @@ func rv64GCTypeSubtypingRuntimeTypedTableCallProfileWithCode(c *Compiled, allowU
 		requireCode && (len(c.code) != rv64GCTypeSubtypingRuntimeTypedTableCallCodeLen || sha256.Sum256(c.code) != rv64GCTypeSubtypingRuntimeTypedTableCallCodeDigest) {
 		return false
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	return err == nil && len(metadata) == rv64GCTypeSubtypingRuntimeTypedTableCallMetadataLen && sha256.Sum256(metadata) == rv64GCTypeSubtypingRuntimeTypedTableCallMetadataDigest
 }
 
@@ -51,13 +51,4 @@ func rv64GCTypeSubtypingRuntimeTypedTableCall(c *Compiled) bool {
 
 func rv64GCTypeSubtypingRuntimeTypedTableCallExecutionCode(c *Compiled) bool {
 	return c != nil && len(c.code) == rv64GCTypeSubtypingRuntimeTypedTableCallCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingRuntimeTypedTableCallCodeDigest
-}
-
-func railshotRestoreGCTypeSubtypingRuntimeTypedTableCallArtifact(c *Compiled) {
-	if !rv64GCTypeSubtypingRuntimeTypedTableCallProfileWithCode(c, true, true) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRuntimeTypedTableCall
 }

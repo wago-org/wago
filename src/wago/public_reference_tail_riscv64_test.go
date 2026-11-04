@@ -182,36 +182,6 @@ func TestRV64PublicReferenceTailAdmission(t *testing.T) {
 	}
 }
 
-func TestRV64PublicReferenceTailCodecAdmission(t *testing.T) {
-	base := rv64NativeTailCompile(t, "reference-tail-codec-gates", rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, false), false)
-	w := compiledWriter{}
-	if err := railshotWriteNativeTail(&w, base); err != nil {
-		t.Fatal(err)
-	}
-	view := rv64TailCodecView(base)
-	view.requiredFeatures &^= CoreFeatureTypedFunctionReferences
-	r := compiledReader{data: w.buf, budget: newArtifactDecodeBudget(0)}
-	if err := railshotReadNativeTail(&r, view); err != nil {
-		t.Fatal("tail plan grammar decode", err)
-	}
-	if !view.stagedFeatures().IsEnabled(CoreFeatureTypedFunctionReferences) {
-		t.Fatal("decoded reference plan lost its type feature")
-	}
-	if err := railshotValidateDecodedNativeTail(view); err == nil {
-		t.Fatal("execution validation accepted a reference tail without its feature")
-	}
-	candidate := rv64ReferenceStartCopy(base.executionView())
-	candidate.codeCache.flags |= compiledCacheDynamicFuncRefTest
-	rv64RequireRejectedArtifact(t, candidate)
-	plain := rv64NativeTailCompile(t, "reference-tail-no-plan", rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
-	candidate = rv64ReferenceStartCopy(plain.executionView())
-	candidate.requiredFeatures |= CoreFeatureTypedFunctionReferences
-	if err := candidate.validate(); err == nil {
-		t.Fatal("changed typed feature admitted without a matching execution contract")
-	}
-	rv64RequireRejectedArtifact(t, candidate)
-}
-
 func TestRV64PublicReferenceTailWholeModuleGate(t *testing.T) {
 	source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0xd0, 0, 0x15, 0, 0x0b}))))
 	rv64RequireCore3SourceValidation(t, source)

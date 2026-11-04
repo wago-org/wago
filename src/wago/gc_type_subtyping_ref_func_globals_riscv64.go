@@ -77,7 +77,7 @@ func rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(c *Compiled, allowUnrestor
 	if codeProfile == 0 {
 		return 0
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil {
 		return 0
 	}
@@ -118,13 +118,4 @@ func rv64GCTypeSubtypingRefFuncGlobalsExecutionClaim(c *Compiled) bool {
 	return c != nil && (c.requiredFeatures.IsEnabled(CoreFeatureGC) ||
 		c.stagedFeatures().IsEnabled(CoreFeatureGC) ||
 		c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingRefFuncGlobals)
-}
-
-func railshotRestoreGCTypeSubtypingRefFuncGlobalsArtifact(c *Compiled) {
-	if rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(c, true, true) == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRefFuncGlobals
 }

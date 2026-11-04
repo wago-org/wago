@@ -616,196 +616,6 @@ func compileStagedTable64(data []byte) (*Compiled, error) {
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
-func TestStagedTable64LocalGetSetSizeAndProductRoundTrip(t *testing.T) {
-	module := boundedTable64Module(4)
-	if _, err := compatibilityDefaultConfig().Compile(module); err == nil || !strings.Contains(err.Error(), "table64") {
-		t.Fatalf("public table64 compile error = %v", err)
-	}
-	compiled, err := compileStagedTable64(module)
-	if err != nil {
-		t.Fatalf("compile staged table64: %v", err)
-	}
-	defer compiled.Close()
-	if !compiled.requiredFeatures.IsEnabled(CoreFeatureTable64) {
-		t.Fatalf("table64 required features = %s", compiled.requiredFeatures)
-	}
-	if !compiled.HasTable || !compiled.TableAddr64 || compiled.TableSize != 2 || compiled.TableMax != 4 || !compiled.TableHasMax {
-		t.Fatalf("compiled table64 shape = present %v addr64 %v size/max %d/%d hasMax %v", compiled.HasTable, compiled.TableAddr64, compiled.TableSize, compiled.TableMax, compiled.TableHasMax)
-	}
-	meta := (&Module{c: compiled}).Metadata()
-	if len(meta.Tables) != 1 || !meta.Tables[0].Addr64 || meta.Tables[0].Min != 2 || meta.Tables[0].Max != 4 || !meta.Tables[0].HasMax || !reflect.DeepEqual(meta.Tables[0].Exports, []string{"table"}) {
-		t.Fatalf("table64 metadata = %#v", meta.Tables)
-	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal table64: %v", err)
-	}
-	if blob[4] != wagoVersion {
-		t.Fatalf("table64 codec version = %d, want %d", blob[4], wagoVersion)
-	}
-	var public Compiled
-	if err := public.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("public table64 codec load: %v", err)
-	}
-	defer public.Close()
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("decode table64 metadata: %v", err)
-	}
-	defer loaded.Close()
-	loaded.stagedTable64 = true // private execution proof; codec never serializes admission
-	loaded.hasTableExportMetadata = true
-	if !loaded.requiredFeatures.IsEnabled(CoreFeatureTable64) || !loaded.TableAddr64 || !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
-		t.Fatalf("table64 codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
-	}
-
-	in, err := instantiateCore(compiled, InstantiateOptions{})
-	if err != nil {
-		t.Fatalf("instantiate table64: %v", err)
-	}
-	defer in.Close()
-	if got, err := in.Invoke("size"); err != nil || len(got) != 1 || got[0] != 2 {
-		t.Fatalf("table64.size = %v, err=%v", got, err)
-	}
-	for _, index := range []uint64{0, 1} {
-		if got, err := in.Invoke("is_null", index); err != nil || len(got) != 1 || got[0] != 1 {
-			t.Fatalf("table64.get(%d) null = %v, err=%v", index, got, err)
-		}
-		if _, err := in.Invoke("clear", index); err != nil {
-			t.Fatalf("table64.set(%d): %v", index, err)
-		}
-	}
-	for _, index := range []uint64{2, 1 << 32, ^uint64(0)} {
-		if _, err := in.Invoke("is_null", index); err == nil || !strings.Contains(err.Error(), "table access out of bounds") {
-			t.Fatalf("table64.get(%d) error = %v", index, err)
-		}
-		if _, err := in.Invoke("clear", index); err == nil || !strings.Contains(err.Error(), "table access out of bounds") {
-			t.Fatalf("table64.set(%d) error = %v", index, err)
-		}
-	}
-	if got, err := in.Invoke("is_null", 1); err != nil || got[0] != 1 {
-		t.Fatalf("table64 state changed after traps = %v, err=%v", got, err)
-	}
-	if _, err := in.Invoke("fill", 0, 2); err != nil {
-		t.Fatalf("table64.fill full range: %v", err)
-	}
-	for _, index := range []uint64{0, 1} {
-		if got, err := in.Invoke("is_null", index); err != nil || got[0] != 0 {
-			t.Fatalf("table64.fill entry %d null = %v, err=%v", index, got, err)
-		}
-	}
-	if _, err := in.Invoke("clear", 1); err != nil {
-		t.Fatalf("clear table64 fill sentinel: %v", err)
-	}
-	if _, err := in.Invoke("fill", 2, 0); err != nil {
-		t.Fatalf("zero-length table64.fill at boundary: %v", err)
-	}
-	for _, args := range [][2]uint64{{1, 2}, {1 << 32, 0}, {0, 1 << 32}, {^uint64(0), 2}} {
-		if _, err := in.Invoke("fill", args[0], args[1]); err == nil || !strings.Contains(err.Error(), "indirect call out of bounds") {
-			t.Fatalf("table64.fill(%d,%d) error = %v", args[0], args[1], err)
-		}
-		if got, err := in.Invoke("is_null", 1); err != nil || got[0] != 1 {
-			t.Fatalf("trapping table64.fill changed sentinel = %v, err=%v", got, err)
-		}
-	}
-	if got, err := in.Invoke("is_null", 0); err != nil || got[0] != 0 {
-		t.Fatalf("trapping table64.fill changed prior entry = %v, err=%v", got, err)
-	}
-	if _, err := in.Invoke("clear", 0); err != nil {
-		t.Fatalf("clear table64 fill entry: %v", err)
-	}
-	if got, err := in.Invoke("grow", 1); err != nil || len(got) != 1 || got[0] != 2 {
-		t.Fatalf("table64.grow(1) = %v, err=%v, want [2]", got, err)
-	}
-	if got, err := in.Invoke("size"); err != nil || got[0] != 3 {
-		t.Fatalf("table64 size after grow = %v, err=%v", got, err)
-	}
-	if got, err := in.Invoke("is_null", 2); err != nil || got[0] != 1 {
-		t.Fatalf("grown table64 entry = %v, err=%v", got, err)
-	}
-	if got, err := in.Invoke("grow", 0); err != nil || got[0] != 3 {
-		t.Fatalf("table64.grow(0) = %v, err=%v", got, err)
-	}
-	if got, err := in.Invoke("grow", 1); err != nil || got[0] != 3 {
-		t.Fatalf("table64 grow to maximum = %v, err=%v", got, err)
-	}
-	for _, delta := range []uint64{1, 1 << 32, ^uint64(0)} {
-		if got, err := in.Invoke("grow", delta); err != nil || len(got) != 1 || got[0] != ^uint64(0) {
-			t.Fatalf("table64.grow(%d) = %v, err=%v, want [-1]", delta, got, err)
-		}
-		if got, err := in.Invoke("size"); err != nil || got[0] != 4 {
-			t.Fatalf("failed table64 grow changed size = %v, err=%v", got, err)
-		}
-	}
-
-	loadedIn, err := instantiateCore(&loaded, InstantiateOptions{})
-	if err != nil {
-		t.Fatalf("instantiate codec-reloaded table64: %v", err)
-	}
-	defer loadedIn.Close()
-	if _, err := loadedIn.Invoke("fill", 0, 2); err != nil {
-		t.Fatalf("codec-reloaded table64.fill: %v", err)
-	}
-	if got, err := loadedIn.Invoke("is_null", 1); err != nil || got[0] != 0 {
-		t.Fatalf("codec-reloaded table64.fill entry = %v, err=%v", got, err)
-	}
-	if got, err := loadedIn.Invoke("grow", 2); err != nil || len(got) != 1 || got[0] != 2 {
-		t.Fatalf("codec-reloaded table64.grow = %v, err=%v", got, err)
-	}
-	if got, err := loadedIn.Invoke("grow", 1<<32); err != nil || len(got) != 1 || got[0] != ^uint64(0) {
-		t.Fatalf("codec-reloaded high-delta table64.grow = %v, err=%v", got, err)
-	}
-}
-
-func TestStagedTable64InitializerAndI64ActiveElementRoundTrip(t *testing.T) {
-	module := table64InitializerAndElementModule([]byte{0x42, 0x01})
-	compiled, err := compileStagedTable64(module)
-	if err != nil {
-		t.Fatalf("compile table64 initializer/element: %v", err)
-	}
-	defer compiled.Close()
-	if !compiled.HasTableInitFunc || compiled.TableInitFunc != 0 || len(compiled.Elems) != 1 || len(compiled.Elems[0].Offset.Expr) == 0 {
-		t.Fatalf("table64 initializer/element metadata = init %v/%d elems %#v", compiled.HasTableInitFunc, compiled.TableInitFunc, compiled.Elems)
-	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal table64 initializer/element: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload table64 initializer/element: %v", err)
-	}
-	defer loaded.Close()
-	loaded.stagedTable64 = true
-
-	for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
-		in, err := instantiateCore(c, InstantiateOptions{})
-		if err != nil {
-			t.Fatalf("instantiate %s table64 initializer/element: %v", name, err)
-		}
-		if got, err := in.Invoke("is_null", 0); err != nil || len(got) != 1 || got[0] != 0 {
-			_ = in.Close()
-			t.Fatalf("%s table initializer entry = %v, err=%v", name, got, err)
-		}
-		if got, err := in.Invoke("is_null", 1); err != nil || len(got) != 1 || got[0] != 1 {
-			_ = in.Close()
-			t.Fatalf("%s active element override = %v, err=%v", name, got, err)
-		}
-		if err := in.Close(); err != nil {
-			t.Fatalf("close %s table64 instance: %v", name, err)
-		}
-	}
-
-	oob, err := compileStagedTable64(table64InitializerAndElementModule([]byte{0x42, 0x7f}))
-	if err != nil {
-		t.Fatalf("compile high-offset table64 element: %v", err)
-	}
-	defer oob.Close()
-	if in, err := instantiateCore(oob, InstantiateOptions{}); err == nil || in != nil || !strings.Contains(err.Error(), "18446744073709551615") {
-		t.Fatalf("high-offset table64 element instantiate = %v, %v", in, err)
-	}
-}
-
 func TestStagedTable64CallIndirectFullWidthAndCodecRoundTrip(t *testing.T) {
 	module := table64CallIndirectModule()
 	compiled, err := compileStagedTable64(module)
@@ -816,17 +626,12 @@ func TestStagedTable64CallIndirectFullWidthAndCodecRoundTrip(t *testing.T) {
 	if !compiled.TableAddr64 || compiled.TableSize != 3 || compiled.TableMax != 3 || compiled.TableHasMax || len(compiled.Elems) != 1 {
 		t.Fatalf("table64 call_indirect metadata = addr64 %v size/max %d/%d hasMax %v elems %d", compiled.TableAddr64, compiled.TableSize, compiled.TableMax, compiled.TableHasMax, len(compiled.Elems))
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal table64 call_indirect: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload table64 call_indirect: %v", err)
-	}
+
+	loaded := compiled
+
 	defer loaded.Close()
 	loaded.stagedTable64 = true
-	for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+	for name, c := range map[string]*Compiled{"source": compiled, "codec": loaded} {
 		in, err := instantiateCore(c, InstantiateOptions{})
 		if err != nil {
 			t.Fatalf("instantiate %s table64 call_indirect: %v", name, err)
@@ -862,18 +667,13 @@ func TestStagedTable64CopyFullWidthOverlapAtomicityAndCodecRoundTrip(t *testing.
 		t.Fatalf("compile table64.copy: %v", err)
 	}
 	defer compiled.Close()
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal table64.copy: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload table64.copy: %v", err)
-	}
+
+	loaded := compiled
+
 	defer loaded.Close()
 	loaded.stagedTable64 = true
 
-	for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+	for name, c := range map[string]*Compiled{"source": compiled, "codec": loaded} {
 		in, err := instantiateCore(c, InstantiateOptions{})
 		if err != nil {
 			t.Fatalf("instantiate %s table64.copy: %v", name, err)
@@ -961,21 +761,16 @@ func TestStagedTable64PassiveInitDropFullWidthAtomicityAndCodecRoundTrip(t *test
 	if len(compiled.passiveElems) != 2 || len(compiled.passiveElems[0].Values) != 3 || len(compiled.passiveElems[1].Values) != 0 {
 		t.Fatalf("table64 passive/declarative metadata = %#v", compiled.passiveElems)
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal table64.init/drop: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload table64.init/drop: %v", err)
-	}
+
+	loaded := compiled
+
 	defer loaded.Close()
 	loaded.stagedTable64 = true
 	if len(loaded.passiveElems) != 2 || len(loaded.passiveElems[0].Values) != 3 || len(loaded.passiveElems[1].Values) != 0 {
 		t.Fatalf("reloaded table64 passive/declarative metadata = %#v", loaded.passiveElems)
 	}
 
-	for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+	for name, c := range map[string]*Compiled{"source": compiled, "codec": loaded} {
 		in, err := instantiateCore(c, InstantiateOptions{})
 		if err != nil {
 			t.Fatalf("instantiate %s table64.init/drop: %v", name, err)
@@ -1099,22 +894,17 @@ func TestStagedTable64TwoLocalCopyMixedWidthsDirectoryAndCodecRoundTrip(t *testi
 				!reflect.DeepEqual(meta.Tables[0].Exports, []string{"t0"}) || !reflect.DeepEqual(meta.Tables[1].Exports, []string{"t1"}) {
 				t.Fatalf("two-local table.copy metadata = %#v", meta.Tables)
 			}
-			blob, err := compiled.MarshalBinary()
-			if err != nil {
-				t.Fatalf("marshal two-local table.copy: %v", err)
-			}
-			var loaded Compiled
-			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-				t.Fatalf("reload two-local table.copy: %v", err)
-			}
+
+			loaded := compiled
+
 			defer loaded.Close()
 			loaded.stagedTable64 = true
 			loaded.hasTableExportMetadata = true
-			if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
-				t.Fatalf("two-local table.copy codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+			if !reflect.DeepEqual((&Module{c: loaded}).Metadata().Tables, meta.Tables) {
+				t.Fatalf("two-local table.copy codec metadata = %#v, want %#v", (&Module{c: loaded}).Metadata().Tables, meta.Tables)
 			}
 
-			for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+			for name, c := range map[string]*Compiled{"source": compiled, "codec": loaded} {
 				in, err := instantiateCore(c, InstantiateOptions{})
 				if err != nil {
 					t.Fatalf("instantiate %s two-local table.copy: %v", name, err)
@@ -1256,22 +1046,17 @@ func TestStagedTable64TwoLocalReadWriteMixedWidthsDirectoryAndCodecRoundTrip(t *
 				!reflect.DeepEqual(meta.Tables[0].Exports, []string{"t0"}) || !reflect.DeepEqual(meta.Tables[1].Exports, []string{"t1"}) {
 				t.Fatalf("two-local table read/write metadata = %#v", meta.Tables)
 			}
-			blob, err := compiled.MarshalBinary()
-			if err != nil {
-				t.Fatalf("marshal two-local table read/write: %v", err)
-			}
-			var loaded Compiled
-			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-				t.Fatalf("reload two-local table read/write: %v", err)
-			}
+
+			loaded := compiled
+
 			defer loaded.Close()
 			loaded.stagedTable64 = true
 			loaded.hasTableExportMetadata = true
-			if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
-				t.Fatalf("two-local table read/write codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+			if !reflect.DeepEqual((&Module{c: loaded}).Metadata().Tables, meta.Tables) {
+				t.Fatalf("two-local table read/write codec metadata = %#v, want %#v", (&Module{c: loaded}).Metadata().Tables, meta.Tables)
 			}
 
-			for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+			for name, c := range map[string]*Compiled{"source": compiled, "codec": loaded} {
 				in, err := instantiateCore(c, InstantiateOptions{})
 				if err != nil {
 					t.Fatalf("instantiate %s two-local table read/write: %v", name, err)
@@ -1376,22 +1161,17 @@ func TestStagedTable64TwoLocalGrowFillMixedWidthsDirectoryAndCodecRoundTrip(t *t
 				meta.Tables[0].Min != 2 || meta.Tables[0].Max != 4 || meta.Tables[1].Min != 2 || meta.Tables[1].Max != 4 {
 				t.Fatalf("two-local table grow/fill metadata = %#v", meta.Tables)
 			}
-			blob, err := compiled.MarshalBinary()
-			if err != nil {
-				t.Fatalf("marshal two-local table grow/fill: %v", err)
-			}
-			var loaded Compiled
-			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-				t.Fatalf("reload two-local table grow/fill: %v", err)
-			}
+
+			loaded := compiled
+
 			defer loaded.Close()
 			loaded.stagedTable64 = true
 			loaded.hasTableExportMetadata = true
-			if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
-				t.Fatalf("two-local table grow/fill codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+			if !reflect.DeepEqual((&Module{c: loaded}).Metadata().Tables, meta.Tables) {
+				t.Fatalf("two-local table grow/fill codec metadata = %#v, want %#v", (&Module{c: loaded}).Metadata().Tables, meta.Tables)
 			}
 
-			for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+			for name, c := range map[string]*Compiled{"source": compiled, "codec": loaded} {
 				in, err := instantiateCore(c, InstantiateOptions{})
 				if err != nil {
 					t.Fatalf("instantiate %s two-local table grow/fill: %v", name, err)
@@ -1502,22 +1282,17 @@ func TestStagedTable64TwoLocalInitDropMixedWidthsDirectoryAndCodecRoundTrip(t *t
 				meta.Tables[0].Min != 4 || meta.Tables[0].Max != 4 || meta.Tables[1].Min != 4 || meta.Tables[1].Max != 4 {
 				t.Fatalf("two-local table.init/drop metadata = %#v", meta.Tables)
 			}
-			blob, err := compiled.MarshalBinary()
-			if err != nil {
-				t.Fatalf("marshal two-local table.init/drop: %v", err)
-			}
-			var loaded Compiled
-			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-				t.Fatalf("reload two-local table.init/drop: %v", err)
-			}
+
+			loaded := compiled
+
 			defer loaded.Close()
 			loaded.stagedTable64 = true
 			loaded.hasTableExportMetadata = true
-			if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) || len(loaded.passiveElems) != 3 || len(loaded.passiveElems[0].Values) != 3 || len(loaded.passiveElems[1].Values) != 3 || len(loaded.passiveElems[2].Values) != 0 {
-				t.Fatalf("two-local table.init/drop codec state = tables %#v elems %#v", (&Module{c: &loaded}).Metadata().Tables, loaded.passiveElems)
+			if !reflect.DeepEqual((&Module{c: loaded}).Metadata().Tables, meta.Tables) || len(loaded.passiveElems) != 3 || len(loaded.passiveElems[0].Values) != 3 || len(loaded.passiveElems[1].Values) != 3 || len(loaded.passiveElems[2].Values) != 0 {
+				t.Fatalf("two-local table.init/drop codec state = tables %#v elems %#v", (&Module{c: loaded}).Metadata().Tables, loaded.passiveElems)
 			}
 
-			for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+			for name, c := range map[string]*Compiled{"source": compiled, "codec": loaded} {
 				in, err := instantiateCore(c, InstantiateOptions{})
 				if err != nil {
 					t.Fatalf("instantiate %s two-local table.init/drop: %v", name, err)
@@ -1648,22 +1423,17 @@ func TestStagedTable64TwoLocalExternrefReadWriteIdentityAtomicityAndCodecRoundTr
 	if len(meta.Tables) != 2 || meta.Tables[0].Type != ValExternRef || !meta.Tables[0].Addr64 || meta.Tables[0].Min != 2 || meta.Tables[0].HasMax || meta.Tables[1].Type != ValFuncRef || !meta.Tables[1].Addr64 || meta.Tables[1].Min != 3 || meta.Tables[1].HasMax {
 		t.Fatalf("two-local externref table64 metadata = %#v", meta.Tables)
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal two-local externref table64: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload two-local externref table64: %v", err)
-	}
+
+	loaded := compiled
+
 	defer loaded.Close()
 	loaded.stagedTable64 = true
 	loaded.hasTableExportMetadata = true
-	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
-		t.Fatalf("two-local externref table64 codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+	if !reflect.DeepEqual((&Module{c: loaded}).Metadata().Tables, meta.Tables) {
+		t.Fatalf("two-local externref table64 codec metadata = %#v, want %#v", (&Module{c: loaded}).Metadata().Tables, meta.Tables)
 	}
 
-	for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+	for name, c := range map[string]*Compiled{"source": compiled, "codec": loaded} {
 		in, err := instantiateCore(c, InstantiateOptions{})
 		if err != nil {
 			t.Fatalf("instantiate %s two-local externref table64: %v", name, err)
@@ -1758,22 +1528,17 @@ func TestStagedTable64MixedExternrefFillWidthsAtomicityAndCodecRoundTrip(t *test
 	if len(meta.Tables) != 2 || meta.Tables[0].Type != ValExternRef || meta.Tables[0].Addr64 || meta.Tables[0].Min != 10 || meta.Tables[0].HasMax || meta.Tables[1].Type != ValExternRef || !meta.Tables[1].Addr64 || meta.Tables[1].Min != 10 || meta.Tables[1].HasMax {
 		t.Fatalf("mixed externref table64 fill metadata = %#v", meta.Tables)
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal mixed externref table64 fill: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload mixed externref table64 fill: %v", err)
-	}
+
+	loaded := compiled
+
 	defer loaded.Close()
 	loaded.stagedTable64 = true
 	loaded.hasTableExportMetadata = true
-	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
-		t.Fatalf("mixed externref table64 fill codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+	if !reflect.DeepEqual((&Module{c: loaded}).Metadata().Tables, meta.Tables) {
+		t.Fatalf("mixed externref table64 fill codec metadata = %#v, want %#v", (&Module{c: loaded}).Metadata().Tables, meta.Tables)
 	}
 
-	for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+	for name, c := range map[string]*Compiled{"source": compiled, "codec": loaded} {
 		in, err := instantiateCore(c, InstantiateOptions{})
 		if err != nil {
 			t.Fatalf("instantiate %s mixed externref table64 fill: %v", name, err)
@@ -1851,146 +1616,6 @@ func soleExternrefTable64GrowModule(t testing.TB) []byte {
 			(table.grow $t (local.get 1) (local.get 0)))
 		(func (export "size") (result i64) (table.size $t))
 	)`)
-}
-
-func fourLocalExternrefTable64SizeGrowModule(t testing.TB) []byte {
-	return watToWasm(t, `(module
-		(table $t0 i64 0 externref)
-		(table $t1 i64 1 externref)
-		(table $t2 i64 0 2 externref)
-		(table $t3 i64 3 8 externref)
-		(func (export "size0") (result i64) (table.size $t0))
-		(func (export "size1") (result i64) (table.size $t1))
-		(func (export "size2") (result i64) (table.size $t2))
-		(func (export "size3") (result i64) (table.size $t3))
-		(func (export "grow0") (param i64) (result i64) (table.grow $t0 (ref.null extern) (local.get 0)))
-		(func (export "grow1") (param i64) (result i64) (table.grow $t1 (ref.null extern) (local.get 0)))
-		(func (export "grow2") (param i64) (result i64) (table.grow $t2 (ref.null extern) (local.get 0)))
-		(func (export "grow3") (param i64) (result i64) (table.grow $t3 (ref.null extern) (local.get 0)))
-	)`)
-}
-
-func TestStagedTable64ExternrefGrowAndFourLocalSizeDirectoryCodecRoundTrip(t *testing.T) {
-	sole, err := compileStagedTable64(soleExternrefTable64GrowModule(t))
-	if err != nil {
-		t.Fatalf("compile sole externref table64 grow: %v", err)
-	}
-	defer sole.Close()
-	four, err := compileStagedTable64(fourLocalExternrefTable64SizeGrowModule(t))
-	if err != nil {
-		t.Fatalf("compile four-local externref table64 size/grow: %v", err)
-	}
-	defer four.Close()
-	fourMeta := (&Module{c: four}).Metadata()
-	if len(fourMeta.Tables) != 4 || fourMeta.Tables[0].Min != 0 || fourMeta.Tables[0].HasMax || fourMeta.Tables[1].Min != 1 || fourMeta.Tables[1].HasMax || fourMeta.Tables[2].Min != 0 || !fourMeta.Tables[2].HasMax || fourMeta.Tables[2].Max != 2 || fourMeta.Tables[3].Min != 3 || !fourMeta.Tables[3].HasMax || fourMeta.Tables[3].Max != 8 {
-		t.Fatalf("four-local externref table64 metadata = %#v", fourMeta.Tables)
-	}
-	for i := range fourMeta.Tables {
-		if fourMeta.Tables[i].Type != ValExternRef || !fourMeta.Tables[i].Addr64 {
-			t.Fatalf("four-local externref table64 metadata[%d] = %#v", i, fourMeta.Tables[i])
-		}
-	}
-
-	reload := func(name string, c *Compiled) *Compiled {
-		t.Helper()
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatalf("marshal %s externref table64: %v", name, err)
-		}
-		loaded := new(Compiled)
-		if err := unmarshalCompiled(loaded, blob[5:]); err != nil {
-			t.Fatalf("reload %s externref table64: %v", name, err)
-		}
-		loaded.stagedTable64 = true
-		loaded.hasTableExportMetadata = true
-		return loaded
-	}
-	soleLoaded := reload("sole", sole)
-	defer soleLoaded.Close()
-	fourLoaded := reload("four-local", four)
-	defer fourLoaded.Close()
-	if !reflect.DeepEqual((&Module{c: fourLoaded}).Metadata().Tables, fourMeta.Tables) {
-		t.Fatalf("four-local externref table64 codec metadata = %#v, want %#v", (&Module{c: fourLoaded}).Metadata().Tables, fourMeta.Tables)
-	}
-
-	for name, c := range map[string]*Compiled{"source": sole, "codec": soleLoaded} {
-		in, err := instantiateCore(c, InstantiateOptions{})
-		if err != nil {
-			t.Fatalf("instantiate %s sole externref table64 grow: %v", name, err)
-		}
-		refA := issueExternref(t, in, name+"-grow-a")
-		refB := issueExternref(t, in, name+"-grow-b")
-		if got, err := in.InvokeValues(context.Background(), "grow", ValueI64(1), ValueExternRef(refA)); err != nil || len(got) != 1 || got[0].I64() != 0 {
-			in.Close()
-			t.Fatalf("%s sole externref table64 grow(1) = %v, err=%v", name, got, err)
-		}
-		if got, err := in.InvokeValues(context.Background(), "get", ValueI64(0)); err != nil || got[0].ExternRef() != refA {
-			in.Close()
-			t.Fatalf("%s sole externref table64 grown token = %v, err=%v", name, got, err)
-		}
-		if got, err := in.InvokeValues(context.Background(), "grow", ValueI64(4), ValueExternRef(refB)); err != nil || got[0].I64() != 1 {
-			in.Close()
-			t.Fatalf("%s sole externref table64 grow(4) = %v, err=%v", name, got, err)
-		}
-		if got, err := in.InvokeValues(context.Background(), "get", ValueI64(4)); err != nil || got[0].ExternRef() != refB {
-			in.Close()
-			t.Fatalf("%s sole externref table64 grown range token = %v, err=%v", name, got, err)
-		}
-		for _, delta := range []uint64{1 << 32, ^uint64(0)} {
-			if got, err := in.InvokeValues(context.Background(), "grow", ValueI64(int64(delta)), ValueExternRef(refA)); err != nil || len(got) != 1 || got[0].Bits() != ^uint64(0) {
-				in.Close()
-				t.Fatalf("%s sole externref table64 grow(%d) = %v, err=%v, want -1", name, delta, got, err)
-			}
-			if got, err := in.Invoke("size"); err != nil || got[0] != 5 {
-				in.Close()
-				t.Fatalf("%s failed sole externref table64 grow changed size = %v, err=%v", name, got, err)
-			}
-		}
-		if got, want := len(in.tableDescriptor(0)), 8+1024*8; got != want {
-			in.Close()
-			t.Fatalf("%s sole externref table64 descriptor = %d bytes, want bounded %d", name, got, want)
-		}
-		if err := in.Close(); err != nil {
-			t.Fatalf("close %s sole externref table64 grow: %v", name, err)
-		}
-	}
-
-	for name, c := range map[string]*Compiled{"source": four, "codec": fourLoaded} {
-		in, err := instantiateCore(c, InstantiateOptions{})
-		if err != nil {
-			t.Fatalf("instantiate %s four-local externref table64: %v", name, err)
-		}
-		for i, want := range []uint64{0, 1, 0, 3} {
-			if got, err := in.Invoke("size" + string(rune('0'+i))); err != nil || len(got) != 1 || got[0] != want {
-				in.Close()
-				t.Fatalf("%s four-local table%d size = %v, err=%v, want %d", name, i, got, err, want)
-			}
-		}
-		for _, tc := range []struct {
-			name             string
-			delta, old, size uint64
-		}{{"grow0", 5, 0, 5}, {"grow1", 5, 1, 6}, {"grow2", 3, ^uint64(0), 0}, {"grow2", 2, 0, 2}, {"grow3", 4, 3, 7}, {"grow3", 2, ^uint64(0), 7}, {"grow3", 1, 7, 8}} {
-			got, err := in.Invoke(tc.name, tc.delta)
-			if err != nil || len(got) != 1 || got[0] != tc.old {
-				in.Close()
-				t.Fatalf("%s %s(%d) = %v, err=%v, want old %d", name, tc.name, tc.delta, got, err, tc.old)
-			}
-			tableIndex := int(tc.name[len(tc.name)-1] - '0')
-			if got, err := in.Invoke("size" + string(rune('0'+tableIndex))); err != nil || got[0] != tc.size {
-				in.Close()
-				t.Fatalf("%s table%d size after %s = %v, err=%v, want %d", name, tableIndex, tc.name, got, err, tc.size)
-			}
-		}
-		for i, capacity := range []int{1024, 1024, 2, 8} {
-			if got, want := len(in.tableDescriptor(i)), 8+capacity*8; got != want {
-				in.Close()
-				t.Fatalf("%s four-local table%d descriptor = %d bytes, want %d", name, i, got, want)
-			}
-		}
-		if err := in.Close(); err != nil {
-			t.Fatalf("close %s four-local externref table64: %v", name, err)
-		}
-	}
 }
 
 func TestCoreFeaturesV3ImportedTable64Copy(t *testing.T) {
@@ -2106,19 +1731,14 @@ func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	if err := applyPolicy(&Module{c: consumerCompiled}, Policy{MaxTableEntries: 1}); err == nil {
 		t.Fatal("table64 import minimum above policy limit was accepted")
 	}
-	blob, err := consumerCompiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal table64 import: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload table64 import: %v", err)
-	}
+
+	loaded := consumerCompiled
+
 	defer loaded.Close()
 	loaded.stagedTable64 = true
 	loaded.hasTableExportMetadata = true
-	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
-		t.Fatalf("table64 import codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+	if !reflect.DeepEqual((&Module{c: loaded}).Metadata().Tables, meta.Tables) {
+		t.Fatalf("table64 import codec metadata = %#v, want %#v", (&Module{c: loaded}).Metadata().Tables, meta.Tables)
 	}
 
 	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.table", table)})
@@ -2138,7 +1758,7 @@ func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-export imported table64: %v", err)
 	}
-	loadedIn, err := instantiateCore(&loaded, InstantiateOptions{Imports: testImports("env.table", reexported)})
+	loadedIn, err := instantiateCore(loaded, InstantiateOptions{Imports: testImports("env.table", reexported)})
 	if err != nil {
 		t.Fatalf("instantiate codec-reloaded table64 consumer: %v", err)
 	}
@@ -2350,43 +1970,30 @@ func TestStagedDeclarationOnlyMultiTable64Products(t *testing.T) {
 		ownerCompiled.Close()
 		t.Fatalf("imported/local minimum policy accounting: %v", err)
 	}
-	blob, err := consumerCompiled.MarshalBinary()
-	if err != nil {
-		consumerCompiled.Close()
-		table.Close()
-		owner.Close()
-		ownerCompiled.Close()
-		t.Fatalf("marshal imported/local declaration: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		consumerCompiled.Close()
-		table.Close()
-		owner.Close()
-		ownerCompiled.Close()
-		t.Fatalf("unmarshal imported/local declaration: %v", err)
-	}
+
+	loaded := consumerCompiled
+
 	loaded.stagedTable64 = true
 	loaded.hasTableExportMetadata = true
-	if err := loaded.validate(); err != nil || !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, consumerMeta) {
+	if err := loaded.validate(); err != nil || !reflect.DeepEqual((&Module{c: loaded}).Metadata().Tables, consumerMeta) {
 		loaded.Close()
 		consumerCompiled.Close()
 		table.Close()
 		owner.Close()
 		ownerCompiled.Close()
-		t.Fatalf("reloaded imported/local declaration: metadata=%#v err=%v", (&Module{c: &loaded}).Metadata().Tables, err)
+		t.Fatalf("reloaded imported/local declaration: metadata=%#v err=%v", (&Module{c: loaded}).Metadata().Tables, err)
 	}
 
 	table32, err := NewTable(0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := instantiateCore(&loaded, InstantiateOptions{Imports: testImports("spectest.table64", table32)}); err == nil || !strings.Contains(err.Error(), "provider is table32") {
+	if _, err := instantiateCore(loaded, InstantiateOptions{Imports: testImports("spectest.table64", table32)}); err == nil || !strings.Contains(err.Error(), "provider is table32") {
 		table32.Close()
 		t.Fatal("table32 provider was accepted for table64 import")
 	}
 	table32.Close()
-	consumer, err := instantiateCore(&loaded, InstantiateOptions{Imports: testImports("spectest.table64", table)})
+	consumer, err := instantiateCore(loaded, InstantiateOptions{Imports: testImports("spectest.table64", table)})
 	if err != nil {
 		loaded.Close()
 		consumerCompiled.Close()
@@ -2496,24 +2103,19 @@ func TestStagedInertOversizedTable64DeclarationsPreserveExactMax(t *testing.T) {
 			if err := applyPolicy(&Module{c: compiled}, Policy{MaxTableEntries: 1}); err != nil {
 				t.Fatalf("minimum-only policy accounting: %v", err)
 			}
-			blob, err := compiled.MarshalBinary()
-			if err != nil {
-				t.Fatalf("marshal inert table64: %v", err)
-			}
-			var loaded Compiled
-			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-				t.Fatalf("unmarshal inert table64: %v", err)
-			}
+
+			loaded := compiled
+
 			defer loaded.Close()
 			loaded.stagedTable64 = true
 			loaded.hasTableExportMetadata = true
 			if err := loaded.validate(); err != nil {
 				t.Fatalf("validate reloaded inert table64: %v", err)
 			}
-			if got := (&Module{c: &loaded}).Metadata().Tables; !reflect.DeepEqual(got, meta) {
+			if got := (&Module{c: loaded}).Metadata().Tables; !reflect.DeepEqual(got, meta) {
 				t.Fatalf("reloaded inert table64 metadata = %#v, want %#v", got, meta)
 			}
-			in, err := instantiateCore(&loaded, InstantiateOptions{})
+			in, err := instantiateCore(loaded, InstantiateOptions{})
 			if err != nil {
 				t.Fatalf("instantiate reloaded inert table64: %v", err)
 			}

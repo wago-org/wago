@@ -188,12 +188,3 @@ func rv64GCTypeSubtypingDeclarationsMetadata(c *Compiled, allowUnrestored bool) 
 func rv64GCTypeSubtypingDeclarations(c *Compiled) bool {
 	return rv64GCTypeSubtypingDeclarationsMetadata(c, false)
 }
-
-func railshotRestoreGCTypeSubtypingDeclarationsArtifact(c *Compiled) {
-	if !rv64GCTypeSubtypingDeclarationsMetadata(c, true) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= c.requiredFeatures & (CoreFeatureTypedFunctionReferences | CoreFeatureGC)
-	c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingDeclarations
-}

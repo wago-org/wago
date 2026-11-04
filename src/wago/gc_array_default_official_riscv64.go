@@ -141,13 +141,3 @@ func rv64GCArrayDefaultOfficialMetadata(c *Compiled, requireInitializer bool) bo
 func rv64GCArrayDefaultOfficial(c *Compiled) bool {
 	return rv64GCArrayDefaultOfficialMetadata(c, true)
 }
-
-func railshotRestoreGCArrayDefaultOfficialArtifact(c *Compiled) {
-	if !rv64GCArrayDefaultOfficialMetadata(c, false) {
-		return
-	}
-	c.memoryDir.gcArrayGlobals = []gcArrayGlobalInit{
-		{GlobalIndex: 0, TypeID: 0, Length: 3, Mode: gcArrayGlobalInitUniform, Bits: []uint64{0x3f800000}},
-		{GlobalIndex: 1, TypeID: 0, Length: 3, Mode: gcArrayGlobalInitDefault},
-	}
-}

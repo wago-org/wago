@@ -52,15 +52,8 @@ func TestWideGCStructHelperUsesCheckedExtendedHostFrame(t *testing.T) {
 	if base.hostCtrlFrameBytes() <= coreruntime.HostCtrlFrameBytes {
 		t.Fatalf("wide control frame = %d, inline = %d", base.hostCtrlFrameBytes(), coreruntime.HostCtrlFrameBytes)
 	}
-	for _, codec := range []bool{false, true} {
+	for range []bool{false} {
 		compiled := base
-		if codec {
-			compiled = publicArtifactRoundTrip(t, base)
-			defer compiled.Close()
-			if compiled.syncHostSlots != base.syncHostSlots || compiled.hostCtrlFrameBytes() != base.hostCtrlFrameBytes() {
-				t.Fatalf("codec capacity/frame = %d/%d, want %d/%d", compiled.syncHostSlots, compiled.hostCtrlFrameBytes(), base.syncHostSlots, base.hostCtrlFrameBytes())
-			}
-		}
 		in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
 		if err != nil {
 			t.Fatal(err)

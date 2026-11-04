@@ -8,7 +8,7 @@ import (
 
 func normalizeSnapshotLimit(limit uint64) uint64 {
 	if limit == 0 {
-		limit = uint64(DefaultArtifactLimits().MaxDecodedBytes)
+		limit = uint64(256 << 20)
 	}
 	return min(limit, uint64(maxInt()))
 }

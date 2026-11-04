@@ -5,7 +5,7 @@ package wago
 import (
 	"os"
 
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Only AMD64 currently publishes live structs from a reserved native batch.

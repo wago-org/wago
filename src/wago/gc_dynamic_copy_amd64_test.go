@@ -211,17 +211,8 @@ func testGCDynamicCopyPressureSites(t *testing.T, sites int) {
 	if want := selectedAMD64CompileFeatures(host) & shared.AMD64AVX; c.requiredAMD64Features&shared.AMD64AVX != want {
 		t.Fatalf("AVX requirement=%x want%x", c.requiredAMD64Features&shared.AMD64AVX, want)
 	}
-	artifact, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var decoded Compiled
-	if err := decoded.UnmarshalBinary(artifact); err != nil {
-		t.Fatal(err)
-	}
-	defer decoded.Close()
 	for _, profile := range []GCProfile{GCProfileThroughput, GCProfileTiny} {
-		in, err := Instantiate(&decoded, InstantiateOptions{GC: GCConfig{Profile: profile}})
+		in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: profile}})
 		if err != nil {
 			t.Fatal(err)
 		}

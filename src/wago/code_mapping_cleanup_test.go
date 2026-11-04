@@ -12,7 +12,7 @@ import (
 
 func cleanupMappingFixture(t *testing.T) (*Compiled, *compiledCacheIndexes, map[uintptr]int) {
 	t.Helper()
-	c := newCompilerCompiled(Compiled{})
+	c := newCompilerCompiled()
 	indexes := c.ensureCompileIndexes()
 	calls := make(map[uintptr]int)
 	indexes.unmapCode = func(mem []byte) error {
@@ -100,21 +100,6 @@ func TestCompiledFailedPrivateReleaseTransfersOwnership(t *testing.T) {
 	}
 	if err := c.Close(); err != nil || len(indexes.failedMappings) != 0 {
 		t.Fatal("private cleanup retry", err)
-	}
-}
-
-func TestCompiledReplaceFailurePreservesOldOwner(t *testing.T) {
-	c, _, _ := cleanupMappingFixture(t)
-	c.codeCache.mem = cleanupMapping(t)
-	c.validateMemo.hostThunks[0].mem = cleanupMapping(t)
-	if err := c.replaceDecoded(Compiled{}, 0); err == nil {
-		t.Fatal("replacement ignored failed release")
-	}
-	if !c.codeCache.closed || c.codeCache.mem == nil || c.validateMemo.hostThunks[0].mem == nil {
-		t.Fatal("replacement lost failed cleanup owner")
-	}
-	if err := c.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
 

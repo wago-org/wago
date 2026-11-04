@@ -109,13 +109,3 @@ func rv64GCStructPackedMetadata(c *Compiled, requireInitializers bool) bool {
 }
 
 func rv64GCStructPacked(c *Compiled) bool { return rv64GCStructPackedMetadata(c, true) }
-
-func railshotRestoreGCStructPackedArtifact(c *Compiled) {
-	if !rv64GCStructPackedMetadata(c, false) {
-		return
-	}
-	c.memoryDir.gcStructGlobals = []gcStructGlobalInit{
-		{GlobalIndex: 0, TypeID: 0, FieldCount: 4, Bits: []uint64{0, 1, 2, 3}},
-		{GlobalIndex: 1, TypeID: 0, FieldCount: 4, Bits: []uint64{254, 255, 65534, 65535}},
-	}
-}

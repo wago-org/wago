@@ -65,8 +65,8 @@ func compareCaptures(a, b capture) (comparison, error) {
 	if x.PhaseIsolation != y.PhaseIsolation || x.SourceMapsRequested != y.SourceMapsRequested || x.UnwindMapsRequested != y.UnwindMapsRequested || x.CodeIncluded != y.CodeIncluded || x.CollectorVersion != y.CollectorVersion {
 		return result, fmt.Errorf("captures have incompatible phase isolation, metadata collection, or collector versions")
 	}
-	if x.ReloadArtifact != y.ReloadArtifact || x.CPUModel != y.CPUModel || x.OSVersion != y.OSVersion || x.CPUs != y.CPUs || x.WorkloadHash != y.WorkloadHash || x.Target != y.Target || x.Mode != y.Mode || x.TimelineCoverage != y.TimelineCoverage || x.Phase != y.Phase || x.Event != y.Event || x.Backend != y.Backend || x.Warmup != y.Warmup {
-		return result, fmt.Errorf("captures have incompatible workload, target, mode, artifact reload, phase, event, backend, or warmup")
+	if x.CPUModel != y.CPUModel || x.OSVersion != y.OSVersion || x.CPUs != y.CPUs || x.WorkloadHash != y.WorkloadHash || x.Target != y.Target || x.Mode != y.Mode || x.TimelineCoverage != y.TimelineCoverage || x.Phase != y.Phase || x.Event != y.Event || x.Backend != y.Backend || x.Warmup != y.Warmup {
+		return result, fmt.Errorf("captures have incompatible workload, target, mode, phase, event, backend, or warmup")
 	}
 	if x.Phase != "execute" {
 		return result, fmt.Errorf("diff currently compares the execute phase; inspect other phases in the raw viewer")

@@ -72,7 +72,9 @@ func catchAllPayloadRootKinds(m *wasm.Module) ([shared.EHPayloadLanes]nativeabi.
 // frame; funcref lanes describe identities whose producers the instance keeps
 // alive and are not scanned by the collector.
 func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error) {
-	if m == nil || m.TagCount() == 0 {
+	// Tag-free modules can still catch foreign exceptions through catch_all_ref.
+	// Scan their bodies so the dedicated GC payload lanes remain rooted.
+	if m == nil {
 		return nil, nil
 	}
 	maps := make([]nativeabi.FunctionRootMap, 0, len(m.Code))
@@ -100,14 +102,13 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 		rootCount := 0
 		var slots []nativeabi.RootSlot
 		r := wasm.NewReader(m.Code[function].BodyBytes)
-		var imm wasm.InstructionImmediate
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil {
 				return nil, err
 			}
 			if op != 0x1f {
-				if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+				if err := classifier.SkipImmediate(r, op); err != nil {
 					return nil, fmt.Errorf("exception root map function %d: %w", function, err)
 				}
 				continue

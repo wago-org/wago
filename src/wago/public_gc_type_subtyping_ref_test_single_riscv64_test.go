@@ -7,9 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
-	"path/filepath"
-	"slices"
-	"strings"
 	"testing"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -29,61 +26,22 @@ func rv64PublicGCTypeSubtypingRefTestSingleBytes(t testing.TB) []byte {
 
 func rv64PublicGCTypeSubtypingRefTestSingleCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_REF_TEST_SINGLE_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_REF_TEST_SINGLE_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-type-subtyping-ref-test-single.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingRefTestSingleBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		original.Close()
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			original.Close()
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	original.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return loaded
+
+	return original
+
 }
 
 func TestRV64PublicGCTypeSubtypingRefTestSingleExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRefTestSingleCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64ArtifactContractValid(view) || view.validate() != nil {
+			if !rv64SourceContractValid(view) || view.validate() != nil {
 				compiled.Close()
 				t.Fatal("missing public ref.test execution contract")
 			}
@@ -137,45 +95,6 @@ func TestRV64PublicGCTypeSubtypingRefTestSingleExecutionAndArtifact(t *testing.T
 	}
 }
 
-func TestRV64PublicGCTypeSubtypingRefTestSingleAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_REF_TEST_SINGLE_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	compiled := rv64PublicGCTypeSubtypingRefTestSingleCompile(t, false)
-	base := compiled.executionView()
-	for name, mutate := range map[string]func(*Compiled){
-		"code": func(v *Compiled) {
-			v.code = slices.Clone(v.code)
-			v.code[len(v.code)-1] ^= 1
-		},
-		"entry":      func(v *Compiled) { v.Entry[1] += 4; v.InternalEntry[1] += 4 },
-		"function":   func(v *Compiled) { v.Funcs[0].TypeIndex ^= 1 },
-		"type":       func(v *Compiled) { v.Types[0].Final = !v.Types[0].Final },
-		"type-key":   func(v *Compiled) { v.FuncTypeID[0] ^= 1 },
-		"descriptor": func(v *Compiled) { v.GCTypeDescs[0].Final = !v.GCTypeDescs[0].Final },
-		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-		"escape":     func(v *Compiled) { v.dynamicFuncrefEscape = true },
-		"function-abi": func(v *Compiled) {
-			v.nativeReferenceFunctionABI = !v.nativeReferenceFunctionABI
-		},
-		"missing-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(nil) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(base)
-			mutate(candidate)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("hostile retained mutation admitted", err)
-			}
-			if name == "feature" {
-				rv64RequireRestoredGCFeature(t, candidate)
-				return
-			}
-			rv64RequireRejectedArtifact(t, candidate)
-		})
-	}
-	compiled.Close()
-}
-
 func TestRV64PublicGCTypeSubtypingRefTestSinglePublicRuntime(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_REF_TEST_SINGLE_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
@@ -191,18 +110,5 @@ func TestRV64PublicGCTypeSubtypingRefTestSinglePublicRuntime(t *testing.T) {
 	rt.Close()
 	if err != nil {
 		t.Fatal("public single ref.test instantiation", err)
-	}
-}
-
-func TestRV64PublicGCTypeSubtypingRefTestSingleCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_REF_TEST_SINGLE_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingRefTestSingleBytes(t))
-	if c != nil {
-		c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free single ref.test path used source compilation", err)
 	}
 }

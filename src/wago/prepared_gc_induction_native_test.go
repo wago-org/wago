@@ -154,34 +154,7 @@ func TestGCDeadInductionWrapperParity(t *testing.T) {
 			}
 		}
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var decoded Compiled
-	if err := decoded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer decoded.Close()
-	if roots := decoded.genericGCFrameRoots(); roots != nil && len(roots.deadInductionLayouts) != 0 {
-		t.Fatal("codec retained compile-only induction capability")
-	}
-	in, err := Instantiate(&decoded, InstantiateOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	fn, err := in.WasmFunc("run")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fn.gcDeadInductionLayout != 0 {
-		t.Fatal("decoded handle selected retry entry")
-	}
-	out, err := fn.Invoke(64)
-	if err != nil || out[0] != 2016 {
-		t.Fatalf("decoded fallback=%v %v", out, err)
-	}
+
 }
 
 func TestGCDeadInductionParallelDirectory(t *testing.T) {

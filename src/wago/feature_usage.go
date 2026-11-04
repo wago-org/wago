@@ -305,7 +305,7 @@ func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool
 		}
 		if op == 0xd0 {
 			probe := *r
-			if heap, err := probe.S33(); err == nil {
+			if _, heap, err := probe.RefHeapType(); err == nil {
 				out |= requiredFeaturesForHeapImmediate(heap)
 			}
 		}
@@ -528,7 +528,7 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 			if features, ok := requiredFeaturesForBareValueTypeByte(first); ok {
 				out |= features
 			} else if first == 0x63 || first == 0x64 {
-				heap, readErr := r.S33()
+				_, heap, readErr := r.RefHeapType()
 				if readErr != nil {
 					break
 				}
@@ -548,7 +548,7 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 			continue
 		}
 		if op == 0xd0 {
-			heap, readErr := r.S33()
+			_, heap, readErr := r.RefHeapType()
 			if readErr != nil {
 				break
 			}
@@ -568,7 +568,7 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 				if features, ok := requiredFeaturesForBareValueTypeByte(b); ok {
 					out |= features
 				} else if b == 0x63 || b == 0x64 {
-					heap, heapErr := r.S33()
+					_, heap, heapErr := r.RefHeapType()
 					if heapErr != nil {
 						break
 					}
@@ -609,7 +609,7 @@ func recordRefTypeRequirements(m *wasm.Module, kind wasm.InstrKind, probe *wasm.
 	if err != nil || (subopcode != 20 && subopcode != 21 && subopcode != 22 && subopcode != 23) {
 		return
 	}
-	heap, err := probe.S33()
+	_, heap, err := probe.RefHeapType()
 	if err != nil {
 		return
 	}

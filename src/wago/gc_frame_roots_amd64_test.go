@@ -11,9 +11,9 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -180,7 +180,7 @@ func TestGCEHNativeFrameRoots(t *testing.T) {
 	if compiled.genericGCFrameRoots() == nil {
 		t.Fatal("EH module lost native collection admission")
 	}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -360,7 +360,7 @@ func TestGCTableRootsInsideInvocation(t *testing.T) {
 	if compiled.genericGCFrameRoots() == nil {
 		t.Fatal("collector table module lost native collection admission")
 	}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -415,7 +415,7 @@ func TestGCIndirectNativeFrameRoots(t *testing.T) {
 	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
 		t.Fatalf("indirect native root map = %+v", plan)
 	}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -581,9 +581,8 @@ func TestGCHostReentryNativeFrameRoots(t *testing.T) {
 		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
 		{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
 	}
-	reloaded := publicArtifactRoundTrip(t, compiled)
-	defer reloaded.Close()
-	for _, candidate := range []*Compiled{compiled, reloaded} {
+
+	for _, candidate := range []*Compiled{compiled} {
 		for _, cfg := range profiles {
 			var in *Instance
 			calls := 0
@@ -651,7 +650,7 @@ func TestGCMultiFunctionNativeFrameRoots(t *testing.T) {
 		t.Fatalf("multi-function native root map = %+v", plan)
 	}
 	cfg := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -770,12 +769,11 @@ func TestGCRecursiveNativeFrameRoots(t *testing.T) {
 			}
 		})
 	}
-	loaded := publicArtifactRoundTrip(t, compiled)
-	defer loaded.Close()
-	if roots := loaded.genericGCFrameRoots(); roots == nil || len(roots.callsites) != 1 {
+
+	if roots := compiled.genericGCFrameRoots(); roots == nil || len(roots.callsites) != 1 {
 		t.Fatalf("reloaded recursive root map = %+v", roots)
 	}
-	in, err := Instantiate(loaded, InstantiateOptions{GC: profiles[0].cfg})
+	in, err := Instantiate(compiled, InstantiateOptions{GC: profiles[0].cfg})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -866,31 +864,6 @@ func gcDisjointLiveFrameRootModule(count uint32) []byte {
 	body = append(body, 0x0b)
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, nil))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
-	)
-}
-
-func gcRepeatedFrameRootModule(count uint32) []byte {
-	structType := []byte{0x5f, 0x01, 0x7b, 0x01}
-	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
-	locals = append(locals, 0x63, 0x00)
-	vec := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f}
-	body := append(locals,
-		0xfb, 0x01, 0x00, 0xd1, 0x1a,
-		0xfb, 0x01, 0x00, 0xd1, 0x1a,
-	)
-	for i := uint32(0); i < count; i++ {
-		body = append(body, 0x20)
-		body = append(body, wasmtest.ULEB(i)...)
-		body = append(body, 0x1a)
-	}
-	body = append(body, 0xfd, 0x0c)
-	body = append(body, vec...)
-	body = append(body, 0x0b)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
@@ -1068,10 +1041,9 @@ func TestGCSingleNativeFrameRootWidths(t *testing.T) {
 			if plan == nil || len(plan.safepoints) != 1 || len(plan.safepoints[0].offsets) != int(roots) || plan.safepoints[0].offsets[0] != 16 || plan.safepoints[0].offsets[roots-1] != wantLast {
 				t.Fatalf("%d-root plan = %+v", roots, plan)
 			}
-			loaded := publicArtifactRoundTrip(t, compiled)
-			defer loaded.Close()
+
 			gcCfg := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
-			for _, candidate := range []*Compiled{compiled, loaded} {
+			for _, candidate := range []*Compiled{compiled} {
 				in, err := Instantiate(candidate, InstantiateOptions{GC: gcCfg})
 				if err != nil {
 					t.Fatal(err)
@@ -1083,26 +1055,6 @@ func TestGCSingleNativeFrameRootWidths(t *testing.T) {
 				in.Close()
 			}
 		})
-	}
-}
-
-func TestGCRepeatedFrameRootMapsShareStorageAfterCodec(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcRepeatedFrameRootModule(65))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
-		if candidate != compiled {
-			defer candidate.Close()
-		}
-		plan := candidate.genericGCFrameRoots()
-		if plan == nil || len(plan.safepoints) != 2 || len(plan.safepoints[0].offsets) != 65 || len(plan.safepoints[1].offsets) != 65 {
-			t.Fatalf("repeated root plan = %+v", plan)
-		}
-		if unsafe.SliceData(plan.safepoints[0].offsets) != unsafe.SliceData(plan.safepoints[1].offsets) {
-			t.Fatal("identical repeated root maps do not share immutable storage")
-		}
 	}
 }
 
@@ -1219,7 +1171,7 @@ func TestGCLocalStartUsesExactNativeFrameRoots(t *testing.T) {
 	if plan := compiled.genericGCFrameRoots(); plan == nil || len(plan.safepoints) != 1 {
 		t.Fatalf("local-start root map = %+v", plan)
 	}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -1247,7 +1199,7 @@ func TestGCWideCallerNativeFrameRootsRewrite(t *testing.T) {
 		t.Fatalf("wide caller root map = %+v", plan)
 	}
 	cfg := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -1379,69 +1331,6 @@ func TestGCSingleNativeFrameRootsPublishHiddenOperandRoot(t *testing.T) {
 	}
 }
 
-func TestGCFrameRootCodecRejectsMalformedMetadata(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
-	for _, tc := range []struct {
-		name   string
-		module []byte
-		mutate func(*compiledGCFrameRoots)
-	}{
-		{name: "zero safepoint", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[0].id = 0 }},
-		{name: "duplicate safepoint", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[1].id = root.safepoints[0].id }},
-		{name: "unaligned root", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[1].offsets[0]++ }},
-		{name: "root vector exceeds frame", module: gcFrameRootLimitModule(64), mutate: func(root *compiledGCFrameRoots) {
-			root.safepoints[0].offsets = make([]uint32, 1025)
-			for i := range root.safepoints[0].offsets {
-				root.safepoints[0].offsets[i] = shared.AMD64FrameHeaderBytes + uint32(i*8)
-			}
-		}},
-		{name: "zero callsite", module: gcRecursiveFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.callsites[0].returnOffset = 0 }},
-		{name: "bad adapter", module: gcRecursiveFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.adapterReturnOffsets[0] = uint32(len(root.callsites)) + 1<<30 }},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			compiled, err := Compile(cfg, tc.module)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer compiled.Close()
-			root := compiled.genericGCFrameRoots()
-			if root == nil {
-				t.Fatal("missing root map")
-			}
-			tc.mutate(root)
-			if _, err := compiled.MarshalBinary(); err == nil {
-				t.Fatal("MarshalBinary accepted malformed GC frame-root metadata")
-			}
-		})
-	}
-}
-
-func TestGCSingleNativeFrameRootsPersistThroughCodec(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcSingleFrameRootModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
-	defer loaded.Close()
-	if loaded.genericGCFrameRoots() == nil {
-		t.Fatal("codec reload lost validated native frame-root admission")
-	}
-	cfg := gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
-	in, err := Instantiate(loaded, InstantiateOptions{GC: cfg})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	want := []uint64{0x0706050403020100, 0x0f0e0d0c0b0a0908}
-	if got, err := in.Invoke("run", 1000); err != nil || !reflect.DeepEqual(got, want) {
-		t.Fatalf("reloaded run = %#x, %v; want %#x", got, err, want)
-	}
-	if stats := in.gc.Stats(); stats.FullCollections == 0 {
-		t.Fatalf("reloaded collector stats = %+v, want in-invocation collection", stats)
-	}
-}
-
 // The first array is dead before the second allocation, even though its local
 // still contains the handle. Small functions must not retain that payload.
 func gcDeadSmallLocalModule() []byte {
@@ -1463,7 +1352,7 @@ func TestGCDeadSmallLocalReleasedAtNextAllocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -1557,7 +1446,7 @@ func TestGCDeadLocalPreservesHiddenOperandRoot(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer compiled.Close()
-			for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+			for _, candidate := range []*Compiled{compiled} {
 				if candidate != compiled {
 					defer candidate.Close()
 				}
@@ -1604,9 +1493,8 @@ func TestGCExternRefHostReentryFrameRoots(t *testing.T) {
 	if status := compiled.GCNativeRootAdmission(); !status.Exact {
 		t.Fatalf("externref host admission=%+v", status)
 	}
-	reloaded := publicArtifactRoundTrip(t, compiled)
-	defer reloaded.Close()
-	for _, candidate := range []*Compiled{compiled, reloaded} {
+
+	for _, candidate := range []*Compiled{compiled} {
 		for _, cfg := range []GCConfig{
 			{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
 			{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
@@ -1658,9 +1546,8 @@ func TestGCFrameRootsIgnoreCallAfterNonFallthroughLoop(t *testing.T) {
 	if status := compiled.GCNativeRootAdmission(); !status.Exact {
 		t.Fatalf("loop admission=%+v", status)
 	}
-	reloaded := publicArtifactRoundTrip(t, compiled)
-	defer reloaded.Close()
-	for _, candidate := range []*Compiled{compiled, reloaded} {
+
+	for _, candidate := range []*Compiled{compiled} {
 		for _, cfg := range []GCConfig{
 			{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
 			{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},

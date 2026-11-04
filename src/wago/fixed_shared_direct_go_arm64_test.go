@@ -31,7 +31,7 @@ func TestFixedSharedDirectGoImport(t *testing.T) {
 		if found != (mode == "1") {
 			t.Fatalf("direct Go transition=%v mode=%s", found, mode)
 		}
-		for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for _, compiled := range []*Compiled{c} {
 			calls := 0
 			imports := NewImports()
 			imports.HostFunc("env", "step", func(v int32) int32 { calls++; return v + 1 })
@@ -61,7 +61,7 @@ func TestFixedSharedDirectGoCallerScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+	for _, compiled := range []*Compiled{c} {
 		var stale []Caller
 		calls := 0
 		imports := NewImports()

@@ -169,30 +169,3 @@ func isReferenceValType(t ValType) bool {
 func isWideValType(t ValType) bool {
 	return t == ValI64 || t == ValF64 || isReferenceValType(t)
 }
-
-func valTypeFromCode(code byte) (ValType, bool) {
-	switch code {
-	case 0x7f:
-		return ValI32, true
-	case 0x7e:
-		return ValI64, true
-	case 0x7d:
-		return ValF32, true
-	case 0x7c:
-		return ValF64, true
-	case 0x7b:
-		return ValV128, true
-	case 0x70:
-		return ValFuncRef, true
-	case 0x6f:
-		return ValExternRef, true
-	case 0x69:
-		return ValExnRef, true
-	case 0x6e:
-		return ValAnyRef, true
-	case 0x6c:
-		return ValI31Ref, true
-	default:
-		return 0, false
-	}
-}

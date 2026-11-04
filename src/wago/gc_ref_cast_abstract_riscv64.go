@@ -107,12 +107,3 @@ func rv64GCRefCastAbstract(c *Compiled) bool {
 	return productWitness && c.stagedFeatures() == CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.usesGCStructHelpers() && c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil &&
 		c.requiredFeatures == CoreFeatureBulkMemoryOperations|CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.requiredAMD64Features == 0
 }
-
-func railshotRestoreGCRefCastAbstractArtifact(c *Compiled) {
-	if !rv64GCRefCastAbstract(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructRefCastAbstract
-	c.codeCache.gcArrayProduct = 0
-}

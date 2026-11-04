@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -8,7 +8,6 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"os"
 	"testing"
 	"unsafe"
 )
@@ -20,10 +19,8 @@ func TestRV64CompactExternHostTablePrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
 
-		for artifact, candidate := range []*Compiled{c, loaded} {
+		for artifact, candidate := range []*Compiled{c} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt := NewRuntime()
@@ -380,9 +377,8 @@ func TestRV64CompactExternHostTableHeldFunctionPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer source.Close()
-		loaded := publicArtifactRoundTrip(t, source)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{source, loaded} {
+
+		for artifact, candidate := range []*Compiled{source} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt := NewRuntime()
@@ -562,9 +558,8 @@ func TestRV64CompactExternHostTableSequentialCyclesPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer source.Close()
-		loaded := publicArtifactRoundTrip(t, source)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{source, loaded} {
+
+		for artifact, candidate := range []*Compiled{source} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt := NewRuntime()
@@ -652,14 +647,13 @@ func TestRV64CompactExternPlainReentryPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
+
 		producerCode, err := NewRuntimeConfig().Compile(rv64CompactExternBulkModule(vector, true))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer producerCode.Close()
-		for artifact, candidate := range []*Compiled{c, loaded} {
+		for artifact, candidate := range []*Compiled{c} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt := NewRuntime()
@@ -770,129 +764,5 @@ func TestRV64CompactExternPlainReentryPrivate(t *testing.T) {
 				})
 			}
 		}
-	}
-}
-
-func TestRV64CompactExternPrepareLegacyPrivate(t *testing.T) {
-	dir := os.Getenv("WAGO_RV64_COMPACT_EXTERN_ARTIFACT_DIR")
-	if dir == "" {
-		t.Skip("private legacy artifact producer")
-	}
-	source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("echo", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x0b}))))
-	c, err := NewRuntimeConfig().Compile(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	if c.nativeGCABIRequirement() != 0 || c.genericGCFrameRoots() != nil {
-		t.Fatal("legacy producer requires the base overlay")
-	}
-	data, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(dir+"/legacy-extern-echo.wago", data, 0600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestRV64CompactExternFrameAuthorityPrivate(t *testing.T) {
-	c, err := NewRuntimeConfig().Compile(rv64CompactExternPlainReentrySource(false))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	if c.codeCache.gcMetadataFlags&0x80 == 0 || c.nativeGCABIRequirement() != gc.NativeABIVersion || c.genericGCFrameRoots() == nil {
-		t.Fatal("missing explicit extern frame authority")
-	}
-	data, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"mode", "abi", "slots"} {
-		t.Run(name, func(t *testing.T) {
-			bad, err := LoadTrustedArtifact(data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer bad.Close()
-			switch name {
-			case "mode":
-				bad.codeCache.gcMetadataFlags &^= 0x80
-			case "abi":
-				bad.codeCache.setNativeGCABIVersion(0)
-			case "slots":
-				bad.syncHostSlots = 3
-			}
-			if err := bad.validate(); err == nil {
-				t.Fatal("mutated extern frame authority was accepted")
-			}
-		})
-	}
-}
-
-func TestRV64CompactExternFrameEchoFootprintPrivate(t *testing.T) {
-	source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("echo", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x0b}))))
-	c, err := NewRuntimeConfig().Compile(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	data, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	for artifact, candidate := range []*Compiled{c, loaded} {
-		t.Run(fmt.Sprintf("artifact%t", artifact != 0), func(t *testing.T) {
-			rt := NewRuntime()
-			defer rt.Close()
-			mod, err := rt.Module(candidate)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer mod.Close()
-			in, err := rt.Instantiate(context.Background(), mod)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer in.Close()
-			if in.gc != nil {
-				t.Fatal("storage-free extern echo allocated collector")
-			}
-			token, err := rt.NewExternRef("ordinary extern echo")
-			if err != nil {
-				t.Fatal(err)
-			}
-			function, err := in.WasmFunc("echo")
-			if err != nil {
-				t.Fatal(err)
-			}
-			session, err := function.OpenSession()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer session.Close()
-			allocations := testing.AllocsPerRun(1000, func() {
-				got, err := session.Invoke1(token.token)
-				if err != nil || len(got) != 1 || got[0] != token.token {
-					panic(fmt.Sprint(got, err))
-				}
-			})
-			if allocations != 0 {
-				t.Fatal("warm ordinary extern echo allocations", allocations)
-			}
-			if !rt.ReleaseExternRef(token) {
-				t.Fatal("echo retained extern token")
-			}
-			t.Logf("warm Go allocations=%g, collector=nil, native code=%d bytes, artifact=%d bytes, Compiled=%d bytes, code cache=%d bytes", allocations, len(candidate.code), len(data), unsafe.Sizeof(Compiled{}), unsafe.Sizeof(compiledCodeCache{}))
-		})
 	}
 }

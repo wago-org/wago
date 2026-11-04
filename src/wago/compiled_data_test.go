@@ -105,50 +105,6 @@ func compactDataModule(emptyOutOfBounds bool) []byte {
 	)
 }
 
-func TestCompactExecutionDataCodecAndMutationIsolation(t *testing.T) {
-	c := compileExplicitArtifact(t, compactDataModule(false))
-	defer c.Close()
-	if c.boundsMode != BoundsChecksExplicit {
-		t.Fatalf("codec fixture uses %v bounds checks, want explicit", c.boundsMode)
-	}
-	if c.executionView().compactData == nil || len(c.Data) != minCompactActiveData {
-		t.Fatal("public/execution data representations incorrect")
-	}
-	before, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.Data[0].Bytes[0] = 99
-	c.Data[0].Offset.Base = 100
-	c.Data = nil
-	after, err := c.MarshalBinary()
-	if err != nil || !bytes.Equal(before, after) {
-		t.Fatalf("public mutation changed artifact:%v", err)
-	}
-	loaded := &Compiled{}
-	if err := loaded.UnmarshalBinary(before); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	reencoded, err := loaded.MarshalBinary()
-	if err != nil || !bytes.Equal(before, reencoded) {
-		t.Fatalf("round trip changed artifact:%v", err)
-	}
-	for _, compiled := range []*Compiled{c, loaded} {
-		in, err := Instantiate(compiled)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := in.Invoke("f")
-		if err != nil || len(got) != 1 || got[0] != 17 {
-			t.Fatalf("got%v,%v;want17", got, err)
-		}
-		if err := in.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
 func TestCompactExecutionDataKeepsEmptySegmentBoundsCheck(t *testing.T) {
 	c, err := Compile(nil, compactDataModule(true))
 	if err != nil {

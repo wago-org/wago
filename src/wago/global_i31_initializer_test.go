@@ -23,8 +23,8 @@ func TestGlobalI31InitializerArithmetic(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		reloaded := publicArtifactRoundTrip(t, compiled)
-		for _, c := range []*Compiled{compiled, reloaded} {
+
+		for _, c := range []*Compiled{compiled} {
 			in, err := Instantiate(c, InstantiateOptions{})
 			if err != nil {
 				t.Fatalf("%s: instantiate: %v", name, err)
@@ -34,7 +34,7 @@ func TestGlobalI31InitializerArithmetic(t *testing.T) {
 			}
 			in.Close()
 		}
-		reloaded.Close()
+		compiled.Close()
 		compiled.Close()
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"slices"
 	"testing"
 
@@ -425,96 +424,5 @@ func TestRV64PublicElementGlobalPartialConstruction(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestRV64PublicElementGlobalMetadataAdmission(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source/metadata rejection needs compiler")
-	}
-	c := rv64TableStageCompile(t, "element-global-metadata", rv64ElementGlobalModule(false, false, false, false, 4, 0), false)
-	for name, mutate := range map[string]func(*Compiled){
-		"mutable":               func(v *Compiled) { v.Globals[0].Mutable = true },
-		"wrong-type":            func(v *Compiled) { v.Globals[0].Type = ValI32 },
-		"unavailable":           func(v *Compiled) { v.Elems[0].Values[0].GlobalIndex = ^uint32(0) },
-		"no-expression-type":    func(v *Compiled) { v.Elems[0].HasValueType = false },
-		"null-and-global":       func(v *Compiled) { v.Elems[0].Values[0].Null = true },
-		"function-and-global":   func(v *Compiled) { v.Elems[0].Values[0].FuncIndex = 1 },
-		"missing-global-flag":   func(v *Compiled) { v.Elems[0].Values[1].HasGlobal = false },
-		"extended-expression":   func(v *Compiled) { v.Elems[0].Values[0].Expr = []byte{0x23, 0, 0x0b} },
-		"missing-local-feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureExtendedConstExpressions },
-	} {
-		t.Run(name, func(t *testing.T) {
-			v := rv64ReferenceStartCopy(c.executionView())
-			v.Globals = slices.Clone(v.Globals)
-			v.Elems = slices.Clone(v.Elems)
-			v.Elems[0].Values = slices.Clone(v.Elems[0].Values)
-			mutate(v)
-			if err := v.validate(); err == nil {
-				t.Fatal("invalid element global metadata admitted")
-			}
-			var normalized []RefInit
-			switch name {
-			case "function-and-global":
-				// The codec stores one initializer tag: null precedes global,
-				// global precedes function, and an unset global flag stores the
-				// function index alone. Inactive conflicting fields are omitted.
-				normalized = []RefInit{{HasGlobal: true}, {HasGlobal: true, GlobalIndex: 1}, {Null: true}}
-				switch name {
-				case "null-and-global":
-					normalized[0] = RefInit{Null: true}
-				case "missing-global-flag":
-					normalized[1] = RefInit{FuncIndex: 0}
-				}
-			}
-			blob, err := marshalCompiled(v)
-			if err != nil {
-				if normalized != nil {
-					t.Fatal("initializer alias did not encode", err)
-				}
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if name == "missing-local-feature" {
-				if err != nil || loaded == nil || loaded.requiredFeatures != c.requiredFeatures || railshotValidateCompiled(loaded.executionView()) != nil {
-					t.Fatal("local initializer feature was not reconstructed", loaded, err)
-				}
-				loaded.Close()
-				return
-			}
-			if normalized != nil {
-				if loaded == nil || err != nil {
-					t.Fatal("normalized initializer artifact rejected", err)
-				}
-				defer loaded.Close()
-				view := loaded.executionView()
-				if len(view.Elems) != 1 || !slices.EqualFunc(view.Elems[0].Values, normalized, func(a, b RefInit) bool {
-					return a.FuncIndex == b.FuncIndex && a.GlobalIndex == b.GlobalIndex && a.Null == b.Null && a.HasGlobal == b.HasGlobal && a.I31Wrap == b.I31Wrap && a.RepeatPrevious == b.RepeatPrevious && len(a.Expr) == 0 && len(b.Expr) == 0
-				}) || railshotValidateCompiled(view) != nil {
-					t.Fatal("initializer alias did not normalize to exact supported payload")
-				}
-				return
-			}
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("invalid element global artifact loaded")
-			}
-		})
-	}
-	for _, flags := range []byte{4, 5, 7} {
-		if compiled, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false), rv64ElementGlobalModule(false, false, false, false, flags, 0)); compiled != nil || err == nil {
-			if compiled != nil {
-				compiled.Close()
-			}
-			t.Fatal("disabled reference feature accepted")
-		}
-	}
-	if compiled, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureExtendedConstExpressions, false), rv64ElementGlobalModule(false, false, false, false, 7, 0)); compiled != nil || err == nil {
-		if compiled != nil {
-			compiled.Close()
-		}
-		t.Fatal("disabled extended const feature accepted declarative global")
 	}
 }

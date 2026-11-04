@@ -285,7 +285,9 @@ func (c *Collector) validateStoredRef(r Ref, nullable bool) error {
 		return errors.New("gc: invalid object ref")
 	}
 	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
-		if c.tinyGC.scan.handle == handleOf(r) {
+		// The shared cursor denotes pending reclamation only during sweep.
+		// When sweep yields to marking, it owns a live gray object instead.
+		if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle == handleOf(r) {
 			return errors.New("gc: Tiny object is pending bounded sweep reclamation")
 		}
 		if err := c.validateTinySweepRootPublication(r); err != nil {

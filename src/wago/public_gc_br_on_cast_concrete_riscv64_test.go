@@ -8,9 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -44,54 +42,20 @@ func TestRV64PublicGCBrOnCastConcreteExecutionAndArtifact(t *testing.T) {
 			if sha256.Sum256(data) != wantDigest {
 				t.Fatal("concrete branch-cast source identity changed")
 			}
-			dir, mode := os.Getenv("WAGO_RV64_GC_BR_ON_CAST_CONCRETE_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_BR_ON_CAST_CONCRETE_ARTIFACT_MODE")
-			name := "gc-br-on-cast-concrete.wago"
-			if fail {
-				name = "gc-br-on-cast-fail-concrete.wago"
-			}
-			path := filepath.Join(dir, name)
+
 			var compiledSet []*Compiled
-			if mode == "load" {
-				blob, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
-				compiledSet = []*Compiled{loaded}
-			} else {
-				original, err := rv64I31Config().Compile(data)
-				if err != nil {
-					t.Fatal(err)
-				}
-				blob, err := original.MarshalBinary()
-				if err != nil {
-					original.Close()
-					t.Fatal(err)
-				}
-				if mode == "prepare" {
-					if err = os.MkdirAll(dir, 0o700); err != nil {
-						original.Close()
-						t.Fatal(err)
-					}
-					if err = os.WriteFile(path, blob, 0o600); err != nil {
-						original.Close()
-						t.Fatal(err)
-					}
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if err != nil {
-					original.Close()
-					t.Fatal(err)
-				}
-				compiledSet = []*Compiled{original, loaded}
+
+			original, err := rv64I31Config().Compile(data)
+			if err != nil {
+				t.Fatal(err)
 			}
+
+			compiledSet = []*Compiled{original}
+
 			for _, compiled := range compiledSet {
 				defer compiled.Close()
 				view := compiled.executionView()
-				if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
+				if !rv64SourceContractValid(view) || railshotValidateCompiled(view) != nil {
 					t.Fatalf("invalid branch-cast execution contract: %v", railshotValidateCompiled(view))
 				}
 				if params, results, err := view.maxCallSlots(); err != nil || params != 0 || results != 0 {
@@ -158,7 +122,7 @@ func TestRV64PublicGCBrOnCastConcreteAdmissionIsExact(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					candidate := rv64ReferenceStartCopy(base)
 					mutate(candidate)
-					if rv64ArtifactContractValid(candidate) {
+					if rv64SourceContractValid(candidate) {
 						t.Fatal("hostile retained mutation kept concrete branch-cast witness")
 					}
 					if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
@@ -167,20 +131,5 @@ func TestRV64PublicGCBrOnCastConcreteAdmissionIsExact(t *testing.T) {
 				})
 			}
 		})
-	}
-}
-
-func TestRV64PublicGCBrOnCastConcreteCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_BR_ON_CAST_CONCRETE_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	for _, fail := range []bool{false, true} {
-		c, err := rv64I31Config().Compile(rv64PublicGCBrOnCastConcreteBytes(t, fail))
-		if c != nil {
-			_ = c.Close()
-		}
-		if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-			t.Fatal("compiler-free concrete branch-cast path used source compilation", err)
-		}
 	}
 }

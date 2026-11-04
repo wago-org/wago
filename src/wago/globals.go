@@ -3,16 +3,17 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Call arguments and results are raw uint64 value slots: the function
@@ -1313,9 +1314,7 @@ type Compiled struct {
 	// boundsMode records how this code was compiled: BoundsChecksSignalsBased
 	// means eligible memory-0 memory32 checks were elided and execution requires
 	// a guard-page memory + trap handler (Instantiate wires this up). Indexed
-	// memories and memory64 may still contain explicit checks. Not serialized:
-	// MarshalBinary rejects signals-based modules, so a loaded Compiled is always
-	// explicit-checks.
+	// memories and memory64 may still contain explicit checks.
 	boundsMode BoundsCheckMode
 
 	// memoryImport is the "module.name" key of the module's imported memory, if it
@@ -1356,7 +1355,7 @@ type Compiled struct {
 
 	// validateMemo owns immutable validation sidecars and memoizes the
 	// instantiate-boundary metadata validation for modules produced by
-	// Compile/UnmarshalBinary: the full check (which loops all
+	// Compile: the full check (which loops all
 	// funcs/globals/exports/GC descs) then only runs once instead of on every
 	// Instantiate. A nil memo means "validate every time" — which is what a
 	// hand-constructed Compiled (exported fields, no memo) gets, preserving its

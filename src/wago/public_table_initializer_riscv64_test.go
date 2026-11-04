@@ -5,7 +5,6 @@ package wago
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"runtime"
 	"testing"
 
@@ -200,74 +199,6 @@ func TestRV64PublicTableInitializerImports(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestRV64PublicTableInitializerArtifactAdmission(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source metadata mutations")
-	}
-	c := rv64TableStageCompile(t, "table-init-metadata", tableInitializerModule(tableTestRefFuncExpr(1)), false)
-	for index, mutate := range []func(*Compiled){
-		func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-		func(v *Compiled) { v.TableInitFunc = uint32(v.NumImports + len(v.Funcs)) },
-		func(v *Compiled) { v.TableSize = 0; v.TableInitFunc = ^uint32(0) },
-		func(v *Compiled) { v.HasTable = false },
-		func(v *Compiled) {
-			v.tableImport = "env.table"
-			v.tableImportMin = 3
-			v.tableImportMax = 3
-			v.tableImportHasMax = true
-			v.TableSize = 0
-			v.TableMax = 0
-			v.TableHasMax = false
-		},
-	} {
-		v := *c.executionView()
-		mutate(&v)
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("invalid table initializer metadata admitted", index)
-		}
-		blob, err := marshalCompiled(&v)
-		if err != nil {
-			continue
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if index == 3 && err == nil {
-			// The absent-table codec tag drops owned table fields. Descriptor-only
-			// modules are now valid; a trusted artifact does not revalidate code
-			// against caller-modified metadata.
-			repaired := loaded.executionView()
-			if repaired.HasTableInitFunc || repaired.tableCount() != 0 || repaired.TableSize != 0 || railshotValidateCompiled(repaired) != nil {
-				loaded.Close()
-				t.Fatal("invalid normalized table-free metadata")
-			}
-			loaded.Close()
-			continue
-		}
-		if index == 4 && err == nil {
-			// The imported-table codec tag has no initializer payload. It drops
-			// the conflicting owned initializer, yielding a valid import.
-			repaired := loaded.executionView()
-			if repaired.HasTableInitFunc || repaired.tableImportCount() != 1 || railshotValidateCompiled(repaired) != nil {
-				loaded.Close()
-				t.Fatal("invalid normalized imported table")
-			}
-			loaded.Close()
-			continue
-		}
-		if loaded != nil {
-			loaded.Close()
-		}
-		if err == nil {
-			t.Fatal("invalid table initializer artifact admitted", index)
-		}
-	}
-	if c, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false), tableInitializerModule(tableTestRefFuncExpr(1))); c != nil || err == nil {
-		if c != nil {
-			c.Close()
-		}
-		t.Fatal("disabled table initializer feature admitted", err)
 	}
 }
 

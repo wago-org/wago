@@ -106,13 +106,3 @@ func rv64GCArrayFillMetadata(c *Compiled, requireInitializers bool) bool {
 }
 
 func rv64GCArrayFill(c *Compiled) bool { return rv64GCArrayFillMetadata(c, true) }
-
-func railshotRestoreGCArrayFillArtifact(c *Compiled) {
-	if !rv64GCArrayFillMetadata(c, false) {
-		return
-	}
-	c.memoryDir.gcArrayGlobals = []gcArrayGlobalInit{
-		{GlobalIndex: 0, TypeID: 0, Length: 12, Mode: gcArrayGlobalInitUniform, Bits: []uint64{10}},
-		{GlobalIndex: 1, TypeID: 1, Length: 12, Mode: gcArrayGlobalInitDefault},
-	}
-}

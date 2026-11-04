@@ -510,42 +510,6 @@ func TestRV64PublicMultiMemoryAdmission(t *testing.T) {
 	}
 }
 
-func TestRV64PublicMultiMemoryArtifactMetadata(t *testing.T) {
-	defs := make([][]byte, 100)
-	for i := range defs {
-		defs[i] = []byte{1, 0, 0}
-	}
-	source := rv64MMModule(rv64MMGrowFuncs(99), defs, nil, 100, nil)
-	for _, artifact := range []bool{false, true} {
-		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
-			c := rv64TableStageCompile(t, "multimemory-metadata", source, artifact)
-			for _, shared := range []bool{false, true} {
-				bad := *c.executionView()
-				directory := *bad.memoryDir
-				directory.defs = slices.Clone(directory.defs)
-				bad.memoryDir = &directory
-				if shared {
-					directory.defs[99].Shared = true
-				} else {
-					directory.defs[99].Addr64 = true
-					directory.defs[99].Max = 1 << 49
-				}
-				blob, err := marshalCompiled(&bad)
-				if err != nil {
-					continue
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if loaded != nil {
-					_ = loaded.Close()
-				}
-				if err == nil {
-					t.Fatal("unsupported secondary memory metadata admitted", shared)
-				}
-			}
-		})
-	}
-}
-
 func TestRV64PublicMultiMemorySecondaryOwnerAndRollback(t *testing.T) {
 	providerSource := rv64MMModule(rv64MMGrowFuncs(1), [][]byte{{1, 1, 3}, {1, 1, 3}}, nil, 2, nil)
 	imports := [][]byte{rv64MMImport("a", 1, 3), rv64MMImport("b", 1, 3)}

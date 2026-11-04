@@ -1,4 +1,4 @@
-//go:build !wago_precompiled || !linux || !riscv64 || tinygo || wago_target_tinygo
+//go:build !wago_standalone
 
 package wago
 

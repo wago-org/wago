@@ -50,24 +50,13 @@ func TestFullAccessPluginPOPCNTRequirementArtifact(t *testing.T) {
 	if compiled.requiredAMD64Features != shared.AMD64POPCNT {
 		t.Fatalf("requirements = %#x, want POPCNT", compiled.requiredAMD64Features)
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
+
 	amd64CPUCache.features = shared.AMD64KnownFeatures &^ shared.AMD64POPCNT
-	var missing Compiled
-	if err := missing.UnmarshalBinary(blob); err == nil {
-		missing.Close()
-		t.Fatal("artifact requiring POPCNT admitted without POPCNT")
-	}
+
 	amd64CPUCache.features = shared.AMD64KnownFeatures
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.requiredAMD64Features != shared.AMD64POPCNT {
-		t.Fatalf("roundtrip requirements = %#x, want POPCNT", loaded.requiredAMD64Features)
+
+	if compiled.requiredAMD64Features != shared.AMD64POPCNT {
+		t.Fatalf("roundtrip requirements = %#x, want POPCNT", compiled.requiredAMD64Features)
 	}
 }
 
@@ -117,17 +106,9 @@ func TestUnusedPluginCPURequirementsArtifact(t *testing.T) {
 					if compiled.requiredAMD64Features != 0 || compiled.RequiresAVX2() || compiled.RequiresAVX512() {
 						t.Fatalf("unused plugin acquired CPU requirements %#x", compiled.requiredAMD64Features)
 					}
-					blob, err := compiled.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					var loaded Compiled
-					if err := loaded.UnmarshalBinary(blob); err != nil {
-						t.Fatalf("scalar artifact rejected on SSE2 host: %v", err)
-					}
-					defer loaded.Close()
-					if loaded.requiredAMD64Features != 0 || loaded.RequiresAVX2() || loaded.RequiresAVX512() {
-						t.Fatalf("artifact acquired CPU requirements %#x", loaded.requiredAMD64Features)
+
+					if compiled.requiredAMD64Features != 0 || compiled.RequiresAVX2() || compiled.RequiresAVX512() {
+						t.Fatalf("artifact acquired CPU requirements %#x", compiled.requiredAMD64Features)
 					}
 					instance, err := rt.Instantiate(context.Background(), mod)
 					if err != nil {

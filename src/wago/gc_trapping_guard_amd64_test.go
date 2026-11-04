@@ -17,21 +17,10 @@ func TestGCTrappingGuard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, codec := range []bool{false, true} {
+	for range []bool{false} {
 		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
 		if err != nil {
 			t.Fatal(err)
-		}
-		if codec {
-			b, e := c.MarshalBinary()
-			c.Close()
-			if e != nil {
-				t.Fatal(e)
-			}
-			c = &Compiled{}
-			if e = c.UnmarshalBinary(b); e != nil {
-				t.Fatal(e)
-			}
 		}
 		for _, cfg := range []GCConfig{{VerifyAfterCollect: true}, {CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true}, {Profile: GCProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16, VerifyAfterCollect: true}} {
 			in, err := Instantiate(c, InstantiateOptions{GC: cfg})
@@ -68,7 +57,7 @@ func TestGCTrappingGuard(t *testing.T) {
 						got, err := in.Invoke(name, index|uint64(1)<<40)
 						if setup == "init" && index == 1 {
 							if err != nil || len(got) != 1 {
-								t.Fatalf("codec=%v %s=%v,%v", codec, name, got, err)
+								t.Fatalf("%s=%v,%v", name, got, err)
 							}
 							if name == "roots" && got[0] != 17 {
 								t.Fatalf("root result=%v", got)
@@ -83,7 +72,7 @@ func TestGCTrappingGuard(t *testing.T) {
 							want = "null reference"
 						}
 						if err == nil || !strings.Contains(err.Error(), want) {
-							t.Fatalf("codec=%v %s/%s/%d err=%v want%q", codec, setup, name, index, err, want)
+							t.Fatalf("%s/%s/%d err=%v want%q", setup, name, index, err, want)
 						}
 					}
 				}

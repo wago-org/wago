@@ -12,8 +12,6 @@ import impl "github.com/wago-org/wago/src/wago"
 
 type (
 	AbstractHeapType                = impl.AbstractHeapType
-	ArtifactLimits                  = impl.ArtifactLimits
-	ArtifactSectionSizes            = impl.ArtifactSectionSizes
 	Authority                       = impl.Authority
 	AuthorityGrant                  = impl.AuthorityGrant
 	AuthorityMode                   = impl.AuthorityMode
@@ -422,8 +420,6 @@ func DecodeProviderCatalog(encoded []byte) (ProviderCatalogDocument, error) {
 	return impl.DecodeProviderCatalog(encoded)
 }
 
-func DefaultArtifactLimits() ArtifactLimits { return impl.DefaultArtifactLimits() }
-
 func DefinitionDigest(def PluginDefinition) (string, error) { return impl.DefinitionDigest(def) }
 
 func DigestModuleSource(source []byte) ModuleSourceDigest { return impl.DigestModuleSource(source) }
@@ -454,13 +450,9 @@ func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
 	return impl.Instantiate(source, opts...)
 }
 
-func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
-
 func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable(err) }
 
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
-
-func LoadTrustedArtifact(b []byte) (*Compiled, error) { return impl.LoadTrustedArtifact(b) }
 
 func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes) }
 

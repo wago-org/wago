@@ -22,7 +22,6 @@ import (
 // receives it via -ldflags "-X main.version=<tag>"). An empty value means a plain
 // build with no version stamped in.
 var version string
-var artifactCacheIdentity string
 
 func versionString() string {
 	if version == "" {
@@ -111,21 +110,10 @@ func Main(v string) {
 	os.Exit(2)
 }
 
-// MainWithArtifactCacheIdentity runs the runtime CLI with an explicit build
-// fingerprint for compiled-module cache keys. Generated plugin runtimes use
-// this entry point because their throwaway build module intentionally disables
-// VCS stamping. The identity must change whenever generated code, plugin ABI,
-// dependencies, or other native-output inputs change.
-func MainWithArtifactCacheIdentity(v, identity string) {
-	artifactCacheIdentity = identity
-	Main(v)
-}
-
 // MainWithPluginSet runs a generated runtime with its explicit provider catalog
 // and exact reviewed selections. No provider init function mutates global Wago
 // state; the set is handed to each runtime that needs plugins.
 func MainWithPluginSet(v, identity string, set wago.PluginSet) {
-	artifactCacheIdentity = identity
 	runtimeplugin.Configure(set)
 	if err := runtimeplugin.Verify(); err != nil {
 		ui.Fatal("plugins: %v", err)

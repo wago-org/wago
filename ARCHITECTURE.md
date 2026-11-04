@@ -43,30 +43,11 @@ additionally support signal-backed guard-page bounds checks; all seven targets
 support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 7 -->
+Compiled modules stay in memory. Wago accepts Wasm source and compiles it in the
+current process; it does not persist or load native-code module artifacts.
+Import bindings retain exact module/name boundaries, preventing dotted flat-key
+collisions from crossing module authority boundaries.
 
-Compiled artifacts use a strict ordered section stream. It has a fixed
-header with a native-architecture ID and section count, followed by length-delimited native-code and metadata
-sections. Wago rejects unknown, duplicate, reordered, truncated, over-limit, and
-non-canonical section encodings. `Compiled.WriteTo` streams code without making a
-second full image. `Compiled.ReadFromWithLimits` reads code directly into an RW
-mapping, applies separate code and metadata bounds, validates all metadata, and
-seals that mapping RX on first use. Non-global imports keep their legacy flat
-lookup key and a validated module-name boundary. Source compilation and artifact
-loading therefore expose the same module/name pair without decoding source again.
-Plugin bindings must match that pair before they satisfy an import. This prevents
-dotted flat-key collisions from crossing module authority boundaries. Artifact
-decoding also caps the expanded function-import directory at 64 MiB, so compact
-empty names cannot produce an unbounded slice allocation. Version 2 replaced the
-initial version 1 format when generated `memory.grow` code and the native instance
-context gained a runtime memory-page quota. The current format is version 7.
-It records and validates local and imported start functions. Version 6 artifacts
-omitted their initialization and must be rebuilt. Version 6 added foreign-architecture
-rejection before executable mapping allocation. Version 5 rejected version-4 native
-code compiled with the former EH
-tag-directory basedata offset. Version 4 records optional CPU requirements and exact
-native GC metadata. Wago rejects all earlier versions; there is no compatibility
-decoder or dual-format ambiguity.
 
 ### CPU and SIMD baseline
 
@@ -367,7 +348,6 @@ GC transfers remain fail-closed when exact ownership is unproved.
  │         │   │          │   │ Block native codegen)│   │ metadata │
  └─────────┘   └──────────┘   └─────────────────────┘   └────┬─────┘
  src/core/compiler/wasm        src/core/compiler/backend/railshot│
-                                                              │  (optional: MarshalBinary → .wago blob)
                                                               ▼
                                                        ┌─────────────┐
                                                        │ instantiate │  map code, build JobMemory,
@@ -483,6 +463,11 @@ Type-indexed control encodings record multi-value even for zero or one result.
 - Unsupported value types and opcodes are rejected explicitly rather than
   silently accepted. Correctness and clear failure come first.
 
+The compiler's deferred decoder merges adjacent local declaration runs with
+identical value types before validation. It retains different zero-count types
+for checking and preserves the original local-declaration byte count for source
+offsets. The standalone decoder preserves its original declaration runs.
+
 Both native backends consume the complete result-type vector of a typed
 `select` through the shared Wasm immediate reader. Explicit reference types
 include a nullable/non-null prefix and a signed heap-type index, which can span
@@ -513,9 +498,84 @@ Validation is intentionally stricter than the narrow const-expression decoder
 the compiler uses for global/segment initializers: the validator guarantees
 shape, the backend then trusts it.
 
+Validator operands share the two-word value-type representation. A private tag
+in the unused high bit of the low word records a polymorphic unknown operand;
+ordinary bottom and reference-bottom types remain distinct. This tag never
+enters module declarations or runtime metadata. Flat native-signature hashes
+are computed directly from the current parameters and results on each query,
+without cache allocation, so in-place signature edits are reflected immediately.
+Indexed identities use the module-local type-key cache. Flat and indexed
+identity formats retain their distinct serialized key values.
+
+Bytecode walkers that need only the next opcode use the module classifier's
+`SkipImmediate` method. Scalar immediates and memory arguments retain the same
+width selection, malformed-encoding errors, and reader positions as full
+classification without constructing an instruction record; proposal immediates
+share the full classifier. SIMD feature checks and constant/lookahead scans use
+this path, with differential tests and fuzzing against `ClassifyInto`.
+
+Loop-effect lookahead reads scalar indices and float literals directly while
+retaining full proposal classification, exact byte budgets, and bounded float
+selection. Deferred-tree construction reads each child's cached height and
+register demand together and updates their adjacent bytes in one store.
+
 ---
 
 ## 4. Back end — Valent-Block code generation (`src/core/compiler/backend/railshot`)
+
+Worker-owned function state is cleared in place after retaining reusable slice
+headers, then populated directly. This avoids staging the full compiler state
+on the Go stack; Wasm frame layout and emitted code remain independent of it.
+The compiler result is also populated directly in its grouped owner, avoiding
+a full temporary result on the compilation stack before publication.
+Known loop functions skip the scalar admission scan, which rejects every loop;
+diagnostic compilations retain the measured admission path.
+Region-loop rejection and finalization without compaction use small Go frames;
+the emitter and compactor retain their larger scratch arrays on their own paths.
+Whole-function GC reductions enter their individual proofs after the shared
+checks on parameter count, interruption, inline locals, and extensions pass.
+Common AMD64 register and memory encoders append related instruction bytes
+together while preserving encoding counters and symbolic local offsets.
+Ordinary base-register memory instructions append the complete prefix, address,
+and displacement together. Pending symbolic local references retain the general
+encoder path and its original offset-recording order.
+Symbolic local-reference recording is entered only for pending sites.
+Bounds-range lookahead calls the generic immediate skipper for integer constants;
+accepted scalar operations without payloads continue directly.
+
+For serial hint scans over at least 64 KiB of encoded bodies, AMD64 retains
+ordinary call indices in an optional module sidecar. Caller inline plans reuse
+these indices, avoiding a second opcode and immediate walk. Tail, indirect, and
+reference calls retain the original all-calls-inline decision; callee order and
+deduplication are unchanged. The cache, including ranges and its header, is
+bounded to 4 MiB. An exhausted cache is discarded; AST bodies, parallel hint
+scans, and other unknown entries use the original planner. The retained hint
+header and generated native code are unchanged.
+
+AMD64 integer comparisons, unary operations, and arithmetic share dispatch
+handlers across both operand widths. Compact opcode tables select the existing
+lowering operations; signed and unsigned division retain adjacent div/rem pairing.
+
+The bytecode hint walk inlines event-free opcode handling; physical-event
+recording stays on its separate path. Operand allocation caches the active
+chunk header and inlines the space-available path at each production call site.
+Header-array growth and resets refresh that pointer, and worker teardown clears
+it. This adds eight bytes per worker while preserving the 56-byte operand node
+and the existing chunk-retention budget. Full-capacity slice indexing under the
+space check avoids redundant bounds branches using checked Go operations.
+
+Register-only local merge contracts share read-only zero states instead of
+allocating and recycling identical buffers at every control join. These states
+never enter the mutable buffer pool; loop headers avoid redundant writes.
+Larger synthetic pin sets retain the ordinary buffer path.
+Branch result GC metadata skips stack walks when the conservative root flag
+proves none are present. Branch type and GC consumers share one operand-root
+snapshot when both need it.
+
+Regional local reads and writes check the recorded assignment before entering
+activation helpers. Control-region reads also skip the disabled final-transfer
+path. The ordinary driver and fused array initializer use the same guard; the
+helpers retain their complete eligibility and ownership checks.
 
 Recovered AMD64/ARM64 code-generation panics are `wago.InternalCompilerError`
 values, so callers and fuzzers can distinguish compiler defects with `errors.As`
@@ -527,11 +587,33 @@ original panic, including register exhaustion; ordinary compile errors are uncha
 Small operand arenas use half the body bytes plus local and immediate-free
 instruction allowances. The density counter saturates at 256 and occupies two
 padding bytes in each backend's 28-byte hint header. It is only a size hint:
-stable chunks still grow for valid code. Below 256 nodes, overflow fills to a
-power-of-two total, then doubles that total. This avoids tripling storage after
-a one-node underestimate. The existing large-arena growth and retention limits
-remain unchanged. Sparse global-hint storage uses the same power-of-two capacity
+stable chunks still grow for valid code. Overflow fills to a power-of-two total,
+then doubles that total until chunks reach their existing size cap. This avoids
+tripling storage after a one-node underestimate, including at the default
+256-node capacity. Chunk-size and retained-byte limits remain unchanged. Sparse global-hint storage uses the same power-of-two capacity
 rule in serial and parallel scans, starting at one record instead of eight.
+
+Integer tree construction checks the matching-local-leaf prerequisite before
+entering the same-operand simplifier. Other storage kinds and deferred operands
+retain their ordinary lowering without visiting the cold simplification path.
+
+AMD64 hint scanning keeps proposal-classification payloads in separate helpers.
+Ordinary recursive scalar scans therefore avoid reserving those payloads in
+every nested frame; the classifier, hints, and malformed-input checks are shared.
+
+AMD64 serial codegen reuses a single staging buffer across functions. When
+mapping is deferred, staging stays on the Go heap until first instantiation;
+compile-only callers do not acquire executable/JIT mappings. Explicit immediate
+mapping requests use writable code storage. Layout and relocation are identical.
+
+For Linux/AMD64 standard-Go modules with at least 16 KiB of body bytes, operand
+nodes use a fixed-size writable mapping bounded by the existing 1 MiB retained
+scratch budget. The mapping never grows while expression links are live;
+overflow chunks use ordinary heap storage. The worker retains every chunk and
+the mapping owner through compilation, while plugin-owned Go values stay in the
+normal scanned cold sidecar. Serial completion and parallel-worker teardown
+release the mapping. Small modules, other platforms, mapping failures, and
+`WAGO_MAPPED_OPERAND_ARENA=0` use the heap path.
 
 Parallel non-compact codegen sizes its final heap join from completed native
 worker bytes when that is below the original Wasm expansion estimate. Checked
@@ -687,18 +769,10 @@ read-only diagnostic stream; callers never receive a mutable alias:
 - `TableSize`, `FuncTypeID`, `Elems` (active element segments)
 - `Data` (active data segments)
 
-`Compiled` serializes to a compact versioned **`.wago` blob** through either the
-slice APIs (`MarshalBinary`/`UnmarshalBinary`) or bounded streaming APIs
-(`WriteTo`/`ReadFromWithLimits`). `Load` accepts untrusted raw Wasm and compiles
-it; `LoadTrustedArtifact` performs the fast native-code reload only for
-authenticated or locally produced `.wago` bytes. `IsCompiled` distinguishes the
-formats, but callers must choose the trust boundary explicitly. `validate()`
-hardens artifact metadata before mapping, but cannot sandbox hostile native code.
-The codec persists the
-binding-independent imported-call shape, so modules with function imports can be
-serialized before host or instance targets are known; live addresses and store
-identity are installed only during instantiation. See the codec-version comment
-at the top of this file for the current wire version.
+`Load` accepts raw Wasm and compiles it. Compiled modules have no serialization
+or native-code reload API. Standalone executables link ahead-of-time machine code and runtime metadata
+as generated Go initializers. They contain the runtime and selected plugins,
+without Wasm source, an artifact decoder, or a compiler.
 
 ---
 
@@ -779,6 +853,12 @@ or unknown edge invalidates it before lowering. Native allocation reserves ident
 only; collection cancels unused reservations before tracing. Live-struct batches
 start at the configured maximum, shrink after low-use cancellation, and double
 after 32 consecutive full batches. Feedback belongs to each collector and excludes array chunks and
+one-handle dead-struct proofs. See the
+[batch cancellation measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/native-batch-cancellation.md).
+
+AMD64 defined GC casts and tests accept equal canonical type IDs after checked
+object resolution. Unequal ordinary types use subtype intervals; unequal exact
+casts fail. See [identity measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/canonical-identity-shortcut.md).
 one-handle dead-struct proofs.
 
 AMD64 defined GC casts and tests accept equal canonical type IDs after checked
@@ -791,6 +871,17 @@ last. These batches account for both constructor kinds from their consumed
 cursor. Uniform arrays with run-time lengths use this path only when their
 checked object size is at most 256 bytes; larger uniform arrays use the helper.
 Private array chunks and exact-size large reservations retain their own
+cursor and immediate accounting. See the
+[native array path measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/native-array-paths.md).
+On AMD64, an adjacent final cast and struct field read share one checked native
+object resolution for collector references, integers, packed integers, floats,
+and vectors. The raw address is consumed by the field load before any safepoint.
+See [cast/field-read measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/cast-field-read-fusion.md).
+
+AMD64 final `v128` arrays use the scalar checked resolver and bounds path with
+16-byte SSE2 or AVX loads and stores. This access layout is separate from scalar
+fill and copy admission. See the
+[vector array measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/native-vector-array-access.md).
 cursor and immediate accounting.
 On AMD64, an adjacent final cast and struct field read share one checked native
 object resolution for collector references, integers, packed integers, floats,
@@ -1060,8 +1151,8 @@ pinned specification suites. See [tests/README.md](tests/README.md) for prerequi
 ## 16. Current scope & limitations
 
 - Wago has no interpreter tier: supported modules execute as native code. Wasm
-  can be compiled in-process, serialized as a native `.wago` artifact, or
-  embedded in a compiler-free standalone executable.
+  is compiled in-process. Standalone executables instead link machine code and
+  runtime metadata at build time and omit the compiler.
 - Linux on amd64, arm64, and riscv64, plus macOS and Windows on amd64 and arm64,
   execute the native JIT and are required release targets. Signal-backed guard pages remain specific to
   Linux/amd64, Linux/arm64, Linux/riscv64, and Darwin/arm64; other targets use
@@ -1093,11 +1184,7 @@ new profiler.
 The removal contract is checked by `scripts/check-diagnostic-dce.sh`, which
 inspects unstripped manager, standard-runtime, minimal-runtime, and embedding binaries for
 AMD64 and ARM64 on Linux, macOS, and Windows, plus RV64 on Linux. It also
-rejects foreign backend and encoder implementations. An artifact-loading embedding
-build with `wago_precompiled` must discard source decoding, frontend lowering,
-and function compilation even when it references `Compile`. Source requests fail
-before decoding. Artifact metadata validation
-and runtime thunk generation remain required.
+rejects foreign backend and encoder implementations.
 `scripts/check-riscv64-diagnostics.sh` compares ordinary and checked guest bytes
 and audits a force-linked RV64 compiler harness. Both scripts run in CI.
 Profiling must add no generated guest instrumentation or steady-state recording

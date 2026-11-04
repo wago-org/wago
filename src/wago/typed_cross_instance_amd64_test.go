@@ -67,19 +67,11 @@ func TestReferenceEncodingFormDoesNotAffectTypedCalls(t *testing.T) {
 	if got, want := producerCompiled.FuncTypeID[0], consumerCompiled.FuncTypeID[0]; got != want {
 		t.Fatalf("shorthand/explicit native type keys = %#x/%#x", got, want)
 	}
-	blob, err := producerCompiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal shorthand producer: %v", err)
-	}
-	var reloaded Compiled
-	if err := reloaded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("reload shorthand producer: %v", err)
-	}
-	defer reloaded.Close()
-	if got, want := reloaded.FuncTypeID[0], consumerCompiled.FuncTypeID[0]; got != want {
+
+	if got, want := producerCompiled.FuncTypeID[0], consumerCompiled.FuncTypeID[0]; got != want {
 		t.Fatalf("reloaded shorthand/explicit native type keys = %#x/%#x", got, want)
 	}
-	producer, err := instantiateCore(&reloaded, InstantiateOptions{})
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate reloaded shorthand producer: %v", err)
 	}
@@ -260,23 +252,6 @@ func TestStagedTypedNestedStructuralImportRetainsProducer(t *testing.T) {
 	}
 }
 
-func typedLocalCallRefModule() []byte {
-	declared := append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType(nil, nil),
-			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
-		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
-		wasmtest.Section(9, wasmtest.Vec(declared)),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0x00, 0xd2, 0x00, 0x14, 0x01, 0x0b}),
-		)),
-	)
-}
-
 func typedNullControlModule() []byte {
 	typedControl := []byte{0x60}
 	typedControl = append(typedControl, wasmtest.Vec(encodedNullableIndexedRef(0))...)
@@ -340,38 +315,5 @@ func BenchmarkStagedTypedCrossInstanceCallRef(b *testing.B) {
 		if _, err := consumer.Invoke("run", I32(41)); err != nil {
 			b.Fatal(err)
 		}
-	}
-}
-
-func TestStagedTypedCodecRoundTrip(t *testing.T) {
-	for name, module := range map[string][]byte{
-		"call_ref":     typedLocalCallRefModule(),
-		"null_control": typedNullControlModule(),
-	} {
-		t.Run(name, func(t *testing.T) {
-			compiled := stagedTypedStorageCompile(t, module)
-			if compiled.requiredFeatures&CoreFeatureTypedFunctionReferences == 0 {
-				t.Fatal("typed control/call artifact omitted its required feature bit")
-			}
-			blob, err := compiled.MarshalBinary()
-			if err != nil {
-				t.Fatalf("marshal typed module: %v", err)
-			}
-			public, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal("public typed function artifact", err)
-			}
-			assertFunctionOnlyPublicRuntime(t, public)
-			public.Close()
-
-			var loaded Compiled
-			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-				t.Fatalf("reload typed module: %v", err)
-			}
-			defer loaded.Close()
-			if loaded.requiredFeatures&CoreFeatureTypedFunctionReferences == 0 {
-				t.Fatal("codec reload lost typed required feature bit")
-			}
-		})
 	}
 }

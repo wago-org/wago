@@ -5,7 +5,6 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"runtime"
 	"slices"
@@ -247,72 +246,6 @@ func TestRV64PublicReferenceFunctionTableBulkRangesAndGrowth(t *testing.T) {
 	}
 }
 
-func TestRV64PublicReferenceFunctionTableBulkRetainedBounds(t *testing.T) {
-	c := rv64ReferenceTableBulkCompile(t, "retained", privateTableElementsModule(), false, false)
-	for name, mutate := range map[string]func(*Compiled){
-		"private": func(v *Compiled) { v.passiveElems[2].Values[0].FuncIndex = 13 }, "missing": func(v *Compiled) { v.passiveElems[2].Values[0].FuncIndex = 127 },
-		"null": func(v *Compiled) { v.passiveElems[2].Values[0].Null = true }, "global": func(v *Compiled) { v.passiveElems[2].Values[0].HasGlobal = true }, "inactive-global": func(v *Compiled) { v.passiveElems[2].Values[0].GlobalIndex = 1 },
-		"i31": func(v *Compiled) { v.passiveElems[2].Values[0].I31Wrap = true }, "repeat": func(v *Compiled) { v.passiveElems[2].Values[0].RepeatPrevious = true }, "expression": func(v *Compiled) { v.passiveElems[2].Values[0].Expr = []byte{0xd2, 0, 0x0b} },
-		"offset": func(v *Compiled) { v.passiveElems[2].Offset.Base = 1 }, "table": func(v *Compiled) { v.passiveElems[2].TableIndex = 1 }, "typed-unbound": func(v *Compiled) {
-			v.passiveElems[2].HasValueType = true
-			v.passiveElems[2].ValueTypeIndex = uint32(len(v.ValueTypes))
-		}, "count": func(v *Compiled) { v.passiveElems = append(v.passiveElems, ElemInit{}) },
-		"combined1025": func(v *Compiled) { v.passiveElems[2].Values = make([]RefInit, 1023) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			v := cloneCompiledMetadata(c)
-			v.codeCache = nil
-			v.validateMemo = &validateMemo{}
-			mutate(v)
-			if err := railshotValidateCompiled(v); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("invalid passive metadata", err)
-			}
-			blob, err := marshalCompiled(v)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				defer loaded.Close()
-			}
-			if err == nil {
-				// The canonical writer drops fields inactive for legacy numeric
-				// literals. Direct invalid metadata must fail, while its repaired
-				// artifact must contain the original canonical numeric value.
-				repaired := name == "i31" || name == "inactive-global"
-				value := loaded.passiveElems[2].Values[0]
-				if !repaired || value.FuncIndex != 1 || value.GlobalIndex != 0 || value.I31Wrap || rv64ValidateReferenceFunctions(loaded) != nil {
-					t.Fatal("invalid passive artifact", name)
-				}
-			}
-		})
-	}
-	v := cloneCompiledMetadata(c)
-	v.codeCache = nil
-	v.validateMemo = &validateMemo{}
-	v.passiveElems[2].Values = make([]RefInit, 1022)
-	if err := rv64ValidateReferenceFunctions(v); err != nil {
-		t.Fatal("combined active/passive1024", err)
-	}
-	// Table21 + active24 + empty active20 + original directory256*16 +
-	// three passive values12 =4173 bytes.
-	for _, budget := range []int{4173, 4172} {
-		remaining := budget
-		if err := rv64ValidateReferenceFunctionTable(c, &remaining); (err == nil) != (budget == 4173) {
-			t.Fatal("independent table/active/passive byte budget", budget, err)
-		}
-	}
-	if n := testing.AllocsPerRun(5, func() {
-		budget := railshot.MaxModuleBytes
-		if err := rv64ValidateReferenceFunctionTable(c, &budget); err != nil {
-			panic(err)
-		}
-	}); n != 0 {
-		t.Logf("cold passive structural validation allocations: %g", n)
-	}
-	rv64RequireCachedValidationNoAllocations(t, c)
-}
-
 func TestRV64PublicReferenceFunctionTableBulkAggregateBoundary(t *testing.T) {
 	c := rv64NativeTailCompile(t, "reference-table-bulk-budget", rv64ReferenceOwnedTableLiteralModule(false, []byte{0xd2, 0, 0x0b}, 1, 1, false, false), false)
 	for _, extra := range []int{0, 1} {
@@ -379,25 +312,17 @@ func TestRV64PublicReferenceFunctionTableBulkFeatureGates(t *testing.T) {
 	if c.requiredFeatures&CoreFeatureBulkMemoryOperations == 0 {
 		t.Fatal("missing bulk witness")
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
+
 	// Feature selection gates source compilation. Loaded native artifacts
 	// must preserve the recorded bulk feature and execution contract.
-	v := rv64ReferenceImportTailCopy(loaded)
+	v := rv64ReferenceImportTailCopy(c)
 	v.requiredFeatures &^= CoreFeatureBulkMemoryOperations
 	if err := v.validate(); err == nil {
 		t.Fatal("missing retained bulk feature accepted")
 	}
 	rt := NewRuntime()
 	defer rv64HostCertificateCloseRuntime(t, rt)
-	in := rv64NativeTokenInstantiate(t, rt, loaded, NewImports())
+	in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
 	if got, err := in.Invoke("call", 0, 35); err != nil || !slices.Equal(got, []uint64{42}) {
 		t.Fatal("public bulk artifact execution", got, err)
 	}

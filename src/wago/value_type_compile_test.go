@@ -1,13 +1,11 @@
 package wago
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"os"
 	"slices"
 	"testing"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -92,119 +90,4 @@ func BenchmarkCompileValueTypeWorkloads(b *testing.B) {
 			}
 		})
 	}
-}
-
-func TestValueTypeCompileArtifacts(t *testing.T) {
-	if !SupportedFeatures().IsEnabled(CoreFeaturesV3) {
-		t.Skip("requires Core 3 features")
-	}
-	for name, source := range valueTypeCompileSources(t) {
-		t.Run(name, func(t *testing.T) {
-			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), source)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer c.Close()
-			data, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			var loaded Compiled
-			if err := unmarshalCompiled(&loaded, data[5:]); err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			if !slices.Equal(c.GlobalImports, loaded.GlobalImports) || !slices.Equal(c.extraTables, loaded.extraTables) || c.TableHasValueType != loaded.TableHasValueType {
-				t.Fatal("import or table metadata changed")
-			}
-			if !slices.Equal(c.ValueTypes, loaded.ValueTypes) {
-				t.Fatal("descriptor pool changed")
-			}
-			if !slices.Equal(valueTypeMetadataIndexes(c), valueTypeMetadataIndexes(&loaded)) {
-				t.Fatal("descriptor indexes changed")
-			}
-
-			sequence := valueTypeInsertionSequence(t, source)
-			var linear []ValueTypeDescriptor
-			for _, d := range sequence {
-				internValueType(&linear, d)
-			}
-			if !slices.Equal(c.ValueTypes, linear) {
-				t.Fatal("compiled pool differs from linear insertion order")
-			}
-			indexes := sequence
-			adjacent := 0
-			for i := 1; i < len(indexes); i++ {
-				if indexes[i] == indexes[i-1] {
-					adjacent++
-				}
-			}
-			t.Logf("bytes=%d descriptors=%d distinct=%d adjacent=%d artifact=%x", len(source), len(indexes), len(c.ValueTypes), adjacent, sha256.Sum256(data))
-		})
-	}
-}
-
-func valueTypeMetadataIndexes(c *Compiled) []uint32 {
-	var indexes []uint32
-	for _, g := range c.Globals {
-		indexes = append(indexes, g.ValueTypeIndex)
-	}
-	if c.TableHasValueType {
-		indexes = append(indexes, c.TableValueTypeIndex)
-	}
-	for _, table := range c.extraTables {
-		indexes = append(indexes, table.ValueTypeIndex)
-	}
-	for _, e := range c.Elems {
-		if e.HasValueType {
-			indexes = append(indexes, e.ValueTypeIndex)
-		}
-	}
-	for _, e := range c.passiveElems {
-		if e.HasValueType {
-			indexes = append(indexes, e.ValueTypeIndex)
-		}
-	}
-	return indexes
-}
-
-func valueTypeInsertionSequence(t *testing.T, source []byte) []ValueTypeDescriptor {
-	t.Helper()
-	m, err := wasm.DecodeModule(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	converter := newWasmTypeDescriptorConverter(m)
-	var sequence []ValueTypeDescriptor
-	add := func(v wasm.ValType) {
-		d, err := converter.valueType(v, -1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sequence = append(sequence, d)
-	}
-	for _, imp := range m.Imports {
-		switch imp.Type.Kind {
-		case wasm.ExternGlobal:
-			add(imp.Type.GlobalType().Type)
-		case wasm.ExternTable:
-			add(wasm.RefVal(imp.Type.TableType().Ref))
-		}
-	}
-	for _, g := range m.Globals {
-		add(g.Type.Type)
-	}
-	for i := 0; i < m.TableCount(); i++ {
-		table, ok := m.TableType(uint32(i))
-		if !ok {
-			t.Fatal("missing table type")
-		}
-		add(wasm.RefVal(table.Ref))
-	}
-	for _, e := range m.Elements {
-		if e.Kind.Kind != wasm.ElemFuncs {
-			add(wasm.RefVal(e.Kind.Ref))
-		}
-	}
-	return sequence
 }

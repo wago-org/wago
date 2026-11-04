@@ -1,4 +1,4 @@
-//go:build !wago_precompiled && wago_profile
+//go:build wago_profile
 
 package wago
 
@@ -156,21 +156,13 @@ func TestCodeProfileArtifactReloadIsExplicitlyUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
+
 	s := NewCodeProfile(CodeProfileOptions{IncludeCode: true})
 	defer s.Close()
-	if err := loaded.AttachCodeProfile(s); err != nil {
+	if err := c.AttachCodeProfile(s); err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(loaded)
+	in, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}

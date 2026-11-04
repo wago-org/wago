@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -121,6 +120,47 @@ func TestRV64DynamicTailConfiguredPolicy(t *testing.T) { rv64DynamicTailConfigur
 func TestRV64PublicReferenceTailConfiguredPolicy(t *testing.T) {
 	rv64DynamicTailConfiguredPolicy(t, true)
 }
+
+func TestRV64DynamicTailForeignCallerPolicy(t *testing.T) {
+	source := rv64PublicDynamicTailModule([]wasm.ValType{wasm.I32}, false)
+	pc := rv64NativeTailCompile(t, "dynamic-tail-foreign-policy", source, false)
+	producer, err := Instantiate(pc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	code, _, _ := rv64DynamicTailCharge(t, producer)
+	limited, err := rv64NativeTailConfig().WithMaxNativeCodeBytes(uint64(code - 1)).Compile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer limited.Close()
+	producer, err = Instantiate(limited)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	table, err := producer.ExportedTable("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cc := rv64NativeTailCompile(t, "dynamic-tail-foreign-policy-caller", rv64PublicDynamicTailModule([]wasm.ValType{wasm.I32}, true), false)
+	caller, err := Instantiate(cc, NewImports().Table("env", "table", table))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caller.Close()
+	var quota *coreruntime.ResourceLimitError
+	if _, err := caller.Invoke("call", 42, 0); !errors.As(err, &quota) || quota.Resource != "native code bytes" || quota.Limit != uint64(code-1) {
+		t.Fatal("entry widened producer authority", err)
+	}
+	for _, in := range []*Instance{caller, producer} {
+		if in.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+			t.Fatal("partial graph allocation was not retired")
+		}
+	}
+}
+
 func rv64DynamicTailConfiguredPolicy(t *testing.T, reference bool) {
 	source := rv64PublicDynamicTailModule([]wasm.ValType{wasm.I32}, false)
 	if reference {
@@ -220,66 +260,5 @@ func rv64DynamicTailConfiguredPolicy(t *testing.T, reference bool) {
 	var quota *coreruntime.ResourceLimitError
 	if _, err := standalone.Invoke("call", 42, 0); !errors.As(err, &quota) {
 		t.Fatal("destination widened origin policy", err)
-	}
-	blob, err := low.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	decoded, err := Instantiate(loaded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer decoded.Close()
-	policy := decoded.pluginState.Load().railshotInvocation.tailPolicy
-	if policy.codeConfigured || policy.metadataConfigured || policy.limits != (rv64NativeTailGenerationLimits{railshot.MaxCodeBytes, railshot.MaxModuleBytes}) {
-		t.Fatal("artifact carried allocation authority", policy)
-	}
-	if got, err := decoded.Invoke("call", 42, 0); err != nil || len(got) != 1 || got[0] != 42 {
-		t.Fatal("decoded unbounded policy", got, err)
-	}
-}
-
-func TestRV64DynamicTailForeignCallerPolicy(t *testing.T) {
-	source := rv64PublicDynamicTailModule([]wasm.ValType{wasm.I32}, false)
-	pc := rv64NativeTailCompile(t, "dynamic-tail-foreign-policy", source, false)
-	producer, err := Instantiate(pc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer producer.Close()
-	code, _, _ := rv64DynamicTailCharge(t, producer)
-	limited, err := rv64NativeTailConfig().WithMaxNativeCodeBytes(uint64(code - 1)).Compile(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer limited.Close()
-	producer, err = Instantiate(limited)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer producer.Close()
-	table, err := producer.ExportedTable("table")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cc := rv64NativeTailCompile(t, "dynamic-tail-foreign-policy-caller", rv64PublicDynamicTailModule([]wasm.ValType{wasm.I32}, true), false)
-	caller, err := Instantiate(cc, NewImports().Table("env", "table", table))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer caller.Close()
-	var quota *coreruntime.ResourceLimitError
-	if _, err := caller.Invoke("call", 42, 0); !errors.As(err, &quota) || quota.Resource != "native code bytes" || quota.Limit != uint64(code-1) {
-		t.Fatal("entry widened producer authority", err)
-	}
-	for _, in := range []*Instance{caller, producer} {
-		if in.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
-			t.Fatal("partial graph allocation was not retired")
-		}
 	}
 }

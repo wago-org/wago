@@ -27,7 +27,7 @@ func TestFixedSharedStoreForwardSourceArtifactAndCallbacks(t *testing.T) {
 			t.Fatal(err)
 		}
 		images[mode] = append([]byte(nil), image.Bytes()...)
-		for index, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for index, code := range []*Compiled{c} {
 			for _, native := range []bool{false, true} {
 				calls := 0
 				var callback any = nativeLeafIncrement
@@ -91,7 +91,7 @@ func TestFixedSharedStoreForwardBoundsAndEffects(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+			for _, code := range []*Compiled{c} {
 				calls := 0
 				in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.step", func(v int32) int32 { calls++; return v + 1 })})
 				if err != nil {
@@ -137,7 +137,7 @@ func TestFixedSharedStoreForwardLeavesI64Unchanged(t *testing.T) {
 			t.Fatal(err)
 		}
 		images[index] = append([]byte(nil), image.Bytes()...)
-		for _, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for _, code := range []*Compiled{c} {
 			in, err := Instantiate(code, InstantiateOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -177,7 +177,7 @@ func TestFixedSharedStoreForwardI32Bits(t *testing.T) {
 			t.Fatal(err)
 		}
 		images[index] = append([]byte(nil), image.Bytes()...)
-		for _, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for _, code := range []*Compiled{c} {
 			in, err := Instantiate(code, InstantiateOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -233,7 +233,7 @@ func TestFixedSharedStoreForwardCallbackBarrier(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for _, code := range []*Compiled{c} {
 			var in *Instance
 			calls := 0
 			in, err = Instantiate(code, InstantiateOptions{Imports: testImports("env.touch", func() { calls++; in.Memory().UnsafeBytes()[0] = 9 })})
@@ -263,7 +263,7 @@ func TestFixedSharedStoreForwardAddressLocalMutation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for _, code := range []*Compiled{c} {
 			in, err := Instantiate(code, InstantiateOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -293,7 +293,7 @@ func TestFixedSharedStoreForwardNativeBounds(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for _, code := range []*Compiled{c} {
 			in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.step", nativeLeafIncrement)})
 			if err != nil {
 				t.Fatal(err)

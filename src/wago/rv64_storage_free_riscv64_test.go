@@ -1,10 +1,8 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
-	"bytes"
-	"encoding/binary"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -131,98 +129,4 @@ func TestRV64StorageFreeBodyProof(t *testing.T) {
 		t.Fatalf("RV cold-state size=%d; before proof=%d", got, want)
 	}
 	t.Logf("RV cold-state size=%dB; proof adds 0B", typ.Size())
-}
-
-func TestRV64StorageFreeArtifactProof(t *testing.T) {
-	c, err := NewRuntimeConfig().Compile(frozenPrefinalizerSource(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	if !rv64StorageFreeCallable(c) {
-		t.Fatal("source proof unavailable")
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	at := bytes.LastIndex(blob, rv64ExecutionContractMarker[:])
-	version := byte(3)
-	if len(c.rv64ExecutionTableCapacities()) != 0 {
-		version = 4
-	}
-	if at < 0 || blob[at+8] != version || blob[at+9] != 1 {
-		t.Fatal("expected explicit version3/4 proof")
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if !rv64StorageFreeCallable(loaded) {
-		t.Fatal("loaded proof unavailable")
-	}
-	for _, tc := range []struct {
-		name   string
-		offset int
-		value  byte
-	}{{"flags zero", 9, 0}, {"flags unknown", 9, 2}, {"version unknown", 8, 5}, {"version capacity shape", 8, 7 - version}, {"digest", len(blob) - at - 1, blob[len(blob)-1] ^ 1}} {
-		t.Run(tc.name, func(t *testing.T) {
-			bad := bytes.Clone(blob)
-			bad[at+tc.offset] = tc.value
-			if broken, e := LoadTrustedArtifact(bad); e == nil {
-				broken.Close()
-				t.Fatal("invalid proof admitted")
-			}
-		})
-	}
-	// Versions1/2 remain supported and carry no storage-free authority.
-	metadata, _, err := encodeCompiledMetadataBody(c, false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	capacities := c.rv64ExecutionTableCapacities()
-	digest := rv64ExecutionDigest(c.code, metadata, c.syncHostSlots, capacities...)
-	metadata = append(metadata, rv64ExecutionContractMarker[:]...)
-	oldVersion := byte(1)
-	if len(capacities) != 0 {
-		oldVersion = 2
-	}
-	metadata = append(metadata, oldVersion, byte(c.syncHostSlots), byte(c.syncHostSlots>>8))
-	if len(capacities) != 0 {
-		metadata = binary.LittleEndian.AppendUint32(metadata, uint32(len(capacities)))
-		for _, capacity := range capacities {
-			metadata = binary.LittleEndian.AppendUint32(metadata, capacity)
-		}
-	}
-	metadata = append(metadata, digest[:]...)
-	w := compiledWriter{}
-	w.appendString(wagoMagic)
-	w.u8(wagoVersion)
-	w.u8(compiledHeader)
-	w.section(compiledSectionCode, c.code)
-	w.section(compiledSectionMetadata, metadata)
-	legacy, err := LoadTrustedArtifact(w.buf)
-	if err != nil {
-		t.Fatal("old contract", err)
-	}
-	defer legacy.Close()
-	if rv64StorageFreeProof(legacy) || rv64StorageFreeCallable(legacy) {
-		t.Fatal("old contract gained storage-free authority")
-	}
-	forged := bytes.Clone(metadata)
-	pos := bytes.LastIndex(forged, rv64ExecutionContractMarker[:])
-	forged[pos+8] = oldVersion + 2
-	forged = append(forged[:pos+9], append([]byte{1}, forged[pos+9:]...)...)
-	fw := compiledWriter{}
-	fw.appendString(wagoMagic)
-	fw.u8(wagoVersion)
-	fw.u8(compiledHeader)
-	fw.section(compiledSectionCode, c.code)
-	fw.section(compiledSectionMetadata, forged)
-	if broken, e := LoadTrustedArtifact(fw.buf); e == nil {
-		broken.Close()
-		t.Fatal("new proof with old digest admitted")
-	}
-	t.Log("storage-free contract adds one byte; old contracts retain dependencies")
 }

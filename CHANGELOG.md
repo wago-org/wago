@@ -6,8 +6,18 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Breaking
+
+- Remove the `.wago` native-code artifact format, compiled-module serialization
+  and loading APIs, `wago build`, the automatic compiled disk cache, and the
+  `wago_precompiled` build profile. Use the original `.wasm` source instead;
+  existing artifacts cannot be migrated. `wago compile` still builds standalone
+  executables containing machine code and the runtime, without a Wasm compiler.
+
 ### Fixed
 
+- Preserve plugin package compatibility constraints, subpackages, optional
+  metadata, and unchanged author details when rerunning `wago init --plugin`.
 - Preserve deferred load addresses derived from pinned mutable globals on
   ARM64, including loads kept live across guest stack-pointer updates.
 - Compile ARM64 memory operations at large valid directory indexes by forming
@@ -19,6 +29,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   directly, preserving the declared logical bit width.
 - Keep the required atomic length read when an oversized memory64 shared grow
   request fails in the Go helper.
+
+- Preserve denied plugin authorities when their requests are unchanged, so
+  removing another plugin succeeds without granting previously denied access.
 
 - Use an allocated scratch register for AMD64 prefix spill moves. Checked
   builds no longer reject a temporary borrow of a live load-address register.
@@ -42,6 +55,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Release owned shared-memory backing and invocation control separately when
   instantiation fails, preventing leaked native mappings and duplicate cleanup.
+- Preserve AMD64 atomic store, RMW, and compare-exchange operands when deferred
+  address or value shifts reuse a fixed register under register pressure.
 
 ### Changed
 

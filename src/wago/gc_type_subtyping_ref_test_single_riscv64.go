@@ -70,7 +70,7 @@ func rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(c *Compiled, allowUn
 		len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
 		return 0
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil {
 		return 0
 	}
@@ -124,20 +124,4 @@ func rv64GCTypeSubtypingRefTestSingleExecutionCode(c *Compiled) bool {
 		}
 	}
 	return false
-}
-
-func railshotRestoreGCTypeSubtypingRefTestSingleArtifact(c *Compiled) {
-	variant := rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(c, true, true)
-	if variant == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	if variant >= 5 && variant <= 7 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRefTestMulti
-	} else if variant >= 8 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRefTestDirectionFalse
-	} else {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRefTestSingle
-	}
 }

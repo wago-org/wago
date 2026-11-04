@@ -179,9 +179,20 @@ func inspectRegionLoop(r wasm.Reader, types []machineType, classifier wasm.Modul
 		if err != nil {
 			return false
 		}
-		look := r
 		var imm wasm.InstructionImmediate
-		if classifier.ClassifyInto(&r, op, &imm) != nil || r.Offset() > regionLoopMaxBytes {
+		// Decode only immediates consumed by this bounded planner. In particular,
+		// constants are read once below and unsupported operations are rejected
+		// before the general classifier constructs a discarded payload.
+		switch op {
+		case 0x20, 0x21, 0x22, 0x0d:
+			imm.Index, err = r.U32()
+		case 0x2b, 0x39:
+			err = classifier.ClassifyInto(&r, op, &imm)
+		case 0x41, 0x44, 0x6a, 0x6b, 0x6c, 0x74, 0xa0, 0xa1, 0xa2, 0xa3, 0x47:
+		default:
+			return false
+		}
+		if err != nil || r.Offset() > regionLoopMaxBytes {
 			return false
 		}
 		var id uint8
@@ -208,13 +219,13 @@ func inspectRegionLoop(r wasm.Reader, types []machineType, classifier wasm.Modul
 				continue
 			}
 		case 0x41:
-			x, err := look.I32()
+			x, err := r.I32()
 			if err != nil {
 				return false
 			}
 			id = p.add(regionLoopNode{bits: uint64(uint32(x))})
 		case 0x44:
-			x, err := look.Bytes(8)
+			x, err := r.Bytes(8)
 			if err != nil {
 				return false
 			}

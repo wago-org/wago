@@ -152,21 +152,13 @@ func TestPublicImportedGlobalHostObjectBitsAndArtifact(t *testing.T) {
 		imports.Global("env", "g"+string(rune('0'+i)), g)
 		defer g.Close()
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := Instantiate(loaded, imports)
+
+	in, err := Instantiate(c, imports)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if err := loaded.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
 	for _, g := range globals {

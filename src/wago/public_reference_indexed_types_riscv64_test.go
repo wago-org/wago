@@ -240,34 +240,3 @@ func TestRV64PublicReferenceIndexedTypesRetiredImportedOwner(t *testing.T) {
 		}
 	}
 }
-
-func TestRV64PublicReferenceIndexedTypesAdmission(t *testing.T) {
-	for _, nullable := range []bool{false, true} {
-		for _, shape := range []string{"local", "block", "select"} {
-			t.Run(fmt.Sprintf("nullable%t-%s", nullable, shape), func(t *testing.T) {
-				source := rv64ReferenceIndexedTypesSource(false, nullable, false, shape)
-				if c, err := compatibilityDefaultConfig().Compile(source); c != nil || err == nil {
-					if c != nil {
-						c.Close()
-					}
-					t.Fatal("indexed annotation bypassed public typed feature gate")
-				}
-				c := rv64NativeTailCompile(t, "reference-indexed-marker", source, false)
-				candidate := rv64ReferenceStartCopy(c.executionView())
-				candidate.nativeReferenceControlABI = false
-				if err := candidate.validate(); err == nil {
-					t.Fatal("indexed annotation missing witness admitted")
-				}
-				blob, err := marshalCompiled(candidate)
-				if err == nil {
-					if got, err := LoadTrustedArtifact(blob); err == nil {
-						if got != nil {
-							got.Close()
-						}
-						t.Fatal("indexed annotation artifact missing witness admitted")
-					}
-				}
-			})
-		}
-	}
-}

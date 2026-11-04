@@ -241,12 +241,11 @@ func TestDynamicIndexedFunctionRefTestClosureDispatch(t *testing.T) {
 		t.Fatalf("compile dynamic closure ref.test: %v", err)
 	}
 	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
-	defer loaded.Close()
-	if coreruntime.FuncRefDescBytes != 40 || !compiled.usesDynamicFuncRefTest() || !loaded.usesDynamicFuncRefTest() {
-		t.Fatalf("dynamic ref.test metadata = descriptor %d source=%v loaded=%v; want 40/true/true", coreruntime.FuncRefDescBytes, compiled.usesDynamicFuncRefTest(), loaded.usesDynamicFuncRefTest())
+
+	if coreruntime.FuncRefDescBytes != 40 || !compiled.usesDynamicFuncRefTest() || !compiled.usesDynamicFuncRefTest() {
+		t.Fatalf("dynamic ref.test metadata = descriptor %d source=%v loaded=%v; want 40/true/true", coreruntime.FuncRefDescBytes, compiled.usesDynamicFuncRefTest(), compiled.usesDynamicFuncRefTest())
 	}
-	for _, candidate := range []*Compiled{compiled, loaded} {
+	for _, candidate := range []*Compiled{compiled} {
 		in, err := Instantiate(candidate, InstantiateOptions{})
 		if err != nil {
 			t.Fatalf("instantiate dynamic closure ref.test: %v", err)

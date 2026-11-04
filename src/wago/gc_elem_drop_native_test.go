@@ -57,8 +57,7 @@ func TestGCNonrootElemDropLifecycle(t *testing.T) {
 			if c.stagedGCArrayProduct() != stagedGCArrayProductGeneric {
 				t.Fatalf("not generic array helper product: %v", c.stagedGCArrayProduct())
 			}
-			loaded := publicArtifactRoundTrip(t, c)
-			defer loaded.Close()
+
 			var options InstantiateOptions
 			if imported {
 				table, err := NewTable(1, 1)
@@ -68,7 +67,7 @@ func TestGCNonrootElemDropLifecycle(t *testing.T) {
 				defer table.Close()
 				options.Imports = NewImports().Table("env", "table", table)
 			}
-			for _, compiled := range []*Compiled{c, loaded} {
+			for _, compiled := range []*Compiled{c} {
 				in, err := Instantiate(compiled, options)
 				if err != nil {
 					t.Fatal(err)

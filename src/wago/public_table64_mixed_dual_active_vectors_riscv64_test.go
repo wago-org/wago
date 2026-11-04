@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"testing"
 
@@ -41,7 +40,7 @@ func TestRV64PublicMixedTable64DualActiveVectors(t *testing.T) {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			producerCode := rv64TableStageCompile(t, "mixed-table64-dual-active-vectors", rv64MixedTable64DualActiveVectorsSource(), artifact)
 			view := producerCode.executionView()
-			if !rv64ArtifactContractValid(view) {
+			if !rv64SourceContractValid(view) {
 				t.Fatal("mixed table64 dual-active vector metadata contract")
 			}
 			readerCode := rv64TableStageCompile(t, "mixed-table64-dual-active-vector-reader", rv64ImportedTable64IndirectInstructionSource(), artifact)
@@ -205,63 +204,6 @@ func TestRV64PublicMixedTable64DualActiveVectorsSourceGates(t *testing.T) {
 				if err == nil {
 					t.Fatal("invalid table width or malformed source admitted")
 				}
-			}
-		})
-	}
-}
-
-func TestRV64PublicMixedTable64DualActiveVectorsArtifactGates(t *testing.T) {
-	mutations := map[string]func(*Compiled){
-		"feature":       func(c *Compiled) { c.requiredFeatures |= CoreFeatureBulkMemoryOperations },
-		"reference-abi": func(c *Compiled) { c.nativeReferenceCallABI = true },
-		"descriptor":    func(c *Compiled) { c.NeedsFuncRefDescs = false },
-		"type-key":      func(c *Compiled) { c.FuncTypeID[1] ^= 1 },
-		"import-limit":  func(c *Compiled) { c.tableImportMin = 3 },
-		"local-limit":   func(c *Compiled) { c.extraTables[0].Size = 3 },
-		"table-export":  func(c *Compiled) { c.tableExports["table1"] = 0 },
-		"element-count": func(c *Compiled) { c.Elems = c.Elems[:1] },
-		"element-table": func(c *Compiled) { c.Elems[1].TableIndex = 0 },
-		"element-value": func(c *Compiled) { c.Elems[1].Values[1].FuncIndex = 0 },
-		"entry":         func(c *Compiled) { c.Entry[1]-- },
-		"internal-entry": func(c *Compiled) {
-			c.InternalEntry[1]--
-		},
-		"code": func(c *Compiled) {
-			c.code = bytes.Clone(c.code)
-			c.code[len(c.code)-1] ^= 1
-		},
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			base := rv64TableStageCompile(t, "mixed-table64-dual-active-vector-gates", rv64MixedTable64DualActiveVectorsSource(), false)
-			defer base.Close()
-			bad := rv64ReferenceImportTailCopy(base)
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.Funcs = slices.Clone(bad.Funcs)
-			for i := range bad.Funcs {
-				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
-			}
-			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.Elems = slices.Clone(bad.Elems)
-			for i := range bad.Elems {
-				bad.Elems[i].Offset.Expr = bytes.Clone(bad.Elems[i].Offset.Expr)
-				bad.Elems[i].Values = slices.Clone(bad.Elems[i].Values)
-			}
-			mutate(bad)
-			if bad.validate() == nil {
-				t.Fatal("hostile mixed active-vector metadata admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile mixed active-vector artifact admitted")
 			}
 		})
 	}

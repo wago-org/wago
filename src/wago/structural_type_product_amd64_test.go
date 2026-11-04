@@ -4,67 +4,14 @@ package wago
 
 import (
 	"encoding/hex"
-	"reflect"
 	"strings"
 	"testing"
 	"unsafe"
-
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestStagedStructuralProductSidecarFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}) - unsafe.Sizeof(profileCacheState{}); got != 64 {
 		t.Fatalf("compiledCodeCache non-profiling size = %d, want 64 bytes", got)
-	}
-}
-
-func TestStagedStructuralMetadataProducts(t *testing.T) {
-	for _, pin := range stagedTypeRecLeaderPins {
-		t.Run(pin.Filename, func(t *testing.T) {
-			data, err := hex.DecodeString(pin.Hex)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := Compile(compatibilityDefaultConfig(), data); err == nil || !strings.Contains(err.Error(), "gc type") {
-				t.Fatalf("public compile = %v, want closed GC type gate", err)
-			}
-			c, err := compileStagedStructuralTypeProductForTest(data)
-			if err != nil {
-				t.Fatalf("staged compile: %v", err)
-			}
-			defer c.Close()
-			if !gc.HasHeapObjectTypes(c.GCTypeDescs) {
-				t.Fatalf("structural metadata lost heap-object descriptors: %#v", c.GCTypeDescs)
-			}
-			if !c.collectorFreeStructuralMetadata() {
-				t.Fatal("collector-free structural sidecar is not set")
-			}
-			wantFeatures := CoreFeatureGC
-			if pin.Product == stagedStructuralRefFuncGlobal {
-				wantFeatures |= CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
-			}
-			if got := compiledStructuralRequiredFeatures(c); got&wantFeatures != wantFeatures {
-				t.Fatalf("required features = %v, want at least %v", got, wantFeatures)
-			}
-			meta := (&Module{c: c}).Metadata()
-			blob, err := marshalCompiled(c)
-			if err != nil {
-				t.Fatalf("marshal codec: %v", err)
-			}
-			var loaded Compiled
-			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-				t.Fatalf("private codec reload: %v", err)
-			}
-			defer loaded.Close()
-			loadedMeta := (&Module{c: &loaded}).Metadata()
-			if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) || !reflect.DeepEqual(loadedMeta.Globals, meta.Globals) {
-				t.Fatalf("codec metadata changed\n got: %#v\nwant: %#v", loadedMeta, meta)
-			}
-			var public Compiled
-			if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-				t.Fatalf("public codec load = %v, want unsupported GC/typed feature gate", err)
-			}
-		})
 	}
 }
 

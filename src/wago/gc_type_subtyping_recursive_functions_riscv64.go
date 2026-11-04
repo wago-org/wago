@@ -171,12 +171,3 @@ func rv64GCTypeSubtypingRecursiveFunctionsExecutionCode(c *Compiled) bool {
 	}
 	return false
 }
-
-func railshotRestoreGCTypeSubtypingRecursiveFunctionsArtifact(c *Compiled) {
-	if rv64GCTypeSubtypingRecursiveFunctionsProfile(c, true) == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRecursiveFunctions
-}

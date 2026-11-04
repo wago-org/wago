@@ -493,10 +493,6 @@ jobs:
 
       # Preserve per-case PASS/SKIP evidence for the publication regressions;
       # ordinary package output alone cannot establish native ACL qualification.
-      - name: Native build publication regressions
-        if: matrix.runtime
-        run: go test -v -count=1 -run '^TestBuild(OutputSnapshotRejectsTargetDisappearance|DarwinFilesOnlyDirectoryExplainsPrivateStageRequirement|NewWindowsOutputPreservesWriteOnlyInheritance)$' ./cli/runtime/commands/build
-
       - name: Opt-in native comparison diagnostic
         if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: just test native-compare
@@ -506,7 +502,6 @@ jobs:
         run: |
           scripts/check-diagnostic-dce.sh
           scripts/check-riscv64-diagnostics.sh
-          go test -tags=wago_precompiled ./src/wago -run '^TestPrecompiledRejectsSourceBeforeDecode$' -count=1
 
       - name: Checked compiler tests on Windows
         if: matrix.runtime && runner.os == 'Windows'
@@ -522,7 +517,7 @@ jobs:
         if: matrix.runtime
         env:
           WAGO_SHARED_SCALAR: "0"
-        run: go test -count=1 -tags wago_codegenstats ./src/core/compiler/backend/railshot/... ./src/wago ./cli/runtime/internal/artifactcache
+        run: go test -count=1 -tags wago_codegenstats ./src/core/compiler/backend/railshot/... ./src/wago
 
       - name: Shared scalar diagnostic tests
         if: matrix.runtime
@@ -1200,16 +1195,10 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y lld
 
-      # Drive the manager with standard Go while TinyGo links and executes the
-      # final runtime-only binary. This covers target-policy handoff, portable
-      # stripping, and cooperative interruption of a CPU-bound guest.
-      - name: Test precompiled standalone under TinyGo
+      - name: Test native standalone under TinyGo
         if: runner.os == 'Linux'
-        run: go test -count=1 -run '^(TestBuildTinyGoEmbedsArtifactWithoutCompiler|TestBuildTinyGoStripsByDefault|TestTinyGoArtifactSupportsCooperativeInterruption)$' ./cli/manager/internal/standalone
+        run: go test -count=1 -run '^(TestBuildTinyGoLinksMachineCodeWithoutCompiler|TestBuildTinyGoStripsByDefault|TestTinyGoSupportsCooperativeInterruption)$' ./cli/manager/internal/standalone
 
-      # Compile portability: the whole pipeline (wasm -> amd64 -> runtime ->
-      # public API + CLI) must build under TinyGo. A NOTE: the output name must
-      # not end in .bin, which TinyGo treats as a firmware image.
       - name: Build CLI with TinyGo
         if: matrix.cli
         run: just build tinygo

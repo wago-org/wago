@@ -14,8 +14,7 @@ func railshotStagedGCFeatures(*RuntimeConfig) CoreFeatures                      
 func railshotI31Frontend(*RuntimeConfig) bool                                           { return false }
 func railshotConfigureNativeTail(CoreFeatures, *RuntimeConfig, *railshotCompileOptions) {}
 func railshotStoreNativeTail(*Compiled, *railshotCompiledModule, *RuntimeConfig) error  { return nil }
-func railshotWriteNativeTail(*compiledWriter, *Compiled) error                          { return nil }
-func railshotReadNativeTail(*compiledReader, *Compiled) error                           { return nil }
+
 func railshotPrepareNativeTail(*Instance, resolvedImports, uintptr, []int, map[uint32]uint64) error {
 	return nil
 }
@@ -40,4 +39,4 @@ func railshotNonCallableFunction(*Compiled, int) bool { return false }
 
 func railshotNativeLeafAllowed(*Compiled) bool { return false }
 
-func railshotValidateDecodedNativeTail(*Compiled) error { return nil }
+func railshotWriteNativeTail(*compiledWriter, *Compiled) error { return nil }

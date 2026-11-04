@@ -79,23 +79,7 @@ func rv64PublicSWAROwnedTableInstances(t *testing.T, artifact bool) (*Instance, 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	if artifact {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if loaded != nil {
-			t.Cleanup(func() { _ = loaded.Close() })
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := c.Close(); err != nil {
-			t.Fatal(err)
-		}
-		c = loaded
-	}
+
 	instances := make([]*Instance, 2)
 	for i := range instances {
 		in, err := Instantiate(c)

@@ -8,7 +8,7 @@ import "fmt"
 // native execution binding. The older operation-specific witnesses remain
 // limited to their exact images and metadata.
 func rv64GenericTable64(c *Compiled) bool {
-	return c != nil && c.nativeTable64ABI == nativeTable64NoABI && c.requiredFeatures.IsEnabled(CoreFeatureTable64) && rv64ArtifactContractValid(c)
+	return c != nil && c.nativeTable64ABI == nativeTable64NoABI && c.requiredFeatures.IsEnabled(CoreFeatureTable64) && rv64SourceContractValid(c)
 }
 
 func rv64ValidateGenericTable64(c *Compiled) error {

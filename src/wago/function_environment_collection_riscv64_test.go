@@ -11,7 +11,7 @@ import (
 
 func TestRV64ManagedFunctionPublicCollectionClosedCycle(t *testing.T) {
 	for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			for _, closeOnly := range []bool{false, true} {
 				for _, concurrent := range []bool{false, true} {
 					t.Run(fmt.Sprintf("profile%d/artifact%t/close%t/concurrent%t", profile, artifact, closeOnly, concurrent), func(t *testing.T) {
@@ -24,18 +24,7 @@ func TestRV64ManagedFunctionPublicCollectionClosedCycle(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						if artifact {
-							blob, err := c.MarshalBinary()
-							if err != nil {
-								t.Fatal(err)
-							}
-							loaded, err := LoadTrustedArtifact(blob)
-							if err != nil {
-								t.Fatal(err)
-							}
-							defer loaded.Close()
-							c = loaded
-						}
+
 						rt := NewRuntime()
 						defer rt.Close()
 						makeInstance := func() *Instance {

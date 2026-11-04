@@ -99,7 +99,7 @@ func (s Selection) EnabledOption(option Option) bool {
 // EnabledResolvedOption is the hot-path form for an Option resolved by the
 // same Bindings that produced this Selection. Backend initialization validates
 // that ownership once, so per-instruction lowering need only test the bit.
-func (s Selection) EnabledResolvedOption(option Option) bool {
+func (s *Selection) EnabledResolvedOption(option Option) bool {
 	return s.bits[option.word]&option.mask != 0
 }
 

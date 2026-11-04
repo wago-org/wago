@@ -1,8 +1,6 @@
 package profcapture
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,14 +35,13 @@ type Options struct {
 	UnwindMaps    bool
 	RawStackBytes int
 	// JITDir is assigned by the perf parent for its private stack-capture files.
-	JITDir         string
-	ReloadArtifact bool
-	Timeline       bool
-	MaxSpans       int
-	Bounds         string
-	Rate           int
-	Control        string
-	Ack            string
+	JITDir   string
+	Timeline bool
+	MaxSpans int
+	Bounds   string
+	Rate     int
+	Control  string
+	Ack      string
 }
 type Phase struct {
 	Completed uint64 `json:"completed_work"`
@@ -66,9 +63,6 @@ type Manifest struct {
 	UnwindMapsRequested  bool                   `json:"unwind_maps_requested"`
 	UnwindMaps           bool                   `json:"native_unwind_maps"`
 	UnwindCoverage       string                 `json:"unwind_map_coverage,omitempty"`
-	ReloadArtifact       bool                   `json:"artifact_reloaded"`
-	ArtifactHash         string                 `json:"artifact_sha256,omitempty"`
-	ArtifactBytes        int                    `json:"artifact_bytes,omitempty"`
 	SourceMapsRequested  bool                   `json:"source_maps_requested"`
 	SourceCoverage       string                 `json:"source_map_coverage,omitempty"`
 	TimelineCoverage     string                 `json:"timeline_coverage,omitempty"`
@@ -140,7 +134,7 @@ func (o Options) Validate() error {
 		return fmt.Errorf("unsupported backend %q", o.Backend)
 	}
 	switch o.Phase {
-	case "all", "compile", "reload", "instantiate", "initialize", "execute", "close":
+	case "all", "compile", "instantiate", "initialize", "execute", "close":
 	default:
 		return fmt.Errorf("unsupported phase %q", o.Phase)
 	}
@@ -169,9 +163,6 @@ func (o Options) validateStackCapture() error {
 	if !o.UnwindMaps || !o.IncludeCode {
 		return fmt.Errorf("raw stack capture requires --unwind-maps and --include-code")
 	}
-	if o.ReloadArtifact || o.Phase == "reload" {
-		return fmt.Errorf("raw guest stack capture requires fresh compilation; reloaded artifacts have no unwind maps")
-	}
 	return nil
 }
 func writeJSON(path string, v any) error {
@@ -199,7 +190,6 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 	m := Manifest{Version: 1, UnwindMapsRequested: o.UnwindMaps, SourceMapsRequested: o.SourceMaps, Revision: "unknown", Dirty: "unknown", GoVersion: runtime.Version(), Target: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU(), Workload: w.ID, ModuleHash: w.Hash, Backend: o.Backend, Phase: o.Phase, PhaseIsolation: "collector-start-stop", Mode: o.Mode, RequestedNS: int64(o.Duration), Warmup: o.Warmup, CodeIncluded: o.IncludeCode, RequestedRate: o.Rate}
 	m.CollectionTimeoutNS, m.ConversionTimeoutNS = int64(o.collectionTimeout()), int64(o.conversionTimeout())
 	m.ParentSupervised = o.Supervised
-	m.ReloadArtifact = o.ReloadArtifact || o.Phase == "reload"
 	m.RawStackBytes = o.RawStackBytes
 	if o.RawStackBytes != 0 {
 		m.StackCollection = "perf-dwarf"
@@ -461,12 +451,8 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 			p.WorkUnit, p.Completed = "workload iteration", m.Iterations-before
 		case "warmup":
 			p.WorkUnit, p.Completed = "workload iteration", warmupCompleted
-		case "artifact-prepare":
-			p.WorkUnit = "artifact preparation"
 		case "compile":
 			p.WorkUnit = "compilation"
-		case "reload":
-			p.WorkUnit = "reload"
 		case "instantiate":
 			p.WorkUnit = "instantiation"
 		case "initialize":
@@ -491,45 +477,8 @@ func Run(o Options, w Workload, wasm []byte) (result error) {
 			return err
 		}
 	}
-	compileConfig := cfg
-	if m.ReloadArtifact {
-		// Artifacts do not serialize diagnostic metadata. Do not expose the
-		// preparatory compiler's metadata as if it belonged to the loaded image.
-		compileConfig = cfg.WithCodeProfile(nil)
-	}
-	if err := phase("compile", func() error { var err error; compiled, err = wago.Compile(compileConfig, wasm); return err }); err != nil {
+	if err := phase("compile", func() error { var err error; compiled, err = wago.Compile(cfg, wasm); return err }); err != nil {
 		return err
-	}
-	if m.ReloadArtifact {
-		var artifact []byte
-		if err := phase("artifact-prepare", func() error {
-			var err error
-			artifact, err = compiled.MarshalBinary()
-			if err != nil {
-				return err
-			}
-			sum := sha256.Sum256(artifact)
-			m.ArtifactHash = hex.EncodeToString(sum[:])
-			m.ArtifactBytes = len(artifact)
-			err = compiled.Close()
-			compiled = nil
-			return err
-		}); err != nil {
-			return err
-		}
-		if err := phase("reload", func() error {
-			var err error
-			// Only bytes produced by this run are admitted to the trusted loader.
-			compiled, err = wago.LoadTrustedArtifact(artifact)
-			return err
-		}); err != nil {
-			return err
-		}
-		artifact = nil
-		if err := compiled.AttachCodeProfile(session); err != nil {
-			return err
-		}
-		m.Diagnostics = append(m.Diagnostics, "reloaded artifact has no serialized compiler/source metadata; its native body is attributed as unknown")
 	}
 	imports := wago.NewImports()
 	imports.HostFunc("env", "abort", func(wago.HostCall) { panic("guest env.abort") })

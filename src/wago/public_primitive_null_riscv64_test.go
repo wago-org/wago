@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !wago_precompiled && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -13,7 +13,7 @@ import (
 func TestRV64PublicPrimitiveNullAndTableGrowth(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, kind := range []string{"extern", "noextern", "global-nofunc", "global-indexed", "host-reference", "table-growth"} {
-			for _, artifact := range []bool{false, true} {
+			for _, artifact := range []bool{false} {
 				t.Run(fmt.Sprintf("%s/vector%t/artifact%t", kind, vector, artifact), func(t *testing.T) {
 					types := [][]byte{{0x60, 0, 1, 0x7f}}
 					if vector {
@@ -64,17 +64,7 @@ func TestRV64PublicPrimitiveNullAndTableGrowth(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					if artifact {
-						blob, err := c.MarshalBinary()
-						if err != nil {
-							t.Fatal(err)
-						}
-						c, err = LoadTrustedArtifact(blob)
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer c.Close()
-					}
+
 					in, err := Instantiate(c, imports)
 					if err != nil {
 						t.Fatal(err)

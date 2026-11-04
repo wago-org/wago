@@ -16,14 +16,14 @@ func TestCompilerCompiledStateUsesOneFixedOwnerAllocation(t *testing.T) {
 		return
 	}
 	allocs := testing.AllocsPerRun(100, func() {
-		c := newCompilerCompiled(Compiled{})
+		c := newCompilerCompiled()
 		compilerCompiledAllocationSink = c
 	})
 	if allocs != 1 {
 		t.Fatalf("compiler Compiled state allocations = %.0f, want one fixed owner", allocs)
 	}
 
-	c := newCompilerCompiled(Compiled{})
+	c := newCompilerCompiled()
 	base := uintptr(unsafe.Pointer(c.codeCache))
 	state := compilerCompiledState{}
 	if got, want := uintptr(unsafe.Pointer(c.validateMemo)), base+unsafe.Offsetof(state.validateMemo); got != want {
@@ -98,9 +98,10 @@ func TestCompileDefersExecutableCodeUntilInstantiate(t *testing.T) {
 		t.Fatalf("Compile: %v", err)
 	}
 	defer compiled.Close()
-	if compiled.codeCache == nil || compiled.codeCache.mem != nil || compiled.codeCache.flags&compiledCacheWritableCode != 0 {
-		t.Fatal("Compile eagerly retained a writable executable code image")
+	if compiled.codeCache == nil || compiled.codeCache.sealed {
+		t.Fatal("Compile eagerly made native code executable")
 	}
+	mappedStaging := compiled.codeCache.flags&compiledCacheWritableCode != 0
 	before := uintptr(unsafe.Pointer(&compiled.code[0]))
 	instance, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
@@ -111,8 +112,8 @@ func TestCompileDefersExecutableCodeUntilInstantiate(t *testing.T) {
 		t.Fatal("first Instantiate did not allocate executable memory")
 	}
 	after := uintptr(unsafe.Pointer(&compiled.codeCache.mem[0]))
-	if after == before {
-		t.Fatalf("first Instantiate did not map native code: %#x -> %#x", before, after)
+	if !compiled.codeCache.sealed || (mappedStaging && after != before) || (!mappedStaging && after == before) {
+		t.Fatalf("first Instantiate did not activate native code correctly: %#x -> %#x", before, after)
 	}
 }
 
@@ -141,11 +142,7 @@ func TestCompilerCloseBeforeInstantiateReleasesSnapshotCodeImage(t *testing.T) {
 	if len(snapshot.code) == 0 {
 		t.Fatal("execution snapshot has no staged code before Close")
 	}
-	if compiled.boundsMode != BoundsChecksSignalsBased {
-		if _, err := compiled.MarshalBinary(); err != nil {
-			t.Fatalf("MarshalBinary before Close: %v", err)
-		}
-	}
+
 	if err := compiled.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -186,58 +183,6 @@ func TestCompiledCodeInspectionDoesNotExposeMutableStorage(t *testing.T) {
 	}
 }
 
-func TestCompiledDecodeReleasesReplacedCodeImage(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	oldCache := compiled.codeCache
-	empty, err := (&Compiled{}).MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary empty: %v", err)
-	}
-	if err := compiled.UnmarshalBinary(empty); err != nil {
-		t.Fatalf("UnmarshalBinary replacement: %v", err)
-	}
-	defer compiled.Close()
-	oldCache.mu.Lock()
-	oldClosed, oldMapped := oldCache.closed, len(oldCache.mem) != 0
-	oldCache.mu.Unlock()
-	if !oldClosed || oldMapped {
-		t.Fatalf("replaced code cache = closed %v mapped %v, want closed and unmapped", oldClosed, oldMapped)
-	}
-	if compiled.CodeSize() != 0 {
-		t.Fatalf("replacement CodeSize = %d, want 0", compiled.CodeSize())
-	}
-}
-
-func TestCompiledDecodeRejectsReplacementWithLiveInstance(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	defer compiled.Close()
-	instance, err := Instantiate(compiled)
-	if err != nil {
-		t.Fatalf("Instantiate: %v", err)
-	}
-	defer instance.Close()
-	empty, err := (&Compiled{}).MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary empty: %v", err)
-	}
-	if err := compiled.UnmarshalBinary(empty); err == nil || !strings.Contains(err.Error(), "live instance") {
-		t.Fatalf("UnmarshalBinary with live instance error = %v, want live-instance rejection", err)
-	}
-	result, err := instance.Invoke("f", I32(41))
-	if err != nil {
-		t.Fatalf("Invoke after rejected replacement: %v", err)
-	}
-	if got := AsI32(result[0]); got != 42 {
-		t.Fatalf("f(41) after rejected replacement = %d, want 42", got)
-	}
-}
-
 func TestCompileMemoryPressureOnlyForLargeSources(t *testing.T) {
 	if at, pressure := compileMemoryPressure((8 << 20) - 1); at != 0 || pressure != nil {
 		t.Fatalf("small source pressure = (%d, %v), want disabled", at, pressure != nil)
@@ -251,7 +196,9 @@ func TestCompilerPublicationReleasesHeapCodeBacking(t *testing.T) {
 	// Parallel compilation emits a Go slice. Its grouped staging owner remains
 	// reachable through the cache even after the public result is copied out.
 	original := bytes.Repeat([]byte{0x5a}, 1<<20)
-	staged := installCompilerCompiledFinalizer(newCompilerCompiled(Compiled{code: original}))
+	staged := newCompilerCompiled()
+	staged.code = original
+	installCompilerCompiledFinalizer(staged)
 	published, err := publishCompilerCompiled(staged)
 	if err != nil {
 		t.Fatal(err)

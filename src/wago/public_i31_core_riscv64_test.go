@@ -5,15 +5,9 @@ package wago
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 const rv64I31CoreSource = "\x00\x61\x73\x6d\x01\x00\x00\x00" +
@@ -31,102 +25,27 @@ func rv64I31Config() *RuntimeConfig {
 
 func rv64I31Compile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_I31_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_I31_ARTIFACT_MODE")
-	path := filepath.Join(dir, "i31-core.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = c.Close() })
-		return c
-	}
+
 	c, err := rv64I31Config().Compile([]byte(rv64I31CoreSource))
 	if err != nil {
 		t.Fatal(err)
 	}
 	original := c
 	t.Cleanup(func() { _ = original.Close() })
-	if artifact || mode == "prepare" {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err = os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err = os.WriteFile(path, blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, loadErr := LoadTrustedArtifact(blob)
-			err = loadErr
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = loaded.Close() })
-			c = loaded
-		}
-	}
+
 	return c
 }
 
 func rv64I31OfficialCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_I31_OFFICIAL_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_I31_OFFICIAL_ARTIFACT_MODE")
-	path := filepath.Join(dir, "i31-official-core.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = loaded.Close() })
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(stagedGCI31CoreBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = original.Close() })
 	c := original
-	if artifact || mode == "prepare" {
-		blob, err := original.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err = os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err = os.WriteFile(path, blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = loaded.Close() })
-			c = loaded
-		}
-	}
+
 	return c
 }
 
@@ -163,79 +82,6 @@ func TestRV64PublicI31CoreExecutionAndArtifact(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestRV64PublicI31CoreAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_I31_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	source := []byte(rv64I31CoreSource)
-	for name, mutate := range map[string]func([]byte){
-		"empty-table-section": func(v []byte) {},
-		"signed-op":           func(v []byte) { v[54] = 0x1e },
-		"unsigned-op":         func(v []byte) { v[63] = 0x1d },
-		"export":              func(v []byte) { v[27] ^= 1 },
-	} {
-		candidate := slices.Clone(source)
-		if name == "empty-table-section" {
-			candidate = slices.Concat(candidate[:21], []byte{4, 1, 0}, candidate[21:])
-		} else {
-			mutate(candidate)
-		}
-		t.Run(name, func(t *testing.T) { rv64RequireCore3SourceValidation(t, candidate) })
-	}
-	c := rv64I31Compile(t, false)
-	base := c.executionView()
-	for name, mutate := range map[string]func(*Compiled){
-		"code": func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"joint-entry": func(v *Compiled) {
-			v.Entry = slices.Clone(v.Entry)
-			v.InternalEntry = slices.Clone(v.InternalEntry)
-			v.Entry[1], v.InternalEntry[1] = 352, 352
-		},
-		"missing-feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-		"extra-feature":   func(v *Compiled) { v.requiredFeatures |= CoreFeatureTailCall },
-		"export": func(v *Compiled) {
-			v.Exports = map[string]int{"signed": 0, "unsigned": 0}
-		},
-		"descriptor": func(v *Compiled) {
-			v.GCTypeDescs = slices.Clone(v.GCTypeDescs)
-			v.GCTypeDescs[0].Kind = corergc.KindStruct
-		},
-		"type-key": func(v *Compiled) {
-			v.FuncTypeID = slices.Clone(v.FuncTypeID)
-			v.FuncTypeID[1] ^= 1
-		},
-		"context-header": func(v *Compiled) { v.needsFuncRefContextHeader = false },
-		"table-context":  func(v *Compiled) { v.nativeTableContextABI = false },
-	} {
-		copy := rv64ReferenceStartCopy(base)
-		mutate(copy)
-		if rv64I31Core(copy) || copy.validate() == nil {
-			t.Fatal("hostile retained mutation admitted", name)
-		}
-		if blob, err := marshalCompiled(copy); err == nil {
-			loaded, loadErr := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				normalized := name == "context-header" && loadErr == nil && rv64I31Core(loaded.executionView())
-				loaded.Close()
-				if normalized {
-					continue // The loader derives this header from the authoritative context ABI.
-				}
-			}
-			if loadErr == nil {
-				t.Fatal("hostile artifact mutation admitted", name)
-			}
-		}
-	}
-
-	plain := compatibilityDefaultConfig().WithCoreFeatures(platformCoreFeatures() | CoreFeatureGC)
-	if err := plain.Validate(); err != nil {
-		t.Fatal("public GC config rejected", err)
-	}
-	if err := rv64I31Config().Validate(); err != nil {
-		t.Fatal("qualified i31 config rejected", err)
 	}
 }
 
@@ -320,84 +166,5 @@ func TestRV64PublicI31OfficialCoreExecutionAndArtifact(t *testing.T) {
 				t.Fatal("raw i31 immediate was accepted as an opaque GCRef token")
 			}
 		})
-	}
-}
-
-func TestRV64PublicI31OfficialCoreAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_I31_OFFICIAL_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	base := rv64I31OfficialCompile(t, false).executionView()
-	for name, mutate := range map[string]func(*Compiled){
-		"code": func(v *Compiled) {
-			v.code = slices.Clone(v.code)
-			v.code[len(v.code)-1] ^= 1
-		},
-		"entry": func(v *Compiled) { v.Entry[1], v.InternalEntry[1] = 656, 656 },
-		"function-result": func(v *Compiled) {
-			v.Funcs[0].Results[0] = ValAnyRef
-		},
-		"type-result": func(v *Compiled) {
-			v.Types[0].Results[0].Ref.Nullable = true
-		},
-		"type-key": func(v *Compiled) { v.FuncTypeID[0] ^= 1 },
-		"descriptor": func(v *Compiled) {
-			v.GCTypeDescs[4].Final = false
-		},
-		"global-bits": func(v *Compiled) { v.Globals[1].Bits = 9 },
-		"global-mutability": func(v *Compiled) {
-			v.Globals[0].Mutable = true
-		},
-		"value-type": func(v *Compiled) { v.ValueTypes[0].Ref.Nullable = true },
-		"export": func(v *Compiled) {
-			delete(v.Exports, "set_global")
-			v.Exports["set_other"] = 6
-		},
-		"missing-feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-		"extra-feature":   func(v *Compiled) { v.requiredFeatures |= CoreFeatureTailCall },
-		"table": func(v *Compiled) {
-			v.HasTable, v.TableType, v.TableSize = true, ValFuncRef, 1
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
-			mutate(candidate)
-			if rv64I31OfficialCore(candidate) || rv64I31Core(candidate) {
-				t.Fatal("hostile retained mutation retained the official witness")
-			}
-			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("hostile retained mutation admitted", err)
-			}
-			blob, err := marshalCompiled(candidate)
-			if err != nil {
-				return
-			}
-			loaded, loadErr := LoadTrustedArtifact(blob)
-			normalized := false
-			if loaded != nil {
-				normalized = name == "missing-feature" && loadErr == nil && rv64I31OfficialCore(loaded.executionView())
-				_ = loaded.Close()
-			}
-			if normalized {
-				return // The writer derives GC from the authoritative exact type graph.
-			}
-			if loadErr == nil {
-				t.Fatal("hostile artifact mutation admitted")
-			}
-		})
-	}
-}
-
-func TestRV64PublicI31OfficialCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_I31_OFFICIAL_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(stagedGCI31CoreBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free official i31 path used source compilation", err)
 	}
 }

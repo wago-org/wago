@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -44,50 +43,14 @@ func prefinalizerTableMemorySource(consumer bool) []byte {
 
 func prefinalizerTableMemoryCompile(t *testing.T, consumer, artifact bool) *Compiled {
 	t.Helper()
-	mode, dir := os.Getenv("WAGO_PREFINALIZER_ARTIFACT_MODE"), os.Getenv("WAGO_PREFINALIZER_ARTIFACT_DIR")
-	name := fmt.Sprintf("prefinalizer-memory-consumer%t.wago", consumer)
-	if mode == "load" {
-		if !artifact {
-			t.Fatal("compiler-free runner selected source path")
-		}
-		blob, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { c.Close() })
-		return c
-	}
+	mode, _ := os.Getenv("WAGO_PREFINALIZER_ARTIFACT_MODE"), os.Getenv("WAGO_PREFINALIZER_ARTIFACT_DIR")
+
 	c, err := Compile(artifactTestConfig(artifact || mode == "prepare"), prefinalizerTableMemorySource(consumer))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { c.Close() })
-	if artifact || mode == "prepare" {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err := os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(dir, name), blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { loaded.Close() })
-			return loaded
-		}
-	}
+
 	return c
 }
 

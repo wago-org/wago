@@ -15,17 +15,22 @@ import (
 // Frontend.cpp parseCodeSection opcode switch. Phase 0 covers the integer const/
 // local/ALU subset needed to prove the pipeline end-to-end.
 func (f *fn) body(code []byte) error {
-	if f.gcI31Reduction(code) {
+	// Check necessary shape/helper conditions before entering cold recognizers.
+	if len(code) >= 2 && code[0] == 0x03 && code[1] == 0x40 && f.gcI31Reduction(code) {
 		return f.emitGCI31Reduction()
 	}
-	if typeIndex, ok := f.gcStructReduction(code); ok {
-		return f.emitGCStructReduction(typeIndex)
+	if f.gcStructHelpers {
+		if typeIndex, ok := f.gcStructReduction(code); ok {
+			return f.emitGCStructReduction(typeIndex)
+		}
 	}
-	if typeIndex, length, ok := f.gcArrayReduction(code); ok {
-		return f.emitGCArrayReduction(typeIndex, length)
-	}
-	if typeIndex, length, ok := f.gcArrayFillReduction(code); ok {
-		return f.emitGCArrayReduction(typeIndex, length)
+	if f.gcArrayHelpers {
+		if typeIndex, length, ok := f.gcArrayReduction(code); ok {
+			return f.emitGCArrayReduction(typeIndex, length)
+		}
+		if typeIndex, length, ok := f.gcArrayFillReduction(code); ok {
+			return f.emitGCArrayReduction(typeIndex, length)
+		}
 	}
 	r := wasm.ReaderFrom(code)
 	return f.bodyLoop(&r, 0)

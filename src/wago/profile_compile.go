@@ -1,4 +1,4 @@
-//go:build !wago_precompiled
+//go:build !wago_standalone
 
 package wago
 

@@ -22,7 +22,7 @@ func rv64PrimitiveReferenceContract(c *Compiled) bool {
 			}
 		}
 	}
-	return rv64PrimitiveReferenceDeclarations(c) && rv64ArtifactContractValid(c)
+	return rv64PrimitiveReferenceDeclarations(c) && rv64SourceContractValid(c)
 }
 
 // Declaration classification is also needed while encoding the metadata that

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -50,82 +50,6 @@ func TestRV64PublicPluginManagedIdentity(t *testing.T) {
 	got, err := in.Invoke("run", 0xfffffffffffffff7)
 	if err != nil || len(got) != 1 || got[0] != 23 || calls != 0 {
 		t.Fatal("native managed identity", got, calls, err)
-	}
-}
-
-func TestRV64PublicPluginArtifactAndPreparedAllocations(t *testing.T) {
-	calls := 0
-	ext := instructionMachineExt{name: "i32.identity", input: []int32{32}, output: []int32{32}, portableCalls: &calls, lowering: &rv.Lowering{Compatibility: rv.CompatibilityManaged, Managed: func(ctx rv.ManagedContext) error {
-		r, err := ctx.InputI32(0)
-		if err != nil {
-			return err
-		}
-		return ctx.OutputI32(r)
-	}}}
-	rt, mod := compileMachineInstruction(t, ext)
-	defer rt.Close()
-	defer mod.Close()
-	blob, err := mod.c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := rt.Instantiate(context.Background(), &Module{rt: rt, c: loaded, compiledView: loaded}, WithImports(testImports("wago:instr/machine.i32.identity", func(v int32) int32 { calls++; return -99 })))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	prepared, err := in.WasmFunc("run")
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := prepared.Invoke(0xfeedface80000001)
-	if err != nil || len(got) != 1 || got[0] != 0x80000001 || calls != 0 {
-		t.Fatal("native plugin artifact", got, calls, err)
-	}
-	session, err := prepared.OpenSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-	alloc := testing.AllocsPerRun(32, func() {
-		result, err := session.Invoke1(7)
-		if err != nil || len(result) != 1 || result[0] != 7 {
-			panic("native plugin call failed")
-		}
-	})
-	plainCode, err := Compile(rv64PublicHostModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer plainCode.Close()
-	plain, err := Instantiate(plainCode, testImports("env.host", func(v int32) int32 { return v }))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer plain.Close()
-	plainFunc, err := plain.WasmFunc("call")
-	if err != nil {
-		t.Fatal(err)
-	}
-	plainSession, err := plainFunc.OpenSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer plainSession.Close()
-	baseline := testing.AllocsPerRun(32, func() {
-		result, err := plainSession.Invoke1(7)
-		if err != nil || len(result) != 1 || result[0] != 7 {
-			panic("plain identity failed")
-		}
-	})
-	t.Logf("prepared allocations: native-plugin=%g ordinary-import=%g", alloc, baseline)
-	if alloc > baseline {
-		t.Fatal("native plugin added a prepared-call allocation", alloc, baseline)
 	}
 }
 

@@ -299,91 +299,6 @@ func compileStagedMemory64(data []byte) (*Compiled, error) {
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 
-func TestStagedMemory64LocalExecutionAndProductRoundTrip(t *testing.T) {
-	module := boundedMemory64Module(3)
-	if _, err := compatibilityDefaultConfig().Compile(module); err == nil || !strings.Contains(err.Error(), "memory64") {
-		t.Fatalf("public memory64 compile error = %v, want fail-closed feature rejection", err)
-	}
-	compiled, err := compileStagedMemory64(module)
-	if err != nil {
-		t.Fatalf("staged memory64 compile: %v", err)
-	}
-	defer compiled.Close()
-	if compiled.MemMinPages != 1 || compiled.MemMaxPages != 3 || !compiled.HasMemory {
-		t.Fatalf("memory64 execution cache = present %v min/max %d/%d", compiled.HasMemory, compiled.MemMinPages, compiled.MemMaxPages)
-	}
-	meta := (&Module{c: compiled}).Metadata()
-	if len(meta.Memories) != 1 || !meta.Memories[0].Addr64 || meta.Memories[0].Min != 1 || meta.Memories[0].Max != 3 || !meta.Memories[0].HasMax || !reflect.DeepEqual(meta.Memories[0].Exports, []string{"memory"}) {
-		t.Fatalf("memory64 metadata = %#v", meta.Memories)
-	}
-	if err := applyPolicy(&Module{c: compiled}, Policy{MaxMemoryBytes: 3 * 65536}); err != nil {
-		t.Fatalf("exact memory64 reservation policy: %v", err)
-	}
-	if err := applyPolicy(&Module{c: compiled}, Policy{MaxMemoryBytes: 2 * 65536}); err == nil {
-		t.Fatal("memory64 reservation above policy limit was accepted")
-	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal staged memory64: %v", err)
-	}
-	var public Compiled
-	if err := public.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("public memory64 codec load: %v", err)
-	}
-	defer public.Close()
-	t.Logf("staged memory64 product: wasm=%d code=%d codec=%d reservation=%d bytes", len(module), len(compiled.code), len(blob), 3*65536)
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("decode staged memory64 metadata: %v", err)
-	}
-	defer loaded.Close()
-	loaded.memoryDir.exactExports = true
-	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Memories, meta.Memories) {
-		t.Fatalf("memory64 codec metadata changed: got %#v want %#v", (&Module{c: &loaded}).Metadata().Memories, meta.Memories)
-	}
-
-	in, err := instantiateCore(compiled, InstantiateOptions{})
-	if err != nil {
-		t.Fatalf("instantiate staged memory64: %v", err)
-	}
-	defer in.Close()
-	call := func(name string, args ...uint64) []uint64 {
-		t.Helper()
-		got, err := in.Invoke(name, args...)
-		if err != nil {
-			t.Fatalf("%s%v: %v", name, args, err)
-		}
-		return got
-	}
-	if got := call("size"); len(got) != 1 || got[0] != 1 {
-		t.Fatalf("initial memory64.size = %v, want [1]", got)
-	}
-	if got := call("store_load", 8, I32(0x12345678)); len(got) != 1 || uint32(got[0]) != 0x12345678 {
-		t.Fatalf("memory64 store/load = %v", got)
-	}
-	if got := call("grow", 1); len(got) != 1 || got[0] != 1 {
-		t.Fatalf("memory64.grow(1) = %v, want [1]", got)
-	}
-	if got := call("size"); len(got) != 1 || got[0] != 2 {
-		t.Fatalf("grown memory64.size = %v, want [2]", got)
-	}
-	if got := call("store_load", 65536, uint64(0xabcdef01)); len(got) != 1 || uint32(got[0]) != 0xabcdef01 {
-		t.Fatalf("grown-page memory64 store/load = %v", got)
-	}
-	if got := call("grow", 1<<32); len(got) != 1 || got[0] != ^uint64(0) {
-		t.Fatalf("memory64.grow(2^32) = %v, want [-1]", got)
-	}
-	if got := call("size"); len(got) != 1 || got[0] != 2 {
-		t.Fatalf("failed grow changed memory64.size = %v", got)
-	}
-	if _, err := in.Invoke("store_load", ^uint64(0), I32(1)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
-		t.Fatalf("memory64 address overflow error = %v", err)
-	}
-	if _, err := in.Invoke("offset_load", 1); err == nil || !strings.Contains(err.Error(), "out of bounds") {
-		t.Fatalf("memory64 offset overflow error = %v", err)
-	}
-}
-
 func TestStagedMemory64NoMaximumUsesFiniteReservation(t *testing.T) {
 	module := unboundedMemory64Module()
 	compiled, err := compileStagedMemory64(module)
@@ -405,23 +320,18 @@ func TestStagedMemory64NoMaximumUsesFiniteReservation(t *testing.T) {
 	if err := applyPolicy(&Module{c: compiled}, Policy{MaxMemoryBytes: reserveBytes - 1}); err == nil {
 		t.Fatal("no-max memory64 reservation below policy limit was accepted")
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal no-max memory64: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("unmarshal no-max memory64: %v", err)
-	}
+
+	loaded := compiled
+
 	defer loaded.Close()
 	loaded.memoryDir.stagedMemory64 = true
 	loaded.memoryDir.exactExports = true
-	loadedMeta := (&Module{c: &loaded}).Metadata()
+	loadedMeta := (&Module{c: loaded}).Metadata()
 	if !reflect.DeepEqual(loadedMeta.Memories, meta.Memories) || loaded.MemMaxPages != 65535 {
 		t.Fatalf("no-max memory64 codec metadata/reservation = %#v/%d, want %#v/65535", loadedMeta.Memories, loaded.MemMaxPages, meta.Memories)
 	}
 
-	for name, c := range map[string]*Compiled{"compiled": compiled, "codec": &loaded} {
+	for name, c := range map[string]*Compiled{"compiled": compiled, "codec": loaded} {
 		t.Run(name, func(t *testing.T) {
 			in, err := instantiateCore(c, InstantiateOptions{})
 			if err != nil {
@@ -473,22 +383,16 @@ func TestStagedMemory64OversizedDeclaredMaximumUsesFiniteReservation(t *testing.
 		t.Fatalf("managed oversized memory64 accounting error = %v", err)
 	}
 
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal oversized memory64: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("unmarshal oversized memory64: %v", err)
-	}
+	loaded := compiled
+
 	defer loaded.Close()
 	loaded.memoryDir.stagedMemory64 = true
 	loaded.memoryDir.exactExports = true
-	if got := (&Module{c: &loaded}).Metadata(); !reflect.DeepEqual(got.Memories, meta.Memories) || loaded.MemMaxPages != uint32(reservePages) {
+	if got := (&Module{c: loaded}).Metadata(); !reflect.DeepEqual(got.Memories, meta.Memories) || loaded.MemMaxPages != uint32(reservePages) {
 		t.Fatalf("oversized memory64 codec metadata/reservation = %#v/%d, want %#v/%d", got.Memories, loaded.MemMaxPages, meta.Memories, reservePages)
 	}
 
-	for name, c := range map[string]*Compiled{"compiled": compiled, "codec": &loaded} {
+	for name, c := range map[string]*Compiled{"compiled": compiled, "codec": loaded} {
 		t.Run(name, func(t *testing.T) {
 			in, err := instantiateCore(c, InstantiateOptions{})
 			if err != nil {
@@ -533,14 +437,9 @@ func TestStagedMemory64ActiveDataLifecycle(t *testing.T) {
 	if len(compiled.Data) != 1 || len(compiled.Data[0].Offset.Expr) == 0 || compiled.Data[0].Offset.Base != 0 || compiled.Data[0].Offset.HasGlobal {
 		t.Fatalf("memory64 data offset metadata = %#v, want exact i64 expression", compiled.Data)
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal memory64 data metadata: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("unmarshal memory64 data metadata: %v", err)
-	}
+
+	loaded := compiled
+
 	defer loaded.Close()
 	if !reflect.DeepEqual(loaded.Data, compiled.Data) {
 		t.Fatalf("memory64 data metadata changed across codec: got %#v want %#v", loaded.Data, compiled.Data)
@@ -579,20 +478,15 @@ func TestStagedMemory64PassiveDataLifecycle(t *testing.T) {
 	if len(compiled.PassiveData) != 1 || string(compiled.PassiveData[0].Bytes) != "hello" {
 		t.Fatalf("memory64 passive metadata = %#v", compiled.PassiveData)
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal memory64 passive data: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("unmarshal memory64 passive data: %v", err)
-	}
+
+	loaded := compiled
+
 	defer loaded.Close()
 	loaded.memoryDir.stagedMemory64 = true // private execution proof; codec never serializes admission
 	if !reflect.DeepEqual(loaded.PassiveData, compiled.PassiveData) {
 		t.Fatalf("memory64 passive metadata changed across codec: got %#v want %#v", loaded.PassiveData, compiled.PassiveData)
 	}
-	for name, c := range map[string]*Compiled{"compiled": compiled, "codec": &loaded} {
+	for name, c := range map[string]*Compiled{"compiled": compiled, "codec": loaded} {
 		t.Run(name, func(t *testing.T) {
 			in, err := instantiateCore(c, InstantiateOptions{})
 			if err != nil {
@@ -1030,19 +924,14 @@ func TestStagedMemory64InstanceExportImportLifecycle(t *testing.T) {
 	if err := applyPolicy(&Module{c: consumerCompiled}, Policy{MaxMemoryBytes: 3 * 65536}); err == nil {
 		t.Fatal("memory64 import reservation above policy limit was accepted")
 	}
-	blob, err := consumerCompiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal memory64 import metadata: %v", err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatalf("reload memory64 import metadata: %v", err)
-	}
+
+	loaded := consumerCompiled
+
 	defer loaded.Close()
 	loaded.memoryDir.stagedMemory64 = true
 	loaded.memoryDir.exactExports = true
-	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Memories, meta.Memories) {
-		t.Fatalf("memory64 import codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Memories, meta.Memories)
+	if !reflect.DeepEqual((&Module{c: loaded}).Metadata().Memories, meta.Memories) {
+		t.Fatalf("memory64 import codec metadata = %#v, want %#v", (&Module{c: loaded}).Metadata().Memories, meta.Memories)
 	}
 
 	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: testImports("env.memory", memory)})

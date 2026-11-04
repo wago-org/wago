@@ -3,7 +3,9 @@
 package wago
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"sort"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -21,16 +23,10 @@ func (c *Compiled) setRV64ExecutionContract(contract *rv64ExecutionContract) {
 	c.ensureCompileIndexes().railshotTail.executionContract = contract
 }
 
-func rv64ArtifactContractSource(c *Compiled) bool {
-	return rv64ArtifactContractValid(c) || rv64FreshRootedGC(c) && rv64ArtifactFrameOwnership(c)
-}
-
-func rv64ArtifactRootedContract(c *Compiled) bool { return rv64FreshRootedGC(c) }
-
 // Older hand-built codec fixtures describe metadata without declaring a
 // native execution ABI. They can be inspected after decode; Instantiate still
 // requires Compiled.validate and cannot execute their unqualified code.
-func rv64StructuralCodecMetadata(c *Compiled) bool {
+func rv64StructuralMetadata(c *Compiled) bool {
 	return c != nil && !c.nativeContextTrapABI && !c.nativeReferenceCallABI &&
 		!c.nativeReferenceControlABI && !c.nativeReferenceFunctionABI &&
 		!c.nativeTableContextABI && !c.nativeTableReferenceABI && c.nativeTable64ABI == 0 &&
@@ -47,7 +43,7 @@ func rv64ArtifactLinkingCall(code []byte, returnOffset uint32) bool {
 	return w>>7&31 == 1 && (w&127 == 0x6f || w&127 == 0x67 && w>>12&7 == 0)
 }
 
-func rv64ArtifactFrameOwnership(c *Compiled) bool {
+func rv64SourceFrameOwnership(c *Compiled) bool {
 	roots := c.genericGCFrameRoots()
 	if len(c.Entry) != len(c.Funcs) || len(c.Entry) != len(c.InternalEntry) ||
 		len(c.code) > 1<<31-1 || roots != nil && len(c.Entry) > railshot.MaxFunctions {
@@ -188,4 +184,86 @@ func rv64DirectIntegerMarkerShape(entry int, adapter bool) bool {
 	foreignHost := directHostSegmentsMask | nativeScalarLeafMask | nativeScalarBoundedMask | goHostDispatchTagMask
 	direct, bounded := directPreparedEntry(entry), directPreparedBoundedEntry(entry)
 	return uint(entry)&foreignHost == 0 && !directPreparedLightEntry(entry) && (!direct && !bounded || adapter && direct)
+}
+
+func rv64PopulateSourceReceipt(memo *validateMemo, c *Compiled) bool {
+	var ok bool
+	if memo.rv64FreshRootedGCTypeDigest, ok = rv64RootedTypeDigest(c); !ok {
+		return false
+	}
+	if memo.rv64FreshRootedGCImportDigest, ok = rv64RootedImportDigest(c); !ok {
+		return false
+	}
+	if memo.rv64FreshRootedGCDataDigest, ok = rv64RootedActiveDataDigest(c); !ok {
+		return false
+	}
+	if memo.rv64FreshRootedGCExportDigest, ok = rv64RootedMemoryExportDigest(c); !ok {
+		return false
+	}
+	if memo.rv64FreshRootedGCGlobalDigest, ok = rv64RootedGlobalDigest(c); !ok {
+		return false
+	}
+	if memo.rv64FreshRootedGCTableDigest, ok = rv64RootedTableDigest(c); !ok {
+		return false
+	}
+	memo.rv64FreshRootedGC = true
+	memo.rv64FreshRootedGCDigest = sha256.Sum256(c.code)
+	memo.rv64FreshRootedGCSyncHostSlots = c.syncHostSlots
+	memo.rv64FreshRootedGCReserveMax = c.MemMaxPages
+	memo.rv64FreshRootedGCHasStart = c.HasStart
+	if c.HasStart {
+		memo.rv64FreshRootedGCStartImport = c.StartIsImport
+		if c.StartIsImport {
+			memo.rv64FreshRootedGCStartImportIndex = uint32(c.StartImportIdx)
+		} else {
+			memo.rv64FreshRootedGCStartLocal = uint32(c.StartLocalFunc)
+		}
+	}
+	if directory := c.memoryDir; directory != nil {
+		memo.rv64FreshRootedGCMemories = uint8(len(directory.defs))
+		memo.rv64FreshRootedGCMemoryStaged = directory.staged
+		if len(directory.defs) != 0 {
+			memo.rv64FreshRootedGCMemMin, memo.rv64FreshRootedGCMemMax = directory.defs[0].Min, directory.defs[0].Max
+		}
+	}
+	return true
+}
+
+// rv64CanonicalMetadata preserves the representation used by source-admission
+// fingerprints. These bytes are internal consistency checks, not a module format.
+func rv64CanonicalMetadata(c *Compiled) ([]byte, error) {
+	metadata, err := compiledMetadataBytes(c, true)
+	memo := c.loadValidateMemo()
+	if err != nil || memo == nil || c.rv64ExecutionContract() == nil && !memo.rv64FreshRootedGC {
+		return metadata, err
+	}
+	if !rv64SourceContractValid(c) && !(rv64FreshRootedGC(c) && rv64SourceFrameOwnership(c)) {
+		return nil, fmt.Errorf("RV64 execution contract lacks admitted source metadata")
+	}
+	capacities := c.rv64ExecutionTableCapacities()
+	if len(capacities) > maxRV64ExecutionTables || len(capacities) != 0 && len(capacities) != c.tableCount() {
+		return nil, fmt.Errorf("invalid RV64 execution table capacity count")
+	}
+	storageFree := rv64StorageFreeProof(c)
+	digest := rv64ExecutionDigestProof(c.code, metadata, c.syncHostSlots, storageFree, capacities...)
+	metadata = append(metadata, 'R', 'V', '6', '4', 'E', 'X', 'E', 'C')
+	version := byte(1)
+	if len(capacities) != 0 {
+		version = 2
+	}
+	if storageFree {
+		version += 2
+	}
+	metadata = append(metadata, version)
+	if storageFree {
+		metadata = append(metadata, 1)
+	}
+	metadata = append(metadata, byte(c.syncHostSlots), byte(c.syncHostSlots>>8))
+	if len(capacities) != 0 {
+		metadata = binary.LittleEndian.AppendUint32(metadata, uint32(len(capacities)))
+		for _, capacity := range capacities {
+			metadata = binary.LittleEndian.AppendUint32(metadata, capacity)
+		}
+	}
+	return append(metadata, digest[:]...), nil
 }

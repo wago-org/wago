@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -29,9 +29,8 @@ func TestRV64DeadCollectorSitesPreserveLaterLiveRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	loaded := publicArtifactRoundTrip(t, c)
-	defer loaded.Close()
-	for _, candidate := range []*Compiled{c, loaded} {
+
+	for _, candidate := range []*Compiled{c} {
 		for _, profile := range []corergc.Profile{corergc.ProfileThroughput, corergc.ProfileTiny} {
 			in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, VerifyAfterCollect: true}})
 			if err != nil {
@@ -58,9 +57,8 @@ func TestRV64DeadCollectorTargetDeclarationArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	loaded := publicArtifactRoundTrip(t, c)
-	defer loaded.Close()
-	for _, candidate := range []*Compiled{c, loaded} {
+
+	for _, candidate := range []*Compiled{c} {
 		in, err := Instantiate(candidate, InstantiateOptions{})
 		if err != nil {
 			t.Fatal(err)

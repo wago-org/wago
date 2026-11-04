@@ -202,7 +202,6 @@ func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *test
 		t.Fatalf("Compile persistence fixture: %v", err)
 	}
 	defer compiled.Close()
-	_ = publicArtifactRoundTrip(t, compiled)
 
 	rtA, rtB := NewRuntime(), NewRuntime()
 	foreign := issueExternref(t, rtA, "foreign-table")

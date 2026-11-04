@@ -67,27 +67,19 @@ func privateTableElementsModule() []byte {
 
 func TestPublicPrivateTableElementsIndicesDropAndArtifact(t *testing.T) {
 	c := ownedTableCompile(t, privateTableElementsModule())
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	first, err := Instantiate(loaded)
+
+	first, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.Close()
-	second, err := Instantiate(loaded)
+	second, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer second.Close()
 	_ = c.Close()
-	_ = loaded.Close()
+	_ = c.Close()
 	runtime.GC()
 	if len(first.c.passiveElems) != 256 || first.c.passiveElems[0].Mode != ElemModeActive || len(first.c.passiveElems[0].Values) != 0 || first.c.passiveElems[1].Mode != ElemModeDeclarative || len(first.c.passiveElems[1].Values) != 0 {
 		t.Fatal("original dropped segment index layout")

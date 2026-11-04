@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"testing"
 
@@ -172,60 +171,6 @@ func TestRV64PublicExpressionElements(t *testing.T) {
 					})
 				}
 			}
-		}
-	}
-}
-
-func TestRV64PublicExpressionElementArtifactAdmission(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source metadata mutation fixture")
-	}
-	source := rv64ExpressionElementModule([]wasm.ValType{wasm.I32}, 4, false)
-	if c, err := Compile(ownedTableConfig().WithFeature(CoreFeatureReferenceTypes, false), source); c != nil || err == nil {
-		if c != nil {
-			c.Close()
-		}
-		t.Fatal("disabled reference types accepted", err)
-	}
-	c := rv64TableStageCompile(t, "expr-artifact-admission", source, false)
-	for index, mutate := range []func(*Compiled){
-		func(v *Compiled) { v.Elems[0].HasValueType = false },
-		func(v *Compiled) { v.Elems[0].ValueTypeIndex = ^uint32(0) },
-		func(v *Compiled) { v.ValueTypes[v.Elems[0].ValueTypeIndex].Ref.Nullable = false },
-		func(v *Compiled) { v.Elems[0].Values[1].FuncIndex = 1 },
-		func(v *Compiled) { v.Elems[0].Values[0].HasGlobal = true },
-		func(v *Compiled) { v.Elems[0].Values[0].Expr = []byte{0xd2, 0, 0x0b} },
-		func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
-	} {
-		v := *c.executionView()
-		v.Elems = slices.Clone(v.Elems)
-		v.Elems[0].Values = slices.Clone(v.Elems[0].Values)
-		v.ValueTypes = slices.Clone(v.ValueTypes)
-		mutate(&v)
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("unqualified expression metadata admitted")
-		}
-		blob, err := marshalCompiled(&v)
-		if err != nil {
-			continue // Structural metadata validation may reject before serialization.
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err == nil && (index == 3 || index == 6) {
-			// The codec stores null as a tag without an unused function index,
-			// and derives feature requirements from structural metadata.
-			repaired := loaded.executionView()
-			if err := railshotValidateCompiled(repaired); err != nil || !repaired.Elems[0].Values[1].Null || repaired.Elems[0].Values[1].FuncIndex != 0 || !repaired.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
-				loaded.Close()
-				t.Fatal("codec did not canonicalize expression metadata", index, err)
-			}
-			loaded.Close()
-			continue
-		}
-		if loaded != nil {
-			loaded.Close()
-		}
-		if err == nil {
-			t.Fatal("unqualified expression artifact admitted", index)
 		}
 	}
 }

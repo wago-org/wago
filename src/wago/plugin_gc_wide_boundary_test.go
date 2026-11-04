@@ -268,12 +268,9 @@ func TestGCWideDynamicCallRefRetainsRegisterABIProof(t *testing.T) {
 		if !admission.Required || !admission.Exact || admission.Safepoints == 0 || admission.Callsites == 0 {
 			t.Fatalf("wide dynamic call_ref root admission = %+v", admission)
 		}
-		for _, artifact := range []bool{false, true} {
+		for range []bool{false} {
 			c := compiled
-			if artifact {
-				c = publicArtifactRoundTrip(t, compiled)
-				defer c.Close()
-			}
+
 			in, err := Instantiate(c)
 			if err != nil {
 				t.Fatal(err)

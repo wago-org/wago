@@ -2,7 +2,7 @@
 
 package wago
 
-import "github.com/wago-org/wago/src/core/runtime/gc/native"
+import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
 func (in *Instance) prepareNativeStructHandles(typeID uint32) {
 	in.prepareNativeStructHandlesMode(typeID, false)

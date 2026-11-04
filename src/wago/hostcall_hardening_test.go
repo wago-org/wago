@@ -24,25 +24,6 @@ func voidI32ImportCallerModule() []byte {
 	)
 }
 
-// voidF64ImportCallerModule imports a void (f64)->() function. Its non-i32 param
-// means it cannot use the async log-and-replay path, so binding a slotHostFunc to it
-// forces the synchronous host dispatcher (without deferring codegen).
-func voidF64ImportCallerModule() []byte {
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType([]wasm.ValType{wasm.F64}, nil),
-			wasmtest.FuncType(nil, nil),
-		)),
-		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g", 0, 1))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
-			0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf4, 0x3f, // f64.const 1.25
-			0x10, 0x00, 0x0b, // call 0; end
-		}))),
-	)
-}
-
 func importedStartModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
@@ -174,39 +155,6 @@ func TestBindHostImportRejectsNilSlotForms(t *testing.T) {
 	var lf slotHostFunc
 	if _, err := bindHostImport(lf, FuncSig{}); err == nil || !strings.Contains(err.Error(), "host function is nil") {
 		t.Fatalf("want nil slotHostFunc error, got %v", err)
-	}
-}
-
-func TestLegacyHostFuncCompatibleImportRoundTrips(t *testing.T) {
-	if !requireStandardGoTestRuntime(t) {
-		return
-	}
-	t.Setenv("WAGO_BOUNDS", "explicit")
-	c := MustCompile(voidI32ImportCallerModule())
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary i32 import: %v", err)
-	}
-	var dec Compiled
-	if err := dec.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("UnmarshalBinary i32 import: %v", err)
-	}
-	calls := 0
-	in, err := Instantiate(&dec, InstantiateOptions{Imports: testImports("env.log", slotHostFunc(func(_ HostModule, p, _ []uint64) {
-		calls++
-		if v := AsI32(p[0]); v != 123 {
-			t.Fatalf("param = %d, want 123", v)
-		}
-	}))})
-	if err != nil {
-		t.Fatalf("instantiate round-tripped i32 import: %v", err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("g", I32(123)); err != nil {
-		t.Fatalf("invoke round-tripped i32 import: %v", err)
-	}
-	if calls != 1 {
-		t.Fatalf("host called %d times, want 1", calls)
 	}
 }
 

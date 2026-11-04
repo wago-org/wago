@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !wago_precompiled && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -13,7 +13,7 @@ import (
 func TestRV64ExternalTableNullInitializer(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, count := range []int{1, 2} {
-			for _, artifact := range []bool{false, true} {
+			for _, artifact := range []bool{false} {
 				t.Run(fmt.Sprintf("vector%t/tables%d/artifact%t", vector, count, artifact), func(t *testing.T) {
 					tables := []byte{byte(count)}
 					for i := 0; i < count; i++ {
@@ -30,18 +30,7 @@ func TestRV64ExternalTableNullInitializer(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					if artifact {
-						blob, err := c.MarshalBinary()
-						if err != nil {
-							t.Fatal(err)
-						}
-						loaded, err := LoadTrustedArtifact(blob)
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer loaded.Close()
-						c = loaded
-					}
+
 					in, err := Instantiate(c)
 					if err != nil {
 						t.Fatal(err)

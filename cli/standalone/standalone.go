@@ -1,4 +1,4 @@
-// Package standalone runs a Wasm command embedded in a native executable.
+// Package standalone runs an ahead-of-time compiled command in a native executable.
 package standalone
 
 import (
@@ -25,10 +25,9 @@ type Options struct {
 	OptimizationKnobs map[string]bool
 }
 
-// RunArtifact executes a precompiled module embedded in a native executable.
-// Unlike Run, it never invokes Wago's compiler.
-func RunArtifact(artifact []byte, plugins wago.PluginSet, options Options, args []string) int {
-	if err := executeArtifact(artifact, plugins, options, args); err != nil {
+// RunCompiled executes an ahead-of-time compiled module linked into the executable.
+func RunCompiled(compiled *wago.Compiled, plugins wago.PluginSet, options Options, args []string) int {
+	if err := executeCompiled(compiled, plugins, options, args); err != nil {
 		return reportError(err, args)
 	}
 	return 0
@@ -73,18 +72,15 @@ func onlyGuestExit(err error, exit *wago.ExitError) bool {
 	return false
 }
 
-func executeArtifact(artifact []byte, plugins wago.PluginSet, options Options, args []string) (err error) {
+func executeCompiled(compiled *wago.Compiled, plugins wago.PluginSet, options Options, args []string) (err error) {
 	runtime, err := loadRuntime(plugins, options, args)
 	if err != nil {
 		return err
 	}
 	defer finishRuntime(runtime, &err)
-	compiled, err := wago.LoadTrustedArtifact(artifact)
-	if err != nil {
-		return err
-	}
 	module, err := runtime.AdoptModule(compiled)
 	if err != nil {
+		_ = compiled.Close()
 		return err
 	}
 	return executeModule(runtime, module, options, args)

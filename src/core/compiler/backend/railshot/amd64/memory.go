@@ -516,7 +516,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 		leaDisp = rangeExtent
 	}
 	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
-	if bcKind != 0 && f.inLoop() {
+	if diagnosticsEnabled && f.stats != nil && bcKind != 0 && f.inLoop() {
 		f.stats.addBoundsInLoop()
 	}
 	f.pinned = f.pinned.add(ea)
@@ -539,7 +539,10 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 }
 
 func (f *fn) hoistedLoopBoundsCover(kind uint8, idx uint32) bool {
-	if kind != 1 {
+	// Only the recorded induction local can consume this proof. Most memory
+	// accesses have no hoisted proof, so reject them before walking control
+	// frames; nesting depth otherwise makes each ordinary access more costly.
+	if kind != 1 || f.linearSumLoopDepth == 0 || uint32(uint16(f.linearSumLoop)) != idx+1 {
 		return false
 	}
 	for i := len(f.ctrl) - 1; i >= 0; i-- {
@@ -635,8 +638,10 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 			op >= 0x71 && op <= 0x7e,               // i32 bit ops + i64 clz/ctz/popcnt/add/sub/mul
 			op >= 0x83 && op <= 0x8a,               // i64 bit ops
 			op == 0xa7 || op == 0xac || op == 0xad: // non-trapping integer conversions
-			if err := skipImmediates(&scan, op); err != nil {
-				return extent
+			if op == 0x41 || op == 0x42 {
+				if err := skipImmediates(&scan, op); err != nil {
+					return extent
+				}
 			}
 		default:
 			return extent
@@ -698,7 +703,7 @@ func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, 
 // set is dropped at flush/flushBelow (every call + control join) and memory.grow;
 // setting one certified source drops only that source's entry.
 func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
-	if kind == 0 {
+	if kind == 0 || f.boundsCertSources&boundsCertSourceBit(kind, idx) == 0 {
 		return false
 	}
 	if !f.opt(optMultiBoundsCert) {
@@ -717,6 +722,9 @@ func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
 // boundsCertUpdate records the check about to be emitted. The tiny round-robin
 // set covers the common two/three-array loop while keeping compiler state fixed.
 func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
+	if kind != 0 {
+		f.boundsCertSources |= boundsCertSourceBit(kind, idx)
+	}
 	if !f.opt(optMultiBoundsCert) {
 		c := &f.boundsCerts[0]
 		if kind == 0 {
@@ -755,20 +763,33 @@ func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
 
 // invalidateBoundsCert drops every straight-line bounds certificate.
 func (f *fn) invalidateBoundsCert() {
+	if f.boundsCertSources == 0 {
+		return
+	}
 	for i := range f.boundsCerts {
 		f.boundsCerts[i] = boundsCert{}
 	}
 	f.nextBoundsCert = 0
+	f.boundsCertSources = 0
 }
 
 // invalidateBoundsCertFor drops the proof for one source whose value changed.
 func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
+	if f.boundsCertSources&boundsCertSourceBit(kind, idx) == 0 {
+		return
+	}
 	for i := range f.boundsCerts {
 		c := &f.boundsCerts[i]
 		if c.kind == kind && c.idx == idx {
 			*c = boundsCert{}
 		}
 	}
+}
+
+// Collisions only request the full eight-entry lookup. The filter never
+// authorizes a proof, and deletion keeps conservative bits until a full reset.
+func boundsCertSourceBit(kind uint8, idx uint32) uint64 {
+	return uint64(1) << ((idx*2 + uint32(kind)) & 63)
 }
 
 // inLoop reports whether any enclosing control frame is a loop.

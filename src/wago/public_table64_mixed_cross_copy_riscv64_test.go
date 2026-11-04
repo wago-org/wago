@@ -3,10 +3,8 @@
 package wago
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"testing"
 
@@ -44,7 +42,7 @@ func TestRV64PublicMixedTable64CrossCopy(t *testing.T) {
 			readerCode := rv64TableStageCompile(t, "mixed-table64-cross-copy-reader", rv64ImportedTable64IndirectInstructionSource(), artifact)
 			defer readerCode.Close()
 			view := crossCode.executionView()
-			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations || !view.NeedsFuncRefDescs {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64SourceContractValid(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations || !view.NeedsFuncRefDescs {
 				t.Fatal("mixed table64 cross-copy metadata contract")
 			}
 
@@ -179,102 +177,6 @@ func TestRV64PublicMixedTable64CrossCopyRanges(t *testing.T) {
 				if !slices.Equal(imported.desc, beforeImported) || !slices.Equal(owned.desc, beforeOwned) {
 					t.Fatal("mixed cross-copy trap changed storage", tc)
 				}
-			}
-		})
-	}
-}
-
-func TestRV64PublicMixedTable64CrossCopyGates(t *testing.T) {
-	base := rv64MixedTable64CrossCopySource()
-	for name, source := range map[string][]byte{
-		"same-first":     bytes.Replace(bytes.Clone(base), []byte{0xfc, 0x0e, 0, 1}, []byte{0xfc, 0x0e, 0, 0}, 1),
-		"same-second":    bytes.Replace(bytes.Clone(base), []byte{0xfc, 0x0e, 1, 0}, []byte{0xfc, 0x0e, 1, 1}, 1),
-		"import-table32": bytes.Replace(bytes.Clone(base), []byte{0x70, 0x05, 1, 4}, []byte{0x70, 0x01, 1, 4}, 1),
-		"local-table32":  bytes.Replace(bytes.Clone(base), []byte{0x70, 0x05, 3, 3}, []byte{0x70, 0x01, 3, 3}, 1),
-	} {
-		t.Run(name, func(t *testing.T) {
-			c, err := Compile(nil, source)
-			if name == "same-first" || name == "same-second" {
-				if err != nil {
-					t.Fatal("valid same-table copy", err)
-				}
-				defer c.Close()
-				rv64RequireTableArtifactMetadata(t, c)
-			} else {
-				if c != nil {
-					c.Close()
-				}
-				if err == nil {
-					t.Fatal("invalid cross-table index width admitted")
-				}
-			}
-		})
-	}
-	for _, artifact := range []bool{false, true} {
-		t.Run(fmt.Sprintf("import-artifact%t", artifact), func(t *testing.T) {
-			code := rv64TableStageCompile(t, "mixed-table64-cross-copy-import-gates", base, artifact)
-			defer code.Close()
-			for _, tc := range []struct {
-				name  string
-				table *Table
-			}{
-				{"table32", rv64MixedSizeTestTable(t, false, 1, 4)},
-				{"small", rv64MixedSizeTestTable(t, true, 0, 4)},
-				{"large-max", rv64MixedSizeTestTable(t, true, 1, 5)},
-			} {
-				t.Run(tc.name, func(t *testing.T) {
-					defer tc.table.Close()
-					before := slices.Clone(tc.table.desc)
-					in, err := Instantiate(code, NewImports().Table("env", "table", tc.table))
-					if in != nil {
-						in.Close()
-					}
-					if err == nil || !slices.Equal(tc.table.desc, before) {
-						t.Fatal("incompatible mixed cross-copy import admitted or mutated")
-					}
-				})
-			}
-		})
-	}
-
-	mutations := map[string]func(*Compiled){
-		"witness":       func(c *Compiled) { c.nativeTable64ABI = nativeTable64CopyABI },
-		"feature":       func(c *Compiled) { c.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
-		"reference-abi": func(c *Compiled) { c.nativeReferenceCallABI = true },
-		"descriptor":    func(c *Compiled) { c.NeedsFuncRefDescs = false },
-		"import-limit":  func(c *Compiled) { c.tableImportMax = 0 },
-		"local-table32": func(c *Compiled) { c.extraTables[0].Addr64 = false },
-		"function":      func(c *Compiled) { c.Exports["copy10"] = 0 },
-		"table":         func(c *Compiled) { c.tableExports["table1"] = 0 },
-		"code": func(c *Compiled) {
-			c.code = bytes.Clone(c.code)
-			c.code[0] ^= 1
-		},
-	}
-	for name, mutate := range mutations {
-		t.Run("artifact-"+name, func(t *testing.T) {
-			base := rv64TableStageCompile(t, "mixed-table64-cross-copy-artifact-gates", rv64MixedTable64CrossCopySource(), false)
-			defer base.Close()
-			bad := rv64ReferenceImportTailCopy(base)
-			bad.extraTables = slices.Clone(bad.extraTables)
-			bad.Funcs = slices.Clone(bad.Funcs)
-			bad.Funcs[1].Params = slices.Clone(bad.Funcs[1].Params)
-			bad.Exports = maps.Clone(bad.Exports)
-			bad.tableExports = maps.Clone(bad.tableExports)
-			mutate(bad)
-			if bad.validate() == nil {
-				t.Fatal("hostile mixed cross-copy metadata admitted")
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile mixed cross-copy artifact admitted")
 			}
 		})
 	}

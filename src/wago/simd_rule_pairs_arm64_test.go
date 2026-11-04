@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && arm64 && !tinygo && !wago_precompiled
+//go:build (linux || darwin) && arm64 && !tinygo
 
 package wago
 

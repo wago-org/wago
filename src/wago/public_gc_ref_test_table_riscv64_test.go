@@ -8,9 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -31,52 +29,15 @@ func rv64PublicGCRefTestTableBytes(t testing.TB) []byte {
 
 func rv64GCRefTestTableCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_REF_TEST_TABLE_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_REF_TEST_TABLE_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-ref-test-table.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = loaded.Close() })
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCRefTestTableBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = original.Close() })
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = loaded.Close() })
-	return loaded
+
+	return original
+
 }
 
 func TestRV64PublicGCRefTestTableExecutionAndArtifact(t *testing.T) {
@@ -88,7 +49,7 @@ func TestRV64PublicGCRefTestTableExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64GCRefTestTableCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
+			if !rv64SourceContractValid(view) || railshotValidateCompiled(view) != nil {
 				t.Fatalf("missing exact object-table ref.test witness: exact=%t validation=%v product=%v staged=%v required=%v code=%d/%x entries=%v/%v table=%v/%v/%d/%d/%v valueTypes=%+v types=%+v descs=%+v", rv64GCRefTestTable(view), railshotValidateCompiled(view), view.stagedGCStructProduct(), view.stagedFeatures(), view.requiredFeatures, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.TableType, view.TableHasValueType, view.TableSize, view.TableMax, view.TableHasMax, view.ValueTypes, view.Types, view.GCTypeDescs)
 			}
 			for _, profile := range []struct {
@@ -160,19 +121,6 @@ func TestRV64PublicGCRefTestTableExecutionAndArtifact(t *testing.T) {
 	}
 }
 
-func TestRV64PublicGCRefTestTableCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_REF_TEST_TABLE_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(rv64PublicGCRefTestTableBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free object-table ref.test path used source compilation", err)
-	}
-}
-
 func TestRV64PublicGCRefTestTableAdmissionIsExact(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_REF_TEST_TABLE_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
@@ -197,7 +145,7 @@ func TestRV64PublicGCRefTestTableAdmissionIsExact(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64ArtifactContractValid(candidate) {
+			if rv64SourceContractValid(candidate) {
 				t.Fatal("hostile retained mutation kept the object-table ref.test witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
