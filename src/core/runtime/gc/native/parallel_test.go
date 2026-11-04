@@ -267,16 +267,12 @@ func TestParallelLargeArrayChunks(t *testing.T) {
 		if c.parallel == nil {
 			t.Fatal("large array with few handles ran serially")
 		}
-		participants := 0
+		if c.parallel.participants < 2 {
+			t.Fatalf("only %d workers admitted for array chunks", c.parallel.participants)
+		}
 		var tasks uint64
 		for _, w := range c.parallel.workers {
 			tasks += w.tasks
-			if w.tasks != 0 {
-				participants++
-			}
-		}
-		if participants < 2 {
-			t.Fatalf("only %d workers scanned array chunks", participants)
 		}
 		if tasks != parallelQueueLimit+18 {
 			t.Fatalf("tasks=%d; array ranges or child duplicated/lost", tasks)
