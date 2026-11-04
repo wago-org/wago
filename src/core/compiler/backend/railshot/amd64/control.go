@@ -1760,6 +1760,9 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 	}
 	if fr.isStraightLineBlock() {
 		fr.set(ctrlRegMerge1, false)
+		// Keep ordinary block-entry trap attribution without spilling the
+		// nontrapping operands retained by this fallthrough frame.
+		f.materializePendingTraps()
 		fr.height = f.depth() - pN
 		f.pushCtrl(&fr)
 		f.stats.peep("straight-line-block")
