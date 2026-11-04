@@ -478,14 +478,14 @@ func (v *funcValidator) stepGC(in Instruction) error {
 	case InstrStructNew, InstrStructNewDefault, InstrStructNewDesc, InstrStructNewDefaultDesc:
 		return v.stepStructNew(in)
 	case InstrStructGet, InstrStructGetS, InstrStructGetU, InstrStructAtomicGet, InstrStructAtomicGetS, InstrStructAtomicGetU:
-		fields, _, _, ok := v.structFields(TypeIdx{Index: in.Index})
+		fields, _, recGroup, ok := v.structFields(TypeIdx{Index: in.Index})
 		if !ok {
 			return v.verr(ErrUnknownType, "struct.get")
 		}
 		if uint(in.Index2) >= uint(len(fields)) {
 			return v.verr(ErrTypeMismatch, "unknown field")
 		}
-		f := fields[in.Index2]
+		f := v.resolveFieldTypeRecIndexes(fields[in.Index2], recGroup)
 		packedGet := packedFieldGet(in.Kind)
 		if f.Storage().Packed() != packedGet {
 			return v.verr(ErrTypeMismatch, "field storage does not match struct.get variant")
@@ -496,14 +496,14 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		v.push(storageValType(f.Storage(), packedGet))
 		return nil
 	case InstrStructSet:
-		fields, _, _, ok := v.structFields(TypeIdx{Index: in.Index})
+		fields, _, recGroup, ok := v.structFields(TypeIdx{Index: in.Index})
 		if !ok {
 			return v.verr(ErrUnknownType, "struct.set")
 		}
 		if uint(in.Index2) >= uint(len(fields)) {
 			return v.verr(ErrTypeMismatch, "unknown field")
 		}
-		f := fields[in.Index2]
+		f := v.resolveFieldTypeRecIndexes(fields[in.Index2], recGroup)
 		if f.Mut() != Var {
 			return v.verr(ErrTypeMismatch, "immutable field")
 		}
@@ -661,6 +661,7 @@ func (v *funcValidator) stepStructNew(in Instruction) error {
 		return v.verr(ErrTypeMismatch, "use struct.new_desc for descriptor-bearing struct")
 	}
 	if in.Kind == InstrStructNewDefault || in.Kind == InstrStructNewDefaultDesc {
+		// Defaultability depends on nullability, not resolved heap indexes.
 		for _, f := range fields {
 			if !f.Storage().Packed() && !valTypeDefaultable(storageValType(f.Storage(), false)) {
 				return v.verr(ErrTypeMismatch, "field not defaultable")
@@ -668,7 +669,8 @@ func (v *funcValidator) stepStructNew(in Instruction) error {
 		}
 	} else {
 		for i := len(fields) - 1; i >= 0; i-- {
-			if err := v.popExpect(storageValType(fields[i].Storage(), false)); err != nil {
+			f := v.resolveFieldTypeRecIndexes(fields[i], recGroup)
+			if err := v.popExpect(storageValType(f.Storage(), false)); err != nil {
 				return err
 			}
 		}
