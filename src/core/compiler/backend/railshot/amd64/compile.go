@@ -4449,8 +4449,9 @@ func (f *fn) patchReturnSites() {
 // R9/R10/R11 are still excluded in reg-ABI functions with >4 params (the internal
 // entry's incoming args would collide with the prologue's arg→pinned moves). RBP
 // costs the block-merge register (the caller drops regMerge). RAX/RCX/RDX/R8 always
-// stay free for operand evaluation and the x86 fixed-role ops (div/shift/return);
-// callHost's scratch also lives there.
+// stay free here for operand evaluation and the x86 fixed-role ops (div/shift/return);
+// callHost's scratch also lives there. reserveInlineLocals may separately lease R8
+// to a private tail local after excluding every fixed R8 role.
 func gpPinPool(pool []Reg, regABI bool, nParams int, callFree, entryArgPins bool) []Reg {
 	pool = append(pool, pinnedLocalRegs...) // R12-R15
 	if !regABI || nParams <= 4 {

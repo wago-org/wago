@@ -851,12 +851,21 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 		}
 		if t.tailLoop() && !f.makesCalls {
 			pool := gpPinPool(nil, true, f.nParams, true, f.opt(optEntryArgPins))
+			if len(callees) == 1 && f.inlineTailSpareR8() {
+				// gpPinPool ends with the canonical block-merge home. Prefer an
+				// otherwise unused fixed scratch before sacrificing register results.
+				pool[len(pool)-1] = R8
+				pool = append(pool, mergeReg)
+			}
 			for i := base; i < len(f.localType); i++ {
 				for _, reg := range pool {
 					if !f.reserved.has(reg) && !f.pinnedLocalMask.has(reg) {
 						f.locals[i].reg = reg
 						f.pinnedLocals = append(f.pinnedLocals, i)
 						f.pinnedLocalMask = f.pinnedLocalMask.add(reg)
+						if reg == R8 {
+							f.stats.peep("inline-tail-spare-pin")
+						}
 						break
 					}
 				}
