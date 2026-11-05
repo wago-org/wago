@@ -98,6 +98,9 @@ func (f *fn) emitSelfTailLoop() {
 		}
 		f.setLocal(nil, i, false)
 	}
+	// Evaluating an earlier argument can relinquish a pin already assigned to
+	// a later parameter. Both tail edges bypass parameter homing at entry.
+	f.restoreCallFreePins()
 	if !f.threadSelfTailEntryTest(lastAssignment) {
 		f.a.PatchRel32(f.a.JmpPlaceholder(), f.selfTailEntry)
 	}

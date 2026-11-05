@@ -43,6 +43,12 @@ func (f *fn) detachInlineTailPrefix(t *inlineTarget, base int, saved *[8]storage
 }
 
 func (f *fn) restoreInlineTailPrefix(t *inlineTarget, prefix []storage) {
+	// A declared result does not imply a reachable return. Keep the inline
+	// body's unreachable state and discard its caller prefix on this dead edge.
+	if f.unreachable {
+		return
+	}
+
 	var result storage
 	hasResult := t.resultTypeEnd != t.localTypeEnd
 	if hasResult {

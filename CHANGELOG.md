@@ -16,6 +16,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Restore relinquished AMD64 parameter pins before self-tail loop edges.
+- Preserve unreachable inline continuations on ARM64 and AMD64 when a
+  nonreturning tail helper follows a retained caller operand.
+
 - AMD64 and ARM64 discard `try_table` handlers on `return`, so a throw after
   the call is caught by the caller's handler instead of the returned frame's.
 - Keep the value of a fused ARM64 compare stored by `local.tee` and consumed
