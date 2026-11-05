@@ -138,6 +138,13 @@ func TestBulkFillCopyForwardAcrossMemories(t *testing.T) {
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 		)
 		c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureMultiMemory).Compile(module)
+		if !SupportedFeatures().IsEnabled(CoreFeatureMultiMemory) {
+			var unsupported *UnsupportedFeatureError
+			if !errors.As(err, &unsupported) || unsupported.Requested != CoreFeatureMultiMemory {
+				t.Fatalf("multi-memory admission = %v; want unsupported multi-memory", err)
+			}
+			continue
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
