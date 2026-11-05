@@ -16,10 +16,14 @@ func (f *fn) tryPretestLoopLatch(fr *ctrlFrame) bool {
 	if start < 0 || start&3 != 0 || start+4 > f.a.Len() {
 		return false
 	}
+	budget := f.newScalarLoopMetadataBudget()
 	// Only original caller-local homes may feed the repeated guard. They stay
 	// dedicated and current across this call-free function's backedges.
 	home := func(reg Reg) bool {
 		for x := 0; x < f.nLocals; x++ {
+			if !budget.take(1) {
+				return false
+			}
 			local := f.locals[x]
 			if local.reg == reg && !local.isFloat && local.state != lsMem && local.state != lsConstZero {
 				return true
@@ -58,6 +62,9 @@ func (f *fn) tryPretestLoopLatch(fr *ctrlFrame) bool {
 	}
 	loopIndex := len(f.ctrl)
 	for i := range f.ctrl {
+		if !budget.take(1) {
+			return false
+		}
 		if &f.ctrl[i] == fr {
 			loopIndex = i
 			break
@@ -69,11 +76,17 @@ func (f *fn) tryPretestLoopLatch(fr *ctrlFrame) bool {
 	site := start + 4*exit
 	var owner *ctrlFrame
 	for i := 0; i < loopIndex; i++ {
+		if !budget.take(1) {
+			return false
+		}
 		candidate := &f.ctrl[i]
 		if candidate.kind != cfBlock && candidate.kind != cfIf || candidate.branchN != 0 || candidate.height != 0 {
 			continue
 		}
 		first, second, overflow := f.frameEndSites(candidate)
+		if !budget.take(2 + len(overflow)) {
+			return false
+		}
 		matches := func(packed uint32) bool {
 			return packed&frameEndConditional != 0 && int(packed&^frameEndConditional)-1 == site
 		}

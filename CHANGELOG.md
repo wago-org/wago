@@ -16,6 +16,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Bound AMD64 and ARM64 scalar-loop metadata proofs, avoiding quadratic
+  compilation work when many small loops share pending outer exits.
+
 - AMD64 and ARM64 discard `try_table` handlers on `return`, so a throw after
   the call is caught by the caller's handler instead of the returned frame's.
 - Keep the value of a fused ARM64 compare stored by `local.tee` and consumed

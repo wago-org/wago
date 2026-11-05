@@ -15,8 +15,12 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame, after ...*wasm.Reader) bool {
 	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.stats != nil && f.stats.RecordSources {
 		return false
 	}
+	budget := f.newScalarLoopMetadataBudget()
 	loopIndex := len(f.ctrl)
 	for i := range f.ctrl {
+		if !budget.take(1) {
+			return false
+		}
 		if &f.ctrl[i] == fr {
 			loopIndex = i
 			break
@@ -58,9 +62,16 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame, after ...*wasm.Reader) bool {
 	var coldCode []byte
 	coldExit := false
 	for i := range f.ctrl {
+		if !budget.take(1) {
+			return false
+		}
 		candidate := &f.ctrl[i]
 		if i > loopIndex && directParams && candidate.isColdTupleLoopExit() {
-			for _, edge := range f.frameColdEdges(candidate) {
+			edges := f.frameColdEdges(candidate)
+			if !budget.take(len(edges)) {
+				return false
+			}
+			for _, edge := range edges {
 				if edge.site == site {
 					if owner != nil {
 						return false
@@ -74,6 +85,9 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame, after ...*wasm.Reader) bool {
 			continue
 		}
 		first, second, overflow := f.frameEndSites(candidate)
+		if !budget.take(2 + len(overflow)) {
+			return false
+		}
 		matches := func(packed uint32) bool {
 			return packed&frameEndConditional != 0 && int(packed&^frameEndConditional)-1 == site
 		}

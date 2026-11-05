@@ -20,6 +20,10 @@ func (f *fn) tryScalarPretestLoop(fr *ctrlFrame) bool {
 	if start < 0 || end-start < 10 || end-start > 64 {
 		return false
 	}
+	budget := f.newScalarLoopMetadataBudget()
+	if !budget.take(len(f.relocs)) {
+		return false
+	}
 	for _, reloc := range f.relocs {
 		if int(reloc.at) >= start && int(reloc.at) < end {
 			return false
@@ -27,6 +31,9 @@ func (f *fn) tryScalarPretestLoop(fr *ctrlFrame) bool {
 	}
 	loopIndex := -1
 	for i := range f.ctrl {
+		if !budget.take(1) {
+			return false
+		}
 		if &f.ctrl[i] == fr {
 			loopIndex = i
 			break
@@ -39,11 +46,17 @@ func (f *fn) tryScalarPretestLoop(fr *ctrlFrame) bool {
 	exit := -1
 	pairedExit := false
 	for i := 0; i < loopIndex; i++ {
+		if !budget.take(1) {
+			return false
+		}
 		candidate := &f.ctrl[i]
 		if candidate.kind != cfBlock && candidate.kind != cfIf || candidate.branchN != 0 {
 			continue
 		}
 		first, second, more := f.frameEndSites(candidate)
+		if !budget.take(2 + len(more)) {
+			return false
+		}
 		visit := func(packed uint32) bool {
 			if packed == 0 {
 				return true

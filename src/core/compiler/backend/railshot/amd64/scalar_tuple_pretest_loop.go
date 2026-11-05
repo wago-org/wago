@@ -41,6 +41,10 @@ func (f *fn) tryScalarTuplePretestLoop(fr *ctrlFrame) bool {
 	if start < 0 || end-start < 20 || end-start > 96 {
 		return false
 	}
+	budget := f.newScalarLoopMetadataBudget()
+	if !budget.take(len(f.relocs)) {
+		return false
+	}
 	for _, reloc := range f.relocs {
 		if int(reloc.at) >= start && int(reloc.at) < end {
 			return false
@@ -57,10 +61,16 @@ func (f *fn) tryScalarTuplePretestLoop(fr *ctrlFrame) bool {
 	// Any other unresolved branch in the copied range would need its own
 	// reconciliation and relocation proof; retain the ordinary loop instead.
 	for i := range f.ctrl {
+		if !budget.take(1) {
+			return false
+		}
 		if &f.ctrl[i] == owner {
 			continue
 		}
 		a, b, rest := f.frameEndSites(&f.ctrl[i])
+		if !budget.take(2 + len(rest)) {
+			return false
+		}
 		inside := func(site uint32) bool { return site != 0 && int(site-1) >= start && int(site-1) < end }
 		if inside(a) || inside(b) {
 			return false

@@ -60,7 +60,7 @@ func TestPretestLoopLatchExecutionWithRotates(t *testing.T) {
 }
 
 func TestPretestLoopLatchGuardAndOwnerProof(t *testing.T) {
-	for _, variant := range []string{"cmp32", "cmp64", "immediate32", "immediate64", "cbz32", "cbnz32", "cbz64", "cbnz64", "scratch", "shifted", "load", "patched", "unowned", "result-owner", "float", "spilled", "private", "calling", "stack-reg", "lazy-zero", "typed", "height", "compact", "regional", "reserve", "range"} {
+	for _, variant := range []string{"cmp32", "cmp64", "immediate32", "immediate64", "cbz32", "cbnz32", "cbz64", "cbnz64", "scratch", "shifted", "load", "patched", "unowned", "result-owner", "float", "spilled", "private", "calling", "stack-reg", "lazy-zero", "typed", "height", "compact", "regional", "reserve", "range", "exit-history"} {
 		f := gpClassEmitter()
 		f.policy = currentCodegenPolicy()
 		f.nLocals = 2
@@ -123,17 +123,26 @@ func TestPretestLoopLatchGuardAndOwnerProof(t *testing.T) {
 		case "reserve":
 			f.a.ReserveBranch19 = true
 		}
+		if variant == "exit-history" {
+			f.a.B = make([]byte, 4096)
+			f.ctrl[1].controlSite = 4096
+		}
 		for _, word := range words {
 			f.a.B = binary.LittleEndian.AppendUint32(f.a.B, word)
 		}
 		if variant != "unowned" {
-			f.appendFrameEnd(&f.ctrl[0], exit*4, true)
+			f.appendFrameEnd(&f.ctrl[0], f.ctrl[1].controlSite+exit*4, true)
 		}
 		// Body bytes, including position-dependent control, must stay in place.
 		f.a.B = binary.LittleEndian.AppendUint32(f.a.B, 0x14000002)
 		f.a.B = binary.LittleEndian.AppendUint32(f.a.B, 0xb9000000)
 		if variant == "range" {
 			f.a.B = append(f.a.B, make([]byte, 1<<20)...)
+		}
+		if variant == "exit-history" {
+			for i := 0; i < 1024; i++ {
+				f.appendFrameEnd(&f.ctrl[0], i*4, true)
+			}
 		}
 		before := append([]byte(nil), f.a.B...)
 		got := f.tryPretestLoopLatch(&f.ctrl[1])
