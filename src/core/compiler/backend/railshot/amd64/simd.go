@@ -1695,7 +1695,7 @@ func (f *fn) i64x2ExtmulI32x4(signed, high bool) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) relaxedDotI8x16I7x16PairSInto(dst, tmp, tmp2, xa, xb Reg, pair int, min, max Reg) {
+func (f *fn) relaxedDotI8x16I7x16PairSInto(dst, tmp, tmp2, xa, xb Reg, pair int) {
 	lane := byte(pair * 2)
 	f.emitPextrLane(dst, xa, lane, 1)
 	f.a.Movsx8(dst, dst, false)
@@ -1710,16 +1710,11 @@ func (f *fn) relaxedDotI8x16I7x16PairSInto(dst, tmp, tmp2, xa, xb Reg, pair int,
 	f.a.IMul(tmp, tmp2, false)
 	f.a.Add32(dst, tmp)
 
-	// Deterministic relaxed choice: signed i8×signed i8 products with a signed
-	// saturating i16 pair sum. This matches the portable Wasm relaxed-dot
-	// semantics without requiring AVX2/VNNI dot-product instructions.
-	f.a.Cmp32(dst, min)
-	f.a.Cmovcc(condL, dst, min, false)
-	f.a.Cmp32(dst, max)
-	f.a.Cmovcc(condG, dst, max, false)
+	// Keep the full signed pair sum. PINSRW wraps for i16 relaxed dot;
+	// dot-add accumulates these pairs directly in i32 (R_idot_add = 1).
 }
 
-func (f *fn) relaxedDotI8x16I7x16Setup() (xa, xb, out, r0, r1, r2, r3, min, max Reg) {
+func (f *fn) relaxedDotI8x16I7x16Setup() (xa, xb, out, r0, r1, r2, r3 Reg) {
 	b := f.popValue()
 	a := f.popValue()
 	xa = f.materializeV128(a)
@@ -1738,18 +1733,10 @@ func (f *fn) relaxedDotI8x16I7x16Setup() (xa, xb, out, r0, r1, r2, r3, min, max 
 	f.pinned = f.pinned.add(r2)
 	r3 = f.allocReg(maskOf(r0, r1, r2))
 	f.pinned = f.pinned.add(r3)
-	min = f.allocReg(maskOf(r0, r1, r2, r3))
-	f.pinned = f.pinned.add(min)
-	max = f.allocReg(maskOf(r0, r1, r2, r3, min))
-	f.a.MovImm64(min, uint64(uint32(0xffff8000)))
-	f.a.MovImm64(max, 32767)
-	return xa, xb, out, r0, r1, r2, r3, min, max
+	return xa, xb, out, r0, r1, r2, r3
 }
 
-func (f *fn) relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max Reg) {
-	f.release(max)
-	f.pinned = f.pinned.remove(min)
-	f.release(min)
+func (f *fn) relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3 Reg) {
 	f.pinned = f.pinned.remove(r3)
 	f.release(r3)
 	f.pinned = f.pinned.remove(r2)
@@ -1764,12 +1751,12 @@ func (f *fn) relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max 
 }
 
 func (f *fn) i16x8RelaxedDotI8x16I7x16S() {
-	xa, xb, out, r0, r1, r2, r3, min, max := f.relaxedDotI8x16I7x16Setup()
+	xa, xb, out, r0, r1, r2, r3 := f.relaxedDotI8x16I7x16Setup()
 	for pair := 0; pair < 8; pair++ {
-		f.relaxedDotI8x16I7x16PairSInto(r0, r1, r2, xa, xb, pair, min, max)
+		f.relaxedDotI8x16I7x16PairSInto(r0, r1, r2, xa, xb, pair)
 		f.a.Pinsrw(out, r0, byte(pair))
 	}
-	f.relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max)
+	f.relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3)
 	f.pushVReg(out)
 }
 
@@ -1777,16 +1764,16 @@ func (f *fn) i32x4RelaxedDotI8x16I7x16AddS() {
 	cElem := f.popValue()
 	xc := f.materializeV128(cElem)
 	f.fpinned = f.fpinned.add(xc)
-	xa, xb, out, r0, r1, r2, r3, min, max := f.relaxedDotI8x16I7x16Setup()
+	xa, xb, out, r0, r1, r2, r3 := f.relaxedDotI8x16I7x16Setup()
 	for lane := 0; lane < 4; lane++ {
-		f.relaxedDotI8x16I7x16PairSInto(r0, r1, r2, xa, xb, lane*2, min, max)
-		f.relaxedDotI8x16I7x16PairSInto(r1, r2, r3, xa, xb, lane*2+1, min, max)
+		f.relaxedDotI8x16I7x16PairSInto(r0, r1, r2, xa, xb, lane*2)
+		f.relaxedDotI8x16I7x16PairSInto(r1, r2, r3, xa, xb, lane*2+1)
 		f.a.Add32(r0, r1)
 		f.emitPextrLane(r1, xc, byte(lane), 4)
 		f.a.Add32(r0, r1)
 		f.emitPinsrLane(out, r0, byte(lane), 4)
 	}
-	f.relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max)
+	f.relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3)
 	f.fpinned = f.fpinned.remove(xc)
 	f.releaseF(xc)
 	f.pushVReg(out)
@@ -2754,7 +2741,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(r, simdFloatBinary(0x5f, true, false))
 	case 273: // i16x8.relaxed_q15mulr_s: deterministic raw PMULHRSW choice.
 		f.v128Bin(r, opVPmulhrsw)
-	case 274: // i16x8.relaxed_dot_i8x16_i7x16_s: deterministic signed scalar dot with i16 saturation.
+	case 274: // i16x8.relaxed_dot_i8x16_i7x16_s: deterministic signed scalar dot with i16 wrapping.
 		f.i16x8RelaxedDotI8x16I7x16S()
 	case 275: // i32x4.relaxed_dot_i8x16_i7x16_add_s: deterministic signed scalar dot-add.
 		f.i32x4RelaxedDotI8x16I7x16AddS()
