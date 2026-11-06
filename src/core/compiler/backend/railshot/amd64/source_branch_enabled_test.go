@@ -25,7 +25,7 @@ func TestSourceBranchNativeFallbackCoverage(t *testing.T) {
 		cg := codegen.SourceOptions(codegen.Options{}, m, &analysis, wasm.ValidationFeatures{})
 		var reports []codegen.SourceReport
 		codegen.SetSourceReporter(cg, m, func(r codegen.SourceReport) { reports = append(reports, r) })
-		cm, err := CompileModuleWith(m, CompileOptions{Codegen: cg, Workers: workers, DeferCodeMapping: workers != 1})
+		cm, err := CompileModuleWith(m, CompileOptions{Codegen: cg, Workers: workers, DeferCodeMapping: workers != 1, Optimizations: map[string]bool{"pure-integer-if-select": false}})
 		if cm != nil && cm.CodeImage != nil {
 			defer cm.CodeImage.Close()
 		}

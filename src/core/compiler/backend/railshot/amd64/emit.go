@@ -158,6 +158,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	if r := f.tryXorByteMask(node, left, right, dest); r != regNone {
 		return r
 	}
+	if r := f.tryLinearIntegerPair(node, dest); r != regNone {
+		return r
+	}
 
 	// The two-address lowering below evaluates right before left. For a
 	// commutative, non-trapping tree, make the child with the larger bounded
@@ -751,7 +754,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	foldedCC, folded := f.tryMemoryCompareToFlags(node)
 	if !folded {
-		foldedCC, folded = f.tryMaskedEqzToFlags(node)
+		foldedCC, folded = f.tryMaskedPredicateToFlags(node)
 	}
 	if folded {
 		result := dest
@@ -1003,6 +1006,8 @@ func (f *fn) swarAnd(dst, mask Reg, value uint64, w, load bool) {
 // (quotient) / RDX (remainder) registers, with the two wasm-mandated integer
 // division traps: divide-by-zero (all four ops) and the signed INT_MIN/-1
 // overflow (div_s only; rem_s must instead yield 0 without faulting).
+var borrowedDivRemEnabled = true
+
 func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	if r, ok := f.tryDivRemConstPair(node, dest); ok {
 		return r
@@ -1035,7 +1040,15 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	// Cdq/XorSelf32 would corrupt it. materialize does not honor that constraint —
 	// and if `right` is itself a div/rem its result lands in RAX/RDX and its own
 	// reservation clears our pins — so re-assert RAX/RDX and relocate if needed.
-	divisor := f.materialize(right)
+	// DIV reads its divisor without writing it. Concrete pinned operands outside
+	// the fixed dividend/result pair can stay in their local/global home.
+	divisor, divisorOwned := regNone, true
+	if f.opt(optBorrowedDivRem) && right.isValue() && (right.st.kind == stLocalReg || right.st.kind == stGlobReg) && right.st.reg != RAX && right.st.reg != RDX {
+		divisor, divisorOwned = f.materializeRead(right)
+		f.stats.peep("divisor-local-borrow")
+	} else {
+		divisor = f.materialize(right)
+	}
 	f.pinned = f.pinned.add(RAX)
 	f.pinned = f.pinned.add(RDX)
 	if divisor == RAX || divisor == RDX {
@@ -1073,7 +1086,16 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 		f.a.PatchRel32(done, f.a.Len())
 	default: // div_u / rem_u
 		f.a.XorSelf32(RDX) // zero RDX (clears upper 64 too)
+		unit := -1
+		if wantRem && f.opt(optBranchFold) {
+			f.a.AluRI(7, divisor, 1, w)
+			unit = f.a.JccPlaceholder(condE)
+		}
 		f.a.Div(divisor, w)
+		if unit >= 0 {
+			f.a.PatchRel32(unit, f.a.Len())
+			f.stats.peep("rem-unit-divisor")
+		}
 	}
 
 	src := RAX
@@ -1083,7 +1105,9 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	f.pinned = f.pinned.remove(RAX)
 	f.pinned = f.pinned.remove(RDX)
 	f.pinned = f.pinned.remove(divisor)
-	f.release(divisor)
+	if divisorOwned {
+		f.release(divisor)
+	}
 
 	result := src
 	if dest != regNone && dest != src {

@@ -1374,6 +1374,8 @@ type Compiled struct {
 	// local, unexported, immutable, and limited to local function descriptors.
 	// Like direct-prepared entry selection, codecs conservatively discard it.
 	preparedIsolatedTables bool
+	// Fresh source proof; codecs deliberately omit conditional bulk-work limits.
+	boundedBulkPlans []uint64
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the

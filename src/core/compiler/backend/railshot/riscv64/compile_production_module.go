@@ -1066,7 +1066,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 		return unsupported(fmt.Sprintf("gc array copy helper contract struct=%t array=%t slots=%d", opts.GCStructHelpers, opts.GCArrayHelpers, opts.SyncHostSlots))
 	}
 	if metadataOnlyGC || opts.gcRootedScalar || opts.i31Core || opts.gcTypeSubtypingDeclarations || opts.gcTypeSubtypingRecursiveFunctions || opts.gcTypeSubtypingRefFuncGlobals || opts.gcTypeSubtypingRuntimeCallCast || opts.gcTypeSubtypingRefTestSingle || opts.gcTypeSubtypingFinalityLink != 0 || opts.gcTypeSubtypingStructLink != 0 || opts.gcTypeSubtypingStructProjection != 0 || opts.gcTypeSubtypingStructMismatch != 0 || opts.gcTypeSubtypingIndependentStruct != 0 || opts.gcTypeSubtypingExtendedProjection != 0 || opts.gcTypeSubtypingDuplicateRecursive != 0 || opts.gcTypeSubtypingExtendedRecursive != 0 || opts.gcTypeSubtypingCrossGroupMismatch != 0 || opts.gcTypeSubtypingTransitiveMismatch != 0 || opts.gcTypeSubtypingNonFlatExport || opts.gcRefEq || opts.gcRefTestTable || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructGet || opts.gcStructMutation || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy {
-		expected, err := frontend.BuildGCTypeMetadata(m)
+		expected, err := frontend.BuildGCTypeMetadataWithOptions(m, frontend.GCTypeMetadataOptions{OwnedExceptionReferences: opts.OwnedExceptionReferences})
 		if err != nil {
 			return err
 		}

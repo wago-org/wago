@@ -65,6 +65,12 @@ func buildModuleTypeCache(m *wasm.Module, bodyBytes int) moduleTypeCache {
 }
 
 func (f *fn) memoryType(index uint32) (wasm.MemType, bool) {
+	if f.m != nil && len(f.m.Imports) == 0 {
+		if uint64(index) >= uint64(len(f.m.Memories)) {
+			return wasm.MemType{}, false
+		}
+		return f.m.Memories[index], true
+	}
 	if f.sc != nil && f.sc.moduleTypes.valid {
 		if int(index) >= len(f.sc.moduleTypes.memories) {
 			return wasm.MemType{}, false
@@ -75,6 +81,12 @@ func (f *fn) memoryType(index uint32) (wasm.MemType, bool) {
 }
 
 func (f *fn) globalType(index uint32) (wasm.GlobalType, bool) {
+	if f.m != nil && len(f.m.Imports) == 0 {
+		if uint64(index) >= uint64(len(f.m.Globals)) {
+			return wasm.GlobalType{}, false
+		}
+		return f.m.Globals[index].Type, true
+	}
 	if f.sc != nil && f.sc.moduleTypes.valid {
 		if int(index) >= len(f.sc.moduleTypes.globals) {
 			return wasm.GlobalType{}, false
@@ -92,6 +104,9 @@ func (f *fn) importedFunctionCount() int {
 }
 
 func (f *fn) functionSignature(index uint32) (*wasm.CompType, bool) {
+	if f.m != nil && len(f.m.Imports) == 0 {
+		return f.m.LocalFuncType(int(index))
+	}
 	if f.sc != nil && f.sc.moduleTypes.valid {
 		c := &f.sc.moduleTypes
 		if uint64(index) >= uint64(c.funcCount) {

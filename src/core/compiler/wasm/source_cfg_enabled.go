@@ -133,7 +133,7 @@ func (g *sourceCFGBuilder) stackTypes() ([]ValType, bool) {
 	}
 	types := make([]ValType, len(b.v.vals))
 	for i, v := range b.v.vals {
-		if v.unknown || !sourcePrimitive(v.t) {
+		if v.unknown() || !sourcePrimitive(v.t) {
 			return nil, false
 		}
 		types[i] = v.t

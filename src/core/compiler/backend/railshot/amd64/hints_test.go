@@ -49,11 +49,11 @@ func TestParallelModuleHintsMatchSerialDetailedResidency(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			m := readParallelTestModule(t, "../../../../../../corpus/workloads/"+name)
 			policy := currentCodegenPolicy()
-			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, nil, false, policy, true)
+			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, nil, false, policy, true, true)
 			if err != nil {
 				t.Fatal(err)
 			}
-			parallel, parallelSidecar, parallelGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 4, nil, false, policy, true)
+			parallel, parallelSidecar, parallelGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 4, nil, false, policy, true, true)
 			if err != nil {
 				t.Fatal(err)
 			}

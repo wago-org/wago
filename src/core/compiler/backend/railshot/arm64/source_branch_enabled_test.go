@@ -37,7 +37,12 @@ func TestSourceBranchIndexedFallbackCoverage(t *testing.T) {
 							opts := codegen.SourceOptions(codegen.Options{}, m, &v, wasm.ValidationFeatures{})
 							var reports []codegen.SourceReport
 							codegen.SetSourceReporter(opts, m, func(r codegen.SourceReport) { reports = append(reports, r) })
-							cm, err := CompileModuleWith(m, CompileOptions{Codegen: opts, Workers: workers, DeferCodeMapping: workers != 1, Optimizations: policy.values})
+							// Exercise indexed branches even when pure if-conversion is enabled.
+							overrides := map[string]bool{"pure-integer-if-select": false}
+							for name, enabled := range policy.values {
+								overrides[name] = enabled
+							}
+							cm, err := CompileModuleWith(m, CompileOptions{Codegen: opts, Workers: workers, DeferCodeMapping: workers != 1, Optimizations: overrides})
 							if err != nil {
 								t.Fatal(err)
 							}

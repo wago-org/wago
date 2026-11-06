@@ -11,8 +11,8 @@ func gcConstNumericType(kind ValueTypeKind) ValueTypeDescriptor {
 	return ValueTypeDescriptor{Kind: kind}
 }
 
-func gcConstHeapType(c *Compiled, heap int64, nullable bool) (ValueTypeDescriptor, error) {
-	ref := ReferenceTypeDescriptor{Nullable: nullable}
+func gcConstHeapType(c *Compiled, heap int64, nullable, exact bool) (ValueTypeDescriptor, error) {
+	ref := ReferenceTypeDescriptor{Nullable: nullable, Exact: exact}
 	if heap >= 0 {
 		if c == nil || int(heap) >= len(c.Types) {
 			return ValueTypeDescriptor{}, fmt.Errorf("heap type %d is out of range", heap)
@@ -153,11 +153,11 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 			}
 			stack = append(stack, gcConstNumericType(ValueTypeV128))
 		case 0xd0: // ref.null
-			heap, err := r.S33()
+			exact, heap, err := r.RefHeapType()
 			if err != nil {
 				return err
 			}
-			t, err := gcConstHeapType(c, heap, true)
+			t, err := gcConstHeapType(c, heap, true, exact)
 			if err != nil {
 				return err
 			}

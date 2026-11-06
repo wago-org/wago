@@ -83,8 +83,29 @@ func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
 	return f.callHostSync(int(railshared.AtomicWaitDispatchBit|helper), ft)
 }
 
-func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
+// prepareAtomicOperands finishes deferred expressions while their results are
+// still spillable. A variable shift can displace a pinned RCX; capturing an
+// operand register before evaluating the address or expected value would then
+// retain its stale location.
+func (f *fn) prepareAtomicOperands(count int) {
 	f.materializePendingLoads()
+	var roots [3]*elem
+	root := f.s.back()
+	for i := count - 1; i >= 0; i-- {
+		roots[i] = root
+		if i > 0 {
+			root = baseOfValentBlock(root).prev
+		}
+	}
+	for _, root := range roots[:count] {
+		if root.isDeferred() {
+			f.materialize(root)
+		}
+	}
+}
+
+func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
+	f.prepareAtomicOperands(3)
 	f.invalidateStoreForward()
 	replacement := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(replacement)
@@ -132,7 +153,7 @@ func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
 }
 
 func (f *fn) atomicRMWCAS(d railshared.Atomic) error {
-	f.materializePendingLoads()
+	f.prepareAtomicOperands(2)
 	f.invalidateStoreForward()
 	value := f.materialize(f.popValue())
 	if value == RAX {
@@ -224,7 +245,7 @@ func (f *fn) atomicLoad(d railshared.Atomic) error {
 }
 
 func (f *fn) atomicStore(d railshared.Atomic) error {
-	f.materializePendingLoads()
+	f.prepareAtomicOperands(2)
 	f.invalidateStoreForward()
 	value := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(value)
@@ -238,7 +259,7 @@ func (f *fn) atomicStore(d railshared.Atomic) error {
 }
 
 func (f *fn) atomicRMWNative(d railshared.Atomic) error {
-	f.materializePendingLoads()
+	f.prepareAtomicOperands(2)
 	f.invalidateStoreForward()
 	value := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(value)
@@ -289,7 +310,7 @@ func (f *fn) atomicRMWDroppedNext(r *wasm.Reader, d railshared.Atomic) (bool, er
 }
 
 func (f *fn) atomicRMWNoResult(d railshared.Atomic) error {
-	f.materializePendingLoads()
+	f.prepareAtomicOperands(2)
 	f.invalidateStoreForward()
 	value := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(value)

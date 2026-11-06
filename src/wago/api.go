@@ -1075,7 +1075,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			Limit:     cfg.maxModuleBytes,
 		}
 	}
-	m, err := wasm.DecodeModuleWithFeatures(wasmBytes, wasm.ValidationFeatures{MultiMemory: features.MultiMemory})
+	decodeFeatures := wasm.ValidationFeatures{MultiMemory: features.MultiMemory}
+	m, deferredSyntax, err := decodeCompilerSource(wasmBytes, decodeFeatures)
 	if err != nil {
 		return nil, wrapContextError("decode", err)
 	}
@@ -1091,6 +1092,11 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		MaxFunctionLocals:    cfg.maxFunctionLocals,
 		MaxMemoriesPerModule: cfg.maxMemoriesPerModule,
 	}, &validationAnalysis); err != nil {
+		if deferredSyntax {
+			if _, syntaxErr := wasm.DecodeModuleWithFeatures(wasmBytes, decodeFeatures); syntaxErr != nil {
+				return nil, wrapContextError("decode", syntaxErr)
+			}
+		}
 		// Proposal-aware decoding can expose a structurally unsupported module to
 		// validation before the validator has complete proposal subtyping rules.
 		// Compile must still fail clearly as unsupported rather than mislabeling a
@@ -1194,7 +1200,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	gcI31Product := stagedGCI31Product(0)
 	nullReferenceProduct := false
 	metadataOnlyTypes := railshotTypeDeclarationsSource(m) || railshotPrimitiveFunctionGraphSource(m)
-	generalI31Source := compiledArchitecture == 4 && railshotGeneralI31Module(m) || supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && generalCollectorFreeI31Module(m)
+	// Validation already proves whether any GC feature is present. Ordinary
+	// modules cannot contain i31 operations, so avoid the collector-free i31
+	// classifier's repeated body walks for those modules.
+	generalI31Source := compiledArchitecture == 4 && railshotGeneralI31Module(m) || supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && compilerGCProductAnalysisNeeded(requiredByModule) && generalCollectorFreeI31Module(m)
 	if features.StructuralTypeProducts && hasStructuralHeapTypes(m) && !metadataOnlyTypes && !exactGCRootedScalarSource {
 		// Structural execution is shape-proven; historical suite hashes no longer
 		// define the product boundary now that Core 3 support is complete.
@@ -1373,17 +1382,18 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 		}
 	}
-	gcMetadata, err := frontend.BuildGCTypeMetadata(m)
+	moduleFacts := requirements.moduleFacts
+	if err := frontend.RejectUnsupportedWithFeaturesFactsAndValidation(m, features, moduleFacts, &validationAnalysis); err != nil {
+		return nil, wrapContextError("compile", err)
+	}
+	ownedExceptionReferences := railshotManagedExceptionReferences(m)
+	gcMetadata, err := frontend.BuildGCTypeMetadataWithOptions(m, frontend.GCTypeMetadataOptions{OwnedExceptionReferences: ownedExceptionReferences})
 	if err != nil {
 		return nil, wrapContextError("gc descriptors", err)
 	}
 	gcDescs := gcMetadata.Descs
 	if err := configureStagedGCArrayTypeDescs(gcArrayProduct, gcDescs); err != nil {
 		return nil, wrapContextError("gc array descriptors", err)
-	}
-	moduleFacts := requirements.moduleFacts
-	if err := frontend.RejectUnsupportedWithFeaturesFactsAndValidation(m, features, moduleFacts, &validationAnalysis); err != nil {
-		return nil, wrapContextError("compile", err)
 	}
 	var unsafeDirectTailImports []uint64
 	if features.TailCalls {
@@ -1409,7 +1419,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	// fixed artifact image. Generic collector calls use frame-root maps.
 	boundedPersistentGCRoots := exactGCRefTestAbstractSource || exactGCExternSource || exactGCRefCastAbstractSource || exactGCBrOnCastAbstractSource || exactGCBrOnCastFailAbstractSource ||
 		exactGCStructBasicSource || exactGCArrayFixedOfficialSource || exactGCArrayDefaultOfficialSource || exactGCArrayPackedDataSource
-	ownedExceptionReferences := railshotManagedExceptionReferences(m)
 	opaqueExternFrames := compiledArchitecture == 4 && len(m.Code) > 0 && (requiredByModule.IsEnabled(CoreFeatureGC) || moduleHasOpaqueExternTable(m)) && exactGCRootedScalarSource && moduleHasOpaqueExternSignatures(m) && !genericGCExecution && !boundedPersistentGCRoots && !ownedExceptionReferences && !collectorReferenceCallBoundary && !moduleHasInternalCollectorReferenceFunctions(m)
 	rootedReferenceDeclarations := opaqueExternFrames || compiledArchitecture == 4 && exactGCRootedScalarSource && (!metadataOnlyTypes || opaqueExternFrames) && gcStructProduct == 0 && gcArrayProduct == 0 && !gcAllocationSites && (opaqueExternFrames || moduleHasInternalCollectorReferenceFunctions(m) || collectorReferenceCallBoundary)
 	// AMD64 and ARM64 extern bridges also retain live locals across allocation.
@@ -1588,7 +1597,36 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: goruntime.GOARCH == "riscv64" || !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, nativeTable64ABI: stagedNativeTable64ABI(m), independentInstances: cfg.independentInstances, preparedIsolatedTables: cm.PreparedIsolatedTables, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis), customInstructions: customInstructions, requiresNotifyPending: atomicWaitHelpers && cfg.optimizations["atomic-notify-empty"], requiresARM64LSE: cm.RequiresARM64LSE, requiredAMD64Features: shared.AMD64Features(cm.RequiredAMD64Features), syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: compilerTelemetryEnabled && cfg.gcCodeTelemetry})
+	c := newCompilerCompiled()
+	c.code = code
+	c.Entry = entry
+	c.InternalEntry = internalEntry
+	c.registerABIDisabled = goruntime.GOARCH == "riscv64" || !cfg.optimizations["reg-abi"]
+	c.NumImports = importedFuncs
+	c.Types = types
+	c.Exports = map[string]int{}
+	c.Names = m.NameSec
+	c.GlobalExports = map[string]int{}
+	c.hasTableExportMetadata = true
+	c.boundsMode = boundsMode
+	c.stagedTable64 = features.Table64 && usesTable64
+	c.nativeTable64ABI = stagedNativeTable64ABI(m)
+	c.independentInstances = cfg.independentInstances
+	c.preparedIsolatedTables = cm.PreparedIsolatedTables
+	if goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64" && preparedBoundedWrapperSchedulerSupported && requiredByModule.IsEnabled(CoreFeatureBulkMemoryOperations) && cfg.optimizations["prepared-bounded-entry"] &&
+		len(customInstructions) == 0 && !compileOptions.Interruptible && !compileOptions.Profile && !compileOptions.SourceMaps && !usesGCHelpers {
+		c.boundedBulkPlans = boundedBulkArgumentPlans(m)
+	}
+	c.GCTypeDescs = gcDescs
+	c.requiredFeatures = requiredByModule
+	c.dynamicImports = importedFuncs > 0
+	c.dynamicFuncrefEscape = moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis)
+	c.customInstructions = customInstructions
+	c.requiresNotifyPending = atomicWaitHelpers && cfg.optimizations["atomic-notify-empty"]
+	c.requiresARM64LSE = cm.RequiresARM64LSE
+	c.requiredAMD64Features = shared.AMD64Features(cm.RequiredAMD64Features)
+	c.syncHostSlots = uint16(syncHostSlots)
+	c.hasGCCodeTelemetry = compilerTelemetryEnabled && cfg.gcCodeTelemetry
 	c.core1SegmentPreflight = !features.BulkMemory
 	if cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundsMode == BoundsChecksExplicit {
 		c.fixedSharedHostSegments = boundedFixedSharedHostSegments(m)

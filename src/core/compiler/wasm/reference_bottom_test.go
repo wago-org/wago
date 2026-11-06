@@ -26,7 +26,7 @@ func TestReferenceInstructionsConstrainBottom(t *testing.T) {
 
 func TestReferenceBottomSupportsCasts(t *testing.T) {
 	v := coverageFuncValidator(&Module{}, nil)
-	bottom := nonNullValidationType(val{unknown: true}).Ref()
+	bottom := nonNullValidationType(val{t: ValType{lo: unknownValidationBit}}).Ref()
 	for _, target := range []RefType{AbsRef(HeapFunc), AbsRef(HeapExtern), AbsRef(HeapAny)} {
 		if !v.refTestCompatible(bottom, target) || !v.refSubtype(bottom, target) {
 			t.Fatalf("reference bottom does not match %v", target)
