@@ -374,7 +374,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		if t := f.inlineTargets.target(int(idx)); t != nil {
 			if _, ok := f.inlineBase[int(idx)]; ok && (!t.recursive() || f.inlineDepth == 0) && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
 				f.consumeGCFrameCallsite()
-				return f.inlineCall(t)
+				return f.inlineCall(t, r)
 			}
 		}
 	}

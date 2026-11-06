@@ -75,20 +75,21 @@ func compactInlineBodyLimit(policy CodegenPolicy) int {
 
 // inlineFacts are the per-function facts the candidacy decision needs.
 type inlineFacts struct {
-	bodyBytes      int      // encoded body size (proxy for inlined code growth)
-	calleeCount    int      // number of direct `call` instructions in the body
-	callees        []uint32 // direct call target func indices (global indexing)
-	hasControlCall bool     // call_indirect / return_call* / call_ref (inline blocker)
-	hasLoop        bool
-	hasControlFlow bool // any block/loop/if/else/br*/return/unreachable
-	moduleEH       bool // requires caller EH frame planning, so cannot yet inline
-	touchesMem     bool // any linear-memory op (load/store/size/grow/bulk)
-	touchesGlobal  bool // any global.get/global.set
-	params         int
-	results        int
-	declaredLocals int
-	callSites      int
-	regABIIntOnly  bool // signature fits the int-only register ABI
+	bodyBytes        int      // encoded body size (proxy for inlined code growth)
+	calleeCount      int      // number of direct `call` instructions in the body
+	callees          []uint32 // direct call target func indices (global indexing)
+	hasControlCall   bool     // call_indirect / return_call* / call_ref (inline blocker)
+	hasLoop          bool
+	hasControlFlow   bool // any block/loop/if/else/br*/return/unreachable
+	moduleEH         bool // requires caller EH frame planning, so cannot yet inline
+	touchesMem       bool // any linear-memory op (load/store/size/grow/bulk)
+	touchesGlobal    bool // any global.get/global.set
+	params           int
+	results          int
+	declaredLocals   int
+	callSites        int
+	regABIIntOnly    bool // signature fits the int-only register ABI
+	boundedTupleLoop bool // small pure integer tuple leaf with bounded control
 }
 
 // straightLine reports a body with no control flow at all: it is a single basic
@@ -202,7 +203,7 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 		return false
 	case !f.regABIIntOnly:
 		return false
-	case f.hasLoop:
+	case f.hasLoop && !f.inlineTupleLoop(policy):
 		return false
 	case f.bodyBytes > inlineMaxBytes:
 		return false
@@ -228,7 +229,7 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 		return false, fmt.Sprintf("non-leaf (%d call(s))", f.calleeCount)
 	case !f.regABIIntOnly:
 		return false, "signature not int-only reg-ABI"
-	case f.hasLoop:
+	case f.hasLoop && !f.inlineTupleLoop(policy):
 		// A leaf callee that contains a LOOP is excluded: splicing its loop into the
 		// caller's hot region adds sustained register pressure and code size, while
 		// straight-line and simple-branch leaf helpers retain the ordinary inline win.
@@ -283,6 +284,7 @@ func scanInlineFacts(m *wasm.Module, fn wasm.Func, localIdx, importedFuncs int, 
 		if err := scanInlineFactsBytesWithClassifier(fn.BodyBytes, &f, classifier); err != nil {
 			return f, err
 		}
+		f.boundedTupleLoop = boundedIntegerTupleLoopBody(fn, f, classifier)
 		return f, nil
 	}
 	scanInlineFactsAST(fn.Body.Instrs, &f)
@@ -487,7 +489,9 @@ const (
 	inlineI32AddConstFlag  = uint32(1 << 31)
 	inlineRecursiveFlag    = uint32(1 << 30)
 	inlineI32AddParamsFlag = uint32(1 << 29)
-	inlineTailLoopFlag     = uint32(1 << 28)
+	inlineTupleLoopFlag    = uint32(1 << 28)
+	inlineTupleSelectFlag  = uint32(1 << 27)
+	inlineTailLoopFlag     = uint32(1 << 26)
 	// Register-ABI candidates have at most eight integer parameters. Keep a
 	// separate byte for tail initialization without growing every target record.
 	inlineTailZeroShift = 16
@@ -502,6 +506,8 @@ func (t *inlineTarget) tailZeroMask() uint8 { return uint8(t.params >> inlineTai
 func (t *inlineTarget) isI32AddConst() bool    { return t.params&inlineI32AddConstFlag != 0 }
 func (t *inlineTarget) isI32AddParams() bool   { return t.params&inlineI32AddParamsFlag != 0 }
 func (t *inlineTarget) i32AddImmediate() int32 { return int32(t.localDeclBytes) }
+func (t *inlineTarget) tupleSelect() bool      { return t.params&inlineTupleSelectFlag != 0 }
+func (t *inlineTarget) tupleLoop() bool        { return t.params&inlineTupleLoopFlag != 0 }
 func (t *inlineTarget) recursive() bool        { return t.params&inlineRecursiveFlag != 0 }
 func (t *inlineTarget) paramCount() int        { return int(t.params & inlineParamMask) }
 
@@ -634,6 +640,13 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		addConst, addImmediate := inlineI32AddConst(m.Code[i].BodyBytes, ft)
 		localDeclBytes := m.Code[i].LocalDeclBytes
 		params := uint32(facts.params)
+		if facts.inlineTupleLoop(policy) {
+			params |= inlineTupleLoopFlag
+		}
+		if !policy.CompactNative && !profileEnabled && policy.EnabledOption(optTupleIfSelect) && facts.declaredLocals == 0 &&
+			facts.params <= 4 && integerTupleSelectTarget(m, m.Code[i], ft) {
+			params |= inlineTupleSelectFlag
+		}
 		if allowTail && tailLoopInlineCandidate(m, allHints, i, policy) {
 			params |= inlineTailLoopFlag
 			params |= uint32(tailInlineZeroMask(m.Code[i].BodyBytes, facts.params, int(h.localCount), targets.classifier)) << inlineTailZeroShift
@@ -751,6 +764,7 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 	if h.flags.has(hintHasCall) {
 		facts.calleeCount = 1
 	}
+	facts.boundedTupleLoop = boundedIntegerTupleLoopBody(m.Code[i], facts, wasm.NewModuleInstructionClassifier(m, true))
 	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy) || len(tailLoops) > 0 && tailLoops[0] && tailLoopInlineCandidate(m, allHints, i, policy)
 }
 
@@ -873,6 +887,7 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 			f.sc.pinnedLocals = f.pinnedLocals
 		}
 		f.inlineBase[t.globalIdx] = base
+		f.pinInlineTupleLoopLocals(t, base)
 	}
 	if f.pinnedLocalMask.has(mergeReg) {
 		f.regMerge = false
@@ -1046,7 +1061,11 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 // later splice of the same callee cannot alias them. A straight-line callee runs
 // on the cheap frameless path; a control-flow callee runs under a synthetic
 // boundary frame (inlineBodyCtrl).
-func (f *fn) inlineCall(t *inlineTarget) error {
+func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
+	stores := tupleStoreHint{locals: [2]int{-1, -1}}
+	if t.tupleSelect() {
+		stores = f.inlineTupleStoreLocals(caller)
+	}
 	f.stats.call(callKindInline)
 	start := f.a.Len()
 	if t.isI32AddParams() {
@@ -1085,7 +1104,10 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	f.materializeTrapsBefore(f.s.head)
 	base := f.inlineBase[t.globalIdx]
 	constants := f.captureInlineTailConstants(t, base)
-	f.bindInlineParams(t, base)
+	previousForward, previousForwardN := f.inlineForward, f.inlineForwardN
+	if !f.forwardIntegerParams(t) {
+		f.bindInlineParams(t, base)
+	}
 	var prefix [8]storage
 	prefixCount := f.detachInlineTailPrefix(t, base, &prefix)
 
@@ -1098,15 +1120,26 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	f.localBase = base
 	f.traceFuncIdx, f.tracePCBase = uint32(t.globalIdx), t.localDeclBytes
 	oldInlineDepth := f.inlineDepth
+	oldLoopAlign32 := f.compactLoopAlign32
+	if t.tupleLoop() && f.opt(optCompactLoopAlign32) {
+		// The small callee keeps its loop fetch alignment when its caller is
+		// too large for whole-function compact alignment.
+		f.compactLoopAlign32 = true
+	}
 	f.inlineDepth++
 	var err error
-	if t.hasCtrl {
+	storesConsumed := false
+	if t.tupleSelect() {
+		storesConsumed, err = f.inlineTupleSelectBody(t, stores)
+	} else if t.hasCtrl {
 		err = f.inlineBodyCtrl(t, constants)
 	} else {
 		err = f.inlineBody(t.body)
 	}
+	f.inlineForward, f.inlineForwardN = previousForward, previousForwardN
 	f.localBase = old
 	f.inlineDepth = oldInlineDepth
+	f.compactLoopAlign32 = oldLoopAlign32
 	f.traceFuncIdx, f.tracePCBase, f.wasmPC = oldTraceFunc, oldTraceBase, oldPC
 	if err != nil {
 		return err
@@ -1122,8 +1155,81 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	if prefixCount != 0 {
 		f.restoreInlineTailPrefix(t, prefix[:prefixCount])
 	}
+	if storesConsumed {
+		if err := caller.JumpTo(stores.end); err != nil {
+			return err
+		}
+	}
 	f.stats.addInlineSiteBytes(f.a.Len() - start)
 	return nil
+}
+
+// forwardIntegerParams keeps a bounded read-only integer helper on the
+// caller's locals instead of copying its parameters into private frame slots.
+// Only nontrapping integer bodies qualify, so result trees may remain deferred
+// until a caller write materializes their original local reads.
+func (f *fn) forwardIntegerParams(t *inlineTarget) bool {
+	params := t.paramCount()
+	if f.inlineDepth != 0 || f.localBase != 0 || len(f.intervalLast) != 0 || f.policy.CompactNative ||
+		f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || profileEnabled || !f.pureIntegerParams(t) {
+		return false
+	}
+	var sources [4]uint32
+	localTypes := f.inlineTargets.localTypes(t)
+	e := f.s.back()
+	for i := params - 1; i >= 0; i-- {
+		if e == nil || e == f.s.head || !e.isValue() || (e.st.kind != stLocalRef && e.st.kind != stLocalReg) ||
+			int(e.st.idx) >= f.nLocals || e.st.typ != localTypes[i] || f.localType[e.st.idx] != localTypes[i] {
+			return false
+		}
+		sources[i] = e.st.idx
+		e = e.prev
+	}
+	for range params {
+		f.erase(f.s.back())
+	}
+	f.inlineForward, f.inlineForwardN = sources, uint32(params)
+	stat := "inline-integer-pair-param-forward"
+	if t.resultTypeEnd-t.localTypeEnd == 1 {
+		stat = "inline-integer-scalar-param-forward"
+	}
+	for range params {
+		f.stats.peep(stat)
+	}
+	return true
+}
+
+// pureIntegerParams proves a bounded parameter-only integer body has no traps,
+// control flow, writes, helpers, or calls. Lookahead never changes its reader.
+func (f *fn) pureIntegerParams(t *inlineTarget) bool {
+	params := t.paramCount()
+	if params == 0 || params > 4 || t.hasCtrl || t.touchesMem || t.recursive() ||
+		int(t.localTypeEnd-t.typeStart) != params || t.resultTypeEnd-t.localTypeEnd < 1 || t.resultTypeEnd-t.localTypeEnd > 2 || len(t.body) > 16 {
+		return false
+	}
+	for _, typ := range f.inlineTargets.localTypes(t) {
+		if typ != mtI32 && typ != mtI64 {
+			return false
+		}
+	}
+	for _, typ := range f.inlineTargets.resultTypes(t) {
+		if typ != mtI32 && typ != mtI64 {
+			return false
+		}
+	}
+	r := wasm.NewReader(t.body)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		pure := op == 0x01 || op == 0x0b || op == 0x1a || op == 0x1b || op == 0x20 ||
+			op == 0x41 || op == 0x42 || op >= 0x45 && op <= 0x5a ||
+			op >= 0x67 && op <= 0x8a && !(op >= 0x6d && op <= 0x70 || op >= 0x7f && op <= 0x82) ||
+			op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4
+		if err != nil || !pure || f.classifier.ClassifyInto(r, op, &imm) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // bindInlineParams binds the p argument operands into the callee's param locals
@@ -1144,17 +1250,55 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 		return
 	}
 	if nLocals > params {
-		z := f.allocReg(0)
-		f.a.XorSelf32(z)
+		var initialized, loopInitialized uint64
+		if !profileEnabled && !f.moduleEH && f.gcFrameRoots == nil && len(f.customInstructions) == 0 &&
+			len(f.intervalLast) == 0 && !f.intervalControl && !f.pinRelinquished {
+			initialized = inlineEntryConstantLocals(t.body, params, localTypes)
+			if t.tupleLoop() {
+				loopInitialized = inlineLoopEntryInitializedLocals(f.m, t.body, params, localTypes) &^ initialized
+				initialized |= loopInitialized
+			}
+		}
+		z := regNone
 		for i := params; i < nLocals; i++ {
 			local := base + i
+			if i < 64 && initialized&(uint64(1)<<i) != 0 {
+				f.realizeLocalRefs(local, nil)
+				if _, floating, pinned := f.pinReg(local); pinned && !floating {
+					// The first source write replaces this dead home before any get.
+					// Do not rematerialize an older lazy zero over that new value.
+					f.locals[local].state = lsReg
+				} else {
+					f.locals[local].state = lsMem
+				}
+				f.invalidateGCLoadFactsForLocal(local)
+				if loopInitialized&(uint64(1)<<i) != 0 {
+					f.stats.peep("inline-loop-entry-init")
+				} else {
+					f.stats.peep("inline-entry-constant-init")
+				}
+				continue
+			}
+			if reg, floating, pinned := f.pinReg(local); pinned && !floating {
+				f.realizeLocalRefs(local, nil)
+				f.a.XorSelf32(reg)
+				f.locals[local].state = lsReg
+				f.invalidateGCLoadFactsForLocal(local)
+				continue
+			}
+			if z == regNone {
+				z = f.allocReg(0)
+				f.a.XorSelf32(z)
+			}
 			for s := 0; s < localTypes[i].stackSlots(); s++ {
 				f.a.Store64(RSP, f.localAddr(local)+int32(8*s), z)
 			}
 			f.locals[local].state = lsMem
 			f.invalidateGCLoadFactsForLocal(local)
 		}
-		f.release(z)
+		if z != regNone {
+			f.release(z)
+		}
 	}
 }
 
@@ -1186,7 +1330,12 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget, constants *inlineTailConstants) err
 	fr.set(ctrlRegMerge1, f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128)
 	f.setFrameBaseTypePrefix(&fr, fr.height)
 	f.captureGCFrameShape(&fr)
-	f.flush()
+	if f.inlineTupleLoopFallthrough(t) {
+		fr.set(ctrlRegMerge1, false)
+		fr.set(ctrlInlineFallthrough, true)
+	} else {
+		f.flush()
+	}
 	f.pushCtrl(&fr)
 
 	prevRet := f.inlineRetFrame

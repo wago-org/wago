@@ -398,6 +398,7 @@ type fn struct {
 	intervalControl   bool
 	moduleHasSIMD     bool
 	localWritten      uint64 // conservative lexical write history for the first 64 locals
+	loopLocalParams   loopLocalParamHomes
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -570,6 +571,8 @@ type fn struct {
 	inlineBase              map[int]int
 	localBase               int
 	inlineDepth             int
+	inlineForward           [4]uint32 // read-only pair parameters mapped to original caller locals
+	inlineForwardN          uint32
 	// inlineRetFrame is the f.ctrl index of the synthetic block frame standing in
 	// for an inlined control-flow callee's function boundary: `return` inside the
 	// callee branches to it (not the real function frame). 0 when not inside such a
@@ -3948,7 +3951,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// allocation constraint when bounded entry is disabled; the finalizer drops
 	// the direct-entry proof without changing the guest body.
 	nativeHostDirect := hostCFGEligible && coreruntime.NativeScalarLeafSupported && f.opt(optNativeLeafHost) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1)
-	directPrepared := !hasInlineTailLoop && f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall() || nativeHostDirect) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && (!hints.hasUnsupportedDynamicCall() || nativeHostDirect) &&
+	directPrepared := !hasInlineTailLoop && !hasInlineTupleLoop(inlinedCallees) && f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall() || nativeHostDirect) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && (!hints.hasUnsupportedDynamicCall() || nativeHostDirect) &&
 		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && gcFrameRoots == nil) &&
 		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) || nativeHostDirect) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	if directPrepared {

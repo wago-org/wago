@@ -171,6 +171,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 
 	// MADD/MSUB fusion: add(c, a*b) → MADD (c + a*b), sub(c, a*b) → MSUB (c - a*b)
 	// in one instruction when the multiply operands have a safe bounded cover.
+	// A constant 1+2^k product can instead use a shifted ADD and an ADD/SUB.
 	// Checked before the LEA/local-sink forms so a*b±c never splits into MUL + ADD.
 	if node.deferredOp() == opAdd || node.deferredOp() == opSub {
 		if r := f.tryMulAddFuse(node, dest, w); r != regNone {
@@ -232,6 +233,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// right after the commutative swap above.
 	if node.deferredOp() == opMul {
 		if r := f.tryLeaMul(node, left, right, dest); r != regNone {
+			return r
+		}
+		if r := f.tryRegisterMultiply(node, left, right, dest); r != regNone {
 			return r
 		}
 	}
@@ -1272,8 +1276,7 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	if f.inlineTailLoopFrame != 0 && right.st.valueFacts().has(factNonZero) {
 		f.stats.peep("inline-divisor-known-nonzero")
 	} else {
-		f.cmpImm(divisor, 0, w)
-		f.trapIf(condE, trapDivZero)
+		f.trapIfZero(divisor, w, true, trapDivZero)
 	}
 
 	// The result register: honor the caller hint when it is free of the operand
@@ -1419,6 +1422,9 @@ func (f *fn) tryMulAddFuse(node *elem, dest Reg, w bool) Reg {
 	}
 	if node.deferredOp() == opSub && f.s.arg0(node) == mul {
 		return regNone
+	}
+	if result := f.tryShiftedMulAdd(node, mul, addend, dest, w); result != regNone {
+		return result
 	}
 	// Three read-only sources; pin each so materializing the next (e.g. a load or
 	// const) cannot reuse it.
@@ -1875,6 +1881,9 @@ var _ = a64.X0 // ensure the a64 import is referenced even before the encoder me
 // Fused consumers must honor the immutable constant leases selected for their
 // loop, just as ordinary arithmetic does. These operands are read-only.
 func (f *fn) mulAddReadOperand(e *elem) (Reg, bool) {
+	if regallocCheckEnabled {
+		f.checkUse(e)
+	}
 	if e.elemKind() == ekValue && e.st.kind == stConst {
 		st := e.st
 		if st.typ == mtI32 {

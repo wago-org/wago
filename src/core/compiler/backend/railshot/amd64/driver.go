@@ -263,6 +263,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		forwarded := x32 < f.inlineForwardN
+		if forwarded {
+			x = f.inlineForward[x32]
+		}
 		if regallocCheckEnabled {
 			checkNativeSourceGet(f, x)
 		}
@@ -271,7 +275,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			f.stats.peep("inline-tail-constant-get")
 			break
 		}
-		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}
@@ -283,7 +287,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			}
 		}
 		var value *elem
-		if f.hasIntervalLocal(int(x)) {
+		if !forwarded && f.hasIntervalLocal(int(x)) {
 			f.activateIntervalLocal(int(x), r.Offset(), true)
 			if !f.intervalControl {
 				if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
@@ -858,11 +862,9 @@ func (f *fn) emitSelect() {
 	if f.tryPureExpensiveSelect() {
 		return
 	}
-	// Flags-select: when the condition is a deferred relational/eqz compare and both
-	// branches are integers, emit the compare's CMP and a CMOV on its flags directly
-	// — skipping the SETcc + MOVZX + TEST that materializing the boolean costs. The
-	// compare is condensed last (right before the CMOV), so its flags are live.
-	if top := f.s.back(); isFusableCompare(top) && !top.valueType().isFloat() && f.trySelectOnFlags(top) {
+	// Comparisons and constant masks can feed CMOV directly. Emit their CMP
+	// or TEST after both alternatives, keeping its flags live for the select.
+	if top := f.s.back(); (isFusableCompare(top) && !top.valueType().isFloat() || isMaskedI32Condition(top)) && f.trySelectOnFlags(top) {
 		return
 	}
 	// Keep all operands linked until their deferred work is complete. Div/rem
@@ -980,7 +982,7 @@ func mtI32OrWide(wide bool) machineType {
 	return mtI32
 }
 
-// trySelectOnFlags lowers `select` on the flags of a fusable compare condition
+// trySelectOnFlags lowers `select` on the CMP/TEST flags of a fused condition
 // (cond, the top operand). It owns the result register and may borrow the
 // alternative, emits the compare's CMP (which sets the flags last), and CMOVs —
 // no SETcc/TEST. Returns false (leaving the operand stack untouched) when the
@@ -1014,7 +1016,11 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 		f.reserved = f.reserved.add(bReg)
 	}
 	f.pinned = f.pinned.add(bReg)
-	cc := f.condenseToFlags(cond) // emits the CMP (last flag-affecting insn), consumes cond
+	masked := isMaskedI32Condition(cond)
+	cc := f.condenseToFlags(cond) // emits CMP/TEST last and consumes the condition
+	if masked {
+		f.stats.peep("select-mask-flags")
+	}
 	f.stats.peep("select-flags")
 	f.a.Cmovcc(invertCond(cc), aReg, bReg, w) // cond false → a = b
 	f.pinned = f.pinned.remove(aReg)

@@ -63,6 +63,14 @@ func (u *scopedLoopConstUses) consume(op byte, immediate *wasm.Reader) (wasm.Ins
 	if u.blocked || u.mask == uint8(1<<u.hints.loopIntConstCount)-1 {
 		return kind, nil
 	}
+	consumer, ok := immediate.Peek()
+	if !ok {
+		return kind, nil
+	}
+	value, typ, ok = loopIntConstRegisterValue(consumer, value, typ)
+	if !ok {
+		return kind, nil
+	}
 	var matches uint8
 	for i := 0; i < int(u.hints.loopIntConstCount); i++ {
 		bit := uint8(1 << i)
@@ -71,10 +79,6 @@ func (u *scopedLoopConstUses) consume(op byte, immediate *wasm.Reader) (wasm.Ins
 		}
 	}
 	if matches == 0 {
-		return kind, nil
-	}
-	consumer, ok := immediate.Peek()
-	if !ok || !loopIntConstNeedsRegister(consumer, value, typ) {
 		return kind, nil
 	}
 	// The native operator disappears before instruction selection for x*2^n.

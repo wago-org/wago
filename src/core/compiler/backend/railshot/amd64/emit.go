@@ -158,6 +158,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	if r := f.tryXorByteMask(node, left, right, dest); r != regNone {
 		return r
 	}
+	if r := f.tryLinearIntegerPair(node, dest); r != regNone {
+		return r
+	}
 
 	// The two-address lowering below evaluates right before left. For a
 	// commutative, non-trapping tree, make the child with the larger bounded
@@ -751,7 +754,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	foldedCC, folded := f.tryMemoryCompareToFlags(node)
 	if !folded {
-		foldedCC, folded = f.tryMaskedEqzToFlags(node)
+		foldedCC, folded = f.tryMaskedPredicateToFlags(node)
 	}
 	if folded {
 		result := dest

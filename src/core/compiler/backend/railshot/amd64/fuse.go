@@ -24,16 +24,31 @@ func isFusableCompare(e *elem) bool {
 	return e != nil && e.isDeferred() && (isCompare(e.deferredOp()) || isFloatCompare(e.deferredOp()) || e.deferredOp() == opEqz)
 }
 
-// tryMaskedEqzToFlags recognizes `(x & mask) == 0`, the core reduction used by
-// packed-byte/SWAR algorithms, and emits TEST directly. The ordinary lowering
-// materializes x&mask and then tests that result; TEST computes identical flags
-// without writing the temporary. The helper consumes the two deferred nodes but
-// leaves the outer node for either a branch consumer or SETcc materialization.
-func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
-	if !swarMaskTestEnabled || node == nil || node.deferredOp() != opEqz {
+// Small i32 mask conditions can use a short byte TEST for select's zero flag.
+func isMaskedI32Condition(node *elem) bool {
+	if !swarMaskTestEnabled || node == nil || !node.isDeferred() || node.deferredOp() != opAnd ||
+		node.valueType() != mtI32 || node.arg1 == nil || !node.arg1.isValue() || node.arg1.st.kind != stConst {
+		return false
+	}
+	mask := uint32(node.arg1.st.cval)
+	return mask != 0 && mask <= 0xff
+}
+
+// tryMaskedPredicateToFlags lowers a nonzero i32 mask condition or an eqz
+// around either integer width's mask. TEST avoids a temporary AND result.
+// The helper consumes the operands but leaves the outer node for its consumer.
+func (f *fn) tryMaskedPredicateToFlags(node *elem) (Cond, bool) {
+	if !swarMaskTestEnabled || node == nil {
 		return 0, false
 	}
-	inner := node.arg0
+	nonzero := isMaskedI32Condition(node)
+	if !nonzero && node.deferredOp() != opEqz {
+		return 0, false
+	}
+	inner := node
+	if !nonzero {
+		inner = node.arg0
+	}
 	if inner == nil || !inner.isDeferred() || inner.deferredOp() != opAnd ||
 		inner.arg1 == nil || !inner.arg1.isValue() || inner.arg1.st.kind != stConst ||
 		inner.arg1.st.cval == 0 {
@@ -63,6 +78,11 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 		f.a.BtImm(x, uint8(bits.TrailingZeros64(mask)), w)
 		cc = condAE // BT copies the selected bit to CF; AE means CF=0.
 		f.stats.peep("single-bit-mask-test")
+	} else if nonzero {
+		// Admission proves every significant mask bit is in this byte. The
+		// consumer needs only ZF; byte TEST's sign flag is deliberately unused.
+		f.a.TestImm8(x, byte(mask))
+		f.stats.peep("select-mask-byte-test")
 	} else if !w || fitsImm32(c) {
 		f.a.TestImm(x, uint32(c), w)
 	} else {
@@ -77,6 +97,9 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	}
 	f.stats.peep("swar-mask-test")
 	f.consumeBlockBelow(node)
+	if nonzero {
+		cc = invertCond(cc)
+	}
 	return cc, true
 }
 
@@ -160,7 +183,7 @@ func (f *fn) flushBelow(node *elem) int {
 	return len(below)
 }
 
-// condenseToFlags emits a relational/eqz node's CMP/TEST (no SETcc), consumes the
+// condenseToFlags emits a comparison or masked predicate's CMP/TEST, consumes the
 // node and its operands, and returns the condition code that is true when the
 // comparison holds. The CMP must be the last flag-affecting instruction before
 // the branch, so callers flush everything below first.
@@ -186,7 +209,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 	}
 	if !invert {
-		if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+		if cc, ok := f.tryMaskedPredicateToFlags(node); ok {
 			f.erase(node)
 			return cc
 		}
@@ -373,6 +396,9 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		// zeros were materialized above, so this repair emits only flag-preserving
 		// loads and stores before the conditional jump.
 		f.convergeBranchLocals(fr)
+	}
+	if f.tryScalarPosttestLoop(fr, fi, k, cc) {
+		return nil
 	}
 	a := fr.branchArity()
 	if directExit && k == 0 && a == 0 && !loopHeader {

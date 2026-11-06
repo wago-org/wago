@@ -87,7 +87,7 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
 		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "dominated-indexed-key", "ordinary-shifted-immediate", "common-exit-compare", "borrowed-div-rem", "bounded-signed-quotient", "br-table-branch-vector", "regional-memory-read", "wide-reuse-pins",
 		"v128-direct-results", "cold-call-local-pins", "convert-read", "guarded-boolean-xor", "taken-zero-branch", "cset-lineage", "integer-select-local-read", "bounded-branch-index",
-		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
+		"weighted-scalar-merge", "counted-loop-latch", "loop-local-params", "inline-integer-tuples", "scalar-loop-unroll", "tuple-if-select", "guarded-div-rem", "cold-tuple-loop-exit", "linear-sum-loop",
 		"linear-integer-tree", "memory-min-bounds", "simd-load-extract", "simd-store-load-address", "bulk-fill-vector", "bulk-copy-vector", "bulk-memory-loops", "bulk-fill-copy-forward", "byte-reduce-loop", "straight-line-block", "atomic-wait-zero-timeout", "atomic-static-bounds", "atomic-lse", "shared-memory-base",
 	}
 	overrides := make(map[string]bool, len(names))
@@ -159,6 +159,8 @@ func TestFunctionStartPaddingPolicyArm64(t *testing.T) {
 		want      int
 	}{
 		{name: "ordinary tiny leaf", off: 4, bodyBytes: 12, policy: ordinary, want: 0},
+		{name: "loop call target", off: 4, bodyBytes: 12, hints: funcHints{flags: hintHasInlineLoopCall}, policy: ordinary, want: 12},
+		{name: "compact loop call target", off: 4, bodyBytes: 12, hints: funcHints{flags: hintHasInlineLoopCall}, policy: compact, want: 0},
 		{name: "ordinary adapter", off: 4, bodyBytes: 12, adapter: true, policy: ordinary, want: 12},
 		{name: "ordinary hot within budget", off: 12, bodyBytes: 64, hints: hot, policy: ordinary, want: 4},
 		{name: "ordinary hot over budget", off: 4, bodyBytes: 64, hints: hot, policy: ordinary, want: 0},

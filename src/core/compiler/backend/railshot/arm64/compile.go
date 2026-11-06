@@ -353,10 +353,11 @@ type fn struct {
 	// (int) or V0 (float) — via the WARP-style target hint, skipping the
 	// flush-to-slot-0 + epilogue-reload round trip. resultFloat/resultF64 cache the
 	// result's type for that placement.
-	singleRegResult bool
-	resultFloat     bool
-	resultF64       bool
-	regMerge        bool // reconcile single-int-result blocks in mergeReg (phase 2)
+	singleRegResult  bool
+	directPairResult bool // bounded fallthrough-only integer pair, staged before return-register writes
+	resultFloat      bool
+	resultF64        bool
+	regMerge         bool // reconcile single-int-result blocks in mergeReg (phase 2)
 
 	// globalCellReg caches the cell pointer (&global[globalCellIdx]) of the most
 	// recently accessed global in a register across a straight-line run, so repeated
@@ -389,7 +390,9 @@ type fn struct {
 	// stubs) and around wrapper-ABI calls (whose callee's offset-0 prologue
 	// reloads). This is what makes the AssemblyScript shadow-stack pointer
 	// (touched in every function) free at call boundaries.
-	moduleGlobals []moduleGlobalPin
+	moduleGlobals         []moduleGlobalPin
+	guardedNonzeroDivisor *elem // one immediately guarded div/rem operand; never survives its assignment
+
 	// Control-flow state (Phase 3).
 	ctrl                []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
 	ehTryDepth          int         // live reachable try_table records; bounded by ehTryCap
@@ -399,6 +402,7 @@ type fn struct {
 	branchHints         []wasm.BranchHint
 	branchHintLocalDecl uint32
 	branchHintUnlikely  bool
+	loopSeedSite        int    // label after the latest available loop-entry alignment NOP
 	innermostLoop       uint32 // control depth of the nearest loop; zero outside loops
 	unreachable         bool   // in dead code after an unconditional branch/trap
 
@@ -413,10 +417,16 @@ type fn struct {
 	// prologue's zeroDeclaredLocals never touches them). localBase is added to every
 	// local index while a splice runs, remapping the callee's locals onto that base;
 	// it is 0 outside a splice.
-	inlineTargets           inlineTargetTable
-	inlineBase              map[int]int
-	localBase               int
-	inlineDepth             int
+	inlineTargets inlineTargetTable
+	inlineBase    map[int]int
+	localBase     int
+	inlineDepth   int
+	// Read-only pair splices can read an original caller local directly. The
+	// emitted stack references retain its original index, so setLocal preserves
+	// their get-time values before any subsequent caller mutation.
+	inlineForward           [4]uint32
+	inlineForwardN          uint32
+	loopLocalParams         loopLocalParamHomes
 	inlineTailLoopFrame     int // index+1 of synthetic self-tail loop while inlining
 	inlineWriteVersions     [5]uint32
 	inlineNonzeroPredicates [8]uint32
@@ -600,10 +610,20 @@ func alignmentPadding(off int, log2 uint8) int {
 
 // functionStartPadding makes optional entry alignment a policy-owned, costed
 // choice. Ordinary code keeps addressable entries aligned and admits statically hot
-// or large bodies only when their Wasm size can amortize the exact padding.
+// or large bodies when their Wasm size or loop call sites amortize the padding.
 func functionStartPadding(off, bodyBytes int, hostAdapter bool, hints funcHints, policy CodegenPolicy) int {
 	flags := boolFlag(hostAdapter, layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) | boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf)
-	return functionStartPaddingFlags(off, bodyBytes, flags, scopedFloatFunctionLayout(hints, policy), policy)
+	return functionStartPaddingFlags(off, bodyBytes, flags, functionExtraLayout(hints, policy), policy)
+}
+
+const (
+	entryScopedFloat uint8 = 1 << iota
+	entryLoopCallTarget
+)
+
+func functionExtraLayout(hints funcHints, policy CodegenPolicy) uint8 {
+	return boolFlag(scopedFloatFunctionLayout(hints, policy), entryScopedFloat) |
+		boolFlag(hints.flags.has(hintHasInlineLoopCall), entryLoopCallTarget)
 }
 
 func scopedFloatFunctionLayout(hints funcHints, policy CodegenPolicy) bool {
@@ -620,9 +640,9 @@ func boolFlag(on bool, flag uint8) uint8 {
 	return 0
 }
 
-func functionStartPaddingFlags(off, bodyBytes int, flags uint8, scopedFloat bool, policy CodegenPolicy) int {
+func functionStartPaddingFlags(off, bodyBytes int, flags, extra uint8, policy CodegenPolicy) int {
 	mandatory := alignmentPadding(off, 2)
-	if scopedFloat {
+	if extra&entryScopedFloat != 0 {
 		return alignmentPadding(off, 5)
 	}
 	optional := alignmentPadding(off, policy.FunctionAlignLog2)
@@ -630,6 +650,11 @@ func functionStartPaddingFlags(off, bodyBytes int, flags uint8, scopedFloat bool
 		return mandatory
 	}
 	if flags&layoutHostAdapter != 0 {
+		return optional
+	}
+	// A direct call inside a loop amortizes up to 12 bytes of padding even for a
+	// tiny leaf. Its entry must not depend on the preceding function's size.
+	if extra&entryLoopCallTarget != 0 && optional <= 12 {
 		return optional
 	}
 	if flags&(layoutHasLoop|layoutHasCall|layoutCallsSelf) == 0 && bodyBytes < 256 {
@@ -1136,7 +1161,7 @@ type funcResult struct {
 	trapBody         sharedTrapBodyInfo
 	requiresLSE      bool
 	layoutFlags      uint8
-	scopedFloat      bool
+	extraLayout      uint8
 	gcReducedBounded bool
 }
 
@@ -1430,7 +1455,7 @@ func (f *fn) elideRegisterOnlyFrame() bool {
 	}
 
 	voidResult := len(f.ft.Results) == 0
-	registerResult := f.singleRegResult || voidResult
+	registerResult := f.singleRegResult || f.directPairResult || voidResult
 	if f.moduleEH || !registerResult || f.makesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
@@ -2168,7 +2193,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 				ws.gcDeadBatchLayouts[i] = layout
 			}
-			result := funcResult{gcReducedBounded: ws.scratch.fnState.gcReducedBounded, requiresLSE: ws.scratch.fnState.requiresLSE, worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, bodyBytes: bodyBytes, layoutFlags: layoutFlags, internalOff: compactInternalOff, scopedFloat: scopedFloatFunctionLayout(allHints[i], policy)}
+			result := funcResult{gcReducedBounded: ws.scratch.fnState.gcReducedBounded, requiresLSE: ws.scratch.fnState.requiresLSE, worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, bodyBytes: bodyBytes, layoutFlags: layoutFlags, internalOff: compactInternalOff, extraLayout: functionExtraLayout(allHints[i], policy)}
 			if policy.CompactNative {
 				if policy.EnabledOption(optSharedAdapters) {
 					info := ws.scratch.fnState.sharedAdapterInfo()
@@ -2228,7 +2253,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		if r.layoutFlags&layoutOmitted != 0 {
 			continue
 		}
-		if pad := functionStartPaddingFlags(len(code), int(r.bodyBytes), r.layoutFlags, r.scopedFloat, policy); pad != 0 {
+		if pad := functionStartPaddingFlags(len(code), int(r.bodyBytes), r.layoutFlags, r.extraLayout, policy); pad != 0 {
 			code = append(code, alignPad[:pad]...)
 		}
 		entry[i] = len(code)
@@ -3453,17 +3478,31 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if hasCall {
 		inlinedCallees = collectInlinedCallees(c, inlineTargets)
 	}
+	// Expanded tuple leaves depend on a call-free private register frame. Retain
+	// their calls if another source call or runtime helper remains in this caller.
+	allCallsInlined := policy.EnabledOption(optInlineCallFree) && hasCall && !hints.flags.has(hintHasNonDirectCall) && allCallsWillInline(c, inlineTargets, policy)
+	if !allCallsInlined {
+		kept := inlinedCallees[:0]
+		for _, callee := range inlinedCallees {
+			if !callee.tupleControl {
+				kept = append(kept, callee)
+			}
+		}
+		inlinedCallees = kept
+	}
 	// Inlined helpers execute in the caller's register frame. Reuse the existing
 	// callee hints before constructing any pin pool; the module's original hints
 	// remain unchanged, and no retained inline-target state is needed.
 	planningHints := *hints
 	for _, callee := range inlinedCallees {
-		planningHints.flags |= calleeHints[callee.globalIdx-m.ImportedFuncCount()].flags & hintUsesBulkMem
+		planningHints.flags |= calleeHints[callee.globalIdx-m.ImportedFuncCount()].flags & (hintUsesBulkMem | hintHasLoop | hintHasControlFlow)
 	}
 	hints = &planningHints
+	f.hasLoop = hints.flags.has(hintHasLoop)
+	f.localFactsEnabled = f.localFactsEnabled && !hints.flags.has(hintHasControlFlow)
 	f.streamingReduction = f.opt(optStreamReduce) && hints.hasStreamingReduction()
 	// Inlining direct Wasm calls cannot remove GC/table/atomic runtime helpers.
-	if policy.EnabledOption(optInlineCallFree) && hasCall && !hints.flags.has(hintHasNonDirectCall) && allCallsWillInline(c, inlineTargets, policy) {
+	if allCallsInlined {
 		hasCall = false
 		f.stats.peep("all-calls-inlined")
 	}
@@ -3772,6 +3811,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
 	// !touchesMemory so it only fires where it's a win.
 	f.singleRegResult = regABI && !touchesMemory && len(ft.Results) == 1
+	f.directPairResult = regABI && !policy.CompactNative && !touchesMemory && hints.globalCount == 0 && f.directIntegerPairCandidate(c)
 	if f.singleRegResult {
 		rt := mtOf(ft.Results[0])
 		f.resultFloat = rt.isFloat()
@@ -3781,8 +3821,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	// Auto-inlining: reserve each spliced callee's locals past f.nLocals (after all
 	// nLocals-dependent setup above, so zeroDeclaredLocals/skipFence/lazyZero see the
-	// caller's own locals only). Extends the frame's local arrays with unpinned
-	// scratch; the splice at each call site binds/zeroes them.
+	// caller's own locals only). Extends the frame's local arrays with private
+	// scratch, optionally pinned for bounded pairs; each splice binds/zeroes it.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
 	for _, target := range inlinedCallees {
 		if target.tailLoop() {
@@ -4935,7 +4975,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		} else {
 			f.ld64(X0, SP, f.spillOff(0)) // result -> X0
 		}
-	} else if rN == 2 {
+	} else if rN == 2 && !f.directPairResult {
 		if preparedDirectFloatSupported && mtOf(f.ft.Results[0]).isFloat() && !mtOf(f.ft.Results[1]).isFloat() {
 			a.FLoadDisp(0, SP, f.spillOff(0), mtOf(f.ft.Results[0]) == mtF64)
 			f.ld64(X0, SP, f.spillOff(1))

@@ -1398,6 +1398,9 @@ func (f *fn) inCallFreeLoop() bool {
 
 func (f *fn) popCtrl() {
 	last := len(f.ctrl) - 1
+	if f.loopLocalParams.depth == uint32(last+1) {
+		f.loopLocalParams = loopLocalParamHomes{}
+	}
 	fr := f.ctrl[last]
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:last]
@@ -1430,9 +1433,13 @@ func (f *fn) callFreeLoopExit(fi int) bool {
 }
 
 // branchJump emits the jump for a branch that targets frame fr.
-func (f *fn) branchJump(fr *ctrlFrame) {
+// Only explicit unconditional source branches supply the following Wasm reader.
+func (f *fn) branchJump(fr *ctrlFrame, after ...*wasm.Reader) {
 	switch fr.kind {
 	case cfLoop:
+		if f.unrollScalarPretest(fr, after...) || f.unrollScalarBranches(fr) || f.tryPretestLoopLatch(fr) {
+			return
+		}
 		// Backward unconditional branch to the loop top (imm26, ±128 MiB): emit a B
 		// placeholder and patch it immediately since the target is already known.
 		f.patchBranch26(f.a.Branch(), fr.controlSite)
@@ -1473,6 +1480,9 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 	switch fr.kind {
 	case cfLoop:
+		if f.unrollScalarLatch(fr, cc) {
+			return true
+		}
 		site := f.a.Bcond(cc)
 		if !f.a.PatchBranch19(site, fr.controlSite) {
 			if profileEnabled && f.stats != nil && f.stats.RecordSources {
@@ -1516,11 +1526,9 @@ func (f *fn) zeroBranchJump(fr *ctrlFrame, condition Reg) bool {
 
 const pollFreeLoopPhaseMaxLocals = 16
 
-// alignLoopHeader keeps poll-free loop bodies in the same half of a 32-byte
-// fetch block that the former four-instruction cooperative poll selected. The
-// padding precedes loopStart, so it executes only on initial entry and never on
-// a backedge. Large, loop-dense functions skip it: their extra code footprint
-// costs more than preserving the fetch phase.
+// alignLoopHeader uses the policy's loop alignment without padding for a
+// cooperative poll that poll-free loops no longer execute. Scoped float loops
+// retain their complete fetch boundary when cached constants shorten the body.
 func (f *fn) alignLoopHeader() {
 	// Materialize any phase debt before choosing this hot loop's address. This
 	// preserves the exact alignment decision the unoptimized stream would have
@@ -1538,9 +1546,9 @@ func (f *fn) alignLoopHeader() {
 		// the phase chosen for the uncached four-instruction poll.
 		loopAlign = 5
 	}
-	f.alignCode(loopAlign)
-	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals && !scopedFloat {
-		f.a.Nop4()
+	f.loopSeedSite = 0
+	if f.alignCode(loopAlign) >= 4 {
+		f.loopSeedSite = f.a.Len()
 	}
 }
 
@@ -1638,6 +1646,7 @@ func loopInstructionMayCall(kind wasm.InstrKind) bool {
 }
 
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
+	signature := *r
 	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
 	if err != nil {
 		return err
@@ -1655,6 +1664,16 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	predicate := uint32(0)
 	if kind == cfIf && !f.unreachable && pN == 0 {
 		predicate = f.inlineNonzeroPredicate(f.s.back())
+	}
+	if kind == cfIf && !f.unreachable {
+		// Caller operands precede the condition in Wasm evaluation order.
+		// Resolve their traps before lowering a possibly trapping condition.
+		f.materializePendingTraps()
+	}
+	if kind == cfIf && !f.unreachable && pN == 0 && rN == 2 {
+		if done, err := f.tryColdTupleLoopExit(r, signature, resultTypes); done || err != nil {
+			return err
+		}
 	}
 	if kind == cfIf && !f.unreachable && pN == 0 && rN == 0 {
 		if done, err := f.tryInlineColdReturn(r); done || err != nil {
@@ -1674,10 +1693,15 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			return err
 		}
 	}
+	if kind == cfIf && !f.unreachable && pN == 0 && rN == 1 && (res0 == mtI32 || res0 == mtI64) {
+		if done, err := f.tryPureIntegerIfSelect(r, res0); done || err != nil {
+			return err
+		}
+	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	f.setInlineNonzeroPredicate(predicate)
 	fr.set(ctrlEntryUnreachable, f.unreachable)
-	if f.straightLineBlock(r, kind, pN, rN, res0) {
+	if f.straightLineBlock(r, kind, pN, rN, res0, signature) {
 		fr.controlSite = straightLineBlockSite
 	}
 	if kind == cfLoop {
@@ -1699,6 +1723,16 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			collect = &uses
 		}
 		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals, collect)
+		if f.localBase != 0 && setLocals != nil {
+			for i := base; i < len(setLocals); i++ {
+				absolute := uint64(setLocals[i]) + uint64(f.localBase)
+				if absolute > uint64(^uint16(0)) {
+					setLocals, hasCall = nil, true
+					break
+				}
+				setLocals[i] = uint16(absolute)
+			}
+		}
 		if collectConsts && !hasCall {
 			fr.flags |= ctrlFlags(uses.mask) << 12
 		}
@@ -1720,7 +1754,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	}
 	if fr.isStraightLineBlock() {
 		fr.set(ctrlRegMerge1, false)
-		fr.height = f.depth()
+		fr.height = f.depth() - pN
 		f.pushCtrl(&fr)
 		f.stats.peep("straight-line-block")
 		return nil
@@ -1778,6 +1812,22 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 		f.captureGCFrameShape(&fr)
 		if kind == cfLoop {
+			if homes, afterBindings, ok := f.planLoopLocalParams(r, &fr, signature); ok {
+				f.materializePendingTraps()
+				f.bindLoopLocalParams(homes, pN)
+				f.flush()
+				if err := r.JumpTo(afterBindings); err != nil {
+					return err
+				}
+				f.alignLoopHeader()
+				fr.controlSite = f.a.Len()
+				fr.set(ctrlLoopCallFree, true)
+				f.pushCtrl(&fr)
+				homes.depth = uint32(len(f.ctrl))
+				f.loopLocalParams = homes
+				f.stats.peep("loop-local-params")
+				return nil
+			}
 			if fr.has(ctrlLoopCallFree) && callFreeLoopEntryEnabled {
 				// Keep live pins in registers and reload only memory-resident ones.
 				// With no call in the body, every backedge preserves that state.
@@ -2622,9 +2672,23 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	// variable-sized type and loop-analysis slices do not stay live in scratch.
 	f.popCtrl()
 
+	if fr.isInlineTupleFallthrough() {
+		f.releaseCtrlMerge(&fr)
+		f.releaseFrameBaseTypes(&fr)
+		if firstEnd != 0 || secondEnd != 0 || len(ends) != 0 || len(coldEdges) != 0 || !f.unreachable && f.depth() != fr.height+fr.resultN {
+			return fmt.Errorf("arm64: inline tuple fallthrough boundary mismatch")
+		}
+		return nil
+	}
+
 	if fr.isStraightLineBlock() {
 		f.releaseCtrlMerge(&fr)
-		if f.unreachable || f.depth() != fr.height+fr.resultN {
+		// A private inlined callee can trap or diverge without reaching this
+		// block's end. Its isolated controls supply no caller fallthrough edge.
+		if f.unreachable {
+			return nil
+		}
+		if f.depth() != fr.height+fr.resultN {
 			return fmt.Errorf("straight-line block stack height mismatch")
 		}
 		return nil
@@ -2634,6 +2698,8 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		if !f.unreachable {
 			if f.singleRegResult {
 				f.placeSingleResult() // fall-through return: result straight to X0/V0
+			} else if f.directPairResult {
+				f.placeDirectIntegerPair()
 			} else {
 				f.flush() // results land in slots [0, resultN)
 			}
@@ -2655,6 +2721,9 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		return nil
 	}
 
+	if fr.isColdTupleLoopExit() && !f.unreachable {
+		return fmt.Errorf("arm64: cold tuple loop continuation unexpectedly falls through")
+	}
 	fallthroughReachable := !f.unreachable
 	if fallthroughReachable {
 		f.recordGCBranchResults(&fr, fr.resultN)
@@ -2771,7 +2840,11 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	f.unreachable = !endReachable
 	if endReachable {
 		if fr.kind != cfLoop {
-			if fr.has(ctrlCallFreeRegion) {
+			if fr.isColdTupleLoopExit() {
+				for x := range f.locals {
+					f.locals[x].state = entryState.get(x)
+				}
+			} else if fr.has(ctrlCallFreeRegion) {
 				f.markPinnedLocalsDirty()
 			} else {
 				f.setLocalsState(branchState) // merge: what every edge guaranteed
@@ -2850,8 +2923,16 @@ func (f *fn) restoreBranchHandlers(fi int) {
 // pinned locals, flush operands, move the branched values into the frame's
 // canonical slots (or merge register), and jump. Shared by opBr's unconditional
 // path and opReturn's inlined-callee routing. The caller sets f.unreachable.
-func (f *fn) branchToFrame(fi int) {
+func (f *fn) branchToFrame(fi int, after ...*wasm.Reader) {
 	fr := &f.ctrl[fi]
+	if f.loopLocalParams.depth == uint32(fi+1) {
+		f.materializePendingTraps()
+		f.bindLoopLocalParams(f.loopLocalParams, fr.paramN)
+		f.flush()
+		f.branchJump(fr, after...)
+		f.stats.peep("loop-local-params-edge")
+		return
+	}
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchArity(), f.depth()
 	f.flush()
@@ -2861,7 +2942,7 @@ func (f *fn) branchToFrame(fi int) {
 		f.moveBranchValues(fr, d, a)
 	}
 	f.restoreBranchHandlers(fi)
-	f.branchJump(fr)
+	f.branchJump(fr, after...)
 }
 
 func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
@@ -2899,7 +2980,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		return errBadLabel
 	}
 	if !conditional {
-		f.branchToFrame(fi)
+		f.branchToFrame(fi, r)
 		f.unreachable = true
 		return nil
 	}
@@ -3302,6 +3383,25 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		return nil
 	}
 	for i, lbl := range labels {
+		fi := len(f.ctrl) - 1 - int(lbl)
+		fr := &f.ctrl[fi]
+		if f.opt(optBranchFold) && !f.moduleEH && f.gcFrameRoots == nil && len(f.gcTypeLayouts) == 0 && len(f.customInstructions) == 0 &&
+			(fr.kind == cfBlock || fr.kind == cfIf) && fr.branchArity() == 0 && !fr.has(ctrlRegMerge1) {
+			// Reconciliation above made every local and operand canonical. An
+			// empty block edge has no taken-path work, so branch directly instead
+			// of guarding an unconditional jump (and retaining its padding).
+			f.convergeBranchLocals(fr)
+			f.moveBranchValues(fr, d, 0)
+			if i == 0 {
+				f.appendFrameEnd(fr, f.zeroBranch(ireg, false, true), true)
+				fr.set(ctrlEndReachable, true)
+			} else {
+				f.a.CmpImm32(ireg, uint32(i))
+				f.condBranchJump(fr, condE)
+			}
+			f.stats.peep("br-table-empty-edge")
+			continue
+		}
 		f.a.CmpImm32(ireg, uint32(i)) // cmp ireg, i (i < brTableJumpMin, always fits imm12)
 		skip := f.a.Bcond(condNE)
 		emitCase(lbl)
