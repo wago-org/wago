@@ -437,7 +437,7 @@ func preferredGCCollectorFromImports(c *Compiled, imports resolvedImports, store
 		// Native exception transfers can carry collector references even through
 		// () -> () imports. Match the EH transfer admission in validateImportBindings;
 		// the explicit function signature does not describe those payloads.
-		exceptionTransfers := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) || c.needsOwnedExceptionReferences()
+		exceptionTransfers := (c.stagedFeatures() | c.requiredFeatures).IsEnabled(CoreFeatureExceptionHandling) || c.needsOwnedExceptionReferences()
 		for i, displayKey := range c.Imports {
 			if i >= len(c.importFuncSigs) || !exceptionTransfers && !funcSigHasGCRefs(c.importFuncSigs[i]) {
 				continue
