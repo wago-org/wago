@@ -446,7 +446,7 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
 		return false, err
 	}
 	f.convergeBranchLocals(loop)
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	f.setFactsForLocal(x, 0)
 	if f.tryUnrolledLinearSumLatch(x) {
 		f.stats.peep("counted-loop-latch")
@@ -1652,6 +1652,20 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else if op == 0x04 {
 		kind = cfIf
 	}
+	predicate := uint32(0)
+	if kind == cfIf && !f.unreachable && pN == 0 {
+		predicate = f.inlineNonzeroPredicate(f.s.back())
+	}
+	if kind == cfIf && !f.unreachable && pN == 0 && rN == 0 {
+		if done, err := f.tryInlineColdReturn(r); done || err != nil {
+			return err
+		}
+	}
+	if kind == cfIf && !f.unreachable && pN == 0 {
+		if done, err := f.tryTailArgumentSelect(r); done || err != nil {
+			return err
+		}
+	}
 	if kind == cfIf && !f.unreachable && pN == 0 && rN == 1 && res0 == mtI32 {
 		if done, err := f.tryAffineIfSelect(r); done || err != nil {
 			return err
@@ -1661,6 +1675,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
+	f.setInlineNonzeroPredicate(predicate)
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if f.straightLineBlock(r, kind, pN, rN, res0) {
 		fr.controlSite = straightLineBlockSite
@@ -2018,7 +2033,7 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 	if err := r.JumpTo(r2.Offset()); err != nil {
 		return false, err
 	}
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	cond := f.s.back()
 	if cond == nil {
 		return false, fmt.Errorf("arm64: if without condition")
@@ -2244,7 +2259,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		frame := len(f.ctrl) - 1 - int(label)
+		frame := f.sourceLabelFrame(label)
 		if frame < 0 {
 			return errBadLabel
 		}
@@ -2877,7 +2892,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if err != nil {
 		return err
 	}
-	fi := len(f.ctrl) - 1 - int(idx)
+	fi := f.sourceLabelFrame(idx)
 	if fi < 0 {
 		return errBadLabel
 	}
@@ -2994,7 +3009,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	fi := len(f.ctrl) - 1 - int(idx)
+	fi := f.sourceLabelFrame(idx)
 	if fi < 0 {
 		return errBadLabel
 	}
@@ -3029,7 +3044,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	fi := len(f.ctrl) - 1 - int(idx)
+	fi := f.sourceLabelFrame(idx)
 	if fi < 0 {
 		return errBadLabel
 	}
@@ -3060,7 +3075,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 // same compact reference identity; validation supplies only the refined type.
 func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 	matched, owned := f.materializeRead(f.popValue())
-	fi := len(f.ctrl) - 1 - int(idx)
+	fi := f.sourceLabelFrame(idx)
 	if fi < 0 {
 		if owned {
 			f.release(matched)
@@ -3140,7 +3155,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	// merge-reg load) uses only fixed scratch and pinned registers and mutates no
 	// compile-time state — so case bodies can be emitted in any order and shared.
 	emitCase := func(labelIdx uint32) {
-		fi := len(f.ctrl) - 1 - int(labelIdx)
+		fi := f.sourceLabelFrame(labelIdx)
 		fr := &f.ctrl[fi]
 		f.convergeBranchLocals(fr) // post-reconcile state records/no-op converges (no code, no flags)
 		if fr.has(ctrlRegMerge1) {

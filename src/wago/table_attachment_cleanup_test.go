@@ -33,6 +33,7 @@ func TestTableAttachmentCleanupMappedOwnersAndHostStorage(t *testing.T) {
 					if table.owner.store != nil {
 						t.Fatal("NewTable must have no fabricated store-object unit")
 					}
+					arena := table.owner.arena
 					address := uintptr(unsafe.Pointer(&table.desc[0]))
 					if e := tableCleanupMappingStatus(address); e != 0 {
 						t.Fatal("host table arena is not mapped", e)
@@ -151,7 +152,8 @@ func TestTableAttachmentCleanupMappedOwnersAndHostStorage(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-					if !table.owner.closed || table.owner.arena != nil || table.desc != nil || len(table.retained) != 0 || tableCleanupMappingStatus(address) != syscall.ENOMEM {
+					// Check this mapping owner rather than an address the kernel may reuse.
+					if !table.owner.closed || table.owner.arena != nil || table.desc != nil || len(table.retained) != 0 || arena.AllocatedPrefix(1) != nil {
 						t.Fatal("table cleanup failed to unmap the actual host arena")
 					}
 					if err := table.Close(); err != nil || visited != [3]int{1, 1, 1} {
