@@ -689,7 +689,7 @@ type gcNativeFrameRoots struct {
 	frameBytes           uint32
 	frameLayout          uint8
 	allowExternalReturn  bool
-	domainHostRoots      bool // bounded products also retain older same-domain host activations
+	domainHostRoots      bool // retain other same-domain host activations unless enumerated separately
 	codeBase             uintptr
 	codeBytes            uintptr
 	adapterReturnOffsets []uint32
@@ -1032,6 +1032,11 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			panic(gcHelperFailuref("generic GC native return address exceeds stack bounds"))
 		}
 		retPC := uintptr(nativeGCFrameWord(retAddr))
+		if base > ^uintptr(0)-uintptr(frameBytes)-callerFrameBias {
+			panic(gcHelperFailuref("generic GC caller frame address overflows"))
+		}
+		returnBase := base + uintptr(frameBytes) + callerFrameBias
+	resolveReturn:
 		if retPC < codeBase || retPC-codeBase >= codeBytes {
 			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
 				return true
@@ -1058,12 +1063,29 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			adapterIndex = sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
 		}
 		if adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] == rel {
-			return true
+			// Scalar adapters also serve native cross-instance calls. Their
+			// internal return is not necessarily the public execution boundary.
+			// AMD64 pushes the result pointer above its caller's return PC;
+			// ARM64 saves LR and the result pointer in a 16-byte adapter record.
+			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
+				return true
+			}
+			var savedReturnOffset uintptr
+			switch r.frameLayout & gcNativeFrameLayoutMask {
+			case gcNativeFrameLayoutAMD64:
+				savedReturnOffset = 8
+			case gcNativeFrameLayoutARM64:
+				savedReturnOffset = 0
+			default:
+				return true
+			}
+			if returnBase > ^uintptr(0)-16 || stackTop != 0 && (returnBase > stackTop || stackTop-returnBase < 16) {
+				panic(gcHelperFailuref("generic GC adapter record exceeds stack bounds"))
+			}
+			retPC = uintptr(nativeGCFrameWord(returnBase + savedReturnOffset))
+			returnBase += 16
+			goto resolveReturn
 		}
-		if base > ^uintptr(0)-uintptr(frameBytes)-callerFrameBias {
-			panic(gcHelperFailuref("generic GC caller frame address overflows"))
-		}
-		returnBase := base + uintptr(frameBytes) + callerFrameBias
 		// Tiny sorted tables beat binary-search setup; larger tables retain
 		// logarithmic lookup. The measured crossover is between 8 and 16.
 		callsiteIndex := 0

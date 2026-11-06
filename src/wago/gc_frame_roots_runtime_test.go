@@ -662,3 +662,51 @@ func BenchmarkGCFrameCallsiteLookup(b *testing.B) {
 		}
 	}
 }
+
+// Exercise both adapter layouts on any host, including the ARM64 saved LR
+// position (which differs from an ordinary ARM64 FP/LR frame record).
+func TestGCNativeFrameRootsScalarAdapterContinuation(t *testing.T) {
+	for _, layout := range []uint8{gcNativeFrameLayoutAMD64, gcNativeFrameLayoutARM64} {
+		t.Run(fmt.Sprint(layout), func(t *testing.T) {
+			frame, release := newGCNativeTestFrame(t, 256)
+			defer release()
+			code, releaseCode := newGCNativeTestFrame(t, 256)
+			defer releaseCode()
+			base := uintptr(unsafe.Pointer(&frame[0]))
+			codeBase := uintptr(unsafe.Pointer(&code[0]))
+			returnOffset, adapterBase := 32, 40
+			savedReturnOffset := 8
+			if layout == gcNativeFrameLayoutARM64 {
+				returnOffset, adapterBase, savedReturnOffset = 40, 48, 0
+			}
+			callerBase := adapterBase + 16
+			binary.LittleEndian.PutUint64(frame[returnOffset:], uint64(codeBase+100))
+			binary.LittleEndian.PutUint64(frame[adapterBase+savedReturnOffset:], uint64(codeBase+120))
+			binary.LittleEndian.PutUint64(frame[callerBase+16:], 42)
+			// The caller returns outside native code to the public entry trampoline.
+			binary.LittleEndian.PutUint64(frame[callerBase+returnOffset:], 0)
+			collector := new(gc.Collector)
+			domain := &gcStoreDomain{collector: collector}
+			owner := &Instance{gc: collector}
+			owner.refStore = &referenceStore{gcDomains: &gcDomainTopology{first: domain, last: domain, n: 1}}
+			roots := gcNativeFrameRoots{
+				owner: owner, base: base, frameBytes: 32, frameLayout: layout,
+				allowExternalReturn: true, codeBase: codeBase, codeBytes: 256,
+				adapterReturnOffsets: []uint32{100},
+				callsites:            []compiledGCFrameCallsite{{returnOffset: 120, frameBytes: 32, offsets: []uint32{16}}},
+			}
+			seen := 0
+			roots.RangeRoots(func(slot gc.RootSlot) bool {
+				seen++
+				if slot.GetRef() != 42 {
+					t.Fatalf("caller root = %d, want 42", slot.GetRef())
+				}
+				slot.SetRef(43)
+				return true
+			})
+			if seen != 1 || binary.LittleEndian.Uint64(frame[callerBase+16:]) != 43 {
+				t.Fatalf("caller root was not rewritten: seen=%d", seen)
+			}
+		})
+	}
+}
