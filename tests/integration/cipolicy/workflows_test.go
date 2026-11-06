@@ -478,8 +478,8 @@ func TestRuntimeConcurrencyHarnessRunsOnLinuxAMD64AndARM64(t *testing.T) {
 		`WAGO_CONCURRENCY_SEED: 439000001,439000019,439000043,439000081`,
 		`run: just test concurrency`,
 		`name: Race detector / Linux amd64`,
-		`timeout-minutes: 15`,
-		`go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency`,
+		`timeout-minutes: 25`,
+		`go test -race -timeout=20m -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency`,
 		`if: matrix.goos == 'linux'`,
 	} {
 		if strings.HasPrefix(required, "if:") {

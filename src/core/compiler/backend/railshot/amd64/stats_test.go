@@ -53,6 +53,7 @@ func TestModuleStatsReportsFinalizerFallbacks(t *testing.T) {
 // and does not fire the others. This is the trustworthiness net the plan's exit
 // criterion requires.
 func TestCodegenStatsPeepholes(t *testing.T) {
+	useEstablishedScalarPath(t)
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
 	cases := []struct {
@@ -123,6 +124,7 @@ func TestCodegenStatsPeepholes(t *testing.T) {
 }
 
 func TestLeaScaledIndexFoldsNestedALU(t *testing.T) {
+	useEstablishedScalarPath(t)
 	i32 := []wasm.ValType{wasm.I32}
 	// ((x + 16) + (((y ^ 7) & 255) << 2)) is the table-address shape used by
 	// CRC kernels. The nested ALU index and base must still collapse the outer

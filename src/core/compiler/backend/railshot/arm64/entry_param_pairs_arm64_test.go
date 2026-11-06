@@ -31,6 +31,7 @@ func parameterTypes(n int) []wasm.ValType {
 }
 
 func TestEntryParamPairsWrapperARM64(t *testing.T) {
+	establishedScalarRoute(t)
 	requireCompilerDiagnostics(t)
 	const n = 32
 	m := mod1(t, parameterTypes(n), []wasm.ValType{wasm.I64}, parameterSumBody(n))

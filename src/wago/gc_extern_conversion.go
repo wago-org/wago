@@ -39,6 +39,7 @@ type gcExternConversionState struct {
 	entries   []gcExternConversionEntry
 	count     uint32
 	closed    bool
+	core      *gcConversionCore
 }
 
 func newGCExternConversionState(store *referenceStore, collector *gc.Collector) (*gcExternConversionState, error) {
@@ -302,6 +303,16 @@ func (s *gcExternConversionState) isForeignAny(anyWord uint64) (bool, error) {
 // one bounded checked root per distinct live table value and are reclaimed when
 // their final slot is overwritten.
 func (s *gcExternConversionState) replaceExtern(oldWord, newWord uint64) error {
+	return s.publishExternReplacement(oldWord, newWord, func() error { return nil })
+}
+
+// publishExternReplacement acquires the incoming receipt before publication and
+// releases the outgoing receipt only after publication succeeds. The caller
+// validates storage bounds first and holds the native/domain lease throughout.
+// publish must not reenter this conversion state and must leave storage intact
+// on error. A failed publication restores both receipt counts without clearing
+// the incoming conversion's transient checked root.
+func (s *gcExternConversionState) publishExternReplacement(oldWord, newWord uint64, publish func() error) error {
 	if s == nil {
 		return fmt.Errorf("GC extern conversion state is unavailable")
 	}
@@ -311,7 +322,10 @@ func (s *gcExternConversionState) replaceExtern(oldWord, newWord uint64) error {
 		return fmt.Errorf("GC extern conversion state is closed")
 	}
 	if oldWord == newWord {
-		return s.validateExternWordLocked(newWord)
+		if err := s.validateExternWordLocked(newWord); err != nil {
+			return err
+		}
+		return publish()
 	}
 	newEntry, err := s.dataEntryForExternLocked(newWord)
 	if err != nil {
@@ -324,16 +338,45 @@ func (s *gcExternConversionState) replaceExtern(oldWord, newWord uint64) error {
 	if oldEntry != nil && oldEntry.uses == 0 {
 		return fmt.Errorf("GC extern conversion ownership underflow")
 	}
-	if oldEntry != nil && oldEntry.uses == 1 && oldEntry.hasRoot {
-		if err := s.collector.SetTableSlot(oldEntry.rootSlot, gc.Null()); err != nil {
+	// All fallible ownership validation precedes releasing the old root. A
+	// rejected replacement must leave the visible slot and its lease intact.
+	if newEntry != nil && newEntry.uses == ^uint32(0) {
+		return fmt.Errorf("GC extern conversion ownership overflow")
+	}
+	if oldEntry != nil && oldEntry.hasRoot {
+		ref, err := s.collector.CheckedTableSlot(oldEntry.rootSlot)
+		if err != nil {
 			return err
+		}
+		if ref != oldEntry.ref {
+			return fmt.Errorf("GC extern conversion old root mismatch")
+		}
+	}
+	if newEntry != nil && newEntry.hasRoot {
+		ref, err := s.collector.CheckedTableSlot(newEntry.rootSlot)
+		if err != nil {
+			return err
+		}
+		if ref != newEntry.ref {
+			return fmt.Errorf("GC extern conversion new root mismatch")
 		}
 	}
 	if newEntry != nil {
-		if newEntry.uses == ^uint32(0) {
-			return fmt.Errorf("GC extern conversion ownership overflow")
-		}
 		newEntry.uses++
+	}
+	if err := publish(); err != nil {
+		if newEntry != nil {
+			newEntry.uses--
+		}
+		return err
+	}
+	if oldEntry != nil && oldEntry.uses == 1 && oldEntry.hasRoot {
+		// The checked slot was authenticated before publication. Under the
+		// caller's domain lease this cannot fail without an internal invariant
+		// violation; it is not an ordinary rejected-store path.
+		if err := s.collector.SetTableSlot(oldEntry.rootSlot, gc.Null()); err != nil {
+			panic(gcHelperFailure(err))
+		}
 	}
 	if oldEntry != nil {
 		oldEntry.uses--
@@ -411,11 +454,13 @@ func (s *gcExternConversionState) close() error {
 	if s.closed {
 		return nil
 	}
+	liveCollector := gcConversionCollectorRegistered(s)
 	s.closed = true
+	closeGCConversionCoreLocked(s)
 	var first error
 	for i := range s.entries {
 		entry := &s.entries[i]
-		if entry.hasRoot {
+		if entry.hasRoot && liveCollector {
 			if err := s.collector.SetTableSlot(entry.rootSlot, gc.Null()); err != nil && first == nil {
 				first = err
 			}

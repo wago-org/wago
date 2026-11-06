@@ -3,8 +3,11 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +34,30 @@ func TestGCExternConversionAcrossReferenceTables(t *testing.T) {
 	host, err := inst.NewExternRef("hello")
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The first instruction publishing a converted object targets table 0.
+	// The unsupported adapter must reject it before modifying any table.
+	// RV64 uses compact references; other targets need opaque store hooks.
+	if runtime.GOARCH != "riscv64" && !compiledConversionStoreHooks(compiled) {
+		before := make([][]byte, 3)
+		for i := range before {
+			before[i] = bytes.Clone(inst.tableDescriptor(i))
+		}
+		if _, err := inst.InvokeValues(ctx, "store", ValueExternRef(host)); err == nil || !strings.Contains(err.Error(), "opaque converted publication is unsupported on this target") {
+			t.Fatalf("store converted rejection: %v", err)
+		}
+		for i := range before {
+			if !bytes.Equal(before[i], inst.tableDescriptor(i)) {
+				t.Fatalf("rejected store changed table %d", i)
+			}
+		}
+		if value, ok := inst.ExternRefValue(host); !ok || value != "hello" {
+			t.Fatalf("host externref after rejection = %v, %v", value, ok)
+		}
+		if stats := inst.gc.Stats(); stats.FullCollections == 0 {
+			t.Fatal("no collection ran")
+		}
+		return
 	}
 	if _, err := inst.InvokeValues(ctx, "store", ValueExternRef(host)); err != nil {
 		t.Fatalf("store: %v", err)

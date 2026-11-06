@@ -39,6 +39,32 @@ func gcStructReductionBytes(cast, ordinary bool) []byte {
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
 }
 
+func TestGCInductionReductionsDoNotPublishAllocationLayouts(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		module []byte
+	}{
+		{"struct", gcStructReductionBytes(false, false)},
+		{"array", gcArrayReductionBytes(false)},
+		{"fill", gcArrayFillReductionBytes(false)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), tc.module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			if roots := c.genericGCFrameRoots(); roots != nil {
+				for i, marker := range roots.deadInductionLayouts {
+					if marker != 0 {
+						t.Fatalf("function %d published induction marker %#x", i, marker)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestGCStructReductionExecutionAndAllocation(t *testing.T) {
 	for _, cast := range []bool{false, true} {
 		optimized, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcStructReductionBytes(cast, false))

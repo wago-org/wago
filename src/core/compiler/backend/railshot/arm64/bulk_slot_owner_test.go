@@ -32,7 +32,7 @@ func TestBulkPhysicalArgumentSlots(t *testing.T) {
 				ref = wasm.AbsRef(wasm.HeapExtern)
 			}
 			sc := newScratch()
-			f := fn{a: sc.asm, sc: sc, s: sc.stack, memSizeReg: regNone, m: &wasm.Module{
+			f := fn{a: sc.asm, sc: sc, s: sc.stack, syncHostSlots: maxSyncHostSlots, memSizeReg: regNone, m: &wasm.Module{
 				Memories: []wasm.MemType{{}}, Tables: []wasm.Table{{Type: wasm.TableType{Ref: ref}}},
 			}}
 			middleType := mtI32
@@ -48,9 +48,30 @@ func TestBulkPhysicalArgumentSlots(t *testing.T) {
 			}
 			want := f
 			want.a = &a64.Asm{}
-			want.ld64(X9, SP, f.spillOff(5))
-			want.ld64(tc.valueReg, SP, f.spillOff(6))
-			want.ld64(X11, SP, f.spillOff(7))
+			if tc.external {
+				// table.fill's GC helper takes (i32 dst, externref value,
+				// i32 count, i32 table). Two v128 values below the operands
+				// occupy four physical slots; helper arguments start at slot 5.
+				want.a.MovImm32(X9, 0)
+				want.st64(SP, f.spillOff(8), X9)
+				want.ld64(X11, linMemReg, -int32(offCustomCtx))
+				want.ld32(X9, SP, f.spillOff(5))
+				want.st64(X11, hcArgs, X9)
+				want.ld64(X9, SP, f.spillOff(6))
+				want.st64(X11, hcArgs+8, X9)
+				want.ld32(X9, SP, f.spillOff(7))
+				want.st64(X11, hcArgs+16, X9)
+				want.ld32(X9, SP, f.spillOff(8))
+				want.st64(X11, hcArgs+24, X9)
+				want.a.MovImm64(X16, uint64(gcStructDispatchBit|55))
+				want.st32(X11, hcImportIdx, X16)
+				want.a.MovImm64(X16, 4) // four parameter slots, no results
+				want.st32(X11, hcNArgs, X16)
+			} else {
+				want.ld64(X9, SP, f.spillOff(5))
+				want.ld64(tc.valueReg, SP, f.spillOff(6))
+				want.ld64(X11, SP, f.spillOff(7))
+			}
 			if err := tc.emit(&f, wasm.NewReader(tc.immediate)); err != nil {
 				t.Fatal(err)
 			}

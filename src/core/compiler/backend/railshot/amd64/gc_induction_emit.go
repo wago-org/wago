@@ -5,7 +5,6 @@ package amd64
 import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func (f *fn) pushGCInductionCount() {
@@ -78,18 +77,12 @@ func (f *fn) emitGCStructReduction(typeIndex uint32) error {
 	if err := f.emitGCInductionReservation(gcStructReserveDeadBatch, uint64(typeIndex), wasm.I32); err != nil {
 		return err
 	}
-	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); f.gcReducedBounded && f.opt(optRegABI) && f.opt(optPreparedDirectEntry) && ok && layout.NativeAlloc && layout.PointerFree && layout.ObjectSize <= 4095 {
-		f.gcDeadBatchLayout = uint64(layout.ObjectSize) | uint64(max(layout.Align, 8))<<32
-	}
 	f.stats.peep("gc-struct-induction-reduction")
 	return f.emitGCInductionSum(false)
 }
 func (f *fn) emitGCArrayReduction(typeIndex, length uint32) error {
 	if err := f.emitGCInductionReservation(gcArrayReserveDeadBatch, uint64(typeIndex)<<32|uint64(length), wasm.I64); err != nil {
 		return err
-	}
-	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompArray); ok && gc.NativeDeadBatchSupported && layout.Type.Final && layout.PointerFree && layout.ElemLayout.DirectAccess && layout.ElemLayout.Size == 4 && f.gcReducedBounded && f.opt(optRegABI) && f.opt(optPreparedDirectEntry) {
-		f.gcDeadBatchLayout = uint64(gc.Align8(gc.PayloadOffset+length*4)) | uint64(8)<<32
 	}
 	f.stats.peep("gc-array-induction-reduction")
 	return f.emitGCInductionSum(false)

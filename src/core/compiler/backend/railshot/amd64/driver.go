@@ -20,6 +20,17 @@ var teeSlotPredicateEnabled = os.Getenv("WAGO_AMD64_TEE_SLOT_PREDICATE") != "0"
 // Frontend.cpp parseCodeSection opcode switch. Phase 0 covers the integer const/
 // local/ALU subset needed to prove the pipeline end-to-end.
 func (f *fn) body(code []byte) error {
+	p := f.sc.gcLifetimePending
+	if p != nil {
+		f.sc.gcLifetimePending = nil
+	} else {
+		p = f.sealGCLifetime(code)
+	}
+	if p != nil && f.sc.gcLifetimeBaseline {
+		f.sc.gcLifetimePending = p
+	} else if consumed, err := f.consumeGCLifetime(p, code); consumed || err != nil {
+		return err
+	}
 	if gcInductionReductionsEnabled && f.nParams == 1 && !f.interruptible && f.localBase == 0 && len(f.customInstructions) == 0 {
 		if f.gcI31Reduction(code) {
 			return f.emitGCI31Reduction()

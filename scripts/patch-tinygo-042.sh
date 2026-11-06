@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # TinyGo 0.42.0 shipped with a duplicate task-exit symbol when using
 # -scheduler=tasks. Apply upstream tinygo-org/tinygo#5656 to its installed
-# source tree until a release containing the fix is available.
+# source tree, then install the version-pinned Wago foreign-stack GC hooks.
+# The latter remain required for threaded native entry even after #5656 lands.
 set -euo pipefail
 
 case "$(tinygo version)" in
@@ -39,3 +40,5 @@ for path, old, new in changes:
     path.write_text(source.replace(old, new, 1))
 print("patch-tinygo-042: upstream task-exit fix present")
 PY
+
+"$python_cmd" "$(dirname "$0")/patch-tinygo-foreign-stack.py" "$tinygo_root"

@@ -10,6 +10,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestGCCollectFrameRootsPreservesArchitectureBoundary(t *testing.T) {
@@ -660,5 +661,70 @@ func BenchmarkGCFrameCallsiteLookup(b *testing.B) {
 				}
 			})
 		}
+	}
+}
+
+// Exercise both adapter layouts on any host, including the ARM64 saved LR
+// position (which differs from an ordinary ARM64 FP/LR frame record).
+func TestGCNativeFrameRootsScalarAdapterContinuation(t *testing.T) {
+	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
+		t.Skip("requires a native compiled owner")
+	}
+	code, err := Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{1, 1}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer code.Close()
+	owner, err := Instantiate(code, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	if owner.gc == nil || len(owner.c.code) <= 2 {
+		t.Fatal("missing retained collector/code owner")
+	}
+	for _, layout := range []uint8{gcNativeFrameLayoutAMD64, gcNativeFrameLayoutARM64} {
+		t.Run(fmt.Sprint(layout), func(t *testing.T) {
+			// Use the real owner's bounded foreign mapping, not an unbounded
+			// synthetic buffer. Both persisted adapter layouts are inspected.
+			base := owner.eng.StackTop() - 256
+			frame := unsafe.Slice((*byte)(offHeapPtr(base)), 256)
+			clear(frame)
+			codeBase := owner.base
+			returnOffset, adapterBase := 32, 40
+			savedReturnOffset := 8
+			if layout == gcNativeFrameLayoutARM64 {
+				returnOffset, adapterBase, savedReturnOffset = 40, 48, 0
+			}
+			callerBase := adapterBase + 16
+			binary.LittleEndian.PutUint64(frame[returnOffset:], uint64(codeBase+1))
+			binary.LittleEndian.PutUint64(frame[adapterBase+savedReturnOffset:], uint64(codeBase+2))
+			binary.LittleEndian.PutUint64(frame[callerBase+16:], 42)
+			// The caller returns outside native code to the public entry trampoline.
+			binary.LittleEndian.PutUint64(frame[callerBase+returnOffset:], 0)
+			roots := gcNativeFrameRoots{
+				owner: owner, physicalStack: owner.eng, entryReturnSlot: base + uintptr(callerBase+returnOffset), base: base, frameBytes: 32, frameLayout: layout,
+				allowExternalReturn: true, codeBase: codeBase, codeBytes: uintptr(len(owner.c.code)),
+				adapterReturnOffsets: []uint32{1},
+				callsites:            []compiledGCFrameCallsite{{returnOffset: 2, frameBytes: 32, offsets: []uint32{16}}},
+			}
+			seen := 0
+			roots.RangeRoots(func(slot gc.RootSlot) bool {
+				seen++
+				if slot.GetRef() != 42 {
+					t.Fatalf("caller root = %d, want 42", slot.GetRef())
+				}
+				slot.SetRef(43)
+				return true
+			})
+			if seen != 1 || binary.LittleEndian.Uint64(frame[callerBase+16:]) != 43 {
+				t.Fatalf("caller root was not rewritten: seen=%d", seen)
+			}
+		})
 	}
 }

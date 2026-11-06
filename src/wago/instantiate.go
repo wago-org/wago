@@ -299,8 +299,12 @@ func (b *instanceBuilder) prepareCollector() error {
 		return nil
 	}
 	gcConfig := b.opts.GC
-	if b.c.usesGenericGCExecution() && b.c.genericGCFrameRoots() == nil && !rv64OfficialGCRefEq(b.c) && !rv64GCRefTestTable(b.c) && !rv64GCRefTestConcrete(b.c) && !rv64GCRefCastConcrete(b.c) && !rv64GCBrOnCastConcrete(b.c) && !rv64GCBrOnCastFailConcrete(b.c) && !rv64GCBrOnCastNullability(b.c) && !rv64GCBrOnCastFailNullability(b.c) && !rv64GCRefTestAbstract(b.c) && !rv64GCExtern(b.c) && !rv64GCRefCastAbstract(b.c) && !rv64GCBrOnCastAbstract(b.c) && !rv64GCBrOnCastFailAbstract(b.c) && !rv64GCStructGet(b.c) && !rv64GCStructMutation(b.c) && !rv64GCStructNull(b.c) && !rv64GCStructPacked(b.c) && !rv64GCStructBasic(b.c) && !rv64GCArrayLocal(b.c) && !rv64GCArrayUniform(b.c) && !rv64GCArrayFixedLocal(b.c) && !rv64GCArrayFixedOfficial(b.c) && !rv64GCArrayDefaultOfficial(b.c) && !rv64GCArrayPackedData(b.c) && !rv64GCArrayReference(b.c) && !rv64GCArrayInitElem(b.c) && !rv64GCArrayInitData(b.c) && !rv64GCArrayFill(b.c) && !rv64GCArrayCopy(b.c) {
-		// Generic products outside the validated native root-map slice still do
+	needsFrameRoots := b.c.usesGenericGCExecution()
+	if compiledArchitecture != 4 {
+		needsFrameRoots = b.c.needsExactNativeGCRoots()
+	}
+	if needsFrameRoots && b.c.genericGCFrameRoots() == nil && !rv64OfficialGCRefEq(b.c) && !rv64GCRefTestTable(b.c) && !rv64GCRefTestConcrete(b.c) && !rv64GCRefCastConcrete(b.c) && !rv64GCBrOnCastConcrete(b.c) && !rv64GCBrOnCastFailConcrete(b.c) && !rv64GCBrOnCastNullability(b.c) && !rv64GCBrOnCastFailNullability(b.c) && !rv64GCRefTestAbstract(b.c) && !rv64GCExtern(b.c) && !rv64GCRefCastAbstract(b.c) && !rv64GCBrOnCastAbstract(b.c) && !rv64GCBrOnCastFailAbstract(b.c) && !rv64GCStructGet(b.c) && !rv64GCStructMutation(b.c) && !rv64GCStructNull(b.c) && !rv64GCStructPacked(b.c) && !rv64GCStructBasic(b.c) && !rv64GCArrayLocal(b.c) && !rv64GCArrayUniform(b.c) && !rv64GCArrayFixedLocal(b.c) && !rv64GCArrayFixedOfficial(b.c) && !rv64GCArrayDefaultOfficial(b.c) && !rv64GCArrayPackedData(b.c) && !rv64GCArrayReference(b.c) && !rv64GCArrayInitElem(b.c) && !rv64GCArrayInitData(b.c) && !rv64GCArrayFill(b.c) && !rv64GCArrayCopy(b.c) {
+		// Products outside the validated native root-map slice still do
 		// not publish every native reference at allocating helper safepoints. Keep
 		// them stable and bounded rather than scanning an incomplete frame. The
 		// exact RV64 allocating products have no live native reference across an
@@ -525,6 +529,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		if conversionStore == nil {
 			conversionStore = newReferenceStore(true)
 		}
+		// Publish the Store-wide conversion epoch before the state which can
+		// mint conversion identities becomes reachable. The bit never clears,
+		// including when this construction later rolls back.
+		conversionStore.conversionDomainEverEnabled.Store(true)
+		conversionPublicEnablementObservation()
 		gcExternConversion, err = newGCExternConversionState(conversionStore, b.collector)
 		if err != nil {
 			return nil, err
@@ -1206,6 +1215,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
 		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])))
 	}
+	var conversionInitialTables []conversionInitialTable
 	var globalCells []*Global
 	var instantiationRoots gc.Slots
 	functionConstruction := newManagedFunctionConstruction(c, b.collector, &instantiationRoots)
@@ -1677,6 +1687,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				break
 			}
 			entryBytes := c.tableEntryBytes(int(el.TableIndex))
+			var conversionSegmentTarget []byte
+			if conversionInitializationEnabled && importedTable != nil && normalizedElemRefType(el.RefType) == ValExternRef {
+				conversionSegmentTarget = stageConversionInitialTable(&conversionInitialTables, importedTable, elemBase, 0)
+				desc = append([]byte(nil), conversionSegmentTarget...)
+			}
 			for k, value := range el.Values {
 				slot := int(elemBase) + k
 				off := 8 + slot*entryBytes
@@ -1698,6 +1713,10 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, writeErr)
 					break
 				}
+			}
+			if initErr == nil && conversionSegmentTarget != nil {
+				copy(conversionSegmentTarget[8+int(elemBase)*8:8+int(end)*8], desc[8+int(elemBase)*8:8+int(end)*8])
+				stageConversionInitialTable(&conversionInitialTables, importedTable, elemBase, len(el.Values))
 			}
 			if initErr != nil {
 				break
@@ -1915,7 +1934,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	}
 	if c.boundedHostSegments() && len(syncHosts) > 1 {
 		if shapes := boundedMultiHostShapes(syncHosts); shapes != nil {
-			in.ensurePluginState().multiHost = &boundedMultiHostLayout{shapes: shapes}
+			in.ensurePluginState().numericCacheState().multiHost = &boundedMultiHostLayout{shapes: shapes}
 		}
 	}
 	if opts.InvokeCacheSlots != 0 && opts.InvokeCacheSlots != 4 {
@@ -2185,6 +2204,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		if err := gcRefTestTable.attachConversion(gcExternConversion); err != nil {
 			return nil, err
 		}
+		if err := bindGCConversionCore(in); err != nil {
+			return nil, err
+		}
 	}
 	if opts.runtime == nil && c.HasStart && !(c.nativeTableContextABI && c.tableImportCount() != 0 || dependencyConstruction) {
 		// Only transfer direct-start cleanup after reference-store and conversion
@@ -2224,6 +2246,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 		published.each(func(table *Table) { publicationCleanup.run(table.pruneRetainedInstances) })
 		publicationCleanup.finish()
+	}
+	// Earlier complete active segments retain their Wasm-mandated effects when
+	// a later segment traps. Each individual segment is prepared atomically.
+	if err := in.initializeConversionReceipts(conversionInitialTables); err != nil {
+		return nil, err
 	}
 	if initErr != nil {
 		return nil, initErr

@@ -76,6 +76,22 @@ func (f *fn) nativeGCStructAllocLayout(typeIndex uint32) (nativeGCStructAllocPla
 	if !f.opt(optGCNativeAlloc) {
 		return nativeGCStructAllocPlan{}, false
 	}
+	// Lifetime facts are compile-scoped. Only reuse an already-admitted fact:
+	// ordinary lowering must not populate the cache or change disabled-path work.
+	if f.sc != nil && f.sc.gcLifetimeFacts != nil {
+		if layout, ok := f.sc.gcLifetimeFacts.cachedLayout(f, typeIndex); ok {
+			return layout, true
+		}
+	}
+	return f.deriveNativeGCStructAllocLayout(typeIndex)
+}
+
+// deriveNativeGCStructAllocLayout bypasses lifetime facts. Fact construction
+// uses it to avoid recursively consulting the cache while holding its lock.
+func (f *fn) deriveNativeGCStructAllocLayout(typeIndex uint32) (nativeGCStructAllocPlan, bool) {
+	if !f.opt(optGCNativeAlloc) {
+		return nativeGCStructAllocPlan{}, false
+	}
 	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok {
 		if !layout.NativeAlloc {
 			return nativeGCStructAllocPlan{}, false

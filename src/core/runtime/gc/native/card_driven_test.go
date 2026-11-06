@@ -442,8 +442,8 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(objectCard{}); got != 16 {
 		t.Fatalf("objectCard size=%d, want 16", got)
 	}
-	if got := unsafe.Sizeof(Config{}); got != 64 {
-		t.Fatalf("Config size=%d, want 64", got)
+	if got := unsafe.Sizeof(Config{}); got != 80 {
+		t.Fatalf("Config size=%d, want 80", got)
 	}
 	if got := unsafe.Sizeof(tinyScanCursor{}); got != 8 {
 		t.Fatalf("tinyScanCursor size=%d, want 8", got)
@@ -461,8 +461,10 @@ func TestCardMetadataFootprint(t *testing.T) {
 		t.Fatalf("tinyGC size=%d, want 88 with unbounded transient-root accounting", got)
 	}
 	// Bounds, lazy major-block state, and one large-array list-index hint have
-	// fixed descriptor costs. The hint does not change the native state layout.
-	wantCollector := uintptr(1168) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
+	// fixed descriptor costs. Mature-region config adds 8 aligned bytes and
+	// mature mode adds one lazy metadata pointer; Eden has no region ledger.
+	// NativeCollectorView remains unchanged.
+	wantCollector := uintptr(1168+8+16) + unsafe.Sizeof((*matureHeap)(nil)) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}

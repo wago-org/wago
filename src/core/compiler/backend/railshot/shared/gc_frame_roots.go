@@ -72,6 +72,7 @@ type GCFrameRootPlan struct {
 	Candidate    bool
 	Exact        bool
 	Conservative bool // local masks retain every tracked local at each site
+	UnwindOnly   bool // zero-root return maps; retain ordinary numeric host lowering
 	FrameBytes   uint32
 	Locals       []GCFrameLocal
 	// AllReferenceLocals retains the source types for local.get after exact
@@ -98,6 +99,35 @@ type GCFrameRootPlan struct {
 	// point beyond the function-owned bytes into a module-level adapter island.
 	AdapterReturnOffset uint32
 	SafepointBase       uint32
+}
+
+// GCFrameRootPublication is the mutable backend-produced portion of one root
+// plan. Candidate compilers use it to retain a completed baseline while a
+// private replacement is emitted and validated.
+type GCFrameRootPublication struct {
+	Exact, Conservative             bool
+	FrameBytes, AdapterReturnOffset uint32
+	FixedOffsetCount                uint32
+	SafepointCount, CallsiteCount   uint32
+	SafepointData, CallsiteData     []uint32
+}
+
+func (p *GCFrameRootPlan) CapturePublication(safepoints, callsites []uint32) GCFrameRootPublication {
+	safepoints = append(safepoints[:0], p.SafepointData...)
+	callsites = append(callsites[:0], p.CallsiteData...)
+	return GCFrameRootPublication{
+		Exact: p.Exact, Conservative: p.Conservative, FrameBytes: p.FrameBytes,
+		AdapterReturnOffset: p.AdapterReturnOffset, FixedOffsetCount: p.fixedOffsetCount,
+		SafepointCount: p.safepointCount, CallsiteCount: p.callsiteCount,
+		SafepointData: safepoints, CallsiteData: callsites,
+	}
+}
+
+func (p *GCFrameRootPlan) RestorePublication(s GCFrameRootPublication) {
+	p.Exact, p.Conservative = s.Exact, s.Conservative
+	p.FrameBytes, p.AdapterReturnOffset = s.FrameBytes, s.AdapterReturnOffset
+	p.fixedOffsetCount, p.safepointCount, p.callsiteCount = s.FixedOffsetCount, s.SafepointCount, s.CallsiteCount
+	p.SafepointData, p.CallsiteData = s.SafepointData, s.CallsiteData
 }
 
 // SetFixedOffsets transfers ownership of the conservative always-live roots to

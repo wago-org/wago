@@ -2,8 +2,9 @@ package gc
 
 import "slices"
 
-// NativeDeadBatchSupported keeps injected allocation failures on the checked
-// per-object path. Release builds may charge proven-dead batches natively.
+// NativeDeadBatchSupported is retained as the shared compiler/runtime gate for
+// scalar lifetime replacement. Failure-injection builds require its checked
+// allocation path and therefore disable that replacement.
 const NativeDeadBatchSupported = !failureInjectionEnabled
 
 // Native allocation reserves bounded identity batches. AMD64 struct allocation
@@ -144,9 +145,7 @@ func (c *Collector) reserveNativeHandles(batch int) {
 	c.refreshNativeHandles()
 }
 
-// PrepareNativeStructAllocation retains the original direct nursery-bump struct
-// path. Array chunks therefore add no cursor checks or reserved-byte gaps to the
-// established native struct hot path.
+// PrepareNativeStructAllocation retains direct nursery-bump reservations.
 func (c *Collector) PrepareNativeStructAllocation(minObjectBytes uint32) bool {
 	return c.prepareNativeStructAllocation(minObjectBytes, 0)
 }
@@ -431,12 +430,9 @@ func (c *Collector) discardNativeStructHandles() {
 		}
 		c.nurseryBump = rewind
 	}
-	chargedBump := c.nurseryBump
 	if canceled {
-		// Reserved handles are appended as one tail batch and no Go allocation or
-		// collection can append another nursery identity before cancellation. Trim
-		// that bounded tail directly and retain only consumed live handles. Keep the
-		// full compaction as a fail-closed fallback if the invariant is not exact.
+		// Usually this batch is the ledger tail. An independent large-array
+		// reservation can follow it, so use the bounded trim only when exact.
 		trimmed := false
 		if int(end) <= len(c.nurseryHandles) {
 			start := len(c.nurseryHandles) - int(end)
@@ -459,15 +455,25 @@ func (c *Collector) discardNativeStructHandles() {
 			}
 		}
 		if !trimmed {
-			// A failed collection can return before normal nursery compaction, and
-			// later handle reuse must not append a duplicate identity to the dense
-			// young set.
-			c.compactNurseryHandles()
-			if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
-				// Native dead-struct charges have no handle extent for compaction
-				// to discover. Keep their high-water mark until collection reclaims
-				// the charged bytes and clears the pending object count.
-				c.nurseryBump = chargedBump
+			reserved := &c.nativeLargeArrayAlloc
+			if reserved.Cursor < reserved.Count {
+				// An unpublished array owns bytes and a free handle that ordinary
+				// nursery compaction cannot see. Preserve both until it commits.
+				out := c.nurseryHandles[:0]
+				for _, h := range c.nurseryHandles {
+					if c.isYoungHandle(h) || h == reserved.Handle {
+						out = append(out, h)
+					}
+				}
+				clear(c.nurseryHandles[len(out):])
+				c.nurseryHandles = out
+			} else {
+				chargedBump := c.nurseryBump
+				c.compactNurseryHandles()
+				if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
+					// Dead native structs have no handle extent to reconstruct.
+					c.nurseryBump = chargedBump
+				}
 			}
 		}
 	}

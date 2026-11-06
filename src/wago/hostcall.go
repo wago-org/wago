@@ -694,11 +694,38 @@ type instancePluginState struct {
 	gcArrayElements      atomic.Pointer[gcArrayElementState]
 	gcRefTestTable       atomic.Pointer[gcRefTestTableState]
 	gcGlobalRoots        []gcGlobalRootMapping
-	tagIdentityBase      uintptr                 // arena-owned bounded native u64 directory for staged EH
-	tagExports           map[int]*Tag            // lazy stable identity handles for exported local tags
-	boundedViewVersion   uint64                  // native lease protected; valid only for this observed context epoch
-	boundedViewMemBase   uintptr                 // changed backing invalidates cached view entry too
-	multiHost            *boundedMultiHostLayout // immutable admitted import shapes, allocated only for multi-import modules
+	tagIdentityBase      uintptr                              // arena-owned bounded native u64 directory for staged EH
+	tagExports           map[int]*Tag                         // lazy stable identity handles for exported local tags
+	boundedViewVersion   uint64                               // native lease protected; valid only for this observed context epoch
+	boundedViewMemBase   uintptr                              // changed backing invalidates cached view entry too
+	numericCache         atomic.Pointer[instanceNumericCache] // mutually exclusive multi-import or GC scalar cache
+}
+
+type instanceNumericCache struct {
+	multiHost      *boundedMultiHostLayout
+	publicGCScalar atomic.Pointer[WasmFunc]
+}
+
+func (state *instancePluginState) numericCacheState() *instanceNumericCache {
+	if cache := state.numericCache.Load(); cache != nil {
+		return cache
+	}
+	cache := new(instanceNumericCache)
+	if state.numericCache.CompareAndSwap(nil, cache) {
+		return cache
+	}
+	return state.numericCache.Load()
+}
+
+func (state *instancePluginState) multiHostLayout() *boundedMultiHostLayout {
+	if state == nil {
+		return nil
+	}
+	cache := state.numericCache.Load()
+	if cache == nil {
+		return nil
+	}
+	return cache.multiHost
 }
 
 type instanceCloseState struct {
@@ -3065,7 +3092,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 			err = in.eng.CallWithHostBaseScalarFixed(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatch, activation.dispatchTypedScalarExpandedPortal, fixed)
 		}
 	} else if in.hasBoundedMultiHostView() {
-		err = in.eng.CallWithHostBaseMultiViewBounded(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, in.ensurePluginState().multiHost.shapes, activation.dispatchBoundedMultiHostView)
+		err = in.eng.CallWithHostBaseMultiViewBounded(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, in.ensurePluginState().multiHostLayout().shapes, activation.dispatchBoundedMultiHostView)
 	} else if in.hasExpandedTypedScalarHost() {
 		err = in.eng.CallWithHostBaseScalarExpanded(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchTypedScalarExpandedPortal)
 	} else if in.hasDirectTypedScalarHost() {

@@ -173,9 +173,6 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		if grouped, err := f.tryDeadGCDefaultGroup(r, typeIndex); grouped || err != nil {
-			return err
-		}
 		if _, ok := f.stagedStructType(typeIndex); !ok {
 			return fmt.Errorf("amd64: struct.new_default type %d is unavailable", typeIndex)
 		}
@@ -1117,6 +1114,7 @@ func (f *fn) emitGCI31(sub uint32) error {
 }
 
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
+	mayAllocate := gcHelperMayAllocate(helper) || f.gcFunctionMutationMayAllocate(helper, params)
 	// Every parked helper may run collector work, so the transient raw resolver
 	// certificate does not survive it.
 	f.invalidateGCResolvedObject()
@@ -1124,7 +1122,7 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 	defer func() {
 		n := f.a.Len() - before
 		f.stats.addGCHelperCallBytes(n)
-		if gcHelperMayAllocate(helper) {
+		if mayAllocate {
 			f.stats.addGCAllocationBytes(n)
 		}
 		switch helper {
@@ -1133,7 +1131,7 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		}
 	}()
 	safepoint := uint32(0)
-	if f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && gcHelperMayAllocate(helper) {
+	if f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && mayAllocate {
 		safepoint = f.recordGCFrameSafepoint(len(params))
 	}
 	payload, ok := shared.EncodeGCDispatch(helper, safepoint)
@@ -1310,4 +1308,22 @@ func (f *fn) pushGCForwardedValue(value storage) {
 		}
 	}
 	f.pushValue(value)
+}
+
+// Opaque function mutations can allocate a traced producer environment. Keep
+// numeric, collector-reference and ordinary extern storage nonallocating.
+func (f *fn) gcFunctionMutationMayAllocate(helper uint32, params []wasm.ValType) bool {
+	switch helper {
+	case gcStructSet:
+		return len(params) > 1 && wasm.FunctionReferenceType(f.m, params[1])
+	case gcArraySet, gcArrayFill:
+		return len(params) > 2 && wasm.FunctionReferenceType(f.m, params[2])
+	case gcArrayInitElem:
+		if len(params) == 0 || params[0].Kind() != wasm.ValRef {
+			return false
+		}
+		heap := params[0].Ref().Heap()
+		return heap.Kind() == wasm.HeapTypeIndex && wasm.FunctionStorageMutation(f.m, wasm.InstrArrayInitElem, heap.Type().Index, 0)
+	}
+	return false
 }

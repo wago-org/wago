@@ -28,7 +28,12 @@ func TestFixedSharedDirectGoImport(t *testing.T) {
 				found = true
 			}
 		}
-		if found != (mode == "1") {
+		// api.go installs collector-free native unwind maps for this import.
+		// callHostSync requires !recordRoots for the direct shared Go path.
+		if c.genericGCFrameRoots() == nil {
+			t.Fatal("missing native unwind maps")
+		}
+		if found {
 			t.Fatalf("direct Go transition=%v mode=%s", found, mode)
 		}
 		for _, compiled := range []*Compiled{c} {

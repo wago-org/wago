@@ -85,6 +85,18 @@ type Config struct {
 	DisableCollection     bool
 	TinyCollectEveryAlloc bool
 	TinyStepEveryAlloc    bool
+	// NurseryRegionShift is the legacy opt-in for mature/LOS descriptors over the
+	// shared ThroughputHeapBytes budget. Eden remains one contiguous bump area;
+	// its exhaustion follows the minor-first generational schedule. Zero disables
+	// mature descriptors. Values 6..30 retain the experimental configuration's
+	// fixed, divisible NurseryBytes validation for compatibility.
+	NurseryRegionShift uint8
+	// MatureEvacuation opts into pressure-triggered sparse old-space relocation.
+	MatureEvacuation bool
+	// Workers is the maximum total including the coordinator; zero selects one,
+	// maximum eight. Helpers are subject to processor availability and a
+	// process-wide budget, so collection always permits coordinator-only progress.
+	Workers int
 }
 
 type Stats struct {
@@ -158,7 +170,8 @@ type Collector struct {
 	slotCards             []slotCard
 	globalCardBits        []uint64
 	tableCardBits         []uint64
-	cardFallback          bool // shared full remembered-object/persistent-root scan
+	cardFallback          bool   // shared full remembered-object/persistent-root scan
+	markHighWater         uint32 // exclusive reset bound; uses padding before globalSlots
 	globalSlots           []Ref
 	tableSlots            []Ref
 	stats                 Stats
@@ -173,6 +186,7 @@ type Collector struct {
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
+	parallel                     *parallelCollector
 }
 
 const defaultNursery = 64 << 10
@@ -242,6 +256,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // errCollectorClosed. It is idempotent; Stats remains safe for post-close
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
+	c.closeParallel()
 	c.notifyCollectorClosed()
 	c.discardNativeStructHandles()
 	c.discardNativeLargeArrayAllocation()
@@ -255,6 +270,7 @@ func (c *Collector) Close() {
 	c.freeHandles = nil
 	c.nurseryHandles = nil
 	c.mark = nil
+	c.markHighWater = 0
 	c.majorBlocks = nil
 	c.majorYoungDirty = false
 	c.markStack = nil
@@ -350,7 +366,10 @@ func (c *Collector) errIfClosed() error {
 	if c.closed {
 		return errCollectorClosed
 	}
-	return nil
+	if c.throughput.mature != nil && c.throughput.mature.poison != nil {
+		return c.throughput.mature.poison
+	}
+	return c.parallelPoisonError()
 }
 
 // Stats returns collection/allocation counters. It remains safe after Close;

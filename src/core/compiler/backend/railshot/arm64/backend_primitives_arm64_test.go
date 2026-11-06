@@ -1026,7 +1026,7 @@ func TestTableGetSetLowering(t *testing.T) {
 			ref = wasm.AbsRef(wasm.HeapExtern)
 		}
 		newFn := func() *fn {
-			return &fn{a: &a64.Asm{}, s: newStack(), m: &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: ref}}}}}
+			return &fn{a: &a64.Asm{}, s: newStack(), syncHostSlots: maxSyncHostSlots, m: &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: ref}}}}}
 		}
 		f := newFn()
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 0})
@@ -1062,7 +1062,7 @@ func TestTableInitLowering(t *testing.T) {
 		if externref {
 			ref = wasm.AbsRef(wasm.HeapExtern)
 		}
-		f := &fn{a: &a64.Asm{}, s: newStack(), m: &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: ref}}}}}
+		f := &fn{a: &a64.Asm{}, s: newStack(), syncHostSlots: maxSyncHostSlots, m: &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: ref}}}}}
 		for range 3 {
 			f.pushValue(storage{kind: stConst, typ: mtI32, cval: 0})
 		}
@@ -1086,7 +1086,7 @@ func TestTableFillLowering(t *testing.T) {
 		if externref {
 			ref = wasm.AbsRef(wasm.HeapExtern)
 		}
-		f := &fn{a: &a64.Asm{}, s: newStack(), m: &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: ref}}}}}
+		f := &fn{a: &a64.Asm{}, s: newStack(), syncHostSlots: maxSyncHostSlots, m: &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: ref}}}}}
 		for range 3 {
 			f.pushValue(storage{kind: stConst, typ: mtI32, cval: 0})
 		}
@@ -1108,7 +1108,7 @@ func TestTableGrowLowering(t *testing.T) {
 		if externref {
 			ref = wasm.AbsRef(wasm.HeapExtern)
 		}
-		f := &fn{a: &a64.Asm{}, s: newStack(), m: &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: ref}}}}}
+		f := &fn{a: &a64.Asm{}, s: newStack(), syncHostSlots: maxSyncHostSlots, m: &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: ref}}}}}
 		f.pushValue(storage{kind: stConst, typ: mtI64, cval: 0}) // init reference
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1}) // delta
 		if err := f.tableGrow(wasm.NewReader([]byte{0})); err != nil {
@@ -1129,7 +1129,7 @@ func TestTableCopyLowering(t *testing.T) {
 		if externref {
 			ref = wasm.AbsRef(wasm.HeapExtern)
 		}
-		f := &fn{a: &a64.Asm{}, s: newStack(), m: &wasm.Module{Tables: []wasm.Table{
+		f := &fn{a: &a64.Asm{}, s: newStack(), syncHostSlots: maxSyncHostSlots, m: &wasm.Module{Tables: []wasm.Table{
 			{Type: wasm.TableType{Ref: ref}},
 			{Type: wasm.TableType{Ref: ref}},
 		}}}

@@ -1356,6 +1356,17 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 // module routes ALL host calls through the synchronous control frame, so the
 // async host-call log and the control frame never both occupy offCustomCtx.
 func moduleUsesSyncHostCalls(m *wasm.Module, bindings []ImportBinding) bool {
+	for i := 0; i < m.TableCount(); i++ {
+		if tt, ok := m.TableType(uint32(i)); ok && wasm.ExternReferenceType(wasm.RefVal(tt.Ref)) {
+			return true
+		}
+	}
+	for i := 0; i < m.GlobalCount(); i++ {
+		if gt, ok := m.GlobalTypeByIndex(uint32(i)); ok && wasm.ExternReferenceType(wasm.GlobalValueType(gt)) {
+			return true
+		}
+	}
+
 	imported := m.ImportedFuncCount()
 	for i := 0; i < imported; i++ {
 		if bindings != nil && i < len(bindings) && bindings[i].CrossInstance {
@@ -1449,10 +1460,6 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	nativeDeadStructType := f.nativeDeadStructType
 	f.nativeDeadStructType = 0
-	nativeDeadArrayBatchBytes := f.nativeDeadArrayBatchBytes
-	f.nativeDeadArrayBatchBytes = 0
-	nativeDeadStructBatchType := f.nativeDeadStructBatchType
-	f.nativeDeadStructBatchType = 0
 	nativeArrayHelper, nativeArrayType := f.nativeArrayHelper, f.nativeArrayType
 	f.nativeArrayHelper = 0
 	nativeDeadArrayBytes := f.nativeDeadArrayBytes
@@ -1552,12 +1559,6 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 
 	gcDone := -1
-	if nativeDeadArrayBatchBytes != 0 && !wide {
-		gcDone = f.deadObjectCountShortcut(nativeDeadArrayBatchBytes, 8, int(slotOf[d-p]))
-	}
-	if nativeDeadStructBatchType != 0 && !wide {
-		gcDone = f.deadStructBatchShortcut(nativeDeadStructBatchType-1, int(slotOf[d-p]))
-	}
 	if nativeDeadStructType != 0 && !wide {
 		gcDone = f.deadStructShortcut(nativeDeadStructType - 1)
 	}
@@ -1893,7 +1894,7 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 // The instance's tagged dispatch word proves this is not a same-context Wasm
 // target. Both alternatives join with canonical operands and homed locals.
 func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) error {
-	if !b.Dynamic || !f.dynamicHostFast || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate || funcTypeSlots(ft.Params) > maxSyncHostSlots || funcTypeSlots(ft.Results) > maxSyncHostSlots {
+	if !b.Dynamic || !f.dynamicHostFast || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && !f.gcFrameRoots.UnwindOnly || funcTypeSlots(ft.Params) > maxSyncHostSlots || funcTypeSlots(ft.Results) > maxSyncHostSlots {
 		return f.emitCrossInstanceCall(b, ft)
 	}
 	for _, typ := range ft.Params {
@@ -1909,7 +1910,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	roots := f.rootsBottomToTop()
 	types := append([]machineType(nil), f.logicalTypes(roots)...)
 	rootFlags := gcRootFlags(roots)
-	if f.emitGuardedNativeImportCall(ft, roots, types) {
+	if f.gcFrameRoots == nil && f.emitGuardedNativeImportCall(ft, roots, types) {
 		f.stats.call(callKindImportDispatch)
 		return nil
 	}
@@ -1930,6 +1931,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	}
 	f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerGoHostTag)
 	slow := f.a.Cbz64(X12)
+	callsiteIndex := f.gcCallsiteIndex
 	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
 		return err
 	}
@@ -1948,13 +1950,15 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	f.patchBranch19(slow, f.a.Len())
 	copy(f.locals, locals)
 	f.setDepthTypesWithGCRoots(types, rootFlags)
+	// These exclusive machine branches implement one logical Wasm call.
+	f.gcCallsiteIndex = callsiteIndex
 	if err := f.emitCrossInstanceCall(b, ft); err != nil {
 		return err
 	}
 	f.flush()
 	for i := range f.locals {
 		if f.locals[i].state != fastLocals[i].state {
-			return fmt.Errorf("direct Go import local-state join differs at local %d", i)
+			return fmt.Errorf("direct Go import local-state join differs at local %d: cross=%d host=%d", i, f.locals[i].state, fastLocals[i].state)
 		}
 	}
 	if nativeBranch >= 0 {
@@ -2049,6 +2053,9 @@ func (f *fn) emitGuardedNativeImportCall(ft *wasm.CompType, roots []*elem, types
 }
 
 func (f *fn) nativeLeafContextShortcut(b ImportBinding, ft *wasm.CompType, recordRoots bool) bool {
+	// Even zero-root unwind plans require a return map. All alternatives must
+	// agree before emission: a native shortcut cannot bypass that callsite.
+	recordRoots = recordRoots || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate
 	p := len(ft.Params)
 	contextShortcut := len(f.m.Imports) > 1 || len(f.m.Memories) > 0 || len(f.m.Globals) > 0 || len(f.m.Tables) > 0
 	return contextShortcut && b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32)

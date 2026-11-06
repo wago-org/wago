@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -89,15 +90,34 @@ func nativeGCArrayLayoutForMode(enabled bool, m *wasm.Module, typeIndex uint32, 
 }
 
 func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativeGCStructAllocField, objectSize, objectAlign uint32, pointerFree bool, ok bool) {
+	return nativeGCStructAllocLayoutBuild(m, typeIndex, nativeGCStructAllocPlan{}, false)
+}
+
+// nativeGCStructAllocLayoutMatches validates a published fallback plan without
+// rebuilding either of its layout slices. This preserves module mutation
+// detection on cache hits while keeping publication bounded to one layout per
+// referenced type.
+func nativeGCStructAllocLayoutMatches(m *wasm.Module, typeIndex uint32, expected nativeGCStructAllocPlan) bool {
+	_, size, align, pointerFree, ok := nativeGCStructAllocLayoutBuild(m, typeIndex, expected, true)
+	return ok && size == expected.objectSize && align == expected.objectAlign && pointerFree == expected.pointerFree
+}
+
+func nativeGCStructAllocLayoutBuild(m *wasm.Module, typeIndex uint32, expected nativeGCStructAllocPlan, match bool) (fields []nativeGCStructAllocField, objectSize, objectAlign uint32, pointerFree bool, ok bool) {
 	st, found := nativeGCFlatType(m, typeIndex)
 	if !found || st.Comp.Kind != wasm.CompStruct {
 		return nil, 0, 0, false, false
 	}
-	fields = make([]nativeGCStructAllocField, 0, len(st.Comp.Fields))
+	if match {
+		if len(expected.fields) != len(st.Comp.Fields) {
+			return nil, 0, 0, false, false
+		}
+	} else {
+		fields = make([]nativeGCStructAllocField, 0, len(st.Comp.Fields))
+	}
 	var off, slot uint32
 	maxAlign := uint32(1)
 	pointerFree = true
-	for _, field := range st.Comp.Fields {
+	for fieldIndex, field := range st.Comp.Fields {
 		align, size, valid := nativeGCStorageLayout(m, typeIndex, field.Storage())
 		if !valid || field.Storage().Packed() || align == 0 || off > math.MaxUint32-(align-1) {
 			return nil, 0, 0, false, false
@@ -135,7 +155,14 @@ func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativ
 		} else if field.Storage().Val().Kind() != wasm.ValNum && field.Storage().Val().Kind() != wasm.ValVec {
 			return nil, 0, 0, false, false
 		}
-		fields = append(fields, entry)
+		if match {
+			want := expected.fields[fieldIndex]
+			if want != (codegen.GCFieldLayout{Offset: entry.offset, Size: entry.size, Slot: entry.slot, Nullable: entry.nullable, CollectorRef: entry.ref}) {
+				return nil, 0, 0, false, false
+			}
+		} else {
+			fields = append(fields, entry)
+		}
 		if off > math.MaxUint32-size {
 			return nil, 0, 0, false, false
 		}
@@ -1332,6 +1359,14 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	for _, branch := range useChunk {
 		a.PatchRel32(branch, a.Len())
 	}
+	// A region chunk is nursery-only even when another, smaller type filled
+	// it. Preserve the large-object policy before using its byte reservation.
+	a.CmpImm32Mem(R8, gc.NativeViewNurseryAllocBytesOffset, 0)
+	baselineChunk := a.JccPlaceholder(condNE)
+	a.Load32(RAX, R8, gc.NativeViewNurseryObjectMaxBytesOffset)
+	a.Cmp32(sizeReg, RAX)
+	addFallback(a.JccPlaceholder(condAE))
+	a.PatchRel32(baselineChunk, a.Len())
 	a.Load32(R15, R10, gc.NativeStructAllocChunkCursorOffset)
 	alignCursor()
 	a.Load32(RAX, R10, gc.NativeStructAllocChunkEndOffset)
@@ -1763,15 +1798,28 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
 
+	// Region mode advertises no direct-bump capacity. Its live structs share
+	// the explicitly bounded chunk with arrays; baseline keeps its direct bump.
+	a.Load32(RAX, R8, gc.NativeViewNurseryAllocBytesOffset)
+	a.TestSelf(RAX, false)
+	regionCursor := a.JccPlaceholder(condE)
 	a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
 	a.TestSelf(RAX, true)
 	addFallback(a.JccPlaceholder(condE))
 	a.Load32(RCX, RAX, 0)
+	cursorReady := a.JmpPlaceholder()
+	a.PatchRel32(regionCursor, a.Len())
+	a.Load32(RCX, R10, gc.NativeStructAllocChunkCursorOffset)
+	a.PatchRel32(cursorReady, a.Len())
 	if objectAlign > 1 {
 		a.AluRI(0, RCX, int32(objectAlign-1), false)
 		a.AluRI(4, RCX, -int32(objectAlign), false)
 	}
 	a.Load32(RAX, R8, gc.NativeViewNurseryAllocBytesOffset)
+	a.TestSelf(RAX, false)
+	directLimit := a.JccPlaceholder(condNE)
+	a.Load32(RAX, R10, gc.NativeStructAllocChunkEndOffset)
+	a.PatchRel32(directLimit, a.Len())
 	a.Cmp32(RCX, RAX)
 	addFallback(a.JccPlaceholder(condA))
 	a.Sub32(RAX, RCX)
@@ -1923,6 +1971,10 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.StoreImm32Mem(R9, gc.NativeHandleSizeOffset, int32(objectSize))
 	a.StoreImm32Mem(R9, gc.NativeHandleCardSlotOffset, 0)
 	a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
+	a.CmpImm32Mem(R8, gc.NativeViewNurseryAllocBytesOffset, 0)
+	directCommit := a.JccPlaceholder(condNE)
+	a.LeaDisp(RAX, R10, gc.NativeStructAllocChunkCursorOffset)
+	a.PatchRel32(directCommit, a.Len())
 	a.MovRegReg32(R10, RCX)
 	a.AluRI(0, R10, int32(objectSize), false)
 	a.Store32(RAX, 0, R10)

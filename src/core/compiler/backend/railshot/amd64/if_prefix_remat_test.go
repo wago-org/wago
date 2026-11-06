@@ -12,6 +12,7 @@ import (
 )
 
 func TestIfPrefixRematExecution(t *testing.T) {
+	useEstablishedScalarPath(t)
 	requireCompilerDiagnostics(t)
 	saved := ifPrefixRematEnabled
 	defer func() { ifPrefixRematEnabled = saved }()

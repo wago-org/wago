@@ -122,6 +122,7 @@ func intervalRegionModule(t *testing.T) *wasm.Module {
 }
 
 func TestIntervalRegionDynamicReuse(t *testing.T) {
+	useEstablishedScalarPath(t)
 	savedRSI := intervalRSILeaseEnabled
 	intervalRSILeaseEnabled = false
 	defer func() { intervalRSILeaseEnabled = savedRSI }()
@@ -174,6 +175,7 @@ func TestIntervalRegionDynamicReuse(t *testing.T) {
 }
 
 func TestIntervalRegionControlBoundaries(t *testing.T) {
+	useEstablishedScalarPath(t)
 	savedEnabled := intervalControlEnabled
 	defer func() { intervalControlEnabled = savedEnabled }()
 	intervalControlEnabled = true
@@ -475,6 +477,7 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 }
 
 func TestIntervalRSILease(t *testing.T) {
+	useEstablishedScalarPath(t)
 	saved := intervalRSILeaseEnabled
 	defer func() { intervalRSILeaseEnabled = saved }()
 	m := intervalRegionModule(t)
