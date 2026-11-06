@@ -483,6 +483,7 @@ type inlineTarget struct {
 	touchesGlob    bool  // the body reads or writes a global
 	hasCtrl        bool  // the body has control flow → splice through a synthetic boundary frame
 	omitStandalone bool  // module layout may omit this unreachable standalone body
+	scalarLeaf     bool  // bounded read-only integer scalar helper
 	pairLeaf       bool  // bounded parameter-only native integer pair
 	tupleControl   bool  // bounded integer tuple leaf with private local homes
 	tailZeroMask   uint8 // declared local bits requiring zero initialization in a tail loop
@@ -650,6 +651,8 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			hasCtrl:        facts.hasControlFlow,
 			omitStandalone: policy.CompactNative &&
 				h.inlineCallSites == 1 && h.directCallRefs == 1 && !h.flags.has(hintHasInlineLoopCall),
+			scalarLeaf: facts.regABIIntOnly && facts.params <= 4 && facts.results == 1 && facts.declaredLocals == 0 &&
+				!facts.hasControlFlow && !facts.touchesMem && !facts.touchesGlobal && readonlyIntegerScalarBody(m.Code[i].BodyBytes, targets.classifier),
 			pairLeaf: facts.regABIIntOnly && facts.params <= 4 && facts.results == 2 && facts.declaredLocals == 0 &&
 				facts.calleeCount == 0 && !facts.hasControlFlow && !facts.touchesMem && !facts.touchesGlobal && len(m.Code[i].BodyBytes) <= 16 &&
 				shared.IsStraightLineBlock(wasm.NewReader(m.Code[i].BodyBytes), targets.classifier),
@@ -762,7 +765,27 @@ func pruneNestedSizeInlineTargets(m *wasm.Module, targets *inlineTargetTable) {
 // still benefits from the call-preserving leaf ABI in call.go. Bounded integer
 // pairs instead retain private parameters or forward read-only caller locals.
 func (t *inlineTarget) inlineInLoopIsRegressive() bool {
-	return int(t.localTypeEnd-t.typeStart) == t.paramCount() && !t.touchesMem && !t.touchesGlob && !t.hasCtrl && !t.integerPairLeaf() && !t.tupleControl
+	return int(t.localTypeEnd-t.typeStart) == t.paramCount() && !t.touchesMem && !t.touchesGlob && !t.hasCtrl && !t.integerPairLeaf() && !t.tupleControl && !t.scalarLeaf
+}
+
+// readonlyIntegerScalarBody permits scalar loop inlining only for a small,
+// nontrapping body whose parameter reads can use the caller's existing homes.
+func readonlyIntegerScalarBody(body []byte, classifier wasm.ModuleInstructionClassifier) bool {
+	if len(body) > 16 {
+		return false
+	}
+	r := wasm.NewReader(body)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		pure := op == 0x01 || op == 0x0b || op == 0x1a || op == 0x1b || op == 0x20 || op == 0x41 || op == 0x42 ||
+			op >= 0x45 && op <= 0x5a || op >= 0x67 && op <= 0x8a && !(op >= 0x6d && op <= 0x70 || op >= 0x7f && op <= 0x82) ||
+			op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4
+		if err != nil || !pure || classifier.ClassifyInto(r, op, &imm) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // integerPairLeaf is a bounded, parameter-only integer tuple helper. Inline
@@ -1054,7 +1077,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 		storeLocals = f.inlineTupleStoreLocals(caller)
 	}
 	base := f.inlineBase[t.globalIdx]
-	if t.integerPairLeaf() || t.tupleControl {
+	if t.integerPairLeaf() || t.tupleControl || t.scalarLeaf {
 		// Preserve trap order and the caller's source context before entering
 		// the splice. Only pure arithmetic may remain deferred across it.
 		f.materializePendingTraps()
@@ -1062,7 +1085,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	resultHomes := f.coalesceInlineTupleResultHomes(t, storeLocals)
 	defer resultHomes.restore(f)
 	previousForward, previousForwardN := f.inlineForward, f.inlineForwardN
-	if !f.forwardIntegerPairParams(t) {
+	if !f.forwardReadonlyIntegerParams(t) {
 		f.bindInlineParams(t, base)
 	}
 	var prefix [8]storage
@@ -1089,7 +1112,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	} else {
 		err = f.inlineBody(t.body)
 	}
-	if err == nil && (t.integerPairLeaf() || t.tupleControl) {
+	if err == nil && (t.integerPairLeaf() || t.tupleControl || t.scalarLeaf) {
 		// A dropped tuple member must still trap, at the callee's call site.
 		f.materializePendingTraps()
 	}
@@ -1126,11 +1149,11 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	return nil
 }
 
-// forwardIntegerPairParams removes private copies only when every argument is
+// forwardReadonlyIntegerParams removes private copies only when every argument is
 // a bare read of an original caller local, and the bounded callee cannot write
 // any parameter. This remaps logical reads, never aliases local register homes.
-func (f *fn) forwardIntegerPairParams(t *inlineTarget) bool {
-	if !t.integerPairLeaf() || t.paramCount() == 0 || f.inlineDepth != 0 || len(f.intervalLast) != 0 || f.policy.CompactNative {
+func (f *fn) forwardReadonlyIntegerParams(t *inlineTarget) bool {
+	if (!t.integerPairLeaf() && !t.scalarLeaf) || t.paramCount() == 0 || f.inlineDepth != 0 || len(f.intervalLast) != 0 || f.policy.CompactNative {
 		return false
 	}
 	r := wasm.NewReader(t.body)
@@ -1156,7 +1179,11 @@ func (f *fn) forwardIntegerPairParams(t *inlineTarget) bool {
 		f.erase(f.s.back())
 	}
 	f.inlineForward, f.inlineForwardN = sources, uint32(t.paramCount())
-	f.stats.peepN("inline-integer-pair-param-forward", t.paramCount())
+	if t.scalarLeaf {
+		f.stats.peepN("inline-integer-scalar-param-forward", t.paramCount())
+	} else {
+		f.stats.peepN("inline-integer-pair-param-forward", t.paramCount())
+	}
 	return true
 }
 

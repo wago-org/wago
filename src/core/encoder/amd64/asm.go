@@ -864,6 +864,15 @@ func (a *Asm) TestImm(r Reg, imm uint32, w bool) {
 	a.imm32(int32(imm))
 }
 
+// TestImm8 emits TEST r8,imm8. Only the register's low byte contributes to flags.
+func (a *Asm) TestImm8(r Reg, imm byte) {
+	if r >= 4 {
+		// SPL/BPL/SIL/DIL require REX even without an extended register.
+		a.emit(a.rex(false, false, false, r >= 8))
+	}
+	a.emit(0xF6, 0xC0|byte(r&7), imm)
+}
+
 // BtImm copies the selected register bit into CF. Unlike TEST r,imm32, its
 // immediate is a bit index rather than a sign-extended mask.
 func (a *Asm) BtImm(r Reg, bit uint8, w bool) {

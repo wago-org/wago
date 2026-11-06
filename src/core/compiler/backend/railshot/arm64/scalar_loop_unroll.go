@@ -18,6 +18,14 @@ func scalarLoopWord(word uint32) (Reg, bool) {
 		if rn == 31 || rd == 31 && word&(1<<29) == 0 {
 			return regNone, false
 		}
+	case word&0x1f800000 == 0x12000000: // logical immediate; non-flag Rd31 can mean SP
+		if rn == 31 || rd == 31 && word&0x60000000 != 0x60000000 {
+			return regNone, false
+		}
+	case word&0x7fe00c00 == 0x1a800000: // CSEL; its condition is not a register field
+		if word>>12&15 >= 14 {
+			return regNone, false
+		}
 	case word&0x1f200000 == 0x0b000000: // ADD/SUB shifted register
 	case word&0x1f000000 == 0x0a000000: // logical shifted register, including MOV
 	case word&0x1f800000 == 0x12800000: // MOVN/MOVZ/MOVK
@@ -36,9 +44,9 @@ func scalarLoopWord(word uint32) (Reg, bool) {
 // Immediate bits must never be rewritten as if they named registers.
 func scalarLoopSources(word uint32) uint32 {
 	switch {
-	case word&0x1f800000 == 0x11000000:
+	case word&0x1f800000 == 0x11000000, word&0x1f800000 == 0x12000000:
 		return 1 << 5
-	case word&0x1f200000 == 0x0b000000, word&0x1f000000 == 0x0a000000, word&0x7fe0fc00 == 0x1ac00800:
+	case word&0x1f200000 == 0x0b000000, word&0x1f000000 == 0x0a000000, word&0x7fe0fc00 == 0x1ac00800, word&0x7fe00c00 == 0x1a800000:
 		return 1<<5 | 1<<16
 	case word&0x1f000000 == 0x1b000000:
 		return 1<<5 | 1<<10 | 1<<16
@@ -122,6 +130,10 @@ func (f *fn) unrollScalarLatch(fr *ctrlFrame, cc Cond) bool {
 	}
 	if temporary == regNone {
 		return false
+	}
+	if f.unrollGuardedScalarLatch(start, words[:n], increment, counter, temporary, cc) {
+		f.stats.peep("scalar-loop-unroll")
+		return true
 	}
 	// The first body is already emitted. Replace it only after every proof has
 	// succeeded; a rejected candidate leaves the original instruction stream.

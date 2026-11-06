@@ -1714,6 +1714,11 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 	} else if op == 0x04 {
 		kind = cfIf
 	}
+	if kind == cfIf && !f.unreachable && pN == 0 && rN == 1 {
+		if done, err := f.tryPureIntegerIfSelect(r, res0); done || err != nil {
+			return err
+		}
+	}
 	if kind == cfIf && !f.unreachable && pN == 0 && rN == 2 {
 		if done, err := f.tryTupleIfSelect(r, signature, resultTypes); done || err != nil {
 			return err
@@ -3050,6 +3055,22 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		return nil
 	}
 	for i, lbl := range labels {
+		fr := &f.ctrl[len(f.ctrl)-1-int(lbl)]
+		if f.opt(optBranchFold) && !profileEnabled && !f.makesCalls && !f.usesCalls && !f.pinRelinquished && !f.moduleEH &&
+			f.gcFrameRoots == nil && len(f.gcTypeLayouts) == 0 && len(f.customInstructions) == 0 &&
+			(f.stats == nil || !f.stats.RecordSources) &&
+			(fr.kind == cfBlock || fr.kind == cfIf) && fr.branchArity() == 0 && !fr.has(ctrlRegMerge1) {
+			// Every local and prefix operand is already canonical. A call-free
+			// empty edge needs no taken-path transfers or handler restoration.
+			// Record its merge state, then branch straight to the target end.
+			f.convergeBranchLocals(fr)
+			f.moveBranchValues(fr, d, 0)
+			f.a.AluRI(cmpDigit, ireg, int32(i), false)
+			f.frameAddEnd(fr, f.a.JccPlaceholder(condE))
+			fr.set(ctrlEndReachable, true)
+			f.stats.peep("br-table-empty-edge")
+			continue
+		}
 		f.a.AluRI(cmpDigit, ireg, int32(i), false) // cmp ireg, i
 		skip := f.a.JccPlaceholder(condNE)
 		emitCase(lbl)

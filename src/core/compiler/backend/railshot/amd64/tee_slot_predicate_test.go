@@ -44,7 +44,7 @@ func TestTeeSlotPredicateExecution(t *testing.T) {
 					t.Run(fmt.Sprintf("%s/prefix%v/enabled%v/compact%v", consumer, prefix, enabled, compact), func(t *testing.T) {
 						teeSlotPredicateEnabled = enabled
 						var stats ModuleStats
-						cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, CompactNative: compact, Optimizations: map[string]bool{"reg-merge": false, "interval-control": false}})
+						cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, CompactNative: compact, Optimizations: map[string]bool{"reg-merge": false, "interval-control": false, "pure-integer-if-select": false}})
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -99,7 +99,7 @@ func TestTeeSlotPredicateBackedge(t *testing.T) {
 				t.Run(fmt.Sprintf("prefix%v/enabled%v/compact%v", prefix, enabled, compact), func(t *testing.T) {
 					teeSlotPredicateEnabled = enabled
 					var stats ModuleStats
-					cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, CompactNative: compact, Optimizations: map[string]bool{"reg-merge": false, "interval-control": false}})
+					cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, CompactNative: compact, Optimizations: map[string]bool{"reg-merge": false, "interval-control": false, "pure-integer-if-select": false}})
 					if err != nil {
 						t.Fatal(err)
 					}
