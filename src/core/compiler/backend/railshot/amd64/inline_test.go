@@ -296,8 +296,14 @@ func TestInlineExecAdd(t *testing.T) {
 		if ms.Funcs[0].Calls["inline"] != 1 {
 			t.Errorf("func 0 Calls[inline] = %d, want 1 (calls=%v)", ms.Funcs[0].Calls["inline"], ms.Funcs[0].Calls)
 		}
-		if ms.Funcs[0].InlineSiteBytes == 0 {
-			t.Error("inlined add has zero attributed inline-site bytes")
+		if !profileEnabled {
+			// Forwarded parameter reads and the add remain deferred until the
+			// caller's return sink, so the splice itself emits no instructions.
+			if ms.Funcs[0].Peephole["inline-integer-scalar-param-forward"] != 2 || ms.Funcs[0].InlineSiteBytes != 0 {
+				t.Errorf("forwarded add attribution: %#v", ms.Funcs[0])
+			}
+		} else if ms.Funcs[0].InlineSiteBytes == 0 {
+			t.Error("profiled inlined add has zero attributed inline-site bytes")
 		}
 	})
 }

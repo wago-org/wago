@@ -49,6 +49,7 @@ type callReloc struct {
 	target   uint32 // target local-function index (into m.Code)
 	internal bool   // target the callee's register-ABI internal entry (else offset 0)
 	gcStub   gcSharedStubKind
+	tailEdge uint8 // optional zero/nonzero edge into a proved frameless local entry
 }
 
 const invalidCallRelocField = ^uint32(0)
@@ -380,7 +381,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 			f.consumeGCFrameCallsite()
 			f.stats.peep("gc-numeric-leaf-inline")
 		}
-		return f.inlineCall(t)
+		return f.inlineCall(t, r)
 	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
@@ -621,6 +622,36 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	return f.returnCallIndex(idx)
+}
+
+func (f *fn) returnCallIndex(idx uint32) error {
+	if f.inlineTailLoopFrame != 0 && idx == f.inlineTailRoot {
+		target := f.inlineTargets.target(int(idx))
+		if target == nil || !target.tailLoop() {
+			return fmt.Errorf("missing inline tail target")
+		}
+		constants, lastAssignment := f.bindInlineTailTransfer(target)
+		if expanded, err := f.tryExpandInlineTail(target, constants); expanded || err != nil {
+			return err
+		}
+		f.branchToInlineTailLoop(f.inlineTailLoopFrame-1, lastAssignment)
+		f.unreachable = true
+		f.stats.peep("inline-tail-loop")
+		return nil
+	}
+	if f.inlineTailLoopFrame != 0 && f.inlineTailPartner != 0 && idx+1 == f.inlineTailPartner {
+		target := f.inlineTargets.target(int(idx))
+		if target == nil || !target.tailLoop() {
+			return fmt.Errorf("missing inline tail partner")
+		}
+		constants, lastAssignment := f.bindInlineTailTransfer(target)
+		if err := f.emitInlineTailCopy(target, constants, lastAssignment); err != nil {
+			return err
+		}
+		f.stats.peep("inline-tail-pair")
+		return nil
+	}
 	ft, ok := f.functionSignature(idx)
 	if !ok {
 		return fmt.Errorf("return_call: unknown function %d", idx)
@@ -628,8 +659,29 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call: target %d result shape differs from caller", idx)
 	}
+	if f.selfTailLoop && idx == f.traceFuncIdx {
+		f.emitSelfTailLoop()
+		return nil
+	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || tailInstructionRecipeEligible(custom)) {
+			// Custom bundles have no ordinary Wasm return-carrier conversion.
+			// Their registered host shim is native-only, so it is not a fallback.
+			if custom.CustomOutput != nil {
+				return fmt.Errorf("return_call: custom output cannot cross a function boundary")
+			}
+			if err := f.emitCustomInstruction(custom, ft); err != nil {
+				return err
+			}
+			// The existing stack-compatible input recipe retains the physical
+			// i32 word. Canonicalize its narrow logical result on this new path.
+			if pluginAMD64Lowering(custom) == nil && custom.StackCompatible && custom.ResultWidth < 32 && custom.Nodes[custom.Output].Op == CustomInstructionInput {
+				f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64((uint64(1) << uint(custom.ResultWidth)) - 1)})
+				f.pushBinOp(opAnd, mtI32)
+			}
+			return f.opReturn()
+		}
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
 			binding := f.importBindings[idx]
 			if binding.Dynamic && sigFitsRegABI(f.ft) && sigFitsRegABI(ft) && sigFitsDirectCrossTailABI(ft) {
@@ -666,6 +718,9 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	targetRegisterABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
 	if f.opt(optRegABI) && callerRegisterABI && targetRegisterABI {
 		f.stats.call("tail-direct")
+		if f.tryThreadLocalIntegerTail(ft, int(idx)-imported) {
+			return nil
+		}
 		f.emitTailRegisterJump(ft, func() {
 			site := f.a.JmpPlaceholder()
 			f.relocs = append(f.relocs, f.newCallReloc(site, int(idx)-imported, true))
@@ -3345,6 +3400,13 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	}
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
+	}
+	if index := f.s.back(); index != nil && index.isValue() && index.st.kind == stConst && index.st.typ == mtI32 {
+		if target, ok := f.constantPrivateTailTarget(typeIdx, tableIdx, uint64(uint32(index.st.cval))); ok {
+			f.erase(index)
+			f.stats.peep("tail-constant-private-table")
+			return f.returnCallIndex(uint32(target))
+		}
 	}
 	callerRegisterTail := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
 	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))

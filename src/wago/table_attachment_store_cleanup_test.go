@@ -5,7 +5,6 @@ package wago
 import (
 	"context"
 	"fmt"
-	"syscall"
 	"testing"
 	"time"
 	"unsafe"
@@ -24,6 +23,7 @@ func TestTableAttachmentCleanupActualStoreNotification(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer table.Close()
+			arena := table.owner.arena
 			address := uintptr(unsafe.Pointer(&table.desc[0]))
 			store := table.owner.store
 			if store == nil || store != rt.refStore || len(table.retained) != 0 || tableCleanupMappingStatus(address) != 0 {
@@ -113,7 +113,8 @@ func TestTableAttachmentCleanupActualStoreNotification(t *testing.T) {
 			store.mu.Lock()
 			objects, tokens = store.liveObjects, len(store.byToken)
 			store.mu.Unlock()
-			if objects != 0 || tokens != 0 || !table.owner.closed || table.owner.arena != nil || table.desc != nil || tableCleanupMappingStatus(address) != syscall.ENOMEM {
+			// A later mapping at the same address does not belong to this arena.
+			if objects != 0 || tokens != 0 || !table.owner.closed || table.owner.arena != nil || table.desc != nil || arena.AllocatedPrefix(1) != nil {
 				t.Fatal("actual store table cleanup stranded its arena or token bookkeeping", objects, tokens)
 			}
 			if err := table.Close(); err != nil || visited != [3]int{1, 1, 1} {

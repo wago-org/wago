@@ -864,6 +864,15 @@ func (a *Asm) TestImm(r Reg, imm uint32, w bool) {
 	a.imm32(int32(imm))
 }
 
+// TestImm8 emits TEST r8,imm8. Only the register's low byte contributes to flags.
+func (a *Asm) TestImm8(r Reg, imm byte) {
+	if r >= 4 {
+		// SPL/BPL/SIL/DIL require REX even without an extended register.
+		a.emit(a.rex(false, false, false, r >= 8))
+	}
+	a.emit(0xF6, 0xC0|byte(r&7), imm)
+}
+
 // BtImm copies the selected register bit into CF. Unlike TEST r,imm32, its
 // immediate is a bit index rather than a sign-extended mask.
 func (a *Asm) BtImm(r Reg, bit uint8, w bool) {
@@ -1276,6 +1285,12 @@ func (a *Asm) Cld() { a.emit(0xFC) } // clear direction flag (increment)
 // sibAddr emits ModRM + SIB and the shortest displacement for a
 // [base + index + disp] operand (scale 1) with the given reg field.
 func (a *Asm) sibAddr(reg, base, index Reg, disp int32) {
+	// SIB index=RSP means no index (R12 remains a real index via REX.X).
+	// Use the ordinary base/displacement form when its encoding is shorter.
+	if index == RSP {
+		a.baseAddr(byte(reg), base, disp)
+		return
+	}
 	mod := addrMode(base, disp)
 	a.recordAddress(base, mod)
 	a.emit(
@@ -1696,6 +1711,12 @@ func (a *Asm) AlignLoop() {
 func (a *Asm) AlignLoop32() {
 	pad := (32 - len(a.B)%32) % 32
 	a.nop(pad)
+}
+
+// AlignLoop64 keeps a peeled entry and its following hot block in a stable
+// cache-line position. The enclosing function must have matching alignment.
+func (a *Asm) AlignLoop64() {
+	a.nop((-len(a.B)) & 63)
 }
 
 func (a *Asm) nop(pad int) {

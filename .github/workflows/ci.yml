@@ -423,7 +423,7 @@ jobs:
 
       - name: Install Release 3 interpreter toolchain
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
-        run: sudo apt-get update && sudo apt-get install -y ocaml ocaml-dune menhir
+        run: scripts/setup-ubuntu-spec-toolchain.sh
 
       - name: Identify Release 3 interpreter toolchain
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
@@ -1069,8 +1069,7 @@ jobs:
       - name: Install Release 3 interpreter toolchain
         run: |
           if [ "${{ runner.os }}" = Linux ]; then
-            sudo apt-get update
-            sudo apt-get install -y ocaml ocaml-dune menhir
+            scripts/setup-ubuntu-spec-toolchain.sh
           else
             brew install ocaml dune menhir
           fi

@@ -25,6 +25,8 @@ func (f *fn) refreshCachedMemoryBoundAfterExternalCall() {
 	}
 }
 
+var tailSelfLoopEnabled = true
+
 // regABIEnabled turns on the register-based internal-call ABI (default on;
 // WAGO_ARM64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
 var regABIEnabled = os.Getenv("WAGO_ARM64_NOREGABI") != "1"
@@ -50,6 +52,7 @@ type callReloc struct {
 	target   uint32 // target function index; gcObject uses the positive helper-fallback byte delta
 	internal bool   // target the callee's register-ABI internal entry (else offset 0)
 	gcObject bool   // target the module checked-object leaf (not a local function)
+	tail     bool   // integer proper-tail transfer eligible for entry-test threading
 }
 
 // callRelocTable stores every module relocation in source-function order. One
@@ -371,7 +374,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		if t := f.inlineTargets.target(int(idx)); t != nil {
 			if _, ok := f.inlineBase[int(idx)]; ok && (!t.recursive() || f.inlineDepth == 0) && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
 				f.consumeGCFrameCallsite()
-				return f.inlineCall(t)
+				return f.inlineCall(t, r)
 			}
 		}
 	}
@@ -416,11 +419,40 @@ func (f *fn) callOp(r *wasm.Reader) error {
 // tail bank and jump to the target wrapper. Both paths release the current native
 // frame before branching, so recursive tail chains remain stack bounded.
 func (f *fn) returnCall(r *wasm.Reader) error {
-	// Tail transfer discards the operand prefix; preserve its traps first.
-	f.materializePendingTraps()
 	idx, err := r.U32()
 	if err != nil {
 		return err
+	}
+	// A sole argument trap can stay attached to its destination-directed
+	// expression. Discarded prefixes and competing traps keep source order.
+	if f.canDeferInlineTailTrap(idx) {
+		f.stats.peep("inline-tail-deferred-trap")
+	} else {
+		f.materializePendingTraps()
+	}
+	return f.returnCallIndex(idx)
+}
+
+func (f *fn) returnCallIndex(idx uint32) error {
+	if f.inlineTailLoopFrame != 0 && idx == f.traceFuncIdx {
+		target := f.inlineTargets.target(int(idx))
+		if target == nil || !target.tailLoop() {
+			return fmt.Errorf("missing inline tail target")
+		}
+		for i := target.paramCount() - 1; i >= 0; i-- {
+			root := f.s.back()
+			if root != nil && root.elemKind() == ekValue && root.st.kind == stLocalReg && root.st.index() == f.localBase+i {
+				f.erase(root)
+				f.stats.peep("inline-tail-identity-arg")
+				continue
+			}
+			f.setLocal(nil, f.localBase+i, false)
+		}
+		f.zeroTailInlineLocals(target, f.localBase)
+		f.branchToInlineTailLoop(f.inlineTailLoopFrame - 1)
+		f.unreachable = true
+		f.stats.peep("inline-tail-loop")
+		return nil
 	}
 	ft, ok := f.functionSignature(idx)
 	if !ok {
@@ -431,6 +463,17 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginARM64Lowering(custom) != nil || instructionRecipeEligible(custom)) {
+			// Custom bundles have no ordinary Wasm return-carrier conversion.
+			// Their registered host shim is native-only, so it is not a fallback.
+			if custom.CustomOutput != nil {
+				return fmt.Errorf("return_call: custom output cannot cross a function boundary")
+			}
+			if err := f.emitCustomInstruction(custom, ft); err != nil {
+				return err
+			}
+			return f.opReturn()
+		}
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
 			binding := f.importBindings[idx]
 			if binding.Dynamic || binding.CrossInstance {
@@ -458,10 +501,38 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if f.opt(optRegABI) && targetRegisterABI {
 		jump := func() {
 			site := f.a.Branch()
-			f.relocs = append(f.relocs, f.newCallReloc(site, target, true))
+			rl := f.newCallReloc(site, target, true)
+			rl.tail = f.canReuseSelfTailFrame() && sigIsIntOnly(ft)
+			f.relocs = append(f.relocs, rl)
 		}
 		if callerRegisterABI {
-			f.emitTailRegisterJump(ft, jump)
+			if int(idx) == int(f.traceFuncIdx) && f.canReuseSelfTailFrame() {
+				// This native backedge no longer has a call relocation. Keep the
+				// logical recursion visible to scheduler-bound finalization.
+				f.hasLoop = true
+				if f.sc != nil {
+					f.sc.directPreparedBounded = false
+				}
+				entry := f.entryTrapEnd
+				localEntry := f.selfTailLocalEntry()
+				if localEntry != 0 {
+					entry = localEntry
+				}
+				f.emitTailIntegerRegisterArgs(ft, localEntry != 0, func() {
+					if f.threadSelfTailEntryTest(entry) {
+						return
+					}
+					site := f.a.Branch()
+					if !f.a.PatchBranch26(site, entry) {
+						panic("arm64 self-tail backedge is out of range")
+					}
+				})
+				f.stats.peep("tail-self-loop")
+			} else if f.canReuseSelfTailFrame() && sigIsIntOnly(ft) {
+				f.emitTailIntegerRegisterArgs(ft, false, func() { f.emitTailFrameRelease(); jump() })
+			} else {
+				f.emitTailRegisterJump(ft, jump)
+			}
 		} else {
 			// Every return_call target has an offset-zero adapter, so a wrapper
 			// caller enters it with the wrapper ABI and its own results buffer.
@@ -506,6 +577,16 @@ func (f *fn) emitTailFrameRelease() {
 	if f.makesCalls {
 		f.a.LdpPost(FP, LR, SP, 16)
 	}
+}
+
+// canReuseSelfTailFrame admits the original non-GC register-ABI frame only.
+// Re-entry starts before parameter setup and declared-local initialization.
+// Interruptible/profiled functions retain their ordinary entry checks and maps.
+func (f *fn) canReuseSelfTailFrame() bool {
+	return f.opt(optTailSelfLoop) && f.entryTrapEnd != 0 && f.localBase == 0 &&
+		!f.interruptible && !profileEnabled && !f.moduleEH && f.gcFrameRoots == nil &&
+		len(f.customInstructions) == 0 && len(f.intervalLast) == 0 && !f.lazyZero &&
+		!f.scalarSummary.Eligible && sigIsIntOnly(f.ft)
 }
 
 func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
@@ -1115,6 +1196,13 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	}
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
+	}
+	if index := f.s.back(); index != nil && index.elemKind() == ekValue && index.st.kind == stConst && index.st.typ == mtI32 {
+		if target, ok := f.constantPrivateTailTarget(typeIdx, tableIdx, uint64(uint32(index.st.cval))); ok {
+			f.erase(index)
+			f.stats.peep("tail-constant-private-table")
+			return f.returnCallIndex(uint32(target))
+		}
 	}
 	callerRegisterTail := f.opt(optRegABI) && stagedTailRegisterABI(f.ft, f.stagedTailDescriptors)
 	targetRegisterTail := f.opt(optRegABI) && stagedTailRegisterABI(ft, f.stagedTailDescriptors)
