@@ -297,20 +297,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 				}
 			}
 		}
-		if f.localConstZero(int(x)) {
-			if pr, _, ok := f.pinReg(int(x)); ok {
-				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
-				value = f.s.pushLocalRead(stLocalReg, f.localType[x], pr, x)
-			} else {
-				value = f.pushValue(zeroStorage(f.localType[x]))
-			}
-		} else if pr, _, ok := f.pinReg(int(x)); ok {
-			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
-			value = f.s.pushLocalRead(stLocalReg, f.localType[x], pr, x)
-		} else {
-			value = f.s.pushLocalRead(stLocalRef, f.localType[x], 0, x)
-		}
-		f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
+		f.pushPlainLocalGet(x)
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
@@ -1392,4 +1379,23 @@ func skipDroppedLiteral(r *wasm.Reader) bool {
 		return true
 	}
 	return false
+}
+
+// pushPlainLocalGet shares ordinary local reads with proved bulk expressions.
+func (f *fn) pushPlainLocalGet(x uint32) {
+	var value *elem
+	if f.localConstZero(int(x)) {
+		if pr, _, ok := f.pinReg(int(x)); ok {
+			f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
+			value = f.s.pushLocalRead(stLocalReg, f.localType[x], pr, x)
+		} else {
+			value = f.pushValue(zeroStorage(f.localType[x]))
+		}
+	} else if pr, _, ok := f.pinReg(int(x)); ok {
+		f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
+		value = f.s.pushLocalRead(stLocalReg, f.localType[x], pr, x)
+	} else {
+		value = f.s.pushLocalRead(stLocalRef, f.localType[x], 0, x)
+	}
+	f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
 }

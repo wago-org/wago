@@ -1844,6 +1844,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			if pN == 0 && rN == 0 {
 				f.emitPureReduce(r)
 				if f.loopMemory {
+					f.emitByteReduceLoop(r)
 					f.emitDotLoop(r)
 					f.emitMinPlusLoop(r)
 					f.emitFloatMapLoop(r)
@@ -2883,6 +2884,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		f.ehTryDepth--
 	}
 	f.finishDotLoop(last + 1)
+	f.finishByteReduceLoop(last + 1)
 	f.finishPureReduce(last + 1)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
