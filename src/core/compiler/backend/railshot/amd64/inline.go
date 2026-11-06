@@ -1105,7 +1105,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	base := f.inlineBase[t.globalIdx]
 	constants := f.captureInlineTailConstants(t, base)
 	previousForward, previousForwardN := f.inlineForward, f.inlineForwardN
-	if !f.forwardIntegerPairParams(t) {
+	if !f.forwardIntegerParams(t) {
 		f.bindInlineParams(t, base)
 	}
 	var prefix [8]storage
@@ -1164,14 +1164,14 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	return nil
 }
 
-// forwardIntegerPairParams keeps a bounded read-only tuple helper on the
+// forwardIntegerParams keeps a bounded read-only integer helper on the
 // caller's locals instead of copying its parameters into private frame slots.
 // Only nontrapping integer bodies qualify, so result trees may remain deferred
 // until a caller write materializes their original local reads.
-func (f *fn) forwardIntegerPairParams(t *inlineTarget) bool {
+func (f *fn) forwardIntegerParams(t *inlineTarget) bool {
 	params := t.paramCount()
 	if f.inlineDepth != 0 || f.localBase != 0 || len(f.intervalLast) != 0 || f.policy.CompactNative ||
-		f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || profileEnabled || !f.pureIntegerPair(t) {
+		f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || profileEnabled || !f.pureIntegerParams(t) {
 		return false
 	}
 	var sources [4]uint32
@@ -1189,18 +1189,22 @@ func (f *fn) forwardIntegerPairParams(t *inlineTarget) bool {
 		f.erase(f.s.back())
 	}
 	f.inlineForward, f.inlineForwardN = sources, uint32(params)
+	stat := "inline-integer-pair-param-forward"
+	if t.resultTypeEnd-t.localTypeEnd == 1 {
+		stat = "inline-integer-scalar-param-forward"
+	}
 	for range params {
-		f.stats.peep("inline-integer-pair-param-forward")
+		f.stats.peep(stat)
 	}
 	return true
 }
 
-// pureIntegerPair proves a bounded parameter-only tuple body has no traps,
+// pureIntegerParams proves a bounded parameter-only integer body has no traps,
 // control flow, writes, helpers, or calls. Lookahead never changes its reader.
-func (f *fn) pureIntegerPair(t *inlineTarget) bool {
+func (f *fn) pureIntegerParams(t *inlineTarget) bool {
 	params := t.paramCount()
 	if params == 0 || params > 4 || t.hasCtrl || t.touchesMem || t.recursive() ||
-		int(t.localTypeEnd-t.typeStart) != params || t.resultTypeEnd-t.localTypeEnd != 2 || len(t.body) > 16 {
+		int(t.localTypeEnd-t.typeStart) != params || t.resultTypeEnd-t.localTypeEnd < 1 || t.resultTypeEnd-t.localTypeEnd > 2 || len(t.body) > 16 {
 		return false
 	}
 	for _, typ := range f.inlineTargets.localTypes(t) {

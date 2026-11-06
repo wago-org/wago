@@ -44,7 +44,7 @@ func TestLocalReferenceSummaryRestoredIfPrefix(t *testing.T) {
 			for _, compact := range []bool{false, true} {
 				for _, merge := range []bool{false, true} {
 					var stats ModuleStats
-					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, CompactNative: compact, Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"reg-merge": merge}})
+					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, CompactNative: compact, Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"reg-merge": merge, "pure-integer-if-select": false}})
 					if err != nil {
 						t.Fatal(err)
 					}

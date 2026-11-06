@@ -17,9 +17,11 @@ func TestNativeSizeReportAccountsModuleAndFunctionBytesAMD64(t *testing.T) {
 	nativeCompactionEnabled = false
 	t.Cleanup(func() { nativeCompactionEnabled = oldCompact })
 	i32 := []wasm.ValType{wasm.I32}
+	// Write the private parameter so this ledger fixture must retain a local
+	// frame operand instead of forwarding a read-only helper's caller local.
 	m := modFuncs(t,
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x10, 0x01, 0x0b}},
-		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6b, 0x0b}},
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6b, 0x22, 0x00, 0x0b}},
 	)
 
 	var stats ModuleStats

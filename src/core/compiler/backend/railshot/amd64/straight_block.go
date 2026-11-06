@@ -44,7 +44,7 @@ func (f *fn) straightLineBlock(r *wasm.Reader, kind ctrlKind, params, results in
 		t := f.selectedInlineTarget(index)
 		// The select class is a complete read-only condition and local-only
 		// pair if; every private path falls through its inlined boundary.
-		return t != nil && (f.pureIntegerPair(t) || t.tupleSelect() ||
+		return t != nil && (t.resultTypeEnd-t.localTypeEnd == 2 && f.pureIntegerParams(t) || t.tupleSelect() ||
 			f.inlineDepth == 0 && f.inlineTupleLoopFallthroughState(t))
 	})
 }

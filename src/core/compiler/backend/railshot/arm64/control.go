@@ -1437,7 +1437,7 @@ func (f *fn) callFreeLoopExit(fi int) bool {
 func (f *fn) branchJump(fr *ctrlFrame, after ...*wasm.Reader) {
 	switch fr.kind {
 	case cfLoop:
-		if f.unrollScalarPretest(fr, after...) || f.tryPretestLoopLatch(fr) {
+		if f.unrollScalarPretest(fr, after...) || f.unrollScalarBranches(fr) || f.tryPretestLoopLatch(fr) {
 			return
 		}
 		// Backward unconditional branch to the loop top (imm26, ±128 MiB): emit a B
@@ -1546,7 +1546,10 @@ func (f *fn) alignLoopHeader() {
 		// the phase chosen for the uncached four-instruction poll.
 		loopAlign = 5
 	}
-	f.alignCode(loopAlign)
+	f.loopSeedSite = 0
+	if f.alignCode(loopAlign) >= 4 {
+		f.loopSeedSite = f.a.Len()
+	}
 }
 
 // --- control opcodes ---
@@ -1662,6 +1665,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	if kind == cfIf && !f.unreachable && pN == 0 {
 		predicate = f.inlineNonzeroPredicate(f.s.back())
 	}
+	if kind == cfIf && !f.unreachable {
+		// Caller operands precede the condition in Wasm evaluation order.
+		// Resolve their traps before lowering a possibly trapping condition.
+		f.materializePendingTraps()
+	}
 	if kind == cfIf && !f.unreachable && pN == 0 && rN == 2 {
 		if done, err := f.tryColdTupleLoopExit(r, signature, resultTypes); done || err != nil {
 			return err
@@ -1682,6 +1690,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			return err
 		}
 		if done, err := f.trySimpleIfLocalSet(r); done || err != nil {
+			return err
+		}
+	}
+	if kind == cfIf && !f.unreachable && pN == 0 && rN == 1 && (res0 == mtI32 || res0 == mtI64) {
+		if done, err := f.tryPureIntegerIfSelect(r, res0); done || err != nil {
 			return err
 		}
 	}
@@ -3368,6 +3381,25 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		return nil
 	}
 	for i, lbl := range labels {
+		fi := len(f.ctrl) - 1 - int(lbl)
+		fr := &f.ctrl[fi]
+		if f.opt(optBranchFold) && !f.moduleEH && f.gcFrameRoots == nil && len(f.gcTypeLayouts) == 0 && len(f.customInstructions) == 0 &&
+			(fr.kind == cfBlock || fr.kind == cfIf) && fr.branchArity() == 0 && !fr.has(ctrlRegMerge1) {
+			// Reconciliation above made every local and operand canonical. An
+			// empty block edge has no taken-path work, so branch directly instead
+			// of guarding an unconditional jump (and retaining its padding).
+			f.convergeBranchLocals(fr)
+			f.moveBranchValues(fr, d, 0)
+			if i == 0 {
+				f.appendFrameEnd(fr, f.zeroBranch(ireg, false, true), true)
+				fr.set(ctrlEndReachable, true)
+			} else {
+				f.a.CmpImm32(ireg, uint32(i))
+				f.condBranchJump(fr, condE)
+			}
+			f.stats.peep("br-table-empty-edge")
+			continue
+		}
 		f.a.CmpImm32(ireg, uint32(i)) // cmp ireg, i (i < brTableJumpMin, always fits imm12)
 		skip := f.a.Bcond(condNE)
 		emitCase(lbl)

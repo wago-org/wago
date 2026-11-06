@@ -39,7 +39,8 @@ func zeroBranchOptions(enabled, compact bool, stats *ModuleStats) CompileOptions
 	return CompileOptions{
 		CompactNative: compact,
 		Stats:         stats,
-		Optimizations: map[string]bool{"zero-branch": enabled},
+		// Keep branch-encoding coverage independent of integer if-conversion.
+		Optimizations: map[string]bool{"zero-branch": enabled, "pure-integer-if-select": false},
 	}
 }
 

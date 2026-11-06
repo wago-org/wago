@@ -399,6 +399,7 @@ type fn struct {
 	branchHints         []wasm.BranchHint
 	branchHintLocalDecl uint32
 	branchHintUnlikely  bool
+	loopSeedSite        int    // label after the latest available loop-entry alignment NOP
 	innermostLoop       uint32 // control depth of the nearest loop; zero outside loops
 	unreachable         bool   // in dead code after an unconditional branch/trap
 

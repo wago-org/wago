@@ -11,6 +11,11 @@ func TestLonePredicateExecution(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	saved := lonePredicateEnabled
 	defer func() { lonePredicateEnabled = saved }()
+	// Keep both the diagnostic compile and execution on the branch path
+	// whose lone-predicate admission this fixture measures.
+	savedSelect := pureIntegerIfSelectEnabled
+	pureIntegerIfSelectEnabled = false
+	defer func() { pureIntegerIfSelectEnabled = savedSelect }()
 	for _, branch := range []bool{false, true} {
 		body := []byte{0, 0x20, 0, 0x41, 1, 0x73, 0x04, 0x7f, 0x41, 7, 0x05, 0x41, 9, 0x0b, 0x0b}
 		if branch {

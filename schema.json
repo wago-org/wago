@@ -168,6 +168,7 @@
               "prepared-bounded-entry",
               "prepared-direct-entry",
               "prepared-light-entry",
+              "pure-integer-if-select",
               "pure-reduce-vector",
               "reg-abi",
               "reg-merge",

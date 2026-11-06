@@ -754,7 +754,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	foldedCC, folded := f.tryMemoryCompareToFlags(node)
 	if !folded {
-		foldedCC, folded = f.tryMaskedEqzToFlags(node)
+		foldedCC, folded = f.tryMaskedPredicateToFlags(node)
 	}
 	if folded {
 		result := dest

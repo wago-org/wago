@@ -25,6 +25,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("loop-local-params", &loopLocalParamsEnabled),
 	optimization.Bind("scalar-loop-unroll", &scalarLoopUnrollEnabled),
 	optimization.Bind("tuple-if-select", &tupleIfSelectEnabled),
+	optimization.Bind("pure-integer-if-select", &pureIntegerIfSelectEnabled),
 	optimization.Bind("guarded-div-rem", &guardedDivRemEnabled),
 	optimization.Bind("cold-tuple-loop-exit", &coldTupleLoopExitEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
@@ -133,6 +134,7 @@ var (
 	optLoopLocalParams      = optimizationBindings.Option("loop-local-params")
 	optScalarLoopUnroll     = optimizationBindings.Option("scalar-loop-unroll")
 	optTupleIfSelect        = optimizationBindings.Option("tuple-if-select")
+	optPureIntegerIfSelect  = optimizationBindings.Option("pure-integer-if-select")
 	optGuardedDivRem        = optimizationBindings.Option("guarded-div-rem")
 	optColdTupleLoopExit    = optimizationBindings.Option("cold-tuple-loop-exit")
 	optBulkFillVector       = optimizationBindings.Option("bulk-fill-vector")

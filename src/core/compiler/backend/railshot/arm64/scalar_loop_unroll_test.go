@@ -16,7 +16,7 @@ func TestScalarLoopUnrollChecksEveryIteration(t *testing.T) {
 			typ, bt, add, k, lt = wasm.I64, 0x7e, 0x7c, 0x42, 0x54
 			fold = func(v uint64) uint64 { return v }
 		}
-		for _, variant := range []string{"ordinary", "signed", "index-read", "post-index-read", "multiply-index", "counter-reset", "double-counter", "long-body", "memory", "interruptible", "compact"} {
+		for _, variant := range []string{"ordinary", "signed", "index-read", "post-index-read", "multiply-index", "select-index", "counter-reset", "double-counter", "long-body", "memory", "interruptible", "compact"} {
 			branchLT := lt
 			if variant == "signed" {
 				branchLT--
@@ -37,6 +37,12 @@ func TestScalarLoopUnrollChecksEveryIteration(t *testing.T) {
 						xor = 0x85
 					}
 					body = append(body, 0x20, 1, xor)
+				} else if variant == "select-index" {
+					body = append(body, 0x20, 1, 0x20, 1)
+					if wide {
+						body = append(body, 0xa7)
+					}
+					body = append(body, 0x41, 1, 0x71, 0x1b)
 				} else if variant == "multiply-index" {
 					mul := byte(0x6c)
 					if wide {
@@ -128,6 +134,9 @@ func TestScalarLoopUnrollChecksEveryIteration(t *testing.T) {
 									if variant == "index-read" {
 										term = fold(value ^ index)
 									}
+									if variant == "select-index" && index&1 == 0 {
+										term = index
+									}
 									if variant == "multiply-index" {
 										term = fold(fold(value) * index)
 									}
@@ -150,7 +159,7 @@ func TestScalarLoopUnrollChecksEveryIteration(t *testing.T) {
 								if err != nil || fold(got) != want {
 									t.Fatalf("wide=%t variant=%s enabled=%t workers=%d count=%d initial=%x value=%x got=%x err=%v want=%x", wide, variant, enabled, workers, count, initial, value, got, err, want)
 								}
-								positive := variant == "ordinary" || variant == "signed" || variant == "index-read" || variant == "post-index-read" || variant == "multiply-index"
+								positive := variant == "ordinary" || variant == "signed" || variant == "index-read" || variant == "post-index-read" || variant == "multiply-index" || variant == "select-index"
 								if diagnosticsEnabled && (stats.Funcs[0].Peephole["scalar-loop-unroll"] != 0) != (enabled && positive && !profileEnabled) {
 									t.Fatalf("unroll path mismatch: wide=%t variant=%s enabled=%t", wide, variant, enabled)
 								}

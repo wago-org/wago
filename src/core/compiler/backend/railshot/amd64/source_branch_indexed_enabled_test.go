@@ -26,7 +26,7 @@ func TestSourceBranchIndexedFallbackCoverage(t *testing.T) {
 						opts := codegen.SourceOptions(codegen.Options{}, m, &v, wasm.ValidationFeatures{})
 						var reports []codegen.SourceReport
 						codegen.SetSourceReporter(opts, m, func(r codegen.SourceReport) { reports = append(reports, r) })
-						cm, err := CompileModuleWith(m, CompileOptions{Codegen: opts, Workers: workers, DeferCodeMapping: workers != 1})
+						cm, err := CompileModuleWith(m, CompileOptions{Codegen: opts, Workers: workers, DeferCodeMapping: workers != 1, Optimizations: map[string]bool{"pure-integer-if-select": false}})
 						if err != nil {
 							t.Fatal(err)
 						}

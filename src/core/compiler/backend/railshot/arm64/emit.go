@@ -235,6 +235,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		if r := f.tryLeaMul(node, left, right, dest); r != regNone {
 			return r
 		}
+		if r := f.tryRegisterMultiply(node, left, right, dest); r != regNone {
+			return r
+		}
 	}
 
 	// AArch64 can preserve an old local value used as the RHS while computing a
@@ -1273,8 +1276,7 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	if f.inlineTailLoopFrame != 0 && right.st.valueFacts().has(factNonZero) {
 		f.stats.peep("inline-divisor-known-nonzero")
 	} else {
-		f.cmpImm(divisor, 0, w)
-		f.trapIf(condE, trapDivZero)
+		f.trapIfZero(divisor, w, true, trapDivZero)
 	}
 
 	// The result register: honor the caller hint when it is free of the operand

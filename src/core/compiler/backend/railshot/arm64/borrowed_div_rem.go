@@ -36,8 +36,7 @@ func (f *fn) condenseBorrowedDivRem(node *elem, dest Reg) Reg {
 	} else if f.inlineTailLoopFrame != 0 && right.st.valueFacts().has(factNonZero) {
 		f.stats.peep("inline-divisor-known-nonzero")
 	} else {
-		f.cmpImm(divisor, 0, w)
-		f.trapIf(condE, trapDivZero)
+		f.trapIfZero(divisor, w, true, trapDivZero)
 	}
 
 	// The result register: honor the caller hint when it is free of the operand

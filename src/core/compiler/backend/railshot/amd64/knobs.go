@@ -32,6 +32,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("scalar-loop-unroll", &scalarLoopUnrollEnabled),
 	optimization.Bind("loop-local-params", &loopLocalParamsEnabled),
 	optimization.Bind("tuple-if-select", &tupleIfSelectEnabled),
+	optimization.Bind("pure-integer-if-select", &pureIntegerIfSelectEnabled),
 	optimization.Bind("linear-integer-tree", &linearIntegerTreeEnabled),
 	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
 	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
@@ -176,6 +177,7 @@ var (
 	optDirectReferenceABI      = optimizationBindings.Option("direct-reference-abi")
 	optInline                  = optimizationBindings.Option("inline")
 	optTupleIfSelect           = optimizationBindings.Option("tuple-if-select")
+	optPureIntegerIfSelect     = optimizationBindings.Option("pure-integer-if-select")
 	optLinearIntegerTree       = optimizationBindings.Option("linear-integer-tree")
 	optStackFence              = optimizationBindings.Option("stack-fence")
 	optStackReg                = optimizationBindings.Option("stack-reg")
