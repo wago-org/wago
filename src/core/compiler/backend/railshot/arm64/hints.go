@@ -1360,8 +1360,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				bits, typ = v, 2
 			}
 			if s.collectLoopIntConsts && loopDepth != 0 {
-				if next, ok := s.r.Reader.Peek(); ok && loopIntConstNeedsRegister(next, bits, typ) {
-					s.noteLoopIntConst(bits, typ, loopDepth, pathWeight)
+				if next, ok := s.r.Reader.Peek(); ok {
+					if value, valueType, needed := loopIntConstRegisterValue(next, bits, typ); needed {
+						s.noteLoopIntConst(value, valueType, loopDepth, pathWeight)
+					}
 				}
 			}
 		case 0x43: // f32.const

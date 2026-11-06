@@ -7,7 +7,7 @@ import "os"
 var borrowedDivRemEnabled = os.Getenv("WAGO_ARM64_NO_BORROWED_DIV_REM") != "1" &&
 	os.Getenv("WAGO_ARM64_EXPERIMENT_BORROWED_DIV_REM") != "0"
 
-// Concrete read-only operands retain the existing traps and result allocation.
+// Concrete read-only operands retain result allocation and every unproved trap.
 func (f *fn) condenseBorrowedDivRem(node *elem, dest Reg) Reg {
 	w := node.st.typ.is64()
 	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
@@ -31,8 +31,9 @@ func (f *fn) condenseBorrowedDivRem(node *elem, dest Reg) Reg {
 	dividend, dividendOwned := f.readDivRemOperand(left, dest)
 	f.pinned = f.pinned.add(dividend)
 
-	// Divide-by-zero trap for every division op.
-	if f.inlineTailLoopFrame != 0 && right.st.valueFacts().has(factNonZero) {
+	if right == f.guardedNonzeroDivisor {
+		f.stats.peep("guarded-div-rem")
+	} else if f.inlineTailLoopFrame != 0 && right.st.valueFacts().has(factNonZero) {
 		f.stats.peep("inline-divisor-known-nonzero")
 	} else {
 		f.cmpImm(divisor, 0, w)

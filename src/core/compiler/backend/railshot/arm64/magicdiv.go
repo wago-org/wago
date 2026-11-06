@@ -2,7 +2,11 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot"
+import (
+	"math/bits"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot"
+)
 
 // Constant-divisor strength reduction. A div/rem by a constant is replaced with
 // cheap shifts (power-of-2 divisors) or a multiply-high + shift (the Granlund–
@@ -43,7 +47,7 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 				result = f.allocReg(maskOf(dividend))
 			}
 			f.pinned = f.pinned.add(result)
-			constant, cached := f.cachedIntConst(storage{typ: mtI32, cval: int64(int32(uint32(magic)))})
+			constant, cached := f.cachedMagicConst(magic, false)
 			if !cached {
 				constant = result
 				if result == dividend {
@@ -61,6 +65,9 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 			f.occupy(node, result)
 			f.stats.peep("div-by-const")
 			f.stats.peep("magic-quotient-direct")
+			if cached {
+				f.stats.peep("magic-loop-int-const")
+			}
 			return result, true
 		}
 	}
@@ -256,6 +263,9 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 		postShift, shift = shift, 0
 	}
 	q := f.magicMulHighShift(res, magic, w, false, postShift) // q = high(res * magic), pinned
+	if postShift > 0 && postShift < 32 {
+		f.stats.peep("magic-u32-shift")
+	}
 	if add {
 		// q = ((n - q) >> 1) + q  (an overflow-free way to add n before the shift).
 		t := f.allocReg(maskOf(res, q))
@@ -326,6 +336,18 @@ func (f *fn) magicMulHigh(res Reg, magic uint64, w, signed bool) Reg {
 	return f.magicMulHighShift(res, magic, w, signed, 0)
 }
 
+func (f *fn) cachedMagicConst(magic uint64, wide bool) (Reg, bool) {
+	// Loop reciprocal hints retain the full multiplier. Tail-inline constants
+	// can instead have an i32 home; either lease supplies the same low 32 bits.
+	if reg, ok := f.cachedIntConst(storage{kind: stConst, typ: mtI64, cval: int64(magic)}); ok {
+		return reg, true
+	}
+	if !wide {
+		return f.cachedIntConst(storage{kind: stConst, typ: mtI32, cval: int64(int32(uint32(magic)))})
+	}
+	return regNone, false
+}
+
 // A 32-bit unsigned quotient without an add correction can shift the full
 // product once, combining high-half extraction with the final quotient shift.
 // Keep the same source ownership and register allocation as magicMulHigh.
@@ -336,8 +358,15 @@ func (f *fn) magicMulHighShift(res Reg, magic uint64, w, signed bool, postShift 
 		bits = int64(int32(uint32(magic)))
 	}
 	previousPins := f.pinned
-	mr, owned := f.intConstReadReg(storage{kind: stConst, typ: typ, cval: bits}, maskOf(res))
+	mr, cached := f.cachedMagicConst(magic, w)
+	owned := false
+	if !cached {
+		mr, owned = f.intConstReadReg(storage{kind: stConst, typ: typ, cval: bits}, maskOf(res))
+	}
 	f.pinned = f.pinned.add(mr)
+	if !owned {
+		f.stats.peep("magic-loop-int-const")
+	}
 	hi := f.allocReg(maskOf(res, mr)) // clear of res and the magic
 	f.pinned = f.pinned.add(hi)
 	if w {
@@ -371,6 +400,18 @@ func (f *fn) magicMulHighShift(res Reg, magic uint64, w, signed bool, postShift 
 // given the already-computed quotient q. Low-W bits of q*d suffice (mod 2^W).
 // AArch64 MSUB fuses the multiply/subtract as `nreg = nreg - q*d`.
 func (f *fn) remFromQuot(nreg, q Reg, d int64, w bool) {
+	if d > 1 && uint64(d-1)&uint64(d-2) == 0 {
+		// This shifted product is writable scratch, never a borrowed constant.
+		t := f.allocReg(maskOf(nreg, q))
+		previousPins := f.pinned
+		f.pinned = f.pinned.add(t)
+		f.a.AddShifted(t, q, q, uint8(bits.TrailingZeros64(uint64(d-1))), !w)
+		f.aluRR(opSub, nreg, t, w)
+		f.stats.peep("magic-rem-shifted-product")
+		f.pinned = previousPins
+		f.release(t)
+		return
+	}
 	typ, bits := mtI64, d
 	if !w {
 		typ = mtI32
