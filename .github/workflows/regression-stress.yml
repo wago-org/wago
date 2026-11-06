@@ -49,7 +49,7 @@ jobs:
   draft-smoke:
     name: Draft GC smoke / Linux amd64
     if: github.event_name == 'pull_request' && github.event.pull_request.draft
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -74,19 +74,19 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             bounds: explicit
             tags: wagodebug
           - arch: amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             bounds: guard-page
             tags: wagodebug,wago_guardpage
           - arch: arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             bounds: explicit
             tags: wagodebug
           - arch: arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             bounds: guard-page
             tags: wagodebug,wago_guardpage
     runs-on: ${{ matrix.runner }}
@@ -115,7 +115,7 @@ jobs:
   stress:
     name: Extended runtime stress
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || inputs.profile == 'release'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -139,7 +139,7 @@ jobs:
   regression-rebuild:
     name: Regenerate regression corpus from pinned source
     if: inputs.profile == 'release'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

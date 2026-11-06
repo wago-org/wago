@@ -31,7 +31,7 @@ env:
 jobs:
   prepare:
     name: Verify exact source qualification
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.inputs.outputs.version }}
       channel: ${{ steps.inputs.outputs.channel }}
@@ -187,11 +187,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-24.04
+          - runner: ubuntu-26.04
             goos: linux
             goarch: amd64
             target: linux-amd64
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-26.04-arm
             goos: linux
             goarch: arm64
             target: linux-arm64
@@ -199,19 +199,19 @@ jobs:
             goos: linux
             goarch: riscv64
             target: linux-riscv64
-          - runner: macos-15-intel
+          - runner: macos-26-intel
             goos: darwin
             goarch: amd64
             target: darwin-amd64
-          - runner: macos-15
+          - runner: macos-26
             goos: darwin
             goarch: arm64
             target: darwin-arm64
-          - runner: windows-2025
+          - runner: windows-2025-vs2026
             goos: windows
             goarch: amd64
             target: windows-amd64
-          - runner: windows-11-arm
+          - runner: windows-11-vs2026-arm
             goos: windows
             goarch: arm64
             target: windows-arm64
@@ -306,7 +306,7 @@ jobs:
   manifest:
     name: Record qualified release manifest
     needs: [prepare, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -364,7 +364,7 @@ jobs:
   publish:
     name: Publish exactly qualified release files
     needs: [prepare, build, manifest]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       actions: read
       contents: write

@@ -30,7 +30,7 @@ jobs:
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository) ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       sha: ${{ steps.source.outputs.sha }}
       ci_run_id: ${{ steps.ci.outputs.run_id }}
@@ -114,7 +114,7 @@ jobs:
   publish:
     name: Sync install.wago.sh
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Check out qualified Wago source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
