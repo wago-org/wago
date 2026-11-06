@@ -807,7 +807,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 		return false, nil
 	}
 
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	f.setFactsForLocal(x, 0)
 	// Refs below the select still require x's old value; refs in its three
 	// operand blocks are consumed before the final CSEL overwrites dest.
@@ -909,7 +909,7 @@ func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	if err := f.brIfFusedSet(top, idx, x); err != nil {
 		return false, err
 	}
@@ -1033,7 +1033,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 		}
 		return false, nil
 	}
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	right := f.s.back()
 	if right == nil {
 		if err := r.JumpTo(save); err != nil {
@@ -1100,7 +1100,7 @@ func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(R
 	if arity == 2 {
 		first = f.s.prev(f.s.baseOfValentBlock(first))
 	}
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	f.realizeLocalRefs(x, first)
 	emit(pr)
 	f.markLocalDirty(x)
@@ -1283,7 +1283,7 @@ func subtreeRefsLocal(s *stack, e *elem, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	e := f.s.back()
 	if e != nil && e.elemKind() == ekValue && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
@@ -1302,7 +1302,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if e != nil && e.isDeferred() {
 		binarySink := (isBinALU(e.deferredOp()) || isShift(e.deferredOp())) && (!tee || f.opt(optTeeSink))
 		unarySink := (isUnary(e.deferredOp()) || isConvert(e.deferredOp())) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
-		if binarySink || unarySink {
+		divSink := f.inlineTailLoopFrame != 0 && f.opt(optBorrowedDivRem) && isDivRem(e.deferredOp()) && f.canBorrowDivRemOperands(e)
+		if binarySink || unarySink || divSink {
 			skipFrom = f.s.baseOfValentBlock(e)
 		}
 	}

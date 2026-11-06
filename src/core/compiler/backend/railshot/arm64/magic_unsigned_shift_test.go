@@ -41,8 +41,11 @@ func TestMagicUnsigned32CombinedShiftPreservesQuotientAndRemainder(t *testing.T)
 					if err != nil || uint32(got) != want {
 						t.Fatalf("op=%s d=%x n=%x enabled=%t got=%x err=%v want=%x", op.name, divisor, n, enabled, got, err, want)
 					}
-					if diagnosticsEnabled && (stats.Funcs[0].Peephole["magic-u32-shift"] != 0) != (enabled && !add && shift > 0) {
-						t.Fatalf("op=%s d=%x enabled=%t stats=%v", op.name, divisor, enabled, stats.Funcs[0].Peephole)
+					if diagnosticsEnabled {
+						combinedShift := stats.Funcs[0].Peephole["magic-u32-shift"] != 0 || stats.Funcs[0].Peephole["magic-quotient-direct"] != 0 && shift > 0
+						if combinedShift != (enabled && !add && shift > 0) {
+							t.Fatalf("op=%s d=%x enabled=%t stats=%v", op.name, divisor, enabled, stats.Funcs[0].Peephole)
+						}
 					}
 					shiftedProduct := divisor > 1 && (divisor-1)&(divisor-2) == 0
 					if diagnosticsEnabled && (stats.Funcs[0].Peephole["magic-rem-shifted-product"] != 0) != (enabled && remainder && shiftedProduct) {

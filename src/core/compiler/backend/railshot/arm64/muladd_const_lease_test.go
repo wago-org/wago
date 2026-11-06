@@ -72,7 +72,13 @@ func TestMulAddBorrowsImmutableLoopConstants(t *testing.T) {
 								if err != nil || fold(got) != want {
 									t.Fatalf("wide=%v coefficient=%d literal=%v sub=%v reverse=%v cache=%v input=%x got=%x want=%x err=%v", wide, coefficient, literalAccumulator, subtract, reverse, cache, input, got, want, err)
 								}
-								borrow := coefficient == 29 || literalAccumulator
+								// The affine cover embeds an encodable accumulator and
+								// shifted coefficient without reading either constant.
+								affine := coefficient == 17 && literalAccumulator && !subtract
+								if diagnosticsEnabled && (stats.Funcs[0].Peephole["mul-add-affine-immediate"] > 0) != affine {
+									t.Fatalf("affine=%v stats=%v", affine, stats.Funcs[0].Peephole)
+								}
+								borrow := (coefficient == 29 || literalAccumulator) && !affine
 								if diagnosticsEnabled && (stats.Funcs[0].Peephole["mul-add-cached-constant"] > 0) != (cache && borrow) {
 									t.Fatalf("wide=%v coefficient=%d literal=%v cache=%v stats=%v", wide, coefficient, literalAccumulator, cache, stats.Funcs[0].Peephole)
 								}

@@ -31,6 +31,47 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 		return regNone, false
 	}
 
+	// A 32-bit unsigned quotient without an add correction needs only the
+	// full UMULL product followed by one 64-bit shift. Read the dividend
+	// directly and write the requested destination, avoiding two copies and
+	// separate high-half/post-shift instructions. UMULL ignores carrier bits.
+	left := f.s.arg0(node)
+	if left.elemKind() == ekValue && left.st.kind == stLocalReg && !w && !signed && !wantRem && uint32(c) > 1 && uint32(c)&(uint32(c)-1) != 0 {
+		magic, shift, add := railshot.MagicU(uint64(uint32(c)), 32)
+		if !add {
+			previousPins := f.pinned
+			dividend, _ := f.materializeRead(f.s.arg0(node))
+			f.pinned = f.pinned.add(dividend)
+			result := dest
+			if result == regNone {
+				result = f.allocReg(maskOf(dividend))
+			}
+			f.pinned = f.pinned.add(result)
+			constant, cached := f.cachedMagicConst(magic, false)
+			if !cached {
+				constant = result
+				if result == dividend {
+					constant = f.allocReg(maskOf(dividend, result))
+				}
+				f.a.MovImm32(constant, int32(uint32(magic)))
+			}
+			f.a.Umull(result, dividend, constant)
+			f.shiftImm(shLSR, result, byte(32+shift), true)
+			if !cached && constant != result {
+				f.release(constant)
+			}
+			f.pinned = previousPins
+			f.consumeBlockBelow(node)
+			f.occupy(node, result)
+			f.stats.peep("div-by-const")
+			f.stats.peep("magic-quotient-direct")
+			if cached {
+				f.stats.peep("magic-loop-int-const")
+			}
+			return result, true
+		}
+	}
+
 	// Compute the dividend into an owned result register. Unlike x86 (which had to
 	// keep it clear of RAX/RDX for the one-operand MUL), AArch64's multiply-high is
 	// orthogonal, so no register needs to be avoided here.
@@ -217,16 +258,13 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 		W = 64
 	}
 	magic, shift, add := railshot.MagicU(d, W)
-	var q Reg
-	if !w && !add && shift > 0 && shift < 32 {
-		// ((uint64(uint32(n))*magic)>>32)>>shift is one 64-bit
-		// logical shift. An add-corrected quotient needs its unshifted high
-		// half first, and signed/64-bit division keeps the existing lowering.
-		q = f.magicMulHighShift(res, magic, false, false, shift)
-		shift = 0
+	postShift := uint(0)
+	if !w && !add {
+		postShift, shift = shift, 0
+	}
+	q := f.magicMulHighShift(res, magic, w, false, postShift) // q = high(res * magic), pinned
+	if postShift > 0 && postShift < 32 {
 		f.stats.peep("magic-u32-shift")
-	} else {
-		q = f.magicMulHigh(res, magic, w, false)
 	}
 	if add {
 		// q = ((n - q) >> 1) + q  (an overflow-free way to add n before the shift).
@@ -298,13 +336,35 @@ func (f *fn) magicMulHigh(res Reg, magic uint64, w, signed bool) Reg {
 	return f.magicMulHighShift(res, magic, w, signed, 0)
 }
 
-// postShift is zero except for a proved unsigned 32-bit quotient without add
-// correction. That path can extract bits [63:32+postShift] in one instruction.
+func (f *fn) cachedMagicConst(magic uint64, wide bool) (Reg, bool) {
+	// Loop reciprocal hints retain the full multiplier. Tail-inline constants
+	// can instead have an i32 home; either lease supplies the same low 32 bits.
+	if reg, ok := f.cachedIntConst(storage{kind: stConst, typ: mtI64, cval: int64(magic)}); ok {
+		return reg, true
+	}
+	if !wide {
+		return f.cachedIntConst(storage{kind: stConst, typ: mtI32, cval: int64(int32(uint32(magic)))})
+	}
+	return regNone, false
+}
+
+// A 32-bit unsigned quotient without an add correction can shift the full
+// product once, combining high-half extraction with the final quotient shift.
+// Keep the same source ownership and register allocation as magicMulHigh.
 func (f *fn) magicMulHighShift(res Reg, magic uint64, w, signed bool, postShift uint) Reg {
-	mr, ownMr := f.intConstReadReg(storage{kind: stConst, typ: mtI64, cval: int64(magic)}, maskOf(res))
-	mrWasPinned := f.pinned.has(mr)
+	typ, bits := mtI64, int64(magic)
+	if !w {
+		typ = mtI32
+		bits = int64(int32(uint32(magic)))
+	}
+	previousPins := f.pinned
+	mr, cached := f.cachedMagicConst(magic, w)
+	owned := false
+	if !cached {
+		mr, owned = f.intConstReadReg(storage{kind: stConst, typ: typ, cval: bits}, maskOf(res))
+	}
 	f.pinned = f.pinned.add(mr)
-	if !ownMr {
+	if !owned {
 		f.stats.peep("magic-loop-int-const")
 	}
 	hi := f.allocReg(maskOf(res, mr)) // clear of res and the magic
@@ -322,14 +382,15 @@ func (f *fn) magicMulHighShift(res Reg, magic uint64, w, signed bool, postShift 
 			f.a.Smull(hi, res, mr)          // hi = (int64)res_lo32 * (int64)magic_lo32
 			f.shiftImm(shASR, hi, 32, true) // arithmetic: high 32 bits → low half
 		} else {
-			f.a.Umull(hi, res, mr)                          // hi = (uint64)res_lo32 * (uint64)magic_lo32
-			f.shiftImm(shLSR, hi, byte(32+postShift), true) // logical: high quotient bits → low half
+			f.a.Umull(hi, res, mr) // hi = (uint64)res_lo32 * (uint64)magic_lo32
+			f.shiftImm(shLSR, hi, byte(32+postShift), true)
+			if postShift != 0 {
+				f.stats.peep("magic-product-shift")
+			}
 		}
 	}
-	if !mrWasPinned {
-		f.pinned = f.pinned.remove(mr)
-	}
-	if ownMr {
+	f.pinned = previousPins.add(hi)
+	if owned {
 		f.release(mr)
 	}
 	return hi
@@ -339,18 +400,29 @@ func (f *fn) magicMulHighShift(res Reg, magic uint64, w, signed bool, postShift 
 // given the already-computed quotient q. Low-W bits of q*d suffice (mod 2^W).
 // AArch64 MSUB fuses the multiply/subtract as `nreg = nreg - q*d`.
 func (f *fn) remFromQuot(nreg, q Reg, d int64, w bool) {
-	t := f.allocReg(maskOf(nreg, q))
-	f.pinned = f.pinned.add(t)
 	if d > 1 && uint64(d-1)&uint64(d-2) == 0 {
-		// q*(1+2^k) is one shifted add. Both instructions preserve the
-		// low-W-bit arithmetic used by signed and unsigned remainders.
+		// This shifted product is writable scratch, never a borrowed constant.
+		t := f.allocReg(maskOf(nreg, q))
+		previousPins := f.pinned
+		f.pinned = f.pinned.add(t)
 		f.a.AddShifted(t, q, q, uint8(bits.TrailingZeros64(uint64(d-1))), !w)
 		f.aluRR(opSub, nreg, t, w)
 		f.stats.peep("magic-rem-shifted-product")
-	} else {
-		f.a.MovImm64(t, uint64(d))
-		f.msub(nreg, q, t, nreg, w)
+		f.pinned = previousPins
+		f.release(t)
+		return
 	}
-	f.pinned = f.pinned.remove(t)
-	f.release(t)
+	typ, bits := mtI64, d
+	if !w {
+		typ = mtI32
+		bits = int64(int32(uint32(d)))
+	}
+	previousPins := f.pinned
+	t, owned := f.intConstReadReg(storage{kind: stConst, typ: typ, cval: bits}, maskOf(nreg, q))
+	f.pinned = f.pinned.add(t)
+	f.msub(nreg, q, t, nreg, w)
+	f.pinned = previousPins
+	if owned {
+		f.release(t)
+	}
 }

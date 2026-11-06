@@ -339,14 +339,14 @@ func TestGPWritesReadOnlyAndFPOnly(t *testing.T) {
 		{"simd-movd-memory", func(a *Asm) { a.SseIdx(0x66, 0x7e, 13, R12, R9, 8) }},
 		{"simd-vex-movd-memory", func(a *Asm) { a.vex3MemDisp(vexMap0F, 1, 0x7e, 13, 0, false, R12, 8) }},
 		{"simd-vex-extract-memory", func(a *Asm) { a.vex3MemIdx(vexMap0F3A, 1, 0x16, 13, 0, false, R12, R9, 8); a.emit(1) }},
-		{"padding", func(a *Asm) { a.emit(0x90); a.Align16(); a.AlignLoop(); a.AlignLoop32() }},
+		{"padding", func(a *Asm) { a.emit(0x90); a.Align16(); a.AlignLoop(); a.AlignLoop32(); a.AlignLoop64() }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) { checkGPWrites(t, tc.emit, 0, true) })
 	}
 	checkGPWrites(t, func(a *Asm) { a.ShiftImm(4, R13, 0, true) }, 0, false)
 	checkGPWrites(t, func(a *Asm) { a.JccRel8(CondE, 1000) }, 0, false)
-	checkGPWrites(t, func(a *Asm) { a.Align16(); a.AlignLoop(); a.AlignLoop32() }, 0, false)
+	checkGPWrites(t, func(a *Asm) { a.Align16(); a.AlignLoop(); a.AlignLoop32(); a.AlignLoop64() }, 0, false)
 }
 
 func TestGPWritesObserverScopesAndTransferIndependence(t *testing.T) {

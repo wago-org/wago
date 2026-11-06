@@ -197,6 +197,8 @@
               "straight-line-block",
               "streaming-i32-reduction",
               "swar-idioms",
+              "tail-loop-inline",
+              "tail-self-loop",
               "taken-zero-branch",
               "tee-sink",
               "tee-spill-elide",

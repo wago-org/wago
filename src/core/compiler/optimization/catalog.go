@@ -527,6 +527,8 @@ var catalog = []Definition{
 	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
 	arm64("zero-branch", "Zero branches", "select direct zero-test branches when flags are not live"),
 	arm64("mul-add-fuse", "Multiply-add fusion", "fuse multiply-add and multiply-subtract expressions"),
+	both("tail-self-loop", "Self-tail loops", "reuse the native frame for eligible direct self-tail transfers"),
+	both("tail-loop-inline", "Tail-loop inlining", "inline bounded numeric tail-call bodies as call-free native loops"),
 	arm64("entry-init-elision", "Entry initialization elision", "skip initialization of locals overwritten before their first read"),
 	arm64("v128-direct-results", "Direct vector results", "write vector results directly into eligible pinned locals"),
 	amd64("dead-gc-new", "Dead GC constructors", "remove dropped GC constructor trees while preserving traps"),

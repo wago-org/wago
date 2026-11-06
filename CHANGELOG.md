@@ -18,6 +18,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Bound AMD64 and ARM64 scalar-loop metadata proofs, avoiding quadratic
   compilation work when many small loops share pending outer exits.
+- Restore relinquished AMD64 parameter pins before self-tail loop edges.
+- Preserve unreachable inline continuations on ARM64 and AMD64 when a
+  nonreturning tail helper follows a retained caller operand.
 
 - AMD64 and ARM64 discard `try_table` handlers on `return`, so a throw after
   the call is caught by the caller's handler instead of the returned frame's.
@@ -129,6 +132,16 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Select pure inlined ARM64 integer pairs directly into two distinct caller
   locals when their dedicated registers cannot overwrite either arm's sources.
   Preserve pending reads of the caller's old values before the selections.
+- Keep eligible AMD64 integer self-tail calls in register loops, resolve private
+  immutable table targets, and inline small numeric self-tail and two-function
+  tail cycles. Specialize constant entry arguments and reuse proved branch flags,
+  including bounded register-only work before a repeated dynamic comparison.
+  Keep single inline results in registers when a pure caller can spare a private
+  tail-local register.
+
+- Keep eligible ARM64 self-tail calls in native register loops, including
+  private immutable table targets and small numeric helpers inlined into callers.
+  Reuse loop constants and reduce integer argument transfers and return branches.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.

@@ -87,6 +87,8 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
+	optimization.Bind("tail-self-loop", &tailSelfLoopEnabled),
+	optimization.Bind("tail-loop-inline", &tailLoopInlineEnabled),
 	optimization.Bind("direct-reference-abi", &directReferenceABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
@@ -169,6 +171,8 @@ var (
 	optV128ConstCache          = optimizationBindings.Option("v128-const-cache")
 	optV128Pins                = optimizationBindings.Option("v128-pins")
 	optRegABI                  = optimizationBindings.Option("reg-abi")
+	optTailSelfLoop            = optimizationBindings.Option("tail-self-loop")
+	optTailLoopInline          = optimizationBindings.Option("tail-loop-inline")
 	optDirectReferenceABI      = optimizationBindings.Option("direct-reference-abi")
 	optInline                  = optimizationBindings.Option("inline")
 	optTupleIfSelect           = optimizationBindings.Option("tuple-if-select")

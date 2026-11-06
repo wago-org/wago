@@ -478,7 +478,7 @@ type inlineTarget struct {
 	typeStart      uint32
 	localTypeEnd   uint32
 	resultTypeEnd  uint32
-	params         uint32 // param count (callee locals 0..params-1)
+	params         uint32 // low 16 bits: param count; high bits: flags and tail zero mask
 	res0           machineType
 	touchesMem     bool // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
 	hasCtrl        bool // the body has control flow → splice through a synthetic boundary frame
@@ -491,8 +491,17 @@ const (
 	inlineI32AddParamsFlag = uint32(1 << 29)
 	inlineTupleLoopFlag    = uint32(1 << 28)
 	inlineTupleSelectFlag  = uint32(1 << 27)
-	inlineParamMask        = inlineTupleSelectFlag - 1
+	inlineTailLoopFlag     = uint32(1 << 26)
+	// Register-ABI candidates have at most eight integer parameters. Keep a
+	// separate byte for tail initialization without growing every target record.
+	inlineTailZeroShift = 16
+	inlineParamMask     = (1 << inlineTailZeroShift) - 1
 )
+
+var tailLoopInlineEnabled = true
+
+func (t *inlineTarget) tailLoop() bool      { return t.params&inlineTailLoopFlag != 0 }
+func (t *inlineTarget) tailZeroMask() uint8 { return uint8(t.params >> inlineTailZeroShift) }
 
 func (t *inlineTarget) isI32AddConst() bool    { return t.params&inlineI32AddConstFlag != 0 }
 func (t *inlineTarget) isI32AddParams() bool   { return t.params&inlineI32AddParamsFlag != 0 }
@@ -561,7 +570,8 @@ func (ts inlineTargetTable) omitStandaloneBody(localIdx int, hostAdapter bool) b
 // gathered by computeModuleHints — no second body walk. inlineFacts is
 // reconstructed from the hints (any call ⇒ not a leaf ⇒ ineligible, so hasCall
 // stands in for both calleeCount>0 and hasControlCall), plus the signature.
-func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPolicy) inlineTargetTable {
+func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPolicy, tailLoops ...bool) inlineTargetTable {
+	allowTail := len(tailLoops) > 0 && tailLoops[0]
 	if !policy.EnabledOption(optInline) {
 		return inlineTargetTable{}
 	}
@@ -581,7 +591,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	}
 	candidateCount, typeCount := 0, 0
 	for i := range m.Code {
-		ft, _, ok := inlineTargetFacts(m, allHints, i, policy)
+		ft, _, ok := inlineTargetFacts(m, allHints, i, policy, allowTail)
 		if !ok {
 			continue
 		}
@@ -604,7 +614,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	}
 	targets := inlineTargetTable{first: importedFuncs, data: data, classifier: wasm.NewModuleInstructionClassifier(m, true)}
 	for i := range m.Code {
-		ft, facts, ok := inlineTargetFacts(m, allHints, i, policy)
+		ft, facts, ok := inlineTargetFacts(m, allHints, i, policy, allowTail)
 		if !ok {
 			continue
 		}
@@ -636,6 +646,11 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		if !policy.CompactNative && !profileEnabled && policy.EnabledOption(optTupleIfSelect) && facts.declaredLocals == 0 &&
 			facts.params <= 4 && integerTupleSelectTarget(m, m.Code[i], ft) {
 			params |= inlineTupleSelectFlag
+		}
+		if allowTail && tailLoopInlineCandidate(m, allHints, i, policy) {
+			params |= inlineTailLoopFlag
+			params |= uint32(tailInlineZeroMask(m.Code[i].BodyBytes, facts.params, int(h.localCount), targets.classifier)) << inlineTailZeroShift
+			facts.hasControlFlow = true
 		}
 		if addConst {
 			params |= inlineI32AddConstFlag
@@ -722,7 +737,7 @@ func inlineI32AddConst(body []byte, ft *wasm.CompType) (bool, int32) {
 	return err == nil && end == 0x0b && !r.HasNext(), c
 }
 
-func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy CodegenPolicy) (*wasm.CompType, inlineFacts, bool) {
+func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy CodegenPolicy, tailLoops ...bool) (*wasm.CompType, inlineFacts, bool) {
 	body := m.Code[i].BodyBytes
 	if len(body) == 0 {
 		return nil, inlineFacts{}, false
@@ -750,7 +765,7 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 		facts.calleeCount = 1
 	}
 	facts.boundedTupleLoop = boundedIntegerTupleLoopBody(m.Code[i], facts, wasm.NewModuleInstructionClassifier(m, true))
-	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy)
+	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy) || len(tailLoops) > 0 && tailLoops[0] && tailLoopInlineCandidate(m, allHints, i, policy)
 }
 
 func recursiveInlineCandidate(m *wasm.Module, allHints []funcHints, i int, facts inlineFacts, policy CodegenPolicy) bool {
@@ -848,8 +863,34 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
 		}
+		if t.tailLoop() && !f.makesCalls {
+			pool := gpPinPool(nil, true, f.nParams, true, f.opt(optEntryArgPins))
+			if len(callees) == 1 && f.inlineTailSpareR8() {
+				// gpPinPool ends with the canonical block-merge home. Prefer an
+				// otherwise unused fixed scratch before sacrificing register results.
+				pool[len(pool)-1] = R8
+				pool = append(pool, mergeReg)
+			}
+			for i := base; i < len(f.localType); i++ {
+				for _, reg := range pool {
+					if !f.reserved.has(reg) && !f.pinnedLocalMask.has(reg) {
+						f.locals[i].reg = reg
+						f.pinnedLocals = append(f.pinnedLocals, i)
+						f.pinnedLocalMask = f.pinnedLocalMask.add(reg)
+						if reg == R8 {
+							f.stats.peep("inline-tail-spare-pin")
+						}
+						break
+					}
+				}
+			}
+			f.sc.pinnedLocals = f.pinnedLocals
+		}
 		f.inlineBase[t.globalIdx] = base
 		f.pinInlineTupleLoopLocals(t, base)
+	}
+	if f.pinnedLocalMask.has(mergeReg) {
+		f.regMerge = false
 	}
 }
 
@@ -1062,10 +1103,13 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	// fast path above only needs the walk when its argument can trap.
 	f.materializeTrapsBefore(f.s.head)
 	base := f.inlineBase[t.globalIdx]
+	constants := f.captureInlineTailConstants(t, base)
 	previousForward, previousForwardN := f.inlineForward, f.inlineForwardN
 	if !f.forwardIntegerPairParams(t) {
 		f.bindInlineParams(t, base)
 	}
+	var prefix [8]storage
+	prefixCount := f.detachInlineTailPrefix(t, base, &prefix)
 
 	old := f.localBase
 	oldTraceFunc, oldTraceBase, oldPC := f.traceFuncIdx, f.tracePCBase, f.wasmPC
@@ -1088,7 +1132,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	if t.tupleSelect() {
 		storesConsumed, err = f.inlineTupleSelectBody(t, stores)
 	} else if t.hasCtrl {
-		err = f.inlineBodyCtrl(t)
+		err = f.inlineBodyCtrl(t, constants)
 	} else {
 		err = f.inlineBody(t.body)
 	}
@@ -1108,6 +1152,9 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	// flow path already merged results into canonical slots, so this is a no-op there.)
 	nLocals := int(t.localTypeEnd - t.typeStart)
 	f.realizeInlineRange(base, base+nLocals)
+	if prefixCount != 0 {
+		f.restoreInlineTailPrefix(t, prefix[:prefixCount])
+	}
 	if storesConsumed {
 		if err := caller.JumpTo(stores.end); err != nil {
 			return err
@@ -1194,6 +1241,10 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 	for i := params - 1; i >= 0; i-- {
 		f.setLocal(nil, base+i, false)
 	}
+	if t.tailLoop() {
+		f.zeroTailInlineLocals(t, base)
+		return
+	}
 	if nLocals > params {
 		var initialized, loopInitialized uint64
 		if !profileEnabled && !f.moduleEH && f.gcFrameRoots == nil && len(f.customInstructions) == 0 &&
@@ -1253,7 +1304,13 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 // opcode driver until that frame's terminating `end` pops it, and routes the
 // callee's `return` to that frame. The callee's own blocks/loops/ifs and its
 // result merge are lowered by the existing control-flow machinery.
-func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
+func (f *fn) inlineBodyCtrl(t *inlineTarget, constants *inlineTailConstants) error {
+	previousCompare := f.inlineTailCompare
+	f.inlineTailCompare = inlineTailCompare{active: t.tailLoop(), lastCompare: -1, reuseResume: -1}
+	defer func() {
+		f.inlineTailCompare = previousCompare
+		f.inlineTailCompare.reuseResume = -1
+	}()
 	minCtrl := len(f.ctrl)
 	resultTypes := f.inlineTargets.resultTypes(t)
 	rN := len(resultTypes)
@@ -1279,7 +1336,74 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 
 	prevRet := f.inlineRetFrame
 	f.inlineRetFrame = len(f.ctrl) - 1
-	err := f.bodyLoop(wasm.NewReader(t.body), minCtrl)
+	oldTail := f.inlineTailLoopFrame
+	oldArgumentStart := f.inlineTailArgumentStart
+	f.inlineTailArgumentStart = -1
+	oldRoot, oldPartner, oldCopyBytes := f.inlineTailRoot, f.inlineTailPartner, f.inlineTailCopyBytes
+
+	oldBytes, oldDepth, oldSource := f.inlineTailExpandBytes, f.inlineTailExpandDepth, f.inlineTailSourceFrame
+	f.inlineTailExpandBytes, f.inlineTailExpandDepth, f.inlineTailSourceFrame = 0, 0, 0
+
+	limit := minCtrl
+	if t.tailLoop() {
+		f.configureInlineTailCycle(t)
+		typ := byte(0x40)
+		if t.res0 == mtI32 {
+			typ = 0x7f
+		}
+		if t.res0 == mtI64 {
+			typ = 0x7e
+		}
+		if err := f.opBlock(wasm.NewReader([]byte{typ}), 0x03); err != nil {
+			return err
+		}
+		// Only compiler-generated backedges enter this loop, and they carry no
+		// results. Its sole exit can retain the enclosing boundary's result home.
+		loop := &f.ctrl[len(f.ctrl)-1]
+		loop.set(ctrlRegMerge1, f.ctrl[f.inlineRetFrame].has(ctrlRegMerge1))
+		if loop.has(ctrlRegMerge1) {
+			f.stats.peep("inline-tail-result-register")
+		}
+		f.inlineTailLoopFrame = len(f.ctrl)
+		if constants != nil {
+			loop.controlSite = -2
+			constants.entry = &inlineTailPeelEntry{}
+			f.inlineTailExpandBytes = inlineTailExpansionBytes
+			if _, err := f.tryExpandInlineTail(t, constants); err != nil {
+				return err
+			}
+			loop = &f.ctrl[f.inlineTailLoopFrame-1]
+			f.setDepthTypesWithGCRoots(f.frameBaseTypes(loop), f.frameBaseGCRoots(loop))
+			f.setLocalsState(f.frameBranchState(loop))
+			f.unreachable = false
+			if f.compactLoopAlign32 {
+				f.a.AlignLoop64()
+			} else {
+				f.a.AlignLoop()
+			}
+			loop.controlSite = f.a.Len()
+			for _, site := range constants.entry.sites {
+				f.a.PatchRel32(site, loop.controlSite)
+			}
+			f.inlineTailExpandBytes = 0
+			f.stats.peep("inline-tail-entry-peel")
+		}
+		limit++
+		f.hasLoop = true
+		if f.sc != nil {
+			f.sc.directPreparedBounded = false
+		}
+	}
+	err := f.bodyLoop(wasm.NewReader(t.body), limit)
+	if err == nil && t.tailLoop() {
+		err = f.opEnd()
+	}
+	f.inlineTailLoopFrame = oldTail
+	f.inlineTailArgumentStart = oldArgumentStart
+	f.inlineTailRoot, f.inlineTailPartner, f.inlineTailCopyBytes = oldRoot, oldPartner, oldCopyBytes
+
+	f.inlineTailExpandBytes, f.inlineTailExpandDepth, f.inlineTailSourceFrame = oldBytes, oldDepth, oldSource
+
 	f.inlineRetFrame = prevRet
 	return err
 }
