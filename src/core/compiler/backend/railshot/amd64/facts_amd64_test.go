@@ -17,8 +17,9 @@ func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
 	// The pending-effect prefix and its load-mode flag add 16 bytes per
-	// worker stack, including padding. Per-value storage remains unchanged.
-	if got, want := unsafe.Sizeof(stack{}), uintptr(104); got != want {
+	// worker stack, including padding. The active chunk header cache adds eight
+	// more bytes per worker; per-value storage remains unchanged.
+	if got, want := unsafe.Sizeof(stack{}), uintptr(112); got != want {
 		t.Fatalf("stack size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {

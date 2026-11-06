@@ -475,6 +475,11 @@ Type-indexed control encodings record multi-value even for zero or one result.
 - Unsupported value types and opcodes are rejected explicitly rather than
   silently accepted. Correctness and clear failure come first.
 
+The compiler's deferred decoder merges adjacent local declaration runs with
+identical value types before validation. It retains different zero-count types
+for checking and preserves the original local-declaration byte count for source
+offsets. The standalone decoder preserves its original declaration runs.
+
 Both native backends consume the complete result-type vector of a typed
 `select` through the shared Wasm immediate reader. Explicit reference types
 include a nullable/non-null prefix and a signed heap-type index, which can span
@@ -505,9 +510,84 @@ Validation is intentionally stricter than the narrow const-expression decoder
 the compiler uses for global/segment initializers: the validator guarantees
 shape, the backend then trusts it.
 
+Validator operands share the two-word value-type representation. A private tag
+in the unused high bit of the low word records a polymorphic unknown operand;
+ordinary bottom and reference-bottom types remain distinct. This tag never
+enters module declarations or runtime metadata. Flat native-signature hashes
+are computed directly from the current parameters and results on each query,
+without cache allocation, so in-place signature edits are reflected immediately.
+Indexed identities use the module-local type-key cache. Flat and indexed
+identity formats retain their distinct serialized key values.
+
+Bytecode walkers that need only the next opcode use the module classifier's
+`SkipImmediate` method. Scalar immediates and memory arguments retain the same
+width selection, malformed-encoding errors, and reader positions as full
+classification without constructing an instruction record; proposal immediates
+share the full classifier. SIMD feature checks and constant/lookahead scans use
+this path, with differential tests and fuzzing against `ClassifyInto`.
+
+Loop-effect lookahead reads scalar indices and float literals directly while
+retaining full proposal classification, exact byte budgets, and bounded float
+selection. Deferred-tree construction reads each child's cached height and
+register demand together and updates their adjacent bytes in one store.
+
 ---
 
 ## 4. Back end — Valent-Block code generation (`src/core/compiler/backend/railshot`)
+
+Worker-owned function state is cleared in place after retaining reusable slice
+headers, then populated directly. This avoids staging the full compiler state
+on the Go stack; Wasm frame layout and emitted code remain independent of it.
+The compiler result is also populated directly in its grouped owner, avoiding
+a full temporary result on the compilation stack before publication.
+Known loop functions skip the scalar admission scan, which rejects every loop;
+diagnostic compilations retain the measured admission path.
+Region-loop rejection and finalization without compaction use small Go frames;
+the emitter and compactor retain their larger scratch arrays on their own paths.
+Whole-function GC reductions enter their individual proofs after the shared
+checks on parameter count, interruption, inline locals, and extensions pass.
+Common AMD64 register and memory encoders append related instruction bytes
+together while preserving encoding counters and symbolic local offsets.
+Ordinary base-register memory instructions append the complete prefix, address,
+and displacement together. Pending symbolic local references retain the general
+encoder path and its original offset-recording order.
+Symbolic local-reference recording is entered only for pending sites.
+Bounds-range lookahead calls the generic immediate skipper for integer constants;
+accepted scalar operations without payloads continue directly.
+
+For serial hint scans over at least 64 KiB of encoded bodies, AMD64 retains
+ordinary call indices in an optional module sidecar. Caller inline plans reuse
+these indices, avoiding a second opcode and immediate walk. Tail, indirect, and
+reference calls retain the original all-calls-inline decision; callee order and
+deduplication are unchanged. The cache, including ranges and its header, is
+bounded to 4 MiB. An exhausted cache is discarded; AST bodies, parallel hint
+scans, and other unknown entries use the original planner. The retained hint
+header and generated native code are unchanged.
+
+AMD64 integer comparisons, unary operations, and arithmetic share dispatch
+handlers across both operand widths. Compact opcode tables select the existing
+lowering operations; signed and unsigned division retain adjacent div/rem pairing.
+
+The bytecode hint walk inlines event-free opcode handling; physical-event
+recording stays on its separate path. Operand allocation caches the active
+chunk header and inlines the space-available path at each production call site.
+Header-array growth and resets refresh that pointer, and worker teardown clears
+it. This adds eight bytes per worker while preserving the 56-byte operand node
+and the existing chunk-retention budget. Full-capacity slice indexing under the
+space check avoids redundant bounds branches using checked Go operations.
+
+Register-only local merge contracts share read-only zero states instead of
+allocating and recycling identical buffers at every control join. These states
+never enter the mutable buffer pool; loop headers avoid redundant writes.
+Larger synthetic pin sets retain the ordinary buffer path.
+Branch result GC metadata skips stack walks when the conservative root flag
+proves none are present. Branch type and GC consumers share one operand-root
+snapshot when both need it.
+
+Regional local reads and writes check the recorded assignment before entering
+activation helpers. Control-region reads also skip the disabled final-transfer
+path. The ordinary driver and fused array initializer use the same guard; the
+helpers retain their complete eligibility and ownership checks.
 
 Recovered AMD64/ARM64 code-generation panics are `wago.InternalCompilerError`
 values, so callers and fuzzers can distinguish compiler defects with `errors.As`
@@ -519,11 +599,33 @@ original panic, including register exhaustion; ordinary compile errors are uncha
 Small operand arenas use half the body bytes plus local and immediate-free
 instruction allowances. The density counter saturates at 256 and occupies two
 padding bytes in each backend's 28-byte hint header. It is only a size hint:
-stable chunks still grow for valid code. Below 256 nodes, overflow fills to a
-power-of-two total, then doubles that total. This avoids tripling storage after
-a one-node underestimate. The existing large-arena growth and retention limits
-remain unchanged. Sparse global-hint storage uses the same power-of-two capacity
+stable chunks still grow for valid code. Overflow fills to a power-of-two total,
+then doubles that total until chunks reach their existing size cap. This avoids
+tripling storage after a one-node underestimate, including at the default
+256-node capacity. Chunk-size and retained-byte limits remain unchanged. Sparse global-hint storage uses the same power-of-two capacity
 rule in serial and parallel scans, starting at one record instead of eight.
+
+Integer tree construction checks the matching-local-leaf prerequisite before
+entering the same-operand simplifier. Other storage kinds and deferred operands
+retain their ordinary lowering without visiting the cold simplification path.
+
+AMD64 hint scanning keeps proposal-classification payloads in separate helpers.
+Ordinary recursive scalar scans therefore avoid reserving those payloads in
+every nested frame; the classifier, hints, and malformed-input checks are shared.
+
+AMD64 serial codegen reuses a single staging buffer across functions. When
+mapping is deferred, staging stays on the Go heap until first instantiation;
+compile-only callers do not acquire executable/JIT mappings. Explicit immediate
+mapping requests use writable code storage. Layout and relocation are identical.
+
+For Linux/AMD64 standard-Go modules with at least 16 KiB of body bytes, operand
+nodes use a fixed-size writable mapping bounded by the existing 1 MiB retained
+scratch budget. The mapping never grows while expression links are live;
+overflow chunks use ordinary heap storage. The worker retains every chunk and
+the mapping owner through compilation, while plugin-owned Go values stay in the
+normal scanned cold sidecar. Serial completion and parallel-worker teardown
+release the mapping. Small modules, other platforms, mapping failures, and
+`WAGO_MAPPED_OPERAND_ARENA=0` use the heap path.
 
 Parallel non-compact codegen sizes its final heap join from completed native
 worker bytes when that is below the original Wasm expansion estimate. Checked
@@ -533,6 +635,57 @@ adapter sharing keeps its old estimate because it temporarily appends an island
 before compaction. Code layout, relocation checks, and emitted bytes are unchanged.
 Dynamic `memory.copy` lowering uses stack-backed lists for its four fixed branch
 patch sites (two per branch encoding on ARM64), with ordinary append fallback.
+
+ARM64 bulk-memory lowering loads every source chunk before storing a constant
+16–64 byte copy, preserving overlap semantics (`bulk-copy-vector`). Dynamic
+backward copies align the destination end and use 256-byte groups; fills align
+the destination and use 1024-byte groups (`bulk-memory-loops`). All tails stay
+inside the checked range. An adjacent constant-byte fill followed by a copy of
+exactly that source span can replace the copy's reads with fill stores
+(`bulk-fill-copy-forward`). Only three pure constant/local operand reads may
+intervene, both memories must be unshared memory32, and both copy range checks
+still precede its writes. A trapping copy leaves the completed fill visible.
+
+The ARM64 `byte-reduce-loop` option recognizes complete read-only ascending
+unsigned byte-sum loops, optionally weighted by a wrapping i32 index plus a
+constant. A widened whole-range guard admits NEON 16-byte reductions with scalar
+tails; failed guards execute the original loop so traps retain their ordering.
+The recognizer requires distinct counter, limit and accumulator locals and an
+immediate void-block exit. Calls, shared/memory64 sources, interruption, source
+profiling, custom instructions and unsupported register/control states retain
+the ordinary lowering. Coefficient sums fit in unsigned 16-bit lanes; the final
+weighted accumulation preserves modulo-2^32 arithmetic.
+
+AMD64 uses the same `bulk-copy-vector`, `bulk-fill-copy-forward`,
+`bulk-memory-loops` and `byte-reduce-loop` controls. Constant copies use complete
+16-byte groups and exact 8/4/2/1-byte tails when scratch registers are available;
+all loads still precede all stores. Both copy operands can use the existing
+declared-minimum bounds proof before materialization. Proven constant memory32
+addresses can then become native displacements. Pressure and unproved spans
+retain checked lowering. Adjacent filled-source forwarding also remaps inline
+local indexes before matching its three pure operands.
+The same copy control admits constant left-shift copies of 15, 31, 47 or 63
+bytes followed immediately by an adjacent byte append. A declared-minimum proof
+must cover the entire enclosing span, including the extra first-byte read;
+shared and memory64 sources retain ordinary lowering. AVX/SSSE3/SSE4.1 align
+whole original vectors in registers and insert the append byte before full-vector
+stores, avoiding reads across partial stores on a later iteration. At most twelve
+pure i32 constant/local/add/subtract/multiply/bitwise operations may produce the
+appended value. Calls, loads, local writes, control operations, source profiling,
+custom instructions and unsupported register states reject the combination.
+
+AMD64 large fills use AVX2 stores, or AVX-512 stores when available. An in-range
+prefix aligns the middle; a fixed store group ending at the checked end covers
+the remainder. Short fills and CPUs without AVX2 retain byte string stores.
+The existing `callfree-loop-reg-state` control also permits the first exit from
+a proved call-free loop to retain integer pins across its enclosing void block;
+subsequent edges must satisfy the same merge contract.
+Byte reductions use SSSE3 weighted
+16-byte sums (SSE2 for plain sums), with four-byte scalar groups and byte tails
+when unsupported or under vector pressure. Saturating byte-pair products remain
+exact because their maximum is 7395; the complete relative weighted sum is at
+most 30600. The original range guard and scalar trap fallback are unchanged.
+
 
 Parallel codegen reserves at most 64 local slots per worker; a larger function
 uses the normal growth path. Parallel hint scans allocate dense global scratch
@@ -616,6 +769,16 @@ store path during address preparation, and the first FP input in `fbin` and
 `fbinInto` during second-input preparation. These guards end before the consuming
 instruction. Known address normalization can preserve a guarded i32 input, but
 cannot truncate a guarded i64 input.
+
+AMD64 checked builds also provide an opt-in local-pin scope for raw fast paths
+that bypass ordinary local recovery. An adopting lowering calls
+`checkProtectLocalPins` after local reconciliation and before scratch allocation,
+then restores the returned read masks on every exit. While the scope is active,
+typed GP and FP writes to incoming pins are rejected even if allocator metadata
+relinquishes a pin. At an intentional result-local write,
+`checkAllowLocalPinWrite` releases only this scope's protection; enclosing read
+guards remain active. Each lowering must install these hooks explicitly; the
+helpers alone do not add coverage to existing raw fast paths.
 
 The ordinary build retains no checker state or observer work. Transfer windows
 assume correct incoming values. The lifetime observers classify destinations,
@@ -846,6 +1009,24 @@ sequence:
 Running on a separate stack keeps native wasm code off the goroutine stack,
 which Go may grow/move (`morestack`) — that would be catastrophic mid-execution.
 After the call returns, a non-zero trap slot becomes a Go `*TrapError`.
+
+Ordinary native entry releases the Go P. On Linux/AMD64, a fresh-compilation proof
+can keep an isolated `WasmFunc.Invoke` on that P for a bounded bulk-memory call
+under `prepared-bounded-entry`. The proof admits at most four i32 parameters,
+i32 locals and at most one i32 result, acyclic local calls and exact non-wrapping constant-count
+up-counter loops. It limits the complete invocation to 4096 admitted source
+operations and 4 MiB of logical bulk bytes (copies charge reads and writes).
+One invariant count parameter may contribute a linear byte cost; its unsigned
+argument limit is checked on every call. Input-independent work needs no count
+check. Larger inputs and unproved code retain ordinary scheduler transitions.
+
+The proof rejects imports, shared/memory64 memories, tables, globals, exception
+handling, unknown helpers/control flow, loop-carried counts and changed induction
+variables. Profiling, custom instructions and GC execution retain their
+existing entry policy. The capability is private, omitted from encoded metadata,
+and shared read-only by execution snapshots; it does not change generated guest
+code or replace the instance's ownership and trap checks. These are logical work
+budgets, not wall-clock guarantees. ARM64 retains its existing entry selection.
 
 ---
 

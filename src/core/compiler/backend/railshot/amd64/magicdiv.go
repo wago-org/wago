@@ -224,6 +224,14 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 		W = 64
 	}
 	magic, shift, add := railshot.MagicU(d, W)
+	if !w && !add {
+		f.unsignedMagic32ProductShift(res, uint32(d), uint32(magic), byte(shift), wantRem)
+		return
+	}
+	if !w {
+		f.unsignedMagic32Wide(res, uint32(d), wantRem)
+		return
+	}
 	q := f.magicMulHigh(res, magic, w, false) // q = high(res * magic), pinned
 	if add {
 		// q = ((n - q) >> 1) + q  (an overflow-free way to add n before the shift).
@@ -245,6 +253,56 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 		f.a.MovReg64(res, q)
 	}
 	f.pinned = f.pinned.remove(q)
+}
+
+// For n < 2^32 and 1 < d < 2^32, high64(n * ceil(2^64/d)) equals n/d.
+// Write ceil(2^64/d)*d = 2^64+e, with 0 <= e < d. Since n*e < 2^64,
+// the reciprocal error is smaller than 1/d, so no remainder can round up
+// into the next quotient. Widening removes the i32 add-correction sequence.
+func (f *fn) unsignedMagic32Wide(res Reg, d uint32, wantRem bool) {
+	// The owned dividend may still carry arbitrary high bits from an i32 input.
+	f.a.MovRegReg32(res, res)
+	q := f.magicMulHigh(res, ^uint64(0)/uint64(d)+1, true, false)
+	if wantRem {
+		// The quotient dies here; multiply its low 32 bits in place.
+		f.a.ImulRI(q, int32(d), false)
+		f.a.AluRR(0x29, res, q, false)
+	} else {
+		f.a.MovRegReg32(res, q)
+	}
+	f.pinned = f.pinned.remove(q)
+	f.stats.peep("magic-wide-u32")
+}
+
+// A 32x32 product fits in 64 bits. Two-operand IMUL retains its exact low 64
+// bits even when the unsigned product exceeds INT64_MAX. Extracting the high
+// half and applying the unsigned magic shift can therefore share one SHR,
+// without claiming the fixed RAX/RDX pair. Add-correction divisors instead use
+// the wider reciprocal above to avoid computing that correction.
+func (f *fn) unsignedMagic32ProductShift(res Reg, d, magic uint32, shift byte, wantRem bool) {
+	q := res
+	if wantRem {
+		q = f.allocReg(maskOf(res))
+		f.pinned = f.pinned.add(q)
+	}
+	// Normalize explicitly, including dirty i32 carriers when canonical facts
+	// are disabled. The remainder still reads the original low 32-bit dividend.
+	f.a.MovRegReg32(q, res)
+	mr := f.allocReg(maskOf(res, q))
+	f.pinned = f.pinned.add(mr)
+	f.a.MovImm32(mr, int32(magic))
+	f.a.IMul(q, mr, true)
+	f.pinned = f.pinned.remove(mr)
+	f.release(mr)
+	f.a.ShiftImm(5, q, 32+shift, true)
+	if wantRem {
+		// q is dead after remainder formation. Low 32-bit multiplication is
+		// identical for signed and unsigned immediate bit patterns.
+		f.a.ImulRI(q, int32(d), false)
+		f.a.AluRR(0x29, res, q, false)
+		f.pinned = f.pinned.remove(q)
+	}
+	f.stats.peep("magic-product-shift")
 }
 
 // divConstSignedMagic rewrites res (the W-bit dividend) to res / d or res % d

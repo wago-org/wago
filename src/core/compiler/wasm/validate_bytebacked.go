@@ -190,6 +190,10 @@ func decodeDirectModuleLimited(data []byte, features ValidationFeatures, limits 
 }
 
 func decodeDirectModuleInnerLimits(data []byte, features ValidationFeatures, limits DecodeLimits) (*directModule, error) {
+	return decodeDirectModuleInnerLimitsMode(data, features, limits, false)
+}
+
+func decodeDirectModuleInnerLimitsMode(data []byte, features ValidationFeatures, limits DecodeLimits, deferCodeBodies bool) (*directModule, error) {
 	// Keep the top-level cursor in this frame. TinyGo's conservative collector
 	// can otherwise lose the heap-allocated reader while its backing slice is
 	// still being consumed across allocation-heavy section decoding.
@@ -254,7 +258,11 @@ func decodeDirectModuleInnerLimits(data []byte, features ValidationFeatures, lim
 		case secElement:
 			err = decodeDirectElementSection(dm, &sub)
 		case secCode:
-			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSectionWithModule(&sub, &dm.m, features.MultiMemory)
+			if deferCodeBodies {
+				dm.m.Code, err = decodePendingCodeSection(&sub)
+			} else {
+				dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSectionWithModule(&sub, &dm.m, features.MultiMemory)
+			}
 			dm.seenCode = true
 		case secData:
 			err = decodeDirectDataSection(dm, &sub)
@@ -930,6 +938,7 @@ func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
 }
 
 func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool, segmentCounts *validationSegmentCounts) error {
+	widths.multiMemory = multiMemory
 	v.localParams = ft.Params
 	v.localRuns = body.locals.Runs
 	var overflow bool
@@ -960,6 +969,62 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 				}
 				return nil
 			}
+			// Immediate-free scalar operations need neither a decoded instruction
+			// payload nor the general control/memory dispatcher.
+			if r.pos < len(r.data) {
+				opcode := r.data[r.pos]
+				if opcode >= 0x20 && opcode <= 0x24 || opcode >= 0x41 && opcode <= 0x44 {
+					r.pos++
+					kind, err := v.stepDirectScalarImmediate(r, opcode)
+					if err != nil {
+						return err
+					}
+					facts.Flags |= validatedFuncFlagsByKind[kind]
+					continue
+				}
+				if opcode >= 0x28 && opcode <= 0x3e {
+					r.pos++
+					kind := memOpcodeKind[opcode]
+					arg, err := decodeMemArgWithWidths(r, widths)
+					if err != nil {
+						return err
+					}
+					if err = v.stepDirectMemory(kind, arg); err != nil {
+						return err
+					}
+					facts.Flags |= validatedFuncFlagsByKind[kind]
+					continue
+				}
+				if opcode >= 0x45 && opcode <= 0xc4 {
+					r.pos++
+					kind := simpleOpcode[opcode]
+					if err := v.stepDirectNumeric(kind); err != nil {
+						return err
+					}
+					facts.Flags |= validatedFuncFlagsByKind[kind]
+					continue
+				}
+				if opcode == 0x05 || opcode >= 0x0b && opcode <= 0x0d {
+					r.pos++
+					kind, err := v.stepDirectControlImmediate(r, opcode)
+					if err != nil {
+						return err
+					}
+					if kind != InstrInvalid {
+						facts.Flags |= validatedFuncFlagsByKind[kind]
+					}
+					continue
+				}
+				if opcode == 0x10 || opcode == 0x12 {
+					r.pos++
+					kind, err := v.stepDirectCallImmediate(r, opcode)
+					if err != nil {
+						return err
+					}
+					facts.Flags |= validatedFuncFlagsByKind[kind]
+					continue
+				}
+			}
 			if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
 				return err
 			}
@@ -983,6 +1048,48 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 				return &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
 			}
 			return nil
+		}
+		if r.pos < len(r.data) {
+			opcode := r.data[r.pos]
+			if opcode >= 0x20 && opcode <= 0x24 || opcode >= 0x41 && opcode <= 0x44 {
+				r.pos++
+				if _, err := v.stepDirectScalarImmediate(r, opcode); err != nil {
+					return err
+				}
+				continue
+			}
+			if opcode >= 0x28 && opcode <= 0x3e {
+				r.pos++
+				arg, err := decodeMemArgWithWidths(r, widths)
+				if err != nil {
+					return err
+				}
+				if err = v.stepDirectMemory(memOpcodeKind[opcode], arg); err != nil {
+					return err
+				}
+				continue
+			}
+			if opcode >= 0x45 && opcode <= 0xc4 {
+				r.pos++
+				if err := v.stepDirectNumeric(simpleOpcode[opcode]); err != nil {
+					return err
+				}
+				continue
+			}
+			if opcode == 0x05 || opcode >= 0x0b && opcode <= 0x0d {
+				r.pos++
+				if _, err := v.stepDirectControlImmediate(r, opcode); err != nil {
+					return err
+				}
+				continue
+			}
+			if opcode == 0x10 || opcode == 0x12 {
+				r.pos++
+				if _, err := v.stepDirectCallImmediate(r, opcode); err != nil {
+					return err
+				}
+				continue
+			}
 		}
 		if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
 			return err
@@ -1327,4 +1434,259 @@ func (v *funcValidator) directEnd() error {
 		}
 	}
 	return nil
+}
+
+// stepDirectNumeric validates an immediate-free scalar stack effect in place.
+// The common case replaces its operands with the result without repeatedly
+// popping and pushing the same backing slice. The ordinary path retains exact
+// error order and polymorphic-stack handling for underflow and mismatched types.
+func (v *funcValidator) stepDirectNumeric(kind InstrKind) error {
+	effect := opEffects[kind]
+	input := effect.a.valType()
+	output := input
+	operands := 1
+	switch effect.cat {
+	case effBinary:
+		operands = 2
+	case effCompare:
+		operands = 2
+		output = I32
+	case effTest:
+		output = I32
+	case effConv:
+		output = effect.b.valType()
+	case effUnary:
+	default:
+		return v.step(&Instruction{Kind: kind})
+	}
+	n := len(v.vals)
+	if !v.constOnly && n-v.top().height >= operands {
+		matched := true
+		for i := n - operands; i < n; i++ {
+			value := v.vals[i]
+			if !value.unknown() && value.t != input {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			result := n - operands
+			v.vals = v.vals[:result+1]
+			v.vals[result] = val{t: output}
+			return nil
+		}
+	}
+	return v.step(&Instruction{Kind: kind})
+}
+
+// stepDirectScalarImmediate consumes scalar immediates directly into validation
+// state. Values of constants are irrelevant to typing, but their complete LEB
+// or fixed-width encodings are still checked before pushing the result type.
+func (v *funcValidator) stepDirectScalarImmediate(r *reader, opcode byte) (InstrKind, error) {
+	var kind InstrKind
+	var typ ValType
+	var err error
+	switch opcode {
+	case 0x20, 0x21, 0x22:
+		switch opcode {
+		case 0x20:
+			kind = InstrLocalGet
+		case 0x21:
+			kind = InstrLocalSet
+		case 0x22:
+			kind = InstrLocalTee
+		}
+		index, e := r.u32()
+		if e != nil {
+			return kind, e
+		}
+		return kind, v.stepLocalIndex(kind, index)
+	case 0x23, 0x24:
+		kind = InstrGlobalGet
+		if opcode == 0x24 {
+			kind = InstrGlobalSet
+		}
+		index, e := r.u32()
+		if e != nil {
+			return kind, e
+		}
+		return kind, v.step(&Instruction{Kind: kind, Index: index})
+	case 0x41:
+		kind, typ = InstrI32Const, I32
+		_, err = r.i32()
+	case 0x42:
+		kind, typ = InstrI64Const, I64
+		_, err = r.i64()
+	case 0x43:
+		kind, typ = InstrF32Const, F32
+		_, err = r.le32()
+	case 0x44:
+		kind, typ = InstrF64Const, F64
+		_, err = r.le64()
+	}
+	if err == nil {
+		v.push(typ)
+	}
+	return kind, err
+}
+
+// stepDirectMemory preserves the ordinary memory/type check order while
+// replacing a load's address in place or consuming a store's two operands.
+func (v *funcValidator) stepDirectMemory(kind InstrKind, arg MemArg) error {
+	effect := opEffects[kind]
+	address, err := v.checkMemArg(arg, uint32(effect.align))
+	if err != nil {
+		return err
+	}
+	n := len(v.vals)
+	height := v.top().height
+	valueType := effect.a.valType()
+	if effect.cat == effLoad {
+		if n > height && (v.vals[n-1].unknown() || v.vals[n-1].t == address) {
+			v.vals[n-1] = val{t: valueType}
+			return nil
+		}
+		if err = v.popExpect(address); err != nil {
+			return err
+		}
+		v.push(valueType)
+		return nil
+	}
+	if n-height >= 2 && (v.vals[n-1].unknown() || v.vals[n-1].t == valueType) && (v.vals[n-2].unknown() || v.vals[n-2].t == address) {
+		v.vals = v.vals[:n-2]
+		return nil
+	}
+	if err = v.popExpect(valueType); err != nil {
+		return err
+	}
+	return v.popExpect(address)
+}
+
+// DecodeModuleForValidationWithFeatures decodes section metadata and bounds each
+// code body, leaving its instruction syntax to the mandatory subsequent
+// ValidateModule call. Unlike DecodeModule, this is not a standalone syntax
+// checker. It is the first half of the compiler's fused decode/validate path.
+func DecodeModuleForValidationWithFeatures(data []byte, features ValidationFeatures) (*Module, error) {
+	dm, err := decodeDirectModuleInnerLimitsMode(data, features, DecodeLimits{}, true)
+	runtime.KeepAlive(data)
+	if err != nil {
+		return nil, err
+	}
+	dm.populateCodeBodies()
+	if err = validateBranchHints(&dm.m); err != nil {
+		return nil, err
+	}
+	return &dm.m, nil
+}
+
+func decodePendingCodeSection(r *reader) ([]Func, error) {
+	count, err := r.u32()
+	if err != nil {
+		return nil, err
+	}
+	if err = reserveDecodedSlice[Func](r, count); err != nil {
+		return nil, err
+	}
+	// Every valid body needs a size byte, a local-vector byte and an end.
+	// The metadata budget above bounds the full vector allocation. Reserve it
+	// once when the byte count can hold it, avoiding old growth buffers for
+	// large modules; retain the conservative path for impossible counts.
+	capacity := boundedVecCap(count, r.left())
+	if uint64(count) <= uint64(r.left()/3) {
+		capacity = int(count)
+	}
+	out := make([]Func, 0, capacity)
+	// Keep the same decode-budget reservation as the syntax-only path, even
+	// though the validation control stack replaces its structural scratch.
+	if err = r.reserve(uint64(min(r.left(), maxInstructionNestingDepth)), 32); err != nil {
+		return nil, err
+	}
+	sub := reader{budget: r.budget}
+	for i := uint32(0); i < count; i++ {
+		size, err := r.u32()
+		if err != nil {
+			return nil, err
+		}
+		body, err := r.bytes(int(size))
+		if err != nil {
+			return nil, err
+		}
+		start := r.off() - len(body)
+		sub.reset(body)
+		locals, err := decodeLocals(&sub)
+		if err != nil {
+			return nil, rebaseDecodeError(err, start)
+		}
+		if len(locals.Runs) > 1 {
+			locals.Runs = coalesceCompilerLocalRuns(locals.Runs)
+		}
+		declarations := sub.off()
+		if !sub.has() {
+			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: start + sub.off()}
+		}
+		expression, err := sub.bytes(sub.left())
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, Func{Locals: locals, LocalDeclBytes: uint32(declarations), BodyBytes: expression})
+	}
+	return out, nil
+}
+
+func (v *funcValidator) stepDirectControlImmediate(r *reader, opcode byte) (InstrKind, error) {
+	switch opcode {
+	case 0x05:
+		return InstrInvalid, v.directElse()
+	case 0x0b:
+		return InstrInvalid, v.directEnd()
+	}
+	index, err := r.u32()
+	if err != nil {
+		return InstrInvalid, err
+	}
+	kind := InstrBr
+	if opcode == 0x0d {
+		kind = InstrBrIf
+	}
+	return kind, v.stepBranch(kind, index)
+}
+
+func (v *funcValidator) stepDirectCallImmediate(r *reader, opcode byte) (InstrKind, error) {
+	index, err := r.u32()
+	if err != nil {
+		return InstrInvalid, err
+	}
+	ft, ok := v.funcType(index)
+	if !ok {
+		return InstrInvalid, v.verr(ErrUnknownFunc, "")
+	}
+	if err := v.popAll(ft.Params); err != nil {
+		return InstrInvalid, err
+	}
+	if opcode == 0x12 {
+		if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
+			return InstrInvalid, v.verr(ErrTypeMismatch, "return_call")
+		}
+		v.unreachable()
+		return InstrReturnCall, nil
+	}
+	v.pushAll(ft.Results)
+	return InstrCall, nil
+}
+
+// coalesceCompilerLocalRuns gives the compiler a compact local declaration
+// view while LocalDeclBytes continues to identify the original wire offset.
+// Zero-count declarations remain present: their types still need validation.
+func coalesceCompilerLocalRuns(runs []LocalRun) []LocalRun {
+	at := 0
+	for _, run := range runs {
+		if at != 0 && runs[at-1].Type == run.Type {
+			runs[at-1].Count += run.Count // decodeLocals already checked the complete sum.
+		} else {
+			runs[at] = run
+			at++
+		}
+	}
+	clear(runs[at:])
+	return runs[:at]
 }

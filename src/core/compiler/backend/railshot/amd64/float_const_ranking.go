@@ -30,7 +30,6 @@ func (f *fn) rankFloatConsts(code []byte) (choice [2]storage, count int, changed
 		}
 	}
 	r := wasm.NewReader(code)
-	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -52,7 +51,7 @@ func (f *fn) rankFloatConsts(code []byte) (choice [2]storage, count int, changed
 			}
 			typ, bits = mtF64, int64(value)
 		default:
-			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+			if err := f.classifier.SkipImmediate(r, op); err != nil {
 				return choice, 0, false
 			}
 			continue

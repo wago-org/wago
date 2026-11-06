@@ -20,7 +20,7 @@ var teeSlotPredicateEnabled = os.Getenv("WAGO_AMD64_TEE_SLOT_PREDICATE") != "0"
 // Frontend.cpp parseCodeSection opcode switch. Phase 0 covers the integer const/
 // local/ALU subset needed to prove the pipeline end-to-end.
 func (f *fn) body(code []byte) error {
-	if gcInductionReductionsEnabled {
+	if gcInductionReductionsEnabled && f.nParams == 1 && !f.interruptible && f.localBase == 0 && len(f.customInstructions) == 0 {
 		if f.gcI31Reduction(code) {
 			return f.emitGCI31Reduction()
 		}
@@ -95,12 +95,18 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if f.vectorRegion.enabled {
 			f.vectorRegionBoundary(op)
 		}
-		f.prepareStoreForward(op)
-		if op == 0x04 && f.gcResolved.valid {
-			f.prepareGCPureIf(r, op, minCtrl)
+		if f.storeFwd.valid {
+			f.prepareStoreForward(op)
 		}
-		f.prepareGCResolvedObject(op)
-		f.prepareGCFreshStructFact(op)
+		if f.gcResolved.valid {
+			if op == 0x04 {
+				f.prepareGCPureIf(r, op, minCtrl)
+			}
+			f.prepareGCResolvedObject(op)
+		}
+		if f.gcSubtypeProofN&gcFreshStructFactMode != 0 {
+			f.prepareGCFreshStructFact(op)
+		}
 		switch op {
 		case 0x00: // unreachable
 			if !f.unreachable {
@@ -191,6 +197,12 @@ func (f *fn) recycleEmptyOperandArena() {
 	f.s.reset()
 }
 
+// Dense Wasm integer opcode families select the same lowering operations for
+// both widths. Small tables share the lowering call sites and handler code.
+var integerCompareOps = [...]wOp{opEq, opNe, opLtS, opLtU, opGtS, opGtU, opLeS, opLeU, opGeS, opGeU}
+var integerUnaryOps = [...]wOp{opClz, opCtz, opPopcnt}
+var integerBinaryOps = [...]wOp{opAdd, opSub, opMul, opDivS, opDivU, opRemS, opRemU, opAnd, opOr, opXor, opShl, opShrS, opShrU, opRotl, opRotr}
+
 // emitPlain lowers a single non-control opcode (leaves, arithmetic, memory,
 // conversions). Called only when reachable; dead code is skipped by the body loop.
 func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
@@ -251,10 +263,19 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		forwarded := x32 < f.inlineForwardN
+		if forwarded {
+			x = f.inlineForward[x32]
+		}
 		if regallocCheckEnabled {
 			checkNativeSourceGet(f, x)
 		}
-		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+		if constant, known := f.inlineTailConstantGet(int(x)); known {
+			f.pushValue(storage{kind: stConst, typ: f.localType[x], cval: constant})
+			f.stats.peep("inline-tail-constant-get")
+			break
+		}
+		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}
@@ -266,26 +287,17 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			}
 		}
 		var value *elem
-		f.activateIntervalLocal(int(x), r.Offset(), true)
-		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
-			value = f.pushReg(reg, f.localType[x])
-			f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
-			break
-		}
-		if f.localConstZero(int(x)) {
-			if pr, _, ok := f.pinReg(int(x)); ok {
-				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
-				value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
-			} else {
-				value = f.pushValue(zeroStorage(f.localType[x]))
+		if !forwarded && f.hasIntervalLocal(int(x)) {
+			f.activateIntervalLocal(int(x), r.Offset(), true)
+			if !f.intervalControl {
+				if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
+					value = f.pushReg(reg, f.localType[x])
+					f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
+					break
+				}
 			}
-		} else if pr, _, ok := f.pinReg(int(x)); ok {
-			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
-			value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
-		} else {
-			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: x})
 		}
-		f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
+		f.pushPlainLocalGet(x)
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
@@ -300,7 +312,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		// second local read. i64 is excluded because reference locals share its
 		// machine type and their gets publish exact GC-root metadata. Regional
 		// locals retain their event-driven lifetime.
-		if op == 0x21 && setGetTeeFoldEnabled &&
+		if op == 0x21 && setGetTeeFoldEnabled && f.inlineTailConstants == nil &&
 			f.localType[written] == mtI32 &&
 			(written >= len(f.intervalReg) || f.intervalReg[written] == regNone) {
 			look := *r
@@ -329,141 +341,41 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x26: // table.set
 		return f.tableSet(r)
 
-	// i32 comparisons / eqz
-	case 0x45:
-		f.pushUnOp(opEqz, mtI32)
-	case 0x46:
-		f.pushBinOp(opEq, mtI32)
-	case 0x47:
-		f.pushBinOp(opNe, mtI32)
-	case 0x48:
-		f.pushBinOp(opLtS, mtI32)
-	case 0x49:
-		f.pushBinOp(opLtU, mtI32)
-	case 0x4a:
-		f.pushBinOp(opGtS, mtI32)
-	case 0x4b:
-		f.pushBinOp(opGtU, mtI32)
-	case 0x4c:
-		f.pushBinOp(opLeS, mtI32)
-	case 0x4d:
-		f.pushBinOp(opLeU, mtI32)
-	case 0x4e:
-		f.pushBinOp(opGeS, mtI32)
-	case 0x4f:
-		f.pushBinOp(opGeU, mtI32)
-
-	// i64 comparisons / eqz
-	case 0x50:
-		f.pushUnOp(opEqz, mtI64)
-	case 0x51:
-		f.pushBinOp(opEq, mtI64)
-	case 0x52:
-		f.pushBinOp(opNe, mtI64)
-	case 0x53:
-		f.pushBinOp(opLtS, mtI64)
-	case 0x54:
-		f.pushBinOp(opLtU, mtI64)
-	case 0x55:
-		f.pushBinOp(opGtS, mtI64)
-	case 0x56:
-		f.pushBinOp(opGtU, mtI64)
-	case 0x57:
-		f.pushBinOp(opLeS, mtI64)
-	case 0x58:
-		f.pushBinOp(opLeU, mtI64)
-	case 0x59:
-		f.pushBinOp(opGeS, mtI64)
-	case 0x5a:
-		f.pushBinOp(opGeU, mtI64)
-
-	// i32 unary
-	case 0x67:
-		f.pushUnOp(opClz, mtI32)
-	case 0x68:
-		f.pushUnOp(opCtz, mtI32)
-	case 0x69:
-		f.pushUnOp(opPopcnt, mtI32)
-
-	// i32 arithmetic / logic / shift
-	case 0x6a:
-		f.pushBinOp(opAdd, mtI32)
-	case 0x6b:
-		f.pushBinOp(opSub, mtI32)
-	case 0x6c:
-		f.pushBinOp(opMul, mtI32)
-	case 0x6d:
-		if !f.tryDivRemPair(r, op, opDivS, mtI32) {
-			f.pushBinOp(opDivS, mtI32)
+	// Integer comparisons share one handler for each operand width.
+	case 0x45, 0x50: // i32.eqz / i64.eqz
+		typ := mtI32
+		if op == 0x50 {
+			typ = mtI64
 		}
-	case 0x6e:
-		if !f.tryDivRemPair(r, op, opDivU, mtI32) {
-			f.pushBinOp(opDivU, mtI32)
+		f.pushUnOp(opEqz, typ)
+	case 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
+		0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a:
+		typ, first := mtI32, byte(0x46)
+		if op >= 0x51 {
+			typ, first = mtI64, 0x51
 		}
-	case 0x6f:
-		f.pushBinOp(opRemS, mtI32)
-	case 0x70:
-		f.pushBinOp(opRemU, mtI32)
-	case 0x71:
-		f.pushBinOp(opAnd, mtI32)
-	case 0x72:
-		f.pushBinOp(opOr, mtI32)
-	case 0x73:
-		f.pushBinOp(opXor, mtI32)
-	case 0x74:
-		f.pushBinOp(opShl, mtI32)
-	case 0x75:
-		f.pushBinOp(opShrS, mtI32)
-	case 0x76:
-		f.pushBinOp(opShrU, mtI32)
-	case 0x77:
-		f.pushBinOp(opRotl, mtI32)
-	case 0x78:
-		f.pushBinOp(opRotr, mtI32)
+		f.pushBinOp(integerCompareOps[op-first], typ)
 
-	// i64 unary
-	case 0x79:
-		f.pushUnOp(opClz, mtI64)
-	case 0x7a:
-		f.pushUnOp(opCtz, mtI64)
-	case 0x7b:
-		f.pushUnOp(opPopcnt, mtI64)
+	// Integer clz / ctz / popcnt.
+	case 0x67, 0x68, 0x69, 0x79, 0x7a, 0x7b:
+		typ, first := mtI32, byte(0x67)
+		if op >= 0x79 {
+			typ, first = mtI64, 0x79
+		}
+		f.pushUnOp(integerUnaryOps[op-first], typ)
 
-	// i64 arithmetic / logic / shift
-	case 0x7c:
-		f.pushBinOp(opAdd, mtI64)
-	case 0x7d:
-		f.pushBinOp(opSub, mtI64)
-	case 0x7e:
-		f.pushBinOp(opMul, mtI64)
-	case 0x7f:
-		if !f.tryDivRemPair(r, op, opDivS, mtI64) {
-			f.pushBinOp(opDivS, mtI64)
+	// Integer arithmetic / logic / shift. Only div_s and div_u try the
+	// adjacent div/rem pair; rem keeps its original standalone path.
+	case 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78,
+		0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a:
+		typ, first := mtI32, byte(0x6a)
+		if op >= 0x7c {
+			typ, first = mtI64, 0x7c
 		}
-	case 0x80:
-		if !f.tryDivRemPair(r, op, opDivU, mtI64) {
-			f.pushBinOp(opDivU, mtI64)
+		operation := integerBinaryOps[op-first]
+		if (operation != opDivS && operation != opDivU) || !f.tryDivRemPair(r, op, operation, typ) {
+			f.pushBinOp(operation, typ)
 		}
-	case 0x81:
-		f.pushBinOp(opRemS, mtI64)
-	case 0x82:
-		f.pushBinOp(opRemU, mtI64)
-	case 0x83:
-		f.pushBinOp(opAnd, mtI64)
-	case 0x84:
-		f.pushBinOp(opOr, mtI64)
-	case 0x85:
-		f.pushBinOp(opXor, mtI64)
-	case 0x86:
-		f.pushBinOp(opShl, mtI64)
-	case 0x87:
-		f.pushBinOp(opShrS, mtI64)
-	case 0x88:
-		f.pushBinOp(opShrU, mtI64)
-	case 0x89:
-		f.pushBinOp(opRotl, mtI64)
-	case 0x8a:
-		f.pushBinOp(opRotr, mtI64)
 
 	// linear memory: loads
 	case 0x28: // i32.load
@@ -950,11 +862,9 @@ func (f *fn) emitSelect() {
 	if f.tryPureExpensiveSelect() {
 		return
 	}
-	// Flags-select: when the condition is a deferred relational/eqz compare and both
-	// branches are integers, emit the compare's CMP and a CMOV on its flags directly
-	// — skipping the SETcc + MOVZX + TEST that materializing the boolean costs. The
-	// compare is condensed last (right before the CMOV), so its flags are live.
-	if top := f.s.back(); isFusableCompare(top) && !top.valueType().isFloat() && f.trySelectOnFlags(top) {
+	// Comparisons and constant masks can feed CMOV directly. Emit their CMP
+	// or TEST after both alternatives, keeping its flags live for the select.
+	if top := f.s.back(); (isFusableCompare(top) && !top.valueType().isFloat() || isMaskedI32Condition(top)) && f.trySelectOnFlags(top) {
 		return
 	}
 	// Keep all operands linked until their deferred work is complete. Div/rem
@@ -1072,7 +982,7 @@ func mtI32OrWide(wide bool) machineType {
 	return mtI32
 }
 
-// trySelectOnFlags lowers `select` on the flags of a fusable compare condition
+// trySelectOnFlags lowers `select` on the CMP/TEST flags of a fused condition
 // (cond, the top operand). It owns the result register and may borrow the
 // alternative, emits the compare's CMP (which sets the flags last), and CMOVs —
 // no SETcc/TEST. Returns false (leaving the operand stack untouched) when the
@@ -1106,7 +1016,11 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 		f.reserved = f.reserved.add(bReg)
 	}
 	f.pinned = f.pinned.add(bReg)
-	cc := f.condenseToFlags(cond) // emits the CMP (last flag-affecting insn), consumes cond
+	masked := isMaskedI32Condition(cond)
+	cc := f.condenseToFlags(cond) // emits CMP/TEST last and consumes the condition
+	if masked {
+		f.stats.peep("select-mask-flags")
+	}
 	f.stats.peep("select-flags")
 	f.a.Cmovcc(invertCond(cc), aReg, bReg, w) // cond false → a = b
 	f.pinned = f.pinned.remove(aReg)
@@ -1261,6 +1175,7 @@ func (f *fn) v128TeeOverwritten(r *wasm.Reader, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+	f.inlineTailConstantSet(x)
 	if regallocCheckEnabled {
 		checkNativeSourceSet(f, x, tee, f.s.back())
 	}
@@ -1273,7 +1188,9 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if e != nil && e.isValue() {
 		e.st.setEHRoot(false)
 	}
-	f.bindOrInvalidateGCFreshStructLocal(x)
+	if f.gcSubtypeProofN&gcFreshStructFactMode != 0 {
+		f.bindOrInvalidateGCFreshStructLocal(x)
+	}
 	f.invalidateGCLoadFactsForLocal(x)
 	if e != nil && e.isValue() && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
@@ -1299,7 +1216,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 	}
 	f.realizeLocalRefs(x, skipFrom)
-	if reader != nil {
+	if reader != nil && f.hasIntervalLocal(x) {
 		f.activateIntervalLocal(x, reader.Offset(), false)
 	}
 	if pr, isFloat, ok := f.pinReg(x); ok && !isFloat {
@@ -1462,4 +1379,23 @@ func skipDroppedLiteral(r *wasm.Reader) bool {
 		return true
 	}
 	return false
+}
+
+// pushPlainLocalGet shares ordinary local reads with proved bulk expressions.
+func (f *fn) pushPlainLocalGet(x uint32) {
+	var value *elem
+	if f.localConstZero(int(x)) {
+		if pr, _, ok := f.pinReg(int(x)); ok {
+			f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
+			value = f.s.pushLocalRead(stLocalReg, f.localType[x], pr, x)
+		} else {
+			value = f.pushValue(zeroStorage(f.localType[x]))
+		}
+	} else if pr, _, ok := f.pinReg(int(x)); ok {
+		f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
+		value = f.s.pushLocalRead(stLocalReg, f.localType[x], pr, x)
+	} else {
+		value = f.s.pushLocalRead(stLocalRef, f.localType[x], 0, x)
+	}
+	f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
 }

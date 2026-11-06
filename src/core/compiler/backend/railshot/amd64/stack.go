@@ -12,7 +12,7 @@ import (
 func (s *stack) nodeMemory() (used, reserved uint64) {
 	for i := range s.chunks {
 		reserved += uint64(cap(s.chunks[i]))
-		if i <= s.cur {
+		if i <= int(s.cur) {
 			used += uint64(len(s.chunks[i]))
 		}
 	}
@@ -233,19 +233,20 @@ func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
 // stack is the operand stack: a sentinel-terminated doubly-linked list backed by
 // a chunked bump arena of elems. Each chunk is a fixed-capacity []elem that is
 // never reallocated once created, so every *elem handed out stays valid for the
-// live range of each node even as the arena grows without bound. Sub-default hints
-// fill to a power-of-two total before doubling. At or above 256, growth fills to the next legacy
-// 256/512/... cumulative boundary and then resumes the capped geometric sequence,
-// so an underestimate cannot regress legacy retention. reset() reuses every chunk
+// live range of each node even as the arena grows without bound. Growth fills to
+// a power-of-two total before doubling, then extends by capped chunks. reset()
+// reuses every chunk
 // across the module compile up to a fixed byte ceiling, so ordinary recurring
 // demand allocates once while giant-function overflow remains ephemeral. Nodes
 // can be reused at proven-empty top-level reader checkpoints; other node
 // pointers remain stable until the function finishes.
 type stack struct {
+	arena              *operandArena
 	chunks             [][]elem
+	activeChunk        *[]elem // points into chunks; refreshed after header-array growth
 	cold               []elemCold
-	cur                int
 	head               *elem
+	cur                uint32
 	logicalDepth       uint32
 	canonicalSlots     bool
 	hasGCRoots         bool
@@ -281,8 +282,10 @@ func (s *stack) initWithCap(capHint int) {
 		capHint = minStackArenaCap
 	}
 	next, geometric := stackArenaGrowthCaps(capHint)
+	arena := s.arena
 	*s = stack{
-		chunks:           [][]elem{make([]elem, 0, capHint)},
+		arena:            arena,
+		chunks:           [][]elem{operandArenaChunk(arena, capHint)},
 		nextChunkCap:     uint16(next),
 		nextGeometricCap: uint16(geometric),
 	}
@@ -290,42 +293,20 @@ func (s *stack) initWithCap(capHint int) {
 }
 
 func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
-	if firstCap < defaultStackArenaCap {
-		// Fill to the next power-of-two total, then double the total.
-		// A one-node underestimate must not triple retained small arenas.
-		total := minStackArenaCap
-		for total <= firstCap {
-			total *= 2
-		}
-		return total - firstCap, total
+	// Fill to the next geometric total before doubling it. Once chunks
+	// reach their maximum size, extend the total by that fixed size.
+	total := minStackArenaCap
+	for total <= firstCap {
+		total += min(total, maxStackChunkCap)
 	}
-	total, geometric := defaultStackArenaCap, defaultStackArenaCap*2
-	for total < firstCap {
-		total += geometric
-		if geometric < maxStackChunkCap {
-			geometric *= 2
-			if geometric > maxStackChunkCap {
-				geometric = maxStackChunkCap
-			}
-		}
-	}
-	if remainder := total - firstCap; remainder > 0 {
-		return remainder, geometric
-	}
-	next = geometric
-	if geometric < maxStackChunkCap {
-		geometric *= 2
-		if geometric > maxStackChunkCap {
-			geometric = maxStackChunkCap
-		}
-	}
-	return next, geometric
+	return total - firstCap, min(total, maxStackChunkCap)
 }
 
 // initSentinel rewinds to the first chunk and installs the sentinel node.
 func (s *stack) initSentinel() {
 	s.cur = 0
 	chunk := &s.chunks[0]
+	s.activeChunk = chunk
 	*chunk = append((*chunk)[:0], elem{})
 	s.head = &(*chunk)[0]
 	s.head.prev, s.head.next = s.head, s.head
@@ -430,13 +411,25 @@ func stackArenaCapForBody(bodyLen, nLocals int) int {
 // current chunk is full alloc advances to (or grows) the next one rather than
 // growing the current backing array in place.
 func (s *stack) alloc() *elem {
-	chunk := &s.chunks[s.cur]
-	if len(*chunk) == cap(*chunk) {
-		return s.allocNextChunk()
+	if e := s.tryAlloc(); e != nil {
+		return e
 	}
+	return s.allocNextChunk()
+}
+
+// tryAlloc keeps ordinary allocation inlineable. A full chunk returns nil
+// without changing state; callers enter allocNextChunk only on that slow path.
+func (s *stack) tryAlloc() *elem {
+	chunk := s.activeChunk
 	n := len(*chunk)
-	*chunk = (*chunk)[:n+1]
-	return &(*chunk)[n]
+	if n < cap(*chunk) {
+		// Index the full capacity under the existing n < cap proof before
+		// publishing the longer used prefix. Both operations remain checked Go.
+		e := &(*chunk)[:cap(*chunk)][n]
+		*chunk = (*chunk)[:n+1]
+		return e
+	}
+	return nil
 }
 
 // Keep growth and clearing of reused chunks off the per-operand path.
@@ -444,8 +437,8 @@ func (s *stack) alloc() *elem {
 //go:noinline
 func (s *stack) allocNextChunk() *elem {
 	s.cur++
-	if s.cur == len(s.chunks) {
-		s.chunks = append(s.chunks, make([]elem, 0, int(s.nextChunkCap)))
+	if int(s.cur) == len(s.chunks) {
+		s.chunks = append(s.chunks, operandArenaChunk(s.arena, int(s.nextChunkCap)))
 		s.nextChunkCap = s.nextGeometricCap
 		if s.nextGeometricCap < maxStackChunkCap {
 			s.nextGeometricCap *= 2
@@ -457,6 +450,7 @@ func (s *stack) allocNextChunk() *elem {
 		clear(s.chunks[s.cur])
 	}
 	chunk := &s.chunks[s.cur]
+	s.activeChunk = chunk
 	*chunk = (*chunk)[:1]
 	return &(*chunk)[0]
 }
@@ -476,7 +470,10 @@ func (s *stack) pushValue(st storage) *elem {
 		s.hasGCRoots = true
 	}
 	st.setLogicalRoot(true)
-	e := s.alloc()
+	e := s.tryAlloc()
+	if e == nil {
+		e = s.allocNextChunk()
+	}
 	e.setElemKind(ekValue)
 	e.st = st
 	s.noteSpill(st)
@@ -490,11 +487,33 @@ func (s *stack) pushValue(st storage) *elem {
 // constants cannot introduce a collector root.
 func (s *stack) pushIntegerConstant(typ machineType, value int64) *elem {
 	s.canonicalSlots = false
-	e := s.alloc()
+	e := s.tryAlloc()
+	if e == nil {
+		e = s.allocNextChunk()
+	}
 	e.st.kind = stConst
 	e.st.typ = typ
 	e.st.cval = value
 	e.st.meta = uint8(storageLogicalRoot)
+	s.logicalDepth++
+	return s.push(e)
+}
+
+// pushLocalRead initializes a local.get directly in its zeroed arena node.
+// Both local storage kinds carry a pending local read and cannot introduce a
+// spill. The caller marks reference roots after constructing the local value.
+func (s *stack) pushLocalRead(kind storageKind, typ machineType, reg Reg, index uint32) *elem {
+	s.canonicalSlots = false
+	e := s.tryAlloc()
+	if e == nil {
+		e = s.allocNextChunk()
+	}
+	e.st.kind = kind
+	e.st.typ = typ
+	e.st.reg = reg
+	e.st.idx = index
+	e.st.meta = uint8(storageLogicalRoot)
+	s.pendingEffects |= pendingLocalRef
 	s.logicalDepth++
 	return s.push(e)
 }
@@ -622,7 +641,11 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 			op = op2 // strength-reduced (mul 2ⁿ → shl, div_u 2ⁿ → shr_u, rem_u 2ⁿ → and)
 		}
 	}
-	if f.simplifySameOperand(op, typ, left, right) {
+	// Only matching local leaves can simplify. Reject other storage here so
+	// deferred trees and ordinary RHS operands avoid entering the cold helper.
+	if (left.st.kind == stLocalRef || left.st.kind == stLocalReg) &&
+		left.st.kind == right.st.kind && left.st.idx == right.st.idx &&
+		f.simplifySameOperand(op, typ, left, right) {
 		f.stats.peep("same-operand")
 		return
 	}
@@ -636,7 +659,10 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	if deferDepthOf(right) >= maxDeferDepth {
 		f.materialize(right)
 	}
-	node := f.s.alloc()
+	node := f.s.tryAlloc()
+	if node == nil {
+		node = f.s.allocNextChunk()
+	}
 	node.setElemKind(ekDeferred)
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.rememberProfileNode(node)
@@ -814,7 +840,10 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	if deferDepthOf(operand) >= maxDeferDepth {
 		f.materialize(operand) // cap deferred-tree height (see pushBinOp)
 	}
-	node := f.s.alloc()
+	node := f.s.tryAlloc()
+	if node == nil {
+		node = f.s.allocNextChunk()
+	}
 	node.setElemKind(ekDeferred)
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.rememberProfileNode(node)

@@ -84,7 +84,7 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkAMD64(t *testing.T) {
 
 func TestHiddenOptimizationFamiliesUsePerCompilePolicyAMD64(t *testing.T) {
 	names := []string{
-		"simd-superopt", "simd-reduction-borrow", "float-store-borrow", "memory-compare-immediate", "avx512-ternary", "interval-region-pins", "interval-control", "interval-next-use", "linear-sum-loop", "memory-min-bounds", "simd-load-extract", "simd-store-load-address", "bulk-fill-vector", "straight-line-block", "atomic-wait-zero-timeout", "atomic-static-bounds", "shared-memory-base", "callfree-loop-cold-exit", "memsize-regional-lease", "module-global-regional-lease", "magic-div", "commute-fixed-self-update",
+		"simd-superopt", "simd-reduction-borrow", "float-store-borrow", "memory-compare-immediate", "avx512-ternary", "interval-region-pins", "interval-control", "interval-next-use", "linear-sum-loop", "memory-min-bounds", "simd-load-extract", "simd-store-load-address", "bulk-fill-vector", "bulk-copy-vector", "byte-reduce-loop", "bulk-memory-loops", "bulk-fill-copy-forward", "straight-line-block", "atomic-wait-zero-timeout", "atomic-static-bounds", "shared-memory-base", "callfree-loop-cold-exit", "memsize-regional-lease", "module-global-regional-lease", "magic-div", "commute-fixed-self-update",
 		"shared-trap-body", "shared-adapters", "dead-gc-new", "gc-native-alloc",
 	}
 	overrides := make(map[string]bool, len(names))
@@ -185,10 +185,19 @@ func TestNativeCompactionPolicyAndRollbackAMD64(t *testing.T) {
 }
 
 func TestFunctionStartPaddingPolicyAMD64(t *testing.T) {
-	selection := currentCodegenPolicy().Selection
+	// Exercise the ordinary padding budget independently of the stronger
+	// fetch-block alignment requested by compact-loop-align32.
+	selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{"compact-loop-align32": false}, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ordinary := shared.DefaultCodegenPolicy(selection)
 	compact := shared.CompactCodegenPolicy(selection)
 	hot := funcHints{flags: hintHasLoop}
+	hotWithin, hotOver := 4, 0
+	if ordinary.EnabledOption(optCompactLoopAlign32) {
+		hotWithin, hotOver = 52, 61
+	}
 	for _, test := range []struct {
 		name      string
 		off       int
@@ -200,8 +209,8 @@ func TestFunctionStartPaddingPolicyAMD64(t *testing.T) {
 	}{
 		{name: "ordinary tiny leaf", off: 3, bodyBytes: 12, policy: ordinary, want: 0},
 		{name: "ordinary adapter", off: 3, bodyBytes: 12, adapter: true, policy: ordinary, want: 13},
-		{name: "ordinary hot within budget", off: 12, bodyBytes: 64, hints: hot, policy: ordinary, want: 4},
-		{name: "ordinary hot over budget", off: 3, bodyBytes: 64, hints: hot, policy: ordinary, want: 0},
+		{name: "ordinary compact loop", off: 12, bodyBytes: 64, hints: hot, policy: ordinary, want: hotWithin},
+		{name: "ordinary compact loop extra padding", off: 3, bodyBytes: 64, hints: hot, policy: ordinary, want: hotOver},
 		{name: "compact", off: 3, bodyBytes: 512, adapter: true, hints: hot, policy: compact, want: 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
