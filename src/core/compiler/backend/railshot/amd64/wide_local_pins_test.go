@@ -88,6 +88,9 @@ func TestWideLocalScoreStorage(t *testing.T) {
 							t.Fatalf("workers=%d function=%d: wide=%t scores=%d, want %t/%d", workers, i, h.hasWideLocalScores(), len(sidecar.view(h).localScore), wantWide, wantCount)
 						}
 					}
+					// The optional serial caller cache is checked separately against
+					// the original body planner; the semantic hints must still match.
+					sidecar.inlineCaller = nil
 					if workers == 1 {
 						first, firstSidecar = hints, sidecar
 					} else if !reflect.DeepEqual(first, hints) || !reflect.DeepEqual(firstSidecar, sidecar) {

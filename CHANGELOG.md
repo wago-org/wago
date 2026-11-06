@@ -16,6 +16,33 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Preserve live AMD64 locals across plain and weighted byte reductions under
+  register pressure. Checked builds now protect incoming local pins throughout
+  the raw fast path, including after allocator metadata changes.
+- Initialize the module context in ARM64 internal-call execution fixtures,
+  keeping stack-fence checks independent of Go's inherited register values.
+- Keep AMD64 scalar-loop select-to-branch rewrites opt-in until their branch
+  predictability is proved; generic loops retain conditional moves by default.
+  Continue unrolling proved register-only selection bodies without rewriting
+  their conditional moves. Convert only proved low-two-bit tests of constant-step
+  counters by default: each of the four unrolled sites has a fixed outcome
+  across loop groups. Other branch rewrites remain opt-in.
+- Bound ARM64 scalar branch-loop trap, relocation, and exit metadata proofs.
+
+- Preserve ARM64 operand trap order when a later `if` condition can also trap.
+- Bound AMD64 and ARM64 scalar-loop metadata proofs, avoiding quadratic
+  compilation work when many small loops share pending outer exits.
+- Restore relinquished AMD64 parameter pins before self-tail loop edges.
+- Preserve unreachable inline continuations on ARM64 and AMD64 when a
+  nonreturning tail helper follows a retained caller operand.
+
+- AMD64 and ARM64 discard `try_table` handlers on `return`, so a throw after
+  the call is caught by the caller's handler instead of the returned frame's.
+- Keep the value of a fused ARM64 compare stored by `local.tee` and consumed
+  by `br_if` on the taken edge in functions that make calls; the branch target
+  read the local's previous value from its stack slot.
+- Preserve plugin package compatibility constraints, subpackages, optional
+  metadata, and unchanged author details when rerunning `wago init --plugin`.
 - Preserve deferred load addresses derived from pinned mutable globals on
   ARM64, including loads kept live across guest stack-pointer updates.
 - Compile ARM64 memory operations at large valid directory indexes by forming
@@ -28,8 +55,14 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Keep the required atomic length read when an oversized memory64 shared grow
   request fails in the Go helper.
 
+- Preserve denied plugin authorities when their requests are unchanged, so
+  removing another plugin succeeds without granting previously denied access.
+
 - Use an allocated scratch register for AMD64 prefix spill moves. Checked
   builds no longer reject a temporary borrow of a live load-address register.
+
+- Bound portable instruction stack classification to linear work for shared
+  recipe subexpressions, while retaining their general native lowering.
 
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
@@ -48,10 +81,101 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   directly into a hinted register, fixing incorrect results in inlined C++
   wrappers with stack-based arguments.
 
+- Release owned shared-memory backing and invocation control separately when
+  instantiation fails, preventing leaked native mappings and duplicate cleanup.
+- Preserve AMD64 atomic store, RMW, and compare-exchange operands when deferred
+  address or value shifts reuse a fixed register under register pressure.
+
 ### Changed
 
 - Bound full GC mark clearing by the highest marked handle and reduce redundant
   card metadata cleanup after complete young evacuation.
+- Keep independent AMD64 selection-arm address calculations lazy when
+  temporary ownership and condition operands permit.
+- Feed small AMD64 integer selection masks directly into byte TEST flags.
+- Unroll bounded AMD64 register selection loops with a separate conditional
+  branch for each copy, preserving exit tests and dirty i32 carrier behavior.
+- Branch directly to call-free AMD64 empty `br_table` block ends after
+  reconciling locals and operands, preserving prefixes and index traps.
+- Shorten AMD64 unsigned i32 constant division and remainder add corrections
+  with exact wide reciprocals, including inputs with dirty high carrier bits.
+- Select bounded nontrapping AMD64 integer `if` expressions without a
+  structured branch merge, preserving earlier operand traps.
+- Forward caller locals into bounded read-only AMD64 scalar integer helpers,
+  avoiding private parameter stack copies while preserving get-time values.
+- Derive ARM64 unrolled scalar-loop counters from a private group base when
+  existing entry alignment provides a safe snapshot slot, retaining every
+  exit and division trap without increasing native code size.
+- Retain operands through bounded pure ARM64 integer conditionals and unroll
+  small register-only loops containing conditional selections and bit masks.
+- Speed up AMD64 integer multi-value code by retaining tuple results and loop
+  parameters in registers, simplifying wrapping arithmetic and grouping proved
+  loop updates. Preserve zero-trip and partial exits, local initialization and
+  trap behavior.
+- Reuse caller result registers in bounded ARM64 integer tuple helpers and omit
+  unsigned-remainder local restores when a forward suffix proves them unread.
+- Avoid redundant ARM64 register transfers in bounded unsigned-remainder loops,
+  preserving early exits, visible locals and wrapping iteration counters.
+- Remove obsolete cooperative-poll padding from ARM64 poll-free loop headers.
+
+- Keep bounded AMD64 integer block parameters and private tuple-helper inputs
+  in registers, and unroll short register-only post-tested integer loops while
+  retaining every iteration's exit check.
+
+- Retain immutable ARM64 caller operands across bounded private integer-tuple
+  control flow, including nested fallthrough blocks and trapping callees.
+- Reuse proved ARM64 pinned-local entry guards at bounded loop backedges when
+  unrolling is unavailable, retaining zero-iteration checks and every body site.
+- Borrow immutable ARM64 loop constants directly for immediate read-only
+  multiply-add inputs instead of reloading them inside the loop.
+- Reuse immutable ARM64 loop constants for unsigned I32 reciprocal multipliers,
+  including call-free loop scopes in functions with guest calls.
+- Shorten ARM64 constant integer division/remainder and multiply-add sequences
+  with exact-width shifted arithmetic, preserving signed, overflow and alias
+  behavior.
+- Keep ARM64 integer block parameters and surrounding operands resident through
+  bounded nested straight-line blocks.
+- Return bounded ARM64 straight-line integer pairs directly in result registers.
+- Inline bounded ARM64 integer-pair helpers in loops, keeping pure tuple results
+  deferred and forwarding read-only parameter locals.
+- Keep bounded ARM64 integer loop parameters in pinned local homes and align
+  functions called from loops to preserve hot entry placement.
+- Inline bounded ARM64 integer tuple leaves with structured control when the
+  caller can eliminate all calls, preserving private-local initialization.
+- Unroll bounded ARM64 register-only integer induction loops, checking each
+  iteration and preserving the exact induction value on early exits. Unroll
+  small register-only loops with a forward exit while retaining every exit test.
+  Combine independent iteration-counter updates across each group and restore
+  the exact count on partial exits.
+- Keep inlined ARM64 integer pairs in registers when a bounded leaf consists
+  of a pure integer condition and local-only result arms.
+- Fold repeated ARM64 I32 local terms into one shifted add when their exact
+  modular coefficients fit, preserving captured values and trapping operands.
+- Reuse an immediately preceding ARM64 zero-exit guard for one integer
+  division or remainder assignment, retaining overflow checks and later traps.
+  Unroll register-only unsigned-division loops while retaining each exit test.
+- Keep bounded ARM64 integer-pair loop continuations on the fallthrough path
+  and defer local-only exit results. Unroll these loops while preserving every
+  exit test, and exchange pair register roles across parallel additions when
+  all early exits can restore the original local homes. Use a conditional
+  backedge for these alternating pairs to avoid a separate branch per group.
+- Retain inlined ARM64 integer tuple results across a fallthrough-only helper
+  boundary, and assign immediate caller locals before copying private results
+  into temporary registers. Preserve ordinary merges for returns and branches
+  to the helper boundary.
+- Select pure inlined ARM64 integer pairs directly into two distinct caller
+  locals when their dedicated registers cannot overwrite either arm's sources.
+  Preserve pending reads of the caller's old values before the selections.
+- Keep eligible AMD64 integer self-tail calls in register loops, resolve private
+  immutable table targets, and inline small numeric self-tail and two-function
+  tail cycles. Specialize constant entry arguments and reuse proved branch flags,
+  including bounded register-only work before a repeated dynamic comparison.
+  Keep single inline results in registers when a pure caller can spare a private
+  tail-local register.
+
+- Keep eligible ARM64 self-tail calls in native register loops, including
+  private immutable table targets and small numeric helpers inlined into callers.
+  Reuse loop constants and reduce integer argument transfers and return branches.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.
@@ -79,6 +203,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   enabled. Keep checked-root cleanup for segment zero in the helper.
 - Handle shared memory growth with a statically impossible delta in native
   AMD64 and ARM64 code while retaining the required atomic length read.
+- Use native custom plugin lowerings for imported `return_call` on AMD64 and
+  ARM64, with the existing handler fallback and return-frame rules.
+
 - Compile bounded portable scalar plugin recipes to ARM64 instructions, preserving
   exact import identity and the portable fallback for larger or unsupported contracts.
 - Adapt native struct handle reservations to batch use. Mixed struct/array code

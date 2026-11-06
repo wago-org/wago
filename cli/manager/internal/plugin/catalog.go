@@ -688,10 +688,13 @@ func lockEntryFromRelease(release CatalogRelease, direct bool, previous project.
 			old = &copy
 			proposed = grant
 		}
-		if converted.Mode == project.AuthorityRequired || old != nil {
+		change := authorityChange(oldRequests[converted.Name], converted)
+		// An unchanged request without a grant is a saved denial. Only propose
+		// a required grant when that request needs a new review.
+		if old != nil || (converted.Mode == project.AuthorityRequired && change != "") {
 			entry.Grants = append(entry.Grants, proposed)
 		}
-		if change := authorityChange(oldRequests[converted.Name], converted, old); change != "" {
+		if change != "" {
 			reviews = append(reviews, AuthorityReview{PluginID: release.ID, Direct: direct, Request: converted, Previous: old, Proposed: proposed, Change: change})
 		}
 	}
@@ -992,15 +995,12 @@ func projectGrantFits(request project.AuthorityRequest, grant project.AuthorityG
 	return len(grant.Scope.Modules) == 0 && grant.Scope.MaxInstances == 0 && grant.Scope.MaxMemoryBytes == 0
 }
 
-func authorityChange(old project.AuthorityRequest, current project.AuthorityRequest, grant *project.AuthorityGrant) string {
+func authorityChange(old project.AuthorityRequest, current project.AuthorityRequest) string {
 	if old.Name == "" {
 		return "new"
 	}
 	if old.Mode != current.Mode || old.Reason != current.Reason || !sameProjectScope(old.Scope, current.Scope) {
 		return "changed"
-	}
-	if grant == nil {
-		return "unreviewed"
 	}
 	return ""
 }

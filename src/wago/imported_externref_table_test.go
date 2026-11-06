@@ -288,8 +288,8 @@ func TestImportedExternrefTablePersistenceAndFootprintBoundaries(t *testing.T) {
 		t.Fatalf("Table size = %d, want 64", got)
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
-	if got := unsafe.Sizeof(Compiled{}); got != 784 {
-		t.Fatalf("Compiled size = %d, want 784", got)
+	if got := unsafe.Sizeof(Compiled{}); got != 808 {
+		t.Fatalf("Compiled size = %d, want 808", got)
 	}
 }
 

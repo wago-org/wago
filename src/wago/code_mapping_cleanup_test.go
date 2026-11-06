@@ -12,7 +12,7 @@ import (
 
 func cleanupMappingFixture(t *testing.T) (*Compiled, *compiledCacheIndexes, map[uintptr]int) {
 	t.Helper()
-	c := newCompilerCompiled(Compiled{})
+	c := newCompilerCompiled()
 	indexes := c.ensureCompileIndexes()
 	calls := make(map[uintptr]int)
 	indexes.unmapCode = func(mem []byte) error {
