@@ -462,6 +462,7 @@ var catalog = []Definition{
 	arm64("cold-tuple-loop-exit", "Cold integer tuple loop exits", "defer local-only tuple exit arms so loop continuations fall through"),
 	arm64("guarded-div-rem", "Guarded integer division", "reuse an immediately preceding local zero guard for one integer division or remainder"),
 	both("tuple-if-select", "Integer pair selection", "select pinned integer pair operands without a structured merge"),
+	both("pure-integer-if-select", "Pure integer if selection", "select bounded nontrapping integer expressions without a structured merge"),
 	arm64("inline-integer-tuples", "Integer tuple inlining", "inline bounded numeric tuple leaves with structured control and private local homes"),
 	both("bulk-fill-vector", "Constant vector fills", "broadcast a byte into native vector stores for 16 to 64 byte constant fills"),
 	both("simd-store-load-address", "Adjacent SIMD memory addresses", "reuse an identical pure address expression for a vector store and following real load"),

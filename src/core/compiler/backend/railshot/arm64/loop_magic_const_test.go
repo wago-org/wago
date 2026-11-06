@@ -14,7 +14,10 @@ import (
 func TestLoopReciprocalLeaseDecoding(t *testing.T) {
 	for _, divisor := range []uint32{3, 7, 17, 37, 0x80000001, 0xffffffff} {
 		for _, op := range []byte{0x6e, 0x70} {
-			magic, _, _ := railshot.MagicU(uint64(divisor), 32)
+			magic, _, add := railshot.MagicU(uint64(divisor), 32)
+			if add {
+				magic = wideReciprocalU32(uint64(divisor))
+			}
 			value, typ, needed := loopIntConstRegisterValue(op, int64(int32(divisor)), 1)
 			if !needed || value != int64(magic) || typ != 2 {
 				t.Fatalf("d=%x op=%x value=%x type=%d needed=%v", divisor, op, value, typ, needed)

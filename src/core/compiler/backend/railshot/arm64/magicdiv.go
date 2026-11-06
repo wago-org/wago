@@ -6,6 +6,7 @@ import (
 	"math/bits"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
 // Constant-divisor strength reduction. A div/rem by a constant is replaced with
@@ -31,43 +32,8 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 		return regNone, false
 	}
 
-	// A 32-bit unsigned quotient without an add correction needs only the
-	// full UMULL product followed by one 64-bit shift. Read the dividend
-	// directly and write the requested destination, avoiding two copies and
-	// separate high-half/post-shift instructions. UMULL ignores carrier bits.
-	left := f.s.arg0(node)
-	if left.elemKind() == ekValue && left.st.kind == stLocalReg && !w && !signed && !wantRem && uint32(c) > 1 && uint32(c)&(uint32(c)-1) != 0 {
-		magic, shift, add := railshot.MagicU(uint64(uint32(c)), 32)
-		if !add {
-			previousPins := f.pinned
-			dividend, _ := f.materializeRead(f.s.arg0(node))
-			f.pinned = f.pinned.add(dividend)
-			result := dest
-			if result == regNone {
-				result = f.allocReg(maskOf(dividend))
-			}
-			f.pinned = f.pinned.add(result)
-			constant, cached := f.cachedMagicConst(magic, false)
-			if !cached {
-				constant = result
-				if result == dividend {
-					constant = f.allocReg(maskOf(dividend, result))
-				}
-				f.a.MovImm32(constant, int32(uint32(magic)))
-			}
-			f.a.Umull(result, dividend, constant)
-			f.shiftImm(shLSR, result, byte(32+shift), true)
-			if !cached && constant != result {
-				f.release(constant)
-			}
-			f.pinned = previousPins
-			f.consumeBlockBelow(node)
-			f.occupy(node, result)
-			f.stats.peep("div-by-const")
-			f.stats.peep("magic-quotient-direct")
-			if cached {
-				f.stats.peep("magic-loop-int-const")
-			}
+	if !w && !signed && !wantRem && uint32(c) > 1 && uint32(c)&(uint32(c)-1) != 0 {
+		if result, ok := f.tryBorrowedUnsignedQuotient(node, dest, uint64(uint32(c))); ok {
 			return result, true
 		}
 	}
@@ -99,6 +65,62 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
 	f.stats.peep("div-by-const")
+	return result, true
+}
+
+// A bare caller-local dividend remains read-only throughout multiply-high and
+// add correction. Keep the quotient in its own result register instead of
+// copying the dividend into and the quotient back out of a private accumulator.
+func (f *fn) tryBorrowedUnsignedQuotient(node *elem, dest Reg, divisor uint64) (Reg, bool) {
+	left := f.s.arg0(node)
+	if left.elemKind() != ekValue || left.st.kind != stLocalReg {
+		return regNone, false
+	}
+	previousPins := f.pinned
+	dividend, _ := f.materializeRead(left)
+	f.pinned = f.pinned.add(dividend)
+	magic, shift, add := railshot.MagicU(divisor, 32)
+	var q Reg
+	if add {
+		q = f.magicWideU32Quotient(dividend, divisor)
+	} else {
+		// Write the requested destination directly when no add correction is
+		// needed; both reciprocal lease widths supply the same low 32 bits.
+		q = dest
+		if q == regNone {
+			q = f.allocReg(maskOf(dividend))
+		}
+		f.pinned = f.pinned.add(q)
+		constant, cached := f.cachedMagicConst(magic, false)
+		if !cached {
+			constant = q
+			if q == dividend {
+				constant = f.allocReg(maskOf(dividend, q))
+			}
+			f.a.MovImm32(constant, int32(uint32(magic)))
+		}
+		f.a.Umull(q, dividend, constant)
+		f.shiftImm(shLSR, q, byte(32+shift), true)
+		if !cached && constant != q {
+			f.release(constant)
+		}
+		if cached {
+			f.stats.peep("magic-loop-int-const")
+		}
+		f.stats.peep("magic-quotient-direct")
+	}
+	result := q
+	if dest != regNone && dest != q {
+		f.a.MovReg32(dest, q)
+		f.pinned = f.pinned.remove(q)
+		f.release(q)
+		result = dest
+	}
+	f.pinned = previousPins
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	f.stats.peep("div-by-const")
+	f.stats.peep("magic-quotient-borrowed")
 	return result, true
 }
 
@@ -258,6 +280,16 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 		W = 64
 	}
 	magic, shift, add := railshot.MagicU(d, W)
+	if !w && add {
+		q := f.magicWideU32Quotient(res, d)
+		if wantRem {
+			f.remFromQuot(res, q, int64(d), false)
+		} else {
+			f.a.MovReg32(res, q)
+		}
+		f.pinned = f.pinned.remove(q)
+		return
+	}
 	postShift := uint(0)
 	if !w && !add {
 		postShift, shift = shift, 0
@@ -270,11 +302,15 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 		// q = ((n - q) >> 1) + q  (an overflow-free way to add n before the shift).
 		t := f.allocReg(maskOf(res, q))
 		f.pinned = f.pinned.add(t)
-		f.a.MovReg64(t, res)
-		f.aluRR(opSub, t, q, w)    // t -= q  (= n - q)
-		f.shiftImm(shLSR, t, 1, w) // t >>= 1
-		f.aluRR(opAdd, t, q, w)    // t += q
-		f.a.MovReg64(q, t)
+		if w {
+			f.a.Sub64(t, res, q)
+		} else {
+			f.a.Sub32(t, res, q)
+		}
+		// Three-operand SUB and shifted ADD preserve the dividend for a
+		// possible remainder while avoiding copies through the correction scratch.
+		f.a.AddShiftedReg(q, q, t, a64.RegShiftLSR, 1, !w)
+		f.stats.peep("magic-unsigned-add-shift")
 		f.pinned = f.pinned.remove(t)
 	}
 	if shift > 0 {

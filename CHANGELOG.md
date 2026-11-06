@@ -16,6 +16,17 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Initialize the module context in ARM64 internal-call execution fixtures,
+  keeping stack-fence checks independent of Go's inherited register values.
+- Keep AMD64 scalar-loop select-to-branch rewrites opt-in until their branch
+  predictability is proved; generic loops retain conditional moves by default.
+  Continue unrolling proved register-only selection bodies without rewriting
+  their conditional moves. Convert only proved low-two-bit tests of constant-step
+  counters by default: each of the four unrolled sites has a fixed outcome
+  across loop groups. Other branch rewrites remain opt-in.
+- Bound ARM64 scalar branch-loop trap, relocation, and exit metadata proofs.
+
+- Preserve ARM64 operand trap order when a later `if` condition can also trap.
 - Bound AMD64 and ARM64 scalar-loop metadata proofs, avoiding quadratic
   compilation work when many small loops share pending outer exits.
 - Restore relinquished AMD64 parameter pins before self-tail loop edges.
@@ -74,6 +85,24 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Keep independent AMD64 selection-arm address calculations lazy when
+  temporary ownership and condition operands permit.
+- Feed small AMD64 integer selection masks directly into byte TEST flags.
+- Unroll bounded AMD64 register selection loops with a separate conditional
+  branch for each copy, preserving exit tests and dirty i32 carrier behavior.
+- Branch directly to call-free AMD64 empty `br_table` block ends after
+  reconciling locals and operands, preserving prefixes and index traps.
+- Shorten AMD64 unsigned i32 constant division and remainder add corrections
+  with exact wide reciprocals, including inputs with dirty high carrier bits.
+- Select bounded nontrapping AMD64 integer `if` expressions without a
+  structured branch merge, preserving earlier operand traps.
+- Forward caller locals into bounded read-only AMD64 scalar integer helpers,
+  avoiding private parameter stack copies while preserving get-time values.
+- Derive ARM64 unrolled scalar-loop counters from a private group base when
+  existing entry alignment provides a safe snapshot slot, retaining every
+  exit and division trap without increasing native code size.
+- Retain operands through bounded pure ARM64 integer conditionals and unroll
+  small register-only loops containing conditional selections and bit masks.
 - Speed up AMD64 integer multi-value code by retaining tuple results and loop
   parameters in registers, simplifying wrapping arithmetic and grouping proved
   loop updates. Preserve zero-trip and partial exits, local initialization and
