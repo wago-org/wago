@@ -16,6 +16,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Preserve live AMD64 locals across plain and weighted byte reductions under
+  register pressure. Checked builds now protect incoming local pins throughout
+  the raw fast path, including after allocator metadata changes.
 - Initialize the module context in ARM64 internal-call execution fixtures,
   keeping stack-fence checks independent of Go's inherited register values.
 - Keep AMD64 scalar-loop select-to-branch rewrites opt-in until their branch

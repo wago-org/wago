@@ -624,6 +624,57 @@ before compaction. Code layout, relocation checks, and emitted bytes are unchang
 Dynamic `memory.copy` lowering uses stack-backed lists for its four fixed branch
 patch sites (two per branch encoding on ARM64), with ordinary append fallback.
 
+ARM64 bulk-memory lowering loads every source chunk before storing a constant
+16–64 byte copy, preserving overlap semantics (`bulk-copy-vector`). Dynamic
+backward copies align the destination end and use 256-byte groups; fills align
+the destination and use 1024-byte groups (`bulk-memory-loops`). All tails stay
+inside the checked range. An adjacent constant-byte fill followed by a copy of
+exactly that source span can replace the copy's reads with fill stores
+(`bulk-fill-copy-forward`). Only three pure constant/local operand reads may
+intervene, both memories must be unshared memory32, and both copy range checks
+still precede its writes. A trapping copy leaves the completed fill visible.
+
+The ARM64 `byte-reduce-loop` option recognizes complete read-only ascending
+unsigned byte-sum loops, optionally weighted by a wrapping i32 index plus a
+constant. A widened whole-range guard admits NEON 16-byte reductions with scalar
+tails; failed guards execute the original loop so traps retain their ordering.
+The recognizer requires distinct counter, limit and accumulator locals and an
+immediate void-block exit. Calls, shared/memory64 sources, interruption, source
+profiling, custom instructions and unsupported register/control states retain
+the ordinary lowering. Coefficient sums fit in unsigned 16-bit lanes; the final
+weighted accumulation preserves modulo-2^32 arithmetic.
+
+AMD64 uses the same `bulk-copy-vector`, `bulk-fill-copy-forward`,
+`bulk-memory-loops` and `byte-reduce-loop` controls. Constant copies use complete
+16-byte groups and exact 8/4/2/1-byte tails when scratch registers are available;
+all loads still precede all stores. Both copy operands can use the existing
+declared-minimum bounds proof before materialization. Proven constant memory32
+addresses can then become native displacements. Pressure and unproved spans
+retain checked lowering. Adjacent filled-source forwarding also remaps inline
+local indexes before matching its three pure operands.
+The same copy control admits constant left-shift copies of 15, 31, 47 or 63
+bytes followed immediately by an adjacent byte append. A declared-minimum proof
+must cover the entire enclosing span, including the extra first-byte read;
+shared and memory64 sources retain ordinary lowering. AVX/SSSE3/SSE4.1 align
+whole original vectors in registers and insert the append byte before full-vector
+stores, avoiding reads across partial stores on a later iteration. At most twelve
+pure i32 constant/local/add/subtract/multiply/bitwise operations may produce the
+appended value. Calls, loads, local writes, control operations, source profiling,
+custom instructions and unsupported register states reject the combination.
+
+AMD64 large fills use AVX2 stores, or AVX-512 stores when available. An in-range
+prefix aligns the middle; a fixed store group ending at the checked end covers
+the remainder. Short fills and CPUs without AVX2 retain byte string stores.
+The existing `callfree-loop-reg-state` control also permits the first exit from
+a proved call-free loop to retain integer pins across its enclosing void block;
+subsequent edges must satisfy the same merge contract.
+Byte reductions use SSSE3 weighted
+16-byte sums (SSE2 for plain sums), with four-byte scalar groups and byte tails
+when unsupported or under vector pressure. Saturating byte-pair products remain
+exact because their maximum is 7395; the complete relative weighted sum is at
+most 30600. The original range guard and scalar trap fallback are unchanged.
+
+
 Parallel codegen reserves at most 64 local slots per worker; a larger function
 uses the normal growth path. Parallel hint scans allocate dense global scratch
 once, then give each worker exclusive, capacity-bounded slices. Each worker has
@@ -706,6 +757,16 @@ store path during address preparation, and the first FP input in `fbin` and
 `fbinInto` during second-input preparation. These guards end before the consuming
 instruction. Known address normalization can preserve a guarded i32 input, but
 cannot truncate a guarded i64 input.
+
+AMD64 checked builds also provide an opt-in local-pin scope for raw fast paths
+that bypass ordinary local recovery. An adopting lowering calls
+`checkProtectLocalPins` after local reconciliation and before scratch allocation,
+then restores the returned read masks on every exit. While the scope is active,
+typed GP and FP writes to incoming pins are rejected even if allocator metadata
+relinquishes a pin. At an intentional result-local write,
+`checkAllowLocalPinWrite` releases only this scope's protection; enclosing read
+guards remain active. Each lowering must install these hooks explicitly; the
+helpers alone do not add coverage to existing raw fast paths.
 
 The ordinary build retains no checker state or observer work. Transfer windows
 assume correct incoming values. The lifetime observers classify destinations,
@@ -936,6 +997,24 @@ sequence:
 Running on a separate stack keeps native wasm code off the goroutine stack,
 which Go may grow/move (`morestack`) — that would be catastrophic mid-execution.
 After the call returns, a non-zero trap slot becomes a Go `*TrapError`.
+
+Ordinary native entry releases the Go P. On Linux/AMD64, a fresh-compilation proof
+can keep an isolated `WasmFunc.Invoke` on that P for a bounded bulk-memory call
+under `prepared-bounded-entry`. The proof admits at most four i32 parameters,
+i32 locals and at most one i32 result, acyclic local calls and exact non-wrapping constant-count
+up-counter loops. It limits the complete invocation to 4096 admitted source
+operations and 4 MiB of logical bulk bytes (copies charge reads and writes).
+One invariant count parameter may contribute a linear byte cost; its unsigned
+argument limit is checked on every call. Input-independent work needs no count
+check. Larger inputs and unproved code retain ordinary scheduler transitions.
+
+The proof rejects imports, shared/memory64 memories, tables, globals, exception
+handling, unknown helpers/control flow, loop-carried counts and changed induction
+variables. Profiling, custom instructions and GC execution retain their
+existing entry policy. The capability is private, omitted from encoded metadata,
+and shared read-only by execution snapshots; it does not change generated guest
+code or replace the instance's ownership and trap checks. These are logical work
+budgets, not wall-clock guarantees. ARM64 retains its existing entry selection.
 
 ---
 

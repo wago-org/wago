@@ -107,3 +107,35 @@ func TestEVEXRepresentativeFixtureSize(t *testing.T) {
 		t.Fatalf("fixture bytes = %d, want %d (14 fewer than always-disp32)", got, want)
 	}
 }
+
+func TestAlignedZMMStoreEncoding(t *testing.T) {
+	var a Asm
+	a.ZMovdqa64StoreIdx(RBX, RCX, 2, 64)
+	want := []byte{0x62, 0xf1, 0xfd, 0x48, 0x7f, 0x54, 0x0b, 0x01}
+	if !bytes.Equal(a.B, want) {
+		t.Fatalf("encoding=%x want=%x", a.B, want)
+	}
+}
+
+func TestNoIndexAddressEncodings(t *testing.T) {
+	cases := []struct {
+		name string
+		emit func(*Asm)
+		want []byte
+	}{
+		{"gp", func(a *Asm) { a.LoadIdx(RAX, RBX, RSP, 17, 8, false, true) }, []byte{0x48, 0x8b, 0x43, 0x11}},
+		{"gp-r12-index", func(a *Asm) { a.LoadIdx(RAX, RBX, R12, 17, 8, false, true) }, []byte{0x4a, 0x8b, 0x44, 0x23, 0x11}},
+		{"gp-rsp-base", func(a *Asm) { a.LoadIdx(RAX, RSP, RSP, 17, 8, false, true) }, []byte{0x48, 0x8b, 0x44, 0x24, 0x11}},
+		{"vex", func(a *Asm) { a.VMovdquLoadIdx(0, RBX, RSP, 1) }, []byte{0xc4, 0xe1, 0x7a, 0x6f, 0x43, 1}},
+		{"evex", func(a *Asm) { a.ZMovdqa64StoreIdx(RDI, RSP, 2, 64) }, []byte{0x62, 0xf1, 0xfd, 0x48, 0x7f, 0x57, 1}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var a Asm
+			tc.emit(&a)
+			if !bytes.Equal(a.B, tc.want) {
+				t.Fatalf("encoding=%x want=%x", a.B, tc.want)
+			}
+		})
+	}
+}

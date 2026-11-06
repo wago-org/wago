@@ -1148,6 +1148,25 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	if regallocCheckEnabled {
 		read = checkProtectRead(f, vreg, false, vtyp.is64())
 	}
+	// A proven pure constant needs no register carrier. Keep this immediate
+	// store path separate from deferred memory-reference ownership.
+	if addr := f.s.back(); !f.guardMode && addr != nil && addr.isValue() && addr.st.kind == stConst && addr.st.typ == mtI32 &&
+		uint64(uint32(addr.st.cval))+uint64(off32)+uint64(size) <= 0x7fffffff && f.minimumMemoryAccess(0, uint64(off32), size) {
+		f.materializePendingTraps()
+		disp := int32(uint32(addr.st.cval) + off32)
+		f.erase(addr)
+		if regallocCheckEnabled {
+			checkRestoreRead(f, read)
+		}
+		f.a.StoreIdx(RBX, RSP, vreg, disp, size)
+		f.pinned = f.pinned.remove(vreg)
+		if vOwned {
+			f.release(vreg)
+		}
+		f.stats.peep("memory-min-bounds")
+		f.stats.peep("store-fixed-address")
+		return nil
+	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off32, size, true, 0)
 	if regallocCheckEnabled {
@@ -1484,9 +1503,15 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	filled := f.filledCopyEnd != 0 && f.filledCopyEnd == f.tracePCBase+uint32(r.Offset())
+	fillByte := f.filledCopyByte
+	f.filledCopyEnd = 0
 	if dstMemory == 0 && srcMemory == 0 && !f.memoryAddr64(0) {
 		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
+				if done, err := f.tryBulkCopyAppend(r, int(n)); done || err != nil {
+					return err
+				}
 				f.stats.peep("memcopy-unroll")
 				f.memoryCopyConst(int(n), dstMemory, srcMemory)
 				return nil
@@ -1513,6 +1538,16 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
 	f.absoluteBulkAddr(dstMemory, RDI, RCX)
 	f.absoluteBulkAddr(srcMemory, RSI, RCX)
+	if filled {
+		// Preserve both range checks and the visibility of the preceding fill.
+		f.a.MovImm64(RAX, uint64(fillByte)*0x0101010101010101)
+		vec := f.allocFReg(0)
+		f.emitBulkFill(vec)
+		f.releaseF(vec)
+		f.setDepth(d - 3)
+		f.stats.peep("bulk-fill-copy-forward")
+		return nil
+	}
 	var copyVecs [4]Reg
 	var copyAvoid regMask
 	for i := range copyVecs {
@@ -1683,6 +1718,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 
 // memoryFill lowers memory.fill (memset of the low byte of val) via rep stosb.
 func (f *fn) memoryFill(r *wasm.Reader) error {
+	f.filledCopyEnd = 0
 	memoryIndex, err := r.U32()
 	if err != nil {
 		return err
@@ -1695,6 +1731,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 			}
 		}
 	}
+	f.recordFilledCopy(r, memoryIndex)
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
@@ -1759,27 +1796,15 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.StoreIdx(RDI, RCX, RAX, -1, 1)
 	f.unitAdjust(RCX, false, false)
 	f.closeRCXZero32Loop(fillDone, fill1)
-	if fillDone.compact {
-		skipRep := f.a.JmpRel8Placeholder()
-		rep := f.a.Len()
-		f.a.PatchRel32(bigF, rep)
-		f.a.PatchRel32(mediumRep, rep)
-		f.a.RepStosb() // [RDI..] = AL, RCX times (DF=0)
-		if !f.a.PatchRel8(skipRep, f.a.Len()) {
-			panic("amd64: bounded memory.fill skip exceeded rel8 range")
-		}
-		f.patchRCXZero32(fillDone)
-		f.releaseF(fillVec)
-		f.setDepth(d - 3)
-		return nil
-	}
+	// Keep the bounded zero-count branch close even when the large path
+	// expands into a wide loop. Both the byte loop and its zero exit join here.
+	f.patchRCXZero32(fillDone)
 	skipRep := f.a.JmpPlaceholder()
 	rep := f.a.Len()
 	f.a.PatchRel32(bigF, rep)
 	f.a.PatchRel32(mediumRep, rep)
-	f.a.RepStosb() // [RDI..] = AL, RCX times (DF=0)
+	f.emitBulkFill(fillVec)
 	f.a.PatchRel32(skipRep, f.a.Len())
-	f.patchRCXZero32(fillDone)
 	f.releaseF(fillVec)
 
 	f.setDepth(d - 3)
@@ -2174,9 +2199,14 @@ func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 // load-all-then-store-all chunks — inherently overlap-safe (memmove semantics).
 func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	f.materializePendingLoads()
+	if f.emitFixedBulkCopy(n, dstMemory, srcMemory) {
+		return
+	}
 	f.erase(f.s.back()) // n (const)
+	srcMinimum := f.minimumMemoryAccess(srcMemory, 0, n)
 	src, srcOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(src)
+	dstMinimum := f.minimumMemoryAccess(dstMemory, 0, n)
 	dst, dstOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(dst)
 	if !f.memoryAddr64(dstMemory) {
@@ -2185,28 +2215,38 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	if !f.memoryAddr64(srcMemory) {
 		f.a.MovRegReg32(src, src)
 	}
-	f.bulkBoundsCheck(dst, n, dstMemory)
-	f.bulkBoundsCheck(src, n, srcMemory)
+	if dstMinimum {
+		f.stats.peep("memory-min-bounds")
+	} else {
+		f.bulkBoundsCheck(dst, n, dstMemory)
+	}
+	if srcMinimum {
+		f.stats.peep("memory-min-bounds")
+	} else {
+		f.bulkBoundsCheck(src, n, srcMemory)
+	}
 	base, baseOwned := f.bulkMemory0Base(maskOf(src, dst))
-	if n > 32 {
-		// 33..64 bytes: SSE 16-byte load-all-then-store-all. At most four XMM
+	if n > 32 || n >= 16 && f.opt(optBulkCopyVector) {
+		// 16..64 bytes: SSE 16-byte load-all-then-store-all. At most four XMM
 		// registers, so the load-all footprint stays in the float pool (the GP
 		// 8-byte form would need five-to-eight registers). Overlap-safe (memmove
 		// semantics) because every load precedes every store.
-		var chunkBuf [4][2]int
-		chunks := bulkChunks16(n, &chunkBuf)
-		var xregBuf [4]Reg
-		xregs := xregBuf[:len(chunks)]
-		var favoid regMask
-		for i, c := range chunks {
-			x := f.allocFReg(favoid)
-			f.mov128LoadIdx(x, base, src, int32(c[0]))
-			xregs[i] = x
-			favoid = favoid.add(x)
-		}
-		for i, c := range chunks {
-			f.mov128StoreIdx(base, dst, xregs[i], int32(c[0]))
-			f.releaseF(xregs[i])
+		if !f.emitBulkCopyChunks(n, base, src, dst, 0, 0) {
+			var chunkBuf [4][2]int
+			chunks := bulkChunks16(n, &chunkBuf)
+			var xregBuf [4]Reg
+			xregs := xregBuf[:len(chunks)]
+			var favoid regMask
+			for i, c := range chunks {
+				x := f.allocFReg(favoid)
+				f.mov128LoadIdx(x, base, src, int32(c[0]))
+				xregs[i] = x
+				favoid = favoid.add(x)
+			}
+			for i, c := range chunks {
+				f.mov128StoreIdx(base, dst, xregs[i], int32(c[0]))
+				f.releaseF(xregs[i])
+			}
 		}
 		if baseOwned {
 			f.release(base)

@@ -49,6 +49,8 @@ type WasmFunc struct {
 	scalarResultWide      bool
 	resultWide            []bool
 	boundedWrapper        bool
+	boundedBulkLimit      uint32
+	boundedBulkArgument   uint8
 	privateFast           bool
 	isolatedFast          bool
 	directIsolated        bool
@@ -279,6 +281,8 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		gcPrepared:          (goruntime.GOARCH == "arm64" || goruntime.GOARCH == "amd64") && in.gc != nil && scalarFast && in.c.NumImports == 0 && !in.c.usesAtomicWaitHelpers(),
 		resultWide:          resultWide,
 		boundedWrapper:      in.c.directPreparedBoundedAt(ic.li) || in.isolatedNativeScalarLeaf(),
+		boundedBulkLimit:    uint32(in.c.boundedBulkArgumentPlan(ic.li) >> 32),
+		boundedBulkArgument: uint8(in.c.boundedBulkArgumentPlan(ic.li)),
 	}
 	fn.gcScalar32 = fn.gcPrepared && fn.gcMaintenance && in.syncMode && ic.paramSlots == 1 && ic.resultSlots == 1 && scalarWideMask == 0 && !resultWide[0]
 	// The collector/config and compiled root plan are fixed before publication.
@@ -968,7 +972,7 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	} else {
 		var err error
 		if fn.isolatedFast {
-			err = in.callPreparedIsolated(fn.entry, in.trap, false, fn.boundedWrapper)
+			err = in.callPreparedIsolated(fn.entry, in.trap, false, fn.boundedWrapper || fn.boundedBulkArguments(args))
 		} else if fn.privateFast {
 			err = in.callPreparedPrivate(fn.entry, in.trap)
 		} else {

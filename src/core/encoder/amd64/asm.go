@@ -1285,6 +1285,12 @@ func (a *Asm) Cld() { a.emit(0xFC) } // clear direction flag (increment)
 // sibAddr emits ModRM + SIB and the shortest displacement for a
 // [base + index + disp] operand (scale 1) with the given reg field.
 func (a *Asm) sibAddr(reg, base, index Reg, disp int32) {
+	// SIB index=RSP means no index (R12 remains a real index via REX.X).
+	// Use the ordinary base/displacement form when its encoding is shorter.
+	if index == RSP {
+		a.baseAddr(byte(reg), base, disp)
+		return
+	}
 	mod := addrMode(base, disp)
 	a.recordAddress(base, mod)
 	a.emit(

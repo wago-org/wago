@@ -23,6 +23,10 @@ func enterNative(code, serArgs, linMem, trap, results, stack uintptr) {
 	nativeExitSyscall()
 }
 
+// Bounded entry is reserved for a complete finite-work proof, including any
+// loops and native helpers. It returns to the Go stack before ordinary Go
+// preemption/GC can proceed; no Go callback may run on the foreign stack.
+//
 //go:nosplit
 func enterNativeBounded(code, serArgs, linMem, trap, results, stack uintptr) {
 	enterNativeRaw(code, serArgs, linMem, trap, results, stack)

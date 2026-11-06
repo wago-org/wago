@@ -41,3 +41,9 @@ type regallocReadMask struct{}
 func checkProtectRead(*fn, Reg, bool, bool) regallocReadMask { return regallocReadMask{} }
 func checkRestoreRead(*fn, regallocReadMask)                 {}
 func checkGlobalCell(*fn)                                    {}
+
+//lint:ignore U1000 zero-state counterpart of the opt-in checked local-pin scope
+func (*fn) checkProtectLocalPins() regallocReadMask { return regallocReadMask{} }
+
+//lint:ignore U1000 zero-state counterpart of the opt-in checked local-pin output hook
+func (*fn) checkAllowLocalPinWrite(regallocReadMask, int) {}
