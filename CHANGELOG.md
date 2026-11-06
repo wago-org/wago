@@ -16,6 +16,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Preserve live AMD64 locals across plain and weighted byte reductions under
+  register pressure. Checked builds now protect incoming local pins throughout
+  the raw fast path, including after allocator metadata changes.
 - Preserve deferred load addresses derived from pinned mutable globals on
   ARM64, including loads kept live across guest stack-pointer updates.
 - Compile ARM64 memory operations at large valid directory indexes by forming

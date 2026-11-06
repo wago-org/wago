@@ -3,11 +3,55 @@
 package amd64
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestByteReduceLoopLivePinAdmission(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, weighted := range []bool{false, true} {
+		for _, extra := range []int{0, 4, 6} {
+			t.Run(fmt.Sprintf("weighted=%t/locals=%d", weighted, extra), func(t *testing.T) {
+				body := []byte{0}
+				if extra != 0 {
+					body = []byte{1, byte(extra), 0x7f}
+				}
+				for i := 0; i < extra; i++ {
+					body = append(body, 0x41)
+					body = append(body, wasmtest.SLEB32(int32(101+i))...)
+					body = append(body, 0x21, byte(3+i))
+				}
+				body = append(body, 0x02, 0x40, 0x03, 0x40, 0x20, 1, 0x20, 0, 0x4f, 0x0d, 1,
+					0x20, 2, 0x20, 1, 0x2d, 0, 0)
+				if weighted {
+					body = append(body, 0x20, 1, 0x41, 1, 0x6a, 0x6c)
+				}
+				body = append(body, 0x6a, 0x21, 2, 0x20, 1, 0x41, 1, 0x6a, 0x21, 1, 0x0c, 0, 0x0b, 0x0b, 0x20, 2)
+				for i := 0; i < extra; i++ {
+					body = append(body, 0x20, byte(3+i), 0x6a)
+				}
+				body = append(body, 0x0b)
+				m := byteReduceTestModule(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+				var stats ModuleStats
+				cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer cm.CodeImage.Close()
+				want := 0
+				if extra == 0 {
+					want = 1
+				}
+				if got := stats.Funcs[0].Peephole["byte-reduce-loop"]; got != want {
+					t.Fatalf("selected=%d want=%d", got, want)
+				}
+			})
+		}
+	}
+}
 
 func TestByteReduceLoopSelection(t *testing.T) {
 	requireCompilerDiagnostics(t)

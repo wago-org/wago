@@ -102,15 +102,34 @@ func (f *fn) emitByteReduceLoop(r *wasm.Reader) {
 	if !ok {
 		return
 	}
+	var localPins regallocReadMask
+	if regallocCheckEnabled {
+		localPins = f.checkProtectLocalPins()
+		defer checkRestoreRead(f, localPins)
+	}
+	// This edge bypasses ordinary pin recovery. Select only genuinely free
+	// carriers; the general allocator may relinquish a live local pin.
+	blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved).add(RAX).add(RDX)
+	var regs [6]Reg
+	n := 0
+	for _, reg := range gpAlloc {
+		if blocked.has(reg) || f.regUser[reg] != nil {
+			continue
+		}
+		regs[n] = reg
+		n++
+		if n == len(regs) {
+			break
+		}
+	}
+	if n != len(regs) {
+		return
+	}
 	oldPinned := f.pinned
 	oldFPinned := f.fpinned
 	var vectors [5]Reg
 	for i := range vectors {
 		vectors[i] = regNone
-	}
-	var regs [6]Reg
-	for i := range regs {
-		regs[i] = regNone
 	}
 	defer func() {
 		f.pinned = oldPinned
@@ -128,12 +147,8 @@ func (f *fn) emitByteReduceLoop(r *wasm.Reader) {
 	}()
 	// Fixed scratch carriers never overlap the six loop values or local pins.
 	f.pinned = f.pinned.add(RAX).add(RDX)
-	for i := range regs {
-		regs[i] = f.allocRegOrNone(0)
-		if regs[i] == regNone {
-			return
-		}
-		f.pinned = f.pinned.add(regs[i])
+	for _, reg := range regs {
+		f.pinned = f.pinned.add(reg)
 	}
 	vectorOK := !p.weighted || f.cpuHas(shared.AMD64SSSE3)
 	if vectorOK {
@@ -277,6 +292,9 @@ func (f *fn) emitByteReduceLoop(r *wasm.Reader) {
 	write := func(local int, src Reg) {
 		f.a.Store64(RSP, f.localAddr(local), src)
 		if reg, _, pinned := f.pinReg(local); pinned {
+			if regallocCheckEnabled {
+				f.checkAllowLocalPinWrite(localPins, local)
+			}
 			f.a.MovRegReg32(reg, src)
 		}
 	}
