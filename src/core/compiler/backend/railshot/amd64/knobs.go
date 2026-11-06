@@ -45,6 +45,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("memsize-regional-lease", &memSizeRegionalLeaseEnabled),
 	optimization.Bind("module-global-regional-lease", &moduleGlobalRegionalLeaseEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
+	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
 	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
 	optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
 	optimization.Bind("st-flags", &stFlagsEnabled),
@@ -86,6 +87,8 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
+	optimization.Bind("tail-self-loop", &tailSelfLoopEnabled),
+	optimization.Bind("tail-loop-inline", &tailLoopInlineEnabled),
 	optimization.Bind("direct-reference-abi", &directReferenceABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
@@ -128,6 +131,7 @@ var (
 	optMemSizeRegionalLease    = optimizationBindings.Option("memsize-regional-lease")
 	optModuleGlobalRegionLease = optimizationBindings.Option("module-global-regional-lease")
 	optMagicDiv                = optimizationBindings.Option("magic-div")
+	optBorrowedDivRem          = optimizationBindings.Option("borrowed-div-rem")
 	optSharedTrapBody          = optimizationBindings.Option("shared-trap-body")
 	optSharedAdapters          = optimizationBindings.Option("shared-adapters")
 	optSTFlags                 = optimizationBindings.Option("st-flags")
@@ -169,6 +173,8 @@ var (
 	optV128ConstCache          = optimizationBindings.Option("v128-const-cache")
 	optV128Pins                = optimizationBindings.Option("v128-pins")
 	optRegABI                  = optimizationBindings.Option("reg-abi")
+	optTailSelfLoop            = optimizationBindings.Option("tail-self-loop")
+	optTailLoopInline          = optimizationBindings.Option("tail-loop-inline")
 	optDirectReferenceABI      = optimizationBindings.Option("direct-reference-abi")
 	optInline                  = optimizationBindings.Option("inline")
 	optStackFence              = optimizationBindings.Option("stack-fence")

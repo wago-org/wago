@@ -14,10 +14,15 @@ import (
 
 func runTailRaw(t *testing.T, m *wasm.Module, args ...uint64) ([]byte, error) {
 	t.Helper()
+	return runTailRawWithOptions(t, m, CompileOptions{}, args...)
+}
+
+func runTailRawWithOptions(t *testing.T, m *wasm.Module, opts CompileOptions, args ...uint64) ([]byte, error) {
+	t.Helper()
 	if err := wasm.ValidateModule(m); err != nil {
 		t.Fatalf("validate: %v", err)
 	}
-	cm, err := CompileModule(m)
+	cm, err := CompileModuleWith(m, opts)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -95,24 +100,40 @@ func TestReturnCallDirectReusesFrameForDeepRecursion(t *testing.T) {
 		results: []wasm.ValType{wasm.I32},
 		body:    []byte{0x00, 0x20, 0x00, 0x45, 0x04, 0x7f, 0x41, 0x07, 0x05, 0x20, 0x00, 0x41, 0x01, 0x6b, 0x12, 0x00, 0x0b, 0x0b},
 	})
-	out, err := runTailRaw(t, m, 1_000_000)
-	if err != nil {
-		t.Fatalf("million-deep tail recursion trapped: %v", err)
-	}
-	if got := binary.LittleEndian.Uint32(out); got != 7 {
-		t.Fatalf("result = %d, want 7", got)
+	for _, enabled := range []bool{false, true} {
+		opts := CompileOptions{Optimizations: map[string]bool{"tail-self-loop": enabled}}
+		out, err := runTailRawWithOptions(t, m, opts, 1_000_000)
+		if err != nil {
+			t.Fatalf("loop=%t million-deep tail recursion trapped: %v", enabled, err)
+		}
+		if got := binary.LittleEndian.Uint32(out); got != 7 {
+			t.Fatalf("loop=%t result=%d want7", enabled, got)
+		}
+		var stats ModuleStats
+		opts.Stats = &stats
+		cm, err := CompileModuleWith(m, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			cm.CodeImage.Close()
+		}
+		if len(stats.Funcs) != 1 {
+			t.Fatalf("loop=%t function stats=%+v", enabled, stats.Funcs)
+		}
+		fn := stats.Funcs[0]
+		if enabled && !profileEnabled {
+			if fn.Peephole["tail-self-loop"] != 1 || fn.Calls["tail-direct"] != 0 || fn.FrameBytes != 0 {
+				t.Fatalf("self-loop stats: transfers=%d loops=%d frame=%d", fn.Calls["tail-direct"], fn.Peephole["tail-self-loop"], fn.FrameBytes)
+			}
+		} else {
+			// Keep the original frame-teardown proof on the ordinary tail path.
+			if fn.Calls["tail-direct"] != 1 || fn.Peephole["tail-self-loop"] != 0 || fn.FrameBytes == 0 {
+				t.Fatalf("framed tail stats: transfers=%d loops=%d frame=%d", fn.Calls["tail-direct"], fn.Peephole["tail-self-loop"], fn.FrameBytes)
+			}
+		}
 	}
 
-	var stats ModuleStats
-	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
-		t.Fatal(err)
-	}
-	if len(stats.Funcs) != 1 || stats.Funcs[0].Calls["tail-direct"] != 1 {
-		t.Fatalf("tail-call stats = %+v", stats.Funcs)
-	}
-	if stats.Funcs[0].FrameBytes == 0 {
-		t.Fatal("test requires a real frame so the tail jump proves frame teardown")
-	}
 }
 
 func TestReturnCallDirectPreservesResultsAndTraps(t *testing.T) {

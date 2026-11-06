@@ -19,6 +19,17 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Preserve live AMD64 locals across plain and weighted byte reductions under
   register pressure. Checked builds now protect incoming local pins throughout
   the raw fast path, including after allocator metadata changes.
+- Restore relinquished AMD64 parameter pins before self-tail loop edges.
+- Preserve unreachable inline continuations on ARM64 and AMD64 when a
+  nonreturning tail helper follows a retained caller operand.
+
+- AMD64 and ARM64 discard `try_table` handlers on `return`, so a throw after
+  the call is caught by the caller's handler instead of the returned frame's.
+- Keep the value of a fused ARM64 compare stored by `local.tee` and consumed
+  by `br_if` on the taken edge in functions that make calls; the branch target
+  read the local's previous value from its stack slot.
+- Preserve plugin package compatibility constraints, subpackages, optional
+  metadata, and unchanged author details when rerunning `wago init --plugin`.
 - Preserve deferred load addresses derived from pinned mutable globals on
   ARM64, including loads kept live across guest stack-pointer updates.
 - Compile ARM64 memory operations at large valid directory indexes by forming
@@ -31,8 +42,14 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Keep the required atomic length read when an oversized memory64 shared grow
   request fails in the Go helper.
 
+- Preserve denied plugin authorities when their requests are unchanged, so
+  removing another plugin succeeds without granting previously denied access.
+
 - Use an allocated scratch register for AMD64 prefix spill moves. Checked
   builds no longer reject a temporary borrow of a live load-address register.
+
+- Bound portable instruction stack classification to linear work for shared
+  recipe subexpressions, while retaining their general native lowering.
 
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
@@ -51,7 +68,23 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   directly into a hinted register, fixing incorrect results in inlined C++
   wrappers with stack-based arguments.
 
+- Release owned shared-memory backing and invocation control separately when
+  instantiation fails, preventing leaked native mappings and duplicate cleanup.
+- Preserve AMD64 atomic store, RMW, and compare-exchange operands when deferred
+  address or value shifts reuse a fixed register under register pressure.
+
 ### Changed
+
+- Keep eligible AMD64 integer self-tail calls in register loops, resolve private
+  immutable table targets, and inline small numeric self-tail and two-function
+  tail cycles. Specialize constant entry arguments and reuse proved branch flags,
+  including bounded register-only work before a repeated dynamic comparison.
+  Keep single inline results in registers when a pure caller can spare a private
+  tail-local register.
+
+- Keep eligible ARM64 self-tail calls in native register loops, including
+  private immutable table targets and small numeric helpers inlined into callers.
+  Reuse loop constants and reduce integer argument transfers and return branches.
 
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.
@@ -79,6 +112,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   enabled. Keep checked-root cleanup for segment zero in the helper.
 - Handle shared memory growth with a statically impossible delta in native
   AMD64 and ARM64 code while retaining the required atomic length read.
+- Use native custom plugin lowerings for imported `return_call` on AMD64 and
+  ARM64, with the existing handler fallback and return-frame rules.
+
 - Compile bounded portable scalar plugin recipes to ARM64 instructions, preserving
   exact import identity and the portable fallback for larger or unsupported contracts.
 - Adapt native struct handle reservations to batch use. Mixed struct/array code

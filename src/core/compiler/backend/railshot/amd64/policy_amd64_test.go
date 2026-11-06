@@ -189,6 +189,10 @@ func TestFunctionStartPaddingPolicyAMD64(t *testing.T) {
 	ordinary := shared.DefaultCodegenPolicy(selection)
 	compact := shared.CompactCodegenPolicy(selection)
 	hot := funcHints{flags: hintHasLoop}
+	hotWithin, hotOver := 4, 0
+	if ordinary.EnabledOption(optCompactLoopAlign32) {
+		hotWithin, hotOver = 52, 61
+	}
 	for _, test := range []struct {
 		name      string
 		off       int
@@ -200,8 +204,8 @@ func TestFunctionStartPaddingPolicyAMD64(t *testing.T) {
 	}{
 		{name: "ordinary tiny leaf", off: 3, bodyBytes: 12, policy: ordinary, want: 0},
 		{name: "ordinary adapter", off: 3, bodyBytes: 12, adapter: true, policy: ordinary, want: 13},
-		{name: "ordinary hot within budget", off: 12, bodyBytes: 64, hints: hot, policy: ordinary, want: 4},
-		{name: "ordinary hot over budget", off: 3, bodyBytes: 64, hints: hot, policy: ordinary, want: 0},
+		{name: "ordinary compact loop", off: 12, bodyBytes: 64, hints: hot, policy: ordinary, want: hotWithin},
+		{name: "ordinary compact loop extra padding", off: 3, bodyBytes: 64, hints: hot, policy: ordinary, want: hotOver},
 		{name: "compact", off: 3, bodyBytes: 512, adapter: true, hints: hot, policy: compact, want: 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {

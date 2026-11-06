@@ -25,23 +25,31 @@ func (f *fn) condenseBorrowedDivRem(node *elem, dest Reg) Reg {
 	// Divisor and dividend into ordinary registers (SDIV/UDIV read both without
 	// clobbering either).
 	previousPins := f.pinned
+	aliasSafe := f.inlineTailLoopFrame != 0
 	divisor, divisorOwned := f.readDivRemOperand(right, dest)
 	f.pinned = f.pinned.add(divisor)
 	dividend, dividendOwned := f.readDivRemOperand(left, dest)
 	f.pinned = f.pinned.add(dividend)
 
 	// Divide-by-zero trap for every division op.
-	f.cmpImm(divisor, 0, w)
-	f.trapIf(condE, trapDivZero)
+	if f.inlineTailLoopFrame != 0 && right.st.valueFacts().has(factNonZero) {
+		f.stats.peep("inline-divisor-known-nonzero")
+	} else {
+		f.cmpImm(divisor, 0, w)
+		f.trapIf(condE, trapDivZero)
+	}
 
 	// The result register: honor the caller hint when it is free of the operand
 	// registers, else a fresh temp (the remainder path also needs a scratch quotient
 	// distinct from result).
 	result := dest
-	if result == regNone || result == divisor || result == dividend {
+	if result == regNone || !aliasSafe && (result == divisor || result == dividend) {
 		result = f.allocReg(maskOf(divisor, dividend))
 	}
 
+	if aliasSafe && result != regNone && (result == divisor || result == dividend) {
+		f.stats.peep("inline-div-rem-destination")
+	}
 	switch {
 	case signed && !wantRem: // div_s: INT_MIN / -1 would fault — trap it as overflow
 		f.cmpImmS(divisor, -1, w) // cmp divisor, -1
@@ -90,6 +98,11 @@ func (f *fn) condenseBorrowedDivRem(node *elem, dest Reg) Reg {
 // borrowed source. Move that source into owned storage before reading the next
 // operand; condenseInto relies on the requested destination being written.
 func (f *fn) readDivRemOperand(e *elem, dest Reg) (Reg, bool) {
+	// The inlined tail sink consumes all sources before publishing its result.
+	// SDIV/UDIV and MSUB read their operands before writing an aliased target.
+	if f.inlineTailLoopFrame != 0 {
+		return f.materializeRead(e)
+	}
 	r, owned := f.materializeRead(e)
 	if r != dest {
 		return r, owned

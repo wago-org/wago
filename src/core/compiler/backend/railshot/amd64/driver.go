@@ -266,6 +266,11 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if regallocCheckEnabled {
 			checkNativeSourceGet(f, x)
 		}
+		if constant, known := f.inlineTailConstantGet(int(x)); known {
+			f.pushValue(storage{kind: stConst, typ: f.localType[x], cval: constant})
+			f.stats.peep("inline-tail-constant-get")
+			break
+		}
 		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
@@ -303,7 +308,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		// second local read. i64 is excluded because reference locals share its
 		// machine type and their gets publish exact GC-root metadata. Regional
 		// locals retain their event-driven lifetime.
-		if op == 0x21 && setGetTeeFoldEnabled &&
+		if op == 0x21 && setGetTeeFoldEnabled && f.inlineTailConstants == nil &&
 			f.localType[written] == mtI32 &&
 			(written >= len(f.intervalReg) || f.intervalReg[written] == regNone) {
 			look := *r
@@ -1164,6 +1169,7 @@ func (f *fn) v128TeeOverwritten(r *wasm.Reader, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+	f.inlineTailConstantSet(x)
 	if regallocCheckEnabled {
 		checkNativeSourceSet(f, x, tee, f.s.back())
 	}
