@@ -473,16 +473,24 @@ type inlineTarget struct {
 	resultTypeEnd  uint32
 	params         uint32 // param count (callee locals 0..params-1)
 	res0           machineType
-	touchesMem     bool // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
-	touchesGlob    bool // the body reads or writes a global
-	hasCtrl        bool // the body has control flow → splice through a synthetic boundary frame
-	omitStandalone bool // module layout may omit this unreachable standalone body
+	touchesMem     bool  // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
+	touchesGlob    bool  // the body reads or writes a global
+	hasCtrl        bool  // the body has control flow → splice through a synthetic boundary frame
+	omitStandalone bool  // module layout may omit this unreachable standalone body
+	tailZeroMask   uint8 // declared local bits requiring zero initialization in a tail loop
 }
 
 const inlineRecursiveFlag = uint32(1 << 31)
+const inlineTailLoopFlag = uint32(1 << 30)
+
+var tailLoopInlineEnabled = true
+
+func (t *inlineTarget) tailLoop() bool { return t.params&inlineTailLoopFlag != 0 }
 
 func (t *inlineTarget) recursive() bool { return t.params&inlineRecursiveFlag != 0 }
-func (t *inlineTarget) paramCount() int { return int(t.params &^ inlineRecursiveFlag) }
+func (t *inlineTarget) paramCount() int {
+	return int(t.params &^ (inlineRecursiveFlag | inlineTailLoopFlag))
+}
 
 // inlineTargetData keeps the dense local-function lookup separate from the
 // pointer-rich records for admitted callees. Most modules have many functions
@@ -539,7 +547,8 @@ func (ts inlineTargetTable) omitStandaloneBody(localIdx int, hostAdapter bool) b
 // GLOBAL function index, or an empty table when inlining is disabled. Candidacy
 // here is a property of the callee alone (the call-site count only mattered for the report),
 // so a call to one of these can be spliced wherever it appears.
-func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPolicy) inlineTargetTable {
+func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPolicy, tailLoops ...bool) inlineTargetTable {
+	allowTail := len(tailLoops) > 0 && tailLoops[0]
 	if !policy.EnabledOption(optInline) {
 		return inlineTargetTable{}
 	}
@@ -559,7 +568,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	}
 	candidateCount, typeCount := 0, 0
 	for i := range m.Code {
-		ft, _, ok := inlineTargetFacts(m, allHints, i, policy)
+		ft, _, ok := inlineTargetFacts(m, allHints, i, policy, allowTail)
 		if !ok {
 			continue
 		}
@@ -582,7 +591,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	}
 	targets := inlineTargetTable{first: importedFuncs, data: data, classifier: wasm.NewModuleInstructionClassifier(m, true)}
 	for i := range m.Code {
-		ft, facts, ok := inlineTargetFacts(m, allHints, i, policy)
+		ft, facts, ok := inlineTargetFacts(m, allHints, i, policy, allowTail)
 		if !ok {
 			continue
 		}
@@ -606,8 +615,16 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			res0 = data.types[localEnd]
 		}
 		params := uint32(facts.params)
+		if allowTail && tailLoopInlineCandidate(m, allHints, i, policy) {
+			params |= inlineTailLoopFlag
+			facts.hasControlFlow = true
+		}
 		if recursiveInlineCandidate(m, allHints, i, facts, policy) {
 			params |= inlineRecursiveFlag
+		}
+		zeroMask := uint8(0)
+		if params&inlineTailLoopFlag != 0 {
+			zeroMask = tailInlineZeroMask(m.Code[i].BodyBytes, facts.params, int(h.localCount), targets.classifier)
 		}
 		data.targets = append(data.targets, inlineTarget{
 			body:           m.Code[i].BodyBytes,
@@ -618,6 +635,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			resultTypeEnd:  uint32(resultEnd),
 			params:         params,
 			res0:           res0,
+			tailZeroMask:   zeroMask,
 			touchesMem:     facts.touchesMem,
 			touchesGlob:    facts.touchesGlobal,
 			hasCtrl:        facts.hasControlFlow,
@@ -632,7 +650,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	return targets
 }
 
-func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy CodegenPolicy) (*wasm.CompType, inlineFacts, bool) {
+func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy CodegenPolicy, tailLoops ...bool) (*wasm.CompType, inlineFacts, bool) {
 	body := m.Code[i].BodyBytes
 	if len(body) == 0 {
 		return nil, inlineFacts{}, false
@@ -660,7 +678,7 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 	if h.flags.has(hintHasCall) {
 		facts.calleeCount = 1
 	}
-	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy)
+	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy) || len(tailLoops) > 0 && tailLoops[0] && tailLoopInlineCandidate(m, allHints, i, policy)
 }
 
 func recursiveInlineCandidate(m *wasm.Module, allHints []funcHints, i int, facts inlineFacts, policy CodegenPolicy) bool {
@@ -765,7 +783,25 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, state: lsMem})
 		}
+		if t.tailLoop() && !f.makesCalls {
+			pool := gpPinPoolWithPolicy(nil, true, f.nParams, true, f.policy)
+			for i := base; i < len(f.localType); i++ {
+				for _, reg := range pool {
+					if !f.reserved.has(reg) && !f.pinnedLocalMask.has(reg) {
+						f.locals[i].reg = reg
+						f.pinnedLocalMask = f.pinnedLocalMask.add(reg)
+						break
+					}
+				}
+			}
+		}
+		if t.tailLoop() {
+			f.noteTailInlineDivConstants(t.body)
+		}
 		f.inlineBase[t.globalIdx] = base
+	}
+	if f.pinnedLocalMask.has(mergeReg) {
+		f.regMerge = false
 	}
 }
 
@@ -966,6 +1002,8 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	start := f.a.Len()
 	base := f.inlineBase[t.globalIdx]
 	f.bindInlineParams(t, base)
+	var prefix [8]storage
+	prefixCount := f.detachInlineTailPrefix(t, base, &prefix)
 
 	old := f.localBase
 	oldTraceFunc, oldTraceBase, oldPC := f.traceFuncIdx, f.tracePCBase, f.wasmPC
@@ -997,6 +1035,9 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	// flow path already merged results into canonical slots, so this is a no-op there.)
 	nLocals := int(t.localTypeEnd - t.typeStart)
 	f.realizeInlineRange(base, base+nLocals)
+	if prefixCount != 0 {
+		f.restoreInlineTailPrefix(t, prefix[:prefixCount])
+	}
 	f.stats.addInlineSiteBytes(f.a.Len() - start)
 	return nil
 }
@@ -1012,6 +1053,10 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 	// local. setLocal takes the absolute index (localBase is still 0 here).
 	for i := params - 1; i >= 0; i-- {
 		f.setLocal(nil, base+i, false)
+	}
+	if t.tailLoop() {
+		f.zeroTailInlineLocals(t, base)
+		return
 	}
 	if nLocals > params {
 		z := f.allocReg(0)
@@ -1056,7 +1101,41 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 
 	prevRet := f.inlineRetFrame
 	f.inlineRetFrame = len(f.ctrl) - 1
-	err := f.bodyLoop(wasm.NewReader(t.body), minCtrl)
+	oldTail := f.inlineTailLoopFrame
+	limit := minCtrl
+	if t.tailLoop() {
+		previousVersions, previousPredicates := f.inlineWriteVersions, f.inlineNonzeroPredicates
+		clear(f.inlineWriteVersions[:])
+		clear(f.inlineNonzeroPredicates[:])
+		defer func() { f.inlineWriteVersions = previousVersions; f.inlineNonzeroPredicates = previousPredicates }()
+		if done, err := f.tryInlineRotatingTail(t); done || err != nil {
+			f.inlineTailLoopFrame = oldTail
+			f.inlineRetFrame = prevRet
+			return err
+		}
+		typ := byte(0x40)
+		if t.res0 == mtI32 {
+			typ = 0x7f
+		}
+		if t.res0 == mtI64 {
+			typ = 0x7e
+		}
+		if err := f.opBlock(wasm.NewReader([]byte{typ}), 0x03); err != nil {
+			return err
+		}
+		f.ctrl[len(f.ctrl)-1].set(ctrlLoopCallFree, true)
+		f.inlineTailLoopFrame = len(f.ctrl)
+		limit++
+		f.hasLoop = true
+		if f.sc != nil {
+			f.sc.directPreparedBounded = false
+		}
+	}
+	err := f.bodyLoop(wasm.NewReader(t.body), limit)
+	if err == nil && t.tailLoop() {
+		err = f.opEnd(wasm.NewReader(nil))
+	}
+	f.inlineTailLoopFrame = oldTail
 	f.inlineRetFrame = prevRet
 	return err
 }
@@ -1125,4 +1204,47 @@ func subtreeRefsLocalRange(s *stack, e *elem, lo, hi int) bool {
 		return subtreeRefsLocalRange(s, s.arg0(e), lo, hi) || subtreeRefsLocalRange(s, s.arg1(e), lo, hi)
 	}
 	return false
+}
+
+func tailLoopInlineCandidate(m *wasm.Module, h []funcHints, index int, policy CodegenPolicy) bool {
+	ft, ok := m.LocalFuncType(index)
+	if !ok || policy.CompactNative || !policy.EnabledOption(optTailLoopInline) || !policy.EnabledOption(optTailSelfLoop) || len(ft.Results) > 1 || len(m.Code[index].BodyBytes) > 128 || h[index].localCount > 5 || h[index].globalCount != 0 || h[index].flags.has(hintTouchesMemory|hintUsesBulkMem|hintHasLoop|hintModuleEH) {
+		return false
+	}
+	for _, run := range m.Code[index].Locals.Runs {
+		if !wasm.EqualValType(run.Type, wasm.I32) && !wasm.EqualValType(run.Type, wasm.I64) {
+			return false
+		}
+	}
+	proof := fn{m: m, ft: ft, traceFuncIdx: uint32(index + m.ImportedFuncCount()), policy: policy, classifier: wasm.NewModuleInstructionClassifier(m, true)}
+	return proof.onlySelfTailTransfers(m.Code[index].BodyBytes)
+}
+func (f *fn) zeroTailInlineLocals(t *inlineTarget, base int) {
+	for i := t.paramCount(); i < int(t.localTypeEnd-t.typeStart); i++ {
+		if t.tailZeroMask&(1<<i) == 0 {
+			f.stats.peep("tail-inline-zero-elide")
+			continue
+		}
+		f.pushValue(storage{kind: stConst, typ: f.localType[base+i], cval: 0})
+		f.setLocal(nil, base+i, false)
+	}
+}
+func (f *fn) sourceLabelFrame(label uint32) int {
+	frame := len(f.ctrl) - 1 - int(label)
+	if f.inlineTailLoopFrame != 0 && frame == f.inlineTailLoopFrame-1 {
+		return frame - 1
+	}
+	return frame
+}
+
+func (f *fn) branchToInlineTailLoop(index int) {
+	frame := &f.ctrl[index]
+	f.convergeBranchLocals(frame)
+	depth := f.depth()
+	f.flush()
+	f.moveBranchValues(frame, depth, frame.branchArity())
+	f.restoreBranchHandlers(index)
+	if !f.threadSelfTailEntryTest(frame.controlSite) {
+		f.branchJump(frame)
+	}
 }

@@ -3,7 +3,6 @@ package registry
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -12,7 +11,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 
 	"github.com/wago-org/wago/internal/atomicfile"
@@ -323,6 +321,11 @@ func TestCredentialTemporaryFileIsPrivateAndReadersSeeCompleteJSON(t *testing.T)
 	t.Cleanup(func() { replaceCredentialFile = oldReplace })
 	checked := false
 	replaceCredentialFile = func(path string, options atomicfile.Options, write func(io.Writer) error) error {
+		previous, readErr := os.ReadFile(path)
+		missing := errors.Is(readErr, os.ErrNotExist)
+		if readErr != nil && !missing {
+			t.Fatal(readErr)
+		}
 		return atomicfile.ReplaceFile(path, options, func(writer io.Writer) error {
 			if file, ok := writer.(*os.File); ok && runtime.GOOS != "windows" {
 				info, err := file.Stat()
@@ -331,54 +334,67 @@ func TestCredentialTemporaryFileIsPrivateAndReadersSeeCompleteJSON(t *testing.T)
 				}
 				checked = true
 			}
-			return write(writer)
+			// Inspect the published path while the temporary contains only half
+			// the JSON. These checkpoints exercise publication without racing
+			// Windows file-open and replacement semantics.
+			return write(credentialPublicationWriter{writer, func() {
+				t.Helper()
+				got, err := os.ReadFile(path)
+				if missing {
+					if !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("new credentials published before write completed: %v", err)
+					}
+				} else if err != nil || !bytes.Equal(got, previous) {
+					t.Fatalf("old credentials changed before write completed: %v", err)
+				}
+			}})
 		})
+	}
+	checkPublished := func(token string) {
+		t.Helper()
+		creds, err := loadCredentials()
+		if err != nil || len(creds) != 1 || creds["https://one.test"].Token != token || creds["https://one.test"].Login != "one" {
+			t.Fatalf("published credentials are incomplete or stale: %v", err)
+		}
 	}
 	if err := saveCredentials("https://one.test", "one", "one"); err != nil {
 		t.Fatal(err)
 	}
+	checkPublished("one")
 	if runtime.GOOS != "windows" && !checked {
 		t.Fatal("temporary credential file was not inspected")
 	}
 
-	readerDone := make(chan error, 1)
-	stop := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-stop:
-				readerDone <- nil
-				return
-			default:
-			}
-			data, err := os.ReadFile(credentialsPath())
-			if err != nil {
-				// MoveFileEx can briefly exclude readers while replacing a file on
-				// Windows. That is a transient sharing condition, not a partial
-				// credential document.
-				if runtime.GOOS == "windows" && (errors.Is(err, syscall.Errno(5)) || errors.Is(err, syscall.Errno(32))) {
-					continue
-				}
-				readerDone <- err
-				return
-			}
-			var creds map[string]credential
-			if err := json.Unmarshal(data, &creds); err != nil {
-				readerDone <- err
-				return
-			}
-		}
-	}()
 	for index := range 50 {
-		if err := saveCredentials("https://one.test", strings.Repeat("x", 1024)+string(rune('A'+index%26)), "one"); err != nil {
-			close(stop)
+		token := strings.Repeat("x", 1024) + string(rune('A'+index%26))
+		if err := saveCredentials("https://one.test", token, "one"); err != nil {
 			t.Fatal(err)
 		}
+		checkPublished(token)
 	}
-	close(stop)
-	if err := <-readerDone; err != nil {
-		t.Fatalf("reader observed incomplete credentials: %v", err)
+	assertNoCredentialTemps(t)
+}
+
+type credentialPublicationWriter struct {
+	io.Writer
+	checkpoint func()
+}
+
+func (w credentialPublicationWriter) Write(data []byte) (int, error) {
+	half := len(data) / 2
+	n, err := w.Writer.Write(data[:half])
+	if err != nil {
+		return n, err
 	}
+	if n != half {
+		return n, io.ErrShortWrite
+	}
+	w.checkpoint()
+	m, err := w.Writer.Write(data[half:])
+	if err == nil && m != len(data)-half {
+		err = io.ErrShortWrite
+	}
+	return n + m, err
 }
 
 func assertNoCredentialTemps(t *testing.T) {

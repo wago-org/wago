@@ -535,6 +535,7 @@ func moveCtrlSidecarSlot[T any](sidecar *[]T, stale, fresh uint32) {
 // Control frames are stack-disciplined, so depth is a stable bounded owner and
 // the sidecar arena grows with maximum depth rather than total blocks compiled.
 func (f *fn) pushCtrl(fr *ctrlFrame) {
+	f.inlineTailCompare.reuseResume = -1
 	depth := len(f.ctrl)
 	if depth < cap(f.ctrl) {
 		stale := f.ctrl[:cap(f.ctrl)][depth].mergeIndex
@@ -1677,6 +1678,12 @@ func (f *fn) keepBlockOperands() bool {
 }
 
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
+	if op == 0x04 {
+		if done, err := f.tryInlineTailConstantIf(r); done || err != nil {
+			return err
+		}
+	}
+	f.blockInlineTailConstantWrites(*r, op)
 	if op == 0x03 && integerReductionLoopEnabled {
 		if done, err := f.tryIntegerReductionLoop(r); done || err != nil {
 			return err
@@ -1699,6 +1706,11 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 		kind = cfLoop
 	} else if op == 0x04 {
 		kind = cfIf
+	}
+	if kind == cfIf && !f.unreachable && pN == 0 {
+		if done, err := f.tryTailArgumentSelect(r); done || err != nil {
+			return err
+		}
 	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	fr.setFloatConstBase(len(f.fconsts))
@@ -2018,7 +2030,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		frame := len(f.ctrl) - 1 - int(label)
+		frame := f.sourceLabelFrame(label)
 		if frame < 0 {
 			return errBadLabel
 		}
@@ -2291,6 +2303,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 }
 
 func (f *fn) opElse() error {
+	f.inlineTailCompare.reuseResume = -1
 	fr := &f.ctrl[len(f.ctrl)-1]
 	if fr.has(ctrlEntryUnreachable) {
 		return nil
@@ -2311,6 +2324,15 @@ func (f *fn) opElse() error {
 		f.frameAddEnd(fr, f.a.JmpPlaceholder())
 		fr.set(ctrlEndReachable, true)
 	}
+	// A self-tail entry condition's false arm is also a native loop header.
+	// Give it the same fetch alignment as an explicit compact Wasm loop.
+	if entry, eligible := f.tailLoopEntryTestOffset(); eligible && f.compactLoopAlign32 {
+		size, _, _, ok := selfTailEntryCompare(f.a.B[entry:])
+		if ok && fr.controlSite == entry+size+2 {
+			f.a.AlignLoop32()
+			f.stats.peep("tail-self-loop-align32")
+		}
+	}
 	f.a.PatchRel32(fr.controlSite, f.a.Len())
 	fr.controlSite = -1
 	fr.set(ctrlHasElse, true)
@@ -2325,6 +2347,7 @@ func (f *fn) opElse() error {
 }
 
 func (f *fn) opEnd() error {
+	f.inlineTailCompare.reuseResume = -1
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
 	if fr.kind == cfLoop {
@@ -2416,6 +2439,7 @@ func (f *fn) opEnd() error {
 		if (fr.has(ctrlRegMerge1) || needLoads) && fallthroughReachable {
 			skip = f.a.JmpPlaceholder()
 		}
+		falseResume := f.a.Len()
 		f.a.PatchRel32(fr.controlSite, f.a.Len())
 		if fr.has(ctrlRegMerge1) {
 			slot := slotsOfTypes(f.frameBaseTypes(&fr))
@@ -2432,6 +2456,9 @@ func (f *fn) opEnd() error {
 		branchState = f.frameBranchState(&fr)
 		if skip != -1 {
 			f.a.PatchRel32(skip, f.a.Len())
+		}
+		if !fallthroughReachable {
+			f.rememberInlineTailCompare(&fr, falseResume)
 		}
 		fr.set(ctrlEndReachable, true)
 	}
@@ -2582,7 +2609,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if err != nil {
 		return err
 	}
-	fi := len(f.ctrl) - 1 - int(idx)
+	fi := f.sourceLabelFrame(idx)
 	if fi < 0 {
 		return errBadLabel
 	}
@@ -2633,7 +2660,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	fi := len(f.ctrl) - 1 - int(idx)
+	fi := f.sourceLabelFrame(idx)
 	if fi < 0 {
 		return errBadLabel
 	}
@@ -2677,7 +2704,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	fi := len(f.ctrl) - 1 - int(idx)
+	fi := f.sourceLabelFrame(idx)
 	if fi < 0 {
 		return errBadLabel
 	}
@@ -2722,7 +2749,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 // edge and fallthrough therefore retain the exact same 64-bit identity; only the
 // validator-visible refinement differs.
 func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
-	fi := len(f.ctrl) - 1 - int(idx)
+	fi := f.sourceLabelFrame(idx)
 	if fi < 0 {
 		return errBadLabel
 	}
@@ -2818,7 +2845,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	// Per-target convergence and transfers therefore need no pin reloads and
 	// case bodies can be emitted in any order and shared.
 	emitCase := func(labelIdx uint32) {
-		fi := len(f.ctrl) - 1 - int(labelIdx)
+		fi := f.sourceLabelFrame(labelIdx)
 		fr := &f.ctrl[fi]
 		f.convergeBranchLocals(fr) // post-reconcile state records/no-op converges (no code, no flags)
 		if fr.has(ctrlRegMerge1) {

@@ -1698,6 +1698,12 @@ func (a *Asm) AlignLoop32() {
 	a.nop(pad)
 }
 
+// AlignLoop64 keeps a peeled entry and its following hot block in a stable
+// cache-line position. The enclosing function must have matching alignment.
+func (a *Asm) AlignLoop64() {
+	a.nop((-len(a.B)) & 63)
+}
+
 func (a *Asm) nop(pad int) {
 	for pad > 0 {
 		n := pad

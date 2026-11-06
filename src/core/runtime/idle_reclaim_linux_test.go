@@ -51,15 +51,13 @@ func TestIdleEngineFailedReclaimCloses(t *testing.T) {
 		e.Close()
 		t.Skipf("mlock unavailable: %v", err)
 	}
-	base := uintptr(unsafe.Pointer(&e.stack[0]))
 	// MADV_DONTNEED rejects locked pages. Close must unmap the failed candidate.
 	if err := ReleaseEngine(e); err != nil {
 		t.Fatal(err)
 	}
-	var resident [1]byte
-	_, _, errno := syscall.Syscall(syscall.SYS_MINCORE, base, uintptr(syscall.Getpagesize()), uintptr(unsafe.Pointer(&resident[0])))
-	if errno != syscall.ENOMEM {
-		t.Fatalf("failed reclaim did not unmap stack: %v", errno)
+	// A freed address may already belong to a different mapping.
+	if e.stack != nil || e.stackTop != 0 {
+		t.Fatal("failed reclaim retained stack ownership")
 	}
 	next, err := AcquireEngine()
 	if err != nil {
@@ -116,14 +114,12 @@ func TestIdleArenaFailedReclaimCloses(t *testing.T) {
 		a.Close()
 		t.Skipf("mlock unavailable: %v", err)
 	}
-	base := uintptr(unsafe.Pointer(&a.mem[0]))
 	if err := ReleaseArena(a); err != nil {
 		t.Fatal(err)
 	}
-	var resident [1]byte
-	_, _, errno := syscall.Syscall(syscall.SYS_MINCORE, base, uintptr(syscall.Getpagesize()), uintptr(unsafe.Pointer(&resident[0])))
-	if errno != syscall.ENOMEM {
-		t.Fatalf("failed reclaim did not unmap Arena: %v", errno)
+	// These fields clear only after the owned mapping is successfully unmapped.
+	if a.mem != nil || a.off != 0 {
+		t.Fatal("failed reclaim retained Arena ownership")
 	}
 	next, err := AcquireArena(64 << 10)
 	if err != nil {

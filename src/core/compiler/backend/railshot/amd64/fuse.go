@@ -223,7 +223,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		default:
 			L, ownedL = f.materialize(a), true
 		}
-		f.a.TestSelf(L, w)
+		if !f.reuseInlineTailArgumentFlags(L, w) {
+			f.a.TestSelf(L, w)
+		}
 		if ownedL {
 			f.release(L)
 		}
@@ -232,9 +234,34 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		return applyInvert(condE)
 	}
 	cc := applyInvert(condOf(node.deferredOp()))
+	left, right := node.arg0, node.arg1
+	// Specialization often exposes a constant on the source comparison's
+	// left. Commute two concrete operands so CMP can use its immediate form.
+	if f.inlineTailConstants != nil && left.isValue() && left.st.kind == stConst && fitsImm32(left.st.cval) && right.isValue() &&
+		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) {
+		switch cc {
+		case condB:
+			cc = condA
+		case condA:
+			cc = condB
+		case condBE:
+			cc = condAE
+		case condAE:
+			cc = condBE
+		case condL:
+			cc = condG
+		case condG:
+			cc = condL
+		case condLE:
+			cc = condGE
+		case condGE:
+			cc = condLE
+		}
+		left, right = right, left
+		f.stats.peep("inline-tail-compare-immediate")
+	}
 	// CMP does not write its left operand, so a register-resident left (an owned
 	// temp or a pinned local) can be compared in place — no copy needed.
-	left := node.arg0
 	var L Reg
 	ownedL := false
 	switch {
@@ -245,7 +272,6 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	default:
 		L, ownedL = f.materialize(left), true
 	}
-	right := node.arg1
 	if right.isDeferred() {
 		// condense rewrites the existing operand node in place; keep that owner
 		// instead of allocating a duplicate register-value node.
@@ -255,10 +281,14 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		L, ownedL = f.materializeRead(left)
 	}
 	f.pinned = f.pinned.add(L)
+	compareStart := f.a.Len()
+	reused := f.tryReuseInlineTailCompare(L, right, w)
 	switch right.st.kind {
 	case stConst:
 		if fitsImm32(right.st.cval) {
-			f.a.AluRI(cmpDigit, L, int32(right.st.cval), w)
+			if !reused {
+				f.a.AluRI(cmpDigit, L, int32(right.st.cval), w)
+			}
 		} else {
 			t := f.allocReg(maskOf(L))
 			f.loadConst(t, right.st)
@@ -266,10 +296,14 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 			f.release(t)
 		}
 	case stReg:
-		f.cmpRR(L, right.st.reg, w)
+		if !reused {
+			f.cmpRR(L, right.st.reg, w)
+		}
 		f.release(right.st.reg)
 	case stLocalReg, stGlobReg:
-		f.cmpRR(L, right.st.reg, w)
+		if !reused {
+			f.cmpRR(L, right.st.reg, w)
+		}
 	case stSlot:
 		f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
@@ -287,6 +321,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 		f.releaseMemRef(right.st)
 	}
+	if !reused && f.inlineTailCompare.active {
+		f.inlineTailCompare.lastCompare = compareStart
+	}
 	f.pinned = f.pinned.remove(L)
 	if ownedL {
 		f.release(L)
@@ -298,7 +335,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional jump.
 func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
-	fi := len(f.ctrl) - 1 - int(labelIdx)
+	fi := f.sourceLabelFrame(labelIdx)
 	if fi < 0 {
 		return errBadLabel
 	}

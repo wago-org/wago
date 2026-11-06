@@ -31,6 +31,8 @@ echo "$tools_dir/go/bin" >> "$GITHUB_PATH"
   echo 'CGO_ENABLED=0'
   echo 'GORISCV64=rva20u64'
   echo 'GOMAXPROCS=2'
-  # Go 1.27.1's native riscv64 compiler needs serial function compilation.
-  echo 'GOFLAGS=-gcflags=-c=1'
+  # Publishing jobs still using Go 1.27.1 need its native compiler workaround.
+  if [[ "$GO_VERSION" == 1.27.1 ]]; then
+    echo 'GOFLAGS=-gcflags=-c=1'
+  fi
 } >> "$GITHUB_ENV"

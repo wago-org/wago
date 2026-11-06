@@ -7,8 +7,10 @@ import "os"
 var divRemConstPairEnabled = os.Getenv("WAGO_AMD64_DIVREM_CONST_PAIR") != "0"
 
 // Share one quotient between adjacent deferred unsigned i32 div/rem operations.
-// Each operand must be the same unchanged local and nonzero constant. Physical
-// adjacency excludes effects between the reads. No operand or trap is moved.
+// Each operand must be the same unchanged local and nonzero constant. Up to
+// eight concrete integer constants/local reads may separate the two operand
+// packets. These leaves have no effects, and local writes materialize earlier
+// reads before changing their homes. Deferred work retains the ordinary path.
 // In guard mode pushBinOp materializes each division before the next operation
 // is parsed. The future remainder is then absent, so the ordinary path remains.
 func (f *fn) tryDivRemConstPair(node *elem, dest Reg) (Reg, bool) {
@@ -27,6 +29,23 @@ func (f *fn) tryDivRemConstPair(node *elem, dest Reg) (Reg, bool) {
 		return regNone, false
 	}
 	otherLocal := node.next
+	for skipped := 0; skipped < 8; skipped++ {
+		if otherLocal == nil || otherLocal == f.s.head || !otherLocal.isValue() {
+			return regNone, false
+		}
+		if otherLocal.valueType() == mtI32 && otherLocal.st.kind == local.st.kind && otherLocal.st.idx == local.st.idx {
+			break
+		}
+		if otherLocal.valueType() != mtI32 && otherLocal.valueType() != mtI64 {
+			return regNone, false
+		}
+		switch otherLocal.st.kind {
+		case stConst, stLocalRef, stLocalReg:
+		default:
+			return regNone, false
+		}
+		otherLocal = otherLocal.next
+	}
 	if otherLocal == nil || !otherLocal.isValue() || otherLocal.valueType() != mtI32 ||
 		otherLocal.st.kind != local.st.kind || otherLocal.st.idx != local.st.idx {
 		return regNone, false

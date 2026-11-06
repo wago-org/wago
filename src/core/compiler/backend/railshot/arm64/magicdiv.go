@@ -27,6 +27,44 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 		return regNone, false
 	}
 
+	// A 32-bit unsigned quotient without an add correction needs only the
+	// full UMULL product followed by one 64-bit shift. Read the dividend
+	// directly and write the requested destination, avoiding two copies and
+	// separate high-half/post-shift instructions. UMULL ignores carrier bits.
+	left := f.s.arg0(node)
+	if left.elemKind() == ekValue && left.st.kind == stLocalReg && !w && !signed && !wantRem && uint32(c) > 1 && uint32(c)&(uint32(c)-1) != 0 {
+		magic, shift, add := railshot.MagicU(uint64(uint32(c)), 32)
+		if !add {
+			previousPins := f.pinned
+			dividend, _ := f.materializeRead(f.s.arg0(node))
+			f.pinned = f.pinned.add(dividend)
+			result := dest
+			if result == regNone {
+				result = f.allocReg(maskOf(dividend))
+			}
+			f.pinned = f.pinned.add(result)
+			constant, cached := f.cachedIntConst(storage{typ: mtI32, cval: int64(int32(uint32(magic)))})
+			if !cached {
+				constant = result
+				if result == dividend {
+					constant = f.allocReg(maskOf(dividend, result))
+				}
+				f.a.MovImm32(constant, int32(uint32(magic)))
+			}
+			f.a.Umull(result, dividend, constant)
+			f.shiftImm(shLSR, result, byte(32+shift), true)
+			if !cached && constant != result {
+				f.release(constant)
+			}
+			f.pinned = previousPins
+			f.consumeBlockBelow(node)
+			f.occupy(node, result)
+			f.stats.peep("div-by-const")
+			f.stats.peep("magic-quotient-direct")
+			return result, true
+		}
+	}
+
 	// Compute the dividend into an owned result register. Unlike x86 (which had to
 	// keep it clear of RAX/RDX for the one-operand MUL), AArch64's multiply-high is
 	// orthogonal, so no register needs to be avoided here.
@@ -213,7 +251,11 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 		W = 64
 	}
 	magic, shift, add := railshot.MagicU(d, W)
-	q := f.magicMulHigh(res, magic, w, false) // q = high(res * magic), pinned
+	postShift := uint(0)
+	if !w && !add {
+		postShift, shift = shift, 0
+	}
+	q := f.magicMulHighShift(res, magic, w, false, postShift) // q = high(res * magic), pinned
 	if add {
 		// q = ((n - q) >> 1) + q  (an overflow-free way to add n before the shift).
 		t := f.allocReg(maskOf(res, q))
@@ -281,9 +323,21 @@ func (f *fn) divConstSignedMagic(res Reg, d int64, w, wantRem bool) {
 // one-operand MUL/IMUL there is no RDX:RAX pair to spill and pin, and res is left
 // untouched. The caller unpins the result.
 func (f *fn) magicMulHigh(res Reg, magic uint64, w, signed bool) Reg {
-	mr := f.allocReg(maskOf(res))
+	return f.magicMulHighShift(res, magic, w, signed, 0)
+}
+
+// A 32-bit unsigned quotient without an add correction can shift the full
+// product once, combining high-half extraction with the final quotient shift.
+// Keep the same source ownership and register allocation as magicMulHigh.
+func (f *fn) magicMulHighShift(res Reg, magic uint64, w, signed bool, postShift uint) Reg {
+	typ, bits := mtI64, int64(magic)
+	if !w {
+		typ = mtI32
+		bits = int64(int32(uint32(magic)))
+	}
+	previousPins := f.pinned
+	mr, owned := f.intConstReadReg(storage{kind: stConst, typ: typ, cval: bits}, maskOf(res))
 	f.pinned = f.pinned.add(mr)
-	f.a.MovImm64(mr, magic)
 	hi := f.allocReg(maskOf(res, mr)) // clear of res and the magic
 	f.pinned = f.pinned.add(hi)
 	if w {
@@ -299,12 +353,17 @@ func (f *fn) magicMulHigh(res Reg, magic uint64, w, signed bool) Reg {
 			f.a.Smull(hi, res, mr)          // hi = (int64)res_lo32 * (int64)magic_lo32
 			f.shiftImm(shASR, hi, 32, true) // arithmetic: high 32 bits → low half
 		} else {
-			f.a.Umull(hi, res, mr)          // hi = (uint64)res_lo32 * (uint64)magic_lo32
-			f.shiftImm(shLSR, hi, 32, true) // logical: high 32 bits → low half
+			f.a.Umull(hi, res, mr) // hi = (uint64)res_lo32 * (uint64)magic_lo32
+			f.shiftImm(shLSR, hi, byte(32+postShift), true)
+			if postShift != 0 {
+				f.stats.peep("magic-product-shift")
+			}
 		}
 	}
-	f.pinned = f.pinned.remove(mr)
-	f.release(mr)
+	f.pinned = previousPins.add(hi)
+	if owned {
+		f.release(mr)
+	}
 	return hi
 }
 
@@ -312,10 +371,17 @@ func (f *fn) magicMulHigh(res Reg, magic uint64, w, signed bool) Reg {
 // given the already-computed quotient q. Low-W bits of q*d suffice (mod 2^W).
 // AArch64 MSUB fuses the multiply/subtract as `nreg = nreg - q*d`.
 func (f *fn) remFromQuot(nreg, q Reg, d int64, w bool) {
-	t := f.allocReg(maskOf(nreg, q))
+	typ, bits := mtI64, d
+	if !w {
+		typ = mtI32
+		bits = int64(int32(uint32(d)))
+	}
+	previousPins := f.pinned
+	t, owned := f.intConstReadReg(storage{kind: stConst, typ: typ, cval: bits}, maskOf(nreg, q))
 	f.pinned = f.pinned.add(t)
-	f.a.MovImm64(t, uint64(d))
 	f.msub(nreg, q, t, nreg, w)
-	f.pinned = f.pinned.remove(t)
-	f.release(t)
+	f.pinned = previousPins
+	if owned {
+		f.release(t)
+	}
 }

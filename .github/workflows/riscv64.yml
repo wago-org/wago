@@ -114,16 +114,15 @@ jobs:
           - stage: guards
             check: checked
     env:
-      GO_VERSION: "1.27.1"
+      # Go 1.27.1 has shown native compiler and scheduler lock failures on RISE.
+      # Keep this lane on the stable supported toolchain; retain test concurrency.
+      GO_VERSION: "1.26.10"
       GOWORK: "off"
       GOTOOLCHAIN: local
       GORISCV64: rva20u64
       CGO_ENABLED: "0"
       GOMAXPROCS: "2"
-      # Go 1.27.1 can corrupt the compiler's DWARF mutex while compiling the
-      # large src/wago test package concurrently on native RISC-V. Keep job
-      # and test parallelism, but serialize functions within each compiler.
-      GOFLAGS: "-gcflags=-c=1"
+      GOFLAGS: ""
       WAGO_RV64_CI_CHECK: ${{ matrix.check }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
