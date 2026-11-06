@@ -88,6 +88,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Add opt-in parallel Throughput garbage collection with `GCConfig.Workers`
+  and `wago run --gc-workers 1..8`. Persistent helpers trace shared graphs,
+  discover dead handles, and copy admitted survivor/promotion payloads; zero
+  and one retain serial collection. Tiny collectors remain serial.
 - Keep independent AMD64 selection-arm address calculations lazy when
   temporary ownership and condition operands permit.
 - Feed small AMD64 integer selection masks directly into byte TEST flags.

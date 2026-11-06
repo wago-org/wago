@@ -18,6 +18,12 @@ func ValidateConfig(cfg Config) error {
 }
 
 func normalizeConfig(cfg Config) (Config, error) {
+	if cfg.Workers < 0 || cfg.Workers > 8 {
+		return cfg, fmt.Errorf("gc: workers must be between one and eight (zero selects one)")
+	}
+	if cfg.Workers > 1 && (!parallelCollectionSupported || cfg.Profile == ProfileTiny) {
+		return cfg, fmt.Errorf("gc: parallel tracing requires the standard Go throughput collector")
+	}
 	switch cfg.Profile {
 	case ProfileThroughput:
 		if cfg.Allocator == 0 && cfg.Runtime == 0 {

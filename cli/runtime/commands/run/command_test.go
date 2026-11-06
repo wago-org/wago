@@ -225,7 +225,7 @@ func TestRunNativeStackFlag(t *testing.T) {
 
 func TestRunGCHeapFlags(t *testing.T) {
 	cmd := Command(testEnvironment{})
-	normalized, err := cmd.Normalize([]string{"module.wasm", "--gc-heap", "2GiB", "--gc-nursery=64MiB"})
+	normalized, err := cmd.Normalize([]string{"module.wasm", "--gc-heap", "2GiB", "--gc-nursery=64MiB", "--gc-workers=4"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestRunGCHeapFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !configured || cfg.ThroughputHeapBytes != 2<<30 || cfg.NurseryBytes != 64<<20 {
+	if !configured || cfg.ThroughputHeapBytes != 2<<30 || cfg.NurseryBytes != 64<<20 || cfg.Workers != 4 {
 		t.Fatalf("GC config = %+v, configured=%v", cfg, configured)
 	}
 	if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
@@ -250,6 +250,17 @@ func TestRunGCHeapFlags(t *testing.T) {
 			t.Errorf("gc heap %q was accepted", value)
 		}
 	}
+	for _, value := range []string{"0", "9", "-1", "many", "9999999999999999999999"} {
+		ctx := command.NewContext(nil, map[string]string{"gc-workers": value}, nil)
+		if _, _, err := gcConfiguration(ctx); err == nil {
+			t.Errorf("gc workers %q accepted", value)
+		}
+	}
+	ctx = command.NewContext(nil, map[string]string{"gc-workers": "2"}, nil)
+	if cfg, configured, err := gcConfiguration(ctx); err != nil || !configured || cfg.Workers != 2 {
+		t.Fatalf("workers-only config: %+v %v %v", cfg, configured, err)
+	}
+
 	if _, configured, err := gcConfiguration(command.NewContext(nil, nil, nil)); err != nil || configured {
 		t.Fatalf("default GC config = configured %v, error %v", configured, err)
 	}
