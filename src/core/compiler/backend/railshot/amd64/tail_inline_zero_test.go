@@ -51,9 +51,17 @@ func TestTailInlineZeroDefiniteAssignment(t *testing.T) {
 }
 
 func TestInlineTargetZeroMaskDoesNotOverlapFlags(t *testing.T) {
+	flags := []uint32{inlineTailLoopFlag, inlineRecursiveFlag, inlineI32AddConstFlag, inlineI32AddParamsFlag, inlineTupleLoopFlag, inlineTupleSelectFlag}
+	occupied := uint32(inlineParamMask) | uint32(255)<<inlineTailZeroShift
+	for _, flag := range flags {
+		if occupied&flag != 0 {
+			t.Fatalf("packed target flag overlaps another field: flag=%x occupied=%x", flag, occupied)
+		}
+		occupied |= flag
+	}
 	for _, mask := range []uint8{0, 1, 31, 255} {
-		target := inlineTarget{params: 7 | uint32(mask)<<inlineTailZeroShift | inlineTailLoopFlag | inlineRecursiveFlag | inlineI32AddConstFlag | inlineI32AddParamsFlag}
-		if target.paramCount() != 7 || target.tailZeroMask() != mask || !target.tailLoop() || !target.recursive() || !target.isI32AddConst() || !target.isI32AddParams() {
+		target := inlineTarget{params: 7 | uint32(mask)<<inlineTailZeroShift | inlineTailLoopFlag | inlineRecursiveFlag | inlineI32AddConstFlag | inlineI32AddParamsFlag | inlineTupleLoopFlag | inlineTupleSelectFlag}
+		if target.paramCount() != 7 || target.tailZeroMask() != mask || !target.tailLoop() || !target.recursive() || !target.isI32AddConst() || !target.isI32AddParams() || !target.tupleLoop() || !target.tupleSelect() {
 			t.Fatalf("packed target flags overlap: mask=%x params=%x", mask, target.params)
 		}
 	}

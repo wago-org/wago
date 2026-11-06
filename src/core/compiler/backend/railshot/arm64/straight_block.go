@@ -9,10 +9,42 @@ import (
 
 var straightLineBlockEnabled = true
 
-func (f *fn) straightLineBlock(r *wasm.Reader, kind ctrlKind, params, results int, result machineType) bool {
-	return f.opt(optStraightLineBlock) && kind == cfBlock && !f.unreachable && params == 0 && results <= 1 &&
-		(results == 0 || result == mtI32 || result == mtI64 || result == mtF32 || result == mtF64 || result == mtV128) &&
-		!f.moduleEH && f.gcFrameRoots == nil && len(f.customInstructions) == 0 && shared.IsStraightLineBlock(r, f.classifier)
+func (f *fn) straightLineBlock(r *wasm.Reader, kind ctrlKind, params, results int, result machineType, signature wasm.Reader) bool {
+	if !f.opt(optStraightLineBlock) || kind != cfBlock || f.unreachable || params > 8 || results > 1 ||
+		(results != 0 && result != mtI32 && result != mtI64 && result != mtF32 && result != mtF64 && result != mtV128) ||
+		f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 {
+		return false
+	}
+	// Parameterized blocks use a type index. Admit integer-only signatures;
+	// machine types alone cannot distinguish i64 from a reference carrier.
+	if params != 0 {
+		index, err := signature.I64()
+		if err != nil || index < 0 || uint64(index) > uint64(^uint32(0)) {
+			return false
+		}
+		ft, ok := f.m.TypeFunc(uint32(index))
+		if !ok {
+			return false
+		}
+		for _, typ := range ft.Params {
+			if typ != wasm.I32 && typ != wasm.I64 {
+				return false
+			}
+		}
+		for _, typ := range ft.Results {
+			if typ != wasm.I32 && typ != wasm.I64 {
+				return false
+			}
+		}
+	}
+	if f.makesCalls || f.inlineTargets.empty() {
+		return shared.IsStraightLineBlock(r, f.classifier)
+	}
+	return shared.IsStraightLineBlockWithSplicedCalls(r, f.classifier, func(index uint32) bool {
+		t := f.inlineTargets.target(int(index))
+		_, reserved := f.inlineBase[int(index)]
+		return reserved && t != nil && (t.integerPairLeaf() || f.inlineTupleFallsThrough(t))
+	})
 }
 
 // Ordinary blocks have no header branch site (-1). This distinct sentinel

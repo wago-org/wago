@@ -185,7 +185,12 @@ func TestNativeCompactionPolicyAndRollbackAMD64(t *testing.T) {
 }
 
 func TestFunctionStartPaddingPolicyAMD64(t *testing.T) {
-	selection := currentCodegenPolicy().Selection
+	// Exercise the ordinary padding budget independently of the stronger
+	// fetch-block alignment requested by compact-loop-align32.
+	selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{"compact-loop-align32": false}, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ordinary := shared.DefaultCodegenPolicy(selection)
 	compact := shared.CompactCodegenPolicy(selection)
 	hot := funcHints{flags: hintHasLoop}

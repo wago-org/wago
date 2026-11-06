@@ -16,6 +16,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Bound AMD64 and ARM64 scalar-loop metadata proofs, avoiding quadratic
+  compilation work when many small loops share pending outer exits.
 - Restore relinquished AMD64 parameter pins before self-tail loop edges.
 - Preserve unreachable inline continuations on ARM64 and AMD64 when a
   nonreturning tail helper follows a retained caller operand.
@@ -72,6 +74,64 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Speed up AMD64 integer multi-value code by retaining tuple results and loop
+  parameters in registers, simplifying wrapping arithmetic and grouping proved
+  loop updates. Preserve zero-trip and partial exits, local initialization and
+  trap behavior.
+- Reuse caller result registers in bounded ARM64 integer tuple helpers and omit
+  unsigned-remainder local restores when a forward suffix proves them unread.
+- Avoid redundant ARM64 register transfers in bounded unsigned-remainder loops,
+  preserving early exits, visible locals and wrapping iteration counters.
+- Remove obsolete cooperative-poll padding from ARM64 poll-free loop headers.
+
+- Keep bounded AMD64 integer block parameters and private tuple-helper inputs
+  in registers, and unroll short register-only post-tested integer loops while
+  retaining every iteration's exit check.
+
+- Retain immutable ARM64 caller operands across bounded private integer-tuple
+  control flow, including nested fallthrough blocks and trapping callees.
+- Reuse proved ARM64 pinned-local entry guards at bounded loop backedges when
+  unrolling is unavailable, retaining zero-iteration checks and every body site.
+- Borrow immutable ARM64 loop constants directly for immediate read-only
+  multiply-add inputs instead of reloading them inside the loop.
+- Reuse immutable ARM64 loop constants for unsigned I32 reciprocal multipliers,
+  including call-free loop scopes in functions with guest calls.
+- Shorten ARM64 constant integer division/remainder and multiply-add sequences
+  with exact-width shifted arithmetic, preserving signed, overflow and alias
+  behavior.
+- Keep ARM64 integer block parameters and surrounding operands resident through
+  bounded nested straight-line blocks.
+- Return bounded ARM64 straight-line integer pairs directly in result registers.
+- Inline bounded ARM64 integer-pair helpers in loops, keeping pure tuple results
+  deferred and forwarding read-only parameter locals.
+- Keep bounded ARM64 integer loop parameters in pinned local homes and align
+  functions called from loops to preserve hot entry placement.
+- Inline bounded ARM64 integer tuple leaves with structured control when the
+  caller can eliminate all calls, preserving private-local initialization.
+- Unroll bounded ARM64 register-only integer induction loops, checking each
+  iteration and preserving the exact induction value on early exits. Unroll
+  small register-only loops with a forward exit while retaining every exit test.
+  Combine independent iteration-counter updates across each group and restore
+  the exact count on partial exits.
+- Keep inlined ARM64 integer pairs in registers when a bounded leaf consists
+  of a pure integer condition and local-only result arms.
+- Fold repeated ARM64 I32 local terms into one shifted add when their exact
+  modular coefficients fit, preserving captured values and trapping operands.
+- Reuse an immediately preceding ARM64 zero-exit guard for one integer
+  division or remainder assignment, retaining overflow checks and later traps.
+  Unroll register-only unsigned-division loops while retaining each exit test.
+- Keep bounded ARM64 integer-pair loop continuations on the fallthrough path
+  and defer local-only exit results. Unroll these loops while preserving every
+  exit test, and exchange pair register roles across parallel additions when
+  all early exits can restore the original local homes. Use a conditional
+  backedge for these alternating pairs to avoid a separate branch per group.
+- Retain inlined ARM64 integer tuple results across a fallthrough-only helper
+  boundary, and assign immediate caller locals before copying private results
+  into temporary registers. Preserve ordinary merges for returns and branches
+  to the helper boundary.
+- Select pure inlined ARM64 integer pairs directly into two distinct caller
+  locals when their dedicated registers cannot overwrite either arm's sources.
+  Preserve pending reads of the caller's old values before the selections.
 - Keep eligible AMD64 integer self-tail calls in register loops, resolve private
   immutable table targets, and inline small numeric self-tail and two-function
   tail cycles. Specialize constant entry arguments and reuse proved branch flags,

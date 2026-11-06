@@ -103,14 +103,14 @@ func TestDivByConstArm64(t *testing.T) {
 		0xffffffffffffffff, 0xcafebabecafebabe,
 	}
 	posDivs := []uint64{
-		2, 3, 4, 5, 7, 8, 10, 11, 16, 25, 100, 1024,
+		2, 3, 4, 5, 7, 8, 10, 11, 16, 17, 20, 25, 33, 65, 100, 1024, 65537,
 		0x7fffffff, 0x80000000, 0xffffffff,
-		0x100000000, 0x7fffffffffffffff, 0xaaaaaaaaaaaaaaab,
+		0x100000000, 0x100000001, 0x4000000000000001, 0x7fffffffffffffff, 0xaaaaaaaaaaaaaaab,
 	}
 	signedDivs := []int64{
-		2, -2, 3, -3, 5, -5, 7, -7, 10, -10, 100, -100,
+		2, -2, 3, -3, 5, -5, 7, -7, 10, -10, 17, -17, 33, -33, 65, -65, 100, -100, 65537, -65537,
 		0x7fffffff, -0x7fffffff, 0x100000000, -0x100000000,
-		0x7fffffffffffffff, -0x7fffffffffffffff,
+		0x4000000000000001, -0x4000000000000001, 0x7fffffffffffffff, -0x7fffffffffffffff,
 	}
 
 	for _, w64 := range []bool{false, true} {

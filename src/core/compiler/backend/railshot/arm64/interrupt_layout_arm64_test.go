@@ -8,18 +8,19 @@ import (
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
-func TestPollFreeLoopHeaderPreservesCooperativeFetchPhase(t *testing.T) {
-	for _, prefix := range []int{0, 4, 12, 16, 20, 28} {
-		polled := fn{a: &a64.Asm{}, interruptible: true, nLocals: 4}
-		polled.a.B = make([]byte, prefix)
-		polled.alignLoopHeader()
-		polledBodyPhase := (polled.a.Len() + 16) % 32 // four-instruction poll
-
-		pollFree := fn{a: &a64.Asm{}, nLocals: 4}
-		pollFree.a.B = make([]byte, prefix)
-		pollFree.alignLoopHeader()
-		if got := pollFree.a.Len() % 32; got != polledBodyPhase {
-			t.Fatalf("prefix %d: poll-free phase = %d, polled body phase = %d", prefix, got, polledBodyPhase)
+func TestPollFreeLoopHeaderUsesPolicyAlignmentWithoutPollPadding(t *testing.T) {
+	for _, align := range []uint8{4, 5, 6} {
+		for _, prefix := range []int{0, 4, 12, 16, 20, 28, 32, 60} {
+			for _, interruptible := range []bool{false, true} {
+				f := fn{a: &a64.Asm{}, interruptible: interruptible, nLocals: 4}
+				f.policy.LoopAlignLog2 = align
+				f.a.B = make([]byte, prefix)
+				f.alignLoopHeader()
+				want := (prefix + (1 << align) - 1) &^ ((1 << align) - 1)
+				if got := f.a.Len(); got != want {
+					t.Fatalf("align=%d prefix=%d interruptible=%t got=%d want=%d", align, prefix, interruptible, got, want)
+				}
+			}
 		}
 	}
 }

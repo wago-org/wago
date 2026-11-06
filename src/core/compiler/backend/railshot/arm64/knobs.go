@@ -22,6 +22,11 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("simd-store-load-address", &simdStoreLoadAddressEnabled),
 	optimization.Bind("bulk-fill-vector", &bulkFillVectorEnabled),
 	optimization.Bind("straight-line-block", &straightLineBlockEnabled),
+	optimization.Bind("loop-local-params", &loopLocalParamsEnabled),
+	optimization.Bind("scalar-loop-unroll", &scalarLoopUnrollEnabled),
+	optimization.Bind("tuple-if-select", &tupleIfSelectEnabled),
+	optimization.Bind("guarded-div-rem", &guardedDivRemEnabled),
+	optimization.Bind("cold-tuple-loop-exit", &coldTupleLoopExitEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
 	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
 	optimization.Bind("regional-memory-read", &regionalMemoryReadEnabled),
@@ -111,6 +116,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("tail-loop-inline", &tailLoopInlineEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
+	optimization.Bind("inline-integer-tuples", &inlineIntegerTuplesEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
 	optimization.BindInverted("stack-reg", &noStackReg),
 )
@@ -124,6 +130,11 @@ var (
 	optAtomicLSE            = optimizationBindings.Option("atomic-lse")
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
 	optStraightLineBlock    = optimizationBindings.Option("straight-line-block")
+	optLoopLocalParams      = optimizationBindings.Option("loop-local-params")
+	optScalarLoopUnroll     = optimizationBindings.Option("scalar-loop-unroll")
+	optTupleIfSelect        = optimizationBindings.Option("tuple-if-select")
+	optGuardedDivRem        = optimizationBindings.Option("guarded-div-rem")
+	optColdTupleLoopExit    = optimizationBindings.Option("cold-tuple-loop-exit")
 	optBulkFillVector       = optimizationBindings.Option("bulk-fill-vector")
 	optSIMDStoreLoadAddress = optimizationBindings.Option("simd-store-load-address")
 	optSIMDLoadExtract      = optimizationBindings.Option("simd-load-extract")
@@ -217,6 +228,7 @@ var (
 	optTailLoopInline       = optimizationBindings.Option("tail-loop-inline")
 	optRegABI               = optimizationBindings.Option("reg-abi")
 	optInline               = optimizationBindings.Option("inline")
+	optInlineIntegerTuples  = optimizationBindings.Option("inline-integer-tuples")
 	optStackFence           = optimizationBindings.Option("stack-fence")
 	optStackReg             = optimizationBindings.Option("stack-reg")
 )

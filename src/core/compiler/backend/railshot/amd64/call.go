@@ -381,7 +381,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 			f.consumeGCFrameCallsite()
 			f.stats.peep("gc-numeric-leaf-inline")
 		}
-		return f.inlineCall(t)
+		return f.inlineCall(t, r)
 	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
