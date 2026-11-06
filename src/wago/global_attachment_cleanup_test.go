@@ -67,6 +67,7 @@ func TestGlobalAttachmentCleanupMappedOwnersAndHostStorage(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer g.Close()
+				arena := g.owner.arena
 				address := uintptr(unsafe.Pointer(&g.cell[0]))
 				if errno := globalCleanupMappingStatus(address); errno != 0 {
 					t.Fatal("host global arena is not mapped", errno)
@@ -163,7 +164,9 @@ func TestGlobalAttachmentCleanupMappedOwnersAndHostStorage(t *testing.T) {
 				store.mu.Lock()
 				objects = store.liveObjects
 				store.mu.Unlock()
-				if !g.owner.closed || g.owner.arena != nil || g.cell != nil || len(g.owner.retained) != 0 || objects != 0 || globalCleanupMappingStatus(address) != syscall.ENOMEM {
+				// The kernel can reuse a freed address before mincore runs. The
+				// captured arena clears its allocation only after successful unmap.
+				if !g.owner.closed || g.owner.arena != nil || g.cell != nil || len(g.owner.retained) != 0 || objects != 0 || arena.AllocatedPrefix(1) != nil {
 					t.Fatal("global cleanup failed to unmap its actual host arena or close its store")
 				}
 				if err := g.Close(); err != nil || visited != [3]int{1, 1, 1} {
