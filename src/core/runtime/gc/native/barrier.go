@@ -521,10 +521,13 @@ func (c *Collector) clearRememberedMetadata() {
 	for _, h := range c.remembered {
 		if h != 0 && int(h) < len(c.handles) {
 			c.handles[h].remembered = false
+			c.handles[h].cardSlot = 0
 		}
 	}
-	clear(c.remembered)
 	c.remembered = c.remembered[:0]
+	// Every object card belongs to a remembered owner. Clearing its head above
+	// avoids revisiting that owner once per range in clearCardMetadata.
+	c.clearCardLists()
 }
 func (c *Collector) isNurseryRef(r Ref) bool {
 	if !r.IsObj() || !c.validObjectRef(r) {
@@ -553,20 +556,24 @@ func (c *Collector) removeCardsForHandle(h uint32) {
 	e.cardSlot = 0
 }
 func (c *Collector) clearCardMetadata() {
-	c.lastCardBounds = objectCardBounds{}
 	for _, card := range c.objectCards {
 		if card.handle != 0 && int(card.handle) < len(c.handles) {
 			c.handles[card.handle].cardSlot = 0
 		}
 	}
+	c.clearCardLists()
+}
+
+func (c *Collector) clearCardLists() {
+	c.lastCardBounds = objectCardBounds{}
 	for _, card := range c.slotCards {
 		bits := c.slotCardBits(card.kind)
 		if bits != nil && cardBitIsSet(*bits, card.index) {
 			(*bits)[card.index>>6] &^= uint64(1) << (card.index & 63)
 		}
 	}
-	clear(c.objectCards)
-	clear(c.slotCards)
+	// These entries contain only scalars. Appending overwrites the complete
+	// entry, and no reader can observe the discarded tail.
 	c.objectCards = c.objectCards[:0]
 	c.freeObjectCardSlot = 0
 	c.slotCards = c.slotCards[:0]

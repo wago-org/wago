@@ -88,6 +88,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Bound full GC mark clearing by the highest marked handle and reduce redundant
+  card metadata cleanup after complete young evacuation.
 - Keep independent AMD64 selection-arm address calculations lazy when
   temporary ownership and condition operands permit.
 - Feed small AMD64 integer selection masks directly into byte TEST flags.
