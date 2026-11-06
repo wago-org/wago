@@ -22,4 +22,4 @@ apt_options=(
   -o Acquire::https::Timeout=30
 )
 sudo timeout --kill-after=15s 5m apt-get "${apt_options[@]}" update
-sudo timeout --kill-after=15s 10m apt-get "${apt_options[@]}" install -y ocaml-nox ocaml-dune menhir
+sudo timeout --kill-after=15s 10m apt-get "${apt_options[@]}" install -y ocaml ocaml-dune menhir
