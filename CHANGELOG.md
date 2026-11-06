@@ -16,6 +16,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Preserve live Wasm GC locals across allocations in modules with extern/any
+  conversions, including modules with no host imports. Keep older caller roots
+  across scalar native relays, foreign collector frames, and host callbacks,
+  including retained imports through another Runtime.
 - Preserve live AMD64 locals across plain and weighted byte reductions under
   register pressure. Checked builds now protect incoming local pins throughout
   the raw fast path, including after allocator metadata changes.

@@ -10,6 +10,7 @@ func gcCollectFrameRoots(in *Instance, public *gcPublicState, frameLayout uint8,
 		owner:               in,
 		frameLayout:         frameLayout,
 		allowExternalReturn: allowExternalReturn,
+		domainHostRoots:     compiledArchitecture != 4,
 		suspended:           public,
 	}
 }
