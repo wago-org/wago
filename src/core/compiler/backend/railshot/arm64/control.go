@@ -1847,6 +1847,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			}
 			if pN == 0 && rN == 0 && f.loopMemory {
 				f.emitIntegerByteMap(r)
+				f.emitIntegerArgmax(r)
 			}
 			if fr.has(ctrlLoopCallFree) && callFreeLoopEntryEnabled {
 				// Keep live pins in registers and reload only memory-resident ones.
