@@ -88,7 +88,12 @@ func (f *fn) tryBorrowedUnsignedQuotient(node *elem, dest Reg, divisor uint64) (
 	magic, shift, add := railshot.MagicU(divisor, 32)
 	var q Reg
 	if add {
-		q = f.magicWideU32Quotient(dividend, divisor)
+		if wideQuotientSinkEnabled {
+			q = f.magicWideU32QuotientInto(dividend, divisor, dest, left.st.valueFacts().has(factUpper32Zero))
+			f.stats.peep("wide-quotient-sink")
+		} else {
+			q = f.magicWideU32Quotient(dividend, divisor)
+		}
 	} else {
 		// Write the requested destination directly when no add correction is
 		// needed; both reciprocal lease widths supply the same low 32 bits.
