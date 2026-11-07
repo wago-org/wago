@@ -1877,6 +1877,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			}
 			fr.controlSite = f.a.Len()
 			f.emitInterruptCheck(true)
+			if pN == 0 && rN == 0 && f.loopMemory {
+				f.emitZeroPredicateScan(r)
+			}
 		}
 	}
 	f.pushCtrl(&fr)

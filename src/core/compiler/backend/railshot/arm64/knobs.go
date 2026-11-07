@@ -90,6 +90,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("select-group-guard", &selectGroupEnabled),
 	optimization.Bind("dot-loop-vector", &dotLoopEnabled),
 	optimization.Bind("integer-byte-map", &integerByteMapEnabled),
+	optimization.Bind("zero-predicate-scan", &zeroPredicateScanEnabled),
 	optimization.Bind("regional-condition-fusion", &regionalConditionFusionEnabled),
 	optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
 	optimization.Bind("wide-reuse-pins", &wideReusePinsEnabled),
@@ -214,6 +215,7 @@ var (
 	optSelectGroupGuard        = optimizationBindings.Option("select-group-guard")
 	optDotLoopVector           = optimizationBindings.Option("dot-loop-vector")
 	optIntegerByteMap          = optimizationBindings.Option("integer-byte-map")
+	optZeroPredicateScan       = optimizationBindings.Option("zero-predicate-scan")
 	optRegionalConditionFusion = optimizationBindings.Option("regional-condition-fusion")
 	optPureReduceVector        = optimizationBindings.Option("pure-reduce-vector")
 	optWideReusePins           = optimizationBindings.Option("wide-reuse-pins")
