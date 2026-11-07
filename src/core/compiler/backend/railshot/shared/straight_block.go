@@ -18,9 +18,18 @@ func IsStraightLineBlock(source *wasm.Reader, classifier wasm.ModuleInstructionC
 // control remains inside a private callee boundary, never reaching this block.
 // All structural bounds and reader-preservation rules remain unchanged.
 func IsStraightLineBlockWithSplicedCalls(source *wasm.Reader, classifier wasm.ModuleInstructionClassifier, spliced func(uint32) bool) bool {
+	return IsFallthroughBlock(source, classifier, spliced, false)
+}
+
+// IsFallthroughBlock can additionally admit fully contained if/else regions.
+// Branches, loops, calls and nonlocal control transfers retain the same exclusions.
+// With no incoming edge to the outer block, its own canonicalization is redundant;
+// each nested if continues to reconcile its private split and merge normally.
+func IsFallthroughBlock(source *wasm.Reader, classifier wasm.ModuleInstructionClassifier, spliced func(uint32) bool, allowIf bool) bool {
 	r := *source
 	start := r.Offset()
 	depth := 0
+	var controls [8]byte
 	var imm wasm.InstructionImmediate
 	for n := 0; n < 32 && r.Offset()-start < 128; n++ {
 		op, err := r.Byte()
@@ -34,10 +43,18 @@ func IsStraightLineBlockWithSplicedCalls(source *wasm.Reader, classifier wasm.Mo
 			depth--
 			continue
 		}
-		if op == 0x02 {
+		if op == 0x05 {
+			if !allowIf || depth == 0 || controls[depth-1] != 0x04 {
+				return false
+			}
+			controls[depth-1] = 0x05
+			continue
+		}
+		if op == 0x02 || allowIf && op == 0x04 {
 			if depth == 8 {
 				return false
 			}
+			controls[depth] = op
 			depth++
 		}
 		if op == 0x10 && spliced != nil {
@@ -46,7 +63,7 @@ func IsStraightLineBlockWithSplicedCalls(source *wasm.Reader, classifier wasm.Mo
 			}
 			continue
 		}
-		if !(op == 0x02 || op == 0x01 || op >= 0x1a && op <= 0x1c || op >= 0x20 && op <= 0x24 || op >= 0x28 && op <= 0x3f || op >= 0x41 && op <= 0xc4 || op == 0xfd || op == 0xfc || op == 0xfe) {
+		if !(op == 0x02 || allowIf && op == 0x04 || op == 0x01 || op >= 0x1a && op <= 0x1c || op >= 0x20 && op <= 0x24 || op >= 0x28 && op <= 0x3f || op >= 0x41 && op <= 0xc4 || op == 0xfd || op == 0xfc || op == 0xfe) {
 			return false
 		}
 		if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
