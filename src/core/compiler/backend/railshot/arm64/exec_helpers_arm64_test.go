@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -26,6 +27,17 @@ func runArm64WrapperWithOptions(t *testing.T, m *wasm.Module, opts CompileOption
 	if err != nil {
 		t.Fatalf("arm64 compile: %v", err)
 	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	return runArm64CompiledWrapper(t, cm, args...)
+}
+
+// runArm64CompiledWrapper retains the exact compiled image under test while
+// establishing the runtime context required by non-leaf internal entries.
+// Its ordinary wrapper still reaches the same register-ABI function body.
+func runArm64CompiledWrapper(t *testing.T, cm *a64.CompiledModule, args ...uint64) (uint64, error) {
+	t.Helper()
 	eng, err := coreruntime.NewEngine()
 	if err != nil {
 		t.Fatal(err)
@@ -36,6 +48,7 @@ func runArm64WrapperWithOptions(t *testing.T, m *wasm.Module, opts CompileOption
 		t.Fatal(err)
 	}
 	defer jm.Close()
+	jm.SetStackFence(eng.StackLimit())
 	ar, err := coreruntime.NewArena(4096)
 	if err != nil {
 		t.Fatal(err)
@@ -69,6 +82,9 @@ func runArm64WrapperMemWithOptions(t *testing.T, m *wasm.Module, opts CompileOpt
 	if err != nil {
 		t.Fatalf("arm64 compile: %v", err)
 	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
 	eng, err := coreruntime.NewEngine()
 	if err != nil {
 		t.Fatal(err)
@@ -79,6 +95,7 @@ func runArm64WrapperMemWithOptions(t *testing.T, m *wasm.Module, opts CompileOpt
 		t.Fatal(err)
 	}
 	defer jm.Close()
+	jm.SetStackFence(eng.StackLimit())
 	if init != nil {
 		init(jm.CurrentBytes())
 	}

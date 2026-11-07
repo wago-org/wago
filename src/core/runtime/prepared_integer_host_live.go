@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && (amd64 || arm64) && !tinygo
+//go:build (linux || darwin || (windows && amd64)) && (amd64 || arm64) && !tinygo
 
 package runtime
 
@@ -43,7 +43,7 @@ func (p *PreparedScalarHost) CallInteger(code, linMem uintptr, context unsafe.Po
 // integer grant certifies the single immutable import signature, so the view
 // owner need not compare that shape again on each callback.
 func (p *PreparedScalarHost) CallIntegerView(code, linMem uintptr, context unsafe.Pointer, fixed FixedHostContextCallView) error {
-	if p == nil || p.engine == nil || p.mode != 3 || linMem == 0 || context == nil || fixed == nil {
+	if p == nil || p.engine == nil || p.mode != 3 || p.windowsI64 || linMem == 0 || context == nil || fixed == nil {
 		return fmt.Errorf("jit: invalid prepared scalar host call")
 	}
 	if p.detached != nil {
@@ -67,7 +67,7 @@ func (p *PreparedScalarHost) CallIntegerView(code, linMem uintptr, context unsaf
 }
 
 func (p *PreparedScalarHost) CallIntegerI32(code, linMem uintptr, fixed func(int32) int32) error {
-	if p == nil || p.engine == nil || (p.mode != 2 || p.slots != 0x10001) || linMem == 0 || fixed == nil {
+	if p == nil || p.engine == nil || p.windowsI64 || (p.mode != 2 || p.slots != 0x10001) || linMem == 0 || fixed == nil {
 		return fmt.Errorf("jit: invalid prepared scalar host call")
 	}
 	if p.detached != nil {

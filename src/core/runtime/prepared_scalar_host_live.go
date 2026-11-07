@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && (amd64 || arm64) && !tinygo
+//go:build (linux || darwin || (windows && amd64)) && (amd64 || arm64) && !tinygo
 
 package runtime
 
@@ -14,7 +14,11 @@ import (
 
 var preparedScalarHostEnabled = os.Getenv("WAGO_NO_PREPARED_SCALAR_HOST") != "1"
 
-func preparedScalarHostAvailable() bool     { return inlineHostEnabled && preparedScalarHostEnabled }
+func preparedScalarHostAvailable() bool { return inlineHostEnabled && preparedScalarHostEnabled }
+func windowsTypedI64HostAvailable() bool {
+	return preparedScalarHostEnabled && goruntime.GOOS == "windows" && goruntime.GOARCH == "amd64" &&
+		scalarGoABI(goruntime.Version()) && os.Getenv("WAGO_AMD64_NO_INLINE_HOST") != "1"
+}
 func preparedScalarHostBridge() uintptr     { return inlineHostBridgeAddr() }
 func preparedScalarHostViewBridge() uintptr { return inlineHostViewBridgeAddr() }
 
@@ -22,7 +26,7 @@ func preparedScalarHostViewBridge() uintptr { return inlineHostViewBridgeAddr() 
 // engine stack top remain live; every transfer retains the existing assembly
 // shape/root/trap checks and a normal rooted Go callback frame.
 func (p *PreparedScalarHost) Call(code, linMem uintptr, context unsafe.Pointer, fixed FixedScalarHostContextCall) error {
-	if p == nil || p.engine == nil || p.mode != 0 || linMem == 0 || context == nil || fixed == nil {
+	if p == nil || p.engine == nil || p.mode != 0 || p.windowsI64 || linMem == 0 || context == nil || fixed == nil {
 		return fmt.Errorf("jit: invalid prepared scalar host call")
 	}
 	if p.detached != nil {
@@ -47,7 +51,7 @@ func (p *PreparedScalarHost) Call(code, linMem uintptr, context unsafe.Pointer, 
 
 // CallView retains result clearing and borrowed-view shape checks in the live owner.
 func (p *PreparedScalarHost) CallView(code, linMem uintptr, context unsafe.Pointer, fixed FixedHostContextCallView) error {
-	if p == nil || p.engine == nil || (goruntime.GOARCH == "amd64" && p.mode != 1 || goruntime.GOARCH != "amd64" && p.mode == 0) || linMem == 0 || context == nil || fixed == nil {
+	if p == nil || p.engine == nil || p.windowsI64 || (goruntime.GOARCH == "amd64" && p.mode != 1 || goruntime.GOARCH != "amd64" && p.mode == 0) || linMem == 0 || context == nil || fixed == nil {
 		return fmt.Errorf("jit: invalid prepared scalar host call")
 	}
 	if p.detached != nil {
