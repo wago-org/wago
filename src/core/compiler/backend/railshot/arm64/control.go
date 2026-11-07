@@ -3076,6 +3076,9 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 				return nil
 			}
 			forwardRemainder := normalZero && f.opt(optBranchFold) && f.remainderForwardExit(fr, creg, testAt)
+			if forwardRemainder && f.pairRemainderLatch(fr, creg, testAt, r) {
+				return nil
+			}
 			if normalZero && !forwardRemainder {
 				// Keep following function entry phases unchanged. This replaces
 				// the removed hot CMP with one word in the unreachable tail.
