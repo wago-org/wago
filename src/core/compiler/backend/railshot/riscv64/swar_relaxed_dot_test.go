@@ -16,11 +16,6 @@ func swarRelaxedDotOracle(input []byte, add bool) [16]byte {
 	for lane := range pairs {
 		offset := 2 * lane
 		value := int32(int8(input[offset]))*int32(int8(input[16+offset])) + int32(int8(input[offset+1]))*int32(int8(input[17+offset]))
-		if value > 32767 {
-			value = 32767
-		} else if value < -32768 {
-			value = -32768
-		}
 		pairs[lane] = value
 		if !add {
 			binary.LittleEndian.PutUint16(result[offset:], uint16(value))
@@ -35,7 +30,7 @@ func swarRelaxedDotOracle(input []byte, add bool) [16]byte {
 	return result
 }
 
-func TestSWARRelaxedDotAdmissionAndSignedSaturation(t *testing.T) {
+func TestSWARRelaxedDotAdmissionAndSignedWrapping(t *testing.T) {
 	for _, kind := range []uint32{274, 275} {
 		fn, ft := swarValidatedFunction(t, swarRelaxedFixture(kind))
 		for _, mode := range []emissionMode{{}, {production: true}} {
@@ -91,13 +86,38 @@ func TestSWARRelaxedDotAdmissionAndSignedSaturation(t *testing.T) {
 	}
 	dot, add := swarRelaxedDotOracle(input[:], false), swarRelaxedDotOracle(input[:], true)
 	for lane := 0; lane < 8; lane++ {
-		if binary.LittleEndian.Uint16(dot[2*lane:]) != 32767 {
-			t.Fatal("dot positive saturation edge", dot)
+		if binary.LittleEndian.Uint16(dot[2*lane:]) != 32768 {
+			t.Fatal("dot signed wrapping edge", dot)
 		}
 	}
 	for lane := 0; lane < 4; lane++ {
-		if binary.LittleEndian.Uint32(add[4*lane:]) != 65534 {
-			t.Fatal("dot-add must saturate intermediate pairs", add)
+		if binary.LittleEndian.Uint32(add[4*lane:]) != 65536 {
+			t.Fatal("dot-add must keep full intermediate pairs", add)
+		}
+	}
+}
+
+// Upstream WebAssembly/spec#2312 at e22ec2272bfbc06b995b00c1f1172a61d613fdd8.
+func swarRelaxedDotUpstreamCorner() (input [48]byte) {
+	for i := 0; i < 16; i++ {
+		input[i] = 0x80
+		if i >= 8 {
+			input[i] = 0x7f
+		}
+		input[16+i] = []byte{0x80, 0x81, 0x80, 0xff}[i/4]
+	}
+	for i := 0; i < 4; i++ {
+		binary.LittleEndian.PutUint32(input[32+4*i:], uint32(i+1))
+	}
+	return
+}
+
+func TestSWARRelaxedDotUpstreamCorner(t *testing.T) {
+	input := swarRelaxedDotUpstreamCorner()
+	got := swarRelaxedDotOracle(input[:], true)
+	for i, want := range []int32{65537, 65026, -65021, -504} {
+		if lane := int32(binary.LittleEndian.Uint32(got[4*i:])); lane != want {
+			t.Fatalf("lane %d = %d, want %d", i, lane, want)
 		}
 	}
 }

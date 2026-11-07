@@ -1072,7 +1072,7 @@ func TestSIMDRelaxedDotProducts(t *testing.T) {
 	b := i8x16Bytes(-3, 4, -2, -128, -128, -128, -5, -6, 10, -20, 2, -2, -1, 1, -128, -1)
 
 	t.Run("i16x8.relaxed_dot_i8x16_i7x16_s", func(t *testing.T) {
-		want := i16x8Bytes(-11, 16130, 32767, -214, -40, 400, -1, 16385)
+		want := i16x8Bytes(-11, 16130, -32768, -214, -40, 400, -1, 16385)
 		modBytes := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -1089,7 +1089,7 @@ func TestSIMDRelaxedDotProducts(t *testing.T) {
 
 	t.Run("i32x4.relaxed_dot_i8x16_i7x16_add_s", func(t *testing.T) {
 		c := i32x4Bytes(1000, math.MaxInt32-10, -5000, math.MinInt32+20)
-		want := i32x4Bytes(17119, -2147451106, -4640, -2147467244)
+		want := i32x4Bytes(17119, -2147451105, -4640, -2147467244)
 		modBytes := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
