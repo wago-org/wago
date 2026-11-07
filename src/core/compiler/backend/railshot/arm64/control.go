@@ -3075,7 +3075,8 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 			if normalZero && f.opt(optBranchFold) && fr.kind == cfLoop && f.unrollScalarLatch(fr, condNE) {
 				return nil
 			}
-			if normalZero {
+			forwardRemainder := normalZero && f.opt(optBranchFold) && f.remainderForwardExit(fr, creg, testAt)
+			if normalZero && !forwardRemainder {
 				// Keep following function entry phases unchanged. This replaces
 				// the removed hot CMP with one word in the unreachable tail.
 				f.phasePadWords++
@@ -3085,6 +3086,15 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 				f.rewindProfileEmission(testAt)
 			}
 			f.a.B = f.a.B[:testAt]
+			if forwardRemainder && f.opt(optBranchFold) {
+				over := f.a.Cbz32(creg)
+				f.patchBranch26(f.a.Branch(), fr.controlSite)
+				f.patchBranch19(over, f.a.Len())
+				f.stats.peep("remainder-forward-exit")
+				f.stats.peep("normal-zero-branch")
+				f.stats.peep("zero-branch")
+				return nil
+			}
 			if f.opt(optBranchFold) && f.zeroBranchJump(fr, creg) {
 				f.stats.peep("zero-branch")
 				return nil
