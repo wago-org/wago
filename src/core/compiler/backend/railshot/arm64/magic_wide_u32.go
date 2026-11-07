@@ -16,7 +16,7 @@ func wideReciprocalU32(divisor uint64) uint64 {
 // upper bits, whereas UMULH consumes all 64 bits of both inputs.
 func (f *fn) magicWideU32Quotient(dividend Reg, divisor uint64) Reg {
 	magic := wideReciprocalU32(divisor)
-	mr, ownMr := f.intConstReadReg(storage{kind: stConst, typ: mtI64, cval: int64(magic)}, maskOf(dividend))
+	mr, ownMr := f.readWideReciprocal(magic, maskOf(dividend))
 	mrWasPinned := f.pinned.has(mr)
 	f.pinned = f.pinned.add(mr)
 	if !ownMr {

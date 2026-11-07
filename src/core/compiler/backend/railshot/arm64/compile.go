@@ -485,6 +485,11 @@ type fn struct {
 
 	// One-entry native frame-store fact. No register is reserved: a bounded
 	// native-word scan checks source writes and aliasing before each reuse.
+	wideReciprocalBits   uint64
+	wideReciprocalEnd    uint32
+	wideReciprocalReg    Reg
+	wideReciprocalActive bool
+
 	frameForwardEnd uint32
 	frameForwardOff int32
 	frameForwardReg Reg

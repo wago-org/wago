@@ -71,9 +71,11 @@ func (f *fn) representationError() error {
 func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 	for len(f.ctrl) > minCtrl {
 		if f.selectGroupEnd != 0 {
+			f.wideReciprocalEnd = 0
 			f.finishSelectGroup(r.Offset())
 		}
 		if f.streamingReduction && f.s.head.prev == sentinelNodeID {
+			f.wideReciprocalEnd = 0
 			if done, err := f.tryStreamReduction(r); done || err != nil {
 				if err != nil {
 					return err
@@ -110,8 +112,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			}
 		}
 		frameForwardSafe := frameForwardOpcode(op)
+		f.wideReciprocalActive = frameForwardSafe && op != 0x20
 		if !frameForwardSafe {
-			f.frameForwardEnd = 0
+			f.frameForwardEnd, f.wideReciprocalEnd = 0, 0
 		}
 		f.prepareStoreForward(op)
 		switch op {
@@ -152,8 +155,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 				err = f.emitPlain(r, op)
 			}
 		}
+		f.wideReciprocalActive = false
 		if !frameForwardSafe {
-			f.frameForwardEnd = 0
+			f.frameForwardEnd, f.wideReciprocalEnd = 0, 0
 		}
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			f.switchProfileOrigin(previous)
