@@ -5,6 +5,7 @@ package arm64
 import (
 	"fmt"
 	"math/bits"
+	"os"
 	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -12,6 +13,8 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
+
+var normalZeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_NORMAL_ZERO_BRANCH") != "1"
 
 // Control flow: block / loop / if / else / end / br / br_if / br_table / return /
 // unreachable. Ported from WARP's control-flow lowering, but using the canonical-
@@ -3064,7 +3067,20 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 		return nil
 	}
 	if f.a.Len() == mark {
-		if f.opt(optZeroBranch) && f.policy.CompactNative {
+		// Preserve the normal-mode unroller's first choice. Only a remaining
+		// explicit CMP can be removed; an arithmetic-flags consumer keeps its
+		// established path and needs no extra branch instruction.
+		normalZero := normalZeroBranchEnabled && !f.policy.CompactNative && mark-testAt == 4 && fr.kind == cfLoop
+		if f.opt(optZeroBranch) && (f.policy.CompactNative || normalZero) {
+			if normalZero && f.opt(optBranchFold) && fr.kind == cfLoop && f.unrollScalarLatch(fr, condNE) {
+				return nil
+			}
+			if normalZero {
+				// Keep following function entry phases unchanged. This replaces
+				// the removed hot CMP with one word in the unreachable tail.
+				f.phasePadWords++
+				f.stats.peep("normal-zero-branch")
+			}
 			if profileEnabled && f.stats != nil && f.stats.RecordSources {
 				f.rewindProfileEmission(testAt)
 			}
