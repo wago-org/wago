@@ -402,6 +402,7 @@ var catalog = []Definition{
 	amd64("simd-reduction-borrow", "Read-only vector reductions", "read pinned vector inputs without copying them for bitmasks and any-true reductions"),
 	both("interval-region-pins", "Interval-region pins", "reuse registers across bounded straight-line local lifetimes"),
 	amd64("interval-control", "Regional control local cache", "reuse up to two integer local registers within call and control separated stretches"),
+	{Name: "signed-quotient-direct", Label: "Direct signed constant quotient", Description: "keep signed i32 constant quotients in their result register and combine exact product shifts and sign correction", Default: true, Architectures: catalogARM64Architectures},
 	both("magic-div", "Magic division", "lower constant integer division through multiply-high sequences"),
 	both("shared-trap-body", "Shared trap bodies", "share repeated cold trap bodies in size-oriented code"),
 	both("shared-adapters", "Shared adapters", "share byte-identical host adapters in size-oriented code"),

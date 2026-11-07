@@ -63,6 +63,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("convert-read", &convertReadEnabled),
 	optimization.Bind("cold-call-local-pins", &coldCallLocalPinsEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
+	optimization.Bind("signed-quotient-direct", &signedQuotientDirectEnabled),
 	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
 	optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
 	optimization.Bind("st-flags", &stFlagsEnabled),
@@ -193,6 +194,7 @@ var (
 	optConvertRead             = optimizationBindings.Option("convert-read")
 	optColdCallLocalPins       = optimizationBindings.Option("cold-call-local-pins")
 	optMagicDiv                = optimizationBindings.Option("magic-div")
+	optSignedQuotientDirect    = optimizationBindings.Option("signed-quotient-direct")
 	optSharedTrapBody          = optimizationBindings.Option("shared-trap-body")
 	optSharedAdapters          = optimizationBindings.Option("shared-adapters")
 	optSTFlags                 = optimizationBindings.Option("st-flags")

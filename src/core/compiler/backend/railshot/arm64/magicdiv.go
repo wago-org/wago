@@ -38,6 +38,12 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 		}
 	}
 
+	if !w && signed && !wantRem {
+		if result, ok := f.tryDirectSignedQuotient(node, dest, c); ok {
+			return result, true
+		}
+	}
+
 	// Compute the dividend into an owned result register. Unlike x86 (which had to
 	// keep it clear of RAX/RDX for the one-operand MUL), AArch64's multiply-high is
 	// orthogonal, so no register needs to be avoided here.
