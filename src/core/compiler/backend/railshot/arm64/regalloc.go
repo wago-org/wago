@@ -4,7 +4,10 @@ package arm64
 
 import (
 	"github.com/wago-org/wago/src/core/runtime"
+	"os"
 )
+
+var expensiveLoopLeaseEnabled = os.Getenv("WAGO_ARM64_NO_EXPENSIVE_LOOP_LEASE") != "1"
 
 type intConstReg struct {
 	typ     machineType
@@ -65,6 +68,8 @@ func (f *fn) reserveLoopIntConsts(h *funcHintView) {
 				}
 				floor := 7
 				if address {
+					floor = 4
+				} else if expensiveLoopLeaseEnabled && h.loopIntConstTypes>>(2*i)&3 == 2 && intConstWideMoveCost(h.loopIntConst[i], 2) >= 3 {
 					floor = 4
 				}
 				if free <= floor {
