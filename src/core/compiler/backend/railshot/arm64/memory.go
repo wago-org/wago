@@ -5,11 +5,14 @@ package arm64
 import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"os"
 
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
+
+var wideZeroStoreEnabled = os.Getenv("WAGO_ARM64_NO_WIDE_ZERO_STORE") != "1"
 
 // memAccessSize returns the byte width of a plain scalar memory instruction.
 func memAccessSize(op byte) int {
@@ -1170,7 +1173,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	}
 	// A constant value stores as an immediate directly (StoreImmIdx materializes
 	// the constant into scratch and stores it) — no long-lived register, no
-	// load-then-store dependency chain. i64 needs two 4-byte immediate stores
+	// load-then-store dependency chain. Nonzero i64 needs two 4-byte immediate stores
 	// (low32 at disp, high32 at disp+4); narrower stores truncate to the low `size`
 	// bytes exactly like a materialized constant would (i64.store8/16/32 route here
 	// too). In guard mode i64 constants use the single native store in the
@@ -1185,7 +1188,11 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		ea, eaOwned, _, disp := f.memAddr(off, size, true, 0, f.guardMode)
 		f.pinned = f.pinned.add(ea)
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
-		if size == 8 {
+		if size == 8 && v == 0 && wideZeroStoreEnabled {
+			// memAddr has proved all eight bytes valid before this store.
+			f.a.StoreImmIdx(linMemReg, ea, disp, 0, 8)
+			f.stats.peep("wide-zero-store")
+		} else if size == 8 {
 			f.a.StoreImmIdx(linMemReg, ea, disp, int32(v), 4)
 			f.a.StoreImmIdx(linMemReg, ea, disp+4, int32(v>>32), 4)
 		} else {
