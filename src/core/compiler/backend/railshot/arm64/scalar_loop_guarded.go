@@ -43,6 +43,7 @@ func (f *fn) unrollGuardedScalarLatch(start int, words []uint32, increment int, 
 		}
 	}
 
+	group := f.planScalarGroupSum(words, counter, temporary)
 	f.a.B = f.a.B[:start]
 	sf := last & (1 << 31)
 	// SUBS temporary,bound,counter rejects subtraction borrow before testing
@@ -70,8 +71,15 @@ func (f *fn) unrollGuardedScalarLatch(start int, words []uint32, increment int, 
 			} else {
 				word = renameScalarLoopReads(word, counter, current)
 			}
+			if i == group.index {
+				word = group.word(word, phase)
+			}
 			f.a.B = binary.LittleEndian.AppendUint32(f.a.B, word)
 		}
+	}
+	if group.index >= 0 {
+		f.a.B = binary.LittleEndian.AppendUint32(f.a.B, 0x0b000000|group.width|uint32(group.scratch)<<16|uint32(group.accumulator)<<5|uint32(group.accumulator))
+		f.stats.peep("scalar-loop-group-sum")
 	}
 	f.a.B = binary.LittleEndian.AppendUint32(f.a.B, last)
 	f.patchBranch19(f.a.Bcond(cc), start)
