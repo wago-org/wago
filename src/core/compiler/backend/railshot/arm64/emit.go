@@ -343,6 +343,44 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		f.spill(right)
 	}
 
+	// The existing three-operand constant cover can also produce a fresh
+	// result. The left pin remains borrowed while the cover selects an
+	// immediate encoding or materializes the constant in a separate register.
+	if f.opt(optThreeOpSink) && dest == regNone && left.elemKind() == ekValue &&
+		(left.st.kind == stLocalReg || left.st.kind == stGlobReg) && right.elemKind() == ekValue && right.st.kind == stConst {
+		dest = f.allocReg(maskOf(left.st.reg))
+		if node.deferredOp() == opAdd && leaRightOK(right) {
+			// Preserve addDisp's ordinary shifted-immediate policy as well as
+			// its independent source register.
+			f.emitLeaAdd(dest, left.st.reg, right, w)
+			f.consumeBlockBelow(node)
+			f.occupy(node, dest)
+		} else if !f.tryThreeOperandLocalSink(node, dest, left, right, w) {
+			panic("arm64: concrete constant result proof mismatch")
+		}
+		f.stats.peep("borrowed-immediate-result")
+		return dest
+	}
+
+	// A newly produced result can also read a borrowed pin directly. The RHS
+	// has already been realized in the ordinary evaluation order; reusing an
+	// owned RHS register avoids both a pin copy and an extra temporary.
+	if f.opt(optThreeOpSink) && dest == regNone && left.elemKind() == ekValue &&
+		(left.st.kind == stLocalReg || left.st.kind == stGlobReg) && right.elemKind() == ekValue &&
+		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) {
+		if right.st.kind == stReg {
+			dest = right.st.reg
+		} else {
+			dest = f.allocReg(maskOf(left.st.reg, right.st.reg))
+		}
+		f.aluRR3(node.deferredOp(), dest, left.st.reg, right.st.reg, w)
+		f.release(rightReleaseAfter)
+		f.consumeBlockBelow(node)
+		f.occupy(node, dest)
+		f.stats.peep("borrowed-binary-result")
+		return dest
+	}
+
 	if dest == regNone {
 		// selectInstr forms (choose the cheapest emission):
 		//  - LEA-style add:  `ADD dst, local, reg|#imm` computes local+x in one insn

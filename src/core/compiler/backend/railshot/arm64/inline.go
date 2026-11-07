@@ -171,7 +171,7 @@ func analyzeInlineCandidates(m *wasm.Module, policy CodegenPolicy) (*InlineRepor
 		}
 		facts[i].callSites = callSites[globalIdx]
 		if recursiveInlineFactsCandidate(m, i, facts[i], policy) {
-			info.Candidate, info.Reason = true, fmt.Sprintf("one-level self-recursive, %dB, %d site(s)", facts[i].bodyBytes, callSites[globalIdx])
+			info.Candidate, info.Reason = true, fmt.Sprintf("bounded self-recursive depth=%d, %dB, %d site(s)", recursiveInlineDepth, facts[i].bodyBytes, callSites[globalIdx])
 		} else {
 			info.Candidate, info.Reason = inlineDecision(facts[i], callSites[globalIdx], policy)
 		}
@@ -451,10 +451,12 @@ func truncName(s string) string {
 // WAGO_INLINE=0/off/false to disable it for A/B runs.
 var inlineEnabled = envDefaultOn(os.Getenv("WAGO_INLINE"))
 
-// recursiveInlineEnabled admits one deliberately narrow non-leaf class: a
+// Recursive inlining admits one deliberately narrow non-leaf class: a
 // small, numeric, single-function module whose direct calls can only target
-// itself. Each call site is expanded one level; calls encountered while lowering
-// that expansion remain native calls, which bounds code growth and compile work.
+// itself. Each call site is expanded at most two levels; deeper calls remain native
+// calls. Separate parameter homes preserve outer values across nested splices.
+const recursiveInlineDepth = 2
+
 var recursiveInlineEnabled = envDefaultOn(os.Getenv("WAGO_RECURSIVE_INLINE"))
 
 // envDefaultOn parses a default-on (opt-out) boolean knob: empty/unset means
@@ -805,6 +807,8 @@ func (t *inlineTarget) integerPairLeaf() bool {
 // a call-free caller that does not advertise preserving its caller's pins.
 // All splice sites share one region. setLocal preserves outstanding references
 // before rebinding it, and declared-local callees eagerly realize their results.
+// Recursive targets reserve one region per admitted depth so nested splices
+// cannot overwrite an outer parameter home.
 func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTable) {
 	if len(callees) == 0 {
 		return
@@ -824,14 +828,20 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 			continue
 		}
 		base := len(f.localType)
-		for _, lt := range targets.localTypes(t) {
-			f.localType = append(f.localType, lt)
-			// compileFuncAttempt rejects the completed frame before any of these
-			// homes are consumed. Accepted native frames are far below uint32
-			// slots, so this representation is exact on every successful path.
-			f.localSlot = append(f.localSlot, uint32(f.nLocalSlots))
-			f.nLocalSlots += lt.stackSlots()
-			f.locals = append(f.locals, localDef{reg: regNone, state: lsMem})
+		depth := 1
+		if t.recursive() {
+			depth = recursiveInlineDepth
+		}
+		for level := 0; level < depth; level++ {
+			for _, lt := range targets.localTypes(t) {
+				f.localType = append(f.localType, lt)
+				// compileFuncAttempt rejects the completed frame before any of these
+				// homes are consumed. Accepted native frames are far below uint32
+				// slots, so this representation is exact on every successful path.
+				f.localSlot = append(f.localSlot, uint32(f.nLocalSlots))
+				f.nLocalSlots += lt.stackSlots()
+				f.locals = append(f.locals, localDef{reg: regNone, state: lsMem})
+			}
 		}
 		if t.tailLoop() && !f.makesCalls {
 			pool := gpPinPoolWithPolicy(nil, true, f.nParams, true, f.policy)
@@ -1077,6 +1087,9 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 		storeLocals = f.inlineTupleStoreLocals(caller)
 	}
 	base := f.inlineBase[t.globalIdx]
+	if t.recursive() {
+		base += f.inlineDepth * int(t.localTypeEnd-t.typeStart)
+	}
 	if t.integerPairLeaf() || t.tupleControl || t.scalarLeaf {
 		// Preserve trap order and the caller's source context before entering
 		// the splice. Only pure arithmetic may remain deferred across it.
@@ -1195,7 +1208,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 	nLocals := int(t.localTypeEnd - t.typeStart)
 	params := t.paramCount()
 	// The p args are the top operands (deepest = param 0). Pop each into its param
-	// local. setLocal takes the absolute index (localBase is still 0 here).
+	// local. setLocal takes the absolute index even inside an outer splice.
 	for i := params - 1; i >= 0; i-- {
 		f.setLocal(nil, base+i, false)
 		if _, _, pinned := f.pinReg(base + i); pinned {

@@ -1825,6 +1825,12 @@ func (a *Asm) NeonXtnBfromH(dst, n Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 } // XTN Vd.8B,Vn.8H
+func (a *Asm) NeonXtnHfromS(dst, n Reg) {
+	a.word(0x0E612800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // XTN Vd.4H,Vn.4S
 func (a *Asm) NeonXtnSfromD(dst, n Reg) {
 	a.word(0x0EA12800 | r(n)<<5 | r(dst))
 	if regallocCheckEnabled {
@@ -1890,6 +1896,7 @@ func (a *Asm) NeonRev32H(dst, n Reg) {
 }
 
 func (a *Asm) NeonZip1B(dst, n, m Reg) { a.neon3(0x4E003800, 1, dst, n, m) }
+func (a *Asm) NeonUzp2S(dst, n, m Reg) { a.neon3(0x4E005800, 4, dst, n, m) }
 func (a *Asm) NeonZip1H(dst, n, m Reg) { a.neon3(0x4E003800, 2, dst, n, m) }
 func (a *Asm) NeonZip1S(dst, n, m Reg) { a.neon3(0x4E003800, 4, dst, n, m) }
 func (a *Asm) NeonZip1D(dst, n, m Reg) { a.neon3(0x4E003800, 8, dst, n, m) }

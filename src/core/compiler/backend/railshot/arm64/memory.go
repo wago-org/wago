@@ -497,7 +497,6 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
 	bcKind, bcIdx := uint8(0), uint32(0)
-	loadDefinedLocal := f.loadDefinedAddressLocal(e)
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
 		bcKind, bcIdx = 1, uint32(e.st.idx)
@@ -521,16 +520,16 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	// ABI slots are 64-bit words; memory32 consumes only the low i32 bits. Skip
 	// the canonicalization when the producer already guarantees a zero upper
 	// half (notably every ARM64-backed Wasm i32 local).
-	if !upper32Zero || loadDefinedLocal {
+	if !upper32Zero {
 		if regallocCheckEnabled {
 			f.checkZeroExtendMemAddr(ea)
 		} else {
 			f.a.MovReg32(ea, ea)
 		}
-		if loadDefinedLocal && upper32Zero {
-			f.stats.peep("memory-address-load-rename")
-		}
 	} else {
+		if f.loadDefinedAddressLocal(e) {
+			f.stats.peep("memory-address-canonical-load")
+		}
 		f.stats.peep("memory-address-zext-elim")
 		// Keep later function entry addresses stable: move the removed hot word
 		// to this function's cold tail rather than shifting the module layout.
@@ -573,7 +572,11 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	if rangeExtent > leaDisp {
 		leaDisp = rangeExtent
 	}
-	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
+	certificateExtent := f.alignedAddressExtent(bcKind, bcIdx, leaDisp)
+	if certificateExtent > leaDisp {
+		f.stats.peep("aligned-bounds-certificate")
+	}
+	f.boundsCertUpdate(bcKind, bcIdx, certificateExtent)
 	if diagnosticsEnabled && f.stats != nil {
 		if bcKind != 0 && f.inLoop() {
 			f.stats.addBoundsInLoop()
@@ -860,17 +863,22 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 	return extent
 }
 
-// boundsCertCovers reports whether an active straight-line certificate already
+// boundsCertCovers reports whether an active certificate already
 // proves this access in-bounds (P6.1): the same keyable source, with this
 // access's extent (off+size) within the proven extent. A check proves
 // source+extent <= memBytes; memBytes only ever grows, so a later access on the
 // same source value with a smaller-or-equal extent is in bounds. The certificate
-// is dropped by invalidateBoundsCert at flush/flushBelow (every call + control
+// in the ordinary cache is dropped by invalidateBoundsCert at flush/flushBelow (every call + control
 // join), memory.grow, and a set of the certified source — exactly the set that
 // makes the proving check dominate this one on every path, so eliding is sound.
+// Scoped entry certificates additionally require no source write anywhere in
+// their lexical scope; see prepareScopedBounds.
 func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
 	if kind == 0 {
 		return false
+	}
+	if f.scopedBoundsCovers(kind, idx, extent) {
+		return true
 	}
 	if !f.opt(optMultiBoundsCert) {
 		c := &f.boundsCerts[0]
@@ -934,6 +942,12 @@ func (f *fn) invalidateBoundsCert() {
 
 // invalidateBoundsCertFor drops only the proof whose address source changed.
 func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
+	for i := range f.scopedBounds {
+		c := &f.scopedBounds[i]
+		if c.cert.kind == kind && c.cert.idx == idx {
+			*c = scopedBoundsCert{}
+		}
+	}
 	for i := range f.boundsCerts {
 		c := &f.boundsCerts[i]
 		if c.kind == kind && c.idx == idx {
@@ -1145,6 +1159,15 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// Do this before evaluating store operands; the alias-aware load pass below
 	// may run after the address and value have already claimed registers.
 	f.materializePendingTraps()
+	if size == 1 {
+		if end, ok := f.inspectByteStorePair(r, off); ok {
+			if err := r.JumpTo(end); err != nil {
+				return err
+			}
+			size = 2
+			f.stats.peep("byte-store-pair")
+		}
+	}
 	// A constant value stores as an immediate directly (StoreImmIdx materializes
 	// the constant into scratch and stores it) — no long-lived register, no
 	// load-then-store dependency chain. i64 needs two 4-byte immediate stores

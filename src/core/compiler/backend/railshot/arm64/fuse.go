@@ -364,7 +364,7 @@ func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, er
 	}
 	loopHeader := false
 	counter := -1
-	if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
+	if f.opt(optCountedLoopLatch) && !f.interruptible && (!f.usesCalls || f.inCallFreeLoop()) && labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
 		loop := &f.ctrl[len(f.ctrl)-1]
 		counter, loopHeader = localAddressKey(f.s.arg0(top))
 		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&

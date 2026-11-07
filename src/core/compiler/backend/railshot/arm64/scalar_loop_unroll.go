@@ -2,9 +2,12 @@
 
 package arm64
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"os"
+)
 
-var scalarLoopUnrollEnabled = true
+var scalarLoopUnrollEnabled = os.Getenv("WAGO_ARM64_NO_SCALAR_LOOP_UNROLL") != "1"
 
 // scalarLoopWord proves a position-independent integer instruction with no
 // memory or control effect. It returns the destination, regNone for flag-only/NOP.

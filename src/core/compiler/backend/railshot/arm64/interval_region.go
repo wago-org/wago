@@ -538,6 +538,10 @@ func (f *fn) demoteIntervalLocalRefs(x int) {
 // Dynamic residency is local to one native straight-line region. Canonicalize
 // every local and operand before a control edge, so all predecessors agree.
 func (f *fn) clearIntervalControlRegion() {
+	f.canonicalizeIntervalControlRegion(nil)
+}
+
+func (f *fn) canonicalizeIntervalControlRegion(condition *elem) {
 	if !f.intervalControl || f.intervalActive == 0 {
 		return
 	}
@@ -546,7 +550,11 @@ func (f *fn) clearIntervalControlRegion() {
 	// paths. Save operands and dirty locals before resuming next-use proofs.
 	next := f.intervalNext
 	f.intervalNext = false
-	f.flush()
+	if condition == nil {
+		f.flush()
+	} else {
+		f.flushBelow(condition)
+	}
 	for reg, x := range f.intervalOwner {
 		if x < 0 {
 			continue

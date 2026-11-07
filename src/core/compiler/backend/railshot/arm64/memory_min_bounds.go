@@ -41,6 +41,11 @@ func (f *fn) unsignedAddressMaximum(e *elem, wide bool, budget *int) uint64 {
 			}
 			return value
 		}
+		if !wide {
+			if maximum, ok := f.localAddressMaximum(e); ok {
+				return maximum
+			}
+		}
 		return limit
 	}
 	if e.elemKind() != ekDeferred {

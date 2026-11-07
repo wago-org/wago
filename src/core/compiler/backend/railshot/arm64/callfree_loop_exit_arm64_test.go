@@ -4,10 +4,8 @@ package arm64
 
 import (
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/arm64spike"
 )
 
 func callFreeLoopExitModule(t testing.TB) *wasm.Module {
@@ -18,6 +16,7 @@ func callFreeLoopExitModule(t testing.TB) *wasm.Module {
 			0x01, 0x01, 0x7f, // one i32 local
 			0x20, 0x00, 0x21, 0x01, // x = n
 			0x02, 0x40, // block
+			0x01,       // keep this fixture on the ordinary cold-exit path
 			0x03, 0x40, // loop
 			0x20, 0x01, 0x45, 0x0d, 0x01, // br_if block (x == 0)
 			0x20, 0x01, 0x41, 0x01, 0x6b, 0x21, 0x01, // x--
@@ -40,6 +39,7 @@ func TestCallFreeLoopExitReconciliationIsColdArm64(t *testing.T) {
 			Optimizations: map[string]bool{
 				"inline":                  false,
 				"callfree-loop-cold-exit": enabled,
+				"counted-loop-latch":      false, // isolate cold-edge placement
 			},
 		})
 		if err != nil {
@@ -66,18 +66,12 @@ func TestCallFreeLoopExitReconciliationIsColdArm64(t *testing.T) {
 
 func TestCallFreeLoopExitExecArm64(t *testing.T) {
 	m := callFreeLoopExitModule(t)
-	cm, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"inline": false}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	code, err := arm64spike.MapExec(cm.Code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
-	for _, n := range []uintptr{0, 1, 2, 17, 255} {
-		if got := arm64spike.Call2(entry, n, 0); uint32(got) != uint32(n) {
-			t.Fatalf("f(%d) = %d, want %d", n, uint32(got), n)
+	// Calls retain the native stack fence, which reads instance basedata.
+	// The ordinary runtime wrapper establishes that context; bare Call2 does not.
+	for _, n := range []uint64{0, 1, 2, 17, 255} {
+		got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"inline": false}}, n)
+		if err != nil || uint32(got) != uint32(n) {
+			t.Fatalf("f(%d)=%d, err=%v", n, uint32(got), err)
 		}
 	}
 }

@@ -105,7 +105,13 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		}
 
 		if f.intervalControl && intervalRegionBoundary(op, f.intervalCalls) {
-			f.clearIntervalControlRegion()
+			if !f.clearIntervalCondition(op) {
+				f.clearIntervalControlRegion()
+			}
+		}
+		frameForwardSafe := frameForwardOpcode(op)
+		if !frameForwardSafe {
+			f.frameForwardEnd = 0
 		}
 		f.prepareStoreForward(op)
 		switch op {
@@ -145,6 +151,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			} else {
 				err = f.emitPlain(r, op)
 			}
+		}
+		if !frameForwardSafe {
+			f.frameForwardEnd = 0
 		}
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			f.switchProfileOrigin(previous)
@@ -187,12 +196,18 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x1a: // drop
 		f.dropValue()
 	case 0x1b: // select
+		if done, err := f.trySelectSubtract(r); done || err != nil {
+			return err
+		}
 		if done, err := f.trySelectLocalSet(r); done || err != nil {
 			return err
 		}
 		f.emitSelect()
 	case 0x1c: // select t (typed) — consume the declared result types
 		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+			return err
+		}
+		if done, err := f.trySelectSubtract(r); done || err != nil {
 			return err
 		}
 		if done, err := f.trySelectLocalSet(r); done || err != nil {
@@ -223,7 +238,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if forwarded {
 			x = f.inlineForward[x32]
 		}
-		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && (!f.usesCalls || f.inCallFreeLoop()) && len(f.ctrl) >= 2 && f.depth() == 0 {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}
@@ -266,6 +281,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			// Specialized tee rewrites bypass setLocal. Invalidate first; a failed
 			// match falls through and installs the exact source fact below.
 			f.setFactsForLocal(int(x)+f.localBase, 0)
+			if done, err := f.tryArithmeticTeeBranch(r, int(x)+f.localBase); done || err != nil {
+				return err
+			}
 			if done, err := f.tryTeeCompareBrIf(r, int(x)+f.localBase); done || err != nil {
 				return err
 			}
@@ -1307,6 +1325,17 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 			skipFrom = f.s.baseOfValentBlock(e)
 		}
 	}
+	if e != nil && e.elemKind() == ekValue && e.st.kind == stMemRef &&
+		(e.st.typ == mtI32 || e.st.typ == mtI64) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink)) &&
+		(e.st.memBorrow() == x || e.st.memAliasLocal() == x) {
+		// A load reads its complete effective address before writing its result.
+		// Let condenseInto load directly into the assigned pin, including when
+		// that pin carries the old address. Earlier stack reads are still
+		// realized below this root before the local is overwritten.
+		skipFrom = e
+		f.stats.peep("local-memory-sink")
+	}
+
 	f.realizeLocalRefs(x, skipFrom)
 	if reader != nil {
 		f.activateIntervalLocal(x, reader.Offset(), false)
@@ -1358,6 +1387,14 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 			if e.st.reg != pr {
 				f.a.FmovReg(pr, e.st.reg, f64) // borrowed float local → direct move
 			}
+		} else if f.opt(optFloatMemoryBorrow) && e.elemKind() == ekValue && e.st.kind == stMemRef {
+			// The address is an integer carrier. Existing local-reference realization
+			// has preserved the destination's old value; load directly into its pin.
+			f.loadFMemRef(pr, e)
+			f.releaseMemRef(e.st)
+			f.occupyF(e, pr)
+			f.releaseF(pr)
+			f.stats.peep("float-load-local-sink")
 		} else {
 			xmm := f.materializeF(e)
 			if xmm != pr {
@@ -1399,6 +1436,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	r := f.materialize(e)
 	f.canonicalizeI32LocalAssignment(x, r, assignedFacts)
 	f.st64(SP, f.localOff(x), r) // helper hides the scaled-offset fallback (§6.1)
+	f.rememberFrameStore(x, r)
 	f.locals[x].state = lsMem
 	if !tee {
 		f.erase(e)

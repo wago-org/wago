@@ -60,6 +60,10 @@ const (
 	ctrlLoopConstScope
 )
 
+// Kind-specific upper bits: loops store scoped-constant leases here; ifs
+// have no such leases and use one bit for terminal local liveness.
+const ctrlIfLocalsDie ctrlFlags = 1 << 12
+
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
 	kind       ctrlKind
@@ -306,6 +310,8 @@ func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
 	f.pinned = f.pinned.add(p2)
 	p3 := f.allocReg(0)
 	f.pinned = f.pinned.add(p3)
+	groupAddr := f.allocReg(0)
+	f.pinned = f.pinned.add(groupAddr)
 	f.a.MovImm64(p1, 0)
 	f.a.MovImm64(p2, 0)
 	f.a.MovImm64(p3, 0)
@@ -329,14 +335,16 @@ func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
 	}
 
 	group := f.a.Len()
-	f.a.LoadIdx(X16, linMemReg, addrReg, 0, 8, false, true)
+	// The non-wrapping range proof covers all four loads. Form their native
+	// base once and load adjacent values in pairs, retaining the four
+	// independent modular accumulation chains.
+	f.a.Add64(groupAddr, linMemReg, addrReg)
+	f.a.LdpOffset(X16, X17, groupAddr, 0)
 	f.a.Add64(accReg, accReg, X16)
-	f.a.LoadIdx(X16, linMemReg, addrReg, 8, 8, false, true)
-	f.a.Add64(p1, p1, X16)
-	f.a.LoadIdx(X16, linMemReg, addrReg, 16, 8, false, true)
+	f.a.Add64(p1, p1, X17)
+	f.a.LdpOffset(X16, X17, groupAddr, 16)
 	f.a.Add64(p2, p2, X16)
-	f.a.LoadIdx(X16, linMemReg, addrReg, 24, 8, false, true)
-	f.a.Add64(p3, p3, X16)
+	f.a.Add64(p3, p3, X17)
 	f.a.AddImm32(addrReg, addrReg, 32)
 	f.a.SubImm32(counterReg, counterReg, 4)
 	f.a.CmpImm32(counterReg, 4)
@@ -362,7 +370,8 @@ func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
 	f.a.Add64(accReg, accReg, p1)
 	f.a.Add64(accReg, accReg, p2)
 	f.a.Add64(accReg, accReg, p3)
-	f.pinned = f.pinned.remove(p3).remove(p2).remove(p1)
+	f.pinned = f.pinned.remove(groupAddr).remove(p3).remove(p2).remove(p1)
+	f.release(groupAddr)
 	f.release(p3)
 	f.release(p2)
 	f.release(p1)
@@ -385,7 +394,7 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
 	if f.intervalControl && f.intervalActive != 0 {
 		return false, nil
 	}
-	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls || len(f.ctrl) < 2 || f.depth() != 0 {
+	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls && !f.inCallFreeLoop() || len(f.ctrl) < 2 || f.depth() != 0 {
 		return false, nil
 	}
 	loop := &f.ctrl[len(f.ctrl)-1]
@@ -401,39 +410,9 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
 	if !pinned || isFloat {
 		return false, nil
 	}
-	r2 := *r
-	op, err := r2.Byte()
-	if err != nil || op != 0x41 {
+	latchEnd, ok := inspectCountedLoopLatchTail(r, x)
+	if !ok {
 		return false, nil
-	}
-	one, err := r2.I32()
-	if err != nil || one != 1 {
-		return false, nil
-	}
-	for _, want := range []byte{0x6b, 0x21} { // i32.sub; local.set
-		op, err = r2.Byte()
-		if err != nil || op != want {
-			return false, nil
-		}
-	}
-	set, err := r2.U32()
-	if err != nil || int(set) != x {
-		return false, nil
-	}
-	op, err = r2.Byte()
-	if err != nil || op != 0x0c {
-		return false, nil
-	}
-	label, err := r2.U32()
-	if err != nil || label != 0 {
-		return false, nil
-	}
-	latchEnd := r2.Offset()
-	for range 2 {
-		op, err = r2.Byte()
-		if err != nil || op != 0x0b {
-			return false, nil
-		}
 	}
 	// The replacement branch will be emitted one instruction after the current
 	// position. Reject oversized functions before changing reader or local state;
@@ -810,6 +789,14 @@ func (f *fn) convergeFrameBranchStateWithDead(fr *ctrlFrame, deadGP, deadFP regM
 }
 
 func (f *fn) convergeFrameEntryState(fr *ctrlFrame) {
+	if f.frameLocalsDie(fr) {
+		var state packedLocStates
+		for x := 0; x < f.nLocals; x++ {
+			state.set(x, f.locals[x].state)
+		}
+		f.ensureCtrlMerge(fr).entryState = state
+		return
+	}
 	state := f.frameEntryState(fr)
 	f.convergeEdgeTo(&state)
 	f.setFrameEntryState(fr, state)
@@ -1381,7 +1368,7 @@ func (f *fn) branchEdgeToMerge1(fr *ctrlFrame, d int) {
 // edge into fr's branch target. Function-frame targets (returns) need nothing —
 // the locals die — so nothing is emitted, keeping conditional returns free.
 func (f *fn) convergeBranchLocals(fr *ctrlFrame) {
-	if fr.kind == cfFunc {
+	if fr.kind == cfFunc || f.frameLocalsDie(fr) {
 		return
 	}
 	if callFreeLoopRegionEnabled && (fr.has(ctrlLoopCallFree) || fr.has(ctrlCallFreeRegion)) {
@@ -1402,6 +1389,7 @@ func (f *fn) popCtrl() {
 		f.loopLocalParams = loopLocalParamHomes{}
 	}
 	fr := f.ctrl[last]
+	f.releaseScopedBounds(last + 1)
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:last]
 	if uint32(last+1) != f.innermostLoop {
@@ -1700,7 +1688,20 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	f.setInlineNonzeroPredicate(predicate)
+	f.prepareScopedBounds(r)
+	if kind == cfLoop && len(f.ctrl) == 1 {
+		f.rootLoopRangeLocal, f.rootLoopRangeMaximum = 0, 0
+		if !f.unreachable {
+			f.prepareRootLoopRange(r)
+		}
+	}
+
 	fr.set(ctrlEntryUnreachable, f.unreachable)
+	if kind == cfIf && !f.unreachable && f.terminalScalarIf(r, pN, rN) {
+		fr.set(ctrlIfLocalsDie, true)
+		f.stats.peep("terminal-if-local-stores-elide")
+	}
+
 	if f.straightLineBlock(r, kind, pN, rN, res0, signature) {
 		fr.controlSite = straightLineBlockSite
 	}
@@ -1715,6 +1716,22 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
 	fr.set(ctrlCallFreeRegion, callFreeLoopRegionEnabled && kind != cfLoop && f.inCallFreeLoop())
+	// A bounded block wrapping a call-free loop can retain the same register
+	// invariant through its exit. Establish every pin before the region so a
+	// preceding call cannot leave a stale register marked live at the merge.
+	if callFreeLoopRegionEnabled && kind == cfBlock && !f.unreachable && pN == 0 && rN == 0 &&
+		f.usesCalls && !f.moduleEH && len(f.customInstructions) == 0 && f.nLocals <= 64 && r.BytesLeft() <= 4096 {
+		if next, ok := r.Peek(); ok && next == 0x03 {
+			var modified [64]uint16
+			sets, hasCall := scanLoopSetLocals(r, f.classifier, modified[:0], nil)
+			if sets != nil && !hasCall {
+				f.prepareCallFreeLoopEntry()
+				fr.set(ctrlCallFreeRegion, true)
+				f.stats.peep("callfree-loop-wrapper")
+			}
+		}
+	}
+
 	if kind == cfLoop && !f.unreachable && ((diagnosticsEnabled && f.stats != nil) || f.usesCalls && (f.pinnedLocalMask != 0 || f.fpinnedLocalMask != 0)) {
 		base := len(f.loopSetLocals)
 		uses, collectConsts := f.scopedLoopConstUses()
@@ -1828,6 +1845,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				f.stats.peep("loop-local-params")
 				return nil
 			}
+			if pN == 0 && rN == 0 && f.loopMemory {
+				f.emitIntegerByteMap(r)
+			}
 			if fr.has(ctrlLoopCallFree) && callFreeLoopEntryEnabled {
 				// Keep live pins in registers and reload only memory-resident ones.
 				// With no call in the body, every backedge preserves that state.
@@ -1852,7 +1872,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			}
 			f.preloadScopedLoopConsts(&fr)
 			f.preloadScopedFloatConsts(r)
-			f.alignLoopHeader()
+			if !f.alignCountedLoopBody(r, &fr) {
+				f.alignLoopHeader()
+			}
 			fr.controlSite = f.a.Len()
 			f.emitInterruptCheck(true)
 		}
@@ -2622,7 +2644,7 @@ func (f *fn) opElse() error {
 		// (#68's root cause was skipping this). Converge to the end's recorded
 		// state; as the chronologically first end edge it usually fixes it.
 		f.recordGCBranchResults(fr, fr.resultN)
-		if !fr.has(ctrlCallFreeRegion) {
+		if !fr.has(ctrlCallFreeRegion) && !f.frameLocalsDie(fr) {
 			f.convergeFrameBranchState(fr)
 		}
 		if fr.has(ctrlRegMerge1) {
@@ -2639,7 +2661,9 @@ func (f *fn) opElse() error {
 	f.setDepthTypesWithGCRoots(f.frameDepthTypesForFrame(fr, true), frameGCRootFlags(f.frameBaseGCRoots(fr), f.frameParamGCRoots(fr)))
 	// The else body is entered via the if's false edge: locals are exactly in the
 	// header-snapshot state (no code).
-	if fr.has(ctrlCallFreeRegion) {
+	if f.frameLocalsDie(fr) {
+		f.restoreTerminalIfEntry(fr)
+	} else if fr.has(ctrlCallFreeRegion) {
 		f.markPinnedLocalsDirty()
 	} else {
 		f.setLocalsState(f.frameEntryState(fr))
@@ -2727,7 +2751,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	if fallthroughReachable {
 		f.recordGCBranchResults(&fr, fr.resultN)
 		resultGCRoots = f.frameResultGCRoots(&fr)
-		if fr.kind != cfLoop && !fr.has(ctrlCallFreeRegion) {
+		if fr.kind != cfLoop && !fr.has(ctrlCallFreeRegion) && !f.frameLocalsDie(&fr) {
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
@@ -2944,6 +2968,10 @@ func (f *fn) branchToFrame(fi int, after ...*wasm.Reader) {
 }
 
 func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
+	return f.opBrWithArithmeticFlags(r, conditional, -1)
+}
+
+func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeticAt int) error {
 	if f.unreachable {
 		if conditional {
 			// still need to consume nothing extra; label follows
@@ -3002,7 +3030,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	a, d := fr.branchArity(), f.depth()
 	f.flush()
 	testAt := f.a.Len()
-	f.a.CmpImm32(creg, 0) // retained for non-empty edges, which may rewrite creg
+	if !f.reuseArithmeticZeroFlags(arithmeticAt, creg) {
+		f.a.CmpImm32(creg, 0) // retained when the arithmetic flags cannot be reused
+	}
 	if cOwned {
 		f.release(creg)
 	}
@@ -3645,3 +3675,43 @@ func brTableSmallLabelsUnique(labels []uint32) bool {
 
 // ehPayloadOff is the record offset of exception payload word i.
 func ehPayloadOff(i int) int32 { return ehTagOff + 8 + int32(i)*8 }
+
+// inspectCountedLoopLatchTail shares the exact decrement/backedge proof with
+// header alignment. The reader starts just after local.get counter.
+func inspectCountedLoopLatchTail(r *wasm.Reader, x int) (int, bool) {
+	r2 := *r
+	op, err := r2.Byte()
+	if err != nil || op != 0x41 {
+		return 0, false
+	}
+	one, err := r2.I32()
+	if err != nil || one != 1 {
+		return 0, false
+	}
+	for _, want := range []byte{0x6b, 0x21} { // i32.sub; local.set
+		op, err = r2.Byte()
+		if err != nil || op != want {
+			return 0, false
+		}
+	}
+	set, err := r2.U32()
+	if err != nil || int(set) != x {
+		return 0, false
+	}
+	op, err = r2.Byte()
+	if err != nil || op != 0x0c {
+		return 0, false
+	}
+	label, err := r2.U32()
+	if err != nil || label != 0 {
+		return 0, false
+	}
+	latchEnd := r2.Offset()
+	for range 2 {
+		op, err = r2.Byte()
+		if err != nil || op != 0x0b {
+			return 0, false
+		}
+	}
+	return latchEnd, true
+}

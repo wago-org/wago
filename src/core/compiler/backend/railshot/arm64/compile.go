@@ -243,7 +243,12 @@ type fn struct {
 	controlBaseTypeN uint8
 	// localFactsEnabled admits assignment-version facts only in straight-line
 	// bodies. Facts reuse an otherwise-unused byte in each localDef.
-	localFactsEnabled bool
+	localFactsEnabled      bool
+	localAddressBounds     []uint32
+	localAddressAligned8   uint64
+	rootAddressLoopScanned bool
+	rootLoopRangeLocal     uint8
+	rootLoopRangeMaximum   uint32
 	// loadDefinedLocals marks the first 64 locals updated by loading through their
 	// own prior value. Their explicit W-register address rename is a useful
 	// dependency break on Apple ARM cores and is retained by memory lowering.
@@ -368,6 +373,8 @@ type fn struct {
 	// retains independent proofs for interleaved arrays without per-local state.
 	boundsCerts    [8]boundsCert
 	nextBoundsCert uint8
+	// Scoped proofs carry only unchanged locals and expire when their frame pops.
+	scopedBounds [8]scopedBoundsCert
 
 	// globalReg[g] value-pins hot mutable-int global g in a register for the whole
 	// function, sharing the GP pin pool with hot locals (WARP's model). The value is
@@ -476,6 +483,11 @@ type fn struct {
 	// consult its preserves-caller-pins bit instead of retaining a second table.
 	calleeHints []funcHints
 
+	// One-entry native frame-store fact. No register is reserved: a bounded
+	// native-word scan checks source writes and aliasing before each reuse.
+	frameForwardEnd uint32
+	frameForwardOff int32
+	frameForwardReg Reg
 	// One-entry linear-memory store forwarding window. The value register is
 	// protected in f.pinned until an exact load consumes it or any non-local.get
 	// opcode invalidates it; address identity is deliberately limited to a local.
@@ -3416,6 +3428,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			i++
 		}
 	}
+	if hints.flags.has(hintTouchesMemory) {
+		f.prepareLocalAddressBounds(c.BodyBytes)
+	}
 	if cap(f.localSlot) < nLocals {
 		f.localSlot = make([]uint32, nLocals)
 	} else {
@@ -3850,6 +3865,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			}
 		}
 		f.finalizePeepholes(internalOff)
+		f.finalizeNativeLoopConsts(internalOff)
+		f.finalizeLinearLoadSpans(internalOff)
+		f.finalizeScalarLoopUnroll(internalOff)
 		if err := f.emitFloatConstPool(); err != nil {
 			return nil, nil, 0, err
 		}
@@ -3893,6 +3911,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	f.finalizePeepholes()
+	f.finalizeNativeLoopConsts()
+	f.finalizeLinearLoadSpans()
+	f.finalizeScalarLoopUnroll()
 	if err := f.emitFloatConstPool(); err != nil {
 		return nil, nil, 0, err
 	}

@@ -13,6 +13,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+var floatMemoryBorrowEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MEMORY_BORROW") != "1"
+
 var floatLiteralPoolEnabled = os.Getenv("WAGO_ARM64_NO_FCONST_POOL") != "1"
 
 type floatPoolConst struct {
@@ -988,7 +990,18 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		size = 8
 	}
 	f.materializePendingTraps()
-	xmm := f.materializeF(f.popValue())
+	value := f.popValue()
+	var xmm Reg
+	owned := true
+	if f.opt(optFloatMemoryBorrow) {
+		xmm, owned = f.operandRegF(value)
+		if !owned {
+			f.stats.peep("float-store-borrow")
+		}
+	} else {
+		xmm = f.materializeF(value)
+	}
+	previousPins := f.fpinned
 	f.fpinned = f.fpinned.add(xmm)
 	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
@@ -996,8 +1009,10 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		f.a.StrFIdx(base, ea, xmm, disp, f64)
 		f.release(base)
 		f.release(ea)
-		f.fpinned = f.fpinned.remove(xmm)
-		f.releaseF(xmm)
+		f.fpinned = previousPins
+		if owned {
+			f.releaseF(xmm)
+		}
 		return nil
 	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
@@ -1006,11 +1021,13 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StrFIdx(linMemReg, ea, xmm, disp, f64)
 	f.pinned = f.pinned.remove(ea)
-	f.fpinned = f.fpinned.remove(xmm)
+	f.fpinned = previousPins
 	if eaOwned {
 		f.release(ea)
 	}
-	f.releaseF(xmm)
+	if owned {
+		f.releaseF(xmm)
+	}
 	return nil
 }
 

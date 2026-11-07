@@ -85,3 +85,43 @@ func TestCountedLoopLatchArm64RejectsUnsafeShapes(t *testing.T) {
 		})
 	}
 }
+
+func TestCountedLoopLatchCallFreeRegionArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	savedInline := inlineEnabled
+	inlineEnabled = false
+	t.Cleanup(func() { inlineEnabled = savedInline })
+	for _, callInside := range []bool{false, true} {
+		body := []byte{0x01, 0x01, 0x7f, 0x02, 0x40, 0x03, 0x40,
+			0x20, 0x00, 0x45, 0x0d, 0x01,
+			0x20, 0x01, 0x41, 0x01, 0x6a}
+		if callInside {
+			body = append(body, 0x10, 0x01)
+		}
+		body = append(body, 0x21, 0x01,
+			0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, 0x0c, 0x00,
+			0x0b, 0x0b, 0x20, 0x01)
+		if !callInside {
+			body = append(body, 0x10, 0x01)
+		}
+		body = append(body, 0x0b)
+		m := modFuncs(t,
+			funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: body},
+			funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x0b}},
+		)
+		for _, n := range []uint64{0, 1, 2, 7, 100} {
+			var stats ModuleStats
+			got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Stats: &stats}, n)
+			if err != nil || got != n {
+				t.Fatalf("callInside=%v n=%d: got %d, err=%v", callInside, n, got, err)
+			}
+			want := 1
+			if callInside {
+				want = 0
+			}
+			if hits := stats.Funcs[0].Peephole["counted-loop-latch"]; hits != want {
+				t.Fatalf("callInside=%v: fused=%d want=%d", callInside, hits, want)
+			}
+		}
+	}
+}
