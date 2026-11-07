@@ -1320,6 +1320,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	// Capture the semantic result before condensing or moving it. Every assignment
 	// replaces the current straight-line version of the local.
 	assignedFacts := e.st.valueFacts()
+	f.rememberPrivateLocalConstant(x, reader)
 	f.setFactsForLocal(x, assignedFacts)
 	// In-place self-update `local.set $x (binop (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying

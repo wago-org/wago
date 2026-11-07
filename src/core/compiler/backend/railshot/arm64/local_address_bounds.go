@@ -121,6 +121,10 @@ func (f *fn) localAddressMaximum(e *elem) (uint64, bool) {
 	if e == nil || e.elemKind() != ekValue || e.st.typ != mtI32 || (e.st.kind != stLocalRef && e.st.kind != stLocalReg) {
 		return 0, false
 	}
+	if value, ok := f.privateLocalConstant(e.st.idx); ok && value.typ == mtI32 {
+		f.stats.peep("private-local-address-bound")
+		return uint64(uint32(value.cval)), true
+	}
 	if f.rootLoopRangeLocal != 0 && len(f.ctrl) > 1 && f.ctrl[1].kind == cfLoop && uint(e.st.idx)+1 == uint(f.rootLoopRangeLocal) {
 		return uint64(f.rootLoopRangeMaximum), true
 	}
