@@ -38,6 +38,9 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	inner, cc := node, condNE
 	if node.deferredOp() == opEqz {
 		inner, cc = f.s.arg0(node), condE
+	} else if masked, condition, ok := f.maskedZeroCompare(node); ok {
+		inner, cc = masked, condition
+		f.stats.peep("masked-zero-compare")
 	} else if node.deferredOp() != opAnd || node.st.typ != mtI32 {
 		return 0, false
 	}
