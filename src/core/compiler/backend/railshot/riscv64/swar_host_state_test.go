@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -67,6 +68,12 @@ func TestSWARHostModulePolicySnapshotSourceIndicesAndBounds(t *testing.T) {
 		case "start":
 			bad = modifySection(hostImportModule(1, 0, nil, false), 10, 8, []byte{1}, false)
 		}
+		if shape == "count" {
+			if _, err := compileSWARHostModule(bad, emissionMode{production: true, interruptible: true}); err != nil {
+				t.Fatal("257 imports", err)
+			}
+			continue
+		}
 		if image, err := compileSWARHostModule(bad, emissionMode{production: true, interruptible: true}); image != nil || err == nil {
 			t.Fatal("private host unsupported shape", shape, err)
 		}
@@ -84,7 +91,8 @@ func TestSWARHostModulePolicySnapshotSourceIndicesAndBounds(t *testing.T) {
 	if image, err := compileSWARHostModule(bad, emissionMode{production: true, interruptible: true}); image != nil || err == nil {
 		t.Fatal("hidden normally validated unsupported function admitted", err)
 	}
-	// A bounded source can still have too many aggregate functions.
+	// This population now passes directory admission, but its large host thunk
+	// image still exceeds the independent aggregate code budget.
 	fs := make([]fixtureFunc, 769)
 	for i := range fs {
 		fs[i] = fixtureFunc{body: []byte{0x0b}, unexported: i != 0}
@@ -97,8 +105,8 @@ func TestSWARHostModulePolicySnapshotSourceIndicesAndBounds(t *testing.T) {
 	bad = modifySection(bad, 3, 2, imports, false)
 	bad = modifySection(bad, 7, 7, uleb([]byte{1, 1, 'a', 0}, 256), true)
 	swarValidatedHostSource(t, bad)
-	if image, err := compileSWARHostModule(bad, emissionMode{production: true, interruptible: true}); image != nil || err == nil {
-		t.Fatal("aggregate1025 functions admitted", err)
+	if image, err := compileSWARHostModule(bad, emissionMode{production: true, interruptible: true}); image != nil || err == nil || !strings.Contains(err.Error(), "aggregate code bound") {
+		t.Fatal("aggregate code budget lost", err)
 	}
 }
 

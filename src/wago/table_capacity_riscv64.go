@@ -32,7 +32,7 @@ func (c *Compiled) setRV64ExecutionTableCapacities(values []uint32) {
 }
 
 func railshotStoreTableCapacities(c *Compiled, shapes []frontend.TableRuntimeShape) error {
-	if len(shapes) != c.tableCount() || len(shapes) > railshot.MaxFunctions {
+	if len(shapes) != c.tableCount() || len(shapes) > railshot.MaxModuleTables {
 		return fmt.Errorf("RV64 table reservation directory count")
 	}
 	different := false
@@ -64,7 +64,7 @@ func railshotValidateTableCapacities(c *Compiled) error {
 	if len(values) == 0 {
 		return nil
 	}
-	if len(values) != c.tableCount() || len(values) > railshot.MaxFunctions {
+	if len(values) != c.tableCount() || len(values) > railshot.MaxModuleTables {
 		return fmt.Errorf("RV64 table reservation directory count")
 	}
 	for index, value := range values {

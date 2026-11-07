@@ -26,7 +26,7 @@ func rv64NativeFunctionAttachment(owner *Instance, index int) (*InstanceExport, 
 		export, ok := owner.imports[string(key)].(*InstanceExport)
 		return export, ok
 	}
-	if len(c.Imports) > railshot.MaxHostFunctionImports {
+	if len(c.Imports) > railshot.MaxFunctionImports {
 		return nil, false
 	}
 	state := &owner.ensurePluginState().railshotInvocation

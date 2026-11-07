@@ -75,7 +75,7 @@ var nativeImportExecutionFields = [...]int32{
 }
 
 func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uintptr, importIndex uint32) ([]byte, error) {
-	if callee.entry == 0 || callee.entry&15 != 0 || callee.home == 0 || callee.home&7 != 0 || callee.context == 0 || callee.context&7 != 0 || callerHome == 0 || callerHome&7 != 0 || callerContext == 0 || callerContext&7 != 0 || importIndex >= MaxHostFunctionImports {
+	if callee.entry == 0 || callee.entry&15 != 0 || callee.home == 0 || callee.home&7 != 0 || callee.context == 0 || callee.context&7 != 0 || callerHome == 0 || callerHome&7 != 0 || callerContext == 0 || callerContext&7 != 0 || importIndex >= MaxFunctionImports {
 		return nil, fmt.Errorf("rv64: native import requires aligned retained framed target and caller identities")
 	}
 	transportBytes := nativeImportTransportBytes
