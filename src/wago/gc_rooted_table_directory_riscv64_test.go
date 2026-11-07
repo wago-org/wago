@@ -24,7 +24,10 @@ func rv64RootedTableDirectorySource(count int) []byte {
 }
 
 func TestRV64RootedTableDirectorySourceAndArtifact(t *testing.T) {
-	for _, count := range []int{3, 256, 257, maxRV64ExecutionTables} {
+	// Exercise the first directory beyond the former 1,024-table ceiling. The
+	// architectural maximum is offset-derived and exceeds the configured source
+	// and metadata byte budgets, so materializing it cannot be an execution test.
+	for _, count := range []int{3, 256, 257, 1025} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			c, err := NewRuntimeConfig().Compile(rv64RootedTableDirectorySource(count))
 			if err != nil {
@@ -47,10 +50,6 @@ func TestRV64RootedTableDirectorySourceAndArtifact(t *testing.T) {
 				}
 			}
 		})
-	}
-	if c, err := NewRuntimeConfig().Compile(rv64RootedTableDirectorySource(maxRV64ExecutionTables + 1)); err == nil {
-		c.Close()
-		t.Fatal("rooted directory exceeded the public metadata bound")
 	}
 }
 

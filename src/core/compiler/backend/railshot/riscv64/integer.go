@@ -180,7 +180,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	referenceTypes := internalReferenceTypes{}
 	if state != nil {
 		referenceTypes.exception = exceptionMode
-		if len(state.types) > MaxFunctions && !(state.production && state.foreignTableCalls) {
+		if len(state.types) > MaxTypeDeclarations && !(state.production && state.foreignTableCalls) {
 			return integerSummary{}, unsupported("integer control type directory bound")
 		}
 		profile = makeMemoryProfile(state.memories, state.indexedMemories)
@@ -234,22 +234,25 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	i31Refs := state != nil && state.i31Core
 	if functionRefs {
 		typedFunctionRefs := state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle && (state.gcTypeSubtypingRefTestVariant == 6 || state.gcTypeSubtypingRefTestVariant == 7) || state.gcTypeSubtypingDuplicateRecursive
-		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls && (!state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls) {
+		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls && (!state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls) {
 			return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 		}
-		if len(state.functions) > MaxFunctions {
+		if len(state.functions) > MaxModuleFunctions {
 			return integerSummary{}, unsupported("private reference function directory bound")
 		}
-		for i, sig := range state.functions {
-			if i < state.importedFunctions && !state.publicReferences && !(state.publicReferenceCarriers && publicReferenceCarrierTarget(sig.signature)) {
-				if err := integerNumericSignature(sig.signature, floating); err != nil {
+		if !state.referenceDirectoryAdmitted {
+			for i, sig := range state.functions {
+				if i < state.importedFunctions && !state.publicReferences && !(state.publicReferenceCarriers && publicReferenceCarrierTarget(sig.signature)) {
+					if err := integerNumericSignature(sig.signature, floating); err != nil {
+						return integerSummary{}, err
+					}
+				}
+				if _, _, err := admitDeclaredControlSignature(sig.signature, referenceTypes, true, typedFunctionRefs, false); err != nil {
 					return integerSummary{}, err
 				}
 			}
-			if _, _, err := admitDeclaredControlSignature(sig.signature, referenceTypes, true, typedFunctionRefs, false); err != nil {
-				return integerSummary{}, err
-			}
 		}
+
 		if _, _, err := admitDeclaredControlSignature(ft, referenceTypes, true, typedFunctionRefs, false); err != nil {
 			return integerSummary{}, err
 		}
@@ -1297,7 +1300,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				gcTableSet := op == 0x26 && (state.gcRootedScalar && compactReference || state.gcRefTestTable || state.gcRefTestConcrete || state.gcRefTestAbstract && idx != 1)
 				if gcTableSet {
 					callCount++
-					if callCount > maxDirectCalls {
+					if callCount > maxFunctionCallSites {
 						return integerSummary{}, unsupported("GC table store helper count")
 					}
 				}
@@ -1339,7 +1342,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			sig := state.functions[idx]
 			callCount++
-			if callCount > maxDirectCalls {
+			if callCount > maxFunctionCallSites {
 				return integerSummary{}, unsupported("direct call count/slot budget")
 			}
 			var paramRefs, resultRefs []bool
@@ -1389,7 +1392,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				importTails++
 			}
 			callCount++
-			if callCount > maxDirectCalls {
+			if callCount > maxFunctionCallSites {
 				return integerSummary{}, unsupported("local tail count/slot budget")
 			}
 			if functionRefs || i31Refs {
@@ -1466,7 +1469,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			budget++ // callable reference
 			tableBridgeBytes += nativeTableCallCodeBound(len(sig.params), len(sig.results))
-			if callCount > maxDirectCalls || budget > integerBudget {
+			if callCount > maxFunctionCallSites || budget > integerBudget {
 				return integerSummary{}, unsupported("call_ref count/slot budget")
 			}
 			if functionRefs || i31Refs {
@@ -1541,7 +1544,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				budget += len(sig.params) + len(sig.results)
 			}
 			budget++
-			if callCount > maxDirectCalls || budget > integerBudget {
+			if callCount > maxFunctionCallSites || budget > integerBudget {
 				return integerSummary{}, unsupported("typed reference tail count/slot budget")
 			}
 			if functionRefs || i31Refs {
@@ -1627,7 +1630,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if !subtypeCall {
 				budget += len(sig.params) + len(sig.results)
 			}
-			if callCount > maxDirectCalls || budget > integerBudget {
+			if callCount > maxFunctionCallSites || budget > integerBudget {
 				return integerSummary{}, unsupported("indirect call count/slot budget")
 			}
 			if functionRefs || i31Refs {
@@ -1725,7 +1728,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				parkedGlobalStore := state.publicReferenceStores && functionCarrier || state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy || state.mutableFuncrefGlobalMove || state.mutableFuncrefGlobalBidirectionalCopy || state.mutableFuncrefGlobalLocalCopy || state.mutableFuncrefGlobalLocalPublish && idx == 0 || state.mutableFuncrefGlobalLocalTransfer || state.mutableFuncrefGlobalLocalExport || state.mutableFuncrefGlobalLocalObserve || state.mutableFuncrefGlobalLocalCall
 				if state.gcRootedScalar && wasm.ExternReferenceType(g.typ) {
 					callCount++
-					if callCount > maxDirectCalls {
+					if callCount > maxFunctionCallSites {
 						return integerSummary{}, unsupported("extern global helper count")
 					}
 					if live && emit != nil {
@@ -1741,7 +1744,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, unsupported("mutable funcref store target")
 					}
 					callCount++
-					if callCount > maxDirectCalls {
+					if callCount > maxFunctionCallSites {
 						return integerSummary{}, unsupported("mutable funcref store helper count")
 					}
 					if live && emit != nil {
@@ -1824,7 +1827,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			if (state.gcArrayReference || state.gcArrayInitElem) && imm.Kind == wasm.InstrElemDrop && imm.Index == 0 && imm.Index2 == 0 {
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -1839,7 +1842,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if imm.Kind == wasm.InstrElemDrop {
 					if state.gcRootedScalar && state.gcElementReference(imm.Index) {
 						callCount++
-						if callCount > maxDirectCalls {
+						if callCount > maxFunctionCallSites {
 							return integerSummary{}, unsupported("GC helper call count/slot budget")
 						}
 						if live && emit != nil {
@@ -1875,7 +1878,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 					if state.gcRootedScalar && compactReference {
 						callCount++
-						if callCount > maxDirectCalls {
+						if callCount > maxFunctionCallSites {
 							return integerSummary{}, unsupported("GC helper call count/slot budget")
 						}
 					}
@@ -1962,7 +1965,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				if state.gcRootedScalar && compactReference {
 					callCount++
-					if callCount > maxDirectCalls {
+					if callCount > maxFunctionCallSites {
 						return integerSummary{}, unsupported("GC helper call count/slot budget")
 					}
 				}
@@ -2136,7 +2139,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					stack[at], stackRefs[at], stackUnknown[at] = values[j], references[j], false
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2194,7 +2197,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2210,7 +2213,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("struct.new_default outside exact GC profile")
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2237,7 +2240,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2291,7 +2294,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2320,7 +2323,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2357,7 +2360,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					calls = 3
 				}
 				callCount += calls
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2379,7 +2382,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2401,7 +2404,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2423,7 +2426,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2447,7 +2450,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2474,7 +2477,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2506,7 +2509,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2539,7 +2542,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2565,7 +2568,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2613,7 +2616,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2639,7 +2642,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2692,7 +2695,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
@@ -2711,7 +2714,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if signature, ok := state.sourceFunctions.function(target); ok && primitiveReferenceTargetWithTypes(signature, referenceTypes, false) {
 						if state.sourceFunctions.needsSubtypeHelper(target) {
 							callCount++
-							if callCount > maxDirectCalls {
+							if callCount > maxFunctionCallSites {
 								return integerSummary{}, unsupported("function subtype helper count")
 							}
 						}
@@ -2845,7 +2848,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					objectHeap := concreteHeap || tableHeap || heap == -15 || heap <= -18
 					if objectHeap {
 						callCount++
-						if callCount > maxDirectCalls {
+						if callCount > maxFunctionCallSites {
 							return integerSummary{}, unsupported("GC helper call count/slot budget")
 						}
 					}
@@ -2885,7 +2888,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if signature, ok := state.sourceFunctions.function(target); ok && primitiveReferenceTargetWithTypes(signature, referenceTypes, false) {
 						if state.sourceFunctions.needsSubtypeHelper(target) {
 							callCount++
-							if callCount > maxDirectCalls {
+							if callCount > maxFunctionCallSites {
 								return integerSummary{}, unsupported("function subtype helper count")
 							}
 						}
@@ -2934,7 +2937,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, err
 					}
 					callCount++
-					if callCount > maxDirectCalls {
+					if callCount > maxFunctionCallSites {
 						return integerSummary{}, unsupported("GC helper call count/slot budget")
 					}
 					if live && emit != nil {
@@ -2975,7 +2978,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, err
 					}
 					callCount++
-					if callCount > maxDirectCalls {
+					if callCount > maxFunctionCallSites {
 						return integerSummary{}, unsupported("GC helper call count/slot budget")
 					}
 					if live && emit != nil {
@@ -3045,7 +3048,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("atomic wait requires cooperative host bridge")
 				}
 				callCount++
-				if callCount > maxDirectCalls {
+				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("atomic helper call count bound")
 				}
 				if live && emit != nil {
@@ -3090,7 +3093,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, unsupported("shared grow requires cooperative host bridge")
 					}
 					callCount++
-					if callCount > maxDirectCalls {
+					if callCount > maxFunctionCallSites {
 						return integerSummary{}, unsupported("shared grow helper call bound")
 					}
 				}

@@ -45,7 +45,7 @@ func TestTailReferenceSourceDeclaredTypesAndDeadBudget(t *testing.T) {
 			}
 			body = append(body, 0x0b)
 			i, err := compileDynamicTailSource(dynamicTailTestSource(nil, nil, body), 0, force)
-			if count == 1024 {
+			if count <= maxFunctionCallSites {
 				if err != nil || i == nil || len(i.plans) != 0 {
 					t.Fatal("bounded dead reference sites", force, err)
 				}

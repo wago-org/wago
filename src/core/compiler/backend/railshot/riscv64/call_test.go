@@ -88,7 +88,7 @@ func TestDirectCallRelocationAndAdmissionBounds(t *testing.T) {
 		}
 		f.body = append(f.body, 0x41, 0, 0x0b)
 		c, err := Compile(binaryModule(f, fixtureFunc{result: 0x7f, body: []byte{0x41, 1, 0x0b}}))
-		if n == maxDirectCalls {
+		if n <= maxFunctionCallSites {
 			if err != nil || c.functions[0].DirectCalls != n {
 				t.Fatal("call-count boundary", err)
 			}

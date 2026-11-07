@@ -60,7 +60,7 @@ func admitProductionWireProfile(data []byte, public bool) error {
 			if id == 4 && public {
 				// The public runtime addresses tables through a directory. Apply
 				// the same metadata count bound as decoded admission.
-				limit = MaxFunctions
+				limit = MaxModuleTables
 			} else if id == 9 {
 				limit = uint32(productionElementSegmentLimit(public))
 			}

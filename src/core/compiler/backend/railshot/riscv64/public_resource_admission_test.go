@@ -16,7 +16,7 @@ func TestPublicTableCountsAndAdvertisedMaximum(t *testing.T) {
 		for i := range m.Tables {
 			m.Tables[i].Type = wasm.TableType{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Max: 0xffffffff, HasMax: true}}
 		}
-		want := count <= MaxFunctions
+		want := count <= MaxModuleTables
 		if err := AdmitPublicInitializers(m); (err == nil) != want {
 			t.Fatalf("initializer table count %d: %v", count, err)
 		}
@@ -42,7 +42,7 @@ func TestPublicTableCountsAndAdvertisedMaximum(t *testing.T) {
 			tables[i] = []byte{0x70, 0, 0}
 		}
 		source := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(tables...)))
-		if err := AdmitProductionSource(source); (err == nil) != (count <= MaxFunctions) {
+		if err := AdmitProductionSource(source); (err == nil) != (count <= MaxModuleTables) {
 			t.Fatalf("wire table count %d: %v", count, err)
 		}
 	}

@@ -180,7 +180,7 @@ func TestReferenceFunctionResourceImportsNamespaceBounds(t *testing.T) {
 			m := referenceResourceImportBounds(t, f, g, mem)
 			if extra == "exact" {
 				// Each call uses a fresh module, so warm-up cannot hide an allocated
-				// cached import directory. Uniform-width admission itself allocates zero.
+				// cached import directory. Scratch arrays are now sized by the admitted directory (two allocations).
 				fresh := make([]wasm.Module, 11)
 				for i := range fresh {
 					fresh[i] = *m
@@ -191,7 +191,7 @@ func TestReferenceFunctionResourceImportsNamespaceBounds(t *testing.T) {
 						panic("namespace preflight")
 					}
 					index++
-				}); allocs != 0 {
+				}); allocs != 2 {
 					t.Fatal("import preflight allocation", allocs)
 				}
 			}
@@ -200,7 +200,7 @@ func TestReferenceFunctionResourceImportsNamespaceBounds(t *testing.T) {
 			pressure := 0
 			opts.MemoryPressure = func() { pressure++ }
 			image, err := CompileModuleWith(m, opts)
-			if extra == "exact" || extra == "globals" {
+			if extra == "exact" || extra == "globals" || extra == "functions" {
 				if err != nil || image == nil || pressure != 1 {
 					t.Fatal("exact combined namespaces", err, pressure)
 				}

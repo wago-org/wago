@@ -202,7 +202,7 @@ func (s rv64TailSignatureView) result(i int) ValType {
 // The dispatcher receives the retained element, so its plan does not depend on
 // the number of tables. Full execution admission still checks each directory.
 func rv64NativeTailIndexedTables(c *Compiled) bool {
-	if !c.nativeTableContextABI || !c.nativeTableReferenceABI || c.tableCount() == 0 || c.tableCount() > railshot.MaxFunctions {
+	if !c.nativeTableContextABI || !c.nativeTableReferenceABI || c.tableCount() == 0 || c.tableCount() > railshot.MaxModuleTables {
 		return false
 	}
 	function, _ := valueTypeDescriptorFromValType(ValFuncRef)

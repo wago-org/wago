@@ -138,6 +138,10 @@ func walkSWARPairsWithTableModule(fn *wasm.Func, ft *wasm.CompType, profile memo
 }
 
 func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar bool, rootedDirectory internalReferenceTypeDirectory, exceptionModule *wasm.Module, plugins *pluginInstructionDirectory, tableModule *wasm.Module, ownedExceptions bool, emit *integerEmitter, primitiveTypes ...*sourceFunctionTypeDirectory) (swarSummary, error) {
+	return walkSWARPairsWithAdmittedDirectories(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar, rootedDirectory, exceptionModule, plugins, tableModule, ownedExceptions, emit, false, primitiveTypes...)
+}
+
+func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar bool, rootedDirectory internalReferenceTypeDirectory, exceptionModule *wasm.Module, plugins *pluginInstructionDirectory, tableModule *wasm.Module, ownedExceptions bool, emit *integerEmitter, directoriesAdmitted bool, primitiveTypes ...*sourceFunctionTypeDirectory) (swarSummary, error) {
 	primitive := len(primitiveTypes) != 0 && primitiveTypes[0] != nil
 	mutationModule := tableModule
 	if mutationModule == nil {
@@ -164,7 +168,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 	}
 	memoryCount, indexedMemories := profile.count, profile.indexed
 
-	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil && !foreignTableCalls || len(functions) == importedFunctions) {
+	if importedFunctions < 0 || importedFunctions > MaxFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil && !foreignTableCalls || len(functions) == importedFunctions) {
 		return swarSummary{}, unsupported("SWAR import prefix bound/defined functions/table")
 	}
 	if elementCount < 0 || elementCount > MaxOwnedElementSegments || elementCount != 0 && table == nil && !foreignTableCalls {
@@ -205,44 +209,44 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 	if len(globals) > productionGlobalLimit(tableModule != nil && foreignTableCalls) {
 		return swarSummary{}, unsupported("SWAR global directory bound")
 	}
-	for _, global := range globals {
-		if !swarCarrierType(global.Type) && !globalReference(global) {
-			return swarSummary{}, unsupported("SWAR global carrier")
+	if len(functions) > MaxModuleFunctions || len(types) > MaxTypeDeclarations {
+		return swarSummary{}, unsupported("SWAR directory byte bound")
+	}
+	if !directoriesAdmitted {
+		for _, global := range globals {
+			if !swarCarrierType(global.Type) && !globalReference(global) {
+				return swarSummary{}, unsupported("SWAR global carrier")
+			}
 		}
-	}
-	if len(functions) > MaxFunctions {
-		return swarSummary{}, unsupported("SWAR function directory bound")
-	}
-	for i, typ := range functions {
-		if plugins != nil {
-			if _, custom := plugins.instructions[uint32(i)]; custom {
+		for i, typ := range functions {
+			if plugins != nil {
+				if _, custom := plugins.instructions[uint32(i)]; custom {
+					continue
+				}
+			}
+			if referenceFunctions || gcRootedScalar || exceptionModule != nil {
+				if err := admitSWARControlSignature(typ, referenceTypes, true, referenceCalls); err != nil {
+					return swarSummary{}, err
+				}
+			} else if err := swarCallSignature(typ); err != nil {
+				return swarSummary{}, err
+			}
+			if i < importedFunctions {
+				if err := swarImportSignature(typ); err != nil && !((gcRootedScalar || publicPrimitiveGlobals) && admitSWARControlSignature(typ, referenceTypes, true, referenceCalls) == nil) {
+					return swarSummary{}, err
+				}
+			}
+		}
+		for _, typ := range types {
+			if typ == nil && (gcRootedScalar || primitive) {
 				continue
 			}
-		}
-		if referenceFunctions || gcRootedScalar || exceptionModule != nil {
-			if err := admitSWARControlSignature(typ, referenceTypes, true, referenceCalls); err != nil {
-				return swarSummary{}, err
-			}
-		} else if err := swarCallSignature(typ); err != nil {
-			return swarSummary{}, err
-		}
-		if i < importedFunctions {
-			if err := swarImportSignature(typ); err != nil && !((gcRootedScalar || publicPrimitiveGlobals) && admitSWARControlSignature(typ, referenceTypes, true, referenceCalls) == nil) {
+			if err := admitSWARControlSignature(typ, referenceTypes, privateRefs, privateRefs && referenceCalls); err != nil && !plugins.physicalSignature(typ) {
 				return swarSummary{}, err
 			}
 		}
 	}
-	if len(types) > 1024 {
-		return swarSummary{}, unsupported("SWAR control type bound")
-	}
-	for _, typ := range types {
-		if typ == nil && (gcRootedScalar || primitive) {
-			continue
-		}
-		if err := admitSWARControlSignature(typ, referenceTypes, privateRefs, privateRefs && referenceCalls); err != nil && !plugins.physicalSignature(typ) {
-			return swarSummary{}, err
-		}
-	}
+
 	if fn == nil || ft == nil || ft.Kind != wasm.CompFunc || len(ft.Params) > maxSWARLocals || len(ft.Results) > maxSWARLocals {
 		return swarSummary{}, unsupported("SWAR signature bound")
 	}
@@ -501,7 +505,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 			sig := functions[index]
 			calls++
 			budget += len(sig.Params) + len(sig.Results)
-			if calls > maxDirectCalls || budget > integerBudget {
+			if calls > maxFunctionCallSites || budget > integerBudget {
 				return swarSummary{}, unsupported("SWAR direct call count/transfer budget")
 			}
 			callBound := 128
@@ -585,7 +589,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 			calls++
 			// Vector arguments/results consume two compact cells each.
 			budget += swarSignatureSlots(sig.Params) + swarSignatureSlots(sig.Results)
-			if calls > maxDirectCalls || budget > integerBudget {
+			if calls > maxFunctionCallSites || budget > integerBudget {
 				return swarSummary{}, unsupported("SWAR local tail count/transfer budget")
 			}
 			if err := reserve(128*len(sig.Params) + 128); err != nil {
@@ -658,7 +662,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 			}
 			calls++
 			budget += swarSignatureSlots(sig.Params) + swarSignatureSlots(sig.Results) + 1
-			if calls > maxDirectCalls || budget > integerBudget {
+			if calls > maxFunctionCallSites || budget > integerBudget {
 				return swarSummary{}, unsupported("SWAR typed call count/transfer budget")
 			}
 			transferValues := len(sig.Params)
@@ -747,7 +751,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 			}
 			calls++
 			budget += len(sig.Params) + len(sig.Results) + 1
-			if calls > maxDirectCalls || budget > integerBudget {
+			if calls > maxFunctionCallSites || budget > integerBudget {
 				return swarSummary{}, unsupported("SWAR indirect call count/transfer budget")
 			}
 			transferValues := len(sig.Params)
@@ -836,7 +840,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				parkedGlobalStore := externGlobalStore || indexedGlobalStore || reference && parkedMutableReferenceGlobals && index == 0
 				if parkedGlobalStore {
 					calls++
-					if calls > maxDirectCalls {
+					if calls > maxFunctionCallSites {
 						return swarSummary{}, unsupported("SWAR mutable funcref store helper count")
 					}
 					if err := reserve(1024); err != nil {
@@ -908,7 +912,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 						return swarSummary{}, unsupported("SWAR shared grow requires cooperative bridge")
 					}
 					calls++
-					if calls > maxDirectCalls {
+					if calls > maxFunctionCallSites {
 						return swarSummary{}, unsupported("SWAR shared grow helper count")
 					}
 				}
@@ -1252,7 +1256,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				collectorTable := gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref))) || ownedExceptions && exceptionReferenceType(wasm.RefVal(resolvedTable.Ref))
 				if arity == 2 && collectorTable {
 					calls++
-					if calls > maxDirectCalls {
+					if calls > maxFunctionCallSites {
 						return swarSummary{}, unsupported("SWAR GC table store helper count")
 					}
 				}
@@ -1311,7 +1315,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 					collectorElement := gcRootedScalar && tableModule != nil && uint64(index) < uint64(len(tableModule.Elements)) && tableModule.Elements[index].Kind.Kind == wasm.ElemTypedExprs && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(tableModule.Elements[index].Kind.Ref)) || wasm.ExternReferenceType(wasm.RefVal(tableModule.Elements[index].Kind.Ref)))
 					if collectorElement {
 						calls++
-						if calls > maxDirectCalls {
+						if calls > maxFunctionCallSites {
 							return swarSummary{}, unsupported("SWAR elem.drop helper count")
 						}
 					}
@@ -1355,7 +1359,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				collectorTable := gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref)))
 				if collectorTable {
 					calls++
-					if calls > maxDirectCalls {
+					if calls > maxFunctionCallSites {
 						return swarSummary{}, unsupported("SWAR table.init helper count")
 					}
 				}
@@ -1432,7 +1436,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				collectorTable := gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref)))
 				if collectorTable && sub != 16 {
 					calls++
-					if calls > maxDirectCalls {
+					if calls > maxFunctionCallSites {
 						return swarSummary{}, unsupported("SWAR bulk table helper count")
 					}
 				}
@@ -1643,7 +1647,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 					}
 				}
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(128*len(values) + 1024); err != nil {
@@ -1702,7 +1706,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				calls++
 				allocations++
 				budget += len(fields)
-				if calls > maxDirectCalls || budget > integerBudget {
+				if calls > maxFunctionCallSites || budget > integerBudget {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(128*len(fields) + 1024); err != nil {
@@ -1723,7 +1727,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				}
 				calls++
 				allocations++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -1767,7 +1771,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 					helper = gcStructGetU
 				}
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -1808,7 +1812,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				}
 				wide := !field.Packed() && (scalarWide(field.Val()) || reference)
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -1847,7 +1851,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				calls++
 				allocations++
 				budget += 2
-				if calls > maxDirectCalls || budget > integerBudget {
+				if calls > maxFunctionCallSites || budget > integerBudget {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(128*2 + 1024); err != nil {
@@ -1896,7 +1900,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				calls++
 				allocations++
 				budget += count
-				if calls > maxDirectCalls || budget > integerBudget {
+				if calls > maxFunctionCallSites || budget > integerBudget {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(128*count + 1024); err != nil {
@@ -1925,7 +1929,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				calls++
 				allocations++
 				budget++
-				if calls > maxDirectCalls || budget > integerBudget {
+				if calls > maxFunctionCallSites || budget > integerBudget {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -1957,7 +1961,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				calls++
 				allocations++
 				budget += 2
-				if calls > maxDirectCalls || budget > integerBudget {
+				if calls > maxFunctionCallSites || budget > integerBudget {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(128*2 + 1024); err != nil {
@@ -2005,7 +2009,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 					helper = gcArrayGetU
 				}
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -2046,7 +2050,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				}
 				wide := !storage.Packed() && (scalarWide(storage.Val()) || reference)
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -2083,7 +2087,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				}
 				wide := !storage.Packed() && (scalarWide(storage.Val()) || reference)
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -2112,7 +2116,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 					return swarSummary{}, unsupported("SWAR array.copy operand carrier")
 				}
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -2138,7 +2142,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 					return swarSummary{}, unsupported("SWAR segment array initialization operand carrier")
 				}
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -2166,7 +2170,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 					return swarSummary{}, unsupported("SWAR array.len reference carrier")
 				}
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -2189,7 +2193,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 					if signature, ok := primitiveTypes[0].function(target); ok && primitiveReferenceTargetWithTypes(signature, referenceTypes, true) {
 						if primitiveTypes[0].needsSubtypeHelper(target) {
 							calls++
-							if calls > maxDirectCalls {
+							if calls > maxFunctionCallSites {
 								return swarSummary{}, unsupported("SWAR function subtype helper count")
 							}
 						}
@@ -2239,7 +2243,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 					return swarSummary{}, unsupported("SWAR reference test/cast operand carrier")
 				}
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
 				}
 				if err := reserve(1024); err != nil {
@@ -2269,7 +2273,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 				}
 				calls++
 				allocations++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR extern conversion helper count")
 				}
 				if err := reserve(1024); err != nil {
@@ -2375,7 +2379,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 			wait := d.Class == shared.AtomicNotify || d.Class == shared.AtomicWait
 			if wait {
 				calls++
-				if calls > maxDirectCalls {
+				if calls > maxFunctionCallSites {
 					return swarSummary{}, unsupported("SWAR atomic helper count")
 				}
 			}
@@ -3203,7 +3207,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	if mode.gcRootedDirectory != nil {
 		rootedDirectory = *mode.gcRootedDirectory
 	}
-	summary, err := walkSWARPairsWithOwnedExceptions(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, nil, mode.primitiveTailTypes)
+	summary, err := walkSWARPairsWithAdmittedDirectories(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, nil, mode.swarDirectoriesAdmitted, mode.primitiveTailTypes)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -3266,7 +3270,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		}
 	}
 	f.initializeExceptionRoots()
-	actual, err := walkSWARPairsWithOwnedExceptions(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, &f, mode.primitiveTailTypes)
+	actual, err := walkSWARPairsWithAdmittedDirectories(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, &f, mode.swarDirectoriesAdmitted, mode.primitiveTailTypes)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

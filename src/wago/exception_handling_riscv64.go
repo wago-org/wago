@@ -16,7 +16,7 @@ func rv64ExceptionHandling(c *Compiled) bool {
 	if c.memoryDir == nil {
 		return true
 	}
-	if len(c.memoryDir.ehTags) > railshot.MaxFunctions {
+	if len(c.memoryDir.ehTags) > railshot.MaxModuleTags {
 		return false
 	}
 	for _, tag := range c.memoryDir.ehTags {

@@ -100,10 +100,10 @@ type internalReferenceTypeDirectory struct {
 func newInternalReferenceTypeDirectory(types []wasm.RecType) (internalReferenceTypeDirectory, bool) {
 	total := 0
 	for i := range types {
-		total += len(types[i].SubTypes)
-		if total > MaxFunctions {
+		if len(types[i].SubTypes) > MaxTypeDeclarations-total {
 			return internalReferenceTypeDirectory{}, false
 		}
+		total += len(types[i].SubTypes)
 	}
 	if total == 0 {
 		return internalReferenceTypeDirectory{}, false
@@ -342,12 +342,12 @@ func (types internalReferenceTypes) function(index uint32) bool {
 	var signature *wasm.CompType
 	vector := types.swar != nil || types.decodedSWAR
 	if types.scalar != nil {
-		if types.swar != nil || types.decoded != nil && !types.gcRootedScalar || types.decodedSWAR || len(types.scalar) > MaxFunctions || uint64(index) >= uint64(len(types.scalar)) {
+		if types.swar != nil || types.decoded != nil && !types.gcRootedScalar || types.decodedSWAR || len(types.scalar) > MaxTypeDeclarations || uint64(index) >= uint64(len(types.scalar)) {
 			return false
 		}
 		signature = types.scalar[index].signature
 	} else if types.swar != nil {
-		if types.decoded != nil || types.decodedSWAR || len(types.swar) > MaxFunctions || uint64(index) >= uint64(len(types.swar)) {
+		if types.decoded != nil || types.decodedSWAR || len(types.swar) > MaxTypeDeclarations || uint64(index) >= uint64(len(types.swar)) {
 			return false
 		}
 		signature = types.swar[index]
@@ -366,7 +366,7 @@ func (types internalReferenceTypes) function(index uint32) bool {
 				return false
 			}
 		} else {
-			if len(types.decoded) > MaxFunctions || uint64(index) >= uint64(len(types.decoded)) || len(types.decoded[index].SubTypes) != 1 {
+			if len(types.decoded) > MaxTypeDeclarations || uint64(index) >= uint64(len(types.decoded)) || len(types.decoded[index].SubTypes) != 1 {
 				return false
 			}
 			sub = &types.decoded[index].SubTypes[0]

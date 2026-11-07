@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 )
 
-const maxRV64ExecutionTables = 1024
+const maxRV64ExecutionTables = (1<<31 - 1) / 32
 
 type rv64ExecutionContract struct {
 	digest   [sha256.Size]byte

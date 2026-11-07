@@ -31,16 +31,17 @@ type memorySpec struct {
 	module, name     string
 }
 type moduleState struct {
-	sourceFunctions       *sourceFunctionTypeDirectory
-	production            bool
-	publicReferences      bool
-	publicReferenceStores bool
-	exceptionModule       *wasm.Module
-	localTailCalls        bool
-	foreignTableCalls     bool
-	importTailCalls       bool
-	dynamicTailCalls      bool
-	referenceCalls        bool
+	referenceDirectoryAdmitted bool // immutable module directory checked by the first integer fallback
+	sourceFunctions            *sourceFunctionTypeDirectory
+	production                 bool
+	publicReferences           bool
+	publicReferenceStores      bool
+	exceptionModule            *wasm.Module
+	localTailCalls             bool
+	foreignTableCalls          bool
+	importTailCalls            bool
+	dynamicTailCalls           bool
+	referenceCalls             bool
 	// The exact public two-token boundary may pass one authenticated funcref
 	// argument through call_ref in addition to the callable target reference.
 	publicReferenceCarriers            bool
@@ -538,7 +539,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("table export requires the public owned table profile")
 			}
 			tableExports++
-			if tableExports > MaxFunctions {
+			if tableExports > MaxModuleExports {
 				return s, unsupported("owned table export count bound")
 			}
 		default:
@@ -577,7 +578,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			flatTypeIndex++
 		}
 	}
-	if s.importedFunctions > MaxHostFunctionImports || s.importedFunctions+len(m.Code) > MaxFunctions && !(production && publicExports) {
+	if s.importedFunctions > MaxFunctionImports || s.importedFunctions+len(m.Code) > MaxModuleFunctions && !(production && publicExports) {
 		return s, unsupported("aggregate function count bound")
 	}
 	for _, im := range m.Imports {

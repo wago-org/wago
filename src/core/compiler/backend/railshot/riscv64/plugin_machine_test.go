@@ -54,3 +54,17 @@ func TestPluginRV64RejectsReservedAndUnownedRegisters(t *testing.T) {
 		t.Fatal("output prematurely released")
 	}
 }
+
+func TestRV64CeilingPluginImports(t *testing.T) {
+	d, err := wasm.DecodeModuleByteBacked(ceilingModule(1, 257, "scalar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instructions := make(map[uint32]railcore.CustomInstruction, 257)
+	for i := 0; i < 257; i++ {
+		instructions[uint32(i)] = railcore.CustomInstruction{Codegen: &rv.Lowering{Compatibility: rv.CompatibilityFullAccess, Emit: func(rv.Context) error { return nil }}}
+	}
+	if err := ValidateCustomInstructions(d.Module, instructions); err != nil {
+		t.Fatal("257 plugin imports", err)
+	}
+}

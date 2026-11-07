@@ -123,7 +123,11 @@ func TestHostImportRV64WholeModuleAndBindingAdmission(t *testing.T) {
 		}
 		pressure := 0
 		image, err := CompileModuleWith(m, CompileOptions{ImportBindings: hostImportBindings(count), DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-		if shape == "reexport" {
+		if shape == "bound" {
+			if image == nil || err != nil || pressure != 1 {
+				t.Fatal("257 imports rejected", err, pressure)
+			}
+		} else if shape == "reexport" {
 			if err != nil || image == nil || len(image.Entry) != 1 {
 				t.Fatal("production reexport must omit defined-only private export lookup", err, pressure)
 			}

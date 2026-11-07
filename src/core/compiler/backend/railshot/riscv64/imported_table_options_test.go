@@ -107,7 +107,7 @@ func TestProductionImportedTableDecodedBoundsPrecedeTraversalAndStaging(t *testi
 		if image != nil || err == nil || pressure != 0 {
 			t.Fatal("invalid decoded import staged", kind, err)
 		}
-		if kind == "count" && !strings.Contains(err.Error(), "aggregate function import bound") {
+		if kind == "count" && !strings.Contains(err.Error(), "dynamic host binding count") {
 			t.Fatal("decoded count gate lost", err)
 		}
 	}

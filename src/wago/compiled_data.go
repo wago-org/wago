@@ -9,7 +9,10 @@ import (
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
-const rv64RootedMaxHostFunctionImports = 256
+// Mirrors of the compiler's minimum directory charges, also available to
+// artifact validation on hosts that do not build the RV64 backend.
+const rv64RootedMaxHostFunctionImports = (1<<31 - 1) / 16
+const rv64MaxModuleExports = (1<<31 - 1) / 16
 const rv64RootedMaxMemories = 4
 
 // rv64RootedTypeDigest authenticates the complete flattened structural type
@@ -283,7 +286,7 @@ func rv64RootedActiveDataDigest(c *Compiled) ([32]byte, bool) {
 // exact public namespace used by the fresh generic rooted-GC profile. Names are
 // sorted so the receipt is independent of Go map iteration order.
 func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
-	if c == nil || c.memoryDir == nil || len(c.memoryDir.defs) > rv64RootedMaxMemories || !c.memoryDir.exactExports || len(c.memoryDir.exports) > 1024 || len(c.Exports)+len(c.memoryDir.exports) > 1024 {
+	if c == nil || c.memoryDir == nil || len(c.memoryDir.defs) > rv64RootedMaxMemories || !c.memoryDir.exactExports || len(c.memoryDir.exports) > rv64MaxModuleExports || len(c.Exports)+len(c.memoryDir.exports) > rv64MaxModuleExports {
 		return [32]byte{}, false
 	}
 	h := sha256.New()
@@ -374,8 +377,8 @@ func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
 // exact type, width, mutability, and initial bits must remain compiler-owned
 // facts.
 func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
-	if c == nil || len(c.GlobalImports) > len(c.Globals) || len(c.Globals) > 256 || len(c.GlobalExports) > 1024 ||
-		len(c.Exports)+len(c.GlobalExports)+len(c.memoryExportMap()) > 1024 {
+	if c == nil || len(c.GlobalImports) > len(c.Globals) || len(c.Globals) > 256 || len(c.GlobalExports) > rv64MaxModuleExports ||
+		len(c.Exports)+len(c.GlobalExports)+len(c.memoryExportMap()) > rv64MaxModuleExports {
 		return [32]byte{}, false
 	}
 	h := sha256.New()

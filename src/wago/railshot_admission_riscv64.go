@@ -15,8 +15,12 @@ import (
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
-var _ [railshot.MaxHostFunctionImports - rv64RootedMaxHostFunctionImports]struct{}
-var _ [rv64RootedMaxHostFunctionImports - railshot.MaxHostFunctionImports]struct{}
+var _ [railshot.MaxModuleTables - maxRV64ExecutionTables]struct{}
+var _ [maxRV64ExecutionTables - railshot.MaxModuleTables]struct{}
+var _ [railshot.MaxModuleExports - rv64MaxModuleExports]struct{}
+var _ [rv64MaxModuleExports - railshot.MaxModuleExports]struct{}
+var _ [railshot.MaxFunctionImports - rv64RootedMaxHostFunctionImports]struct{}
+var _ [rv64RootedMaxHostFunctionImports - railshot.MaxFunctionImports]struct{}
 
 func rv64FreshRootedGC(c *Compiled) bool {
 	if c == nil || c.nativeGCABIRequirement() != gc.NativeABIVersion {
@@ -42,8 +46,8 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if memo == nil || !memo.rv64FreshRootedGC || sha256.Sum256(c.code) != memo.rv64FreshRootedGCDigest || c.syncHostSlots != memo.rv64FreshRootedGCSyncHostSlots {
 		return false
 	}
-	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 && !c.hasNoFunctionCode() && !(len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary()) || len(c.Funcs) > railshot.MaxFunctions ||
-		len(c.FuncTypeID) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions ||
+	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 && !c.hasNoFunctionCode() && !(len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary()) || len(c.Funcs) > railshot.MaxModuleFunctions ||
+		len(c.FuncTypeID) > railshot.MaxModuleFunctions || len(c.Exports) > railshot.MaxModuleExports ||
 		compiledStructuralRequiredFeatures(c)&^c.requiredFeatures != 0 {
 		return false
 	}
@@ -57,7 +61,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	// staging either allocation/mutation helper family.
 	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers ||
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
-		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports ||
+		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > railshot.MaxFunctionImports || len(c.Imports) != c.NumImports ||
 		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > maxRV64ExecutionTables || c.memoryCount() > rv64RootedMaxMemories ||
 		len(c.GlobalImports) > 256 || len(c.GlobalImports) > len(c.Globals) || len(c.Globals) > 256 || len(c.Elems) > 256 ||
 		len(c.passiveElems) > 256 || len(c.PassiveData) > 256 {
@@ -1157,7 +1161,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		remaining -= len(data.Bytes)
 	}
-	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || uint64(c.NumImports)+uint64(len(c.Funcs)) > uint64(railshot.MaxPublicCodeBytes)/16 || c.dynamicImports != (c.NumImports > 0) {
+	if c.NumImports < 0 || c.NumImports > railshot.MaxFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || uint64(c.NumImports)+uint64(len(c.Funcs)) > uint64(railshot.MaxPublicCodeBytes)/16 || c.dynamicImports != (c.NumImports > 0) {
 		return reject("dynamic function import shape")
 	}
 	if c.NumImports+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount() > railshot.MaxPublicImports {
@@ -1358,7 +1362,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 
 	if vectorProfile {
-		if len(c.GlobalExports) > railshot.MaxFunctions {
+		if len(c.GlobalExports) > railshot.MaxModuleExports {
 			return reject("global export count bound")
 		}
 		for _, index := range c.GlobalExports {
@@ -1499,7 +1503,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	if hasReferenceGlobal {
-		if len(c.GlobalExports) > railshot.MaxFunctions {
+		if len(c.GlobalExports) > railshot.MaxModuleExports {
 			return reject("reference-global export count bound")
 		}
 		for _, index := range c.GlobalExports {
@@ -1553,7 +1557,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("primary memory reservation metadata mismatch")
 		}
 	}
-	if len(c.memoryExportMap()) > railshot.MaxFunctions {
+	if len(c.memoryExportMap()) > railshot.MaxModuleExports {
 		return reject("memory export count bound")
 	}
 	for _, index := range c.memoryExportMap() {

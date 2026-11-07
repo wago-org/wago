@@ -7951,8 +7951,8 @@ func TestRV64RootedScalarHostImportCountBound(t *testing.T) {
 	if err := compiled.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if railshot.AdmitGCRootedScalarSource(rootedScalarHostImportCountModule(railshot.MaxHostFunctionImports + 1)) {
-		t.Fatal("oversized rooted numeric host import count was source-admitted")
+	if !railshot.AdmitGCRootedScalarSource(rootedScalarHostImportCountModule(railshot.MaxHostFunctionImports + 1)) {
+		t.Fatal("257 rooted numeric host imports were rejected")
 	}
 }
 

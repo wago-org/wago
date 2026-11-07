@@ -292,7 +292,7 @@ func TestReferenceFunctionPrivateDirectoryAndMode(t *testing.T) {
 			state := moduleState{production: true, importReferences: true, referenceCalls: true, referenceFunctions: true, functions: specs}
 			_, a := walkInteger(fn, ft, &state, nil)
 			_, b := walkSWARPairsWithReferenceFunctionMode(fn, ft, memoryProfile{}, nil, types, nil, 0, nil, nil, 0, 0, true, false, false, false, false, false, true, true, nil)
-			want := n == MaxFunctions && !missing
+			want := n <= MaxModuleFunctions && !missing
 			if (a == nil) != want || (b == nil) != want {
 				t.Fatal("actual reference function directory", n, missing, a, b)
 			}

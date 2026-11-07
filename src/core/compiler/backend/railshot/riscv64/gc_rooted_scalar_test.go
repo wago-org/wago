@@ -3921,6 +3921,23 @@ func TestRV64RootedScalarTypeWireBoundsRecursiveGroups(t *testing.T) {
 	}
 }
 
+func TestRV64RootedScalarTypeWireRejectsCountBeyondPayloadWithoutAllocation(t *testing.T) {
+	// Header, type section id, four-byte payload length, then a group count of
+	// 268,435,455 with no declarations. The count must be bounded by the
+	// remaining payload before it can size parser scratch.
+	source := []byte{0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 0xff, 0xff, 0xff, 0x7f}
+	if AdmitGCRootedScalarSource(source) {
+		t.Fatal("declaration count beyond the type payload was admitted")
+	}
+	if allocations := testing.AllocsPerRun(100, func() {
+		if admitRV64GCRootedScalarWire(source) {
+			t.Fatal("declaration count beyond the type payload was admitted")
+		}
+	}); allocations != 0 {
+		t.Fatalf("malformed count allocated parser storage: %v", allocations)
+	}
+}
+
 func TestRV64RootedScalarTypeWireAcceptsFlatAggregateSubtypes(t *testing.T) {
 	body := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x01, 0x1a, 0x0b}
 	module := func(types ...[]byte) []byte {

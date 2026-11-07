@@ -84,7 +84,7 @@ func TestProductionReferenceCallDeadCountBoundary(t *testing.T) {
 				}
 				pressure := 0
 				image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-				if count == maxDirectCalls {
+				if count <= maxFunctionCallSites {
 					if err != nil || image == nil || !image.NativeReferenceCalls || !image.NativeReferenceControl || image.NativeTail != nil || pressure != 1 {
 						t.Fatal("exact unreachable call_ref boundary", err, pressure)
 					}
