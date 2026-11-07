@@ -1275,6 +1275,10 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 			break
 		}
 		next := f.s.next(e)
+		if square := f.snapshotLocalSquare(e, x); square != nil {
+			e = f.s.next(square)
+			continue
+		}
 		switch {
 		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
