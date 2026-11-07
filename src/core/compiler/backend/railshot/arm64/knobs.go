@@ -91,6 +91,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("dot-loop-vector", &dotLoopEnabled),
 	optimization.Bind("integer-byte-map", &integerByteMapEnabled),
 	optimization.Bind("integer-argmax-vector", &integerArgmaxEnabled),
+	optimization.Bind("masked-xor-stripe", &maskedXorStripeEnabled),
 	optimization.Bind("integer-quotient-recurrence", &integerQuotientRecurrenceEnabled),
 	optimization.Bind("zero-predicate-scan", &zeroPredicateScanEnabled),
 	optimization.Bind("regional-condition-fusion", &regionalConditionFusionEnabled),
@@ -218,6 +219,7 @@ var (
 	optDotLoopVector           = optimizationBindings.Option("dot-loop-vector")
 	optIntegerByteMap          = optimizationBindings.Option("integer-byte-map")
 	optIntegerArgmax           = optimizationBindings.Option("integer-argmax-vector")
+	optMaskedXorStripe         = optimizationBindings.Option("masked-xor-stripe")
 	optQuotientRecurrence      = optimizationBindings.Option("integer-quotient-recurrence")
 	optZeroPredicateScan       = optimizationBindings.Option("zero-predicate-scan")
 	optRegionalConditionFusion = optimizationBindings.Option("regional-condition-fusion")
