@@ -7,7 +7,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -265,5 +267,39 @@ func TestProductionMemory64CarryHelpersStayWithinBudget(t *testing.T) {
 	b.memoryAccessTypedAt(0, 1, 8, true, false, false, true)
 	if bytes.Equal(a.a.B, b.a.B) {
 		t.Fatal("memory64 carry/normalization distinction absent")
+	}
+}
+
+func TestSharedMemoryGrowDynamicZeroEmitsAcquireFastPath(t *testing.T) {
+	f := integerEmitter{target: target{mode: emissionMode{production: true, threadedMemory: true}}}
+	f.productionMemorySizeGrowTypedAt(0, true, false)
+	if f.err != nil || f.a.Err() != nil {
+		t.Fatal(f.err, f.a.Err())
+	}
+	if len(f.calls) != 1 || f.calls[0].atomicHelper != shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow {
+		t.Fatalf("slow helper calls = %+v", f.calls)
+	}
+	var acquire enc.Asm
+	acquire.LrD(enc.X5, enc.X28, enc.AtomicAcquire)
+	if !bytes.Contains(f.a.B, acquire.B) {
+		t.Fatalf("generated image lacks lr.d.aq: %x", f.a.B)
+	}
+	if bytes.Count(f.a.B, acquire.B) != 1 {
+		t.Fatalf("generated image acquire count = %d, want 1", bytes.Count(f.a.B, acquire.B))
+	}
+}
+
+func TestMemoryDirectoryDisplacementBoundary(t *testing.T) {
+	// RV64 directory entries are 24 bytes. Index 85 is the final row whose
+	// 2040-byte displacement fits ADDI's signed 12-bit immediate; index 86
+	// materializes the 2064-byte displacement before adding it to the base.
+	var small, large integerEmitter
+	small.productionMemoryDirectoryAt(85, enc.X28)
+	large.productionMemoryDirectoryAt(86, enc.X28)
+	if small.err != nil || small.a.Err() != nil || large.err != nil || large.a.Err() != nil {
+		t.Fatal(small.err, small.a.Err(), large.err, large.a.Err())
+	}
+	if len(small.a.B) != 8 || len(large.a.B) <= len(small.a.B) || bytes.Equal(small.a.B, large.a.B) {
+		t.Fatalf("directory boundary images: index85=%x index86=%x", small.a.B, large.a.B)
 	}
 }

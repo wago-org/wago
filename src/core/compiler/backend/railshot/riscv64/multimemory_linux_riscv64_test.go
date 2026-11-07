@@ -5,12 +5,62 @@ package riscv64
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
+
+func TestProductionMemoryDirectoryDisplacementBoundaryExecution(t *testing.T) {
+	for _, index := range []int{85, 86} {
+		t.Run(fmt.Sprintf("index%d", index), func(t *testing.T) {
+			e, _, args, results, trap, _ := thunkFixtureRV64(t, 8)
+			j, err := coreruntime.NewJobMemoryGrowable(65536, 65536)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := j.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			j.SetStackFence(e.StackLimit())
+			if err := j.RebindTrapCell(trap); err != nil {
+				t.Fatal(err)
+			}
+			arena, err := coreruntime.NewArena((index + 1) * abi.MemoryDirEntryBytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				j.SetMemoryDirPtr(0)
+				if err := arena.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			dir := arena.Alloc((index + 1) * abi.MemoryDirEntryBytes)
+			for i := 0; i <= index; i++ {
+				binary.LittleEndian.PutUint64(dir[i*abi.MemoryDirEntryBytes:], uint64(j.LinMemBase()))
+			}
+			j.SetMemoryDirPtr(thunkPointerRV64(dir))
+			body := []byte{0x3f, byte(index), 0x0b}
+			m := multiMemoryBackendDecode(t, multiMemoryBackendSource(index+1, nil, []wasm.ValType{wasm.I32}, body))
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			entry := thunkImageRV64(t, image.Code) + uintptr(image.Entry[0])
+			if err := e.CallPrepared(entry, args, j.LinMemBase(), trap, results); err != nil {
+				t.Fatal(err)
+			}
+			if got := binary.LittleEndian.Uint64(results); got != 1 {
+				t.Fatalf("memory.size %d = %d, want 1", index, got)
+			}
+		})
+	}
+}
 
 // Poison directory caches deliberately: each row is an alias of the same
 // real reservation. Generated size/growth must use authoritative basedata even
