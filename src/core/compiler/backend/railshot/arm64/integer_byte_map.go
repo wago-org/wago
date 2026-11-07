@@ -11,6 +11,7 @@ import (
 )
 
 var integerByteMapEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_BYTE_MAP") != "1"
+var integerQuotientRecurrenceEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_QUOTIENT_RECURRENCE") != "1"
 
 // Two interleaved affine byte producers. Roles and constants come entirely
 // from the source; the runtime relation between the producers is guarded.
@@ -109,6 +110,9 @@ func (f *fn) emitIntegerByteMap(source *wasm.Reader) {
 	if !ok {
 		return
 	}
+	// A sixteen-byte packet adds at most 16 to a remainder smaller than d.
+	// d<=240 keeps that sum representable in an unsigned byte.
+	byteRecurrence := f.opt(optQuotientRecurrence) && p.divisor <= 240
 	available := 0
 	blocked := f.blockedFRegs(0)
 	for _, r := range fpAllocRegs {
@@ -158,6 +162,10 @@ func (f *fn) emitIntegerByteMap(source *wasm.Reader) {
 	f.a.Sub32(X16, b, a)
 	f.cmpImm(X16, 1, false)
 	guard(condNE)
+	if byteRecurrence {
+		f.cmpRR(a, b, false)
+		guard(condAE) // Decline the otherwise valid even=MaxUint32,odd=0 wrap.
+	}
 	f.a.Sub32(d, d, c) // C = scaledOdd-scaledEven, modulo 32 bits.
 	f.a.Add32(X16, d, d)
 	f.a.MovImm64(X17, uint64(p.delta))
@@ -194,73 +202,82 @@ func (f *fn) emitIntegerByteMap(source *wasm.Reader) {
 			f.releaseF(r)
 		}
 	}()
-	n, scaled, magic, lo, hi, q, incN, incScaled := vr[0], vr[1], vr[2], vr[3], vr[4], vr[5], vr[6], vr[7]
-	f.a.MovImm64(X16, 0)
-	f.a.NeonDupGprS(n, X16)
-	for lane := byte(1); lane < 4; lane++ {
-		f.a.MovImm64(X16, uint64(lane))
-		f.a.NeonInsS(n, X16, lane)
-	}
-	f.a.NeonDupGprS(scaled, d)
-	f.a.NeonMulS(scaled, scaled, n)
-	f.a.NeonDupGprS(q, c)
-	f.a.NeonAddS(scaled, scaled, q)
-	f.a.NeonDupGprS(q, a)
-	f.a.NeonAddS(n, n, q)
-	f.a.MovImm64(X16, 4)
-	f.a.NeonDupGprS(incN, X16)
-	f.a.MovImm64(X16, uint64(uint32(2*p.delta)))
-	f.a.NeonDupGprS(incScaled, X16)
-	m, shift, correction := railshot.MagicU(uint64(p.divisor), 32)
-	f.a.MovImm64(X16, uint64(uint32(m)))
-	f.a.NeonDupGprS(magic, X16)
-	// b becomes packet count; a becomes the native output pointer.
-	f.a.MovReg32(a, b)
-	f.a.MovImm64(X16, uint64(p.limit))
-	f.a.Sub32(b, X16, b)
-	f.a.LsrImm32(b, b, 1)
-	f.a.SubImm32(b, b, 1)
-	f.a.LsrImm32(b, b, 1)
-	f.a.MovImm64(X16, uint64(p.offset))
-	f.a.Add64(a, a, X16)
-	f.a.Add64(a, a, linMemReg)
-	loop := f.a.Len()
-	if p.divisor&(p.divisor-1) == 0 {
-		if p.divisor == 1 {
-			f.a.NeonOrr16b(q, n, n)
-		} else {
-			f.a.NeonUshrS(q, n, uint8(bits.TrailingZeros32(p.divisor)))
-		}
+	n, scaled := vr[0], vr[1]
+	if byteRecurrence {
+		f.emitByteMapRecurrence(p, gp, vr)
 	} else {
-		f.a.NeonUmullDfromS(lo, n, magic)
-		f.a.NeonUmull2DfromS(hi, n, magic)
-		// Each widening product has alternating low/high 32-bit words.
-		// Unzip their odd lanes to collect all four multiply-high results.
-		f.a.NeonUzp2S(q, lo, hi)
-		if correction {
-			f.a.NeonSubS(lo, n, q)
-			f.a.NeonUshrS(lo, lo, 1)
-			f.a.NeonAddS(q, q, lo)
+		magic, lo, hi, q, incN, incScaled := vr[2], vr[3], vr[4], vr[5], vr[6], vr[7]
+		f.a.MovImm64(X16, 0)
+		f.a.NeonDupGprS(n, X16)
+		for lane := byte(1); lane < 4; lane++ {
+			f.a.MovImm64(X16, uint64(lane))
+			f.a.NeonInsS(n, X16, lane)
 		}
-		if shift != 0 {
-			f.a.NeonUshrS(q, q, uint8(shift))
+		f.a.NeonDupGprS(scaled, d)
+		f.a.NeonMulS(scaled, scaled, n)
+		f.a.NeonDupGprS(q, c)
+		f.a.NeonAddS(scaled, scaled, q)
+		f.a.NeonDupGprS(q, a)
+		f.a.NeonAddS(n, n, q)
+		f.a.MovImm64(X16, 4)
+		f.a.NeonDupGprS(incN, X16)
+		f.a.MovImm64(X16, uint64(uint32(2*p.delta)))
+		f.a.NeonDupGprS(incScaled, X16)
+		m, shift, correction := railshot.MagicU(uint64(p.divisor), 32)
+		f.a.MovImm64(X16, uint64(uint32(m)))
+		f.a.NeonDupGprS(magic, X16)
+		// b becomes packet count; a becomes the native output pointer.
+		f.a.MovReg32(a, b)
+		f.a.MovImm64(X16, uint64(p.limit))
+		f.a.Sub32(b, X16, b)
+		f.a.LsrImm32(b, b, 1)
+		f.a.SubImm32(b, b, 1)
+		f.a.LsrImm32(b, b, 1)
+		f.a.MovImm64(X16, uint64(p.offset))
+		f.a.Add64(a, a, X16)
+		f.a.Add64(a, a, linMemReg)
+		loop := f.a.Len()
+		if p.divisor&(p.divisor-1) == 0 {
+			if p.divisor == 1 {
+				f.a.NeonOrr16b(q, n, n)
+			} else {
+				f.a.NeonUshrS(q, n, uint8(bits.TrailingZeros32(p.divisor)))
+			}
+		} else {
+			f.a.NeonUmullDfromS(lo, n, magic)
+			f.a.NeonUmull2DfromS(hi, n, magic)
+			// Each widening product has alternating low/high 32-bit words.
+			// Unzip their odd lanes to collect all four multiply-high results.
+			f.a.NeonUzp2S(q, lo, hi)
+			if correction {
+				f.a.NeonSubS(lo, n, q)
+				f.a.NeonUshrS(lo, lo, 1)
+				f.a.NeonAddS(q, q, lo)
+			}
+			if shift != 0 {
+				f.a.NeonUshrS(q, q, uint8(shift))
+			}
 		}
+		f.a.NeonAddS(q, q, scaled)
+		f.a.NeonXtnHfromS(q, q)
+		f.a.NeonXtnBfromH(q, q)
+		f.a.StrF(a, 0, q, false)
+		f.a.NeonAddS(n, n, incN)
+		f.a.NeonAddS(scaled, scaled, incScaled)
+		f.a.AddImm64(a, a, 4)
+		f.a.SubsImm32(b, b, 1)
+		f.patchBranch19(f.a.Bcond(condNE), loop)
 	}
-	f.a.NeonAddS(q, q, scaled)
-	f.a.NeonXtnHfromS(q, q)
-	f.a.NeonXtnBfromH(q, q)
-	f.a.StrF(a, 0, q, false)
-	f.a.NeonAddS(n, n, incN)
-	f.a.NeonAddS(scaled, scaled, incScaled)
-	f.a.AddImm64(a, a, 4)
-	f.a.SubsImm32(b, b, 1)
-	f.patchBranch19(f.a.Bcond(condNE), loop)
 	for i, x := range roles {
 		v, lane := n, byte(i&1)
 		if i >= 2 {
 			v = scaled
 		}
-		f.a.NeonUmovS(X16, v, lane)
+		if byteRecurrence {
+			f.a.MovReg32(X16, gp[i])
+		} else {
+			f.a.NeonUmovS(X16, v, lane)
+		}
 		if reg, _, pin := f.pinReg(x); pin {
 			f.a.MovReg32(reg, X16)
 			f.markLocalDirty(x)

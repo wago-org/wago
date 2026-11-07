@@ -18,6 +18,7 @@ func TestFPWriteDestinations(t *testing.T) {
 		{"lane", 1 << 3, func(a *Asm) { a.NeonInsD(3, X0, 1) }},
 		{"lane-source", 1 << 3, func(a *Asm) { a.NeonInsLaneSFrom(3, 1, 4, 2) }},
 		{"packed", 1 << 3, func(a *Asm) { a.NeonAddB(3, 4, 5) }},
+		{"byte-multiply", 1 << 3, func(a *Asm) { a.NeonMulB(3, 4, 5) }},
 		{"narrow", 1 << 3, func(a *Asm) { a.NeonXtnHfromS(3, 4) }},
 		{"unzip", 1 << 3, func(a *Asm) { a.NeonUzp2S(3, 4, 5) }},
 		{"reduction", 1 << 3, func(a *Asm) { a.NeonAddvB(3, 4) }},
