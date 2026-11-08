@@ -10,6 +10,8 @@ import (
 	"os"
 )
 
+var integerResidualConstantsEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_RESIDUAL_CONSTANTS") != "1"
+
 var integerResidualVectorDivEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_RESIDUAL_VECTOR_DIV") != "1"
 
 func (f *fn) hasIntegerResidualPrefix(source *wasm.Reader) bool {
@@ -107,6 +109,39 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 		f.stats.peep("integer-residual-gp-reject")
 		return
 	}
+	// Keep a small set of immutable vector constants across packets. Admission
+	// uses only otherwise free registers; the scalar alternative and transient
+	// schedule retain their existing pressure budget.
+	var constants [16]uint32
+	constantN := 0
+	addConstant := func(c uint32) {
+		for _, old := range constants[:constantN] {
+			if old == c {
+				return
+			}
+		}
+		if constantN < len(constants) && constantN < available-neededFP {
+			constants[constantN] = c
+			constantN++
+		}
+	}
+	if integerResidualConstantsEnabled {
+		for i, n := range p.nodes[:p.n] {
+			if p.used[i] && n.Op == 0x41 {
+				addConstant(uint32(n.Bits))
+			}
+		}
+		for _, m := range p.maps[:p.mapN] {
+			if m.constant != 0 {
+				addConstant(m.constant)
+			}
+			for _, term := range m.terms[:m.n] {
+				if term.coefficient != 0 && term.coefficient != 1 {
+					addConstant(term.coefficient)
+				}
+			}
+		}
+	}
 	oldPins, oldFPins := f.pinned, f.fpinned
 	var gp [6]Reg
 	for i := range gp {
@@ -163,19 +198,56 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 		f.a.MovImm32(X16, int32(uint32(lane)*p.seedStep))
 		f.a.NeonInsS(lanes, X16, lane)
 	}
+	if vectorDivision && integerResidualConstantsEnabled {
+		addConstant(uint32(magic))
+	}
+	var constantRegs [16]Reg
+	for i, c := range constants[:constantN] {
+		constantRegs[i] = alloc()
+		f.a.MovImm32(X16, int32(c))
+		f.a.NeonDupGprS(constantRegs[i], X16)
+	}
+	findConstant := func(c uint32) Reg {
+		for i, old := range constants[:constantN] {
+			if old == c {
+				return constantRegs[i]
+			}
+		}
+		return regNone
+	}
 	loop := f.a.Len()
 	uses = p.uses
 	var values [256]Reg
 	done := func(x int) {
 		uses[x]--
-		if uses[x] == 0 {
+		if uses[x] == 0 && !(p.nodes[x].Op == 0x41 && findConstant(uint32(p.nodes[x].Bits)) != regNone) {
 			release(values[x])
 		}
 	}
-	broadcast := func(r Reg, c uint32) { f.a.MovImm32(X16, int32(c)); f.a.NeonDupGprS(r, X16) }
+	broadcast := func(r Reg, c uint32) {
+		if cached := findConstant(c); cached != regNone {
+			f.a.NeonMov16b(r, cached)
+		} else {
+			f.a.MovImm32(X16, int32(c))
+			f.a.NeonDupGprS(r, X16)
+		}
+	}
+	constantOperand := func(c uint32, scratch Reg) Reg {
+		if cached := findConstant(c); cached != regNone {
+			return cached
+		}
+		broadcast(scratch, c)
+		return scratch
+	}
 	for i, n := range p.nodes[:p.n] {
 		if !p.used[i] {
 			continue
+		}
+		if n.Op == 0x41 {
+			if cached := findConstant(uint32(n.Bits)); cached != regNone {
+				values[i] = cached
+				continue
+			}
 		}
 		out := alloc()
 		values[i] = out
@@ -241,16 +313,14 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 				if term.coefficient == 1 {
 					f.a.NeonMov16b(out, input)
 				} else {
-					broadcast(scratch, term.coefficient)
-					f.a.NeonMulS(out, input, scratch)
+					f.a.NeonMulS(out, input, constantOperand(term.coefficient, scratch))
 				}
 				initialized = true
 			} else {
 				if term.coefficient == 1 {
 					f.a.NeonAddS(out, out, input)
 				} else {
-					broadcast(scratch, term.coefficient)
-					f.a.NeonMlaS(out, input, scratch)
+					f.a.NeonMlaS(out, input, constantOperand(term.coefficient, scratch))
 				}
 			}
 			done(term.node)
@@ -263,8 +333,12 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 			// SQDMULH gives floor(n*m/2^31); ASR(s+1) is exactly
 			// SMULL(n,m)>>(32+s). Add the logical sign bit for truncation
 			// toward zero. No floating arithmetic or reassociation is used.
-			f.a.NeonDupGprS(scratch, magicReg)
-			f.a.NeonSqdmulhS(out, out, scratch)
+			divMagic := findConstant(uint32(magic))
+			if divMagic == regNone {
+				f.a.NeonDupGprS(scratch, magicReg)
+				divMagic = scratch
+			}
+			f.a.NeonSqdmulhS(out, out, divMagic)
 			f.a.NeonSshrS(out, out, uint8(shift+1))
 			f.a.NeonUshrS(scratch, out, 31)
 			f.a.NeonAddS(out, out, scratch)
@@ -325,6 +399,9 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 	publish(hashLocal, hash)
 	f.patchBranch19(scalar, f.a.Len())
 	release(lanes)
+	for _, r := range constantRegs[:constantN] {
+		release(r)
+	}
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
 	if vectorDivision {
