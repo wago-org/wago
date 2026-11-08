@@ -91,9 +91,10 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 			}
 			return n.op == 0x6a && walk(n.a) && walk(n.b)
 		}
-		if !walk(cell.Value) || reads != 1 || delta != p.step {
+		if !walk(cell.Value) || reads != 1 || delta == 0 || delta%p.step != 0 || delta/p.step > 256 || p.integer && delta != p.step {
 			return false
 		}
+		p.byteSteps[i] = delta
 		p.byteIndices |= 1 << i
 	}
 	return true
@@ -140,5 +141,12 @@ func (p *floatMapPlan) integerAffine(root int) (floatMapAddress, bool) {
 	if !walk(root) || bias > 1<<20 {
 		return floatMapAddress{}, false
 	}
-	return floatMapAddress{base: base, index: index + 1, bias: bias, invariant: index < 0}, true
+	stride := uint32(0)
+	if index >= 0 && index != p.counter {
+		stride = p.byteSteps[p.localSlot(index)] / p.step
+	}
+	if stride == 1 {
+		stride = 0
+	}
+	return floatMapAddress{base: base, index: index + 1, bias: bias, invariant: index < 0, stride: stride}, true
 }

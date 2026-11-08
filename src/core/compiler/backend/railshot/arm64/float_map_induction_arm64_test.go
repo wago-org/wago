@@ -13,7 +13,7 @@ import (
 
 // The trip counter counts elements while two distinct mutable source locals
 // advance in bytes. Both address locals and the last source value are live out.
-func floatInductionModule(t testing.TB, wide, early bool, packets int, src, dst, start, limit uint32) *wasm.Module {
+func floatInductionModule(t testing.TB, wide, early bool, packets int, src, dst, start, limit, stride uint32) *wasm.Module {
 	body := []byte{2, 6, 0x7f, 1, 0x7d}
 	size, load, store, add := uint32(4), byte(0x2a), byte(0x38), byte(0x92)
 	if wide {
@@ -28,7 +28,16 @@ func floatInductionModule(t testing.TB, wide, early bool, packets int, src, dst,
 		set(byte(i))
 	}
 	body = append(body, 0x03, 0x40)
-	advance := func(x byte) { get(x); constant(uint32(packets) * size); body = append(body, 0x6a); set(x) }
+	advance := func(x byte) {
+		get(x)
+		delta := uint32(packets) * size
+		if x == 4 {
+			delta *= stride
+		}
+		constant(delta)
+		body = append(body, 0x6a)
+		set(x)
+	}
 	if early {
 		advance(4)
 		advance(5)
@@ -43,7 +52,7 @@ func floatInductionModule(t testing.TB, wide, early bool, packets int, src, dst,
 	for lane := 0; lane < packets; lane++ {
 		bias := uint32(lane) * size
 		address(1, 5, bias)
-		address(0, 4, bias)
+		address(0, 4, bias*stride)
 		body = append(body, load, 0, 0)
 		if wide {
 			body = appendF64ConstForCacheTest(body, 1.125)
@@ -82,29 +91,56 @@ func TestFloatMapRelatedInduction(t *testing.T) {
 		binary.LittleEndian.PutUint64(initial[i:], 0x3ff400003f800000+uint64(i))
 	}
 	for _, wide := range []bool{false, true} {
-		for _, early := range []bool{false, true} {
-			for _, packets := range []int{1, 2, 3, 4} {
-				for _, c := range []struct{ src, dst, start, limit uint32 }{
-					{0, 16384, 0, uint32(packets) * 128},
-					{0, 16384, 3, uint32(packets)*128 + 3},
-					{0, 16384, 0, uint32(packets)},
-					{0, 0, 0, uint32(packets) * 128},
-					{0, 4, 0, uint32(packets) * 128},
-					{65500, 16384, 0, uint32(packets) * 128},
-					{0, 65500, 0, uint32(packets) * 128},
-					{0xfffffff0, 16384, 0, uint32(packets) * 128},
-				} {
-					m := floatInductionModule(t, wide, early, packets, c.src, c.dst, c.start, c.limit)
-					got, mem, err, hits := runFloatMapMemory(t, m, true, initial)
-					want, scalar, scalarErr, _ := runFloatMapMemory(t, m, false, initial)
-					if got != want || (err == nil) != (scalarErr == nil) || !bytes.Equal(mem, scalar) {
-						t.Fatalf("wide=%v early=%v packets=%d case=%+v: got=%x want=%x errors=%v/%v", wide, early, packets, c, got, want, err, scalarErr)
-					}
-					if diagnosticsEnabled && c.src == 0 && c.dst == 16384 && c.start == 0 && c.limit == uint32(packets)*128 && hits == 0 {
-						t.Fatalf("new floating induction was not selected: wide=%v early=%v packets=%d", wide, early, packets)
+		for _, stride := range []uint32{3, 7, 120} {
+			for _, early := range []bool{false, true} {
+				for _, packets := range []int{1, 2, 3, 4} {
+					for _, c := range []struct{ src, dst, start, limit uint32 }{
+						{0, 16384, 0, uint32(packets) * 128},
+						{0, 16384, 3, uint32(packets)*128 + 3},
+						{0, 16384, 0, uint32(packets)},
+						{0, 0, 0, uint32(packets) * 128},
+						{0, 4, 0, uint32(packets) * 128},
+						{65500, 16384, 0, uint32(packets) * 128},
+						{0, 65500, 0, uint32(packets) * 128},
+						{0xfffffff0, 16384, 0, uint32(packets) * 128},
+					} {
+						m := floatInductionModule(t, wide, early, packets, c.src, c.dst, c.start, c.limit, stride)
+						got, mem, err, hits := runFloatMapMemory(t, m, true, initial)
+						want, scalar, scalarErr, _ := runFloatMapMemory(t, m, false, initial)
+						if got != want || (err == nil) != (scalarErr == nil) || !bytes.Equal(mem, scalar) {
+							t.Fatalf("wide=%v early=%v packets=%d case=%+v: got=%x want=%x errors=%v/%v", wide, early, packets, c, got, want, err, scalarErr)
+						}
+						if diagnosticsEnabled && c.src == 0 && c.dst == 16384 && c.start == 0 && c.limit == uint32(packets)*128 && hits == 0 {
+							t.Fatalf("new floating induction was not selected: wide=%v early=%v packets=%d", wide, early, packets)
+						}
 					}
 				}
 			}
+		}
+	}
+}
+
+func TestFloatMapStridedSpecialValues(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		initial := make([]byte, 65536)
+		for i := 0; i < len(initial); i += 8 {
+			if wide {
+				values := [...]uint64{0, 0x8000000000000000, 0x7ff0000000000000, 0xfff0000000000000, 1, 0x000fffffffffffff, 0x7ff8000000000042, 0x7ff0000000000042}
+				binary.LittleEndian.PutUint64(initial[i:], values[i/8%len(values)])
+			} else {
+				values := [...]uint32{0, 0x80000000, 0x7f800000, 0xff800000, 1, 0x007fffff, 0x7fc00042, 0x7f800042}
+				binary.LittleEndian.PutUint32(initial[i:], values[i/8%len(values)])
+				binary.LittleEndian.PutUint32(initial[i+4:], values[(i/8+3)%len(values)])
+			}
+		}
+		m := floatInductionModule(t, wide, false, 3, 0, 32768, 0, 192, 3)
+		got, mem, err, hits := runFloatMapMemory(t, m, true, initial)
+		want, scalar, scalarErr, _ := runFloatMapMemory(t, m, false, initial)
+		if err != nil || scalarErr != nil || got != want || !bytes.Equal(mem, scalar) {
+			t.Fatalf("wide=%v: strided special-value state differs: %x/%x %v/%v", wide, got, want, err, scalarErr)
+		}
+		if diagnosticsEnabled && hits == 0 {
+			t.Fatal("strided special-value test did not admit vector code")
 		}
 	}
 }
