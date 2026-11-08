@@ -147,6 +147,24 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	if r := f.tryLinearIntegerTree(node, dest); r != regNone {
 		return r
 	}
+	if shiftedLinearTreeEnabled && (node.deferredOp() == opAdd || node.deferredOp() == opSub) {
+		// The ordinary shifted-register ADD cover consumes a child shift
+		// before condenseShift sees it. Offer pure local-only linear children
+		// the same bounded proof first; rejection leaves them untouched.
+		children := [2]*elem{f.s.arg0(node), f.s.arg1(node)}
+		for i, child := range children {
+			if child != nil && child.isDeferred() && child.deferredOp() == opShl {
+				target := regNone
+				// A distinct owned sibling cannot read the requested result
+				// register. Feed that destination directly into this child.
+				other := children[1-i]
+				if dest != regNone && other.elemKind() == ekValue && other.st.kind == stReg && other.st.reg != dest {
+					target = dest
+				}
+				f.tryLinearIntegerTree(child, target)
+			}
+		}
+	}
 	if node.deferredOp() == opAnd {
 		if r := f.tryBitfieldPair(node, dest); r != regNone {
 			return r
@@ -976,6 +994,11 @@ func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
 // (shift any register by any register, taken mod width) — so none of x86's "force
 // the count into CL / spill RCX / pin RCX" dance is needed.
 func (f *fn) condenseShift(node *elem, dest Reg) Reg {
+	if node.deferredOp() == opShl && shiftedLinearTreeEnabled {
+		if r := f.tryLinearIntegerTree(node, dest); r != regNone {
+			return r
+		}
+	}
 	if r := f.tryBitfieldPair(node, dest); r != regNone {
 		return r
 	}
