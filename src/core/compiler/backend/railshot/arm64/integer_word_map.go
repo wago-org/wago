@@ -10,6 +10,8 @@ import (
 )
 
 var integerWordMapEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_WORD_MAP") != "1"
+var integerFloatMapEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_FLOAT_MAP") != "1"
+var integerMapIntervalsEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_MAP_INTERVALS") != "1"
 
 const integerWordMapWorkLimit = 4096
 
@@ -27,6 +29,14 @@ type integerWordMapPlan struct {
 	used                        [128]bool
 	uses                        [128]uint8
 	proofWork, proofLimit       int
+	storeOp, conversion         byte
+}
+
+func (p *integerWordMapPlan) elementBytes() uint32 {
+	if p.storeOp == 0x39 {
+		return 8
+	}
+	return 4
 }
 
 // Ordinary loops avoid the large candidate frame. All failed probes, including
@@ -70,6 +80,12 @@ func (f *fn) inspectIntegerWordMap(source *wasm.Reader) (p integerWordMapPlan, o
 		x := p.n
 		p.n++
 		p.nodes[x] = shared.LoopExpression{Op: op, Type: wasm.I32, Left: a, Right: b, Bits: bits, PC: uint32(pc)}
+		switch op {
+		case 0xb2, 0xb3:
+			p.nodes[x].Type = wasm.F32
+		case 0xb7, 0xb8:
+			p.nodes[x].Type = wasm.F64
+		}
 		return x
 	}
 	push := func(x int) bool {
@@ -90,7 +106,7 @@ func (f *fn) inspectIntegerWordMap(source *wasm.Reader) (p integerWordMapPlan, o
 		switch op {
 		case 0x20, 0x21, 0x22:
 			x, err := r.U32()
-			if err != nil || x >= uint32(f.nLocals) || f.localType[x] != mtI32 {
+			if err != nil || x >= uint32(f.nLocals) || (f.localType[x] != mtI32 && f.localType[x] != mtF32 && f.localType[x] != mtF64) {
 				return p, false
 			}
 			slot := shared.FindLoopLocal(p.locals[:p.localN], x)
@@ -102,9 +118,14 @@ func (f *fn) inspectIntegerWordMap(source *wasm.Reader) (p integerWordMapPlan, o
 				if id < 0 {
 					return p, false
 				}
+				if f.localType[x] == mtF32 {
+					p.nodes[id].Type = wasm.F32
+				} else if f.localType[x] == mtF64 {
+					p.nodes[id].Type = wasm.F64
+				}
 				slot = p.localN
 				p.localN++
-				p.locals[slot] = shared.LoopLocal[machineType, int]{Index: x, Type: mtI32, Initial: id, Value: id}
+				p.locals[slot] = shared.LoopLocal[machineType, int]{Index: x, Type: f.localType[x], Initial: id, Value: id}
 			}
 			cell := &p.locals[slot]
 			if op == 0x20 {
@@ -136,12 +157,29 @@ func (f *fn) inspectIntegerWordMap(source *wasm.Reader) (p integerWordMapPlan, o
 			if !push(add(op, stack[depth], stack[depth+1], 0, pc)) {
 				return p, false
 			}
-		case 0x36:
+		case 0xb2, 0xb3, 0xb7, 0xb8:
+			if !integerFloatMapEnabled || depth == 0 || p.nodes[stack[depth-1]].Type != wasm.I32 {
+				return p, false
+			}
+			x := add(op, stack[depth-1], 0, 0, pc)
+			if x < 0 {
+				return p, false
+			}
+			stack[depth-1] = x
+		case 0x36, 0x38, 0x39:
+			if op != 0x36 && !integerFloatMapEnabled {
+				return p, false
+			}
 			mem, offset, err := f.readMemArg(&r)
 			if err != nil || mem != 0 || offset > 1<<20 || depth < 2 || p.storeN == len(p.stores) {
 				return p, false
 			}
 			depth -= 2
+			if p.storeN == 0 {
+				p.storeOp = op
+			} else if p.storeOp != op {
+				return p, false
+			}
 			p.stores[p.storeN] = shared.LoopStore[int]{Address: stack[depth], Value: stack[depth+1], Offset: offset, PC: uint32(pc)}
 			p.storeN++
 		case 0x0d:
@@ -272,6 +310,9 @@ func (p *integerWordMapPlan) same(x, y int, delta uint32, visits *int) bool {
 	if a.Op == 0x41 {
 		return a.Bits == b.Bits
 	}
+	if a.Op == 0xb2 || a.Op == 0xb3 || a.Op == 0xb7 || a.Op == 0xb8 {
+		return p.same(a.Left, b.Left, delta, visits)
+	}
 	return p.same(a.Left, b.Left, delta, visits) && p.same(a.Right, b.Right, delta, visits)
 }
 
@@ -310,7 +351,7 @@ func (p *integerWordMapPlan) finish(entryRead [32]bool) bool {
 			continue
 		}
 		step, ok := p.increment(cell.Value, cell.Initial)
-		if !ok || step != uint32(4*p.storeN) {
+		if !ok || step != p.elementBytes()*uint32(p.storeN) {
 			continue
 		}
 		p.pointer = int(cell.Index)
@@ -337,11 +378,12 @@ func (p *integerWordMapPlan) finish(entryRead [32]bool) bool {
 		for i, s := range p.stores[:p.storeN] {
 			d := offsets[i] - bias
 			visits := 0
-			if d%4 != 0 || d/4 >= uint32(p.storeN) || lanes&(1<<(d/4)) != 0 || !p.same(p.root, s.Value, d/4, &visits) {
+			width := p.elementBytes()
+			if d%width != 0 || d/width >= uint32(p.storeN) || lanes&(1<<(d/width)) != 0 || !p.same(p.root, s.Value, d/width, &visits) {
 				valid = false
 				break
 			}
-			lanes |= 1 << (d / 4)
+			lanes |= 1 << (d / width)
 		}
 		if !valid {
 			continue
@@ -356,6 +398,15 @@ func (p *integerWordMapPlan) finish(entryRead [32]bool) bool {
 		}
 		p.used = [128]bool{}
 		p.uses = [128]uint8{}
+		p.conversion = 0
+		if p.storeOp != 0x36 {
+			n := p.nodes[p.root]
+			if p.storeOp == 0x38 && (n.Op == 0xb2 || n.Op == 0xb3) || p.storeOp == 0x39 && (n.Op == 0xb7 || n.Op == 0xb8) {
+				p.root, p.conversion = n.Left, n.Op
+			} else {
+				continue
+			}
+		}
 		if !p.mark(p.root, 0) {
 			continue
 		}
@@ -367,7 +418,17 @@ func (p *integerWordMapPlan) finish(entryRead [32]bool) bool {
 }
 
 func (f *fn) emitIntegerWordMap(source *wasm.Reader) {
-	if !integerWordMapEnabled || !f.opt(optDotLoopVector) || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 || !f.hasIntegerWordMapPrefix(source) {
+	if !integerWordMapEnabled || !f.opt(optDotLoopVector) || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
+		return
+	}
+	// The driver canonicalizes interval residents at the source loop boundary.
+	// This prefix reads and publishes ordinary homes with isolated scratch; it
+	// never consumes source-offset last-use hints or advances their cursors.
+	// The unchanged scalar body alone resumes source residency and ownership.
+	if len(f.intervalLast) != 0 && (!integerMapIntervalsEnabled || !f.intervalControl || f.intervalActive != 0) {
+		return
+	}
+	if !f.hasIntegerWordMapPrefix(source) {
 		return
 	}
 	f.emitIntegerWordMapBody(source)
@@ -378,6 +439,7 @@ func (f *fn) emitIntegerWordMapBody(source *wasm.Reader) {
 	if !ok {
 		return
 	}
+	f.stats.peep("integer-word-map-recognized")
 	f.emitIntegerWordMapPlan(&p)
 }
 
@@ -420,7 +482,12 @@ func (f *fn) emitIntegerWordMapPlan(p *integerWordMapPlan) {
 			available++
 		}
 	}
-	if available < constants+peak+1 {
+	conversionScratch := 0
+	if p.conversion != 0 {
+		conversionScratch = 1
+	}
+	if available < constants+peak+1+conversionScratch {
+		f.stats.peep("integer-word-map-pressure-reject")
 		return
 	}
 	oldPinned, oldFPinned := f.pinned, f.fpinned
@@ -439,6 +506,7 @@ func (f *fn) emitIntegerWordMapPlan(p *integerWordMapPlan) {
 	for i := range gp {
 		gp[i] = f.allocRegOrNone(0)
 		if gp[i] == regNone {
+			f.stats.peep("integer-word-map-gp-reject")
 			return
 		}
 		f.pinned = f.pinned.add(gp[i])
@@ -484,7 +552,11 @@ func (f *fn) emitIntegerWordMapPlan(p *integerWordMapPlan) {
 		guard(condNE)
 	}
 	f.floatMapOffset(pointer, pointer, uint64(p.bias), false, X16)
-	f.a.LslImm64(X16, remaining, 2)
+	shift := uint8(2)
+	if p.elementBytes() == 8 {
+		shift = 3
+	}
+	f.a.LslImm64(X16, remaining, shift)
 	f.a.Add64(X16, pointer, X16)
 	if p.offset != 0 {
 		f.floatMapOffset(X16, X16, p.offset, true, X17)
@@ -574,11 +646,39 @@ func (f *fn) emitIntegerWordMapPlan(p *integerWordMapPlan) {
 			}
 		}
 	}
-	f.a.StrQ(pointer, 0, values[p.root])
+	if p.conversion == 0 {
+		f.a.StrQ(pointer, 0, values[p.root])
+	} else {
+		out, input := alloc(), values[p.root]
+		switch p.conversion {
+		case 0xb2:
+			f.a.NeonScvtfSfromS(out, input)
+		case 0xb3:
+			f.a.NeonUcvtfSfromS(out, input)
+		case 0xb7:
+			f.a.NeonSxtlDfromS(out, input)
+			f.a.NeonScvtfDfromD(out, out)
+		case 0xb8:
+			f.a.NeonUxtlDfromS(out, input)
+			f.a.NeonUcvtfDfromD(out, out)
+		}
+		f.a.StrQ(pointer, 0, out)
+		if p.elementBytes() == 8 {
+			if p.conversion == 0xb7 {
+				f.a.NeonSxtl2DfromS(out, input)
+				f.a.NeonScvtfDfromD(out, out)
+			} else {
+				f.a.NeonUxtl2DfromS(out, input)
+				f.a.NeonUcvtfDfromD(out, out)
+			}
+			f.a.StrQ(pointer, 16, out)
+		}
+		release(out)
+	}
 	if !p.invariantLeaf(p.root) {
 		release(values[p.root])
 	}
-	f.a.AddImm64(pointer, pointer, 16)
+	f.a.AddImm64(pointer, pointer, 4*p.elementBytes())
 	f.a.AddImm32(index, index, 4)
 	f.a.SubImm32(remaining, remaining, 4)
 	f.cmpImm(remaining, uint32(4+p.storeN), false)
