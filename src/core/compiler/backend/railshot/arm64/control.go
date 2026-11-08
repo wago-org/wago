@@ -1690,6 +1690,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
+	var remainderWrites uint64
+	var remainderCandidate bool
+	if kind == cfLoop && pN == 0 && rN == 0 && !f.unreachable {
+		remainderWrites, remainderCandidate = f.inspectUnsignedRemainderLoop(r)
+	}
 	f.setInlineNonzeroPredicate(predicate)
 	f.prepareScopedBounds(r)
 	if kind == cfLoop && len(f.ctrl) == 1 {
@@ -1889,6 +1894,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 	}
 	f.pushCtrl(&fr)
+	if remainderCandidate {
+		f.remainderZeroLoopDepth = uint16(len(f.ctrl))
+		f.remainderZeroLoopWrites = remainderWrites
+		f.stats.peep("unsigned-remainder-loop-window")
+	}
 	return nil
 }
 
@@ -2681,6 +2691,10 @@ func (f *fn) opElse() error {
 }
 
 func (f *fn) opEnd(r *wasm.Reader) error {
+	if f.remainderZeroLoopDepth != 0 && len(f.ctrl) == int(f.remainderZeroLoopDepth) {
+		f.remainderZeroLoopDepth = 0
+		f.remainderZeroLoopWrites = 0
+	}
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
 	if fr.kind == cfLoop {

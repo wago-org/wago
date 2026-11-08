@@ -73,8 +73,14 @@ func (f *fn) condenseBorrowedDivRem(node *elem, dest Reg) Reg {
 		f.udiv(result, dividend, divisor, w)
 	default: // rem_u
 		q := f.allocReg(maskOf(divisor, dividend, result))
-		f.udiv(q, dividend, divisor, w)
-		f.msub(result, q, divisor, dividend, w) // rem = dividend - q*divisor
+		// Keep established guarded/owned-operand recipes available to the
+		// native remainder recurrence recognizers.
+		if unsignedRemainderZeroEnabled && !divisorOwned && !dividendOwned && right != f.guardedNonzeroDivisor && f.preferUnsignedRemainderZero(left, right) {
+			f.unsignedRemainder(result, dividend, divisor, q, w)
+		} else {
+			f.udiv(q, dividend, divisor, w)
+			f.msub(result, q, divisor, dividend, w)
+		}
 		f.release(q)
 	}
 
