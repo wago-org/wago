@@ -2,9 +2,14 @@
 
 package arm64
 
-import "math/bits"
+import (
+	"math/bits"
+	"os"
+)
 
 var linearIntegerTreeEnabled = true
+
+var linearFirstTermEnabled = os.Getenv("WAGO_ARM64_NO_LINEAR_FIRST_TERM") != "1"
 
 type linearIntegerTerm struct {
 	source      *elem
@@ -153,7 +158,10 @@ func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
 	if result == regNone {
 		result = f.allocReg(0)
 	}
-	first := shifted && w.constant == 0
+	first := w.constant == 0 && nonzero > 0 && (shifted || linearFirstTermEnabled)
+	if first && !shifted {
+		f.stats.peep("linear-first-term")
+	}
 	if !first {
 		f.a.MovImm32(result, int32(w.constant))
 	}
