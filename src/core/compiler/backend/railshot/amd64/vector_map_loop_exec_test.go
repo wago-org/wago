@@ -337,7 +337,7 @@ func TestVectorMapMemoryStoreBarrier(t *testing.T) {
 	p.nodes[2] = regionLoopNode{op: 0x2b, left: 1}
 	p.nodes[3] = regionLoopNode{op: 0x44, bits: math.Float64bits(1)}
 	p.nodes[4] = regionLoopNode{op: 0xa1, left: 3, right: 2}
-	p.stores[0] = regionLoopStore{value: 3}
+	p.stores[0] = regionLoopStore{Value: 3}
 	p.events = [regionLoopMaxOps]uint8{2, 3, 0x80, 4}
 	folded, memory := p.memoryForms(true)
 	if folded[2] || memory[4] != 0 {

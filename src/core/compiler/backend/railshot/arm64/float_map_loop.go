@@ -5,7 +5,11 @@ package arm64
 import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"os"
 )
+
+// Nonzero-immediate maps retain a same-binary scalar control for qualification.
+var floatMapOffsetsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_OFFSETS") != "1"
 
 // A bounded symbolic proof admits only independent scalar floating-point maps.
 // The vector prefix preserves the expression tree and leaves an original scalar
@@ -18,6 +22,7 @@ type floatMapNode struct {
 type floatMapAddress struct {
 	base      int
 	bias      uint32
+	offset    uint64 // widened memory immediate, added after dynamic i32 wrap
 	invariant bool
 }
 type floatMapPlan struct {
@@ -27,6 +32,7 @@ type floatMapPlan struct {
 	localN                       int
 	counter, result, dest, count int
 	step, limit                  uint32
+	destOffset                   uint64
 	wide                         bool
 }
 
@@ -46,7 +52,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 	start := scan.Offset()
 	var stack [24]int
 	var initialRead [32]bool
-	var stores [2][2]int
+	var stores [2]shared.LoopStore[int]
 	depth, ns, n := 0, 0, 0
 	push := func(x int) bool {
 		if depth == len(stack) || x < 0 {
@@ -81,6 +87,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 		return slot
 	}
 	for scan.Offset()-start < 512 {
+		pos := scan.Offset()
 		op, err := scan.Byte()
 		if err != nil {
 			return p, false
@@ -138,21 +145,21 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			}
 		case 0x2a, 0x2b:
 			mem, off, e := f.readMemArg(&scan)
-			if e != nil || mem != 0 || off != 0 || depth == 0 {
+			if e != nil || mem != 0 || (off > 1<<20 || off != 0 && !floatMapOffsetsEnabled) || depth == 0 {
 				return p, false
 			}
-			x := node(floatMapNode{op: op, a: stack[depth-1]})
+			x := node(floatMapNode{op: op, a: stack[depth-1], bits: off})
 			if x < 0 {
 				return p, false
 			}
 			stack[depth-1] = x
 		case 0x38, 0x39:
 			mem, off, e := f.readMemArg(&scan)
-			if e != nil || mem != 0 || off != 0 || depth < 2 || ns == len(stores) {
+			if e != nil || mem != 0 || (off > 1<<20 || off != 0 && !floatMapOffsetsEnabled) || depth < 2 || ns == len(stores) {
 				return p, false
 			}
 			depth -= 2
-			stores[ns] = [2]int{stack[depth], stack[depth+1]}
+			stores[ns] = shared.LoopStore[int]{Address: stack[depth], Value: stack[depth+1], Offset: off, PC: uint32(pos)}
 			ns++
 			if ns == 1 {
 				p.wide = op == 0x39
@@ -205,17 +212,19 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 					return p, false
 				}
 			}
-			p.count, p.dest, p.result = n, stores[0][0], stores[0][1]
+			p.count, p.dest, p.result = n, stores[0].Address, stores[0].Value
+			p.destOffset = stores[0].Offset
 			if !p.proveAddresses(f.localType) {
 				return p, false
 			}
 			if ns == 2 {
 				visits := 0
-				a, valid := p.affine(stores[1][0], f.localType, &visits)
+				a, valid := p.affine(stores[1].Address, f.localType, &visits)
 				if !valid {
 					return p, false
 				}
-				p.addresses[stores[1][0]] = a
+				a.offset = stores[1].Offset
+				p.addresses[stores[1].Address] = a
 			}
 			var used [128]bool
 			var mark func(int)
@@ -231,14 +240,14 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 				}
 			}
 			for i := 0; i < ns; i++ {
-				mark(stores[i][1])
+				mark(stores[i].Value)
 			}
 			for i := 0; i < n; i++ {
 				if (p.nodes[i].op == 0x2a || p.nodes[i].op == 0x2b) && !used[i] {
 					return p, false
 				}
 			}
-			if ns == 2 && (!p.sameMap(stores[0][1], stores[1][1], size, 0) || !p.nextAddress(stores[0][0], stores[1][0], size)) {
+			if ns == 2 && (!p.sameMap(stores[0].Value, stores[1].Value, size, 0) || !p.nextAddress(stores[0].Address, stores[1].Address, size)) {
 				return p, false
 			}
 			return p, p.validExpression(p.result, 0)
@@ -305,6 +314,7 @@ func (p *floatMapPlan) proveAddresses(types []machineType) bool {
 	if !ok || addr.invariant {
 		return false
 	}
+	addr.offset = p.destOffset
 	p.addresses[p.dest] = addr
 	for i := 0; i < p.count; i++ {
 		if p.nodes[i].op == 0x2a || p.nodes[i].op == 0x2b {
@@ -313,6 +323,7 @@ func (p *floatMapPlan) proveAddresses(types []machineType) bool {
 			if !ok {
 				return false
 			}
+			a.offset = p.nodes[i].bits
 			p.addresses[i] = a
 		}
 	}
@@ -340,9 +351,9 @@ func (p *floatMapPlan) validExpression(x, depth int) bool {
 func (p *floatMapPlan) nextAddress(x, y int, step uint32) bool {
 	a, b := p.addresses[x], p.addresses[y]
 	if a.invariant || b.invariant {
-		return a.invariant && b.invariant && a.base == b.base && a.bias == b.bias
+		return a.invariant && b.invariant && a.base == b.base && a.bias == b.bias && a.offset == b.offset
 	}
-	return a.base == b.base && uint64(a.bias)+uint64(step) == uint64(b.bias)
+	return a.base == b.base && a.offset == b.offset && uint64(a.bias)+uint64(step) == uint64(b.bias)
 }
 func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 	if depth > 8 {
@@ -413,9 +424,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		return
 	}
 	type group struct {
-		base     int
-		min, max uint32
-		reg      Reg
+		base int
+		min  uint32
+		max  uint64
+		reg  Reg
 	}
 	var groups [3]group
 	ng := 0
@@ -426,8 +438,8 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				if a.bias < g.min {
 					g.min = a.bias
 				}
-				if a.bias > g.max {
-					g.max = a.bias
+				if end := uint64(a.bias) + a.offset; end > g.max {
+					g.max = end
 				}
 				return true
 			}
@@ -435,7 +447,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		if ng == len(groups) {
 			return false
 		}
-		groups[ng] = group{base: a.base, min: a.bias, max: a.bias}
+		groups[ng] = group{base: a.base, min: a.bias, max: uint64(a.bias) + a.offset}
 		ng++
 		return true
 	}
@@ -601,7 +613,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.a.MovImm64(X16, uint64(g.min))
 		f.a.Add32(g.reg, g.reg, X16)
 		f.a.Add64(X16, g.reg, span)
-		f.a.MovImm64(X17, uint64(g.max-g.min))
+		f.a.MovImm64(X17, g.max-uint64(g.min))
 		f.a.Add64(X16, X16, X17)
 		f.cmpRR(X16, size, true)
 		guard(condA)
@@ -612,7 +624,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	locate := func(a floatMapAddress) (Reg, uint32) {
 		for i := 0; i < ng; i++ {
 			if groups[i].base == a.base {
-				return groups[i].reg, a.bias - groups[i].min
+				return groups[i].reg, uint32(uint64(a.bias) - uint64(groups[i].min) + a.offset)
 			}
 		}
 		panic("arm64: missing float map address")
@@ -625,6 +637,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		read(iv.base, X16)
 		f.a.MovImm64(X17, uint64(iv.bias))
 		f.a.Add32(X16, X16, X17)
+		if iv.offset != 0 {
+			f.a.MovImm64(X17, iv.offset)
+			f.a.Add64(X16, X16, X17)
+		}
 		width := uint32(4)
 		if p.wide {
 			width = 8
@@ -696,6 +712,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				read(iv.base, X16)
 				f.a.MovImm64(X17, uint64(iv.bias))
 				f.a.Add32(X16, X16, X17)
+				if iv.offset != 0 {
+					f.a.MovImm64(X17, iv.offset)
+					f.a.Add64(X16, X16, X17)
+				}
 				f.a.Add64(X16, X16, linMemReg)
 				f.a.LdrF(r, X16, 0, p.wide)
 			} else {

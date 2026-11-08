@@ -179,7 +179,7 @@ func (e *regionLoopEmitter) guards() {
 		e.loadStream[l.node] = e.stream(n.left, n.bits)
 	}
 	for i, s := range p.stores[:p.storeN] {
-		e.storeStream[i] = e.stream(s.address, s.offset)
+		e.storeStream[i] = e.stream(s.Address, s.Offset)
 	}
 	for i := range e.streams[:e.streamN] {
 		e.rangeCheck(&e.streams[i])
@@ -228,7 +228,7 @@ func (p *regionLoopPlan) fpUses() [regionLoopMaxOps + 1]uint8 {
 	var uses [regionLoopMaxOps + 1]uint8
 	for _, event := range p.events[:p.eventN] {
 		if event&0x80 != 0 {
-			uses[p.stores[event&0x7f].value]++
+			uses[p.stores[event&0x7f].Value]++
 		} else {
 			n := p.nodes[event]
 			if n.op >= 0xa0 && n.op <= 0xa3 {
@@ -283,7 +283,7 @@ func (p *regionLoopPlan) scratchNeedPermanent(folded [regionLoopMaxOps + 1]bool,
 	}
 	for _, event := range p.events[:p.eventN] {
 		if event&0x80 != 0 {
-			id := p.stores[event&0x7f].value
+			id := p.stores[event&0x7f].Value
 			uses[id]--
 			if uses[id] == 0 && p.nodes[id].op != 0x20 && !permanent[id] {
 				live--
@@ -482,7 +482,7 @@ func (e *regionLoopEmitter) body() {
 		if event&0x80 != 0 {
 			at := event & 0x7f
 			s := p.stores[at]
-			f.wasmPC = f.tracePCBase + s.pos
+			f.wasmPC = f.tracePCBase + s.PC
 			previous := f.enterProfileInstruction()
 			var ea Reg
 			if !p.scalar || p.reductionLoad[at] == 0 {
@@ -490,18 +490,18 @@ func (e *regionLoopEmitter) body() {
 			}
 			if p.scalar {
 				if id := p.reductionLoad[at]; id != 0 {
-					if regs[id] != regs[s.value] {
-						f.a.FMov(regs[id], regs[s.value], true)
+					if regs[id] != regs[s.Value] {
+						f.a.FMov(regs[id], regs[s.Value], true)
 					}
 				} else {
-					f.a.FStoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp, true)
+					f.a.FStoreIdx(RBX, ea, regs[s.Value], e.streams[e.storeStream[at]].disp, true)
 				}
 			} else if p.wide {
-				f.a.YMovdquStoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp)
+				f.a.YMovdquStoreIdx(RBX, ea, regs[s.Value], e.streams[e.storeStream[at]].disp)
 			} else {
-				f.mov128StoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp)
+				f.mov128StoreIdx(RBX, ea, regs[s.Value], e.streams[e.storeStream[at]].disp)
 			}
-			release(s.value, regNone)
+			release(s.Value, regNone)
 			f.switchProfileOrigin(previous)
 			continue
 		}

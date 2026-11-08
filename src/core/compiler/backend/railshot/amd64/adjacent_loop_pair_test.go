@@ -144,10 +144,10 @@ func TestAdjacentLoopPairAdmission(t *testing.T) {
 		}
 	}
 	for _, mutate := range []func(*regionLoopPlan){
-		func(p *regionLoopPlan) { p.nodes[p.stores[1].value].op = 0xa1 },
-		func(p *regionLoopPlan) { p.stores[1].offset = 16 },
-		func(p *regionLoopPlan) { p.nodes[p.nodes[p.stores[1].value].right].bits++ },
-		func(p *regionLoopPlan) { p.nodes[p.stores[1].value].left = p.nodes[p.stores[0].value].left },
+		func(p *regionLoopPlan) { p.nodes[p.stores[1].Value].op = 0xa1 },
+		func(p *regionLoopPlan) { p.stores[1].Offset = 16 },
+		func(p *regionLoopPlan) { p.nodes[p.nodes[p.stores[1].Value].right].bits++ },
+		func(p *regionLoopPlan) { p.nodes[p.stores[1].Value].left = p.nodes[p.stores[0].Value].left },
 	} {
 		p := makePlan()
 		mutate(&p)

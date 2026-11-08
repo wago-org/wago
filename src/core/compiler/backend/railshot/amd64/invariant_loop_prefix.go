@@ -52,7 +52,7 @@ func (p *regionLoopPlan) finishInvariantPrefix(prefix uint8, arithmetic bool, in
 	}
 	for _, event := range p.events[prefix:p.eventN] {
 		if event&0x80 != 0 {
-			mark(p.stores[event&0x7f].value)
+			mark(p.stores[event&0x7f].Value)
 			continue
 		}
 		n := p.nodes[event]

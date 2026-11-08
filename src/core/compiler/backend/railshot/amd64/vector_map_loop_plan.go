@@ -31,11 +31,7 @@ type regionLoopNode struct {
 
 type regionLoopLocal = shared.LoopLocal[machineType, uint8]
 
-type regionLoopStore struct {
-	offset         uint64
-	pos            uint32
-	address, value uint8
-}
+type regionLoopStore = shared.LoopStore[uint8]
 
 type regionLoopLoad struct {
 	stride      uint32
@@ -240,7 +236,7 @@ func inspectRegionLoop(r wasm.Reader, types []machineType, classifier wasm.Modul
 			if p.nodes[a].op != 0 || !regionFloat(p.nodes[b]) {
 				return false
 			}
-			p.stores[p.storeN] = regionLoopStore{offset: imm.MemOffset, pos: position, address: a, value: b}
+			p.stores[p.storeN] = regionLoopStore{Offset: imm.MemOffset, PC: position, Address: a, Value: b}
 			p.events[p.eventN] = 0x80 | p.storeN
 			p.eventN++
 			p.storeN++
@@ -318,7 +314,7 @@ func (p *regionLoopPlan) stride(id uint8) uint32 {
 func (p *regionLoopPlan) finish() bool {
 	var live uint8
 	for _, store := range p.stores[:p.storeN] {
-		live |= p.nodes[store.address].uses | p.nodes[store.value].uses
+		live |= p.nodes[store.Address].uses | p.nodes[store.Value].uses
 	}
 	live |= p.nodes[p.predicate].uses
 	for _, l := range p.locals[:p.localN] {
@@ -369,7 +365,7 @@ func (p *regionLoopPlan) finish() bool {
 	// Affine streams must move forward monotonically. Runtime guards prove that
 	// each full range succeeds without memory32 wrap before taking the fast path.
 	for _, store := range p.stores[:p.storeN] {
-		if p.stride(store.address) >= 1<<31 {
+		if p.stride(store.Address) >= 1<<31 {
 			return false
 		}
 	}
@@ -400,7 +396,7 @@ func (p *regionLoopPlan) independentLanes() bool {
 		}
 	}
 	for _, s := range p.stores[:p.storeN] {
-		if p.stride(s.address) != 8 {
+		if p.stride(s.Address) != 8 {
 			return false
 		}
 	}

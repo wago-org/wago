@@ -23,7 +23,7 @@ func (p *regionLoopPlan) scalarRecurrenceDestination(event uint8, uses *[regionL
 	n := p.nodes[event]
 	for i, store := range p.stores[:p.storeN] {
 		id := p.reductionLoad[i]
-		if id == 0 || store.value != event {
+		if id == 0 || store.Value != event {
 			continue
 		}
 		var consumed uint8
@@ -51,15 +51,15 @@ func (p *regionLoopPlan) scalarMemoryRecurrence() bool {
 	var selected [2]uint8
 	count := 0
 	for i, store := range p.stores[:p.storeN] {
-		if p.stride(store.address) != 0 {
+		if p.stride(store.Address) != 0 {
 			continue
 		}
-		address := p.nodes[store.address]
+		address := p.nodes[store.Address]
 		id := uint8(0)
 		for _, load := range p.loads[:p.loadN] {
 			n := p.nodes[load.node]
 			a := p.nodes[n.left]
-			if a.coeff == address.coeff && a.bits == address.bits && n.bits == store.offset {
+			if a.coeff == address.coeff && a.bits == address.bits && n.bits == store.Offset {
 				if id != 0 {
 					return false
 				}
@@ -69,13 +69,13 @@ func (p *regionLoopPlan) scalarMemoryRecurrence() bool {
 		if id == 0 {
 			continue
 		}
-		if p.nodes[id].pos >= store.pos {
+		if p.nodes[id].pos >= store.PC {
 			return false
 		}
 		// Two store events to the same cell need an explicit version contract.
 		for j, other := range p.stores[:p.storeN] {
-			a := p.nodes[other.address]
-			if i != j && a.coeff == address.coeff && a.bits == address.bits && other.offset == store.offset {
+			a := p.nodes[other.Address]
+			if i != j && a.coeff == address.coeff && a.bits == address.bits && other.Offset == store.Offset {
 				return false
 			}
 		}
@@ -87,8 +87,8 @@ func (p *regionLoopPlan) scalarMemoryRecurrence() bool {
 				depends[n] = depends[node.left] || depends[node.right]
 			}
 		}
-		root := p.nodes[store.value]
-		if !depends[store.value] || root.op < 0xa0 || root.op > 0xa3 {
+		root := p.nodes[store.Value]
+		if !depends[store.Value] || root.op < 0xa0 || root.op > 0xa3 {
 			return false
 		}
 		after := false
@@ -101,7 +101,7 @@ func (p *regionLoopPlan) scalarMemoryRecurrence() bool {
 				continue
 			}
 			if event&0x80 != 0 {
-				if p.stores[event&0x7f].value == id {
+				if p.stores[event&0x7f].Value == id {
 					return false
 				}
 				continue

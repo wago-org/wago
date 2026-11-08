@@ -23,8 +23,8 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 	}
 	for i := uint8(0); i < p.storeN; i += 2 {
 		first, second := p.stores[i], p.stores[i+1]
-		stride := p.stride(first.address)
-		if stride < 16 || (!regionAdjacentMultiEnabled && stride != 16) || !p.adjacentAddresses(first.address, first.offset, second.address, second.offset) {
+		stride := p.stride(first.Address)
+		if stride < 16 || (!regionAdjacentMultiEnabled && stride != 16) || !p.adjacentAddresses(first.Address, first.Offset, second.Address, second.Offset) {
 			return false
 		}
 	}
@@ -87,7 +87,7 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 		return true
 	}
 	for i := uint8(0); i < p.storeN; i += 2 {
-		if !match(p.stores[i].value, p.stores[i+1].value) {
+		if !match(p.stores[i].Value, p.stores[i+1].Value) {
 			return false
 		}
 	}
@@ -155,7 +155,7 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 // contiguous. Strided pairs remain XMM operations on one original iteration.
 func (p *regionLoopPlan) contiguousAdjacentIterations() bool {
 	for _, s := range p.stores[:p.storeN] {
-		if p.stride(s.address) != 16 {
+		if p.stride(s.Address) != 16 {
 			return false
 		}
 	}
