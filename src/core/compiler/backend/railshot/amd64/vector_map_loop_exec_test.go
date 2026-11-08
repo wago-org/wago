@@ -332,7 +332,7 @@ func TestVectorMapMemoryStoreBarrier(t *testing.T) {
 	// Delaying it could see the new stored value. The original pair has a
 	// separate explicit load and must retain that form even on AVX.
 	p := regionLoopPlan{nodeN: 4, eventN: 4, storeN: 1, localN: 1}
-	p.locals[0].step = 8
+	p.locals[0].Step = 8
 	p.nodes[1] = regionLoopNode{coeff: [regionLoopMaxLocals]uint32{1}}
 	p.nodes[2] = regionLoopNode{op: 0x2b, left: 1}
 	p.nodes[3] = regionLoopNode{op: 0x44, bits: math.Float64bits(1)}
@@ -348,7 +348,7 @@ func TestVectorMapMemoryStoreBarrier(t *testing.T) {
 	if !folded[2] || memory[4] != 2 {
 		t.Fatal("safe RHS was not folded")
 	}
-	p.locals[0].step = 0
+	p.locals[0].Step = 0
 	folded, memory = p.memoryForms(true)
 	if folded[2] || memory[4] != 0 {
 		t.Fatal("scalar broadcast widened")

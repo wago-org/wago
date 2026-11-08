@@ -14,8 +14,8 @@ func (p *regionLoopPlan) invariantPrefix(enabled bool) (uint8, [regionLoopMaxOps
 	}
 	var invariant [regionLoopMaxOps + 1]bool
 	for _, l := range p.locals[:p.localN] {
-		if l.typ == mtF64 && !l.written {
-			invariant[l.initial] = true
+		if l.Type == mtF64 && !l.Written {
+			invariant[l.Initial] = true
 		}
 	}
 	prefix, arithmetic := uint8(0), false
@@ -62,8 +62,8 @@ func (p *regionLoopPlan) finishInvariantPrefix(prefix uint8, arithmetic bool, in
 		}
 	}
 	for _, l := range p.locals[:p.localN] {
-		if l.written && l.typ == mtF64 {
-			mark(l.value)
+		if l.Written && l.Type == mtF64 {
+			mark(l.Value)
 		}
 	}
 	roots := 0

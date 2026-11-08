@@ -139,8 +139,8 @@ func TestAdjacentLoopPairAdmission(t *testing.T) {
 		t.Fatal("valid pair not admitted")
 	}
 	for i, l := range p.locals[:p.localN] {
-		if l.index == 5 && p.exitHigh&(1<<i) != 0 || l.index == 6 && p.exitHigh&(1<<i) == 0 {
-			t.Fatal("wrong exit lane", l.index, p.exitHigh)
+		if l.Index == 5 && p.exitHigh&(1<<i) != 0 || l.Index == 6 && p.exitHigh&(1<<i) == 0 {
+			t.Fatal("wrong exit lane", l.Index, p.exitHigh)
 		}
 	}
 	for _, mutate := range []func(*regionLoopPlan){

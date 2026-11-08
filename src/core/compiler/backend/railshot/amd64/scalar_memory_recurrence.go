@@ -112,7 +112,7 @@ func (p *regionLoopPlan) scalarMemoryRecurrence() bool {
 			}
 		}
 		for _, l := range p.locals[:p.localN] {
-			if l.typ == mtF64 && l.written && l.value == id {
+			if l.Type == mtF64 && l.Written && l.Value == id {
 				return false
 			}
 		}

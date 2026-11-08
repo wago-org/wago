@@ -2,7 +2,10 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // A bounded symbolic proof admits only independent scalar floating-point maps.
 // The vector prefix preserves the expression tree and leaves an original scalar
@@ -20,29 +23,31 @@ type floatMapAddress struct {
 type floatMapPlan struct {
 	nodes                        [128]floatMapNode
 	addresses                    [128]floatMapAddress
-	values                       [32]int
-	written                      [32]bool
-	localType                    [32]machineType
+	locals                       [32]shared.LoopLocal[machineType, int]
+	localN                       int
 	counter, result, dest, count int
 	step, limit                  uint32
 	wide                         bool
 }
 
+// Local identities stay in source coordinates; only the bounded cell table is
+// dense. Expressions capture immutable node indices when a source local changes.
+func (p *floatMapPlan) localSlot(index int) int {
+	return shared.FindLoopLocal(p.locals[:p.localN], uint32(index))
+}
+
+func (p *floatMapPlan) localWritten(index int) bool {
+	slot := p.localSlot(index)
+	return slot >= 0 && p.locals[slot].Written
+}
+
 func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) {
-	if f.nLocals > 32 {
-		return
-	}
 	scan := *source
 	start := scan.Offset()
 	var stack [24]int
 	var initialRead [32]bool
 	var stores [2][2]int
-	depth, ns, n := 0, 0, f.nLocals
-	for i := 0; i < n; i++ {
-		p.nodes[i] = floatMapNode{op: 0x20, a: i}
-		p.values[i] = i
-		p.localType[i] = f.localType[i]
-	}
+	depth, ns, n := 0, 0, 0
 	push := func(x int) bool {
 		if depth == len(stack) || x < 0 {
 			return false
@@ -59,6 +64,22 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 		n++
 		return n - 1
 	}
+	local := func(index uint32) int {
+		if slot := shared.FindLoopLocal(p.locals[:p.localN], index); slot >= 0 {
+			return slot
+		}
+		if p.localN == len(p.locals) {
+			return -1
+		}
+		id := node(floatMapNode{op: 0x20, a: int(index)})
+		if id < 0 {
+			return -1
+		}
+		slot := p.localN
+		p.locals[slot] = shared.LoopLocal[machineType, int]{Index: index, Type: f.localType[index], Initial: id, Value: id}
+		p.localN++
+		return slot
+	}
 	for scan.Offset()-start < 512 {
 		op, err := scan.Byte()
 		if err != nil {
@@ -70,19 +91,23 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			if e != nil || x >= uint32(f.nLocals) {
 				return p, false
 			}
+			slot := local(x)
+			if slot < 0 {
+				return p, false
+			}
+			cell := &p.locals[slot]
 			if op == 0x20 {
-				if p.values[x] == int(x) {
-					initialRead[x] = true
+				if cell.Value == cell.Initial {
+					initialRead[slot] = true
 				}
-				if !push(p.values[x]) {
+				if !push(cell.Value) {
 					return p, false
 				}
 			} else {
 				if depth == 0 {
 					return p, false
 				}
-				p.values[x] = stack[depth-1]
-				p.written[x] = true
+				cell.Assign(stack[depth-1], 0)
 				if op == 0x21 {
 					depth--
 				}
@@ -172,11 +197,11 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 				return p, false
 			}
 			p.counter, p.step = local.a, uint32(stride.bits)
-			if p.values[p.counter] != increment {
+			if p.locals[p.localSlot(p.counter)].Value != increment {
 				return p, false
 			}
-			for i := 0; i < f.nLocals; i++ {
-				if p.written[i] && initialRead[i] && i != p.counter {
+			for i, cell := range p.locals[:p.localN] {
+				if cell.Written && initialRead[i] && int(cell.Index) != p.counter {
 					return p, false
 				}
 			}
@@ -230,7 +255,7 @@ func (p *floatMapPlan) affine(x int, types []machineType, visits *int) (floatMap
 		return floatMapAddress{}, false
 	}
 	v := p.nodes[x]
-	if v.op == 0x20 && types[v.a] == mtI32 && v.a != p.counter && !p.written[v.a] {
+	if v.op == 0x20 && types[v.a] == mtI32 && v.a != p.counter && !p.localWritten(v.a) {
 		return floatMapAddress{base: v.a, invariant: true}, true
 	}
 	if v.op != 0x6a {
@@ -257,7 +282,7 @@ func (p *floatMapPlan) affine(x int, types []machineType, visits *int) (floatMap
 			if v.a == p.counter {
 				counter++
 			} else {
-				if base != 0 || p.written[v.a] {
+				if base != 0 || p.localWritten(v.a) {
 					return false
 				}
 				base = v.a + 1
@@ -299,7 +324,7 @@ func (p *floatMapPlan) validExpression(x, depth int) bool {
 	}
 	v := p.nodes[x]
 	if v.op == 0x20 {
-		return !p.written[v.a] && p.localType[v.a] == mapFloatType(p.wide)
+		return !p.localWritten(v.a) && p.locals[p.localSlot(v.a)].Type == mapFloatType(p.wide)
 	}
 	if v.op == 0x2b || v.op == 0x44 {
 		return p.wide
@@ -343,7 +368,7 @@ func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
 	if !f.opt(optDotLoopVector) || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
 		return
 	}
-	if f.nLocals > 32 || !f.hasFloatMapPrefix(source) {
+	if !f.hasFloatMapPrefix(source) {
 		return
 	}
 	f.emitFloatMapBody(source)
@@ -444,7 +469,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			return true
 		}
 		if v.op == 0x20 {
-			coefficients |= 1 << v.a
+			coefficients |= 1 << p.localSlot(v.a)
 			return true
 		}
 		if v.op == 0x43 || v.op == 0x44 {
@@ -538,9 +563,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 	}
 	read(p.counter, counter)
-	for local := 0; local < f.nLocals; local++ {
-		if coefficients&(1<<local) != 0 {
-			f.recoverLocal(local)
+	for slot, cell := range p.locals[:p.localN] {
+		if coefficients&(1<<slot) != 0 {
+			f.recoverLocal(int(cell.Index))
 		}
 	}
 	for i := 0; i < nInvariant; i++ {

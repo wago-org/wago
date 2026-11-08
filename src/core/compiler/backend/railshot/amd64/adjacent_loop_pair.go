@@ -17,7 +17,7 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 		return false
 	}
 	for i, l := range p.locals[:p.localN] {
-		if l.typ == mtF64 && l.written && p.inputMask&(1<<i) != 0 {
+		if l.Type == mtF64 && l.Written && p.inputMask&(1<<i) != 0 {
 			return false
 		}
 	}
@@ -99,11 +99,11 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 		}
 	}
 	for i, l := range p.locals[:p.localN] {
-		if l.typ == mtF64 && l.written {
-			if representative[l.value] == 0 {
+		if l.Type == mtF64 && l.Written {
+			if representative[l.Value] == 0 {
 				return false
 			}
-			if lane[l.value] == 2 {
+			if lane[l.Value] == 2 {
 				p.exitHigh |= 1 << i
 			}
 		}
@@ -143,8 +143,8 @@ func (p *regionLoopPlan) packAdjacentOutputs() bool {
 	}
 	for i := range p.locals[:p.localN] {
 		l := &p.locals[i]
-		if l.typ == mtF64 && l.written {
-			l.value = representative[l.value]
+		if l.Type == mtF64 && l.Written {
+			l.Value = representative[l.Value]
 		}
 	}
 	p.adjacent = true
