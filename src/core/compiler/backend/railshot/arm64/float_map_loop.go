@@ -11,6 +11,8 @@ import (
 // Nonzero-immediate maps retain a same-binary scalar control for qualification.
 var floatMapOffsetsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_OFFSETS") != "1"
 
+var floatMapLaneOffsetsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_LANE_OFFSETS") != "1"
+
 var floatMapInductionEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_INDUCTION") != "1"
 
 var floatMapPacketsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_PACKETS") != "1"
@@ -1123,11 +1125,21 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				}
 				for lane := uint32(0); lane < 16/size; lane++ {
 					address := uint64(off) + (uint64(block)+uint64(lane*size))*uint64(stride)
-					f.floatMapOffset(X17, base, address, true, X16)
-					if p.wide {
-						f.ld64(X16, X17, 0)
+					if floatMapLaneOffsetsEnabled && address%uint64(size) == 0 && address/uint64(size) <= 0xfff {
+						// The guarded exact-width load can use its native scaled
+						// displacement without materializing a second address.
+						if p.wide {
+							f.a.Load64(X16, base, uint32(address))
+						} else {
+							f.a.Load32(X16, base, uint32(address))
+						}
 					} else {
-						f.ld32(X16, X17, 0)
+						f.floatMapOffset(X17, base, address, true, X16)
+						if p.wide {
+							f.ld64(X16, X17, 0)
+						} else {
+							f.ld32(X16, X17, 0)
+						}
 					}
 					if lane == 0 {
 						f.a.FmovFromGpr(r, X16, p.wide)
