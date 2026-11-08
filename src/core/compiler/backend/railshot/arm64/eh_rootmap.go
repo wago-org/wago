@@ -128,7 +128,7 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 				}
 				continue
 			}
-			if _, err := r.S33(); err != nil {
+			if err := wasm.SkipBlockType(r); err != nil {
 				return nil, err
 			}
 			n, err := r.U32()

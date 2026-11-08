@@ -92,6 +92,16 @@ func (c *ModuleInstructionClassifier) SkipImmediate(r *Reader, op byte) error {
 	return skipInstructionImmediateWithWidths(r, op, &c.widths, c.multiMemory)
 }
 
+// SkipBlockType consumes one block type with the same grammar used by the
+// instruction decoder. Structural walkers use it when they must inspect the
+// rest of an instruction immediate themselves.
+func SkipBlockType(r *Reader) error {
+	internal := reader{data: r.data, pos: r.pos}
+	_, err := decodeBlockType(&internal)
+	r.pos = internal.pos
+	return err
+}
+
 func skipInstructionImmediateWithWidths(r *Reader, op byte, widths *memargWidths, multiMemory bool) error {
 	if simpleOpcode[op] != InstrInvalid {
 		return nil

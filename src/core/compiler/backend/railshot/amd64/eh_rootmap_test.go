@@ -3,6 +3,8 @@
 package amd64
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -169,6 +171,66 @@ func TestBuildExceptionRootMapsSizesRootsPerFunction(t *testing.T) {
 		if want := uint32(firstRootPayloadOffset + i*ehRootSlots*8); slot.Offset != want {
 			t.Fatalf("root %d payload offset = %d, want %d", i, slot.Offset, want)
 		}
+	}
+}
+
+func TestBuildExceptionRootMapsExplicitReferenceBlockTypeReproducers(t *testing.T) {
+	for _, tc := range []struct {
+		typeIndex uint32
+		bytes     int
+		sha256    string
+	}{
+		{992, 2032, "a05cd2a4c9415eb4942683fb801440692436b624a670351fe7cb6149d035e085"},
+		{6, 53, "5497f8ec1d509b28e74894b011d9f2c59780999ecf8b9bad654fdb6bba1514b2"},
+	} {
+		t.Run(fmt.Sprint(tc.typeIndex), func(t *testing.T) {
+			data := wasmtest.ExplicitReferenceBlockTypeModule(tc.typeIndex)
+			if got := fmt.Sprintf("%x", sha256.Sum256(data)); len(data) != tc.bytes || got != tc.sha256 {
+				t.Fatalf("fixture = %d bytes, sha256 %s; want %d bytes, %s", len(data), got, tc.bytes, tc.sha256)
+			}
+			m, err := wasm.DecodeModule(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := wasm.ValidateModule(m); err != nil {
+				t.Fatal(err)
+			}
+			maps, err := BuildExceptionRootMaps(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(maps) != 0 {
+				t.Fatalf("tag-free fixture has root maps: %#v", maps)
+			}
+		})
+	}
+}
+
+func TestBuildExceptionRootMapsTryTableExplicitReferenceBlockType(t *testing.T) {
+	const typeIndex = 6
+	body := []byte{
+		0x1f, 0x64, typeIndex, 0x00, // try_table (result (ref 6)), no catches
+		0xfb, 0x00, typeIndex, // struct.new 6
+		0x0b, 0x0b, // end try_table, function
+	}
+	types := make([][]byte, typeIndex+2)
+	for i := 0; i <= typeIndex; i++ {
+		types[i] = []byte{0x5f, 0x00}
+	}
+	types[typeIndex+1] = []byte{0x60, 0x00, 0x01, 0x64, typeIndex}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{typeIndex + 1})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildExceptionRootMaps(m); err != nil {
+		t.Fatal(err)
 	}
 }
 

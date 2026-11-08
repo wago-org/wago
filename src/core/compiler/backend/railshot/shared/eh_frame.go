@@ -42,7 +42,7 @@ func ScanEHFrameShape(classifier *wasm.ModuleInstructionClassifier, body []byte)
 		}
 		switch op {
 		case 0x02, 0x03, 0x04: // block, loop, if
-			if _, err := r.S33(); err != nil {
+			if err := wasm.SkipBlockType(r); err != nil {
 				return shape, err
 			}
 			tryOpen = append(tryOpen, false)
@@ -58,7 +58,7 @@ func ScanEHFrameShape(classifier *wasm.ModuleInstructionClassifier, body []byte)
 			}
 			continue
 		case 0x1f: // try_table blocktype vec(catch)
-			if _, err := r.S33(); err != nil {
+			if err := wasm.SkipBlockType(r); err != nil {
 				return shape, err
 			}
 			n, err := r.U32()
