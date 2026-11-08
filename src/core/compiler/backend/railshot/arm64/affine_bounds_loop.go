@@ -174,6 +174,7 @@ func matchAffineBoundsLoop(b []byte, back int, memSize Reg, targets []uint64, en
 	if p.iterations < 16 || p.iterations > 4096 || p.omitN < 8 {
 		return p, false
 	}
+	nonuniformStride := false
 	for i := 0; i < p.streamN; i++ {
 		g := &p.streams[i]
 		var stride uint64
@@ -193,6 +194,14 @@ func matchAffineBoundsLoop(b []byte, back int, memSize Reg, targets []uint64, en
 		}
 		g.stride = uint32(stride)
 		g.extent = uint32(span)
+		nonuniformStride = nonuniformStride || stride != 0 && stride != uint64(c.bias)
+	}
+	// Source vector maps already cover same-stride streams and retain a scalar
+	// tail. Wrapping that tail in another dispatch adds work without helping
+	// vector execution. Focus scalar span hoisting on independently advancing
+	// streams, where the ordinary contiguous-map recipe cannot apply.
+	if !nonuniformStride {
+		return p, false
 	}
 	// Scratch entry values must be overwritten before their first read and
 	// before any branch or guest memory effect. Both original paths therefore

@@ -227,3 +227,18 @@ func TestAffineBoundsLoopPerCompilationPolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestAffineBoundsLoopLeavesSameStrideMapsToVectorizer(t *testing.T) {
+	a, _, back := affineBoundsFixture()
+	for pc := 0; pc < len(a.B); pc += 4 {
+		switch rdWord(a.B, pc) {
+		case 0x11006329:
+			wrWord(a.B, pc, 0x11002329) // second source lane at +8
+		case 0x1100c318:
+			wrWord(a.B, pc, 0x11004318) // source packet step16 equals counter
+		}
+	}
+	if _, ok := matchAffineBoundsLoop(a.B, back, X27, nativeConstantTargets(a.B), nil, nil); ok {
+		t.Fatal("same-stride scalar map gained redundant dispatch")
+	}
+}
