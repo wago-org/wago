@@ -1513,6 +1513,7 @@ func (a *Asm) NeonMulB(dst, n, m Reg)      { a.neon3(0x4E209C00, 1, dst, n, m) }
 func (a *Asm) NeonMulH(dst, n, m Reg)      { a.neon3(0x4E209C00, 2, dst, n, m) }
 func (a *Asm) NeonMulS(dst, n, m Reg)      { a.neon3(0x4E209C00, 4, dst, n, m) }
 func (a *Asm) NeonMlaS(dst, n, m Reg)      { a.neon3(0x4E209400, 4, dst, n, m) }
+func (a *Asm) NeonSqdmulhS(dst, n, m Reg)  { a.neon3(0x4E20B400, 4, dst, n, m) }
 func (a *Asm) NeonSqrdmulhH(dst, n, m Reg) { a.neon3(0x6E20B400, 2, dst, n, m) }
 func (a *Asm) NeonHaddH(dst, n, m Reg)     { a.neon3(0x4E202800, 2, dst, n, m) }
 func (a *Asm) NeonHaddS(dst, n, m Reg)     { a.neon3(0x4E202800, 4, dst, n, m) }

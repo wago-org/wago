@@ -220,3 +220,50 @@ func TestIntegerResidualPressureRejectsBeforeEmission(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerResidualVectorDivisionBoundaries(t *testing.T) {
+	for _, d := range []uint32{3, 5, 10, 11, 13, 25, 0x7fffffff} {
+		var loop []byte
+		c := func(v uint32) { loop = append(loop, 0x41); loop = append(loop, wasmtest.SLEB32(int32(v))...) }
+		loop = append(loop, 0x20, 1, 0x22, 3)
+		c(d)
+		loop = append(loop, 0x6d, 0x22, 4, 0x20, 2, 0x73)
+		c(16777619)
+		loop = append(loop, 0x6c, 0x21, 2, 0x20, 1)
+		c(3)
+		loop = append(loop, 0x6a, 0x21, 1, 0x20, 0)
+		c(1)
+		loop = append(loop, 0x6b, 0x22, 0, 0x0d, 0, 0x0b)
+		body := []byte{1, 2, 0x7f, 0x02, 0x40, 0x20, 0, 0x0d, 0, 0x20, 2, 0x0f, 0x0b, 0x03, 0x40}
+		body = append(body, loop...)
+		body = append(body, 0x20, 2, 0x20, 3, 0x73, 0x20, 4, 0x73, 0x20, 1, 0x73, 0x0b)
+		m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+		for _, start := range []uint32{0, 1, 0x7fffffff, 0x80000000, 0x80000001, 0xfffffff9, 0xffffffff, 7*d - 1} {
+			for _, count := range []uint32{1, 16, 17, 18, 19, 33} {
+				seed, hash := start, uint32(0x811c9dc5)
+				var numerator, q uint32
+				for n := uint32(0); n < count; n++ {
+					numerator = seed
+					q = uint32(int32(numerator) / int32(d))
+					hash = (hash ^ q) * 16777619
+					seed += 3
+				}
+				want := uint64(hash ^ numerator ^ q ^ seed)
+				for _, enabled := range []bool{false, true} {
+					var stats ModuleStats
+					opts := CompileOptions{Optimizations: map[string]bool{"dot-loop-vector": enabled}}
+					if diagnosticsEnabled {
+						opts.Stats = &stats
+					}
+					got, err := runArm64WrapperWithOptions(t, m, opts, uint64(count), uint64(start), 0x811c9dc5)
+					if err != nil || got != want {
+						t.Fatalf("direct d=%d seed=%x n=%d on=%v: got=%x want=%x err=%v", d, start, count, enabled, got, want, err)
+					}
+					if diagnosticsEnabled && d == 10 && (stats.Funcs[0].Peephole["integer-residual-vector-div"] != 0) != enabled {
+						t.Fatalf("vector divide not selected: %v", stats.Funcs[0].Peephole)
+					}
+				}
+			}
+		}
+	}
+}

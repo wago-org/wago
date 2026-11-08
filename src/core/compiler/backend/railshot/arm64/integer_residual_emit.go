@@ -7,7 +7,10 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"math/bits"
+	"os"
 )
+
+var integerResidualVectorDivEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_RESIDUAL_VECTOR_DIV") != "1"
 
 func (f *fn) hasIntegerResidualPrefix(source *wasm.Reader) bool {
 	r := *source
@@ -152,6 +155,7 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 		magic, shift, correction = uint64(m), s, c
 		f.a.MovImm32(magicReg, int32(magic))
 	}
+	vectorDivision := integerResidualVectorDivEnabled && p.divisor > 1 && p.divisor&(p.divisor-1) != 0 && !correction && int32(magic) > 0 && shift < 31
 	alloc := func() Reg { r := f.allocFReg(0); f.fpinned = f.fpinned.add(r); return r }
 	release := func(r Reg) { f.fpinned = f.fpinned.remove(r); f.releaseF(r) }
 	lanes := alloc()
@@ -255,6 +259,17 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 		if !initialized {
 			broadcast(out, 0)
 		}
+		if vectorDivision && m.divisor == p.divisor {
+			// With positive signed magic m, doubling n*m never saturates.
+			// SQDMULH gives floor(n*m/2^31); ASR(s+1) is exactly
+			// SMULL(n,m)>>(32+s). Add the logical sign bit for truncation
+			// toward zero. No floating arithmetic or reassociation is used.
+			f.a.NeonDupGprS(scratch, magicReg)
+			f.a.NeonSqdmulhS(out, out, scratch)
+			f.a.NeonSshrS(out, out, uint8(shift+1))
+			f.a.NeonUshrS(scratch, out, 31)
+			f.a.NeonAddS(out, out, scratch)
+		}
 		release(scratch)
 	}
 	// These updates intentionally remain scalar and in original iteration order.
@@ -263,7 +278,7 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 	for lane := byte(0); lane < 4; lane++ {
 		for i, m := range p.maps[:p.mapN] {
 			f.a.NeonUmovS(value, outputs[i], lane)
-			if m.divisor > 1 {
+			if m.divisor > 1 && !(vectorDivision && m.divisor == p.divisor) {
 				if m.divisor&(m.divisor-1) == 0 {
 					f.a.AsrImm(X16, value, 31, true)
 					f.a.AndImm32(X16, X16, m.divisor-1)
@@ -313,6 +328,9 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 	release(lanes)
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
+	if vectorDivision {
+		f.stats.peep("integer-residual-vector-div")
+	}
 	f.integerResidualPlans++
 	f.stats.peep("integer-residual-vector")
 }
