@@ -383,17 +383,20 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.fpinned = f.fpinned.add(va)
 	vb := f.allocFReg(0)
 	f.fpinned = f.fpinned.add(vb)
+	vc := regNone
+	if absReduceSelectionEnabled && p.lanes == 8 && available >= 3 {
+		vc = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(vc)
+	}
 	loop := f.a.Len()
 	f.cmpImm(counter, 1, false)
 	done := f.a.Bcond(condBE)
 	read(p.baseA, a)
 	read(p.baseB, b)
 	f.a.Add32(a, a, index)
-	f.a.MovImm64(X16, uint64(p.biasA))
-	f.a.Add32(a, a, X16)
+	f.absReduceOffset(a, p.biasA)
 	f.a.Add32(b, b, index)
-	f.a.MovImm64(X16, uint64(p.biasB))
-	f.a.Add32(b, b, X16)
+	f.absReduceOffset(b, p.biasB)
 	f.a.AddImm64(X16, a, uint32(4*p.lanes))
 	f.cmpRR(X16, size, true)
 	badA := f.a.Bcond(condA)
@@ -403,10 +406,22 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.a.Add64(a, a, linMemReg)
 	f.a.Add64(b, b, linMemReg)
 	for off := int32(0); off < int32(4*p.lanes); off += 16 {
-		f.a.LdrQ(va, a, off)
+		out := va
+		if vc != regNone && off == 0 {
+			out = vc
+		}
+		f.a.LdrQ(out, a, off)
 		f.a.LdrQ(vb, b, off)
-		f.a.NeonSubS(va, va, vb)
-		f.a.NeonAbsS(va, va)
+		f.a.NeonSubS(out, out, vb)
+		f.a.NeonAbsS(out, out)
+		if vc != regNone {
+			if off == 0 {
+				continue
+			}
+			// Preserve wrapping subtraction/absolute-value semantics in each
+			// lane, then combine exact modular sums before crossing to GP.
+			f.a.NeonAddS(va, va, vc)
+		}
 		f.a.NeonAddvS(va, va)
 		f.a.FmovToGpr(X16, va, false)
 		f.a.Add32(acc, acc, X16)
@@ -437,6 +452,9 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	}
 	f.releaseF(va)
 	f.releaseF(vb)
+	if vc != regNone {
+		f.releaseF(vc)
+	}
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
 	f.stats.peep("abs-reduce-loop-vector")
