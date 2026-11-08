@@ -228,3 +228,68 @@ func TestMaxSumPressureRejectsBeforeEmission(t *testing.T) {
 		}
 	}
 }
+
+func TestMaxSumCallerFPAndVectors(t *testing.T) {
+	callee := maxSumFixture(t, 60000, 256, 8192, 720, 64, 0)
+	args := [4]uint64{0, 0, 0, 0}
+	want, trapped := maxSumOracle(60000, 256, 8192, 720, 64, 0)
+	if trapped {
+		t.Fatal("invalid caller fixture")
+	}
+	b := []byte{2, 12, 0x7c, 4, 0x7b}
+	for i := byte(0); i < 12; i++ {
+		value := uint64(0x7ff0000012345678) + uint64(i)*0x100000001
+		b = append(b, 0x44)
+		b = binary.LittleEndian.AppendUint64(b, value)
+		b = append(b, 0x21, i+4)
+		binary.LittleEndian.PutUint64(want[32768+int(i)*8:], value)
+	}
+	for i := byte(0); i < 4; i++ {
+		b = append(b, 0xfd, 0x0c)
+		for lane := byte(0); lane < 16; lane++ {
+			b = append(b, i*32+lane+1)
+			want[33024+int(i)*16+int(lane)] = i*32 + lane + 1
+		}
+		b = append(b, 0x21, i+16)
+	}
+	b = append(b, 0x41)
+	b = append(b, wasmtest.SLEB32(33280)...)
+	b = append(b, 0x20, 16)
+
+	b = append(b, 0x10, 1, 0x1a, 0xfd, 0x0b, 0, 0)
+	copy(want[33280:33296], want[33024:33040])
+	for i := byte(0); i < 12; i++ {
+		b = append(b, 0x41)
+		b = append(b, wasmtest.SLEB32(32768+int32(i)*8)...)
+		b = append(b, 0x20, i+4, 0x39, 0, 0)
+	}
+	for i := byte(0); i < 4; i++ {
+		b = append(b, 0x41)
+		b = append(b, wasmtest.SLEB32(33024+int32(i)*16)...)
+		b = append(b, 0x20, i+16, 0xfd, 0x0b, 0, 0)
+	}
+	b = append(b, 0x41, 0, 0x0b)
+	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, b)
+	m.Types = append(m.Types, callee.Types[0])
+	m.FuncTypes = append(m.FuncTypes, wasm.TypeIdx{Index: 1})
+	m.Code = append(m.Code, callee.Code[0])
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	for _, compact := range []bool{false, true} {
+		for _, stackReg := range []bool{false, true} {
+			stats := &ModuleStats{}
+			opts := CompileOptions{CompactNative: compact, Optimizations: map[string]bool{"inline": false, "stack-reg": stackReg}}
+			if diagnosticsEnabled {
+				opts.Stats = stats
+			}
+			got, err := runScalarUnrollMemory(t, m, opts, args[:]...)
+			if err != nil || !bytes.Equal(got, want) {
+				t.Fatalf("compact%v stackReg%v err%v equal%v", compact, stackReg, err, bytes.Equal(got, want))
+			}
+			if diagnosticsEnabled && stats.Funcs[1].Peephole["max-sum-vector"] != 1 {
+				t.Fatalf("callee did not vectorize: %v", stats.Funcs[1].Peephole)
+			}
+		}
+	}
+}
