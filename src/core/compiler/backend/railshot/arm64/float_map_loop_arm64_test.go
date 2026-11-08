@@ -58,7 +58,11 @@ func floatMapModuleOffsets(t testing.TB, wide bool, packets int, src, dst, start
 			body = append(body, bits[:]...)
 		}
 		body = append(body, mul, store, 0)
-		body = append(body, wasmtest.ULEB(storeOffsets[i])...)
+		offset := uint32(0)
+		if i < len(storeOffsets) {
+			offset = storeOffsets[i]
+		}
+		body = append(body, wasmtest.ULEB(offset)...)
 	}
 	body = append(body, 0x20, 2+localBase)
 	constant(uint32(packets) * size)
@@ -313,6 +317,149 @@ func TestFloatMapInvariantMemoryImmediate(t *testing.T) {
 			}
 			if diagnosticsEnabled && (hits == 1) != (tc[2] <= 1<<20) {
 				t.Fatalf("invariant immediate admission wide%t case%v hits%d", wide, tc, hits)
+			}
+		}
+	}
+}
+
+func TestFloatMapSourcePacketsAndExitState(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := 0; i < len(initial)/8; i++ {
+		binary.LittleEndian.PutUint64(initial[i*8:], math.Float64bits(float64(i%113-56)*0.125))
+	}
+	for _, wide := range []bool{false, true} {
+		size := uint32(4)
+		if wide {
+			size = 8
+		}
+		for _, stores := range []int{3, 4, 5, 6, 8} {
+			step := uint32(stores) * size
+			packet := floatMapPacketWidth(step)
+			for _, length := range []uint32{step, 2 * step, packet + step, 2*packet + step, 4 * packet, 8*packet + step} {
+				for _, layout := range [][2]uint32{{0, 4096}, {4096, 0}, {4096, 4096}, {4096, 4097}, {4096, 4104}, {65504, 65512}, {0xfffffff0, 4096}, {1, 8193}} {
+					for _, neighbor := range []uint32{0, size, 256} {
+						for _, countdown := range []bool{false, true} {
+							src, dst, start, limit := layout[0], layout[1], uint32(0), length
+							if countdown {
+								src += length
+								dst += length
+								start = 0 - length
+								limit = 0
+							}
+							m := floatMapModule(t, wide, stores, src, dst, start, limit, neighbor)
+							want, wm, we, _ := runFloatMapMemory(t, m, false, initial)
+							got, gm, ge, hits := runFloatMapMemory(t, m, true, initial)
+							if (we == nil) != (ge == nil) || we == nil && got != want || !bytes.Equal(wm, gm) {
+								t.Fatalf("wide%t stores%d length%d layout%v neighbor%d countdown%t: got%x/%v want%x/%v memory%t", wide, stores, length, layout, neighbor, countdown, got, ge, want, we, bytes.Equal(wm, gm))
+							}
+							if diagnosticsEnabled && hits != 1 {
+								t.Fatalf("missing source-packet admission: wide%t stores%d", wide, stores)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestFloatMapOddPacketUnreachableLimitKeepsTrapPrefix(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := 0; i < len(initial)/8; i++ {
+		binary.LittleEndian.PutUint64(initial[i*8:], math.Float64bits(float64(i%17)*0.25))
+	}
+	for _, wide := range []bool{false, true} {
+		size := uint32(4)
+		if wide {
+			size = 8
+		}
+		for _, stores := range []int{3, 5, 6} {
+			step := size * uint32(stores)
+			for _, delta := range []uint32{1, size, step - 1} {
+				// A non-divisible positive limit must retain scalar execution. Output
+				// reaches the memory boundary after observable writes before trapping.
+				m := floatMapModule(t, wide, stores, 0, 65536-2*step, 0, 8*step+delta, 0)
+				want, wm, we, _ := runFloatMapMemory(t, m, false, initial)
+				got, gm, ge, _ := runFloatMapMemory(t, m, true, initial)
+				if we == nil || ge == nil || !bytes.Equal(wm, gm) {
+					t.Fatalf("wide%t stores%d delta%d: got%x/%v want%x/%v memory%t", wide, stores, delta, got, ge, want, we, bytes.Equal(wm, gm))
+				}
+			}
+		}
+	}
+}
+
+func TestFloatMapInvariantExpressionAliasesAndLiveOuts(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		width, load, store, add, mul, ft := uint32(4), byte(0x2a), byte(0x38), byte(0x92), byte(0x94), byte(0x7d)
+		specials := []uint64{0, 0x80000000, 1, 0x007fffff, 0x7f800000, 0xff800000, 0x7fc00000, 0xffc00000, 0x3f800000}
+		if wide {
+			width, load, store, add, mul, ft = 8, 0x2b, 0x39, 0xa0, 0xa2, 0x7c
+			specials = []uint64{0, 0x8000000000000000, 1, 0x000fffffffffffff, 0x7ff0000000000000, 0xfff0000000000000, 0x7ff8000000000000, 0xfff8000000000000, 0x3ff0000000000000}
+		}
+		for _, layout := range [][3]uint32{{4096, 256, 16}, {4096, 4096, 0}, {4096, 4096, 1}, {4096, 4096, 128}, {4096, 0, 32}, {4096, 65528, 8}, {65520, 256, 16}, {4096, 0xfffffff0, 32}, {4096, 0xfffffff0, 8}} {
+			for _, coefficient := range specials {
+				initial := make([]byte, 65536)
+				for i := uint32(0); i < 65536/width; i++ {
+					if wide {
+						binary.LittleEndian.PutUint64(initial[i*width:], math.Float64bits(float64(i%23+1)*0.125))
+					} else {
+						binary.LittleEndian.PutUint32(initial[i*width:], math.Float32bits(float32(i%23+1)*0.125))
+					}
+				}
+				ea := uint64(layout[1]) + uint64(layout[2])
+				if ea+uint64(width) <= 65536 {
+					if wide {
+						binary.LittleEndian.PutUint64(initial[ea:], coefficient)
+					} else {
+						binary.LittleEndian.PutUint32(initial[ea:], uint32(coefficient))
+					}
+				}
+				body := []byte{2, 4, 0x7f, 2, ft}
+				constant := func(v uint32) { body = append(body, 0x41); body = append(body, wasmtest.SLEB32(int32(v))...) }
+				fp := func(v float64) {
+					if wide {
+						body = appendF64ConstForCacheTest(body, v)
+					} else {
+						body = append(body, 0x43)
+						var bits [4]byte
+						binary.LittleEndian.PutUint32(bits[:], math.Float32bits(float32(v)))
+						body = append(body, bits[:]...)
+					}
+				}
+				constant(layout[0])
+				body = append(body, 0x21, 0)
+				constant(layout[1])
+				body = append(body, 0x21, 3)
+				body = append(body, 0x03, 0x40, 0x20, 0, 0x20, 2, 0x6a, 0x20, 1, 0x20, 2, 0x6a, load, 0, 0, 0x20, 3, load, 0)
+				body = append(body, wasmtest.ULEB(layout[2])...)
+				fp(1.5)
+				body = append(body, mul)
+				fp(0.25)
+				body = append(body, add, 0x22, 4, mul, 0x22, 5, store, 0, 0, 0x20, 2)
+				constant(width)
+				body = append(body, 0x6a, 0x22, 2)
+				constant(128)
+				body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 2)
+				for _, local := range []byte{4, 5} {
+					body = append(body, 0x20, local)
+					if wide {
+						body = append(body, 0xbd, 0xa7)
+					} else {
+						body = append(body, 0xbc)
+					}
+					body = append(body, 0x73)
+				}
+				body = append(body, 0x0b)
+				m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+				want, wm, we, _ := runFloatMapMemory(t, m, false, initial)
+				got, gm, ge, hits := runFloatMapMemory(t, m, true, initial)
+				if (we == nil) != (ge == nil) || we == nil && got != want || !bytes.Equal(wm, gm) {
+					t.Fatalf("wide%t layout%v coefficient%x: got%x/%v want%x/%v memory%t", wide, layout, coefficient, got, ge, want, we, bytes.Equal(wm, gm))
+				}
+				if diagnosticsEnabled && hits != 1 {
+					t.Fatalf("missing invariant-expression admission wide%t layout%v", wide, layout)
+				}
 			}
 		}
 	}

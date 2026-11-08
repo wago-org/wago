@@ -11,6 +11,11 @@ import (
 // Nonzero-immediate maps retain a same-binary scalar control for qualification.
 var floatMapOffsetsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_OFFSETS") != "1"
 
+var floatMapPacketsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_PACKETS") != "1"
+var floatMapInvariantsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_INVARIANTS") != "1"
+var floatMapLatchEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_LATCH") != "1"
+var floatMapFourPacketsEnabled = os.Getenv("WAGO_ARM64_FLOAT_MAP_PACKET_COUNT") != "2"
+
 // A bounded symbolic proof admits only independent scalar floating-point maps.
 // The vector prefix preserves the expression tree and leaves an original scalar
 // packet to restore every observable local. All range/alias failures fall back.
@@ -28,10 +33,11 @@ type floatMapAddress struct {
 type floatMapPlan struct {
 	nodes                        [128]floatMapNode
 	addresses                    [128]floatMapAddress
+	invariant                    [128]bool
 	locals                       [32]shared.LoopLocal[machineType, int]
 	localN                       int
 	counter, result, dest, count int
-	step, limit                  uint32
+	step, limit, packet          uint32
 	destOffset                   uint64
 	wide                         bool
 }
@@ -52,7 +58,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 	start := scan.Offset()
 	var stack [24]int
 	var initialRead [32]bool
-	var stores [2]shared.LoopStore[int]
+	var stores [8]shared.LoopStore[int]
 	depth, ns, n := 0, 0, 0
 	push := func(x int) bool {
 		if depth == len(stack) || x < 0 {
@@ -155,7 +161,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			stack[depth-1] = x
 		case 0x38, 0x39:
 			mem, off, e := f.readMemArg(&scan)
-			if e != nil || mem != 0 || (off > 1<<20 || off != 0 && !floatMapOffsetsEnabled) || depth < 2 || ns == len(stores) {
+			if e != nil || mem != 0 || (off > 1<<20 || off != 0 && !floatMapOffsetsEnabled) || depth < 2 || (ns == len(stores) || ns == 2 && !floatMapPacketsEnabled) {
 				return p, false
 			}
 			depth -= 2
@@ -204,6 +210,10 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 				return p, false
 			}
 			p.counter, p.step = local.a, uint32(stride.bits)
+			p.packet = floatMapPacketWidth(p.step)
+			if p.packet == 0 {
+				return p, false
+			}
 			if p.locals[p.localSlot(p.counter)].Value != increment {
 				return p, false
 			}
@@ -217,14 +227,14 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			if !p.proveAddresses(f.localType) {
 				return p, false
 			}
-			if ns == 2 {
+			for i := 1; i < ns; i++ {
 				visits := 0
-				a, valid := p.affine(stores[1].Address, f.localType, &visits)
+				a, valid := p.affine(stores[i].Address, f.localType, &visits)
 				if !valid {
 					return p, false
 				}
-				a.offset = stores[1].Offset
-				p.addresses[stores[1].Address] = a
+				a.offset = stores[i].Offset
+				p.addresses[stores[i].Address] = a
 			}
 			var used [128]bool
 			var mark func(int)
@@ -247,10 +257,19 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 					return p, false
 				}
 			}
-			if ns == 2 && (!p.sameMap(stores[0].Value, stores[1].Value, size, 0) || !p.nextAddress(stores[0].Address, stores[1].Address, size)) {
+			for i := 1; i < ns; i++ {
+				distance := uint32(i) * size
+				if !p.sameMap(stores[0].Value, stores[i].Value, distance, 0) || !p.nextAddress(stores[0].Address, stores[i].Address, distance) {
+					return p, false
+				}
+			}
+			if !p.validExpression(p.result, 0) {
 				return p, false
 			}
-			return p, p.validExpression(p.result, 0)
+			if floatMapInvariantsEnabled {
+				p.labelInvariants()
+			}
+			return p, true
 		default:
 			return p, false
 		}
@@ -348,6 +367,26 @@ func (p *floatMapPlan) validExpression(x, depth int) bool {
 	}
 	return false
 }
+
+// Nodes are owned by one candidate and constructed after their operands.
+// Memory invariance is usable only after the same guarded disjointness proof
+// that protects the existing invariant-load coefficients.
+func (p *floatMapPlan) labelInvariants() {
+	for i := 0; i < p.count; i++ {
+		v := p.nodes[i]
+		switch v.op {
+		case 0x43, 0x44:
+			p.invariant[i] = true
+		case 0x20:
+			p.invariant[i] = !p.localWritten(v.a) && p.locals[p.localSlot(v.a)].Type == mapFloatType(p.wide)
+		case 0x2a, 0x2b:
+			p.invariant[i] = p.addresses[i].invariant
+		case 0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
+			p.invariant[i] = p.invariant[v.a] && p.invariant[v.b]
+		}
+	}
+}
+
 func (p *floatMapPlan) nextAddress(x, y int, step uint32) bool {
 	a, b := p.addresses[x], p.addresses[y]
 	if a.invariant || b.invariant {
@@ -495,7 +534,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var countConst func(int) int
 	countConst = func(x int) int {
 		v := p.nodes[x]
-		if v.op == 0x20 || v.op == 0x43 || v.op == 0x44 {
+		if p.invariant[x] || v.op == 0x20 || v.op == 0x43 || v.op == 0x44 {
 			return 1
 		}
 		if v.op == 0x2a || v.op == 0x2b {
@@ -592,9 +631,19 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	guard := func(cc Cond) { guards[nGuards] = f.a.Bcond(cc); nGuards++ }
 	f.a.MovImm64(span, uint64(p.limit))
 	f.a.Sub32(span, span, counter)
-	f.cmpImm(span, 16+p.step, false)
+	f.cmpImm(span, p.packet+p.step, false)
 	guard(condB)
-	f.a.TstImm32(span, p.step-1)
+	if p.step&(p.step-1) == 0 {
+		f.a.TstImm32(span, p.step-1)
+	} else {
+		// A source packet can contain an odd number of scalar lanes. A
+		// nontrapping remainder guard retains the original modular loop when
+		// its fixed limit is not reachable before wrapping.
+		f.a.MovImm64(X17, uint64(p.step))
+		f.a.Udiv32(X16, span, X17)
+		f.a.Msub32(X16, X16, X17, span)
+		f.cmpImm(X16, 0, false)
+	}
 	guard(condNE)
 	// Reject nonterminating modular trips: zero-limit countdowns must start
 	// negative; positive fixed limits must be ahead of the unsigned counter.
@@ -688,44 +737,74 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	nc := 0
 	var vectors [24]Reg
 	nv := 0
-	vec := func() Reg { x := f.allocFReg(0); f.fpinned = f.fpinned.add(x); vectors[nv] = x; nv++; return x }
+
+	emitOp := func(op byte, out, a, b Reg) {
+		switch op {
+		case 0x92, 0xa0:
+			f.a.NeonFadd(out, a, b, p.wide)
+		case 0x93, 0xa1:
+			f.a.NeonFsub(out, a, b, p.wide)
+		case 0x94, 0xa2:
+			f.a.NeonFmul(out, a, b, p.wide)
+		case 0x95, 0xa3:
+			f.a.NeonFdiv(out, a, b, p.wide)
+		}
+	}
+	releaseTemp := func(r Reg) { f.fpinned = f.fpinned.remove(r); f.releaseF(r) }
+	var invariantValue func(int) Reg
+	invariantValue = func(x int) Reg {
+		v := p.nodes[x]
+		if v.op >= 0x92 && v.op <= 0x95 || v.op >= 0xa0 && v.op <= 0xa3 {
+			a := invariantValue(v.a)
+			b := invariantValue(v.b)
+			emitOp(v.op, a, a, b)
+			releaseTemp(b)
+			return a
+		}
+		r := f.allocFReg(0)
+		f.fpinned = f.fpinned.add(r)
+
+		if v.op == 0x20 {
+			if reg, _, pin := f.pinReg(v.a); pin {
+				f.a.FmovReg(r, reg, p.wide)
+			} else if f.locals[v.a].state == lsConstZero {
+				f.a.FmovFromGpr(r, ZR, p.wide)
+			} else {
+				f.a.LdrF(r, SP, f.localOff(v.a), p.wide)
+			}
+		} else if v.op == 0x2a || v.op == 0x2b {
+			iv := p.addresses[x]
+			read(iv.base, X16)
+			f.a.MovImm64(X17, uint64(iv.bias))
+			f.a.Add32(X16, X16, X17)
+			if iv.offset != 0 {
+				f.a.MovImm64(X17, iv.offset)
+				f.a.Add64(X16, X16, X17)
+			}
+			f.a.Add64(X16, X16, linMemReg)
+			f.a.LdrF(r, X16, 0, p.wide)
+		} else {
+			f.loadFConst(r, storage{kind: stConst, typ: mapFloatType(p.wide), cval: int64(v.bits)})
+		}
+		if p.wide {
+			f.a.NeonDupD(r, r)
+		} else {
+			f.a.NeonDupS(r, r)
+		}
+		return r
+	}
 	var preload func(int)
 	preload = func(x int) {
 		v := p.nodes[x]
-		if v.op == 0x20 || v.op == 0x43 || v.op == 0x44 || (v.op == 0x2a || v.op == 0x2b) && p.addresses[x].invariant {
+		if p.invariant[x] || v.op == 0x20 || v.op == 0x43 || v.op == 0x44 || (v.op == 0x2a || v.op == 0x2b) && p.addresses[x].invariant {
 			for i := 0; i < nc; i++ {
 				if constants[i].node == x {
 					return
 				}
 			}
-			r := vec()
-			if v.op == 0x20 {
-				if reg, _, pin := f.pinReg(v.a); pin {
-					f.a.FmovReg(r, reg, p.wide)
-				} else if f.locals[v.a].state == lsConstZero {
-					f.a.FmovFromGpr(r, ZR, p.wide)
-				} else {
-					f.a.LdrF(r, SP, f.localOff(v.a), p.wide)
-				}
-			} else if v.op == 0x2a || v.op == 0x2b {
-				iv := p.addresses[x]
-				read(iv.base, X16)
-				f.a.MovImm64(X17, uint64(iv.bias))
-				f.a.Add32(X16, X16, X17)
-				if iv.offset != 0 {
-					f.a.MovImm64(X17, iv.offset)
-					f.a.Add64(X16, X16, X17)
-				}
-				f.a.Add64(X16, X16, linMemReg)
-				f.a.LdrF(r, X16, 0, p.wide)
-			} else {
-				f.loadFConst(r, storage{kind: stConst, typ: mapFloatType(p.wide), cval: int64(v.bits)})
-			}
-			if p.wide {
-				f.a.NeonDupD(r, r)
-			} else {
-				f.a.NeonDupS(r, r)
-			}
+			r := invariantValue(x)
+			vectors[nv] = r
+			nv++
 			constants[nc].node = x
 			constants[nc].reg = r
 			nc++
@@ -743,7 +822,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var emit func(int) (Reg, bool)
 	emit = func(x int) (Reg, bool) {
 		v := p.nodes[x]
-		if v.op == 0x20 || v.op == 0x43 || v.op == 0x44 || (v.op == 0x2a || v.op == 0x2b) && p.addresses[x].invariant {
+		if p.invariant[x] || v.op == 0x20 || v.op == 0x43 || v.op == 0x44 || (v.op == 0x2a || v.op == 0x2b) && p.addresses[x].invariant {
 			for i := 0; i < nc; i++ {
 				if constants[i].node == x {
 					return constants[i].reg, false
@@ -765,23 +844,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			out = f.allocFReg(0)
 			f.fpinned = f.fpinned.add(out)
 		}
-		switch v.op {
-		case 0x92, 0xa0:
-			f.a.NeonFadd(out, a, b, p.wide)
-		case 0x93, 0xa1:
-			f.a.NeonFsub(out, a, b, p.wide)
-		case 0x94, 0xa2:
-			f.a.NeonFmul(out, a, b, p.wide)
-		case 0x95, 0xa3:
-			f.a.NeonFdiv(out, a, b, p.wide)
-		}
+		emitOp(v.op, out, a, b)
 		if ownB {
 			f.fpinned = f.fpinned.remove(b)
 			f.releaseF(b)
 		}
 		return out, true
 	}
-	packet := func(width uint32, target int) {
+	packet := func(width uint32) {
 		for block = 0; block < int32(width); block += 16 {
 			value, owned := emit(p.result)
 			f.a.StrQ(d, int32(dOff)+block, value)
@@ -795,24 +865,44 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		f.a.AddImm32(counter, counter, width)
 		f.a.SubImm32(span, span, width)
-		f.patchBranch26(f.a.Branch(), target)
 	}
-	// Four wider packets repay the extra code. Short trips use the compact
-	// loop directly, and the original scalar packet remains observable at exit.
-	f.cmpImm(span, 4*32+p.step, false)
+	// Choose a small native packet menu independently of the source unroll.
+	// Larger source packets already have a bounded replicated body.
+	wideWidth := 2 * p.packet
+	if floatMapFourPacketsEnabled && p.packet == 16 {
+		wideWidth = 4 * p.packet
+	}
+	f.cmpImm(span, 4*wideWidth+p.step, false)
 	short := f.a.Bcond(condB)
-	wideLoop := f.a.Len()
-	f.cmpImm(span, 32+p.step, false)
-	tail := f.a.Bcond(condB)
-	packet(32, wideLoop)
-	f.patchBranch19(short, f.a.Len())
-	f.patchBranch19(tail, f.a.Len())
-	loop := f.a.Len()
-	f.cmpImm(span, 16+p.step, false)
-	done := f.a.Bcond(condB)
-	packet(16, loop)
+	if floatMapLatchEnabled {
+		wideLoop := f.a.Len()
+		packet(wideWidth)
+		f.cmpImm(span, wideWidth+p.step, false)
+		f.patchBranch19(f.a.Bcond(condAE), wideLoop)
+		f.patchBranch19(short, f.a.Len())
+		f.cmpImm(span, p.packet+p.step, false)
+		done := f.a.Bcond(condB)
+		compactLoop := f.a.Len()
+		packet(p.packet)
+		f.cmpImm(span, p.packet+p.step, false)
+		f.patchBranch19(f.a.Bcond(condAE), compactLoop)
+		f.patchBranch19(done, f.a.Len())
+	} else {
+		wideLoop := f.a.Len()
+		f.cmpImm(span, wideWidth+p.step, false)
+		tail := f.a.Bcond(condB)
+		packet(wideWidth)
+		f.patchBranch26(f.a.Branch(), wideLoop)
+		f.patchBranch19(short, f.a.Len())
+		f.patchBranch19(tail, f.a.Len())
+		loop := f.a.Len()
+		f.cmpImm(span, p.packet+p.step, false)
+		done := f.a.Bcond(condB)
+		packet(p.packet)
+		f.patchBranch26(f.a.Branch(), loop)
+		f.patchBranch19(done, f.a.Len())
+	}
 	f.stats.peep("float-map-loop-unroll")
-	f.patchBranch19(done, f.a.Len())
 	if reg, _, pin := f.pinReg(p.counter); pin {
 		f.a.MovReg32(reg, counter)
 		f.markLocalDirty(p.counter)
@@ -836,4 +926,23 @@ func mapFloatType(wide bool) machineType {
 		return mtF64
 	}
 	return mtF32
+}
+
+// Each native packet must end on both a vector boundary and an original
+// source-iteration boundary. This leaves every final changed local to the
+// original scalar packet, including loops unrolled by an odd number of lanes.
+func floatMapPacketWidth(step uint32) uint32 {
+	if step == 0 || step > 64 {
+		return 0
+	}
+	a, b := uint32(16), step
+	for b != 0 {
+		a, b = b, a%b
+	}
+	width := 16 / a * step
+	// Bound duplicated native recipes independently of the source scan budget.
+	if width > 80 {
+		return 0
+	}
+	return width
 }
