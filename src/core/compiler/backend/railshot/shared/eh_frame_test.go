@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -55,30 +56,43 @@ func TestScanEHFrameShapeConsumesCompleteBlockTypes(t *testing.T) {
 }
 
 func TestScanEHFrameShapeRejectsMalformedBlockTypes(t *testing.T) {
+	// Truncated explicit references are tested directly at SkipBlockType.
+	// In try_table, a later catch-count read can produce the same truncation
+	// error, so those cases cannot prove which parser rejected the bytes.
 	malformed := []struct {
-		name string
-		data []byte
+		name     string
+		data     []byte
+		code     wasm.DecodeErrorCode
+		offset   int
+		complete bool
 	}{
-		{"missing", nil},
-		{"nullable reference missing heap type", []byte{0x63}},
-		{"non-null reference truncated heap type", []byte{0x64, 0x80}},
-		{"truncated type index", []byte{0x80}},
+		{"missing", nil, wasm.ErrInvalidBlockType, 1, false},
+		{"truncated type index", []byte{0x80}, wasm.ErrInvalidBlockType, 2, false},
+		{"nullable invalid negative heap type", []byte{0x63, 0x7f}, wasm.ErrInvalidType, 3, true},
+		{"non-null invalid negative heap type", []byte{0x64, 0x7f}, wasm.ErrInvalidType, 3, true},
+		{"nullable exact heap type overflow", []byte{0x63, 0x62, 0x80, 0x80, 0x80, 0x80, 0x20}, wasm.ErrMalformedLEB, 8, true},
+		{"non-null exact heap type overflow", []byte{0x64, 0x62, 0x80, 0x80, 0x80, 0x80, 0x20}, wasm.ErrMalformedLEB, 8, true},
 	}
 	classifier := wasm.NewModuleInstructionClassifier(nil, true)
 	for _, opcode := range []struct {
 		name string
 		op   byte
 	}{
-		{"block", 0x02},
-		{"loop", 0x03},
-		{"if", 0x04},
-		{"try_table", 0x1f},
+		{"block", 0x02}, {"loop", 0x03}, {"if", 0x04}, {"try_table", 0x1f},
 	} {
 		for _, encoding := range malformed {
 			t.Run(opcode.name+"/"+encoding.name, func(t *testing.T) {
 				body := append([]byte{opcode.op}, encoding.data...)
-				if _, err := ScanEHFrameShape(&classifier, body); err == nil {
-					t.Fatalf("opcode %#x accepted malformed block type %x", opcode.op, encoding.data)
+				if encoding.complete {
+					if opcode.op == 0x1f {
+						body = append(body, 0x00) // complete empty catch vector
+					}
+					body = append(body, 0x01, 0x0b) // nop, end
+				}
+				_, err := ScanEHFrameShape(&classifier, body)
+				var decodeErr *wasm.DecodeError
+				if !errors.As(err, &decodeErr) || decodeErr.Code != encoding.code || decodeErr.Offset != encoding.offset {
+					t.Fatalf("scan %x: got %v, want block-type decode error %v at offset %d", body, err, encoding.code, encoding.offset)
 				}
 			})
 		}

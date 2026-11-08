@@ -172,6 +172,34 @@ func TestBuildExceptionRootMapsSizesRootsPerFunction(t *testing.T) {
 	}
 }
 
+func TestBuildExceptionRootMapsTryTableExplicitReferenceBlockType(t *testing.T) {
+	const typeIndex = 6
+	body := []byte{
+		0x1f, 0x64, typeIndex, 0x00, // try_table (result (ref 6)), no catches
+		0xfb, 0x00, typeIndex, // struct.new 6
+		0x0b, 0x0b, // end try_table, function
+	}
+	types := make([][]byte, typeIndex+2)
+	for i := 0; i <= typeIndex; i++ {
+		types[i] = []byte{0x5f, 0x00}
+	}
+	types[typeIndex+1] = []byte{0x60, 0x00, 0x01, 0x64, typeIndex}
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{typeIndex + 1})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildExceptionRootMaps(m); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // firstRootPayloadOffset is the first payload word of root 0 in a function
 // with one try_table level and no locals.
 const firstRootPayloadOffset = frameHdrBytes + ehRecordSlots*8 + 8
