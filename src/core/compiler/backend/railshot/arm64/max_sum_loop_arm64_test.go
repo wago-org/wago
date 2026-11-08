@@ -152,3 +152,79 @@ func TestMaxSumAdmission(t *testing.T) {
 		}
 	}
 }
+
+func TestMaxSumProbeBudgetEffectsAndAllocations(t *testing.T) {
+	m := maxSumFixture(t, 60000, 256, 8192, 720, 32, 0)
+	body := m.Code[0].BodyBytes
+	at := bytes.LastIndex(body, []byte{0x03, 0x40})
+	if at < 0 {
+		t.Fatal("missing fixture loop")
+	}
+	code := body[at+2:]
+	probe := fn{nLocals: 11, localType: make([]machineType, 11)}
+	for i := range probe.localType {
+		probe.localType[i] = mtI32
+	}
+	var admitted bool
+	allocs := testing.AllocsPerRun(100, func() {
+		probe.integerResidualWork = 0
+		r := wasm.ReaderFrom(code)
+		_, admitted = probe.inspectMaxSumLoop(&r)
+		if r.Offset() != 0 {
+			panic("candidate advanced source reader")
+		}
+	})
+	if !admitted || allocs != 0 {
+		t.Fatalf("admitted%v allocations%g", admitted, allocs)
+	}
+	for _, prefix := range [][]byte{
+		{0x41, 0, 0x28, 2, 0, 0x21, 6}, // an unused, potentially trapping fifth load
+		{0x41, 0, 0x41, 0, 0x36, 2, 0}, // an additional ordered store
+		{0x10, 0}, {0x02, 0x40}, {0x40, 0}, {0x00},
+	} {
+		probe.integerResidualWork = 0
+		r := wasm.ReaderFrom(append(append([]byte{}, prefix...), code...))
+		if _, ok := probe.inspectMaxSumLoop(&r); ok || r.Offset() != 0 {
+			t.Fatalf("unsafe prefix%x admitted%v offset%d", prefix, ok, r.Offset())
+		}
+	}
+	probe.integerResidualWork = integerResidualWorkLimit - 3
+	r := wasm.ReaderFrom(code)
+	if _, ok := probe.inspectMaxSumLoop(&r); ok || probe.integerResidualWork != integerResidualWorkLimit || r.Offset() != 0 {
+		t.Fatal("budget exhaustion did not reject transactionally")
+	}
+	r = wasm.ReaderFrom(code)
+	if _, ok := probe.inspectMaxSumLoop(&r); ok || probe.integerResidualWork != integerResidualWorkLimit {
+		t.Fatal("exhausted budget admitted another probe")
+	}
+}
+
+func TestMaxSumPressureRejectsBeforeEmission(t *testing.T) {
+	m := maxSumFixture(t, 60000, 256, 8192, 720, 32, 0)
+	body := m.Code[0].BodyBytes
+	at := bytes.LastIndex(body, []byte{0x03, 0x40})
+	probe := fn{nLocals: 11, localType: make([]machineType, 11)}
+	for i := range probe.localType {
+		probe.localType[i] = mtI32
+	}
+	r := wasm.ReaderFrom(body[at+2:])
+	p, ok := probe.inspectMaxSumLoop(&r)
+	if !ok {
+		t.Fatal("fixture rejected")
+	}
+	for _, kind := range []string{"gp", "fp"} {
+		f := gpClassEmitter()
+		if kind == "gp" {
+			f.pinned = allAllocatableGP()
+		} else {
+			for _, reg := range fpAllocRegs {
+				f.fpinned = f.fpinned.add(reg)
+			}
+		}
+		gp, fp := f.pinned, f.fpinned
+		f.emitMaxSumPlan(&p)
+		if len(f.a.B) != 0 || f.pinned != gp || f.fpinned != fp {
+			t.Fatalf("%s pressure rejection mutated native state", kind)
+		}
+	}
+}
