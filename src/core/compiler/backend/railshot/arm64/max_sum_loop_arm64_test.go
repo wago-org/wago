@@ -1,0 +1,154 @@
+//go:build (linux || darwin) && arm64
+
+package arm64
+
+import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	rt "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
+)
+
+func maxSumFixture(t testing.TB, dst, a, b, stride, limit, bias uint32) *wasm.Module {
+	body := []byte{1, 11, 0x7f}
+	c := func(v uint32) { body = append(body, 0x41); body = append(body, wasmtest.SLEB32(int32(v))...) }
+	get := func(i byte) { body = append(body, 0x20, i) }
+	c(0x8142f301)
+	body = append(body, 0x21, 8, 0x03, 0x40)
+	get(9)
+	get(8)
+	body = append(body, 0x36, 2, 0)
+	get(8)
+	c(1664525)
+	body = append(body, 0x6c)
+	c(1013904223)
+	body = append(body, 0x6a, 0x21, 8)
+	get(9)
+	c(4)
+	body = append(body, 0x6a, 0x22, 9)
+	c(65536)
+	body = append(body, 0x47, 0x0d, 0, 0x0b)
+	for i, v := range []uint32{limit, dst, a, b, 0, 0x80000000, 0, 0, 0, 0, bias} {
+		c(v)
+		body = append(body, 0x21, byte(i))
+	}
+	c(64028)
+	c(123)
+	body = append(body, 0x03, 0x40)
+	for lane := uint32(0); lane < 2; lane++ {
+		get(1)
+		get(5)
+		get(2)
+		if lane != 0 {
+			c(stride)
+			body = append(body, 0x6a)
+		}
+		body = append(body, 0x28, 2, 0)
+		get(3)
+		get(10)
+		body = append(body, 0x6a)
+		c(12 + lane*4)
+		body = append(body, 0x6a, 0x22, 7, 0x28, 2, 0, 0x6a, 0x22, 6)
+		get(5)
+		get(6)
+		body = append(body, 0x4a, 0x1b, 0x22, 5, 0x36, 2, 0)
+	}
+	for _, v := range []struct {
+		local byte
+		step  uint32
+	}{{2, stride * 2}, {3, 8}, {4, 2}} {
+		get(v.local)
+		c(v.step)
+		body = append(body, 0x6a, 0x21, v.local)
+	}
+	get(4)
+	get(0)
+	body = append(body, 0x47, 0x0d, 0, 0x0b, 0x36, 2, 0)
+	for i, local := range []byte{2, 3, 4, 5, 6, 7} {
+		c(64000 + uint32(i)*4)
+		get(local)
+		body = append(body, 0x36, 2, 0)
+	}
+	c(0)
+	body = append(body, 0x0b)
+	return modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+}
+
+func maxSumOracle(dst, a, b, stride, limit, bias uint32) ([]byte, bool) {
+	mem := make([]byte, 65536)
+	value := uint32(0x8142f301)
+	for off := 0; off < len(mem); off += 4 {
+		binary.LittleEndian.PutUint32(mem[off:], value)
+		value = value*1664525 + 1013904223
+	}
+	counter, acc, sum, lastB := uint32(0), uint32(0x80000000), uint32(0), uint32(0)
+	for {
+		for lane := uint32(0); lane < 2; lane++ {
+			x, y := a+lane*stride, b+bias+12+lane*4
+			if uint64(x)+4 > 65536 || uint64(y)+4 > 65536 {
+				return mem, true
+			}
+			sum = binary.LittleEndian.Uint32(mem[x:]) + binary.LittleEndian.Uint32(mem[y:])
+			lastB = y
+			if int32(sum) > int32(acc) {
+				acc = sum
+			}
+			if uint64(dst)+4 > 65536 {
+				return mem, true
+			}
+			binary.LittleEndian.PutUint32(mem[dst:], acc)
+		}
+		a += stride * 2
+		b += 8
+		counter += 2
+		if counter == limit {
+			break
+		}
+	}
+	binary.LittleEndian.PutUint32(mem[64028:], 123)
+	for i, v := range []uint32{a, b, counter, acc, sum, lastB} {
+		binary.LittleEndian.PutUint32(mem[64000+i*4:], v)
+	}
+	return mem, false
+}
+
+func TestMaxSumFullMemoryAndTraps(t *testing.T) {
+	old := maxSumLoopEnabled
+	defer func() { maxSumLoopEnabled = old }()
+	for fixture := 0; fixture < 160; fixture++ {
+		stride := []uint32{4, 8, 20, 720}[fixture%4]
+		limit := []uint32{2, 4, 6, 14, 16, 18, 20, 30, 32, 34, 64}[fixture%11]
+		a := []uint32{0, 1, 256, 4096, 65532, 65534, 0xfffffffe}[fixture%7]
+		b := []uint32{0, 128, 8192, 65500, 65520, 65534, 0xfffffffc, 0x80001000}[fixture%8]
+		bias := uint32(0)
+		if fixture%8 == 7 {
+			bias = 0x80000000
+		}
+		dst := []uint32{0, 1, 3, 64, 1000, 60000, 65532, 65534, 0xfffffffe, a + stride*3, b + bias + 15}[fixture%11]
+		m := maxSumFixture(t, dst, a, b, stride, limit, bias)
+		want, trap := maxSumOracle(dst, a, b, stride, limit, bias)
+		for _, on := range []bool{false, true} {
+			maxSumLoopEnabled = on
+			for _, compact := range []bool{false, true} {
+				got, err := runScalarUnrollMemory(t, m, CompileOptions{CompactNative: compact})
+				var tr *rt.TrapError
+				if (err != nil) != trap || err != nil && (!errors.As(err, &tr) || tr.Code != rt.TrapLinMemOutOfBounds) || !bytes.Equal(got, want) {
+					t.Fatalf("case%d dst%x a%x b%x stride%d limit%d bias%x on%v compact%v trap%v err%v memoryEqual%v", fixture, dst, a, b, stride, limit, bias, on, compact, trap, err, bytes.Equal(got, want))
+				}
+			}
+		}
+	}
+}
+
+func TestMaxSumAdmission(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, stride := range []uint32{4, 20, 720} {
+		stats := compileWithStats(t, maxSumFixture(t, 60000, 256, 8192, stride, 32, 0), false).Funcs[0]
+		if stats.Peephole["max-sum-vector"] != 1 {
+			t.Fatalf("stride%d not admitted: %v", stride, stats.Peephole)
+		}
+	}
+}
