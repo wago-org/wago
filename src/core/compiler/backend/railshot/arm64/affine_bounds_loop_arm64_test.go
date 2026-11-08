@@ -5,6 +5,7 @@ package arm64
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/arm64"
 	rt "github.com/wago-org/wago/src/core/runtime"
@@ -34,6 +35,7 @@ func affineBoundsFixture() (*enc.Asm, int, int) {
 	start := a.Len()
 	a.Load64(X22, SP, 0)
 	a.Add32(X22, X22, X20)
+	a.Nop()
 	check(X23, X9)
 	a.MovReg32(X25, X24)
 	check(X25, X9)
@@ -89,6 +91,13 @@ func TestAffineBoundsLoopProof(t *testing.T) {
 		wrWord(b, start, w)
 		if _, ok := matchAffineBoundsLoop(b, back, X27, nativeConstantTargets(b), nil, nil); ok {
 			t.Fatalf("admitted unexpected first word%x", w)
+		}
+	}
+	for _, reg := range []Reg{linMemReg, X27} {
+		b := append([]byte{}, a.B...)
+		wrWord(b, start+8, 0xf94003e0|uint32(reg)) // reload into a fixed memory role
+		if _, ok := matchAffineBoundsLoop(b, back, X27, nativeConstantTargets(b), nil, nil); ok {
+			t.Fatalf("admitted write to fixed memory role%d", reg)
 		}
 	}
 	if _, ok := matchAffineBoundsLoop(a.B, back, X27, nativeConstantTargets(a.B), []int{start + 4}, nil); ok {
@@ -181,6 +190,40 @@ func TestAffineBoundsLoopExactMemoryAndFallback(t *testing.T) {
 					t.Fatalf("case%v optimized memory/continuation differs: got%x want%x", c, result, wantResult)
 				}
 			}
+		}
+	}
+}
+
+func TestAffineBoundsLoopProbeAllocatesZero(t *testing.T) {
+	a, _, back := affineBoundsFixture()
+	targets := nativeConstantTargets(a.B)
+	allocs := testing.AllocsPerRun(100, func() {
+		if _, ok := matchAffineBoundsLoop(a.B, back, X27, targets, nil, nil); !ok {
+			panic("eligible bounded probe rejected")
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("bounded probe allocated%v times", allocs)
+	}
+}
+
+func TestAffineBoundsLoopPerCompilationPolicy(t *testing.T) {
+	for _, on := range []bool{false, true} {
+		a, _, _ := affineBoundsFixture()
+		before := a.Len()
+		selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{"affine-bounds-loop": on}, OptimizationSnapshot{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f := gpClassEmitter()
+		f.a = a
+		f.m = &wasm.Module{}
+		f.hasLoop = true
+		f.memSizeReg = X27
+		f.policy = shared.DefaultCodegenPolicy(selection)
+		f.finalizeAffineBoundsLoops()
+		if (a.Len() > before) != on {
+			t.Fatalf("on%v output grew from%d to%d", on, before, a.Len())
 		}
 	}
 }

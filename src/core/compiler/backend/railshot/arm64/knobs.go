@@ -83,6 +83,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("float-memory-borrow", &floatMemoryBorrowEnabled),
 	optimization.Bind("select-subtract", &selectSubtractEnabled),
 	optimization.Bind("linear-load-span", &linearLoadSpanEnabled),
+	optimization.Bind("affine-bounds-loop", &affineBoundsLoopEnabled),
 	optimization.Bind("cyclic-load-span", &cyclicLoadSpanEnabled),
 	optimization.Bind("loop-store-sink", &loopStoreSinkEnabled),
 	optimization.Bind("native-loop-const", &nativeLoopConstEnabled),
@@ -212,6 +213,7 @@ var (
 	optStoreLoadFwd            = optimizationBindings.Option("store-load-fwd")
 	optSelectSubtract          = optimizationBindings.Option("select-subtract")
 	optLinearLoadSpan          = optimizationBindings.Option("linear-load-span")
+	optAffineBoundsLoop        = optimizationBindings.Option("affine-bounds-loop")
 	optCyclicLoadSpan          = optimizationBindings.Option("cyclic-load-span")
 	optLoopStoreSink           = optimizationBindings.Option("loop-store-sink")
 	optNativeLoopConst         = optimizationBindings.Option("native-loop-const")

@@ -116,6 +116,11 @@ func matchAffineBoundsLoop(b []byte, back int, memSize Reg, targets []uint64, en
 	for pc := start; pc < back-4; pc += 4 {
 		w := rdWord(b, pc)
 		rd, rn, rm := Reg(w&31), Reg(w>>5&31), Reg(w>>16&31)
+		// Entry guards use the same linear memory and size as every original
+		// access. Reject writes to either fixed role, including frame reloads.
+		if x, valid := linearSpanExitWord(w); valid && x.writes&(uint32(1)<<uint32(memSize)|uint32(1)<<uint32(linMemReg)) != 0 {
+			return p, false
+		}
 		// Do not borrow either fixed guard scratch register from the original loop.
 		if x, valid := linearSpanWord(w); valid && (x.reads|x.writes)&((1<<16)|(1<<17)) != 0 {
 			return p, false
@@ -262,7 +267,7 @@ func (f *fn) emitAffineBoundsValue(v affineBoundsValue, a, z Reg) {
 // Guards choose an exact scalar clone. They never trap and never reorder memory
 // effects; failure enters the original checked body with its original registers.
 func (f *fn) finalizeAffineBoundsLoops(entries ...int) {
-	if !affineBoundsLoopEnabled || !f.opt(optLinearLoadSpan) || !f.hasLoop || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.moduleEH || f.interruptible || f.opaqueFragments || len(f.customInstructions) != 0 || f.tracksGCFrameRoots() || f.memSizeReg == regNone {
+	if !f.opt(optAffineBoundsLoop) || !f.hasLoop || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.moduleEH || f.interruptible || f.opaqueFragments || len(f.customInstructions) != 0 || f.tracksGCFrameRoots() || f.memSizeReg == regNone {
 		return
 	}
 	n := len(f.a.B) &^ 3
