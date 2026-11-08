@@ -125,7 +125,10 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 			constantN++
 		}
 	}
-	if integerResidualConstantsEnabled {
+	// Multiple ordered updates have a longer scalar critical path. Start with
+	// the single-update family, whose independent packet work amortizes setup.
+	cacheConstants := integerResidualConstantsEnabled && p.mapN == 1
+	if cacheConstants {
 		for i, n := range p.nodes[:p.n] {
 			if p.used[i] && n.Op == 0x41 {
 				addConstant(uint32(n.Bits))
@@ -198,7 +201,7 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 		f.a.MovImm32(X16, int32(uint32(lane)*p.seedStep))
 		f.a.NeonInsS(lanes, X16, lane)
 	}
-	if vectorDivision && integerResidualConstantsEnabled {
+	if vectorDivision && cacheConstants {
 		addConstant(uint32(magic))
 	}
 	var constantRegs [16]Reg
