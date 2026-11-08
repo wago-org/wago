@@ -496,9 +496,11 @@ type fn struct {
 	wideReciprocalReg    Reg
 	wideReciprocalActive bool
 
-	frameForwardEnd uint32
-	frameForwardOff int32
-	frameForwardReg Reg
+	frameForwardEnd       uint32
+	frameForwardOff       int32
+	frameForwardReg       Reg
+	frameForwardLocal     int
+	frameForwardLocalLive bool
 	// One-entry linear-memory store forwarding window. The value register is
 	// protected in f.pinned until an exact load consumes it or any non-local.get
 	// opcode invalidates it; address identity is deliberately limited to a local.

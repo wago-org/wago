@@ -10,12 +10,14 @@ func frameForwardOpcode(op byte) bool {
 
 func (f *fn) rememberFrameStore(local int, reg Reg) {
 	f.frameForwardEnd = 0
+	f.frameForwardLocalLive = false
 	if !f.opt(optStoreLoadFwd) || f.moduleEH || len(f.customInstructions) != 0 || (f.localType[local] != mtI32 && f.localType[local] != mtI64) || reg == SP || f.a.Len() < 4 {
 		return
 	}
 	source, offset, wide, ok := spStoreImm(rdWord(f.a.B, f.a.Len()-4))
 	if ok && wide && source == reg && int32(offset) == f.localOff(local) {
 		f.frameForwardEnd, f.frameForwardOff, f.frameForwardReg = uint32(f.a.Len()), int32(offset), reg
+		f.frameForwardLocal, f.frameForwardLocalLive = local, true
 	}
 }
 

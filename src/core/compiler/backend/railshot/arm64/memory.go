@@ -505,6 +505,10 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		bcKind, bcIdx = 1, uint32(e.st.idx)
 	case stGlobReg:
 		bcKind, bcIdx = 2, uint32(e.st.idx)
+	case stReg:
+		if local, ok := f.teeAddressLocal(e); ok {
+			bcKind, bcIdx = 1, local
+		}
 	}
 	disp = 0
 	borrow = -1
