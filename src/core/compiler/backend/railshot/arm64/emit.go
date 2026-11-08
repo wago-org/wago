@@ -228,9 +228,8 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		return r
 	}
 
-	// Strength-reduce x * {3,5,9} to a single add-shifted `[x + x*{2,4,8}]` (base ==
-	// index == x), replacing a MUL by a small constant. The multiplier sits on the
-	// right after the commutative swap above.
+	// Fold constant 1 +/- 2^k products into one shifted ADD/SUB. The
+	// multiplier sits on the right after the commutative swap above.
 	if node.deferredOp() == opMul {
 		if r := f.tryLeaMul(node, left, right, dest); r != regNone {
 			return r
@@ -427,6 +426,15 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 // otherwise-required `MOV a,b`. More general deferred trees retain the ordinary,
 // fully pressure-aware condenseBinary path.
 func (f *fn) tryThreeOperandLocalSink(node *elem, dest Reg, left, right *elem, w bool) bool {
+	if shiftedIntegerMultiplyEnabled && node.deferredOp() == opMul && right.elemKind() == ekValue && right.st.kind == stConst {
+		if shift, subtract, ok := f.selectShiftedIntegerMultiply(right.st, w); ok {
+			f.shiftedIntegerMultiply(dest, left.st.reg, shift, subtract, w)
+			f.stats.peep("local-3op-sink")
+			f.consumeBlockBelow(node)
+			f.occupy(node, dest)
+			return true
+		}
+	}
 	var rhs Reg
 	ownedRHS := false
 	if right.isDeferred() {
@@ -821,30 +829,22 @@ func isZExt32Deferred(e *elem) bool {
 	return e != nil && e.elemKind() == ekDeferred && e.deferredOp() == opZExt32
 }
 
-// tryLeaMul lowers eligible constant products as an add-shifted `dest = x + x*{2,4,8}` (base
-// == index == x), replacing a MUL by a small constant. Returns regNone when the
-// shape doesn't match. The multiplicand must be concrete: condensing a deferred
+// tryLeaMul folds 1 +/- 2^k products into shifted arithmetic. It returns
+// regNone for other constants. The multiplicand must be concrete: condensing a deferred
 // operand here could clobber a register under the add-shifted (same hazard as
 // tryLeaScaledAdd guards against).
 func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
 	if right.elemKind() != ekValue || right.st.kind != stConst {
 		return regNone
 	}
-	var scaleLog uint8
-	switch right.st.cval {
-	case 3:
-		scaleLog = 1
-	case 5:
-		scaleLog = 2
-	case 9:
-		scaleLog = 3
-	default:
+	w := node.st.typ.is64()
+	shift, subtract, ok := f.selectShiftedIntegerMultiply(right.st, w)
+	if !ok {
 		return regNone
 	}
 	if left.elemKind() != ekValue {
 		return regNone
 	}
-	w := node.st.typ.is64()
 	x, xOwned := f.materializeRead(left) // add-shifted never writes its sources; a pinned local reads in place
 	if dest == regNone {
 		if xOwned {
@@ -853,7 +853,7 @@ func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
 			dest = f.allocReg(0)
 		}
 	}
-	f.leaScaled(dest, x, x, scaleLog, 0, w)
+	f.shiftedIntegerMultiply(dest, x, shift, subtract, w)
 	if xOwned && x != dest {
 		f.release(x)
 	}
@@ -1742,11 +1742,8 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	}
 	switch right.st.kind {
 	case stConst:
-		// x*{3,5,9} → one add-shifted [x+x*{2,4,8}] (powers of two already became
-		// shifts at pushBinOp).
-		switch right.st.cval {
-		case 3, 5, 9:
-			f.leaScaled(dest, dest, dest, uint8(log2u(uint64(right.st.cval-1))), 0, w)
+		if shift, subtract, ok := f.selectShiftedIntegerMultiply(right.st, w); ok {
+			f.shiftedIntegerMultiply(dest, dest, shift, subtract, w)
 			return
 		}
 		t, owned := f.intConstReadReg(right.st, maskOf(dest))
