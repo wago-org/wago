@@ -26,6 +26,7 @@ type floatMapNode struct {
 }
 type floatMapAddress struct {
 	base      int
+	index     int // source byte-index local plus one; zero keeps floating-map counter addressing
 	bias      uint32
 	offset    uint64 // widened memory immediate, added after dynamic i32 wrap
 	invariant bool
@@ -40,6 +41,11 @@ type floatMapPlan struct {
 	step, limit, packet          uint32
 	destOffset                   uint64
 	wide                         bool
+	integer                      bool
+	work, workLimit              int
+	counterStep, spanScale       uint32
+	limitLocal                   int
+	byteIndices                  uint32
 }
 
 // Local identities stay in source coordinates; only the bounded cell table is
@@ -54,6 +60,10 @@ func (p *floatMapPlan) localWritten(index int) bool {
 }
 
 func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) {
+	p.integer = f.integerLoadMapProbe
+	p.spanScale = 1
+	p.limitLocal = -1
+	p.workLimit = integerLoadMapWorkLimit - int(f.integerLoadMapWork)
 	scan := *source
 	start := scan.Offset()
 	var stack [24]int
@@ -93,6 +103,9 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 		return slot
 	}
 	for scan.Offset()-start < 512 {
+		if !p.spend() {
+			return p, false
+		}
 		pos := scan.Offset()
 		op, err := scan.Byte()
 		if err != nil {
@@ -141,7 +154,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			if err != nil || !push(node(floatMapNode{op: op, bits: bits})) {
 				return p, false
 			}
-		case 0x6a, 0x47, 0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
+		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x47, 0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
 			if depth < 2 {
 				return p, false
 			}
@@ -149,7 +162,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			if !push(node(floatMapNode{op: op, a: stack[depth], b: stack[depth+1]})) {
 				return p, false
 			}
-		case 0x2a, 0x2b:
+		case 0x28, 0x2a, 0x2b:
 			mem, off, e := f.readMemArg(&scan)
 			if e != nil || mem != 0 || (off > 1<<20 || off != 0 && !floatMapOffsetsEnabled) || depth == 0 {
 				return p, false
@@ -159,7 +172,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 				return p, false
 			}
 			stack[depth-1] = x
-		case 0x38, 0x39:
+		case 0x36, 0x38, 0x39:
 			mem, off, e := f.readMemArg(&scan)
 			if e != nil || mem != 0 || (off > 1<<20 || off != 0 && !floatMapOffsetsEnabled) || depth < 2 || (ns == len(stores) || ns == 2 && !floatMapPacketsEnabled) {
 				return p, false
@@ -167,6 +180,9 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			depth -= 2
 			stores[ns] = shared.LoopStore[int]{Address: stack[depth], Value: stack[depth+1], Offset: off, PC: uint32(pos)}
 			ns++
+			if p.integer != (op == 0x36) {
+				return p, false
+			}
 			if ns == 1 {
 				p.wide = op == 0x39
 			} else if p.wide != (op == 0x39) {
@@ -181,46 +197,56 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			if e != nil || end != 0x0b {
 				return p, false
 			}
-			increment := stack[0]
-			if condition := p.nodes[increment]; condition.op == 0x47 {
-				increment = condition.a
-				limit := p.nodes[condition.b]
-				if limit.op != 0x41 {
-					increment = condition.b
-					limit = p.nodes[condition.a]
-				}
-				if limit.op != 0x41 {
+			if p.integer {
+				if !p.finishIntegerInduction(stack[0], ns, initialRead[:]) {
 					return p, false
 				}
-				p.limit = uint32(limit.bits)
-			}
-			inc := p.nodes[increment]
-			if inc.op != 0x6a {
-				return p, false
-			}
-			local, stride := p.nodes[inc.a], p.nodes[inc.b]
-			if local.op != 0x20 {
-				local, stride = stride, local
+			} else {
+				increment := stack[0]
+				if condition := p.nodes[increment]; condition.op == 0x47 {
+					increment = condition.a
+					limit := p.nodes[condition.b]
+					if limit.op != 0x41 {
+						increment = condition.b
+						limit = p.nodes[condition.a]
+					}
+					if limit.op != 0x41 {
+						return p, false
+					}
+					p.limit = uint32(limit.bits)
+				}
+				inc := p.nodes[increment]
+				if inc.op != 0x6a {
+					return p, false
+				}
+				local, stride := p.nodes[inc.a], p.nodes[inc.b]
+				if local.op != 0x20 {
+					local, stride = stride, local
+				}
+				size := uint32(4)
+				if p.wide {
+					size = 8
+				}
+				if local.op != 0x20 || f.localType[local.a] != mtI32 || stride.op != 0x41 || stride.bits != uint64(size)*uint64(ns) {
+					return p, false
+				}
+				p.counter, p.step = local.a, uint32(stride.bits)
+				p.packet = floatMapPacketWidth(p.step)
+				if p.packet == 0 {
+					return p, false
+				}
+				if p.locals[p.localSlot(p.counter)].Value != increment {
+					return p, false
+				}
+				for i, cell := range p.locals[:p.localN] {
+					if cell.Written && initialRead[i] && int(cell.Index) != p.counter {
+						return p, false
+					}
+				}
 			}
 			size := uint32(4)
 			if p.wide {
 				size = 8
-			}
-			if local.op != 0x20 || f.localType[local.a] != mtI32 || stride.op != 0x41 || stride.bits != uint64(size)*uint64(ns) {
-				return p, false
-			}
-			p.counter, p.step = local.a, uint32(stride.bits)
-			p.packet = floatMapPacketWidth(p.step)
-			if p.packet == 0 {
-				return p, false
-			}
-			if p.locals[p.localSlot(p.counter)].Value != increment {
-				return p, false
-			}
-			for i, cell := range p.locals[:p.localN] {
-				if cell.Written && initialRead[i] && int(cell.Index) != p.counter {
-					return p, false
-				}
 			}
 			p.count, p.dest, p.result = n, stores[0].Address, stores[0].Value
 			p.destOffset = stores[0].Offset
@@ -239,12 +265,15 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			var used [128]bool
 			var mark func(int)
 			mark = func(x int) {
+				if !p.spend() {
+					return
+				}
 				if used[x] {
 					return
 				}
 				used[x] = true
 				v := p.nodes[x]
-				if v.op == 0x92 || v.op == 0x93 || v.op == 0x94 || v.op == 0x95 || v.op == 0xa0 || v.op == 0xa1 || v.op == 0xa2 || v.op == 0xa3 {
+				if p.binary(v.op) {
 					mark(v.a)
 					mark(v.b)
 				}
@@ -253,7 +282,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 				mark(stores[i].Value)
 			}
 			for i := 0; i < n; i++ {
-				if (p.nodes[i].op == 0x2a || p.nodes[i].op == 0x2b) && !used[i] {
+				if (p.nodes[i].op == 0x28 || p.nodes[i].op == 0x2a || p.nodes[i].op == 0x2b) && !used[i] {
 					return p, false
 				}
 			}
@@ -278,6 +307,12 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 }
 
 func (p *floatMapPlan) affine(x int, types []machineType, visits *int) (floatMapAddress, bool) {
+	if p.integer {
+		return p.integerAffine(x)
+	}
+	if !p.spend() {
+		return floatMapAddress{}, false
+	}
 	(*visits)++
 	if *visits > 128 {
 		return floatMapAddress{}, false
@@ -295,6 +330,9 @@ func (p *floatMapPlan) affine(x int, types []machineType, visits *int) (floatMap
 	var bias uint32
 	var walk func(int) bool
 	walk = func(x int) bool {
+		if !p.spend() {
+			return false
+		}
 		n++
 		if n > 128 {
 			return false
@@ -336,7 +374,7 @@ func (p *floatMapPlan) proveAddresses(types []machineType) bool {
 	addr.offset = p.destOffset
 	p.addresses[p.dest] = addr
 	for i := 0; i < p.count; i++ {
-		if p.nodes[i].op == 0x2a || p.nodes[i].op == 0x2b {
+		if p.load(p.nodes[i].op) {
 			visits = 0
 			a, ok := p.affine(p.nodes[i].a, types, &visits)
 			if !ok {
@@ -349,12 +387,21 @@ func (p *floatMapPlan) proveAddresses(types []machineType) bool {
 	return true
 }
 func (p *floatMapPlan) validExpression(x, depth int) bool {
-	if depth > 8 {
+	if depth > 8 || !p.spend() {
 		return false
 	}
 	v := p.nodes[x]
 	if v.op == 0x20 {
-		return !p.localWritten(v.a) && p.locals[p.localSlot(v.a)].Type == mapFloatType(p.wide)
+		return !p.localWritten(v.a) && p.locals[p.localSlot(v.a)].Type == p.valueType()
+	}
+	if p.integer {
+		if v.op == 0x28 || v.op == 0x41 {
+			return true
+		}
+		if p.binary(v.op) {
+			return p.validExpression(v.a, depth+1) && p.validExpression(v.b, depth+1)
+		}
+		return false
 	}
 	if v.op == 0x2b || v.op == 0x44 {
 		return p.wide
@@ -375,13 +422,13 @@ func (p *floatMapPlan) labelInvariants() {
 	for i := 0; i < p.count; i++ {
 		v := p.nodes[i]
 		switch v.op {
-		case 0x43, 0x44:
+		case 0x41, 0x43, 0x44:
 			p.invariant[i] = true
 		case 0x20:
-			p.invariant[i] = !p.localWritten(v.a) && p.locals[p.localSlot(v.a)].Type == mapFloatType(p.wide)
-		case 0x2a, 0x2b:
+			p.invariant[i] = !p.localWritten(v.a) && p.locals[p.localSlot(v.a)].Type == p.valueType()
+		case 0x28, 0x2a, 0x2b:
 			p.invariant[i] = p.addresses[i].invariant
-		case 0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
+		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
 			p.invariant[i] = p.invariant[v.a] && p.invariant[v.b]
 		}
 	}
@@ -390,25 +437,25 @@ func (p *floatMapPlan) labelInvariants() {
 func (p *floatMapPlan) nextAddress(x, y int, step uint32) bool {
 	a, b := p.addresses[x], p.addresses[y]
 	if a.invariant || b.invariant {
-		return a.invariant && b.invariant && a.base == b.base && a.bias == b.bias && a.offset == b.offset
+		return a.invariant && b.invariant && a.base == b.base && a.index == b.index && a.bias == b.bias && a.offset == b.offset
 	}
-	return a.base == b.base && a.offset == b.offset && uint64(a.bias)+uint64(step) == uint64(b.bias)
+	return a.base == b.base && a.index == b.index && a.offset == b.offset && uint64(a.bias)+uint64(step) == uint64(b.bias)
 }
 func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
-	if depth > 8 {
+	if depth > 8 || !p.spend() {
 		return false
 	}
 	a, b := p.nodes[x], p.nodes[y]
 	if a.op != b.op {
 		return false
 	}
-	if a.op == 0x2a || a.op == 0x2b {
+	if p.load(a.op) {
 		return p.nextAddress(x, y, step)
 	}
 	if a.op == 0x20 {
 		return a.a == b.a
 	}
-	if a.op == 0x43 || a.op == 0x44 {
+	if p.constant(a.op) {
 		return a.bits == b.bits
 	}
 	return p.sameMap(a.a, b.a, step, depth+1) && p.sameMap(a.b, b.b, step, depth+1)
@@ -459,21 +506,55 @@ func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 
 func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	p, ok := f.inspectFloatMapLoop(source)
+	defer func() {
+		if p.integer {
+			f.integerLoadMapWork = uint16(min(integerLoadMapWorkLimit, int(f.integerLoadMapWork)+p.work))
+		}
+	}()
 	if !ok {
 		return
 	}
+	// Deeply nested copy-only loops often move a handful of words, and even
+	// the cheap runtime admission check can dominate them. Keep their original
+	// scalar path until a lower-overhead entry recipe is available. Arithmetic
+	// maps and shallow copies retain the normal guarded trip policy.
+	if p.integer && p.limitLocal >= 0 && p.nodes[p.result].op == 0x28 {
+		parents := 0
+		for i := len(f.ctrl) - 1; i >= 0; i-- {
+			if !p.spend() {
+				return
+			}
+			if f.ctrl[i].kind == cfLoop {
+				parents++
+				if parents == 2 {
+					f.stats.peep("integer-load-map-nested-copy-reject")
+					return
+				}
+			}
+		}
+	}
+	minimumSpan := p.packet + p.step
+	if p.integer {
+		minimumSpan = max(minimumSpan, 128)
+		// The guarded positive-limit path requires counter < limit, so its
+		// span cannot exceed limit, even when the entry value is unknown.
+		if p.limitLocal < 0 && p.limit != 0 && uint64(p.limit)*uint64(p.spanScale) < uint64(minimumSpan) {
+			return
+		}
+	}
 	type group struct {
-		base int
-		min  uint32
-		max  uint64
-		reg  Reg
+		base  int
+		index int
+		min   uint32
+		max   uint64
+		reg   Reg
 	}
 	var groups [3]group
 	ng := 0
 	add := func(a floatMapAddress) bool {
 		for i := 0; i < ng; i++ {
 			g := &groups[i]
-			if g.base == a.base {
+			if g.base == a.base && g.index == a.index {
 				if a.bias < g.min {
 					g.min = a.bias
 				}
@@ -486,7 +567,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		if ng == len(groups) {
 			return false
 		}
-		groups[ng] = group{base: a.base, min: a.bias, max: uint64(a.bias) + a.offset}
+		groups[ng] = group{base: a.base, index: a.index, min: a.bias, max: uint64(a.bias) + a.offset}
 		ng++
 		return true
 	}
@@ -497,8 +578,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	nInvariant := 0
 	var collect func(int) bool
 	collect = func(x int) bool {
+		if !p.spend() {
+			return false
+		}
 		v := p.nodes[x]
-		if v.op == 0x2a || v.op == 0x2b {
+		if p.load(v.op) {
 			if p.addresses[x].invariant {
 				for i := 0; i < nInvariant; i++ {
 					if invariant[i] == x {
@@ -523,7 +607,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			coefficients |= 1 << p.localSlot(v.a)
 			return true
 		}
-		if v.op == 0x43 || v.op == 0x44 {
+		if p.constant(v.op) {
 			return true
 		}
 		return collect(v.a) && collect(v.b)
@@ -531,16 +615,32 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	if !add(p.addresses[p.dest]) || !collect(p.result) {
 		return
 	}
+	// Each carried byte index must have a guarded stream from which its next
+	// source value can be recovered. Other carried state stays on scalar code.
+	if p.integer {
+		var covered uint32
+		for _, g := range groups[:ng] {
+			if g.index > 0 {
+				covered |= 1 << p.localSlot(g.index-1)
+			}
+		}
+		if p.byteIndices&^covered != 0 {
+			return
+		}
+	}
 	if floatMapPacketDependenceEnabled && p.hasShortForwardDependence(loads[:nl]) {
 		return
 	}
 	var countConst func(int) int
 	countConst = func(x int) int {
+		if !p.spend() {
+			return 1000
+		}
 		v := p.nodes[x]
-		if p.invariant[x] || v.op == 0x20 || v.op == 0x43 || v.op == 0x44 {
+		if p.invariant[x] || v.op == 0x20 || p.constant(v.op) {
 			return 1
 		}
-		if v.op == 0x2a || v.op == 0x2b {
+		if p.load(v.op) {
 			if p.addresses[x].invariant {
 				return 1
 			}
@@ -562,8 +662,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	var pressure func(int) int
 	pressure = func(x int) int {
+		if !p.spend() {
+			return 1000
+		}
 		v := p.nodes[x]
-		if v.op == 0x2a || v.op == 0x2b || v.op == 0x20 || v.op == 0x43 || v.op == 0x44 {
+		if p.load(v.op) || v.op == 0x20 || p.constant(v.op) {
 			return 1
 		}
 		a, b := pressure(v.a), pressure(v.b)+1
@@ -572,9 +675,77 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		return a
 	}
-	if available < countConst(p.result)+pressure(p.result)+1 {
+	if available < countConst(p.result)+pressure(p.result)+1 || p.integer && p.work > p.workLimit {
 		return
 	}
+	read := func(local int, dst Reg) {
+		if local < 0 {
+			f.a.MovImm64(dst, 0)
+			return
+		}
+		if reg, _, pin := f.pinReg(local); pin {
+			f.recoverLocal(local)
+			f.a.MovReg32(dst, reg)
+		} else if f.locals[local].state == lsConstZero {
+			f.a.MovImm64(dst, 0)
+		} else {
+			f.ld32(dst, SP, f.localOff(local))
+		}
+	}
+
+	if p.integer {
+		// Admission must not evict an original stack value merely to execute a
+		// scalar fallback. These are leases from the existing allocator's free
+		// pool; the unchanged scalar loop retains its original owned locations.
+		free := 0
+		blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+		for _, reg := range gpAlloc {
+			if f.regUser[reg] == nil && !blocked.has(reg) {
+				free++
+			}
+		}
+		if free < ng+3 {
+			f.stats.peep("integer-load-map-gp-pressure-reject")
+			return
+		}
+		// Recover all borrowed pins on both paths before a check can skip setup.
+		f.recoverLocal(p.counter)
+		if p.limitLocal >= 0 {
+			f.recoverLocal(p.limitLocal)
+		}
+		for slot, cell := range p.locals[:p.localN] {
+			if coefficients&(1<<slot) != 0 {
+				f.recoverLocal(int(cell.Index))
+			}
+		}
+		for _, x := range invariant[:nInvariant] {
+			if p.addresses[x].base >= 0 {
+				f.recoverLocal(p.addresses[x].base)
+			}
+		}
+		for _, g := range groups[:ng] {
+			if g.base >= 0 {
+				f.recoverLocal(g.base)
+			}
+			if g.index > 0 {
+				f.recoverLocal(g.index - 1)
+			}
+		}
+		// Compare in source-counter units before leasing/initializing streams,
+		// computing widened byte spans or checking ranges. A wrapped negative
+		// difference may pass here but is rejected by the full eligibility proof.
+		read(p.counter, X17)
+		if p.limitLocal >= 0 {
+			read(p.limitLocal, X16)
+		} else {
+			f.a.MovImm64(X16, uint64(p.limit))
+		}
+		f.a.Sub32(X17, X16, X17)
+		f.cmpImm(X17, (minimumSpan+p.spanScale-1)/p.spanScale, false)
+		scalar := f.a.Bcond(condB)
+		defer func() { f.patchBranch19(scalar, f.a.Len()) }()
+	}
+
 	oldPinned, oldFPinned := f.pinned, f.fpinned
 	var regs [6]Reg
 	nr := 0
@@ -606,36 +777,63 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			return
 		}
 	}
-	read := func(local int, dst Reg) {
-		if reg, _, pin := f.pinReg(local); pin {
-			f.recoverLocal(local)
-			f.a.MovReg32(dst, reg)
-		} else if f.locals[local].state == lsConstZero {
-			f.a.MovImm64(dst, 0)
-		} else {
-			f.ld32(dst, SP, f.localOff(local))
-		}
-	}
+
 	read(p.counter, counter)
+	if p.integer && p.limitLocal >= 0 {
+		f.recoverLocal(p.limitLocal)
+	}
 	for slot, cell := range p.locals[:p.localN] {
 		if coefficients&(1<<slot) != 0 {
 			f.recoverLocal(int(cell.Index))
 		}
 	}
 	for i := 0; i < nInvariant; i++ {
-		f.recoverLocal(p.addresses[invariant[i]].base)
+		if base := p.addresses[invariant[i]].base; base >= 0 {
+			f.recoverLocal(base)
+		}
 	}
 	// Recover every borrowed local before any guard can bypass its reload.
 	for i := 0; i < ng; i++ {
-		read(groups[i].base, groups[i].reg)
+		if p.integer {
+			if groups[i].base >= 0 {
+				f.recoverLocal(groups[i].base)
+			}
+			if groups[i].index > 0 {
+				f.recoverLocal(groups[i].index - 1)
+			}
+		} else {
+			read(groups[i].base, groups[i].reg)
+		}
 	}
 	var guards [64]int
 	nGuards := 0
 	guard := func(cc Cond) { guards[nGuards] = f.a.Bcond(cc); nGuards++ }
-	f.a.MovImm64(span, uint64(p.limit))
-	f.a.Sub32(span, span, counter)
-	f.cmpImm(span, p.packet+p.step, false)
+	if p.integer && p.limitLocal >= 0 {
+		read(p.limitLocal, X16)
+		f.cmpRR(counter, X16, false)
+		guard(condAE)
+		f.a.Sub32(span, X16, counter)
+	} else {
+		f.a.MovImm64(span, uint64(p.limit))
+		f.a.Sub32(span, span, counter)
+	}
+	if p.spanScale > 1 {
+		shift := uint8(0)
+		for scale := p.spanScale; scale > 1; scale >>= 1 {
+			shift++
+		}
+		f.a.LslImm(span, span, shift, false)
+		f.a.MovImm64(X16, 1<<32-1)
+		f.cmpRR(span, X16, true)
+		guard(condA)
+	}
+	f.cmpImm(span, minimumSpan, false)
 	guard(condB)
+	if p.integer {
+		for i := 0; i < ng; i++ {
+			read(groups[i].base, groups[i].reg)
+		}
+	}
 	if p.step&(p.step-1) == 0 {
 		f.a.TstImm32(span, p.step-1)
 	} else {
@@ -650,7 +848,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	guard(condNE)
 	// Reject nonterminating modular trips: zero-limit countdowns must start
 	// negative; positive fixed limits must be ahead of the unsigned counter.
-	if p.limit == 0 {
+	if p.integer && p.limitLocal >= 0 {
+		// Dynamic limits were checked before computing their widened byte span.
+	} else if p.limit == 0 {
 		f.cmpImm(counter, 0, false)
 		guard(condGE)
 	} else {
@@ -661,7 +861,12 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	f.ld64(size, linMemReg, -int32(bdCurBytes))
 	for i := 0; i < ng; i++ {
 		g := &groups[i]
-		f.a.Add32(g.reg, g.reg, counter)
+		if !p.integer || g.index == p.counter+1 {
+			f.a.Add32(g.reg, g.reg, counter)
+		} else if g.index > 0 {
+			read(g.index-1, X16)
+			f.a.Add32(g.reg, g.reg, X16)
+		}
 		f.floatMapOffset(g.reg, g.reg, uint64(g.min), false, X16)
 		f.a.Add64(X16, g.reg, span)
 		f.floatMapOffset(X16, X16, g.max-uint64(g.min), true, X17)
@@ -673,7 +878,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	locate := func(a floatMapAddress) (Reg, uint32) {
 		for i := 0; i < ng; i++ {
-			if groups[i].base == a.base {
+			if groups[i].base == a.base && groups[i].index == a.index {
 				return groups[i].reg, uint32(uint64(a.bias) - uint64(groups[i].min) + a.offset)
 			}
 		}
@@ -793,6 +998,18 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 
 	emitOp := func(op byte, out, a, b Reg) {
 		switch op {
+		case 0x6a:
+			f.a.NeonAddS(out, a, b)
+		case 0x6b:
+			f.a.NeonSubS(out, a, b)
+		case 0x6c:
+			f.a.NeonMulS(out, a, b)
+		case 0x71:
+			f.a.NeonAnd16b(out, a, b)
+		case 0x72:
+			f.a.NeonOrr16b(out, a, b)
+		case 0x73:
+			f.a.NeonEor16b(out, a, b)
 		case 0x92, 0xa0:
 			f.a.NeonFadd(out, a, b, p.wide)
 		case 0x93, 0xa1:
@@ -807,7 +1024,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var invariantValue func(int) Reg
 	invariantValue = func(x int) Reg {
 		v := p.nodes[x]
-		if v.op >= 0x92 && v.op <= 0x95 || v.op >= 0xa0 && v.op <= 0xa3 {
+		if p.binary(v.op) {
 			a := invariantValue(v.a)
 			b := invariantValue(v.b)
 			emitOp(v.op, a, a, b)
@@ -817,7 +1034,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		r := f.allocFReg(0)
 		f.fpinned = f.fpinned.add(r)
 
-		if v.op == 0x20 {
+		if v.op == 0x20 && p.integer {
+			read(v.a, X16)
+			f.a.FmovFromGpr(r, X16, false)
+		} else if v.op == 0x20 {
 			if reg, _, pin := f.pinReg(v.a); pin {
 				f.a.FmovReg(r, reg, p.wide)
 			} else if f.locals[v.a].state == lsConstZero {
@@ -825,7 +1045,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			} else {
 				f.a.LdrF(r, SP, f.localOff(v.a), p.wide)
 			}
-		} else if v.op == 0x2a || v.op == 0x2b {
+		} else if p.load(v.op) {
 			iv := p.addresses[x]
 			read(iv.base, X16)
 			f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
@@ -834,6 +1054,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			}
 			f.a.Add64(X16, X16, linMemReg)
 			f.a.LdrF(r, X16, 0, p.wide)
+		} else if p.integer {
+			f.a.MovImm64(X16, uint64(uint32(v.bits)))
+			f.a.FmovFromGpr(r, X16, false)
 		} else {
 			f.loadFConst(r, storage{kind: stConst, typ: mapFloatType(p.wide), cval: int64(v.bits)})
 		}
@@ -847,7 +1070,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var preload func(int)
 	preload = func(x int) {
 		v := p.nodes[x]
-		if p.invariant[x] || v.op == 0x20 || v.op == 0x43 || v.op == 0x44 || (v.op == 0x2a || v.op == 0x2b) && p.addresses[x].invariant {
+		if p.invariant[x] || v.op == 0x20 || p.constant(v.op) || (p.load(v.op)) && p.addresses[x].invariant {
 			for i := 0; i < nc; i++ {
 				if constants[i].node == x {
 					return
@@ -861,7 +1084,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			nc++
 			return
 		}
-		if v.op != 0x2a && v.op != 0x2b {
+		if !p.load(v.op) {
 			preload(v.a)
 			preload(v.b)
 		}
@@ -873,7 +1096,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var emit func(int) (Reg, bool)
 	emit = func(x int) (Reg, bool) {
 		v := p.nodes[x]
-		if p.invariant[x] || v.op == 0x20 || v.op == 0x43 || v.op == 0x44 || (v.op == 0x2a || v.op == 0x2b) && p.addresses[x].invariant {
+		if p.invariant[x] || v.op == 0x20 || p.constant(v.op) || (p.load(v.op)) && p.addresses[x].invariant {
 			for i := 0; i < nc; i++ {
 				if constants[i].node == x {
 					return constants[i].reg, false
@@ -881,7 +1104,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			}
 			panic("arm64: missing float map constant")
 		}
-		if v.op == 0x2a || v.op == 0x2b {
+		if p.load(v.op) {
 			base, off := locate(p.addresses[x])
 			r := f.allocFReg(0)
 			f.fpinned = f.fpinned.add(r)
@@ -914,7 +1137,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		for i := 0; i < ng; i++ {
 			f.a.AddImm64(groups[i].reg, groups[i].reg, width)
 		}
-		f.a.AddImm32(counter, counter, width)
+		f.a.AddImm32(counter, counter, width/p.spanScale)
 		f.a.SubImm32(span, span, width)
 	}
 	// Choose a small native packet menu independently of the source unroll.
@@ -954,6 +1177,37 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.patchBranch19(done, f.a.Len())
 	}
 	f.stats.peep("float-map-loop-unroll")
+	if p.integer {
+		var published uint32
+		for _, g := range groups[:ng] {
+			if g.index == 0 {
+				continue
+			}
+			local := g.index - 1
+			slot := p.localSlot(local)
+			bit := uint32(1) << slot
+			if p.byteIndices&bit == 0 || published&bit != 0 {
+				continue
+			}
+			published |= bit
+			// g.reg is hostMemory + wrap(base + oldIndex + min) + bytesDone.
+			// Range guards excluded wrap during the prefix. Recover the exact
+			// modular source index before the original scalar packet resumes.
+			f.a.Sub64(X16, g.reg, linMemReg)
+			f.a.MovImm64(X17, uint64(g.min))
+			f.a.Sub32(X16, X16, X17)
+			read(g.base, X17)
+			f.a.Sub32(X16, X16, X17)
+			if reg, _, pin := f.pinReg(local); pin {
+				f.a.MovReg32(reg, X16)
+				f.markLocalDirty(local)
+			} else {
+				f.st64(SP, f.localOff(local), X16)
+				f.locals[local].state = lsMem
+			}
+			f.setFactsForLocal(local, 0)
+		}
+	}
 	if reg, _, pin := f.pinReg(p.counter); pin {
 		f.a.MovReg32(reg, counter)
 		f.markLocalDirty(p.counter)
@@ -970,7 +1224,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	f.setFactsForLocal(p.counter, 0)
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
-	f.stats.peep("float-map-loop-vector")
+	if p.integer {
+		f.stats.peep("integer-load-map-vector")
+	} else {
+		f.stats.peep("float-map-loop-vector")
+	}
 }
 func mapFloatType(wide bool) machineType {
 	if wide {

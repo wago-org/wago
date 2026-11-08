@@ -20,7 +20,7 @@ func (p *floatMapPlan) hasShortForwardDependence(loads []int) bool {
 	dst := p.addresses[p.dest]
 	for _, x := range loads {
 		src := p.addresses[x]
-		if src.base != dst.base {
+		if src.base != dst.base || src.index != dst.index {
 			continue
 		}
 		d, s := uint64(dst.bias)+dst.offset, uint64(src.bias)+src.offset
