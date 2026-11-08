@@ -3888,6 +3888,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 		f.finalizePeepholes(internalOff)
 		f.finalizeNativeLoopConsts(internalOff)
+		f.finalizeAffineBoundsLoops(internalOff)
 		f.finalizeLinearLoadSpans(internalOff)
 		f.finalizeScalarLoopUnroll(internalOff)
 		if err := f.emitFloatConstPool(); err != nil {
@@ -3934,6 +3935,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.finalizePeepholes()
 	f.finalizeNativeLoopConsts()
+	f.finalizeAffineBoundsLoops()
 	f.finalizeLinearLoadSpans()
 	f.finalizeScalarLoopUnroll()
 	if err := f.emitFloatConstPool(); err != nil {
