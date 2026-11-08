@@ -11,6 +11,8 @@ import (
 // Nonzero-immediate maps retain a same-binary scalar control for qualification.
 var floatMapOffsetsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_OFFSETS") != "1"
 
+var floatMapLaneFPLoadsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_LANE_FP_LOADS") != "1"
+
 var floatMapLaneOffsetsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_LANE_OFFSETS") != "1"
 
 var floatMapInductionEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_INDUCTION") != "1"
@@ -1125,6 +1127,17 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				}
 				for lane := uint32(0); lane < 16/size; lane++ {
 					address := uint64(off) + (uint64(block)+uint64(lane*size))*uint64(stride)
+					if lane == 0 && floatMapLaneFPLoadsEnabled {
+						// The first scalar lane initializes the vector directly;
+						// later lane inserts never need its temporary GP copy.
+						if floatMapLaneOffsetsEnabled && address%uint64(size) == 0 && address/uint64(size) <= 0xfff {
+							f.a.LdrF(r, base, int32(address), p.wide)
+						} else {
+							f.floatMapOffset(X17, base, address, true, X16)
+							f.a.LdrF(r, X17, 0, p.wide)
+						}
+						continue
+					}
 					if floatMapLaneOffsetsEnabled && address%uint64(size) == 0 && address/uint64(size) <= 0xfff {
 						// The guarded exact-width load can use its native scaled
 						// displacement without materializing a second address.
