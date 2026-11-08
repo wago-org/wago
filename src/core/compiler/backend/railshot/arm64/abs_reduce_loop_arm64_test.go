@@ -64,8 +64,8 @@ func TestAbsReduceIndependentOverflowAndFallback(t *testing.T) {
 	for _, lanes := range []int{4, 8} {
 		for _, reverse := range []bool{false, true} {
 			for _, localStride := range []bool{false, true} {
-				for _, rows := range []uint32{1, 2, 8, 31} {
-					for _, stride := range []uint32{0, 4, 32, 192, 0xfffffffc} {
+				for _, rows := range []uint32{1, 2, 3, 8, 31} {
+					for _, stride := range []uint32{0, 1, 4, 15, 16, 31, 32, 192, 4096, 0x80000000, 0xfffffffc} {
 						for _, layout := range [][3]uint32{{0, 4096, 0}, {4096, 0, 0}, {1, 4097, 0}, {0, 0, 0}, {65504, 0, 0}, {0xfffffff0, 4096, 0}, {64, 128, 0xfffffff0}, {0, 4096, 65500}} {
 							src, dst, index := layout[0], layout[1], layout[2]
 							acc, remaining := uint32(0x87654321), rows

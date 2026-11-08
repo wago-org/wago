@@ -314,7 +314,7 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 		return
 	}
 	oldPinned, oldFPinned := f.pinned, f.fpinned
-	var regs [6]Reg
+	var regs [7]Reg
 	nr := 0
 	alloc := func() Reg {
 		x := f.allocRegOrNone(0)
@@ -367,6 +367,10 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 			f.ld32(dst, SP, f.localOff(local))
 		}
 	}
+	stride := regNone
+	if absReduceRangeEnabled {
+		stride = alloc()
+	}
 	read(p.counter, counter)
 	read(p.index, index)
 	read(p.acc, acc)
@@ -388,6 +392,80 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 		vc = f.allocFReg(0)
 		f.fpinned = f.fpinned.add(vc)
 	}
+	emitPacket := func() {
+		for off := int32(0); off < int32(4*p.lanes); off += 16 {
+			out := va
+			if vc != regNone && off == 0 {
+				out = vc
+			}
+			f.a.LdrQ(out, a, off)
+			f.a.LdrQ(vb, b, off)
+			f.a.NeonSubS(out, out, vb)
+			f.a.NeonAbsS(out, out)
+			if vc != regNone {
+				if off == 0 {
+					continue
+				}
+				// Preserve wrapping subtraction/absolute-value semantics in each
+				// lane, then combine exact modular sums before crossing to GP.
+				f.a.NeonAddS(va, va, vc)
+			}
+			f.a.NeonAddvS(va, va)
+			f.a.FmovToGpr(X16, va, false)
+			f.a.Add32(acc, acc, X16)
+		}
+	}
+	// A nontrapping whole-range proof can retain native pointers across rows.
+	// Otherwise enter the original independently checked vector loop below.
+	fastDone := -1
+	if stride != regNone {
+		f.cmpImm(counter, 1, false)
+		short := f.a.Bcond(condBE)
+		if p.stride.op == 0x20 {
+			read(p.stride.a, stride)
+		} else {
+			f.a.MovImm64(stride, uint64(p.stride.v))
+		}
+		read(p.baseA, a)
+		read(p.baseB, b)
+		f.a.Add32(a, a, index)
+		f.absReduceOffset(a, p.biasA)
+		f.a.Add32(b, b, index)
+		f.absReduceOffset(b, p.biasB)
+		// At most counter-1 rows run natively; their last start is
+		// (counter-2)*stride. Both factors are zero-extended i32 values,
+		// so the product plus two i32 bases and 32 bytes cannot overflow u64.
+		f.a.SubImm32(X16, counter, 2)
+		f.a.Mul64(X16, X16, stride)
+		f.a.AddImm64(X16, X16, uint32(4*p.lanes))
+		var misses [4]int
+		for i, base := range [2]Reg{a, b} {
+			f.a.Add64(X17, base, X16)
+			f.cmpRR(X17, size, true)
+			misses[2*i] = f.a.Bcond(condA)
+			// endpoint==2^32 is valid; larger endpoints cross the modular
+			// address boundary. The endpoint is nonzero (access width>=16).
+			f.a.SubImm64(X17, X17, 1)
+			f.a.LsrImm(X17, X17, 32, false)
+			misses[2*i+1] = f.a.Cbnz64(X17)
+		}
+		f.a.Add64(a, a, linMemReg)
+		f.a.Add64(b, b, linMemReg)
+		fastLoop := f.a.Len()
+		emitPacket()
+		f.a.Add64(a, a, stride)
+		f.a.Add64(b, b, stride)
+		f.a.Add32(index, index, stride)
+		f.a.SubImm32(counter, counter, 1)
+		f.cmpImm(counter, 1, false)
+		f.patchBranch19(f.a.Bcond(condA), fastLoop)
+		fastDone = f.a.Branch()
+		for _, site := range misses {
+			f.patchBranch19(site, f.a.Len())
+		}
+		f.patchBranch19(short, f.a.Len())
+		f.stats.peep("abs-reduce-range-loop")
+	}
 	loop := f.a.Len()
 	f.cmpImm(counter, 1, false)
 	done := f.a.Bcond(condBE)
@@ -405,27 +483,7 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	badB := f.a.Bcond(condA)
 	f.a.Add64(a, a, linMemReg)
 	f.a.Add64(b, b, linMemReg)
-	for off := int32(0); off < int32(4*p.lanes); off += 16 {
-		out := va
-		if vc != regNone && off == 0 {
-			out = vc
-		}
-		f.a.LdrQ(out, a, off)
-		f.a.LdrQ(vb, b, off)
-		f.a.NeonSubS(out, out, vb)
-		f.a.NeonAbsS(out, out)
-		if vc != regNone {
-			if off == 0 {
-				continue
-			}
-			// Preserve wrapping subtraction/absolute-value semantics in each
-			// lane, then combine exact modular sums before crossing to GP.
-			f.a.NeonAddS(va, va, vc)
-		}
-		f.a.NeonAddvS(va, va)
-		f.a.FmovToGpr(X16, va, false)
-		f.a.Add32(acc, acc, X16)
-	}
+	emitPacket()
 	if p.stride.op == 0x20 {
 		read(p.stride.a, X16)
 	} else {
@@ -436,6 +494,9 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.patchBranch26(f.a.Branch(), loop)
 	for _, site := range []int{done, badA, badB} {
 		f.patchBranch19(site, f.a.Len())
+	}
+	if fastDone >= 0 {
+		f.patchBranch26(fastDone, f.a.Len())
 	}
 	for _, state := range []struct {
 		local int
