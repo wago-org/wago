@@ -392,7 +392,16 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 		vc = f.allocFReg(0)
 		f.fpinned = f.fpinned.add(vc)
 	}
-	emitPacket := func() {
+	vectorSum := regNone
+	needed := 3
+	if vc != regNone {
+		needed++
+	}
+	if absReduceAccumulatorEnabled && stride != regNone && available >= needed {
+		vectorSum = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(vectorSum)
+	}
+	emitPacket := func(sum Reg) {
 		for off := int32(0); off < int32(4*p.lanes); off += 16 {
 			out := va
 			if vc != regNone && off == 0 {
@@ -410,9 +419,13 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 				// lane, then combine exact modular sums before crossing to GP.
 				f.a.NeonAddS(va, va, vc)
 			}
-			f.a.NeonAddvS(va, va)
-			f.a.FmovToGpr(X16, va, false)
-			f.a.Add32(acc, acc, X16)
+			if sum != regNone {
+				f.a.NeonAddS(sum, sum, va)
+			} else {
+				f.a.NeonAddvS(va, va)
+				f.a.FmovToGpr(X16, va, false)
+				f.a.Add32(acc, acc, X16)
+			}
 		}
 	}
 	// A nontrapping whole-range proof can retain native pointers across rows.
@@ -451,14 +464,25 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 		}
 		f.a.Add64(a, a, linMemReg)
 		f.a.Add64(b, b, linMemReg)
+		// The complete range is nontrapping and has no writes or calls.
+		// Integer sums may stay in lanes until this region exits: all
+		// additions wrap modulo 2^32, including INT_MIN absolute values.
+		if vectorSum != regNone {
+			f.a.NeonEor16b(vectorSum, vectorSum, vectorSum)
+		}
 		fastLoop := f.a.Len()
-		emitPacket()
+		emitPacket(vectorSum)
 		f.a.Add64(a, a, stride)
 		f.a.Add64(b, b, stride)
 		f.a.Add32(index, index, stride)
 		f.a.SubImm32(counter, counter, 1)
 		f.cmpImm(counter, 1, false)
 		f.patchBranch19(f.a.Bcond(condA), fastLoop)
+		if vectorSum != regNone {
+			f.a.NeonAddvS(va, vectorSum)
+			f.a.FmovToGpr(X16, va, false)
+			f.a.Add32(acc, acc, X16)
+		}
 		fastDone = f.a.Branch()
 		for _, site := range misses {
 			f.patchBranch19(site, f.a.Len())
@@ -483,7 +507,7 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	badB := f.a.Bcond(condA)
 	f.a.Add64(a, a, linMemReg)
 	f.a.Add64(b, b, linMemReg)
-	emitPacket()
+	emitPacket(regNone)
 	if p.stride.op == 0x20 {
 		read(p.stride.a, X16)
 	} else {
@@ -515,6 +539,9 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.releaseF(vb)
 	if vc != regNone {
 		f.releaseF(vc)
+	}
+	if vectorSum != regNone {
+		f.releaseF(vectorSum)
 	}
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
