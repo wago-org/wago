@@ -836,6 +836,8 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 		slots += 3
 	}
 	e.slot = f.allocSpillSlots(slots)
+	entryDispatch := f.a.JmpPlaceholder()
+	captureEntry := f.a.Len()
 	e.guards()
 	e.aliasGuards()
 	e.coalesceStreams()
@@ -908,6 +910,7 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 		}
 	}
 	if valid {
+		f.a.PatchRel32(entryDispatch, captureEntry)
 		e.prepareRegisterStreams(&entry)
 		if e.allCached {
 			f.stats.peep("region-loop-all-addresses-cached")
@@ -963,6 +966,9 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 			f.stats.peep("region-loop-multi-pair")
 		}
 	} else {
+		// Keep the frame high-water mark and scalar metadata, but bypass the
+		// unused snapshots and guards when final ownership checks reject.
+		f.a.PatchRel32(entryDispatch, fallback)
 		f.a.JmpBack(fallback)
 		f.stats.peep("region-loop-exit-reject")
 	}
