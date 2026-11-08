@@ -296,6 +296,11 @@ func (f *fn) finalizeAffineBoundsLoops(entries ...int) {
 	}
 	versions := 0
 	for back := 20; back < n && versions < 2; back += 4 {
+		// Avoid constructing/copying the bounded plan at every instruction.
+		// These are necessary conditions already checked by the full matcher.
+		if rdWord(f.a.B, back)&0xff00001f != 0x54000001 || rdWord(f.a.B, back-4)&0xffc0001f != 0x7100001f {
+			continue
+		}
 		p, yes := matchAffineBoundsLoop(f.a.B[:n], back, f.memSizeReg, targets, entries, f.relocs)
 		if !yes {
 			continue
