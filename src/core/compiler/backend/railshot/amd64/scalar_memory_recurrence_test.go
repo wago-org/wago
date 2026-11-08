@@ -83,9 +83,9 @@ func TestScalarMemoryRecurrenceAdmissionAndSnapshots(t *testing.T) {
 		q := original
 		self := p.reductionLoad[0]
 		for i := range q.locals[:q.localN] {
-			if q.locals[i].typ == mtF64 {
-				q.locals[i].value = self
-				q.locals[i].written = true
+			if q.locals[i].Type == mtF64 {
+				q.locals[i].Value = self
+				q.locals[i].Written = true
 				break
 			}
 		}
