@@ -250,8 +250,7 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 					f.a.NeonAddS(out, out, input)
 				} else {
 					broadcast(scratch, term.coefficient)
-					f.a.NeonMulS(scratch, input, scratch)
-					f.a.NeonAddS(out, out, scratch)
+					f.a.NeonMlaS(out, input, scratch)
 				}
 			}
 			done(term.node)
