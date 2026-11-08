@@ -659,11 +659,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	for i := 0; i < ng; i++ {
 		g := &groups[i]
 		f.a.Add32(g.reg, g.reg, counter)
-		f.a.MovImm64(X16, uint64(g.min))
-		f.a.Add32(g.reg, g.reg, X16)
+		f.floatMapOffset(g.reg, g.reg, uint64(g.min), false, X16)
 		f.a.Add64(X16, g.reg, span)
-		f.a.MovImm64(X17, g.max-uint64(g.min))
-		f.a.Add64(X16, X16, X17)
+		f.floatMapOffset(X16, X16, g.max-uint64(g.min), true, X17)
 		f.cmpRR(X16, size, true)
 		guard(condA)
 		f.a.MovImm64(X17, 1<<32)
@@ -684,11 +682,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	for i := 0; i < nInvariant; i++ {
 		iv := p.addresses[invariant[i]]
 		read(iv.base, X16)
-		f.a.MovImm64(X17, uint64(iv.bias))
-		f.a.Add32(X16, X16, X17)
+		f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
 		if iv.offset != 0 {
-			f.a.MovImm64(X17, iv.offset)
-			f.a.Add64(X16, X16, X17)
+			f.floatMapOffset(X16, X16, iv.offset, true, X17)
 		}
 		width := uint32(4)
 		if p.wide {
@@ -697,8 +693,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.a.AddImm64(X17, X16, width)
 		f.cmpRR(X17, size, true)
 		guard(condA)
-		f.a.MovImm64(X17, uint64(dOff))
-		f.a.Add64(X17, d, X17)
+		f.floatMapOffset(X17, d, uint64(dOff), true, X17)
 		f.a.Sub64(X16, X16, X17)
 		f.a.AddImm64(X16, X16, width-1)
 		f.a.AddImm64(X17, span, width-1)
@@ -707,12 +702,42 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	// Every input range must be disjoint from the output or exactly equal to it.
 	// This also excludes inter-iteration stencil dependencies and byte overlaps.
+	var checked [16]struct {
+		base   Reg
+		offset uint32
+	}
+	nChecked := 0
 	for i := 0; i < nl; i++ {
 		s, off := locate(p.addresses[loads[i]])
-		f.a.MovImm64(X16, uint64(dOff))
-		f.a.Add64(X16, d, X16)
-		f.a.MovImm64(X17, uint64(off))
-		f.a.Add64(X17, s, X17)
+		if floatMapGuardSelectionEnabled {
+			duplicate := false
+			for _, a := range checked[:nChecked] {
+				if a.base == s && a.offset == off {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
+			checked[nChecked].base, checked[nChecked].offset = s, off
+			nChecked++
+			// The range checks above exclude address wrap. Equal symbolic
+			// bases then differ by this exact widened byte distance.
+			if s == d {
+				if off != dOff {
+					distance := off - dOff
+					if off < dOff {
+						distance = dOff - off
+					}
+					f.cmpImm(span, distance, false)
+					guard(condA)
+				}
+				continue
+			}
+		}
+		f.floatMapOffset(X16, d, uint64(dOff), true, X16)
+		f.floatMapOffset(X17, s, uint64(off), true, X17)
 		f.cmpRR(X16, X17, true)
 		equal := f.a.Bcond(condE)
 		above := f.a.Bcond(condA)
@@ -775,11 +800,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		} else if v.op == 0x2a || v.op == 0x2b {
 			iv := p.addresses[x]
 			read(iv.base, X16)
-			f.a.MovImm64(X17, uint64(iv.bias))
-			f.a.Add32(X16, X16, X17)
+			f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
 			if iv.offset != 0 {
-				f.a.MovImm64(X17, iv.offset)
-				f.a.Add64(X16, X16, X17)
+				f.floatMapOffset(X16, X16, iv.offset, true, X17)
 			}
 			f.a.Add64(X16, X16, linMemReg)
 			f.a.LdrF(r, X16, 0, p.wide)
