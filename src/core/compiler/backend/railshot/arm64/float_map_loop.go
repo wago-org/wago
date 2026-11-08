@@ -531,6 +531,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	if !add(p.addresses[p.dest]) || !collect(p.result) {
 		return
 	}
+	if floatMapPacketDependenceEnabled && p.hasShortForwardDependence(loads[:nl]) {
+		return
+	}
 	var countConst func(int) int
 	countConst = func(x int) int {
 		v := p.nodes[x]
@@ -700,8 +703,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.cmpRR(X16, X17, true)
 		guard(condB)
 	}
-	// Every input range must be disjoint from the output or exactly equal to it.
-	// This also excludes inter-iteration stencil dependencies and byte overlaps.
+	// Scalar stores and native Q stores both advance in source order. Only
+	// forward dependences within one Q group need scalar execution; longer
+	// dependences remain ordered between groups. Invariant memory above still
+	// requires whole-loop disjointness because its value is broadcast.
 	var checked [16]struct {
 		base   Reg
 		offset uint32
@@ -725,6 +730,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			// The range checks above exclude address wrap. Equal symbolic
 			// bases then differ by this exact widened byte distance.
 			if s == d {
+				if floatMapPacketDependenceEnabled {
+					continue
+				}
 				if off != dOff {
 					distance := off - dOff
 					if off < dOff {
@@ -738,6 +746,26 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		f.floatMapOffset(X16, d, uint64(dOff), true, X16)
 		f.floatMapOffset(X17, s, uint64(off), true, X17)
+		if floatMapPacketDependenceEnabled {
+			if floatMapDirectionGuardEnabled {
+				// Equal or backward output addresses introduce no forward
+				// dependence. Keep their cheap branch around the subtraction.
+				f.cmpRR(X16, X17, true)
+				safe := f.a.Bcond(condBE)
+				f.a.Sub64(X16, X16, X17)
+				f.cmpImm(X16, floatMapVectorBytes, true)
+				guard(condB)
+				f.patchBranch19(safe, f.a.Len())
+			} else {
+				// Same proof in a branchless direction test, retained as a
+				// same-binary cost control for qualification.
+				f.a.Sub64(X16, X16, X17)
+				f.a.SubImm64(X16, X16, 1)
+				f.cmpImm(X16, floatMapVectorBytes-1, true)
+				guard(condB)
+			}
+			continue
+		}
 		f.cmpRR(X16, X17, true)
 		equal := f.a.Bcond(condE)
 		above := f.a.Bcond(condA)
@@ -875,7 +903,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		return out, true
 	}
 	packet := func(width uint32) {
-		for block = 0; block < int32(width); block += 16 {
+		for block = 0; block < int32(width); block += floatMapVectorBytes {
 			value, owned := emit(p.result)
 			f.a.StrQ(d, int32(dOff)+block, value)
 			if owned {
@@ -892,7 +920,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	// Choose a small native packet menu independently of the source unroll.
 	// Larger source packets already have a bounded replicated body.
 	wideWidth := 2 * p.packet
-	if floatMapFourPacketsEnabled && p.packet == 16 {
+	if floatMapFourPacketsEnabled && p.packet == floatMapVectorBytes {
 		wideWidth = 4 * p.packet
 	}
 	f.cmpImm(span, 4*wideWidth+p.step, false)
@@ -958,11 +986,11 @@ func floatMapPacketWidth(step uint32) uint32 {
 	if step == 0 || step > 64 {
 		return 0
 	}
-	a, b := uint32(16), step
+	a, b := uint32(floatMapVectorBytes), step
 	for b != 0 {
 		a, b = b, a%b
 	}
-	width := 16 / a * step
+	width := floatMapVectorBytes / a * step
 	// Bound duplicated native recipes independently of the source scan budget.
 	if width > 80 {
 		return 0

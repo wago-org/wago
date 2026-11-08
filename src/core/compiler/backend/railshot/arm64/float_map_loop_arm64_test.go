@@ -397,7 +397,7 @@ func TestFloatMapInvariantExpressionAliasesAndLiveOuts(t *testing.T) {
 			width, load, store, add, mul, ft = 8, 0x2b, 0x39, 0xa0, 0xa2, 0x7c
 			specials = []uint64{0, 0x8000000000000000, 1, 0x000fffffffffffff, 0x7ff0000000000000, 0xfff0000000000000, 0x7ff8000000000000, 0xfff8000000000000, 0x3ff0000000000000}
 		}
-		for _, layout := range [][3]uint32{{4096, 256, 16}, {4096, 4096, 0}, {4096, 4096, 1}, {4096, 4096, 128}, {4096, 0, 32}, {4096, 65528, 8}, {65520, 256, 16}, {4096, 0xfffffff0, 32}, {4096, 0xfffffff0, 8}} {
+		for _, layout := range [][3]uint32{{4096, 256, 16}, {4096, 4096, 0}, {4096, 4096, 1}, {4096, 4096, 128}, {4096, 4096, 16}, {4096, 4096, 64}, {4096, 4096, 120}, {4096, 0, 32}, {4096, 65528, 8}, {65520, 256, 16}, {4096, 0xfffffff0, 32}, {4096, 0xfffffff0, 8}} {
 			for _, coefficient := range specials {
 				initial := make([]byte, 65536)
 				for i := uint32(0); i < 65536/width; i++ {

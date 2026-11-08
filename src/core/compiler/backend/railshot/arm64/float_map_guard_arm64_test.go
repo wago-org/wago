@@ -81,8 +81,10 @@ func TestFloatMapGuardSharedBasesAndDuplicateRanges(t *testing.T) {
 					if (we == nil) != (ge == nil) || we == nil && got != want || !bytes.Equal(wm, gm) {
 						t.Fatalf("wide%t case%v length%d duplicate%t: got%x/%v want%x/%v memory%t", wide, tc, length, duplicate, got, ge, want, we, bytes.Equal(wm, gm))
 					}
-					if diagnosticsEnabled && hits != 1 {
-						t.Fatalf("missing map admission wide%t case%v", wide, tc)
+					dst, src := uint64(tc[2])+uint64(tc[4]), uint64(tc[1])+uint64(tc[3])
+					rejected := floatMapPacketDependenceEnabled && dst > src && dst-src < floatMapVectorBytes
+					if diagnosticsEnabled && (hits == 1) == rejected {
+						t.Fatalf("map admission wide%t case%v hits%d rejected%t", wide, tc, hits, rejected)
 					}
 				}
 			}
