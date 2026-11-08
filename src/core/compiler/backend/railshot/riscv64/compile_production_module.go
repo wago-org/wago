@@ -432,9 +432,6 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, err
 		}
 	}
-	if len(m.Customs) > MaxFunctions {
-		return nil, unsupported("decoded custom section count bound")
-	}
 	if err := admitPublicBranchHints(m, true, &remaining); err != nil {
 		return nil, err
 	}

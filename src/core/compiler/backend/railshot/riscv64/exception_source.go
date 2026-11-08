@@ -282,7 +282,7 @@ func AdmitExceptionHandlingInitializers(m *wasm.Module) error {
 }
 
 func AdmitExceptionHandlingModule(m *wasm.Module) bool {
-	if m == nil || len(m.Code) > MaxFunctions || m.TagCount() > MaxFunctions {
+	if m == nil || len(m.Code) > MaxModuleFunctions || m.TagCount() > MaxModuleTags {
 		return false
 	}
 	hasException := m.TagCount() != 0 || exceptionReferenceDeclarations(m)

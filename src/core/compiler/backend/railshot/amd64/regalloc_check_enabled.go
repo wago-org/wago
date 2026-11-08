@@ -322,6 +322,38 @@ func checkProtectRead(f *fn, reg Reg, fp, wide bool) regallocReadMask {
 
 func checkRestoreRead(f *fn, saved regallocReadMask) { f.readCheck = saved }
 
+// A raw fast path that bypasses ordinary local recovery must keep the incoming
+// pin contract. Call after local reconciliation, before allocating scratch.
+// Snapshot physical pins so allocator relinquishment cannot erase this check.
+func (f *fn) checkProtectLocalPins() regallocReadMask {
+	saved := f.readCheck
+	f.readCheck.gp |= uint32(f.pinnedLocalMask)
+	f.readCheck.fp |= uint32(f.fpinnedLocalMask)
+	if f.pinnedLocalMask != 0 {
+		f.checkObserveGPWrites()
+	}
+	if f.fpinnedLocalMask != 0 {
+		f.checkObserveFPWrites()
+	}
+	return saved
+}
+
+// Release this scope's protection only at an intentional local definition.
+// An enclosing input guard still owns its original bits.
+func (f *fn) checkAllowLocalPinWrite(saved regallocReadMask, local int) {
+	reg, fp, pinned := f.pinReg(local)
+	if !pinned {
+		return
+	}
+	bit := uint32(1) << uint8(reg)
+	if fp {
+		f.readCheck.fp = f.readCheck.fp&^bit | saved.fp&bit
+	} else {
+		f.readCheck.gp = f.readCheck.gp&^bit | saved.gp&bit
+		f.readCheck.gp32 = f.readCheck.gp32&^bit | saved.gp32&bit
+	}
+}
+
 // Enable only after a real cache definition; zero-value test functions have reg 0.
 func checkGlobalCell(f *fn) {
 	f.globalCellCheck = f.globalCellReg != regNone

@@ -180,6 +180,9 @@ type fn struct {
 	requiresLSE             bool // selected optional instructions in this function
 	scalarSummary           shared.ScalarSummary
 	dotLoop                 *dotLoopState
+	byteReduceLoop          *byteReduceState
+	filledCopyEnd           uint32
+	filledCopyByte          byte
 	pureReduce              *pureReduceJoin
 	// Physical frame access emitted by the shared lowerer, not logical state.
 	scalarFrameUsed bool

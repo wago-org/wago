@@ -397,7 +397,7 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
 	if f.intervalControl && f.intervalActive != 0 {
 		return false, nil
 	}
-	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls && !f.inCallFreeLoop() || len(f.ctrl) < 2 || f.depth() != 0 {
+	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls && !f.inCallFreeLoop() || len(f.ctrl) < 2 || f.s.back() != nil {
 		return false, nil
 	}
 	loop := &f.ctrl[len(f.ctrl)-1]
@@ -1869,6 +1869,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			if pN == 0 && rN == 0 {
 				f.emitPureReduce(r)
 				if f.loopMemory {
+					f.emitByteReduceLoop(r)
 					f.emitDotLoop(r)
 					f.emitMinPlusLoop(r)
 					f.emitFloatMapLoop(r)
@@ -2915,6 +2916,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		f.ehTryDepth--
 	}
 	f.finishDotLoop(last + 1)
+	f.finishByteReduceLoop(last + 1)
 	f.finishPureReduce(last + 1)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)

@@ -62,13 +62,15 @@ type Snapshot struct {
 	revision uint64
 }
 
+const selectionWords = 3
+
 // Selection is one immutable, architecture-specific optimization selection.
 // The bit index follows the owning Bindings' stable catalog order. It is safe to
 // copy into a compilation policy and read concurrently for the compilation's
 // lifetime.
 type Selection struct {
 	bindings *Bindings
-	bits     [2]uint64
+	bits     [selectionWords]uint64
 }
 
 // Option is a pre-resolved flag owned by one architecture's Bindings. Backends
@@ -213,10 +215,10 @@ func (b *Bindings) CurrentSnapshot() Snapshot {
 func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[string]bool) (Selection, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if len(b.entries) > 128 {
-		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is 128", b.arch, len(b.entries))
+	if len(b.entries) > selectionWords*64 {
+		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is %d", b.arch, len(b.entries), selectionWords*64)
 	}
-	var bits [2]uint64
+	var bits [selectionWords]uint64
 	matched := 0
 	for index, entry := range b.entries {
 		on := *entry.value
@@ -483,6 +485,10 @@ var catalog = []Definition{
 	both("pure-integer-if-select", "Pure integer if selection", "select bounded nontrapping integer expressions without a structured merge"),
 	arm64("inline-integer-tuples", "Integer tuple inlining", "inline bounded numeric tuple leaves with structured control and private local homes"),
 	both("bulk-fill-vector", "Constant vector fills", "broadcast a byte into native vector stores for 16 to 64 byte constant fills"),
+	both("bulk-copy-vector", "Constant vector copies", "load complete 16 to 64 byte source spans before overlap-safe vector stores"),
+	both("bulk-memory-loops", "Wide bulk-memory loops", "align bulk stores and reduce loop overhead with architecture-specific wide groups"),
+	both("bulk-fill-copy-forward", "Filled-source copies", "reuse a proven constant fill for an adjacent unshared copy while retaining both range checks"),
+	both("byte-reduce-loop", "Read-only byte reductions", "guard complete unsigned byte-reduction ranges and lower modular byte sums in native groups"),
 	both("simd-store-load-address", "Adjacent SIMD memory addresses", "reuse an identical pure address expression for a vector store and following real load"),
 	both("simd-load-extract", "SIMD load lane extraction", "load the consumed scalar lane while retaining the original vector access bounds"),
 	both("memory-min-bounds", "Declared minimum memory bounds", "prove bounded integer address expressions fit the selected memory minimum"),
@@ -490,7 +496,7 @@ var catalog = []Definition{
 	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
 	{Name: "prepared-direct-entry", Label: "Direct prepared entry", Description: "enter compiler-proved integer functions through the register ABI", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	arm64("prepared-light-entry", "Light prepared entry", "use caller-clobber proofs to select a smaller native entry thunk"),
-	{Name: "prepared-bounded-entry", Label: "Bounded prepared entry", Description: "keep compiler-bounded native leaves on the Go scheduler", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
+	{Name: "prepared-bounded-entry", Label: "Bounded prepared entry", Description: "keep compiler-proven bounded native invocations on the Go scheduler", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	{Name: "native-leaf-host", Label: "Native scalar host leaves", Description: "lower proven pure Go scalar callbacks into native import trampolines", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	both("direct-go-host-import", "Direct Go host imports", "bypass cross-instance marshaling for bound Go imports in bounded numeric functions"),
 	amd64("wide-loop-int-const", "Wide loop integer constants", "keep repeatedly materialized non-imm32 i64 loop constants in otherwise-idle registers"),

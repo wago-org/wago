@@ -434,7 +434,7 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// is only needed after execution admission succeeds.
 		return params, results, nil
 	}
-	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.importFuncSigs) != c.NumImports {
+	if c.NumImports < 0 || c.NumImports > railshot.MaxFunctionImports || len(c.importFuncSigs) != c.NumImports {
 		return 0, 0, fmt.Errorf("RV64 imported call signature directory is invalid")
 	}
 	if c.usesDynamicFuncRefTest() {

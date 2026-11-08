@@ -10,7 +10,7 @@ type closedReferenceImports struct{ functions, globals, memories int }
 
 func countClosedReferenceImports(m *wasm.Module) (closedReferenceImports, error) {
 	var counts closedReferenceImports
-	if m == nil || len(m.Imports) > MaxProductionImports {
+	if m == nil || len(m.Imports) > MaxPublicImports {
 		return counts, unsupported("closed reference import directory bound")
 	}
 	for _, im := range m.Imports {
@@ -25,7 +25,7 @@ func countClosedReferenceImports(m *wasm.Module) (closedReferenceImports, error)
 			return counts, unsupported("closed reference numeric imports only")
 		}
 	}
-	if counts.functions > MaxHostFunctionImports || len(m.Code) > MaxFunctions-counts.functions || len(m.Globals) > 256-counts.globals || len(m.Memories) > MaxProductionMemories-counts.memories {
+	if counts.functions > MaxFunctionImports || len(m.Code) > MaxModuleFunctions-counts.functions || len(m.Globals) > 256-counts.globals || len(m.Memories) > MaxProductionMemories-counts.memories {
 		return counts, unsupported("closed reference import namespace bound")
 	}
 	return counts, nil

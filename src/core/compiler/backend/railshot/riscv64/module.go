@@ -19,7 +19,8 @@ import (
 const (
 	MaxProductionMemories = int(wasm.DefaultMaxMemoriesPerModule)
 	MaxModuleBytes        = 1 << 20
-	MaxFunctions          = 1024
+	MaxFunctions          = 1024 // legacy native tail-owner/factory policy; module admission uses MaxModuleFunctions
+	MaxTypeDeclarations   = MaxPublicCodeBytes / 8
 	MaxCodeBytes          = 16 << 20
 	MaxFrameBytes         = 128 << 10
 )
@@ -96,7 +97,7 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 		return nil, fmt.Errorf("rv64: module exceeds %d bytes", MaxModuleBytes)
 	}
 	owned := append([]byte(nil), data...)
-	decoded, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxTypeDeclarations, MaxMetadataBytes: 16 << 20})
 	if err != nil {
 		return nil, err
 	}
@@ -287,6 +288,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 			if err != nil {
 				return nil, fmt.Errorf("rv64: function %d: %w", i, err)
 			}
+			state.referenceDirectoryAdmitted = true
 			importTailCount += integerSummaries[i].importTails
 			if opts.importTailCalls && importTailCount > tailRAMaxSites-int(opts.tailSiteBase) {
 				return nil, unsupported("private imported-tail module site bound")
@@ -683,8 +685,8 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 	publicReferenceCarriers := referenceFunctions && (admitPublicReferenceCarrierBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp) || admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp))
 	// Public modules may contain only state. Import-only modules execute through
 	// instance-owned bridges; neither shape needs placeholder instructions.
-	if len(m.Code) > MaxFunctions && !publicStarts || len(m.Code) == 0 && (!floating || !publicStarts) {
-		return unsupported("function count outside 1..1024")
+	if len(m.Code) > MaxModuleFunctions && !publicStarts || len(m.Code) == 0 && (!floating || !publicStarts) {
+		return unsupported("function count outside directory byte budget")
 	}
 	// Public decoding has already flattened compact groups into the ordinary
 	// ordered import list. Private pilots retain their narrower wire contract.

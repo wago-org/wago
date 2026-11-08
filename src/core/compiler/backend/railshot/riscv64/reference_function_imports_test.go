@@ -145,7 +145,7 @@ func TestReferenceFunctionImportsCountBound(t *testing.T) {
 		pressure := 0
 		opts.MemoryPressure = func() { pressure++ }
 		image, err := CompileModuleWith(m, opts)
-		if count == MaxHostFunctionImports {
+		if count <= MaxFunctionImports {
 			if err != nil || image == nil || pressure != 1 || len(image.Entry) != 2 || !image.NativeReferenceFunctions {
 				t.Fatal("exact imported prefix bound", err, pressure)
 			}

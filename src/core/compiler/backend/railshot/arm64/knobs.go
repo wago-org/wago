@@ -21,6 +21,10 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("simd-load-extract", &simdLoadExtractEnabled),
 	optimization.Bind("simd-store-load-address", &simdStoreLoadAddressEnabled),
 	optimization.Bind("bulk-fill-vector", &bulkFillVectorEnabled),
+	optimization.Bind("bulk-copy-vector", &bulkCopyVectorEnabled),
+	optimization.Bind("bulk-memory-loops", &bulkMemoryLoopsEnabled),
+	optimization.Bind("bulk-fill-copy-forward", &bulkFillCopyForwardEnabled),
+	optimization.Bind("byte-reduce-loop", &byteReduceLoopEnabled),
 	optimization.Bind("straight-line-block", &straightLineBlockEnabled),
 	optimization.Bind("loop-local-params", &loopLocalParamsEnabled),
 	optimization.Bind("scalar-loop-unroll", &scalarLoopUnrollEnabled),
@@ -269,6 +273,10 @@ var (
 	optInlineIntegerTuples     = optimizationBindings.Option("inline-integer-tuples")
 	optStackFence              = optimizationBindings.Option("stack-fence")
 	optStackReg                = optimizationBindings.Option("stack-reg")
+	optBulkCopyVector          = optimizationBindings.Option("bulk-copy-vector")
+	optBulkMemoryLoops         = optimizationBindings.Option("bulk-memory-loops")
+	optBulkFillCopyForward     = optimizationBindings.Option("bulk-fill-copy-forward")
+	optByteReduceLoop          = optimizationBindings.Option("byte-reduce-loop")
 )
 
 type KnobInfo = optimization.Info

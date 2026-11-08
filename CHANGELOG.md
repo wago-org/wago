@@ -16,6 +16,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Preserve live AMD64 locals across plain and weighted byte reductions under
+  register pressure. Checked builds now protect incoming local pins throughout
+  the raw fast path, including after allocator metadata changes.
 - Initialize the module context in ARM64 internal-call execution fixtures,
   keeping stack-fence checks independent of Go's inherited register values.
 - Keep AMD64 scalar-loop select-to-branch rewrites opt-in until their branch
@@ -189,6 +192,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
   ([#895](https://github.com/wago-org/wago/pull/895))
+- Return dynamic shared atomic-wait mismatches in native AMD64 and ARM64 code
+  for indexed memories and memory64. Preserve overflow/alignment/bounds traps
+  and use the synchronized queue helper for matching values.
 - Keep small uniform `array.new` allocations with run-time lengths in native
   AMD64 code. Larger arrays retain the checked helper fallback.
 
@@ -243,6 +249,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Keep ordinary complete-loop and constructor/fill GC lowering, plus checked
   helper-based dynamic array copies, in the lean TinyGo runtime to meet its
   existing size budget.
+
+- Return dynamic shared `memory.grow` zero queries in native AMD64, ARM64,
+  and RISC-V (threaded memory) code while preserving atomic size visibility
+  and nonzero growth checks.
 
 - Prepare one checked native identity for proven-dead GC batches on both
   backends, avoiding unused live-object handle refills at collection.

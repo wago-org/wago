@@ -1479,45 +1479,77 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	skip := f.a.Cbz64(n)
 	f.a.Add64(dst, dst, n)
 	f.a.Add64(src, src, n)
+	// Align backward vector stores without rereading an already-written source
+	// byte when the ranges overlap by less than one vector. Small copies retain
+	// their existing path; the byte prologue is paid once for larger spans.
+	if f.opt(optBulkMemoryLoops) {
+		f.cmpImm(n, 128, true)
+		small := f.a.Bcond(condB)
+		alignment := f.allocReg(maskOf(dst, src, n))
+		f.a.AndImm64(alignment, dst, 15)
+		aligned := f.a.Cbz64(alignment)
+		loop := f.a.Len()
+		f.a.SubImm64(src, src, 1)
+		f.a.SubImm64(dst, dst, 1)
+		f.a.Ldrb(X16, src, 0)
+		f.a.Strb(X16, dst, 0)
+		f.a.SubImm64(n, n, 1)
+		f.a.SubsImm64(alignment, alignment, 1)
+		f.patchBranch19(f.a.Bcond(condNE), loop)
+		f.patchBranch19(aligned, f.a.Len())
+		f.patchBranch19(small, f.a.Len())
+		f.release(alignment)
+	}
+	emit64 := func(offset int32) {
+		load := func(a, b Reg, off int32) {
+			if f.memcopyQPairs {
+				f.a.LdpQ(a, b, src, off)
+			} else {
+				f.a.LdrQ(a, src, off)
+				f.a.LdrQ(b, src, off+16)
+			}
+		}
+		store := func(a, b Reg, off int32) {
+			if f.memcopyQPairs {
+				f.a.StpQ(a, b, dst, off)
+			} else {
+				f.a.StrQ(dst, off, a)
+				f.a.StrQ(dst, off+16, b)
+			}
+		}
+		if vecs[2] == regNone {
+			load(vecs[0], vecs[1], offset+32)
+			store(vecs[0], vecs[1], offset+32)
+			load(vecs[0], vecs[1], offset)
+			store(vecs[0], vecs[1], offset)
+		} else {
+			load(vecs[0], vecs[1], offset)
+			load(vecs[2], vecs[3], offset+32)
+			store(vecs[0], vecs[1], offset)
+			store(vecs[2], vecs[3], offset+32)
+		}
+	}
+	if f.opt(optBulkMemoryLoops) {
+		f.cmpImm(n, 256, true)
+		skip256 := f.a.Bcond(condB)
+		loop256 := f.a.Len()
+		f.a.SubImm64(src, src, 256)
+		f.a.SubImm64(dst, dst, 256)
+		// Complete the higher half first, including under two-vector pressure.
+		for offset := int32(192); offset >= 0; offset -= 64 {
+			emit64(offset)
+		}
+		f.a.SubImm64(n, n, 256)
+		f.cmpImm(n, 256, true)
+		f.patchBranch19(f.a.Bcond(condAE), loop256)
+		f.patchBranch19(skip256, f.a.Len())
+	}
 	f.cmpImm(n, 64, true)
 	wideTail := f.a.Bcond(condB)
 	wideLoop := f.a.Len()
 	f.a.SubImm64(src, src, 64)
 	f.a.SubImm64(dst, dst, 64)
-	if vecs[2] == regNone {
-		if f.memcopyQPairs {
-			f.a.LdpQ(vecs[0], vecs[1], src, 32)
-			f.a.StpQ(vecs[0], vecs[1], dst, 32)
-		} else {
-			f.a.LdrQ(vecs[0], src, 32)
-			f.a.LdrQ(vecs[1], src, 48)
-			f.a.StrQ(dst, 32, vecs[0])
-			f.a.StrQ(dst, 48, vecs[1])
-		}
-		if f.memcopyQPairs {
-			f.a.LdpQ(vecs[0], vecs[1], src, 0)
-			f.a.StpQ(vecs[0], vecs[1], dst, 0)
-		} else {
-			f.a.LdrQ(vecs[0], src, 0)
-			f.a.LdrQ(vecs[1], src, 16)
-			f.a.StrQ(dst, 0, vecs[0])
-			f.a.StrQ(dst, 16, vecs[1])
-		}
-	} else if f.memcopyQPairs {
-		f.a.LdpQ(vecs[0], vecs[1], src, 0)
-		f.a.LdpQ(vecs[2], vecs[3], src, 32)
-		f.a.StpQ(vecs[0], vecs[1], dst, 0)
-		f.a.StpQ(vecs[2], vecs[3], dst, 32)
-	} else {
-		f.a.LdrQ(vecs[0], src, 0)
-		f.a.LdrQ(vecs[1], src, 16)
-		f.a.LdrQ(vecs[2], src, 32)
-		f.a.LdrQ(vecs[3], src, 48)
-		f.a.StrQ(dst, 0, vecs[0])
-		f.a.StrQ(dst, 16, vecs[1])
-		f.a.StrQ(dst, 32, vecs[2])
-		f.a.StrQ(dst, 48, vecs[3])
-	}
+	emit64(0)
 	f.a.SubImm64(n, n, 64)
 	f.cmpImm(n, 64, true)
 	f.patchBranch19(f.a.Bcond(condAE), wideLoop)
@@ -1566,13 +1598,41 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 }
 
 // fillLoop emits a forward byte-fill loop (the arm64 analog of `rep stosb`):
-// write 64-byte NEON groups while possible, then 32-, 16-, and 8-byte chunks
+// write aligned 1024-byte NEON groups while possible, then 64-, 32-, 16-, and 8-byte chunks
 // and a byte tail.
 func (f *fn) fillLoop(dst, pat, n Reg) {
 	vec := f.allocFReg(0)
 	skip := f.a.Cbz64(n)
 	f.a.FmovFromGpr(vec, pat, true)
 	f.a.NeonInsD(vec, pat, 1)
+	if f.opt(optBulkMemoryLoops) {
+		f.cmpImm(n, 256, true)
+		small := f.a.Bcond(condB)
+		f.a.AndImm64(X16, dst, 31)
+		aligned := f.a.Cbz64(X16)
+		// Repeated fill stores are safe. Write an in-range prefix before
+		// advancing to the first 32-byte aligned streaming destination.
+		f.a.StpQ(vec, vec, dst, 0)
+		f.a.MovImm64(X17, 32)
+		f.a.Sub64(X16, X17, X16)
+		f.a.Add64(dst, dst, X16)
+		f.a.Sub64(n, n, X16)
+		f.patchBranch19(aligned, f.a.Len())
+		f.patchBranch19(small, f.a.Len())
+	}
+	if f.opt(optBulkMemoryLoops) {
+		f.cmpImm(n, 1024, true)
+		skip1024 := f.a.Bcond(condB)
+		loop1024 := f.a.Len()
+		for offset := int32(0); offset < 1024; offset += 32 {
+			f.a.StpQ(vec, vec, dst, offset)
+		}
+		f.a.AddImm64(dst, dst, 1024)
+		f.a.SubImm64(n, n, 1024)
+		f.cmpImm(n, 1024, true)
+		f.patchBranch19(f.a.Bcond(condAE), loop1024)
+		f.patchBranch19(skip1024, f.a.Len())
+	}
 	f.cmpImm(n, 64, true)
 	wideTail := f.a.Bcond(condB)
 	wideLoop := f.a.Len()
@@ -1768,6 +1828,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	filled := f.filledCopyEnd != 0 && f.filledCopyEnd == f.tracePCBase+uint32(r.Offset())
+	fillByte := f.filledCopyByte
+	f.filledCopyEnd = 0
 	if !f.memoryAddr64(dstMemory) && !f.memoryAddr64(srcMemory) {
 		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
@@ -1798,6 +1861,15 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	}
 	f.absoluteBulkAddr(dstMemory, dst, count)
 	f.absoluteBulkAddr(srcMemory, src, count)
+	if filled {
+		// Source and destination checks still precede every copy write. The
+		// proven uniform source removes only the redundant source reads.
+		f.a.MovImm64(X14, uint64(fillByte)*0x0101010101010101)
+		f.fillLoop(dst, X14, count)
+		f.setDepth(d - 3)
+		f.stats.peep("bulk-fill-copy-forward")
+		return nil
+	}
 	if f.memcopyQPairs {
 		f.stats.peep("memcopy-qpairs")
 	}
@@ -1923,6 +1995,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 // memoryFill lowers memory.fill (memset of the low byte of val) via a byte-fill
 // loop.
 func (f *fn) memoryFill(r *wasm.Reader) error {
+	f.filledCopyEnd = 0
 	memoryIndex, err := r.U32()
 	if err != nil {
 		return err
@@ -1935,6 +2008,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 			}
 		}
 	}
+	f.recordFilledCopy(r, memoryIndex)
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
@@ -2085,6 +2159,31 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
 	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: []wasm.ValType{typ}}
 	return f.callHostSync(int(shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow), ft)
+}
+
+// Zero growth only acquires the authoritative size. The caller has homed all
+// live values; nonzero deltas keep the existing synchronized helper path.
+func (f *fn) emitSharedMemoryGrowZeroFastPath(slot int, memoryIndex uint32) int {
+	memory64 := f.memoryAddr64(memoryIndex)
+	if memory64 {
+		f.ld64(X9, SP, f.spillOff(slot))
+	} else {
+		f.ld32(X9, SP, f.spillOff(slot))
+	}
+	slow := f.zeroBranch(X9, memory64, false)
+	if base := f.cachedSharedMemoryBase(); memoryIndex == 0 && base != regNone {
+		f.loadSharedMemoryBytes(X9, base)
+	} else {
+		f.ld64(X10, linMemReg, -int32(offMemoryDirPtr))
+		f.ld64(X10, X10, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		f.loadSharedMemoryBytes(X9, X10)
+	}
+	f.a.LsrImm(X9, X9, 16, false)
+	f.ld64(X11, linMemReg, -int32(offCustomCtx))
+	f.st64(X11, hcResults, X9)
+	done := f.a.Branch()
+	f.patchBranch19(slow, f.a.Len())
+	return done
 }
 
 // memorySize pushes the current linear-memory size in pages.
@@ -2484,19 +2583,21 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 		dstBase, dstBaseOwned = f.indexedMemoryBase(dstMemory, avoid)
 	}
 	avoid = avoid.add(dstBase)
-	var chunkBuf [8][2]int
-	chunks := bulkChunks(n, &chunkBuf)
-	var regBuf [8]Reg
-	regs := regBuf[:len(chunks)]
-	for i, c := range chunks {
-		r := f.allocReg(avoid)
-		f.a.LoadIdx(r, srcBase, src, int32(c[0]), c[1], false, c[1] == 8)
-		regs[i] = r
-		avoid = avoid.add(r)
-	}
-	for i, c := range chunks {
-		f.a.StoreIdx(dstBase, dst, regs[i], int32(c[0]), c[1])
-		f.release(regs[i])
+	if !f.emitBulkCopyVector(n, srcBase, src, dstBase, dst) {
+		var chunkBuf [8][2]int
+		chunks := bulkChunks(n, &chunkBuf)
+		var regBuf [8]Reg
+		regs := regBuf[:len(chunks)]
+		for i, c := range chunks {
+			r := f.allocReg(avoid)
+			f.a.LoadIdx(r, srcBase, src, int32(c[0]), c[1], false, c[1] == 8)
+			regs[i] = r
+			avoid = avoid.add(r)
+		}
+		for i, c := range chunks {
+			f.a.StoreIdx(dstBase, dst, regs[i], int32(c[0]), c[1])
+			f.release(regs[i])
+		}
 	}
 	if dstBaseOwned {
 		f.release(dstBase)

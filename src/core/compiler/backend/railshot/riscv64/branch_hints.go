@@ -28,7 +28,7 @@ func admitPublicBranchHints(m *wasm.Module, public bool, remaining *int) error {
 		}
 		return nil
 	}
-	if customs > 1 || len(m.BranchHints) > MaxFunctions {
+	if customs > 1 {
 		return unsupported("branch hint section/group bound")
 	}
 	consume := func(count, width int) bool {

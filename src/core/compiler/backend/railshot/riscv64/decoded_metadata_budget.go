@@ -13,7 +13,7 @@ import (
 // encoded/decoded accounting for hand-built callers as well as parsed modules.
 func admitSWARDecodedMetadataBudget(m *wasm.Module, remaining *int) error {
 	consume := func(n int) bool {
-		if n > *remaining {
+		if n < 0 || n > *remaining {
 			return false
 		}
 		*remaining -= n
@@ -21,7 +21,7 @@ func admitSWARDecodedMetadataBudget(m *wasm.Module, remaining *int) error {
 	}
 	rawNameAccounted := false
 	for _, custom := range m.Customs {
-		if !consume(len(custom.Name)) || !consume(len(custom.Data)) {
+		if !consume(16) || !consume(len(custom.Name)) || !consume(len(custom.Data)) {
 			return unsupported("SWAR decoded custom byte bound")
 		}
 		if custom.Name == "name" && bytes.Equal(custom.Data, m.RawNameSecPayload) {
@@ -46,9 +46,6 @@ func admitSWARDecodedMetadataBudget(m *wasm.Module, remaining *int) error {
 		// callers may provide either representation, or inconsistent copies.
 		// Small entry overhead also bounds work for arbitrary empty names.
 		nameMap := func(rows wasm.NameMap) bool {
-			if len(rows) > MaxFunctions {
-				return false
-			}
 			for _, row := range rows {
 				if !consume(2) || !consume(len(row.Name)) {
 					return false
@@ -59,19 +56,24 @@ func admitSWARDecodedMetadataBudget(m *wasm.Module, remaining *int) error {
 		if names.ModuleName != nil && !consume(len(*names.ModuleName)) {
 			return unsupported("SWAR decoded module name byte bound")
 		}
-		for _, rows := range []wasm.NameMap{names.FunctionNames, names.TypeNames, names.TableNames, names.MemoryNames, names.GlobalNames, names.ElementNames, names.DataNames, names.TagNames} {
+		for _, rows := range []wasm.NameMap{names.FunctionNames, names.TableNames, names.MemoryNames, names.GlobalNames, names.ElementNames, names.DataNames, names.TagNames} {
 			if !nameMap(rows) {
 				return unsupported("SWAR decoded name map byte/count bound")
 			}
 		}
-		for _, groups := range []wasm.IndirectNameMap{names.LocalNames, names.LabelNames, names.FieldNames} {
-			if len(groups) > MaxFunctions {
-				return unsupported("SWAR decoded indirect name count bound")
-			}
+		if !nameMap(names.TypeNames) {
+			return unsupported("SWAR decoded type name byte/count bound")
+		}
+		for _, groups := range []wasm.IndirectNameMap{names.LocalNames, names.LabelNames} {
 			for _, group := range groups {
 				if !consume(2) || !nameMap(group.Names) {
 					return unsupported("SWAR decoded indirect name byte/count bound")
 				}
+			}
+		}
+		for _, group := range names.FieldNames {
+			if !consume(2) || !nameMap(group.Names) {
+				return unsupported("SWAR decoded field name byte/count bound")
 			}
 		}
 	}

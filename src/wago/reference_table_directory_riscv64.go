@@ -30,7 +30,7 @@ func rv64ValidatePlainReferenceTableDirectory(c *Compiled, allow64 bool) error {
 	if rv64HasExternTable32(c) && !rv64SourceContractValid(c) {
 		return fmt.Errorf("public compact table32 requires an authenticated execution contract")
 	}
-	if c.tableCount() > railshot.MaxFunctions || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) && !allow64 {
+	if c.tableCount() > railshot.MaxModuleTables || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxModuleExports || !c.registerABIDisabled || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) && !allow64 {
 		return fmt.Errorf("public table32 directory requires bounded framed reference metadata")
 	}
 	for index := 0; index < c.tableCount(); index++ {

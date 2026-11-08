@@ -2250,7 +2250,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		}
 	}
 	qualifiedGCRefTable := qualifiedGenericGCRefTable || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefCastConcrete(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c)
-	if c.tableCount() != 1 && !qualifiedMultiTable && !qualifiedGCRefTable || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 && !qualifiedTable64 || (c.TableType != 0 && c.TableType != ValFuncRef && !qualifiedGCRefTable) {
+	if c.tableCount() != 1 && !qualifiedMultiTable && !qualifiedGCRefTable || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxModuleExports || !c.registerABIDisabled || c.TableAddr64 && !qualifiedTable64 || (c.TableType != 0 && c.TableType != ValFuncRef && !qualifiedGCRefTable) {
 		return fmt.Errorf("one framed nullable funcref table32 or exact qualified table64/multi-table profile required")
 	}
 	if c.TableAddr64 && !c.requiredFeatures.IsEnabled(CoreFeatureTable64) {

@@ -89,7 +89,7 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
 		"v128-direct-results", "cold-call-local-pins", "convert-read", "guarded-boolean-xor", "taken-zero-branch", "cset-lineage", "integer-select-local-read", "bounded-branch-index",
 		"weighted-scalar-merge", "counted-loop-latch", "loop-local-params", "inline-integer-tuples", "scalar-loop-unroll", "tuple-if-select", "guarded-div-rem", "cold-tuple-loop-exit", "linear-sum-loop",
 		"register-call-borrowed-args", "counted-loop-body-align",
-		"linear-integer-tree", "memory-min-bounds", "simd-load-extract", "simd-store-load-address", "bulk-fill-vector", "straight-line-block", "atomic-wait-zero-timeout", "atomic-static-bounds", "atomic-lse", "shared-memory-base",
+		"linear-integer-tree", "memory-min-bounds", "simd-load-extract", "simd-store-load-address", "bulk-fill-vector", "bulk-copy-vector", "bulk-memory-loops", "bulk-fill-copy-forward", "byte-reduce-loop", "straight-line-block", "atomic-wait-zero-timeout", "atomic-static-bounds", "atomic-lse", "shared-memory-base",
 	}
 	overrides := make(map[string]bool, len(names))
 	for _, name := range names {

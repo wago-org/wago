@@ -200,7 +200,7 @@ func TestLocalTailHighArityAndDeadBudget(t *testing.T) {
 			opts := localTailOptions()
 			opts.MemoryPressure = func() { pressure++ }
 			image, err := CompileModuleWith(m, opts)
-			if count == 1024 {
+			if count <= maxFunctionCallSites {
 				if err != nil {
 					t.Fatal("dead count boundary", vector, err)
 				}

@@ -250,7 +250,7 @@ func ValidateCustomInstructions(m *wasm.Module, instructions map[uint32]railcore
 }
 
 func admitCustomInstructions(m *wasm.Module, instructions map[uint32]railcore.CustomInstruction) error {
-	if len(instructions) != 0 && (m == nil || len(instructions) > MaxHostFunctionImports || m.ImportedFuncCount() > MaxHostFunctionImports) {
+	if len(instructions) != 0 && (m == nil || len(instructions) > MaxFunctionImports || m.ImportedFuncCount() > MaxFunctionImports) {
 		return unsupported("RV64 plugin import directory bound")
 	}
 	for index, instruction := range instructions {

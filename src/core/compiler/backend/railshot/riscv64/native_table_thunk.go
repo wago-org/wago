@@ -103,7 +103,9 @@ func nativeTableThunkImageAtInvocationKeysMode(keys []uint64, argumentSlots, res
 	if invocation {
 		transportBytes = nativePublicImportTransportBytes
 	}
-	if len(keys) == 0 || len(keys) > MaxFunctions || argumentSlots < 0 || argumentSlots > transportBytes/8 || resultSlots < 0 || resultSlots > transportBytes/8 || functionIndex >= MaxFunctions {
+	// A key emits at most 64 bytes including its comparison branch. Reserve
+	// 8 KiB for the fixed bridge before any key-driven assembler allocation.
+	if len(keys) == 0 || len(keys) > MaxTypeDeclarations || len(keys) > (MaxCodeBytes-8192)/64 || argumentSlots < 0 || argumentSlots > transportBytes/8 || resultSlots < 0 || resultSlots > transportBytes/8 || functionIndex >= MaxModuleFunctions {
 		return nativeTableThunkImage{}, fmt.Errorf("rv64: native table bridge requires bounded signature and source index")
 	}
 	headerBytes := nativeImportFrameBytes + 16

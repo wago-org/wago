@@ -310,6 +310,36 @@ func TestSelectionAcrossWordBoundary(t *testing.T) {
 	}
 }
 
+func TestSelectionAcrossThirdWordBoundary(t *testing.T) {
+	bindings, _, definitions := testBindings(t, "arm64", false)
+	if len(definitions) <= 128 {
+		t.Fatal("ARM64 inventory must exercise the third selection word")
+	}
+	low, high := definitions[127].Name, definitions[128].Name
+	selection, err := bindings.ResolveSnapshot(map[string]bool{low: true, high: true}, Snapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{low, high} {
+		option := bindings.Option(name)
+		if !selection.Enabled(name) || !selection.EnabledOption(option) || !selection.EnabledResolvedOption(option) {
+			t.Fatalf("enabled option %q lost at the word boundary", name)
+		}
+	}
+	changed, err := bindings.ResolveSnapshot(map[string]bool{low: true, high: false}, Snapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed.Enabled(low) || changed.Enabled(high) || changed.EnabledOption(bindings.Option(high)) || !selection.Enabled(high) {
+		t.Fatal("clearing the upper word changed the lower word or the immutable selection")
+	}
+	for _, definition := range definitions[:127] {
+		if selection.Enabled(definition.Name) {
+			t.Fatalf("unselected option %q became enabled", definition.Name)
+		}
+	}
+}
+
 func testBindings(t *testing.T, arch string, initial bool) (*Bindings, []bool, []Definition) {
 	t.Helper()
 	definitions := ForArch(arch)

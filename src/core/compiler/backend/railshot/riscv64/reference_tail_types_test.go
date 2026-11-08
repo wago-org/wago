@@ -166,7 +166,7 @@ func TestReferenceTailPrivateBoundsAndBudget(t *testing.T) {
 			}
 			body = append(body, 0x0b)
 			m := referenceFunctionModule([]*wasm.CompType{ft}, []uint32{0}, [][]byte{body})
-			if err := referenceFunctionWalkWithTails(m, 0, vector, true, true); (err == nil) != (count == maxDirectCalls) {
+			if err := referenceFunctionWalkWithTails(m, 0, vector, true, true); (err == nil) != (count <= maxFunctionCallSites) {
 				t.Fatal("dead tail call count", vector, count, err)
 			}
 		}
