@@ -1878,6 +1878,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 					f.emitDotLoop(r)
 					f.emitMinPlusLoop(r)
 					f.emitFloatMapLoop(r)
+					f.emitIntegerWordMap(r)
 					f.emitAbsReduceLoop(r)
 				}
 			}

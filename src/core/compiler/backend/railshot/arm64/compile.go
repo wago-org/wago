@@ -185,6 +185,7 @@ type fn struct {
 	filledCopyByte          byte
 	remainderZeroLoopDepth  uint16
 	remainderZeroLoopWrites uint64
+	integerWordMapWork      uint16
 	pureReduce              *pureReduceJoin
 	// Physical frame access emitted by the shared lowerer, not logical state.
 	scalarFrameUsed bool

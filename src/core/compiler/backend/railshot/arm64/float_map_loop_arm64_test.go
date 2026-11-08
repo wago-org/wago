@@ -79,7 +79,7 @@ func runFloatMapMemory(t *testing.T, m *wasm.Module, enabled bool, initial []byt
 	return runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": enabled}, initial)
 }
 
-func runFloatMapMemoryWith(t *testing.T, m *wasm.Module, options map[string]bool, initial []byte) (uint32, []byte, error, int) {
+func runFloatMapMemoryWith(t *testing.T, m *wasm.Module, options map[string]bool, initial []byte, counter ...string) (uint32, []byte, error, int) {
 	t.Helper()
 	var stats ModuleStats
 	var out *ModuleStats
@@ -116,7 +116,11 @@ func runFloatMapMemoryWith(t *testing.T, m *wasm.Module, options map[string]bool
 	err = eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results)
 	hits := 0
 	if diagnosticsEnabled {
-		hits = stats.Funcs[0].Peephole["float-map-loop-vector"]
+		name := "float-map-loop-vector"
+		if len(counter) != 0 {
+			name = counter[0]
+		}
+		hits = stats.Funcs[0].Peephole[name]
 	}
 	return binary.LittleEndian.Uint32(results), append([]byte(nil), jm.CurrentBytes()...), err, hits
 }
