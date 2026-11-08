@@ -31,7 +31,11 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 		return false
 	}
 	p.counter = local.a
-	p.step = uint32(stores) * 4
+	size := uint32(4)
+	if p.wide {
+		size = 8
+	}
+	p.step = uint32(stores) * size
 	p.counterStep = uint32(stride.bits)
 	if p.step%p.counterStep != 0 {
 		return false

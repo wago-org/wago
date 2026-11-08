@@ -42,7 +42,7 @@ func (p *floatMapPlan) binary(op byte) bool {
 	return op >= 0x92 && op <= 0x95 || op >= 0xa0 && op <= 0xa3
 }
 func (p *floatMapPlan) spend() bool {
-	if !p.integer {
+	if !p.integer && !p.normalizedInduction {
 		return true
 	}
 	p.work++

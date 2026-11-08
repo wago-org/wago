@@ -11,6 +11,8 @@ import (
 // Nonzero-immediate maps retain a same-binary scalar control for qualification.
 var floatMapOffsetsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_OFFSETS") != "1"
 
+var floatMapInductionEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_INDUCTION") != "1"
+
 var floatMapPacketsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_PACKETS") != "1"
 var floatMapInvariantsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_INVARIANTS") != "1"
 var floatMapLatchEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_LATCH") != "1"
@@ -42,6 +44,7 @@ type floatMapPlan struct {
 	destOffset                   uint64
 	wide                         bool
 	integer                      bool
+	normalizedInduction          bool
 	work, workLimit              int
 	counterStep, spanScale       uint32
 	limitLocal                   int
@@ -61,6 +64,7 @@ func (p *floatMapPlan) localWritten(index int) bool {
 
 func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) {
 	p.integer = f.integerLoadMapProbe
+	p.normalizedInduction = p.integer
 	p.spanScale = 1
 	p.limitLocal = -1
 	p.workLimit = integerLoadMapWorkLimit - int(f.integerLoadMapWork)
@@ -201,47 +205,13 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 				if !p.finishIntegerInduction(stack[0], ns, initialRead[:]) {
 					return p, false
 				}
-			} else {
-				increment := stack[0]
-				if condition := p.nodes[increment]; condition.op == 0x47 {
-					increment = condition.a
-					limit := p.nodes[condition.b]
-					if limit.op != 0x41 {
-						increment = condition.b
-						limit = p.nodes[condition.a]
-					}
-					if limit.op != 0x41 {
-						return p, false
-					}
-					p.limit = uint32(limit.bits)
-				}
-				inc := p.nodes[increment]
-				if inc.op != 0x6a {
+			} else if !p.finishFloatInduction(stack[0], ns, initialRead[:]) {
+				if !floatMapInductionEnabled {
 					return p, false
 				}
-				local, stride := p.nodes[inc.a], p.nodes[inc.b]
-				if local.op != 0x20 {
-					local, stride = stride, local
-				}
-				size := uint32(4)
-				if p.wide {
-					size = 8
-				}
-				if local.op != 0x20 || f.localType[local.a] != mtI32 || stride.op != 0x41 || stride.bits != uint64(size)*uint64(ns) {
+				p.normalizedInduction = true
+				if !p.finishIntegerInduction(stack[0], ns, initialRead[:]) {
 					return p, false
-				}
-				p.counter, p.step = local.a, uint32(stride.bits)
-				p.packet = floatMapPacketWidth(p.step)
-				if p.packet == 0 {
-					return p, false
-				}
-				if p.locals[p.localSlot(p.counter)].Value != increment {
-					return p, false
-				}
-				for i, cell := range p.locals[:p.localN] {
-					if cell.Written && initialRead[i] && int(cell.Index) != p.counter {
-						return p, false
-					}
 				}
 			}
 			size := uint32(4)
@@ -307,7 +277,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 }
 
 func (p *floatMapPlan) affine(x int, types []machineType, visits *int) (floatMapAddress, bool) {
-	if p.integer {
+	if p.normalizedInduction {
 		return p.integerAffine(x)
 	}
 	if !p.spend() {
@@ -534,7 +504,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 	}
 	minimumSpan := p.packet + p.step
-	if p.integer {
+	if p.normalizedInduction {
 		minimumSpan = max(minimumSpan, 128)
 		// The guarded positive-limit path requires counter < limit, so its
 		// span cannot exceed limit, even when the entry value is unknown.
@@ -617,7 +587,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	// Each carried byte index must have a guarded stream from which its next
 	// source value can be recovered. Other carried state stays on scalar code.
-	if p.integer {
+	if p.normalizedInduction {
 		var covered uint32
 		for _, g := range groups[:ng] {
 			if g.index > 0 {
@@ -675,7 +645,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		return a
 	}
-	if available < countConst(p.result)+pressure(p.result)+1 || p.integer && p.work > p.workLimit {
+	if available < countConst(p.result)+pressure(p.result)+1 || p.normalizedInduction && p.work > p.workLimit {
 		return
 	}
 	read := func(local int, dst Reg) {
@@ -693,7 +663,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 	}
 
-	if p.integer {
+	if p.normalizedInduction {
 		// Admission must not evict an original stack value merely to execute a
 		// scalar fallback. These are leases from the existing allocator's free
 		// pool; the unchanged scalar loop retains its original owned locations.
@@ -779,7 +749,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 
 	read(p.counter, counter)
-	if p.integer && p.limitLocal >= 0 {
+	if p.normalizedInduction && p.limitLocal >= 0 {
 		f.recoverLocal(p.limitLocal)
 	}
 	for slot, cell := range p.locals[:p.localN] {
@@ -794,7 +764,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	// Recover every borrowed local before any guard can bypass its reload.
 	for i := 0; i < ng; i++ {
-		if p.integer {
+		if p.normalizedInduction {
 			if groups[i].base >= 0 {
 				f.recoverLocal(groups[i].base)
 			}
@@ -808,7 +778,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var guards [64]int
 	nGuards := 0
 	guard := func(cc Cond) { guards[nGuards] = f.a.Bcond(cc); nGuards++ }
-	if p.integer && p.limitLocal >= 0 {
+	if p.normalizedInduction && p.limitLocal >= 0 {
 		read(p.limitLocal, X16)
 		f.cmpRR(counter, X16, false)
 		guard(condAE)
@@ -829,7 +799,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	f.cmpImm(span, minimumSpan, false)
 	guard(condB)
-	if p.integer {
+	if p.normalizedInduction {
 		for i := 0; i < ng; i++ {
 			read(groups[i].base, groups[i].reg)
 		}
@@ -848,7 +818,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	guard(condNE)
 	// Reject nonterminating modular trips: zero-limit countdowns must start
 	// negative; positive fixed limits must be ahead of the unsigned counter.
-	if p.integer && p.limitLocal >= 0 {
+	if p.normalizedInduction && p.limitLocal >= 0 {
 		// Dynamic limits were checked before computing their widened byte span.
 	} else if p.limit == 0 {
 		f.cmpImm(counter, 0, false)
@@ -861,7 +831,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	f.ld64(size, linMemReg, -int32(bdCurBytes))
 	for i := 0; i < ng; i++ {
 		g := &groups[i]
-		if !p.integer || g.index == p.counter+1 {
+		if !p.normalizedInduction || g.index == p.counter+1 {
 			f.a.Add32(g.reg, g.reg, counter)
 		} else if g.index > 0 {
 			read(g.index-1, X16)
@@ -1177,7 +1147,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.patchBranch19(done, f.a.Len())
 	}
 	f.stats.peep("float-map-loop-unroll")
-	if p.integer {
+	if p.normalizedInduction {
 		var published uint32
 		for _, g := range groups[:ng] {
 			if g.index == 0 {
@@ -1254,4 +1224,50 @@ func floatMapPacketWidth(step uint32) uint32 {
 		return 0
 	}
 	return width
+}
+
+// Preserve the original fixed byte-counter recipe before trying broader induction.
+func (p *floatMapPlan) finishFloatInduction(condition, ns int, initialRead []bool) bool {
+	increment := condition
+	if condition := p.nodes[increment]; condition.op == 0x47 {
+		increment = condition.a
+		limit := p.nodes[condition.b]
+		if limit.op != 0x41 {
+			increment = condition.b
+			limit = p.nodes[condition.a]
+		}
+		if limit.op != 0x41 {
+			return false
+		}
+		p.limit = uint32(limit.bits)
+	}
+	inc := p.nodes[increment]
+	if inc.op != 0x6a {
+		return false
+	}
+	local, stride := p.nodes[inc.a], p.nodes[inc.b]
+	if local.op != 0x20 {
+		local, stride = stride, local
+	}
+	size := uint32(4)
+	if p.wide {
+		size = 8
+	}
+	if local.op != 0x20 || p.locals[p.localSlot(local.a)].Type != mtI32 || stride.op != 0x41 || stride.bits != uint64(size)*uint64(ns) {
+		return false
+	}
+	p.counter, p.step = local.a, uint32(stride.bits)
+	p.packet = floatMapPacketWidth(p.step)
+	if p.packet == 0 {
+		return false
+	}
+	if p.locals[p.localSlot(p.counter)].Value != increment {
+		return false
+	}
+	for i, cell := range p.locals[:p.localN] {
+		if cell.Written && initialRead[i] && int(cell.Index) != p.counter {
+			return false
+		}
+	}
+	return true
 }
