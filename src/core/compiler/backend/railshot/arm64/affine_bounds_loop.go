@@ -29,8 +29,9 @@ type affineBoundsPlan struct {
 	iterations     uint32
 	streams        [8]affineBoundsStream
 	streamN        int
-	omit           [32]int // CMP and conditional branch positions; ADD results stay exact
+	omit           [32]int // CMP and conditional branch positions
 	omitN          int
+	deadEndRegs    uint32
 }
 
 func affineBoundsAdd(a, b affineBoundsValue) (v affineBoundsValue) {
@@ -245,6 +246,9 @@ func matchAffineBoundsLoop(b []byte, back int, memSize Reg, targets []uint64, en
 	if p.guardB == regNone {
 		return p, false
 	}
+	if !affineBoundsKeepEnds {
+		p.deadEndRegs = affineBoundsDeadEndRegs(b, &p, relocs)
+	}
 	return p, true
 }
 
@@ -332,7 +336,13 @@ func (f *fn) finalizeAffineBoundsLoops(entries ...int) {
 		fast := f.a.Len()
 		omit := 0
 		removed := 0
+		removedEnds := 0
 		for old := p.start; old <= p.back; old += 4 {
+			if omit < p.omitN && old+4 == p.omit[omit] && p.deadEndRegs&(uint32(1)<<uint32(rdWord(original, old-p.start)&31)) != 0 {
+				removed++
+				removedEnds++
+				continue
+			}
 			if omit < p.omitN && old == p.omit[omit] {
 				omit++
 				removed++
@@ -375,6 +385,9 @@ func (f *fn) finalizeAffineBoundsLoops(entries ...int) {
 		f.patchBranch19(p.back, fallback)
 		if regallocCheckEnabled {
 			f.checkRestoreWrites(saved)
+		}
+		if removedEnds != 0 {
+			f.stats.peep("affine-bounds-end-elide")
 		}
 		f.stats.peep("affine-bounds-loop")
 		versions++

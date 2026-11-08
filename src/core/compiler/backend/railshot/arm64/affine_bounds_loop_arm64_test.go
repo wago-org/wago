@@ -14,6 +14,10 @@ import (
 )
 
 func affineBoundsFixture() (*enc.Asm, int, int) {
+	return affineBoundsFixtureVariant(0)
+}
+
+func affineBoundsFixtureVariant(kind int) (*enc.Asm, int, int) {
 	a := &enc.Asm{}
 	a.SubSP64(16)
 	a.MovReg64(linMemReg, X1)
@@ -37,6 +41,11 @@ func affineBoundsFixture() (*enc.Asm, int, int) {
 	a.Add32(X22, X22, X20)
 	a.Nop()
 	check(X23, X9)
+	if kind == 2 {
+		a.MovReg64(X12, X9)
+	} else {
+		a.Nop()
+	}
 	a.MovReg32(X25, X24)
 	check(X25, X9)
 	load(0, X23)
@@ -61,6 +70,11 @@ func affineBoundsFixture() (*enc.Asm, int, int) {
 	a.CmpImm32(X20, 320)
 	back := a.Bcond(condNE)
 	a.PatchBranch19(back, start)
+	if kind == 1 {
+		a.Store64(X9, X3, 16)
+	} else if kind == 2 {
+		a.Store64(X12, X3, 16)
+	}
 	a.MovImm64(X9, 0)
 	a.Store64(X9, X3, 0)
 	a.Store64(X20, X3, 8)
@@ -111,6 +125,12 @@ func TestAffineBoundsLoopProof(t *testing.T) {
 }
 
 func TestAffineBoundsLoopExactMemoryAndFallback(t *testing.T) {
+	for kind := 0; kind < 3; kind++ {
+		t.Run(string(rune('0'+kind)), func(t *testing.T) { testAffineBoundsLoopMemory(t, kind) })
+	}
+}
+
+func testAffineBoundsLoopMemory(t *testing.T, kind int) {
 	if !affineBoundsLoopEnabled {
 		t.Skip("affine bounds loop disabled")
 	}
@@ -129,11 +149,11 @@ func TestAffineBoundsLoopExactMemoryAndFallback(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer ar.Close()
-	args, result, trap := ar.Alloc(32), ar.Alloc(16), ar.Alloc(rt.TrapBufferBytes)
+	args, result, trap := ar.Alloc(32), ar.Alloc(24), ar.Alloc(rt.TrapBufferBytes)
 	images := make([][]byte, 2)
-	original, _, _ := affineBoundsFixture()
+	original, _, _ := affineBoundsFixtureVariant(kind)
 	images[0] = original.B
-	optimized, _, _ := affineBoundsFixture()
+	optimized, _, _ := affineBoundsFixtureVariant(kind)
 	f := gpClassEmitter()
 	f.a = optimized
 	f.m = &wasm.Module{}
@@ -240,5 +260,22 @@ func TestAffineBoundsLoopLeavesSameStrideMapsToVectorizer(t *testing.T) {
 	}
 	if _, ok := matchAffineBoundsLoop(a.B, back, X27, nativeConstantTargets(a.B), nil, nil); ok {
 		t.Fatal("same-stride scalar map gained redundant dispatch")
+	}
+}
+
+func TestAffineBoundsDeadEndUses(t *testing.T) {
+	for kind := 0; kind < 3; kind++ {
+		a, _, back := affineBoundsFixtureVariant(kind)
+		p, ok := matchAffineBoundsLoop(a.B, back, X27, nativeConstantTargets(a.B), nil, nil)
+		if !ok {
+			t.Fatalf("fixture%d rejected", kind)
+		}
+		safe := affineBoundsDeadEndRegs(a.B, &p, nil)
+		if (safe&(1<<9) != 0) != (kind == 0) {
+			t.Fatalf("kind%d X9 dead mask%x", kind, safe)
+		}
+		if safe&(1<<10) == 0 {
+			t.Fatalf("kind%d lost dead X10 mask%x", kind, safe)
+		}
 	}
 }
