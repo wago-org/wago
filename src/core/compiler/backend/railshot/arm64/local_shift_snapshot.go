@@ -2,7 +2,10 @@
 
 package arm64
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 var localShiftSnapshotEnabled = os.Getenv("WAGO_ARM64_NO_LOCAL_SHIFT_SNAPSHOT") != "1"
 
@@ -95,6 +98,16 @@ suffix:
 		default:
 			break suffix
 		}
+	}
+	if diagnosticsEnabled && f.stats != nil {
+		free := 0
+		blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+		for _, r := range gpAlloc {
+			if f.regUser[r] == nil && !blocked.has(r) {
+				free++
+			}
+		}
+		f.stats.peep(fmt.Sprintf("local-shift-snapshot-free-%d", free))
 	}
 	f.condense(root, regNone)
 	f.stats.peep("local-shift-snapshot")
