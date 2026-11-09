@@ -1477,6 +1477,9 @@ type validateMemo struct {
 	once         sync.Once
 	err          error
 	gcFrameRoots *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
+	// executionManagedStorage caches the managed-storage classification of the
+	// execution view only: 0 unknown, 1 absent, 2 present. Atomic access.
+	executionManagedStorage uint32
 	// rv64FreshRootedGC is a process-local compiler receipt. It is never encoded;
 	// loaded artifacts therefore remain fail-closed until generic RV64 images
 	// gain a persisted machine-code authenticator.

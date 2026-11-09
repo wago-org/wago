@@ -7,6 +7,7 @@ import (
 	"fmt"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+	"sync/atomic"
 )
 
 // Host backends do not yet describe raw function words in their exact frame
@@ -38,7 +39,36 @@ func managedFunctionAfterActiveLifetimeBoundary(in *Instance) {
 		graph.drainAfterGate(0)
 	}
 }
+
+// compiledManagedFunctionReachability is queried on every aggregate-helper
+// dispatch. Every input is fixed once the execution snapshot is published:
+// features, products, and frame roots are written only before publication,
+// and the snapshot owns a private deep copy of its GC descriptors. Cache the
+// result for that snapshot alone; other views, including copies, rescan.
 func compiledManagedFunctionReachability(c *Compiled) bool {
+	if c == nil {
+		return false
+	}
+	memo := c.loadValidateMemo()
+	if memo == nil || memo.executionView() != c {
+		return scanManagedFunctionReachability(c)
+	}
+	switch atomic.LoadUint32(&memo.executionManagedStorage) {
+	case 1:
+		return false
+	case 2:
+		return true
+	}
+	present := scanManagedFunctionReachability(c)
+	state := uint32(1)
+	if present {
+		state = 2
+	}
+	atomic.StoreUint32(&memo.executionManagedStorage, state)
+	return present
+}
+
+func scanManagedFunctionReachability(c *Compiled) bool {
 	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureGC) {
 		return false
 	}
