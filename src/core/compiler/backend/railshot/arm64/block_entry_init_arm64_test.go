@@ -49,6 +49,34 @@ func TestBlockEntryInitializationPrefixFacts(t *testing.T) {
 	}
 }
 
+func TestBlockEntryInitializationPackedProvenance(t *testing.T) {
+	old := blockEntryInitEnabled
+	blockEntryInitEnabled = true
+	defer func() { blockEntryInitEnabled = old }()
+	for _, nested := range []bool{false, true} {
+		body := []byte{0x41, 7, 0x21, 0, 0x0b}
+		if nested {
+			body = append([]byte{0x02, 0x40}, body...)
+			body = append(body, 0x0b)
+		}
+		h, err := scanBodyBytes(body, 1, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h.localScore[0]&localScoreEntryInitialized == 0 || (h.localScore[0]&localScoreBlockInitialized != 0) != nested {
+			t.Fatalf("nested%v score%x", nested, h.localScore[0])
+		}
+	}
+	for flags := uint32(0); flags < 16; flags++ {
+		bits := flags << 28
+		scores := []uint32{bits | localScoreHotnessMask - 1}
+		addHotness(scores, 0, 7)
+		if scores[0] != bits|localScoreHotnessMask {
+			t.Fatalf("score flags lost:flags%x score%x", bits, scores[0])
+		}
+	}
+}
+
 func blockEntryInitFixture(t *testing.T, typ byte, variant string) *wasm.Module {
 	body := []byte{1, 8, typ, 0x02, 0x40}
 	if variant == "nested" {
@@ -68,6 +96,8 @@ func blockEntryInitFixture(t *testing.T, typ byte, variant string) *wasm.Module 
 		switch typ {
 		case 0x7f:
 			body = append(body, 0x41, i)
+		case 0x7e:
+			body = append(body, 0x42, i)
 		case 0x7d:
 			body = append(body, 0x43)
 			body = binary.LittleEndian.AppendUint32(body, 0x80000000|uint32(i))
@@ -104,6 +134,8 @@ func appendBlockInitStore(body []byte, typ byte) []byte {
 	switch typ {
 	case 0x7f:
 		return append(body, 0x36, 2, 0)
+	case 0x7e:
+		return append(body, 0x37, 3, 0)
 	case 0x7d:
 		return append(body, 0x38, 2, 0)
 	case 0x7c:
@@ -116,7 +148,7 @@ func appendBlockInitStore(body []byte, typ byte) []byte {
 func TestBlockEntryInitializationNativeState(t *testing.T) {
 	old := blockEntryInitEnabled
 	defer func() { blockEntryInitEnabled = old }()
-	for _, typ := range []byte{0x7f, 0x7d, 0x7c, 0x7b} {
+	for _, typ := range []byte{0x7f, 0x7e, 0x7d, 0x7c, 0x7b} {
 		for _, variant := range []string{"block", "nested", "branch-before", "branch-after", "conditional", "read-first"} {
 			m := blockEntryInitFixture(t, typ, variant)
 			for _, condition := range []uint64{0, 1} {
@@ -124,7 +156,7 @@ func TestBlockEntryInitializationNativeState(t *testing.T) {
 				want := append([]byte(nil), initial...)
 				assigned := !(variant == "branch-before" && condition == 1 || variant == "conditional" && condition == 0)
 				width := 4
-				if typ == 0x7c {
+				if typ == 0x7c || typ == 0x7e {
 					width = 8
 				} else if typ == 0x7b {
 					width = 16
@@ -139,6 +171,8 @@ func TestBlockEntryInitializationNativeState(t *testing.T) {
 						switch typ {
 						case 0x7f:
 							binary.LittleEndian.PutUint32(b, uint32(i))
+						case 0x7e:
+							binary.LittleEndian.PutUint64(b, uint64(i))
 						case 0x7d:
 							binary.LittleEndian.PutUint32(b, 0x80000000|uint32(i))
 						case 0x7c:
@@ -167,13 +201,13 @@ func TestBlockEntryInitializationElidesTypedZeroes(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	old := blockEntryInitEnabled
 	defer func() { blockEntryInitEnabled = old }()
-	for _, typ := range []byte{0x7f, 0x7d, 0x7c, 0x7b} {
+	for _, typ := range []byte{0x7f, 0x7e, 0x7d, 0x7c, 0x7b} {
 		m := blockEntryInitFixture(t, typ, "nested")
 		for _, enabled := range []bool{false, true} {
 			blockEntryInitEnabled = enabled
 			stats := compileWithStats(t, m, false)
 			want := 0
-			if enabled {
+			if enabled && (typ == 0x7f || typ == 0x7e) {
 				want = 8
 			}
 			if got := stats.Funcs[0].Peephole["entry-init-elide"]; got != want {
