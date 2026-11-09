@@ -23,10 +23,11 @@ func TestShiftedALUImmediateLocalDestinations(t *testing.T) {
 					op = sub
 				}
 				for _, dest := range []byte{0, 1} {
-					body := []byte{0, 0x20, 0, constant}
+					body := []byte{0, 0x41, 0, 0x41, 42, 0x3a, 0, 0, 0x20, 0, constant}
 					body = append(body, wasmtest.SLEB64(c)...)
 					body = append(body, op, 0x21, dest, 0x20, 0, 0x20, 1, xor, 0x0b)
 					m := mod1(t, []wasm.ValType{typ, typ}, []wasm.ValType{typ}, body)
+					m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
 					for _, on := range []bool{false, true} {
 						shiftedALUImmediateEnabled = on
 						for _, compact := range []bool{false, true} {
@@ -56,7 +57,7 @@ func TestShiftedALUImmediateLocalDestinations(t *testing.T) {
 									t.Fatalf("wide%v c%d sub%v dest%d on%v compact%v x%x got%x want%x: %v", wide, c, subtract, dest, on, compact, x, got, want, err)
 								}
 								if diagnosticsEnabled && on && c != 4097 && stats.Funcs[0].Peephole["shifted-add-sub-immediate"] == 0 {
-									t.Fatalf("missed ALU immediate: %v", stats.Funcs[0].Peephole)
+									t.Fatalf("missed ALU immediate wide%v c%d sub%v dest%d compact%v x%x: %v", wide, c, subtract, dest, compact, x, stats.Funcs[0].Peephole)
 								}
 							}
 						}
