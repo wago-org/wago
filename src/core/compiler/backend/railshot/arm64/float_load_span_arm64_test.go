@@ -54,6 +54,7 @@ func TestFloatLoadSpanProbeBarriers(t *testing.T) {
 		want    int32
 	}{
 		{"pure", nil, 72}, {"store", []byte{0x39, 0, 0}, 8},
+		{"select", []byte{0x1b}, 8},
 		{"call", []byte{0x10, 0}, 8}, {"trunc", []byte{0xaa}, 8},
 		{"division", []byte{0x6d}, 8}, {"branch", []byte{0x0d, 0}, 8},
 		{"sourceWrite", []byte{0x21, 0}, 8}, {"grow", []byte{0x40, 0}, 8},

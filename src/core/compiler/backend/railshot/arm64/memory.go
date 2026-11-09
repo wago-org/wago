@@ -818,6 +818,7 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 	scan := *r
 	start := scan.Offset()
 	extended := false
+	crossedSelect := false
 	prevBias := uint32(0)
 	prevKind, prevIdx := uint8(0), uint32(0)
 	for n := 0; n < maxStraightLineRangeOps && scan.HasNext(); n++ {
@@ -837,7 +838,7 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 				return extent
 			}
 			nextKind, nextIdx = 1, x
-			if floatLoadSpanEnabled && kind == 1 && x == idx {
+			if floatLoadSpanEnabled && !crossedSelect && kind == 1 && x == idx {
 				if d, ok := f.peekPositiveLoadOffset(&scan); ok {
 					nextBias = d
 					extended = true
@@ -850,7 +851,7 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 				return extent
 			}
 			nextKind, nextIdx = 2, x
-			if floatLoadSpanEnabled && kind == 2 && x == idx {
+			if floatLoadSpanEnabled && !crossedSelect && kind == 2 && x == idx {
 				if d, ok := f.peekPositiveLoadOffset(&scan); ok {
 					nextBias = d
 					extended = true
@@ -888,12 +889,22 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 					extent = int32(candidate)
 				}
 			}
+		case op == 0x1b:
+			// Select lowering may branch and discard the source certificate. Keep
+			// legacy immediate-only scans, but do not widen a new span across it.
+			if extended {
+				return extent
+			}
+			crossedSelect = true
 		case floatLoadSpanEnabled && f.localBase == 0 && (op == 0x43 || op == 0x44 || op >= 0x8b && op <= 0xa6 || op >= 0xb2 && op <= 0xbf):
+			if crossedSelect {
+				return extent
+			}
 			extended = true
 			if err := skipImmediates(&scan, op); err != nil {
 				return extent
 			}
-		case op == 0x01 || op == 0x1a || op == 0x1b,
+		case op == 0x01 || op == 0x1a,
 			op == 0x41 || op == 0x42,
 			op >= 0x45 && op <= 0x6c,
 			op >= 0x71 && op <= 0x7e,
