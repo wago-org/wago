@@ -1435,9 +1435,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 				s.h.flags.set(hintHasControlFlow)
+				s.entryPrefix = false
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.flags.set(hintModuleEH)
+				s.entryPrefix = false
 			}
 			if op == 0xfb {
 				s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
@@ -1530,12 +1532,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 				s.h.flags.set(hintHasControlFlow)
-				if op == 0x0e { // br_table is the only unprefixed boundary in this path.
-					s.entryPrefix = false
-				}
+				s.entryPrefix = false
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.flags.set(hintModuleEH)
+				s.entryPrefix = false
 			}
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
