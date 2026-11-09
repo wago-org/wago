@@ -2154,6 +2154,15 @@ func (a *Asm) NeonFmul(dst, n, m Reg, f64 bool) {
 	}
 
 }
+
+// NeonFmulLaneD multiplies both f64 lanes by one scalar lane, without FMA.
+func (a *Asm) NeonFmulLaneD(dst, n, scalar Reg, lane byte) {
+	a.word(0x4fc09000 | r(scalar)<<16 | uint32(lane&1)<<11 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+
 func (a *Asm) NeonFdiv(dst, n, m Reg, f64 bool) {
 	a.word(fbase(f64, 0x6E20FC00, 0x6E60FC00) | r(m)<<16 | r(n)<<5 | r(dst))
 	if regallocCheckEnabled {

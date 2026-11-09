@@ -185,6 +185,7 @@ type fn struct {
 	filledCopyByte          byte
 	remainderZeroLoopDepth  uint16
 	remainderZeroLoopWrites uint64
+	floatStoreWork          uint16
 	integerResidualWork     uint16
 	scopedConstWork         uint16
 	loopLocalLeaseWork      uint16

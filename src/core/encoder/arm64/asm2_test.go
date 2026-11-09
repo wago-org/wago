@@ -10,6 +10,9 @@ func TestPortIntEncodings(t *testing.T) {
 		emit func(*Asm)
 		want uint32
 	}{
+		{"fmul v0.2d,v1.2d,v8.d[0]", func(a *Asm) { a.NeonFmulLaneD(X0, X1, X8, 0) }, 0x4fc89020},
+		{"fmul v3.2d,v4.2d,v31.d[0]", func(a *Asm) { a.NeonFmulLaneD(X3, X4, ZR, 0) }, 0x4fdf9083},
+		{"fmul v5.2d,v6.2d,v7.d[1]", func(a *Asm) { a.NeonFmulLaneD(X5, X6, X7, 1) }, 0x4fc798c5},
 		{"add x0,x1,x2,lsl#3", func(a *Asm) { a.AddShifted(X0, X1, X2, 3, false) }, 0x8b020c20},
 		{"add x0,x1,x2,lsr#7", func(a *Asm) { a.AddShiftedReg(X0, X1, X2, RegShiftLSR, 7, false) }, 0x8b421c20},
 		{"sub w3,w4,w5,asr#11", func(a *Asm) { a.SubShiftedReg(X3, X4, X5, RegShiftASR, 11, true) }, 0x4b852c83},
