@@ -394,10 +394,7 @@ const (
 	// first occurrence stays scan-local so the retained score spends one bit only
 	// on proven reuse.
 	localScoreParamAddressReuse = uint32(1 << 29)
-	// Block-prefix initialization is a distinct target cost choice. Keep its
-	// provenance in the existing packed score rather than another local sidecar.
-	localScoreBlockInitialized = uint32(1 << 28)
-	localScoreHotnessMask      = localScoreBlockInitialized - 1
+	localScoreHotnessMask       = localScoreParamAddressReuse - 1
 )
 
 func localHotness(score uint32) uint32 { return score & localScoreHotnessMask }
@@ -1026,6 +1023,8 @@ type byteBodyScanner struct {
 	importedFuncs          int
 	entryPrefix            bool
 	entrySeen              uint64
+	entryBlockGP           uint64
+	entryBlockTypesReady   bool
 	collectLoopIntConsts   bool
 	collectLoopMemoryBases bool
 	loopIntConsts          [maxLoopIntConstCandidates]loopIntConstCandidate
@@ -1333,11 +1332,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					bit := uint64(1) << idx
 					if s.entrySeen&bit == 0 {
 						s.entrySeen |= bit
-						if op != 0x20 {
+						if op != 0x20 && (depth == 0 || s.blockEntryLocalEligible(idx)) {
 							s.h.markEntryInitialized(idx)
-							if depth != 0 {
-								s.h.localScore[idx] |= localScoreBlockInitialized
-							}
 						}
 					}
 				}

@@ -4668,11 +4668,7 @@ func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 		pendingZero := int32(-1)
 		// AArch64 has a zero register (XZR): store it directly, no scratch to clear.
 		for i := f.nParams; i < f.nLocals; i++ {
-			// Keep scalar FP/vector entry zeroing for the new block-prefix
-			// family. Its broader removal regressed recursive floating code;
-			// integer homes/pins are a separate target cost choice.
-			if entryInitElision && i < 64 && localScores[i]&localScoreEntryInitialized != 0 &&
-				(localScores[i]&localScoreBlockInitialized == 0 || f.localType[i] == mtI32 || f.localType[i] == mtI64) {
+			if entryInitElision && i < 64 && localScores[i]&localScoreEntryInitialized != 0 {
 				if pairZeros {
 					pendingZero = f.flushDeclaredZeroSlot(pendingZero)
 				}

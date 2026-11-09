@@ -49,31 +49,34 @@ func TestBlockEntryInitializationPrefixFacts(t *testing.T) {
 	}
 }
 
-func TestBlockEntryInitializationPackedProvenance(t *testing.T) {
-	old := blockEntryInitEnabled
-	blockEntryInitEnabled = true
-	defer func() { blockEntryInitEnabled = old }()
-	for _, nested := range []bool{false, true} {
-		body := []byte{0x41, 7, 0x21, 0, 0x0b}
-		if nested {
-			body = append([]byte{0x02, 0x40}, body...)
-			body = append(body, 0x0b)
-		}
-		h, err := scanBodyBytes(body, 1, 0, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if h.localScore[0]&localScoreEntryInitialized == 0 || (h.localScore[0]&localScoreBlockInitialized != 0) != nested {
-			t.Fatalf("nested%v score%x", nested, h.localScore[0])
+func TestBlockEntryInitializationBoundedTypeMask(t *testing.T) {
+	m := blockEntryInitFixture(t, 0x7f, "block")
+	m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.F64}, {Count: 1, Type: wasm.I32}, {Count: 1, Type: wasm.I64}, {Count: 1, Type: wasm.V128}}
+	s := byteBodyScanner{m: m}
+	for i, want := range []bool{false, false, true, true, false, false} {
+		if got := s.blockEntryLocalEligible(uint32(i)); got != want {
+			t.Fatalf("local%d eligible%v want%v", i, got, want)
 		}
 	}
-	for flags := uint32(0); flags < 16; flags++ {
-		bits := flags << 28
-		scores := []uint32{bits | localScoreHotnessMask - 1}
-		addHotness(scores, 0, 7)
-		if scores[0] != bits|localScoreHotnessMask {
-			t.Fatalf("score flags lost:flags%x score%x", bits, scores[0])
-		}
+	if n := testing.AllocsPerRun(100, func() {
+		s.entryBlockTypesReady, s.entryBlockGP = false, 0
+		s.blockEntryLocalEligible(2)
+	}); n != 0 {
+		t.Fatalf("type mask allocated %g times", n)
+	}
+	m.Code[0].Locals.Runs = append(make([]wasm.LocalRun, 64), wasm.LocalRun{Count: 1, Type: wasm.I32})
+	s = byteBodyScanner{m: m}
+	if s.blockEntryLocalEligible(1) {
+		t.Fatal("zero-count run budget exceeded")
+	}
+	m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: ^uint32(0), Type: wasm.I32}}
+	s = byteBodyScanner{m: m}
+	if !s.blockEntryLocalEligible(63) || s.blockEntryLocalEligible(64) {
+		t.Fatal("large declared run escaped64-local mask")
+	}
+	s = byteBodyScanner{m: m, selfIdx: 99}
+	if s.blockEntryLocalEligible(1) {
+		t.Fatal("unknown signature accepted")
 	}
 }
 
