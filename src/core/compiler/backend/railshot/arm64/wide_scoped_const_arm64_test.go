@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"bytes"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
@@ -69,7 +70,7 @@ func TestWideScopedConstProbeLimitsAndTableBarrier(t *testing.T) {
 			t.Fatalf("helper%x blocked%v mask%d offset%d", helper, uses.blocked, uses.mask, r.Offset())
 		}
 	}
-	for _, initial := range []uint16{0, integerResidualWorkLimit - 1, integerResidualWorkLimit} {
+	for _, initial := range []uint16{0, scopedLoopConstWorkLimit - 1, scopedLoopConstWorkLimit} {
 		code := make([]byte, 514)
 		for i := range code {
 			code[i] = 1
@@ -78,7 +79,7 @@ func TestWideScopedConstProbeLimitsAndTableBarrier(t *testing.T) {
 		work := initial
 		uses := scopedLoopConstUses{hints: &hints, work: &work}
 		r := wasm.ReaderFrom(code)
-		if set, call := scanLoopSetLocals(&r, classifier, nil, &uses); set != nil || !call || r.Offset() != 0 || work > integerResidualWorkLimit {
+		if set, call := scanLoopSetLocals(&r, classifier, nil, &uses); set != nil || !call || r.Offset() != 0 || work > scopedLoopConstWorkLimit {
 			t.Fatalf("budget%d work%d offset%d call%v", initial, work, r.Offset(), call)
 		}
 	}
@@ -99,5 +100,43 @@ func TestWideScopedConstAdmission(t *testing.T) {
 		if hit := stats.Funcs[0].Peephole["scoped-loop-int-const"]; (hit != 0) != on {
 			t.Fatalf("on%v leases%d", on, hit)
 		}
+	}
+}
+
+func TestWideScopedConstPrefixBudgetAndReader(t *testing.T) {
+	old := wideScopedLoopConstsEnabled
+	wideScopedLoopConstsEnabled = true
+	defer func() { wideScopedLoopConstsEnabled = old }()
+	m := wideScopedConstFixture(t, true)
+	body := m.Code[0].BodyBytes
+	at := bytes.Index(body, []byte{0x03, 0x40})
+	if at < 0 {
+		t.Fatal("missing loop")
+	}
+	code := body[at+2:]
+	f := fn{m: m, usesCalls: true, policy: currentCodegenPolicy(), classifier: wasm.NewModuleInstructionClassifier(m, true), scopedConstHints: scopedLoopConstHints{loopIntConstCount: 1, loopIntConstTypes: 2, loopIntConst: [4]int64{-4417276706812531889}}}
+	f.integerResidualWork = integerResidualWorkLimit
+	var admitted bool
+	allocs := testing.AllocsPerRun(100, func() {
+		f.scopedConstWork = 0
+		r := wasm.ReaderFrom(code)
+		admitted = f.hasWideScopedConstPrefix(&r)
+		if r.Offset() != 0 {
+			panic("prefix advanced reader")
+		}
+	})
+	if !admitted || allocs != 0 {
+		t.Fatalf("admitted%v allocations%v", admitted, allocs)
+	}
+	f.scopedConstWork = scopedLoopConstWorkLimit
+	r := wasm.ReaderFrom(code)
+	if f.hasWideScopedConstPrefix(&r) || r.Offset() != 0 || f.scopedConstWork != scopedLoopConstWorkLimit {
+		t.Fatal("exhausted prefix budget admitted")
+	}
+	f.scopedConstWork = 0
+	nops := bytes.Repeat([]byte{1}, 17)
+	r = wasm.ReaderFrom(append(nops, code...))
+	if f.hasWideScopedConstPrefix(&r) || r.Offset() != 0 || f.scopedConstWork != 16 {
+		t.Fatal("prefix depth limit failed")
 	}
 }

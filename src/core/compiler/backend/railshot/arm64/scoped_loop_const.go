@@ -148,3 +148,44 @@ func scopedConstTableBarrier(kind wasm.InstrKind) bool {
 		return false
 	}
 }
+
+const scopedLoopConstWorkLimit = 4096
+
+// Admit detailed scanning only when a short copied-reader prefix contains a
+// selected costly constant. Independent bounded accounting prevents earlier
+// map/reduction probes from starving a late loop, without repeated full scans.
+func (f *fn) hasWideScopedConstPrefix(source *wasm.Reader) bool {
+	if !f.usesCalls || f.scopedConstWork >= scopedLoopConstWorkLimit {
+		return false
+	}
+	uses, ok := f.scopedLoopConstUses()
+	if !ok {
+		return false
+	}
+	r := *source
+	start := r.Offset()
+	var imm wasm.InstructionImmediate
+	for ops := 0; ops < 16 && r.Offset()-start < 128 && f.scopedConstWork < scopedLoopConstWorkLimit; ops++ {
+		f.scopedConstWork++
+		op, e := r.Byte()
+		if e != nil {
+			return false
+		}
+		if op == 0x41 || op == 0x42 {
+			if _, e = uses.consume(op, &r); e != nil {
+				return false
+			}
+			if uses.mask != 0 {
+				return true
+			}
+			continue
+		}
+		if e = f.classifier.ClassifyInto(&r, op, &imm); e != nil {
+			return false
+		}
+		if loopInstructionMayCall(imm.Kind) || usesBulkScratch(imm.Kind) || scopedConstTableBarrier(imm.Kind) || op == 0x0b {
+			return false
+		}
+	}
+	return false
+}

@@ -186,6 +186,7 @@ type fn struct {
 	remainderZeroLoopDepth  uint16
 	remainderZeroLoopWrites uint64
 	integerResidualWork     uint16
+	scopedConstWork         uint16
 	integerWordMapWork      uint16
 	integerLoadMapWork      uint16
 	integerLoadMapProbe     bool
