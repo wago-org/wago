@@ -318,27 +318,28 @@ type fn struct {
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
 	spillFloor              int
-	subRspAt                int   // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
-	addRspAt                int   // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
-	tailFrameSites          []int // tail-transfer frame-free MOVZ sites (patched with frameSize)
-	phasePadWords           int   // cold tail padding that preserves following function entry phases
-	affineBoundsLayout      bool  // a shortened bounds-check prefix can move later loop fetch boundaries
-	frameElided             bool  // simple register-only internal entry leaves SP unchanged
-	adapterReturnOff        int   // register-ABI wrapper continuation used by cross-tail reuse
-	adapterEndOff           int   // end of the wrapper before internal-entry alignment
-	adapterReturnReferenced bool  // cross-tail reuse embeds the local return PC; keep that tail local
-	trapBodyOff             int   // complete shared trap body start; zero when not emitted
-	trapBodyEnd             int   // complete shared trap body end
-	entryLocalsInit         int   // register-ABI entry after parameter homes, before local reset
-	entryTrapEnd            int   // checks before value-pinned globals are initialized
-	guardMode               bool  // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts             bool  // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible           bool  // emit context-cancellation polls at entries and loop headers
-	hasLoop                 bool  // finalizer preserves emission-time loop layout until alignment fragments are relaxable
-	loopMemory              bool  // at least one source loop contains a memory operation
-	opaqueFragments         bool  // jump-table or plugin bytes require explicit fragment-aware scans
-	lazyZero                bool  // defer declared-local zeroing for small call+memory functions
-	skipFence               bool  // call-free leaf with a provably small frame: no stack-fence check
+	subRspAt                int    // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
+	addRspAt                int    // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
+	tailFrameSites          []int  // tail-transfer frame-free MOVZ sites (patched with frameSize)
+	phasePadWords           int    // cold tail padding that preserves following function entry phases
+	byteBoundsPhaseWords    uint32 // byte-check removals not yet padded before a generated loop prefix
+	affineBoundsLayout      bool   // a shortened affine check prefix can move later loop fetch boundaries
+	frameElided             bool   // simple register-only internal entry leaves SP unchanged
+	adapterReturnOff        int    // register-ABI wrapper continuation used by cross-tail reuse
+	adapterEndOff           int    // end of the wrapper before internal-entry alignment
+	adapterReturnReferenced bool   // cross-tail reuse embeds the local return PC; keep that tail local
+	trapBodyOff             int    // complete shared trap body start; zero when not emitted
+	trapBodyEnd             int    // complete shared trap body end
+	entryLocalsInit         int    // register-ABI entry after parameter homes, before local reset
+	entryTrapEnd            int    // checks before value-pinned globals are initialized
+	guardMode               bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible           bool   // emit context-cancellation polls at entries and loop headers
+	hasLoop                 bool   // finalizer preserves emission-time loop layout until alignment fragments are relaxable
+	loopMemory              bool   // at least one source loop contains a memory operation
+	opaqueFragments         bool   // jump-table or plugin bytes require explicit fragment-aware scans
+	lazyZero                bool   // defer declared-local zeroing for small call+memory functions
+	skipFence               bool   // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the ordinary linear-memory size in bytes, or the stable
 	// backing base for shared memory when shared-memory-base is enabled, in a
@@ -5105,6 +5106,7 @@ func (f *fn) emitPhasePadding() {
 		f.a.Nop()
 	}
 	f.phasePadWords = 0
+	f.byteBoundsPhaseWords = 0
 }
 
 // epilogue: copy results from their canonical slots to the results buffer, restore

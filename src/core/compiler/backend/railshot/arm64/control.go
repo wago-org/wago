@@ -1899,6 +1899,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 		f.flush()
 		if kind == cfLoop {
+			f.settleByteBoundsPhase()
 			if pN == 0 && rN == 0 {
 				f.emitClearBitLoop(r)
 				f.emitPureReduce(r)

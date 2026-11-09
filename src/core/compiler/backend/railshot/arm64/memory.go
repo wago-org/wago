@@ -18,6 +18,20 @@ var directByteBoundsEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_BYTE_BOUNDS") != "
 
 var wideZeroStoreEnabled = os.Getenv("WAGO_ARM64_NO_WIDE_ZERO_STORE") != "1"
 
+// Settle only byte-check padding before optional generated loop prefixes.
+// The ordinary phase padding may contain unrelated removals, whose established
+// placement remains unchanged. This runs before either fast or scalar backedge.
+func (f *fn) settleByteBoundsPhase() {
+	if !directByteBoundsAlignEnabled {
+		return
+	}
+	for range f.byteBoundsPhaseWords {
+		f.a.Nop()
+	}
+	f.phasePadWords -= int(f.byteBoundsPhaseWords)
+	f.byteBoundsPhaseWords = 0
+}
+
 // memAccessSize returns the byte width of a plain scalar memory instruction.
 func memAccessSize(op byte) int {
 	switch op {
@@ -644,11 +658,10 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	if directByte {
 		f.trapIf(condAE, trapMemOOB) // out of bounds when ea >= memBytes
 		f.stats.peep("direct-byte-bounds")
-		if directByteBoundsAlignEnabled {
-			f.affineBoundsLayout = true
-		}
-		// Account for the removed hot ADD in the function's cold padding.
+		// Account for the removed ADD, including generated native prefixes
+		// emitted before the next original source-loop header.
 		f.phasePadWords++
+		f.byteBoundsPhaseWords++
 	} else {
 		f.trapIf(condA, trapMemOOB) // ea+off+size > memBytes
 		f.release(t)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -120,6 +121,31 @@ func TestDirectByteBoundsAdmission(t *testing.T) {
 		cm.CodeImage.Close()
 		if (stats.Funcs[0].Peephole["direct-byte-bounds"] > 0) != on {
 			t.Fatalf("on%v stats%v", on, stats.Funcs[0].Peephole)
+		}
+	}
+}
+
+func TestDirectByteBoundsPrefixPadding(t *testing.T) {
+	old := directByteBoundsAlignEnabled
+	defer func() { directByteBoundsAlignEnabled = old }()
+	for _, on := range []bool{false, true} {
+		directByteBoundsAlignEnabled = on
+		f := fn{a: &a64.Asm{}, phasePadWords: 7, byteBoundsPhaseWords: 3}
+		f.settleByteBoundsPhase()
+		if on {
+			if f.a.Len() != 12 || f.phasePadWords != 4 || f.byteBoundsPhaseWords != 0 {
+				t.Fatal("byte padding was not settled independently")
+			}
+		} else if f.a.Len() != 0 || f.phasePadWords != 7 || f.byteBoundsPhaseWords != 3 {
+			t.Fatal("disabled prefix changed phase state")
+		}
+		f.emitPhasePadding()
+		if f.a.Len() != 28 || f.phasePadWords != 0 || f.byteBoundsPhaseWords != 0 {
+			t.Fatal("remaining padding was lost or duplicated")
+		}
+		f.settleByteBoundsPhase()
+		if f.a.Len() != 28 {
+			t.Fatal("already-settled byte words were emitted twice")
 		}
 	}
 }
