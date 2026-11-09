@@ -398,6 +398,14 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		return dest
 	}
 
+	if r := f.tryOwnedResultSink(node, left, right, dest); r != regNone {
+		f.release(rightReleaseAfter)
+		if pinnedRight != regNone {
+			f.pinned = f.pinned.remove(pinnedRight)
+		}
+		return r
+	}
+
 	if dest == regNone {
 		// selectInstr forms (choose the cheapest emission):
 		//  - LEA-style add:  `ADD dst, local, reg|#imm` computes local+x in one insn
