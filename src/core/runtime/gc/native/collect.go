@@ -78,6 +78,13 @@ func (c *Collector) CollectMinor(roots RootSet) (result error) {
 	}
 	c.beginAttempt("minor")
 	defer c.finishAttempt(&result)
+	return c.collectMinorAttempt(roots, youngObjects)
+}
+
+// collectMinorAttempt is the body of one admitted minor attempt. CollectMinor
+// keeps both defers and the attempt/unwind contract; holding its own returns to
+// a few lets the compiler open-code those defers on every minor collection.
+func (c *Collector) collectMinorAttempt(roots RootSet, youngObjects uint32) error {
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {
