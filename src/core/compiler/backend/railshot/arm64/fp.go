@@ -248,11 +248,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	// exceeds that cap, conservatively fall back to the old first-two policy rather
 	// than rank an incomplete set. Ties retain bytecode order, also preserving the
 	// old choice for functions whose constants are all used equally often.
-	var cand [32]struct {
-		typ  machineType
-		bits int64
-		n    int
-	}
+	var cand [32]floatConstCandidate
 	nCand := 0
 	r := wasm.NewReader(code)
 	var imm wasm.InstructionImmediate
@@ -329,6 +325,12 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	}
 	if bestN >= 2*firstN {
 		choice = best
+	} else if floatConstSlotRankingEnabled {
+		previous := choice
+		choice = rankSingleFloatConstReplacement(cand[:nCand], choice, best)
+		if choice != previous {
+			f.stats.peep("fp-cache-slot-ranking")
+		}
 	}
 	oldSuppress := f.suppressFloatLiteral
 	f.suppressFloatLiteral = true
