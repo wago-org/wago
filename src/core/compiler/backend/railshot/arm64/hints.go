@@ -3,12 +3,15 @@
 package arm64
 
 import (
+	"os"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
+
+var blockEntryInitEnabled = os.Getenv("WAGO_ARM64_NO_BLOCK_ENTRY_INIT") != "1"
 
 func funcHintStorageBytes(hints []funcHints, sidecar funcHintSidecar) (headers, sidecars uint64) {
 	headers = uint64(cap(hints)) * uint64(unsafe.Sizeof(funcHints{}))
@@ -1194,7 +1197,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
 			s.h.flags.set(hintHasControlFlow)
-			s.entryPrefix = false
+			// Entering a block cannot skip its initial source instructions.
+			// Keep first-write facts through this unconditional prefix only;
+			// an actual branch, loop or conditional still ends it permanently.
+			if op != 0x02 || !blockEntryInitEnabled {
+				s.entryPrefix = false
+			}
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
 			s.h.noteControlDepth(depth + 1)
 			if loopDepth != 0 && op != 0x03 && encodedScalarMergeBlockType(s.r.Reader, s.m) {
