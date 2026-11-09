@@ -500,6 +500,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
 	bcKind, bcIdx := uint8(0), uint32(0)
+	bcBias := uint32(0)
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
 		bcKind, bcIdx = 1, uint32(e.st.idx)
@@ -509,6 +510,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		if local, ok := f.teeAddressLocal(e); ok {
 			bcKind, bcIdx = 1, local
 		}
+	}
+	if bcKind == 0 {
+		bcKind, bcIdx, bcBias = f.affineMemoryBoundsSource(e)
 	}
 	disp = 0
 	borrow = -1
@@ -547,7 +551,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		leaDisp = int32(off32) + int32(size)
 	} else if off32 != 0 {
 		// The adjusted address has no certificate for the original base.
-		bcKind, rangeExtent = 0, 0
+		bcKind, rangeExtent, bcBias = 0, 0, 0
 		t := f.allocReg(maskOf(ea))
 		f.a.MovImm64(t, uint64(off32))
 		f.a.Add64(ea, ea, t)
@@ -569,7 +573,12 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	// dropped at every flush/flushBelow (all calls + control joins), memory.grow,
 	// and a set of the certified source — so the proving check dominates this one
 	// on every path. WAGO_NO_BOUNDS_FACTS=1 forces every check (A/B + kill switch).
-	if f.boundsFacts && f.boundsCertCovers(bcKind, bcIdx, leaDisp) {
+	lookupExtent := int64(leaDisp) + int64(bcBias)
+	if lookupExtent > 0x7fffffff {
+		bcKind, bcBias = 0, 0
+		lookupExtent = int64(leaDisp)
+	}
+	if f.boundsFacts && f.boundsCertCovers(bcKind, bcIdx, int32(lookupExtent)) {
 		f.stats.addBoundsElidable()
 		if addressLoan {
 			f.pinned = addressPins
@@ -579,8 +588,13 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	if rangeExtent > leaDisp {
 		leaDisp = rangeExtent
 	}
-	certificateExtent := f.alignedAddressExtent(bcKind, bcIdx, leaDisp)
-	if certificateExtent > leaDisp {
+	baseExtent := int64(leaDisp) + int64(bcBias)
+	if baseExtent > 0x7fffffff {
+		bcKind, bcBias = 0, 0
+		baseExtent = int64(leaDisp)
+	}
+	certificateExtent := f.alignedAddressExtent(bcKind, bcIdx, int32(baseExtent))
+	if certificateExtent > int32(baseExtent) {
 		f.stats.peep("aligned-bounds-certificate")
 	}
 	f.boundsCertUpdate(bcKind, bcIdx, certificateExtent)
@@ -802,13 +816,20 @@ const maxStraightLineRangeOps = 4096
 // or potential trap ends the scan, preserving observable trap order.
 func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, extent int32) int32 {
 	scan := *r
+	start := scan.Offset()
+	extended := false
+	prevBias := uint32(0)
 	prevKind, prevIdx := uint8(0), uint32(0)
 	for n := 0; n < maxStraightLineRangeOps && scan.HasNext(); n++ {
+		if extended && (n >= 128 || scan.Offset()-start >= 512) {
+			return extent
+		}
 		op, err := scan.Byte()
 		if err != nil {
 			break
 		}
 		nextKind, nextIdx := uint8(0), uint32(0)
+		nextBias := uint32(0)
 		switch {
 		case op == 0x20:
 			x, err := scan.U32()
@@ -816,12 +837,26 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 				return extent
 			}
 			nextKind, nextIdx = 1, x
+			if floatLoadSpanEnabled && kind == 1 && x == idx {
+				if d, ok := f.peekPositiveLoadOffset(&scan); ok {
+					nextBias = d
+					extended = true
+					n += 2
+				}
+			}
 		case op == 0x23:
 			x, err := scan.U32()
 			if err != nil {
 				return extent
 			}
 			nextKind, nextIdx = 2, x
+			if floatLoadSpanEnabled && kind == 2 && x == idx {
+				if d, ok := f.peekPositiveLoadOffset(&scan); ok {
+					nextBias = d
+					extended = true
+					n += 2
+				}
+			}
 		case op == 0x21 || op == 0x22:
 			x, err := scan.U32()
 			if err != nil || kind == 1 && x == idx {
@@ -845,13 +880,18 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 				return extent
 			}
 			if prevKind == kind && prevIdx == idx {
-				candidate := int64(off) + int64(size)
+				candidate := int64(prevBias) + int64(off) + int64(size)
 				if candidate > 0x7fffffff {
 					return extent
 				}
 				if int32(candidate) > extent {
 					extent = int32(candidate)
 				}
+			}
+		case floatLoadSpanEnabled && (op == 0x43 || op == 0x44 || op >= 0x8b && op <= 0xa6 || op >= 0xb2 && op <= 0xbf):
+			extended = true
+			if err := skipImmediates(&scan, op); err != nil {
+				return extent
 			}
 		case op == 0x01 || op == 0x1a || op == 0x1b,
 			op == 0x41 || op == 0x42,
@@ -865,7 +905,7 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 		default:
 			return extent
 		}
-		prevKind, prevIdx = nextKind, nextIdx
+		prevKind, prevIdx, prevBias = nextKind, nextIdx, nextBias
 	}
 	return extent
 }
