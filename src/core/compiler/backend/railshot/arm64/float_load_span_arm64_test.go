@@ -136,3 +136,32 @@ func TestFloatLoadSpanMemoryAndPartialTraps(t *testing.T) {
 		}
 	}
 }
+
+func TestFloatLoadSpanEmitsSharedProof(t *testing.T) {
+	old := floatLoadSpanEnabled
+	defer func() { floatLoadSpanEnabled = old }()
+	body := []byte{0, 0x20, 0, 0x2b, 0, 0, 0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0xa0, 0x20, 0, 0x41, 0xc0, 0, 0x6a, 0x2b, 0, 0, 0xa0, 0x0b}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.F64}, body)
+	m.Memories[0].Limits.Max = 36
+	m.Memories[0].Limits.HasMax = true
+	images := make([][]byte, 2)
+	for i, on := range []bool{false, true} {
+		floatLoadSpanEnabled = on
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"memory-min-bounds": false}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		images[i] = append([]byte{}, cm.Code...)
+		cm.CodeImage.Close()
+		if diagnosticsEnabled {
+			t.Logf("on%v checks%d peepholes%v", on, stats.Funcs[0].BoundsChecks, stats.Funcs[0].Peephole)
+			if on && stats.Funcs[0].BoundsChecks != 1 {
+				t.Fatal("shared span did not remove the second check")
+			}
+		}
+	}
+	if bytes.Equal(images[0], images[1]) {
+		t.Fatal("floating span did not change native checks")
+	}
+}

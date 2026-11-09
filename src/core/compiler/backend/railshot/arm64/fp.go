@@ -972,7 +972,11 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, 0, f.guardMode)
+	rangeExtent := int32(0)
+	if floatLoadSpanEnabled {
+		rangeExtent = f.loadRangeExtent(r, off, size)
+	}
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent, f.guardMode)
 	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow, aliasLocal))
 	if eaOwned {
 		f.regUser[ea] = e

@@ -482,6 +482,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	}
 	off32 := uint32(off)
 	addressPins := f.pinned
+	affineKind, affineIdx, affineBias := f.affineMemoryBoundsSource(f.s.back())
 	var e *elem
 	addressLoan := false
 	if f.opt(optRegionalMemoryRead) && len(f.intervalLast) != 0 && aliasPinned && int64(off32)+int64(size) <= 0x7fffffff {
@@ -499,8 +500,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	// Bounds-certificate source: the address's stable value carrier (a local or
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
-	bcKind, bcIdx := uint8(0), uint32(0)
-	bcBias := uint32(0)
+	bcKind, bcIdx, bcBias := affineKind, affineIdx, affineBias
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
 		bcKind, bcIdx = 1, uint32(e.st.idx)
@@ -510,9 +510,6 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		if local, ok := f.teeAddressLocal(e); ok {
 			bcKind, bcIdx = 1, local
 		}
-	}
-	if bcKind == 0 {
-		bcKind, bcIdx, bcBias = f.affineMemoryBoundsSource(e)
 	}
 	disp = 0
 	borrow = -1
@@ -1030,6 +1027,21 @@ func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
 	return false // not inside a loop
 }
 
+// loadRangeExtent shares the read-only span proof between integer and floating loads.
+func (f *fn) loadRangeExtent(r *wasm.Reader, off uint64, size int) int32 {
+	rangeExtent := int32(0)
+	if f.boundsFacts && !f.guardMode && !f.threadedMemory0 && !f.memoryAddr64(0) && int64(off)+int64(size) <= 0x7fffffff {
+		if top := f.s.back(); top != nil && top.elemKind() == ekValue {
+			kind, idx := boundsSource(top.st)
+			currentExtent := int32(off) + int32(size)
+			if kind != 0 && !f.boundsCertCovers(kind, idx, currentExtent) {
+				rangeExtent = f.straightLineLoadExtent(r, kind, idx, currentExtent)
+			}
+		}
+	}
+	return rangeExtent
+}
+
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
 // wide selects an i64 result (so signed sub-width loads extend to all 64 bits).
 func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
@@ -1055,16 +1067,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		return nil
 	}
 	f.invalidateStoreForward()
-	rangeExtent := int32(0)
-	if f.boundsFacts && !f.guardMode && !f.threadedMemory0 && !f.memoryAddr64(0) && int64(off)+int64(size) <= 0x7fffffff {
-		if top := f.s.back(); top != nil && top.elemKind() == ekValue {
-			kind, idx := boundsSource(top.st)
-			currentExtent := int32(off) + int32(size)
-			if kind != 0 && !f.boundsCertCovers(kind, idx, currentExtent) {
-				rangeExtent = f.straightLineLoadExtent(r, kind, idx, currentExtent)
-			}
-		}
-	}
+	rangeExtent := f.loadRangeExtent(r, off, size)
 	// The address may read a pinned local's register in place (WARP
 	// liftToRegInPlace): the deferred load records the borrow so a local.set of
 	// that local realizes the load first, and consumers neither write nor
