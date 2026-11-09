@@ -6,6 +6,8 @@ import "os"
 
 var ordinaryShiftedImmediateEnabled = os.Getenv("WAGO_ARM64_NO_ORDINARY_SHIFTED_IMMEDIATE") != "1" && os.Getenv("WAGO_ARM64_EXPERIMENT_ORDINARY_SHIFTED_IMMEDIATE") != "0"
 
+var shiftedALUComparePaddingEnabled = os.Getenv("WAGO_ARM64_NO_SHIFTED_ALU_COMPARE_PADDING") != "1"
+
 var shiftedALUImmediatePad = os.Getenv("WAGO_ARM64_PAD_SHIFTED_ALU_IMMEDIATE") == "1"
 
 var shiftedALUImmediateEnabled = os.Getenv("WAGO_ARM64_NO_SHIFTED_ALU_IMMEDIATE") != "1"

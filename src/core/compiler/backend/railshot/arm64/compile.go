@@ -186,6 +186,7 @@ type fn struct {
 	remainderZeroLoopDepth  uint16
 	remainderZeroLoopWrites uint64
 	floatStoreWork          uint16
+	shiftedALUShortEnd      int
 	integerResidualWork     uint16
 	scopedConstWork         uint16
 	loopLocalLeaseWork      uint16

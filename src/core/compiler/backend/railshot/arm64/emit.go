@@ -1705,6 +1705,7 @@ func (f *fn) aluImm3(op wOp, dest, left Reg, cval int64, w bool) bool {
 			displacement = -displacement
 		}
 		f.addDisp(dest, left, displacement, w)
+		f.shiftedALUShortEnd = f.a.Len()
 		// Experimental one-word padding isolates instruction-layout effects;
 		// it is not a profitability policy for the ordinary compiler.
 		if shiftedALUImmediatePad && !f.policy.CompactNative {
@@ -1841,8 +1842,20 @@ func (f *fn) mulRR(dest, src Reg, w bool) {
 	}
 }
 
+// Keep an immediately following compare away from the last word of a
+// sixteen-byte block after a shorter arithmetic cover. This bounded emitter
+// hint expires as soon as any other instruction is emitted.
+func (f *fn) padCompareAfterShortALU() {
+	if shiftedALUComparePaddingEnabled && !f.policy.CompactNative &&
+		f.a.Len() == f.shiftedALUShortEnd && f.a.Len()&15 == 12 {
+		f.a.Nop()
+		f.stats.peep("short-alu-compare-padding")
+	}
+}
+
 // cmpRR emits a register-register compare of the correct width (SUBS XZR,x,y).
 func (f *fn) cmpRR(x, y Reg, w bool) {
+	f.padCompareAfterShortALU()
 	if w {
 		f.a.CmpReg64(x, y)
 	} else {
@@ -1870,6 +1883,7 @@ func (f *fn) cmpConst(x Reg, st storage, wide bool) {
 
 // cmpImm emits a compare against a small unsigned 12-bit immediate (SUBS XZR,x,#imm).
 func (f *fn) cmpImm(x Reg, imm uint32, w bool) {
+	f.padCompareAfterShortALU()
 	if w {
 		f.a.CmpImm64(x, imm)
 	} else {
@@ -1881,6 +1895,7 @@ func (f *fn) cmpImm(x Reg, imm uint32, w bool) {
 // CMN (compare-negative, ADDS XZR,x,#|v|) so the flags match `cmp x,#v`. The caller
 // must have gated on fitsAddSubImmediate.
 func (f *fn) cmpImmS(x Reg, cval int64, w bool) {
+	f.padCompareAfterShortALU()
 	if f.shiftedAddSubImmediate(cval) {
 		magnitude := cval
 		if magnitude < 0 {

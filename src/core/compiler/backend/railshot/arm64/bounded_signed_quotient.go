@@ -89,6 +89,7 @@ func (f *fn) tryBoundedSignedQuotient(reader *wasm.Reader) bool {
 	// For d>0 and lo<=0<=hi, widened i32 products cannot overflow i64.
 	// Unsigned(n-lo*d) < (hi-lo)*d proves the ordinary quotient is in range.
 	// Outside this interval, the sign of n selects the exact saturation bound.
+	f.padCompareAfterShortALU()
 	f.a.CmpImm32(divisor, 0)
 	nonPositive := f.a.Bcond(condLE)
 	f.a.Sxtw(u, dividend)
