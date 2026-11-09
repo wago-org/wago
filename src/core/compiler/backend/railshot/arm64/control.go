@@ -1537,6 +1537,12 @@ func (f *fn) alignLoopHeader() {
 		// the phase chosen for the uncached four-instruction poll.
 		loopAlign = 5
 	}
+	// Check sharing can shorten an earlier initialization loop without changing
+	// the instructions of a later hot loop. Give those later headers a full
+	// fetch boundary instead of inheriting an arbitrary half-boundary phase.
+	if f.affineBoundsLayout && loopAlign < 5 {
+		loopAlign = 5
+	}
 	f.loopSeedSite = 0
 	if f.alignCode(loopAlign) >= 4 {
 		f.loopSeedSite = f.a.Len()

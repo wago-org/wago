@@ -576,6 +576,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		lookupExtent = int64(leaDisp)
 	}
 	if f.boundsFacts && f.boundsCertCovers(bcKind, bcIdx, int32(lookupExtent)) {
+		if bcBias != 0 {
+			f.affineBoundsLayout = true
+		}
 		f.stats.addBoundsElidable()
 		if addressLoan {
 			f.pinned = addressPins
