@@ -4,7 +4,9 @@ package arm64
 
 import (
 	"bytes"
+	"encoding/binary"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 )
 
@@ -20,6 +22,56 @@ func loopLocalLeaseFixture(t testing.TB) *wasm.Module {
 		t.Fatal(err)
 	}
 	return m
+}
+
+func TestLoopLocalLeaseMemoryAndTrapPrefix(t *testing.T) {
+	old := loopLocalLeaseEnabled
+	defer func() { loopLocalLeaseEnabled = old }()
+	b := []byte{2, 67, 0x7f, 6, 0x7e, 0x20, 0, 0x21, 3, 0x02, 0x40, 0x20, 0, 0x45, 0x0d, 0, 0x03, 0x40}
+	for i := byte(0); i < 6; i++ {
+		if i == 1 {
+			b = append(b, 0x20, 1)
+		} else {
+			b = append(b, 0x41)
+			b = append(b, wasmtest.SLEB32(int32(i)*8)...)
+		}
+		b = append(b, 0x20, 69+i, 0x20, 3, 0xad, 0x7c, 0x22, 69+i, 0x37, 0, 0)
+	}
+	b = append(b, 0x20, 3, 0x41, 1, 0x6b, 0x22, 3, 0x0d, 0, 0x0b, 0x0b)
+	for i := byte(0); i < 6; i++ {
+		b = append(b, 0x41)
+		b = append(b, wasmtest.SLEB32(64+int32(i)*8)...)
+		b = append(b, 0x20, 69+i, 0x37, 0, 0)
+	}
+	b = append(b, 0x41, 0, 0x0b)
+	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, b)
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	for _, on := range []bool{false, true} {
+		loopLocalLeaseEnabled = on
+		for _, compact := range []bool{false, true} {
+			for _, n := range []uint64{0, 1, 2, 3, 7, 16, 127} {
+				for _, address := range []uint64{8, 65536} {
+					want := make([]byte, 65536)
+					traps := n != 0 && address == 65536
+					if traps {
+						binary.LittleEndian.PutUint64(want, n)
+					} else {
+						v := n * (n + 1) / 2
+						for i := 0; i < 6; i++ {
+							binary.LittleEndian.PutUint64(want[i*8:], v)
+							binary.LittleEndian.PutUint64(want[64+i*8:], v)
+						}
+					}
+					got, err := runScalarUnrollMemory(t, m, CompileOptions{CompactNative: compact, Optimizations: map[string]bool{"wide-reuse-pins": false, "interval-region-pins": false}}, n, address)
+					if (err != nil) != traps || !bytes.Equal(got, want) {
+						t.Fatalf("on%v compact%v n%d address%d err%v expectedTrap%v memoryEqual%v", on, compact, n, address, err, traps, bytes.Equal(got, want))
+					}
+				}
+			}
+		}
+	}
 }
 
 func TestLoopLocalLeaseProbeBounds(t *testing.T) {

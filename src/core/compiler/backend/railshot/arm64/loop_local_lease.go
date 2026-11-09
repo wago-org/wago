@@ -14,8 +14,8 @@ var loopLocalLeaseEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_LOCAL_LEASE") != "1"
 type loopLocalLease struct {
 	depth uint32
 	count uint8
-	local [4]uint16
-	reg   [4]Reg
+	local [6]uint16
+	reg   [6]Reg
 }
 
 const loopLocalLeaseWorkLimit = 4096
@@ -78,6 +78,9 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 			f.classifier.ClassifyInto(&peek, op, &imm) != nil {
 			return plan, false
 		}
+		if imm.TouchesMemory && imm.MemIndex != 0 {
+			return plan, false
+		}
 		if op >= 0x20 && op <= 0x22 {
 			x := imm.Index
 			if uint64(x) >= uint64(len(f.localType)) || x > 65535 || (f.localType[x] != mtI32 && f.localType[x] != mtI64) {
@@ -111,7 +114,7 @@ func (f *fn) beginLoopLocalLease(r *wasm.Reader, fr *ctrlFrame) {
 	// Reserve through the existing allocator masks; never displace a live
 	// operand, immutable constant, memory base, global, or other reservation.
 	n := 0
-	for _, reg := range [...]Reg{X19, X20, X21, X22} {
+	for _, reg := range [...]Reg{X19, X20, X21, X22, X23, X27} {
 		if f.pinned.has(reg) || f.reserved.has(reg) || f.regUser[reg] != nil {
 			continue
 		}
