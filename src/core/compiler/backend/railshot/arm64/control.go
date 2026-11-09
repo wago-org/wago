@@ -3367,6 +3367,9 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.restoreBranchHandlers(fi)
 		f.branchJump(fr)
 	}
+	if f.tryBranchTableRuns(labels, def, ireg, emitCase) {
+		return nil
+	}
 	if f.canBranchVector(labels, def) {
 		f.emitBranchVector(labels, def, ireg, indexBounded && indexBound < n, emitCase)
 		return nil
