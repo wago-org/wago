@@ -1706,11 +1706,6 @@ func (f *fn) aluImm3(op wOp, dest, left Reg, cval int64, w bool) bool {
 		}
 		f.addDisp(dest, left, displacement, w)
 		f.shiftedALUShortEnd = f.a.Len()
-		// Experimental one-word padding isolates instruction-layout effects;
-		// it is not a profitability policy for the ordinary compiler.
-		if shiftedALUImmediatePad && !f.policy.CompactNative {
-			f.a.Nop()
-		}
 		return true
 	}
 	switch op {

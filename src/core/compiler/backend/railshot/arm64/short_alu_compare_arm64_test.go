@@ -9,12 +9,11 @@ import (
 )
 
 func TestShortALUCompareBranchAcrossLayouts(t *testing.T) {
-	old, oldPad, oldCover := shiftedALUComparePaddingEnabled, shiftedALUImmediatePad, shiftedALUImmediateEnabled
+	old, oldCover := shiftedALUComparePaddingEnabled, shiftedALUImmediateEnabled
 	defer func() {
-		shiftedALUComparePaddingEnabled, shiftedALUImmediatePad, shiftedALUImmediateEnabled = old, oldPad, oldCover
+		shiftedALUComparePaddingEnabled, shiftedALUImmediateEnabled = old, oldCover
 	}()
 	shiftedALUImmediateEnabled = true
-	shiftedALUImmediatePad = false
 	hits := 0
 	for _, wide := range []bool{false, true} {
 		typ, c, add, gt, xor := wasm.I32, byte(0x41), byte(0x6a), byte(0x4a), byte(0x73)
