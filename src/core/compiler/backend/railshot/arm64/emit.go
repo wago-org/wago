@@ -938,7 +938,11 @@ func (f *fn) leaScaled(dst, base, idx Reg, scale uint8, disp int32, w bool) {
 // is zero).
 func (f *fn) leaDisp(dst, base Reg, disp int32, w bool) {
 	if disp == 0 && !(w && base == SP) {
-		if dst != base {
+		if !w {
+			// Even an identity i32 addition produces a canonical W-register
+			// result. External parameter carriers can have nonzero upper bits.
+			f.a.MovReg32(dst, base)
+		} else if dst != base {
 			f.a.MovReg64(dst, base)
 		}
 		return
