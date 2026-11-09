@@ -21,10 +21,14 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 			for _, shiftOffset := range []byte{10, 11, 12} {
 				for _, count := range []int32{-1, 0, 1, 13, 31, 32, 63, 64} {
 					for _, shiftFirst := range []bool{false, true} {
-						for _, suffix := range []int{0, 1, 2, 3} {
+						for _, suffix := range []int{0, 1, 2, 3, 4} {
 							// The first x is a separate old-value capture. The two x operands in
 							// the pending shifted expression must also survive x's mutation.
-							body := []byte{0, 0x03, 0x7f - (c - 0x41), 0x20, 0, 0x20, 0}
+							body := []byte{0, 0x03, 0x7f - (c - 0x41), 0x20, 0}
+							if suffix == 4 {
+								body = append(body, 0x20, 1)
+							}
+							body = append(body, 0x20, 0)
 							if !shiftFirst {
 								body = append(body, 0x20, 0)
 							}
@@ -43,6 +47,9 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 							}
 							if suffix == 3 {
 								body = append(body, 0x20, 1, add+1)
+							}
+							if suffix == 4 {
+								body = append(body, add+1)
 							}
 							body = append(body, 0x20, 0, c, 1, add, 0x21, 0, add+9, 0x20, 0, add+9, 0x20, 1, add+9, 0x0b, 0x0b)
 							m := mod1(t, []wasm.ValType{typ, typ}, []wasm.ValType{typ}, body)
@@ -94,6 +101,9 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 									if suffix == 3 {
 										v -= other
 									}
+									if suffix == 4 {
+										v = other - v
+									}
 									want := v ^ a ^ (a + 1) ^ other
 									if !wide {
 										want = uint64(uint32(want))
@@ -111,6 +121,9 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 										n := stats.Funcs[0].Peephole["local-shift-snapshot"]
 										if !enabled && n != 0 {
 											t.Fatal("disabled cover selected")
+										}
+										if enabled && count == 13 && offset == 9 && suffix >= 3 && stats.Funcs[0].Peephole["local-shift-snapshot-consumer"] == 0 {
+											t.Fatal("concrete sibling consumer not captured")
 										}
 										hits += uint64(n)
 									}

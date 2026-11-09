@@ -65,7 +65,21 @@ func (f *fn) snapshotLocalShiftedBinary(first *elem, local int) *elem {
 suffix:
 	for i := 0; i < 2; i++ {
 		operand := f.s.next(root)
-		if operand == f.s.head || operand.elemKind() != ekValue || operand.st.typ != root.st.typ {
+		parent := operand
+		if parent != f.s.head && parent.isDeferred() && f.s.arg1(parent) == root {
+			// A concrete left sibling precedes this captured block physically.
+			// Preserve its source operand order, including SUB and shifts.
+			operand = f.s.arg0(parent)
+		} else {
+			if operand == f.s.head || operand.elemKind() != ekValue {
+				break
+			}
+			parent = f.s.next(operand)
+			if parent == f.s.head || !parent.isDeferred() || f.s.arg0(parent) != root || f.s.arg1(parent) != operand {
+				break
+			}
+		}
+		if operand == nil || operand.elemKind() != ekValue || operand.st.typ != root.st.typ || parent.st.typ != root.st.typ {
 			break
 		}
 		switch operand.st.kind {
@@ -73,13 +87,11 @@ suffix:
 		default:
 			break suffix
 		}
-		parent := f.s.next(operand)
-		if parent == f.s.head || !parent.isDeferred() || parent.st.typ != root.st.typ || f.s.arg0(parent) != root || f.s.arg1(parent) != operand {
-			break
-		}
+
 		switch parent.deferredOp() {
 		case opAdd, opSub, opMul, opAnd, opOr, opXor, opShl, opShrU, opShrS:
 			root = parent
+			f.stats.peep("local-shift-snapshot-consumer")
 		default:
 			break suffix
 		}
