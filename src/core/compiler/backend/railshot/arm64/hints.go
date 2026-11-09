@@ -1058,7 +1058,13 @@ func loopIntConstNeedsRegister(next byte, bits int64, typ uint8) bool {
 	switch next {
 	case 0x6c, 0x7e: // i32/i64.mul have no immediate form.
 		return true
-	case 0x6a, 0x6b, 0x7c, 0x7d: // add/sub admit a signed +/- 12-bit magnitude.
+	case 0x6a, 0x6b, 0x7c, 0x7d:
+		// A shifted imm12 can fold into an address or borrowed-local add.
+		// Do not let these cheap displacements crowd multiword literals out
+		// of the bounded hint list and its scarce immutable registers.
+		if shiftedImmediateHintFilterEnabled && shiftedAddSubImmediateEnabled && ordinaryShiftedImmediateEnabled && fitsShiftedAddSubImmediate(bits) {
+			return false
+		}
 		return bits < -0xfff || bits > 0xfff
 	case 0x71, 0x72, 0x73: // i32 and/or/xor logical immediate.
 		return typ == 1 && !a64.LogicalImmediate32(uint32(bits))
