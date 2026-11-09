@@ -9,6 +9,8 @@ import (
 
 // Immutable leases exist only inside proven call-free loops. The process
 // default is opt-in; the per-compilation policy owns each selected state.
+var wideScopedLoopConstsEnabled = os.Getenv("WAGO_ARM64_NO_WIDE_SCOPED_CONST") != "1"
+
 var scopedLoopConstsEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_SCOPED_LOOP_CONST") != "0"
 
 // Keep only the lease metadata in compiler scratch state. A pointer
@@ -29,11 +31,12 @@ type scopedLoopConstUses struct {
 	hints   *scopedLoopConstHints
 	mask    uint8
 	blocked bool
+	work    *uint16
 }
 
 func (f *fn) scopedLoopConstUses() (scopedLoopConstUses, bool) {
 	h := &f.scopedConstHints
-	if h.loopIntConstCount == 0 || !f.opt(optLoopIntConst) || f.interruptible || f.moduleEH || len(f.customInstructions) != 0 || h.flags.has(hintMutatesTable) || f.m != nil && len(f.m.Tables) != 0 {
+	if h.loopIntConstCount == 0 || !f.opt(optLoopIntConst) || f.interruptible || f.moduleEH || len(f.customInstructions) != 0 || h.flags.has(hintMutatesTable) || !wideScopedLoopConstsEnabled && f.m != nil && len(f.m.Tables) != 0 {
 		return scopedLoopConstUses{}, false
 	}
 	return scopedLoopConstUses{hints: h}, true
@@ -132,5 +135,16 @@ func (f *fn) releaseScopedLoopConsts(base uint8) {
 	f.iconstN = base
 	if f.intervalControl {
 		f.intervalRegLimit = f.currentIntervalRegLimit()
+	}
+}
+
+// Table helpers are a boundary even when the selected loop otherwise makes no
+// calls. A module's unused tables do not require rejecting a pure numeric loop.
+func scopedConstTableBarrier(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableSize, wasm.InstrTableGrow, wasm.InstrTableInit, wasm.InstrTableCopy, wasm.InstrTableFill, wasm.InstrElemDrop:
+		return true
+	default:
+		return false
 	}
 }

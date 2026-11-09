@@ -1561,6 +1561,14 @@ func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifi
 	var lowLocals uint64
 	var imm wasm.InstructionImmediate
 	for {
+		// New probes in wide, unpinned functions share the bounded planner's
+		// work budget and inspect at most one short source window.
+		if uses != nil && uses.work != nil {
+			if r.Offset()-start >= 512 || *uses.work >= integerResidualWorkLimit {
+				return nil, true
+			}
+			(*uses.work)++
+		}
 		op, err := r.Byte()
 		if err != nil {
 			return nil, true
@@ -1594,7 +1602,7 @@ func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifi
 		} else if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return nil, true
 		}
-		if uses != nil && usesBulkScratch(imm.Kind) {
+		if uses != nil && (usesBulkScratch(imm.Kind) || wideScopedLoopConstsEnabled && scopedConstTableBarrier(imm.Kind)) {
 			uses.blocked = true
 			uses.mask = 0
 		}
@@ -1740,11 +1748,15 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 	}
 
-	if kind == cfLoop && !f.unreachable && ((diagnosticsEnabled && f.stats != nil) || f.usesCalls && (f.pinnedLocalMask != 0 || f.fpinnedLocalMask != 0)) {
+	wideConstProbe := wideScopedLoopConstsEnabled && f.nLocals > 64 && f.scopedConstHints.loopIntConstCount != 0 && f.integerResidualWork < integerResidualWorkLimit
+	if kind == cfLoop && !f.unreachable && ((diagnosticsEnabled && f.stats != nil) || f.usesCalls && (f.pinnedLocalMask != 0 || f.fpinnedLocalMask != 0 || wideConstProbe)) {
 		base := len(f.loopSetLocals)
 		uses, collectConsts := f.scopedLoopConstUses()
 		var collect *scopedLoopConstUses
 		if collectConsts {
+			if wideConstProbe && f.pinnedLocalMask == 0 && f.fpinnedLocalMask == 0 {
+				uses.work = &f.integerResidualWork
+			}
 			collect = &uses
 		}
 		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals, collect)
