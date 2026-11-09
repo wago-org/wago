@@ -176,6 +176,11 @@ func TestLinearLoadSpanMemoryAliasesAndPartialTraps(t *testing.T) {
 
 func runLinearSpanMemory(t *testing.T, m *wasm.Module, opts CompileOptions, initial []byte, argsIn ...uint64) ([]byte, error) {
 	t.Helper()
+	return runLinearSpanMemorySize(t, m, opts, 65536, initial, argsIn...)
+}
+
+func runLinearSpanMemorySize(t *testing.T, m *wasm.Module, opts CompileOptions, memoryBytes int, initial []byte, argsIn ...uint64) ([]byte, error) {
+	t.Helper()
 	cm, err := CompileModuleWith(m, opts)
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +191,7 @@ func runLinearSpanMemory(t *testing.T, m *wasm.Module, opts CompileOptions, init
 		t.Fatal(err)
 	}
 	defer eng.Close()
-	jm, err := rt.NewJobMemory(65536)
+	jm, err := rt.NewJobMemory(memoryBytes)
 	if err != nil {
 		t.Fatal(err)
 	}

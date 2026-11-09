@@ -12,6 +12,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+var directByteBoundsEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_BYTE_BOUNDS") != "1"
+
 var wideZeroStoreEnabled = os.Getenv("WAGO_ARM64_NO_WIDE_ZERO_STORE") != "1"
 
 // memAccessSize returns the byte width of a plain scalar memory instruction.
@@ -620,8 +622,15 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		}
 		return ea, eaOwned, borrow, disp
 	}
-	t := f.allocReg(0)
-	f.leaDisp(t, ea, leaDisp, true) // t = ea + off + size
+	// A one-byte extent is in bounds exactly when its canonical effective
+	// address is below the byte length, including zero-length memory. Memory32
+	// address/offset addition above is widened and cannot overflow uint64.
+	directByte := directByteBoundsEnabled && leaDisp == 1
+	t := ea
+	if !directByte {
+		t = f.allocReg(0)
+		f.leaDisp(t, ea, leaDisp, true) // t = ea + off + size
+	}
 	if f.memSizeReg != regNone {
 		f.cmpRR(t, f.memSizeReg, true) // memBytes lives in a register (WARP REGS::memSize)
 	} else {
@@ -630,8 +639,15 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		f.cmpRR(t, mb, true)
 		f.release(mb)
 	}
-	f.trapIf(condA, trapMemOOB) // out of bounds when ea+off+size > memBytes
-	f.release(t)
+	if directByte {
+		f.trapIf(condAE, trapMemOOB) // out of bounds when ea >= memBytes
+		f.stats.peep("direct-byte-bounds")
+		// Account for the removed hot ADD in the function's cold padding.
+		f.phasePadWords++
+	} else {
+		f.trapIf(condA, trapMemOOB) // ea+off+size > memBytes
+		f.release(t)
+	}
 	f.pinned = f.pinned.remove(ea)
 	if addressLoan {
 		f.pinned = addressPins
