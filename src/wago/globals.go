@@ -1480,6 +1480,9 @@ type validateMemo struct {
 	// executionManagedStorage caches the managed-storage classification of the
 	// execution view only: 0 unknown, 1 absent, 2 present. Atomic access.
 	executionManagedStorage uint32
+	// executionTypesClosed caches definedTypesClosed(execution.Types) in the
+	// same encoding. Atomic access.
+	executionTypesClosed uint32
 	// rv64FreshRootedGC is a process-local compiler receipt. It is never encoded;
 	// loaded artifacts therefore remain fail-closed until generic RV64 images
 	// gain a persisted machine-code authenticator.

@@ -372,7 +372,7 @@ func (in *Instance) managedFunctionTypedValue(kind gc.StorageKind, want ValueTyp
 	if !ok {
 		actual, types, ok = instanceFuncrefExactType(managedFunctionDescriptorOwner(in, bits), bits)
 	}
-	if !ok || !valueTypeSubtype(actual, types, want, in.c.Types) {
+	if !ok || !in.c.executionValueTypeSubtype(actual, types, want) {
 		panic(gcHelperFailuref("function aggregate value has incompatible exact type"))
 	}
 	return gc.Value{Kind: kind, Bits: bits}
