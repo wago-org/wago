@@ -51,8 +51,11 @@ func TestOwnedResultSinkPreservesCapturedLocals(t *testing.T) {
 					if err != nil || got != want {
 						t.Fatalf("wide=%v op=%x enabled=%v args=%x got=%x want=%x err=%v", wide, add+offset, enabled, args, got, want, err)
 					}
-					if diagnosticsEnabled && enabled {
-						t.Logf("wide=%v op=%x peepholes=%v", wide, add+offset, stats.Funcs[0].Peephole)
+					if diagnosticsEnabled {
+						hits := stats.Funcs[0].Peephole["owned-result-sink"]
+						if !enabled && hits != 0 || enabled && ownedResultSinkEnabled && offset == 9 && hits == 0 {
+							t.Fatalf("cover selection mismatch: wide=%v op=%x enabled=%v hits=%d", wide, add+offset, enabled, hits)
+						}
 					}
 				}
 			}
