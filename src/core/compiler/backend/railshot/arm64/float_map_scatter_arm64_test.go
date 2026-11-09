@@ -166,7 +166,7 @@ func TestFloatMapScatterMemoryTrapsAndExits(t *testing.T) {
 	for fixture := 0; fixture < 192; fixture++ {
 		stride := []uint32{16, 24, 40, 64, 640}[fixture%5]
 		count := []uint32{2, 4, 6, 10, 16, 18, 24, 30, 34}[fixture%9]
-		src := []uint32{0, 8, 4096, 8192, 0xfffffff8}[fixture%5]
+		src := []uint32{0, 8, 4096, 8192, 0xfffffff8}[(fixture/5)%5]
 		dst := []uint32{0, 1, 8, 24, src, src + 4, src + 8, src + stride, src + stride - 4, 65520, 0xffffff80}[fixture%11]
 		start := []uint32{0, 0, 0, 8, 24, 128}[fixture%6]
 		coefficient := uint32(60000)
@@ -207,7 +207,7 @@ func TestFloatMapScatterF32MemoryAndExits(t *testing.T) {
 	for fixture := 0; fixture < 96; fixture++ {
 		stride := []uint32{8, 12, 20, 32, 320}[fixture%5]
 		count := []uint32{2, 4, 6, 10, 16, 18, 24, 30, 34}[fixture%9]
-		src := []uint32{0, 4, 4096, 8192, 0xfffffffc}[fixture%5]
+		src := []uint32{0, 4, 4096, 8192, 0xfffffffc}[(fixture/5)%5]
 		dst := []uint32{0, 1, 4, 12, src, src + 2, src + 4, src + stride, src + stride - 2, 65528, 0xffffff80}[fixture%11]
 		start := []uint32{0, 0, 0, 4, 12, 128}[fixture%6]
 		coefficient := uint32(60000)
@@ -227,11 +227,49 @@ func TestFloatMapScatterF32MemoryAndExits(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestFloatMapScatterF32Admission(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	for _, stride := range []uint32{8, 12, 20, 32, 320} {
 		stats := compileWithStats(t, scatterFixtureTyped(t, 4, 0, 60000, 0, stride, 34, false), false).Funcs[0]
 		if stats.Peephole["float-map-scatter-vector"] != 1 {
 			t.Fatalf("f32 stride%d rejected: %v", stride, stats.Peephole)
+		}
+	}
+}
+
+// Keep a terminating, in-bounds interleaved case for every target stride and
+// scalar width, independent of the adversarial fixture parameter cycles.
+func TestFloatMapScatterEveryStrideExecutes(t *testing.T) {
+	old := floatMapScatterEnabled
+	defer func() { floatMapScatterEnabled = old }()
+	for _, wide := range []bool{false, true} {
+		width := uint32(4)
+		if wide {
+			width = 8
+		}
+		for _, scale := range []uint32{2, 3, 5, 8, 80} {
+			stride := width * scale
+			for _, phase := range []uint32{0, width, stride - width} {
+				for _, count := range []uint32{2, 6, 18, 34} {
+					dst, src := uint32(256)+phase, uint32(256)
+					m := scatterFixtureTyped(t, dst, src, 60000, 0, stride, count, wide)
+					want, trap := scatterOracleTyped(dst, src, 60000, 0, stride, count, wide)
+					if trap {
+						t.Fatal("invalid positive fixture")
+					}
+					for _, on := range []bool{false, true} {
+						floatMapScatterEnabled = on
+						for _, compact := range []bool{false, true} {
+							got, err := runScalarUnrollMemory(t, m, CompileOptions{CompactNative: compact})
+							if err != nil || !bytes.Equal(got, want) {
+								t.Fatalf("wide%v scale%d phase%d count%d on%v compact%v err%v equal%v", wide, scale, phase, count, on, compact, err, bytes.Equal(got, want))
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 }
