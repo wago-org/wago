@@ -49,6 +49,8 @@ type floatMapPlan struct {
 	counter, result, dest, count int
 	step, limit, packet          uint32
 	counterScale                 uint32 // physical source bytes per logical packet byte
+	scatterBudget                int
+	scatterCandidate             bool
 	destOffset                   uint64
 	wide                         bool
 	integer                      bool
@@ -76,6 +78,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 	p.normalizedInduction = p.integer
 	p.spanScale = 1
 	p.counterScale = 1
+	p.scatterBudget = integerResidualWorkLimit - int(f.integerResidualWork)
 	p.limitLocal = -1
 	p.workLimit = integerLoadMapWorkLimit - int(f.integerLoadMapWork)
 	scan := *source
@@ -500,11 +503,16 @@ func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	p, ok := f.inspectFloatMapLoop(source)
 	defer func() {
+		if p.scatterCandidate {
+			// Share the bounded integer-analysis budget without adding another
+			// field to every compiler function or changing ordinary map admission.
+			f.integerResidualWork = uint16(min(integerResidualWorkLimit, int(f.integerResidualWork)+p.work))
+		}
 		if p.integer {
 			f.integerLoadMapWork = uint16(min(integerLoadMapWorkLimit, int(f.integerLoadMapWork)+p.work))
 		}
 	}()
-	if !ok {
+	if !ok || p.counterScale > 1 && f.a.Len() > 64<<10 {
 		return
 	}
 	// Deeply nested copy-only loops often move a handful of words, and even
@@ -1422,9 +1430,11 @@ func (p *floatMapPlan) finishFloatInduction(condition, ns int, initialRead []boo
 			return false
 		}
 		scale = uint32(stride.bits / uint64(step))
-		if scale <= 1 || scale > 1<<16 || p.limit == 0 || p.limit%scale != 0 {
+		if scale <= 1 || scale > 1<<16 || p.limit == 0 || p.limit%scale != 0 || p.scatterBudget <= p.work {
 			return false
 		}
+		p.scatterCandidate = true
+		p.workLimit = min(p.workLimit, p.scatterBudget)
 	}
 	p.counter, p.step = local.a, step
 	p.packet = floatMapPacketWidth(p.step)
@@ -1435,6 +1445,9 @@ func (p *floatMapPlan) finishFloatInduction(condition, ns int, initialRead []boo
 		return false
 	}
 	for i, cell := range p.locals[:p.localN] {
+		if scale > 1 && !p.spend() {
+			return false
+		}
 		if cell.Written && initialRead[i] && int(cell.Index) != p.counter {
 			return false
 		}

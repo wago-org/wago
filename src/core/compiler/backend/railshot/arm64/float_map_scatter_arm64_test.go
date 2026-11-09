@@ -273,3 +273,27 @@ func TestFloatMapScatterEveryStrideExecutes(t *testing.T) {
 		}
 	}
 }
+
+func TestFloatMapScatterBudgetKeepsOrdinaryMaps(t *testing.T) {
+	probe := fn{nLocals: 6, localType: []machineType{mtI32, mtI32, mtI32, mtI32, mtI32, mtF64}}
+	for _, exhausted := range []bool{false, true} {
+		for _, stride := range []uint32{8, 640} {
+			probe.integerResidualWork = 0
+			if exhausted {
+				probe.integerResidualWork = integerResidualWorkLimit
+			}
+			m := scatterFixture(t, 8, 0, 60000, 0, stride, 34)
+			body := m.Code[0].BodyBytes
+			at := bytes.LastIndex(body, []byte{0x03, 0x40})
+			r := wasm.ReaderFrom(body[at+2:])
+			p, ok := probe.inspectFloatMapLoop(&r)
+			want := stride == 8 || !exhausted
+			if ok != want || r.Offset() != 0 {
+				t.Fatalf("stride%d exhausted%v accepted%v sourceOffset%d", stride, exhausted, ok, r.Offset())
+			}
+			if ok && stride > 8 && (!p.scatterCandidate || p.work > p.scatterBudget) {
+				t.Fatal("scatter analysis escaped its remaining budget")
+			}
+		}
+	}
+}
