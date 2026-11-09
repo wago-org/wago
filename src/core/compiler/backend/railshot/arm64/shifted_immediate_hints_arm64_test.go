@@ -45,16 +45,49 @@ func TestShiftedImmediateHintsPreserveCostlyCandidates(t *testing.T) {
 			shiftedImmediateHintFilterEnabled = true
 			for _, op := range []byte{0x6a, 0x6b, 0x7c, 0x7d} {
 				for _, v := range []int64{4096, -4096, 0xfff000, -0xfff000} {
-					if got := loopIntConstNeedsRegister(op, v, 1); got == (shift && ordinary) {
+					if got := discountShiftedImmediateHint(op, v); got != (shift && ordinary) {
 						t.Fatalf("op%x value%d shift%v ordinary%v needed%v", op, v, shift, ordinary, got)
 					}
 				}
 				for _, v := range []int64{4097, -4097, 0x1000000, -1 << 63} {
-					if !loopIntConstNeedsRegister(op, v, 2) {
+					if discountShiftedImmediateHint(op, v) {
 						t.Fatalf("unencodable value%d lost", v)
 					}
 				}
 			}
 		}
+	}
+}
+
+func TestShiftedImmediateHintsKeepDiscoveryFrontierAndMixedUses(t *testing.T) {
+	oldFilter, oldShift, oldOrdinary := shiftedImmediateHintFilterEnabled, shiftedAddSubImmediateEnabled, ordinaryShiftedImmediateEnabled
+	t.Cleanup(func() {
+		shiftedImmediateHintFilterEnabled, shiftedAddSubImmediateEnabled, ordinaryShiftedImmediateEnabled = oldFilter, oldShift, oldOrdinary
+	})
+	shiftedImmediateHintFilterEnabled, shiftedAddSubImmediateEnabled, ordinaryShiftedImmediateEnabled = true, true, true
+	body := []byte{0x03, 0x40}
+	for i := int32(1); i <= 7; i++ {
+		body = appendI32Const(body, i*4096, 0x6a)
+	}
+	body = appendI32Const(body, -2048144789, 0x6c)
+	body = appendI32Const(body, 0x12345678, 0x6c) // beyond the unchanged eight-candidate frontier
+	body = append(body, 0x0b, 0x0b)
+	h, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.loopIntConstCount != 1 || h.loopIntConst[0] != -2048144789 {
+		t.Fatalf("discovery frontier changed: count%d constants%v", h.loopIntConstCount, h.loopIntConst)
+	}
+	body = []byte{0x03, 0x40}
+	body = appendI32Const(body, 0x50000, 0x6a)
+	body = appendI32Const(body, 0x50000, 0x6c)
+	body = append(body, 0x0b, 0x0b)
+	h, err = scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.loopIntConstCount != 1 || h.loopIntConst[0] != 0x50000 {
+		t.Fatalf("genuine register use lost: count%d constants%v", h.loopIntConstCount, h.loopIntConst)
 	}
 }
