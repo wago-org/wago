@@ -53,6 +53,9 @@ func (f *fn) reserveLoopIntConsts(h *funcHintView) {
 		reg := regNone
 		candidates := [...]Reg{X25, X24, X23, X27, X14, X13}
 		for _, candidate := range candidates {
+			if wideScopedLoopConstsEnabled && f.regUser[candidate] != nil {
+				continue
+			}
 			if candidate == X14 || candidate == X13 {
 				// Fixed-register bulk/table/EH lowering cannot preserve scratch
 				// constants. Keep an ordinary temporary-register floor too.

@@ -5,6 +5,7 @@ package arm64
 import (
 	"bytes"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 )
@@ -138,5 +139,21 @@ func TestWideScopedConstPrefixBudgetAndReader(t *testing.T) {
 	r = wasm.ReaderFrom(append(nops, code...))
 	if f.hasWideScopedConstPrefix(&r) || r.Offset() != 0 || f.scopedConstWork != 16 {
 		t.Fatal("prefix depth limit failed")
+	}
+}
+
+func TestWideScopedConstPreservesLiveGP(t *testing.T) {
+	old := wideScopedLoopConstsEnabled
+	wideScopedLoopConstsEnabled = true
+	defer func() { wideScopedLoopConstsEnabled = old }()
+	f := fn{a: &a64.Asm{}, policy: currentCodegenPolicy()}
+	f.pinnedLocalMask = maskOf(X25).union(maskOf(X24)).union(maskOf(X23)).union(maskOf(X27))
+	owner := &elem{}
+	f.regUser[X14] = owner
+	f.regUser[X13] = owner
+	h := funcHintView{loopIntConstCount: 1, loopIntConstTypes: 2, loopIntConst: [4]int64{-4417276706812531889}}
+	f.reserveLoopIntConsts(&h)
+	if f.iconstN != 0 || f.regUser[X14] != owner || f.regUser[X13] != owner {
+		t.Fatal("leased an occupied register")
 	}
 }
