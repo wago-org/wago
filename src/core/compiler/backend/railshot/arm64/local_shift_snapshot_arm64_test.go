@@ -21,7 +21,7 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 			for _, shiftOffset := range []byte{10, 11, 12} {
 				for _, count := range []int32{-1, 0, 1, 13, 31, 32, 63, 64} {
 					for _, shiftFirst := range []bool{false, true} {
-						for _, suffix := range []int{0, 1, 2} {
+						for _, suffix := range []int{0, 1, 2, 3} {
 							// The first x is a separate old-value capture. The two x operands in
 							// the pending shifted expression must also survive x's mutation.
 							body := []byte{0, 0x03, 0x7f - (c - 0x41), 0x20, 0, 0x20, 0}
@@ -38,11 +38,14 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 							if suffix > 0 {
 								body = append(body, c, 0xff, 0x01, add+7)
 							}
-							if suffix > 1 {
+							if suffix == 2 {
 								body = append(body, c, 3, add+2)
 							}
-							body = append(body, 0x20, 0, c, 1, add, 0x21, 0, add+9, 0x20, 0, add+9, 0x0b, 0x0b)
-							m := mod1(t, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
+							if suffix == 3 {
+								body = append(body, 0x20, 1, add+1)
+							}
+							body = append(body, 0x20, 0, c, 1, add, 0x21, 0, add+9, 0x20, 0, add+9, 0x20, 1, add+9, 0x0b, 0x0b)
+							m := mod1(t, []wasm.ValType{typ, typ}, []wasm.ValType{typ}, body)
 							for _, enabled := range []bool{false, true} {
 								old := localShiftSnapshotEnabled
 								localShiftSnapshotEnabled = enabled
@@ -84,10 +87,14 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 									if suffix > 0 {
 										v &= 255
 									}
-									if suffix > 1 {
+									if suffix == 2 {
 										v *= 3
 									}
-									want := v ^ a ^ (a + 1)
+									other := input ^ 0x87654321
+									if suffix == 3 {
+										v -= other
+									}
+									want := v ^ a ^ (a + 1) ^ other
 									if !wide {
 										want = uint64(uint32(want))
 									}
@@ -96,7 +103,7 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 									if diagnosticsEnabled {
 										opts.Stats = &stats
 									}
-									got, err := runArm64WrapperWithOptions(t, m, opts, input)
+									got, err := runArm64WrapperWithOptions(t, m, opts, input, other)
 									if err != nil || got != want {
 										t.Fatalf("wide=%v op=%d shift=%d count=%d enabled=%v input=%x got=%x want=%x err=%v", wide, offset, shiftOffset, count, enabled, input, got, want, err)
 									}

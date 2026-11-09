@@ -59,17 +59,22 @@ func (f *fn) snapshotLocalShiftedBinary(first *elem, local int) *elem {
 	default:
 		return nil
 	}
-	// Keep a short pure constant suffix with its captured input. Materializing
+	// Keep a short pure suffix with its captured input. Materializing
 	// only the shifted binary can otherwise leave another copy at the suffix's
 	// later sink, and retains a wider value than that sink needs.
 suffix:
 	for i := 0; i < 2; i++ {
-		c := f.s.next(root)
-		if c == f.s.head || c.elemKind() != ekValue || c.st.kind != stConst || c.st.typ != root.st.typ {
+		operand := f.s.next(root)
+		if operand == f.s.head || operand.elemKind() != ekValue || operand.st.typ != root.st.typ {
 			break
 		}
-		parent := f.s.next(c)
-		if parent == f.s.head || !parent.isDeferred() || parent.st.typ != root.st.typ || f.s.arg0(parent) != root || f.s.arg1(parent) != c {
+		switch operand.st.kind {
+		case stConst, stReg, stLocalReg, stGlobReg:
+		default:
+			break suffix
+		}
+		parent := f.s.next(operand)
+		if parent == f.s.head || !parent.isDeferred() || parent.st.typ != root.st.typ || f.s.arg0(parent) != root || f.s.arg1(parent) != operand {
 			break
 		}
 		switch parent.deferredOp() {
