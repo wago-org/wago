@@ -1696,6 +1696,17 @@ func (f *fn) aluImm(op wOp, dest Reg, cval int64, w bool) bool {
 // local-set sink as aluRR3, so immediate arithmetic retains the one-instruction
 // form rather than first copying the source local into the destination.
 func (f *fn) aluImm3(op wOp, dest, left Reg, cval int64, w bool) bool {
+	if shiftedALUImmediateEnabled && shiftedAddSubImmediateEnabled && f.opt(optOrdinaryShiftedImm) &&
+		(op == opAdd || op == opSub) && fitsShiftedAddSubImmediate(cval) {
+		// The borrowed local-set and in-place ALU paths have the same immediate
+		// forms as address-style adds. Keep the source independent of dest.
+		displacement := int32(cval)
+		if op == opSub {
+			displacement = -displacement
+		}
+		f.addDisp(dest, left, displacement, w)
+		return true
+	}
 	switch op {
 	case opAdd:
 		return f.addFoldImm3(dest, left, cval, w)
