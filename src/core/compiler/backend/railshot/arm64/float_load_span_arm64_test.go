@@ -148,7 +148,11 @@ func TestFloatLoadSpanEmitsSharedProof(t *testing.T) {
 	for i, on := range []bool{false, true} {
 		floatLoadSpanEnabled = on
 		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"memory-min-bounds": false}})
+		opts := CompileOptions{Optimizations: map[string]bool{"memory-min-bounds": false}}
+		if diagnosticsEnabled {
+			opts.Stats = &stats
+		}
+		cm, err := CompileModuleWith(m, opts)
 		if err != nil {
 			t.Fatal(err)
 		}
