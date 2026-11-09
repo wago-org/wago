@@ -12,6 +12,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+var directByteBoundsAlignEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_BYTE_BOUNDS_ALIGN") != "1"
+
 var directByteBoundsEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_BYTE_BOUNDS") != "1"
 
 var wideZeroStoreEnabled = os.Getenv("WAGO_ARM64_NO_WIDE_ZERO_STORE") != "1"
@@ -642,6 +644,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	if directByte {
 		f.trapIf(condAE, trapMemOOB) // out of bounds when ea >= memBytes
 		f.stats.peep("direct-byte-bounds")
+		if directByteBoundsAlignEnabled {
+			f.affineBoundsLayout = true
+		}
 		// Account for the removed hot ADD in the function's cold padding.
 		f.phasePadWords++
 	} else {

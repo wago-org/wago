@@ -322,7 +322,7 @@ type fn struct {
 	addRspAt                int   // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
 	tailFrameSites          []int // tail-transfer frame-free MOVZ sites (patched with frameSize)
 	phasePadWords           int   // cold tail padding that preserves following function entry phases
-	affineBoundsLayout      bool  // a shortened affine check prefix can move later loop fetch boundaries
+	affineBoundsLayout      bool  // a shortened bounds-check prefix can move later loop fetch boundaries
 	frameElided             bool  // simple register-only internal entry leaves SP unchanged
 	adapterReturnOff        int   // register-ABI wrapper continuation used by cross-tail reuse
 	adapterEndOff           int   // end of the wrapper before internal-entry alignment
