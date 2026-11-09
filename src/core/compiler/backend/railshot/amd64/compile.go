@@ -119,6 +119,11 @@ var stackDeltaAdapterThunkEnabled = os.Getenv("WAGO_AMD64_NO_STACK_DELTA_ADAPTER
 // the root and stable identity. WAGO_AMD64_NO_GC_RESOLVE_REUSE=1 disables reuse.
 var gcResolveReuseEnabled = os.Getenv("WAGO_AMD64_NO_GC_RESOLVE_REUSE") != "1"
 
+// bulkLocalZeroEnabled clears long contiguous runs of declared-local frame
+// homes with a loop at entry. WAGO_AMD64_NO_BULK_LOCAL_ZERO=1 restores one
+// store per home for differential qualification.
+var bulkLocalZeroEnabled = os.Getenv("WAGO_AMD64_NO_BULK_LOCAL_ZERO") != "1"
+
 // immutableLocalTableEnabled specializes call_indirect when the one-pass module
 // scan proves table 0 is a private, never-mutated table of same-module functions
 // (no home/tag fork, and a monomorphic table becomes a direct call). Default ON;
@@ -5100,6 +5105,9 @@ func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 		entryInitElision := f.gcFrameRoots == nil || !f.gcFrameRoots.Candidate
 		a := f.a
 		a.XorSelf32(RAX)
+		if f.zeroDeclaredLocalRuns(localScores, entryInitElision) {
+			return
+		}
 		for i := f.nParams; i < f.nLocals; i++ {
 			if entryInitElision && i < 64 && localScores[i]&localScoreEntryInitialized != 0 {
 				continue
@@ -5120,6 +5128,95 @@ func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 	for i := f.nParams; i < f.nLocals; i++ {
 		f.markDeclaredLocalZero(i)
 	}
+}
+
+// bulkLocalZeroMinBytes is the shortest contiguous run of frame homes cleared
+// by a loop instead of one store per slot.
+const bulkLocalZeroMinBytes = 256
+
+// zeroDeclaredLocalRuns clears exactly the frame bytes of the eager path at the
+// same program point, but clears each long contiguous run with a short loop.
+// Without compact i32 packing every home is a whole 8-byte slot (an i32 owns its
+// upper half), so runs are 8-aligned. Slot packing rewrites recorded per-local
+// addresses after lowering, so it keeps one store per home. Returns false,
+// having emitted nothing, when the eager path should run instead.
+func (f *fn) zeroDeclaredLocalRuns(localScores []uint32, entryInitElision bool) bool {
+	if !bulkLocalZeroEnabled || f.a.LocalRefs != nil || f.compactI32Frame || f.nLocals-f.nParams < bulkLocalZeroMinBytes/8 {
+		return false
+	}
+	type span struct{ off, end int32 }
+	spans := make([]span, 0, f.nLocals-f.nParams)
+	long := false
+	for i := f.nParams; i < f.nLocals; i++ {
+		if entryInitElision && i < 64 && localScores[i]&localScoreEntryInitialized != 0 {
+			continue
+		}
+		if _, _, ok := f.pinReg(i); ok {
+			continue
+		}
+		off := f.localOff(i)
+		end := off + int32(8*f.localType[i].stackSlots())
+		if off&7 != 0 {
+			return false
+		}
+		if n := len(spans); n != 0 && spans[n-1].end == off {
+			spans[n-1].end = end
+		} else if n != 0 && spans[n-1].end > off {
+			return false // homes not in ascending order; keep the eager path
+		} else {
+			spans = append(spans, span{off, end})
+		}
+		long = long || spans[len(spans)-1].end-spans[len(spans)-1].off >= bulkLocalZeroMinBytes
+	}
+	if !long {
+		return false
+	}
+	a := f.a
+	for i := f.nParams; i < f.nLocals; i++ {
+		if entryInitElision && i < 64 && localScores[i]&localScoreEntryInitialized != 0 {
+			continue
+		}
+		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+			a.XorSelf32(pr)
+		} else if ok && isFloat {
+			a.SseRR(0x66, 0x57, pr, pr, false) // xorpd pr,pr -> 0.0
+		} else if diagnosticsEnabled {
+			f.localAddr(i) // keep frame-address statistics per home
+		}
+	}
+	// RAX is zero for every single-slot store, then counts the loop bytes.
+	var loops []span
+	for _, s := range spans {
+		bytes := s.end - s.off
+		if bytes < bulkLocalZeroMinBytes {
+			for off := s.off; off < s.end; off += 8 {
+				a.Store64(RSP, off, RAX)
+			}
+			continue
+		}
+		looped := bytes &^ 31
+		for off := s.off + looped; off < s.end; off += 8 {
+			a.Store64(RSP, off, RAX)
+		}
+		loops = append(loops, span{s.off, s.off + looped})
+	}
+	for _, s := range loops {
+		start := a.Len()
+		a.MovImm64(RAX, uint64(int64(-(s.end - s.off))))
+		top := a.Len()
+		for k := int32(0); k < 32; k += 8 {
+			a.StoreImmIdx(RSP, RAX, s.end+k, 0, 8)
+		}
+		a.AluRI(0, RAX, 32, true)
+		if !a.JccRel8(condNE, top) {
+			a.PatchRel32(a.JccPlaceholder(condNE), top)
+		}
+		if profileEnabled {
+			f.recordProfileCodeSite(start, "gp-local-store")
+		}
+	}
+	a.XorSelf32(RAX)
+	return true
 }
 
 // zeroEHGCRootLanes clears the GC lanes of every exception root slot at entry.
