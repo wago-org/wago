@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+var minPlusPairedRunsEnabled = os.Getenv("WAGO_ARM64_NO_MINPLUS_PAIRED_RUNS") != "1"
+
 var minPlusRunsEnabled = os.Getenv("WAGO_ARM64_NO_MINPLUS_RUNS") != "1"
 
 // The existing emitter has already checked whole memory32 ranges and proved
@@ -33,6 +35,35 @@ func (f *fn) minPlusRunCount(p minPlusPlan, bytes uint32, d, pivot, counter, cou
 // possibly changed value before the next run. No new loop grammar or memory
 // eligibility is introduced, and the original scalar tail restores temporaries.
 func (f *fn) emitMinPlusRuns(p minPlusPlan, d, s, pivot, counter, count, vd, vs, vp Reg, compare func(uint32)) {
+	// The guarded run has equal or disjoint rows and cannot touch the pivot.
+	// Pairing adjacent packets is therefore independent, including for equal
+	// rows. Lease two otherwise free vector registers; retain the original
+	// schedule when pressure would require additional spills.
+	paired := false
+	var vd2, vs2 Reg
+	if minPlusPairedRunsEnabled {
+		free := 0
+		blocked := f.blockedFRegs(0)
+		for _, r := range fpAllocRegs {
+			if !blocked.has(r) && f.fregUser[r] == nil {
+				free++
+			}
+		}
+		if free >= 2 {
+			oldPins := f.fpinned
+			vd2 = f.allocFReg(0)
+			f.fpinned = f.fpinned.add(vd2)
+			vs2 = f.allocFReg(0)
+			f.fpinned = f.fpinned.add(vs2)
+			paired = true
+			defer func() {
+				f.fpinned = oldPins
+				f.releaseF(vd2)
+				f.releaseF(vs2)
+			}()
+			f.stats.peep("minplus-loop-paired-runs")
+		}
+	}
 	dispatch := f.a.Len()
 	compare(p.limit - 24)
 	done := f.a.Bcond(condA)
@@ -49,12 +80,24 @@ func (f *fn) emitMinPlusRuns(p minPlusPlan, d, s, pivot, counter, count, vd, vs,
 	packet := func(bytes uint32) {
 		empty := f.a.Cbz64(count)
 		header := f.a.Len()
-		for off := int32(0); off < int32(bytes); off += 16 {
-			f.a.LdrQ(vd, d, off)
-			f.a.LdrQ(vs, s, off)
-			f.a.NeonAddS(vs, vs, vp)
-			f.a.NeonSminS(vd, vd, vs)
-			f.a.StrQ(d, off, vd)
+		if paired && bytes >= 32 {
+			for off := int32(0); off < int32(bytes); off += 32 {
+				f.a.LdpQ(vd, vd2, d, off)
+				f.a.LdpQ(vs, vs2, s, off)
+				f.a.NeonAddS(vs, vs, vp)
+				f.a.NeonAddS(vs2, vs2, vp)
+				f.a.NeonSminS(vd, vd, vs)
+				f.a.NeonSminS(vd2, vd2, vs2)
+				f.a.StpQ(vd, vd2, d, off)
+			}
+		} else {
+			for off := int32(0); off < int32(bytes); off += 16 {
+				f.a.LdrQ(vd, d, off)
+				f.a.LdrQ(vs, s, off)
+				f.a.NeonAddS(vs, vs, vp)
+				f.a.NeonSminS(vd, vd, vs)
+				f.a.StrQ(d, off, vd)
+			}
 		}
 		f.a.AddImm64(d, d, bytes)
 		f.a.AddImm64(s, s, bytes)
