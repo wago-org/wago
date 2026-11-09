@@ -501,6 +501,8 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	off32 := uint32(off)
 	addressPins := f.pinned
 	affineKind, affineIdx, affineBias := f.affineMemoryBoundsSource(f.s.back())
+	addressScope := f.shiftedALUAddress
+	f.shiftedALUAddress = true
 	var e *elem
 	addressLoan := false
 	if f.opt(optRegionalMemoryRead) && len(f.intervalLast) != 0 && aliasPinned && int64(off32)+int64(size) <= 0x7fffffff {
@@ -508,6 +510,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	} else {
 		e = f.popValue()
 	}
+	f.shiftedALUAddress = addressScope
 	// Do not infer this from the Wasm i32 type alone: serialized parameters and
 	// other external carriers may have non-canonical upper bits. Constants are
 	// materialized with a W-register move; the fact is set only by producers
@@ -679,7 +682,10 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	minimumAccess := f.minimumMemoryAccess(0, off, size)
 	f.materializePendingTraps()
+	addressScope := f.shiftedALUAddress
+	f.shiftedALUAddress = true
 	e := f.popValue()
+	f.shiftedALUAddress = addressScope
 	ea, eaOwned = f.materialize(e), true
 	borrow, disp = -1, 0
 	if off != 0 {
@@ -749,7 +755,10 @@ func (f *fn) memAddrAt(memoryIndex uint32, off uint64, size int) (base, ea Reg, 
 func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32) {
 	minimumAccess := f.minimumMemoryAccess(memoryIndex, off, size)
 	f.materializePendingTraps()
+	addressScope := f.shiftedALUAddress
+	f.shiftedALUAddress = true
 	e := f.popValue()
+	f.shiftedALUAddress = addressScope
 	loadDefinedLocal := f.loadDefinedAddressLocal(e)
 	ea = f.materialize(e)
 	if !f.memoryAddr64(memoryIndex) && (!e.st.valueFacts().has(factUpper32Zero) || loadDefinedLocal) {

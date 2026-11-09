@@ -1363,7 +1363,10 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// condenseInto may temporarily mark pr as an owned result for deferred
 		// expressions; clear that ownership because pinned-local registers are not
 		// allocator scratch registers.
+		addressScope := f.shiftedALUAddress
+		f.shiftedALUAddress = addressScope || f.localBase == 0 && uint(x) < 64 && f.shiftedALUAddressLocals&(uint64(1)<<uint(x)) != 0
 		f.condenseInto(e, pr)
+		f.shiftedALUAddress = addressScope
 		f.canonicalizeI32LocalAssignment(x, pr, assignedFacts)
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register
