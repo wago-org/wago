@@ -1697,7 +1697,11 @@ func (f *fn) aluImm(op wOp, dest Reg, cval int64, w bool) bool {
 // form rather than first copying the source local into the destination.
 func (f *fn) aluImm3(op wOp, dest, left Reg, cval int64, w bool) bool {
 	if shiftedALUImmediateEnabled && !f.shiftedALUAddress && shiftedAddSubImmediateEnabled && f.opt(optOrdinaryShiftedImm) &&
-		(op == opAdd || op == opSub) && fitsShiftedAddSubImmediate(cval) {
+		(op == opAdd || op == opSub) && fitsShiftedAddSubImmediate(cval) &&
+		(len(f.ctrl) == 0 || f.ctrl[len(f.ctrl)-1].kind != cfIf) {
+		// Preserve existing covers in direct conditional arms: changing an
+		// arm's instruction count also moves joins and neighboring branch paths.
+		// Other contexts remain eligible for the shorter value cover.
 		// The borrowed local-set and in-place ALU paths have the same immediate
 		// forms as address-style adds. Keep the source independent of dest.
 		displacement := int32(cval)
