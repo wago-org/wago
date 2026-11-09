@@ -40,6 +40,7 @@ type integerResidualPlan struct {
 	uses                          [256]uint16
 	stores                        [2]residualStore
 	storeN, pointer               int
+	signedShift                   bool
 	n, localN, mapN               int
 	counter, seed, hash           int // dense candidate-local slots
 	seedStep, multiplier, divisor uint32
@@ -140,6 +141,7 @@ func (f *fn) inspectIntegerResidual(source *wasm.Reader) (p integerResidualPlan,
 			if depth < 2 || op == 0x75 && !integerResidualStoresEnabled {
 				return p, false
 			}
+			p.signedShift = p.signedShift || op == 0x75
 			depth -= 2
 			a, b := stack[depth], stack[depth+1]
 			// Even overwritten/unused divisions must be nontrapping. Shift counts are
@@ -292,6 +294,12 @@ func (p *integerResidualPlan) finish(condition int) bool {
 		payload[p.mapN] = b
 		p.mapN++
 		root = a
+	}
+	// Several serial checksum updates can outweigh a newly admitted signed
+	// shift's vector arithmetic. Keep the established pure-loop eligibility
+	// until that form is profitable; output streams amortize additional work.
+	if p.signedShift && p.storeN == 0 && p.mapN > 1 {
+		return false
 	}
 	// Peel order is outside-in; scalar residual execution must be inside-out.
 	for i := 0; i < p.mapN; i++ {

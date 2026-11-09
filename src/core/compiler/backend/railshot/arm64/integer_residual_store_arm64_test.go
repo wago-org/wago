@@ -241,3 +241,36 @@ func TestIntegerResidualStoreProbeBudgetAndMemoryBarriers(t *testing.T) {
 		t.Fatal("memory64 output admitted")
 	}
 }
+
+func TestIntegerResidualSignedShiftSingleAndMultipleUpdates(t *testing.T) {
+	old := integerResidualStoresEnabled
+	integerResidualStoresEnabled = true
+	defer func() { integerResidualStoresEnabled = old }()
+	for _, updates := range []int{1, 3} {
+		body, loop := residualTestBodySteps(10, 16777619, updates, false)
+		pattern := []byte{0x20, 1, 0x41, 13, 0x76}
+		for _, code := range [][]byte{body, loop} {
+			at := bytes.Index(code, pattern)
+			if at < 0 {
+				t.Fatal("missing source shift")
+			}
+			code[at+4] = 0x75
+		}
+		f := fn{nLocals: 5, localType: []machineType{mtI32, mtI32, mtI32, mtI32, mtI32}}
+		r := wasm.ReaderFrom(loop)
+		_, ok := f.inspectIntegerResidual(&r)
+		if ok != (updates == 1) || r.Offset() != 0 {
+			t.Fatalf("updates%d accepted%v", updates, ok)
+		}
+		if updates == 1 {
+			m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+			for _, seed := range []uint32{0, 0x7fffffff, 0x80000000, 0xfffffff9} {
+				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{}, 33, uint64(seed), 0x811c9dc5)
+				want := uint64(residualTestOracle(33, seed, 0x811c9dc5, 10, 16777619))
+				if err != nil || got != want {
+					t.Fatalf("seed%x got%x want%x err%v", seed, got, want, err)
+				}
+			}
+		}
+	}
+}
