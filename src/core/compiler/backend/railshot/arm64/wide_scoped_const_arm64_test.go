@@ -115,7 +115,7 @@ func TestWideScopedConstPrefixBudgetAndReader(t *testing.T) {
 		t.Fatal("missing loop")
 	}
 	code := body[at+2:]
-	f := fn{m: m, usesCalls: true, policy: currentCodegenPolicy(), classifier: wasm.NewModuleInstructionClassifier(m, true), scopedConstHints: scopedLoopConstHints{loopIntConstCount: 1, loopIntConstTypes: 2, loopIntConst: [4]int64{-4417276706812531889}}}
+	f := fn{m: m, nLocals: 73, usesCalls: true, policy: currentCodegenPolicy(), classifier: wasm.NewModuleInstructionClassifier(m, true), scopedConstHints: scopedLoopConstHints{loopIntConstCount: 1, loopIntConstTypes: 2, loopIntConst: [4]int64{-4417276706812531889}}}
 	f.integerResidualWork = integerResidualWorkLimit
 	var admitted bool
 	allocs := testing.AllocsPerRun(100, func() {

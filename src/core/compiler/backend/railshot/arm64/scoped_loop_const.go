@@ -171,6 +171,16 @@ func (f *fn) hasWideScopedConstPrefix(source *wasm.Reader) bool {
 		if e != nil {
 			return false
 		}
+		if op >= 0x45 && op <= 0xc4 {
+			continue
+		}
+		if op >= 0x20 && op <= 0x22 {
+			index, e := r.U32()
+			if e != nil || index >= uint32(f.nLocals) {
+				return false
+			}
+			continue
+		}
 		if op == 0xfb || op == 0xfe {
 			return false
 		}
