@@ -89,6 +89,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			f.recycleEmptyOperandArena()
 		}
 		f.wasmPC = f.tracePCBase + uint32(r.Offset())
+		if f.gcStoredRefEnd != f.wasmPC || f.gcStoredRefFunc != f.traceFuncIdx {
+			f.gcStoredRefOrigin = nil
+		}
 		op, err := r.Byte()
 		if err != nil {
 			return err

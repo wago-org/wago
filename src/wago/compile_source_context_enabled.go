@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build wago_regalloccheck
+//go:build wago_regalloccheck && (!amd64 || wago_standalone)
 
 package wago
 

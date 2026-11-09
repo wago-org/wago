@@ -50,6 +50,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	// Consume this fact once. Other FB opcodes cannot carry it forward.
+	origin := f.gcStoredRefOrigin
+	f.gcStoredRefOrigin = nil
 	f.prepareGCResolvedFB(sub)
 	f.prepareGCFreshStructFB(sub)
 	f.gcOpcodeBarrier = false
@@ -70,7 +73,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if sub == 28 && f.tryFuseI31RoundTrip(r) {
 			return nil
 		}
-		return f.emitGCI31(sub)
+		err := f.emitGCI31(sub)
+		if err == nil && sub == 28 {
+			f.recordStoredRefOrigin(r)
+		}
+		return err
 	}
 	if sub == 26 || sub == 27 {
 		if !f.gcStructHelpers {
@@ -105,6 +112,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return fmt.Errorf("amd64: struct.new type %d is unavailable", typeIndex)
 		}
 		fieldN := len(st.Comp.Fields)
+		var refProof uint64
+		if gcStoredRefElisionEnabled && f.sc.validatedGCStores && fieldN > 0 && fieldN <= 64 &&
+			origin != nil && origin == f.s.back() && st.Comp.Fields[fieldN-1].Storage().Val().Kind() == wasm.ValRef {
+			refProof = uint64(1) << (fieldN - 1)
+		}
 		nestedPayloadSafe := true
 		for _, field := range st.Comp.Fields {
 			if field.Storage().Val().Kind() == wasm.ValRef {
@@ -142,6 +154,10 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		if native {
+			if refProof != 0 {
+				f.stats.peep("gc-stored-ref-elision")
+			}
+			f.nativeStructRefProof = refProof
 			f.nativeStructAllocType = typeIndex + 1
 			f.nativeStructAllocDead = scalarReplacement
 		}
@@ -174,6 +190,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				value:       freshValue,
 			})
 		}
+		if !selectionOK && !forwardOK {
+			f.recordStoredRefOrigin(r)
+		}
 		return nil
 	case 1: // struct.new_default typeidx
 		typeIndex, err := r.U32()
@@ -196,6 +215,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return err
 		}
 		f.markTopGCReference()
+		f.recordStoredRefOrigin(r)
 		return nil
 	case 2, 3, 4: // struct.get / struct.get_s / struct.get_u typeidx fieldidx
 		typeIndex, err := r.U32()

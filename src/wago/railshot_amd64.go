@@ -34,6 +34,10 @@ func railshotCurrentOptKnobSnapshot() railshotOptimizationSnapshot {
 func railshotSetOptKnob(name string, on bool) bool { return railshot.SetOptKnob(name, on) }
 
 func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*railshotCompiledModule, error) {
+	return railshotCompileModuleWithAnalysis(m, opts, nil)
+}
+
+func railshotCompileModuleWithAnalysis(m *wasm.Module, opts railshotCompileOptions, analysis *wasm.ValidatedModuleAnalysis) (*railshotCompiledModule, error) {
 	features, ok := cachedAMD64CPUFeatures()
 	if !ok {
 		return nil, fmt.Errorf("amd64: CPU capability detection failed")
@@ -45,7 +49,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 		opts.AMD64FeaturesSet = true
 		opts.AMD64Features = selectedAMD64CompileFeatures(features)
 	}
-	return railshot.CompileModuleWith(m, opts)
+	return railshot.CompileValidatedModuleWith(m, opts, analysis)
 }
 
 func railshotGCNativeCodeTelemetry(stats *railshotModuleStats) GCNativeCodeTelemetry {

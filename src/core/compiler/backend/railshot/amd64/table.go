@@ -644,6 +644,7 @@ func (f *fn) refNull(r *wasm.Reader) error {
 		return err
 	}
 	value := f.pushValue(storage{kind: stConst, typ: mtI64, cval: 0})
+	f.recordStoredRefOrigin(r)
 	gcReference := false
 	if heap >= 0 {
 		if target, ok := f.stagedGCType(uint32(heap)); ok {

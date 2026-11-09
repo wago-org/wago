@@ -119,6 +119,9 @@ var stackDeltaAdapterThunkEnabled = os.Getenv("WAGO_AMD64_NO_STACK_DELTA_ADAPTER
 // the root and stable identity. WAGO_AMD64_NO_GC_RESOLVE_REUSE=1 disables reuse.
 var gcResolveReuseEnabled = os.Getenv("WAGO_AMD64_NO_GC_RESOLVE_REUSE") != "1"
 
+// WAGO_AMD64_NO_GC_STORED_REF_ELISION=1 keeps all constructor reference checks.
+var gcStoredRefElisionEnabled = os.Getenv("WAGO_AMD64_NO_GC_STORED_REF_ELISION") != "1"
+
 // bulkLocalZeroEnabled clears long contiguous runs of declared-local frame
 // homes with a loop at entry. WAGO_AMD64_NO_BULK_LOCAL_ZERO=1 restores one
 // store per home for differential qualification.
@@ -610,6 +613,10 @@ type fn struct {
 	gcCallsiteIndex        int
 	compactFrameHeader     bool // register ABI: no wrapper results-pointer header
 	compactI32Frame        bool
+	gcStoredRefOrigin      *elem // immediate producer only; never a local or host value
+	gcStoredRefEnd         uint32
+	gcStoredRefFunc        uint32
+	nativeStructRefProof   uint64 // field mask for the next constructor only
 	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
 	nativeStructAllocDead  bool   // next native struct allocation may omit unreachable scalar payload stores
 	nativeStructDirectUsed bool   // preceding struct helper retained pinned registers
@@ -833,6 +840,7 @@ func moduleCodeCapacityAMD64(bodyBytes, functions int, policy CodegenPolicy) int
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
 type gcStructAllocStubSite struct {
+	refProof  uint64
 	typeIndex uint32
 	dead      bool
 	site      int
@@ -885,6 +893,7 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
 
 type scratch struct {
 	scalar                shared.ScalarState
+	validatedGCStores     bool
 	gcLifetimeFacts       *gcLifetimeModuleFacts
 	gcLifetimePlan        *gcLifetimePlan
 	gcLifetimePlanLive    bool
@@ -1862,6 +1871,15 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	return CompileValidatedModuleWith(m, opts, nil)
+}
+
+// CompileValidatedModuleWith borrows analysis for this exact module. The caller
+// must keep the module, its nested storage, and analysis immutable from validation
+// until compilation returns. Missing, foreign, or reset analysis retains all
+// stored-reference checks, independently of the checked SourceContext.
+func CompileValidatedModuleWith(m *wasm.Module, opts CompileOptions, analysis *wasm.ValidatedModuleAnalysis) (*amd64.CompiledModule, error) {
+	validatedGCStores := analysis.ValidFor(m)
 	if opts.GCLifetimeReport != nil {
 		*opts.GCLifetimeReport = nil
 	}
@@ -1883,16 +1901,21 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	var compiled *amd64.CompiledModule
 	var err error
 	if codegen.SourceChecks {
-		compiled, err = compileSourceModuleWith(m, opts)
+		compiled, err = compileSourceModuleWith(m, opts, validatedGCStores)
 	} else {
-		compiled, err = compileModuleWith(m, opts)
+		compiled, err = compileModuleWithValidation(m, opts, validatedGCStores)
 	}
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
+	runtime.KeepAlive(analysis)
 	return compiled, err
 }
 
 func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	return compileModuleWithValidation(m, opts, false)
+}
+
+func compileModuleWithValidation(m *wasm.Module, opts CompileOptions, validatedGCStores bool) (*amd64.CompiledModule, error) {
 	if !opts.AMD64FeaturesSet {
 		opts.AMD64Features = shared.AMD64ModernBaseline | shared.AMD64BMI2
 	}
@@ -2097,6 +2120,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		sc.classifier = classifier
 		sc.moduleTypes = moduleTypes
 		sc.gcLifetimeFacts = gcLifetimeFacts
+		sc.validatedGCStores = validatedGCStores
 		sc.reserveLocalScratch(serialLocalScratchCapacity(allHints, inlineTargets, hostAdapters))
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.reserveControlFrames(ctrlCap)
@@ -2309,7 +2333,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		return compiled, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, totalBody, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, referenceWrapperTargets, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, moduleHasSIMD, importedFuncs)
+	return compileModuleParallel(m, opts, validatedGCStores, workers, codeCap, totalBody, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, referenceWrapperTargets, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, moduleHasSIMD, importedFuncs)
 }
 
 // Parallel workers reserve only the small common local range. A rare large
@@ -2333,7 +2357,7 @@ func serialLocalScratchCapacity(allHints []funcHints, inlineTargets inlineTarget
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap, totalBody int, entry, internalEntry []int, relocs [][]callReloc, literalOffsets []uint32, allHints []funcHints, hintSidecar funcHintSidecar, immutableTables []immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters, referenceWrapperTargets []bool, inlineTargets inlineTargetTable, moduleTypes moduleTypeCache, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts, moduleHasSIMD bool, importedFuncs int) (*amd64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, validatedGCStores bool, workers, codeCap, totalBody int, entry, internalEntry []int, relocs [][]callReloc, literalOffsets []uint32, allHints []funcHints, hintSidecar funcHintSidecar, immutableTables []immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters, referenceWrapperTargets []bool, inlineTargets inlineTargetTable, moduleTypes moduleTypeCache, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts, moduleHasSIMD bool, importedFuncs int) (*amd64.CompiledModule, error) {
 	n := len(m.Code)
 	var gcLifetimeFacts *gcLifetimeModuleFacts
 	if policy.EnabledOption(optGCLifetimeAnalyze) {
@@ -2372,6 +2396,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		states[i].scratch.classifier = classifier
 		states[i].scratch.moduleTypes = moduleTypes
 		states[i].scratch.gcLifetimeFacts = gcLifetimeFacts
+		states[i].scratch.validatedGCStores = validatedGCStores
 		states[i].scratch.reserveLocalScratch(localCap)
 		if ctrlCap != 0 {
 			states[i].scratch.reserveControlFrames(ctrlCap)

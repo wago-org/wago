@@ -14,6 +14,6 @@ import (
 	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
-func compileSourceModuleWith(m *wasm.Module, opts CompileOptions) (*encoder.CompiledModule, error) {
-	return compileModuleWith(m, opts)
+func compileSourceModuleWith(m *wasm.Module, opts CompileOptions, validatedGCStores bool) (*encoder.CompiledModule, error) {
+	return compileModuleWithValidation(m, opts, validatedGCStores)
 }

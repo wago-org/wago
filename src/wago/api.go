@@ -1535,7 +1535,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	railshotConfigureGCTypeSubtypingNonFlatExport(exactGCTypeSubtypingNonFlatExportSource, &compileOptions)
 	railshotConfigureGCTypeSubtypingRefFuncGlobals(gcTypeSubtypingRefFuncGlobalsSourceVariant, &compileOptions)
 	var cm *railshotCompiledModule
-	if codegen.SourceChecks {
+	if codegen.SourceChecks || goruntime.GOARCH == "amd64" {
 		cm, err = railshotCompileValidatedModuleWith(m, compileOptions, &validationAnalysis, validationFeatures)
 	} else {
 		cm, err = railshotCompileModuleWith(m, compileOptions)
