@@ -66,6 +66,9 @@ func TestDefinedTypesClosedImpliesReflexiveEquivalence(t *testing.T) {
 // The snapshot fast path must decide exactly as the general subtype check for
 // every reference pair over its own graph, and copies must not use it.
 func TestExecutionValueTypeSubtypeMatchesGeneralCheck(t *testing.T) {
+	if !platformCoreFeatures().IsEnabled(CoreFeaturesV3) {
+		t.Skip("Core 3 execution is unavailable on this backend")
+	}
 	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), typedFunctionFieldModule())
 	if err != nil {
 		t.Fatal(err)
@@ -118,11 +121,17 @@ func typedFunctionFieldModule() []byte {
 
 // Typed function fields take the snapshot fast path on every collecting store.
 func TestTypedFunctionFieldStoresUnderCollection(t *testing.T) {
+	if !platformCoreFeatures().IsEnabled(CoreFeaturesV3) {
+		t.Skip("Core 3 execution is unavailable on this backend")
+	}
 	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), typedFunctionFieldModule())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
+	if !compiledConversionStoreHooks(c) && compiledArchitecture != 4 {
+		t.Skip("opaque converted publication is unavailable on this backend")
+	}
 	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{NurseryBytes: 4096, SurvivorBytes: 4096, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true}})
 	if err != nil {
 		t.Fatal(err)

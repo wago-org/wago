@@ -98,6 +98,9 @@ func bulkLocalZeroModule(locals int) []byte {
 // Entry zeroing must clear every declared local whatever the frame size and
 // type mix, including runs long enough to be cleared by a loop.
 func TestDeclaredLocalsReadZeroOverDirtyFrame(t *testing.T) {
+	if !platformCoreFeatures().IsEnabled(CoreFeaturesV3) {
+		t.Skip("Core 3 execution is unavailable on this backend")
+	}
 	for _, locals := range []int{8, 31, 32, 33, 47, 64, 65, 130, 301, 1030} {
 		t.Run(fmt.Sprintf("locals=%d", locals), func(t *testing.T) {
 			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), bulkLocalZeroModule(locals))
