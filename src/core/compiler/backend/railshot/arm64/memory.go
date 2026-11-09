@@ -885,7 +885,7 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 					extent = int32(candidate)
 				}
 			}
-		case floatLoadSpanEnabled && (op == 0x43 || op == 0x44 || op >= 0x8b && op <= 0xa6 || op >= 0xb2 && op <= 0xbf):
+		case floatLoadSpanEnabled && f.localBase == 0 && (op == 0x43 || op == 0x44 || op >= 0x8b && op <= 0xa6 || op >= 0xb2 && op <= 0xbf):
 			extended = true
 			if err := skipImmediates(&scan, op); err != nil {
 				return extent

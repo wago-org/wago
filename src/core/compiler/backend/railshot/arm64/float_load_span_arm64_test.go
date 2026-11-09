@@ -69,6 +69,11 @@ func TestFloatLoadSpanProbeBarriers(t *testing.T) {
 			}
 		})
 	}
+	f.localBase = 1
+	if got := f.straightLineLoadExtent(wasm.NewReader(append(append([]byte{}, prefix...), next...)), 1, 0, 8); got != 8 {
+		t.Fatal("extended an inline source namespace")
+	}
+	f.localBase = 0
 	// Extending a span must not turn its new bounded window into the legacy long scan.
 	b := append([]byte{}, prefix...)
 	for i := 0; i < 130; i++ {

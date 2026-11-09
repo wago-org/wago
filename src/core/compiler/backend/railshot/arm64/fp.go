@@ -973,7 +973,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 		aliasLocal = addrLocal
 	}
 	rangeExtent := int32(0)
-	if floatLoadSpanEnabled {
+	if floatLoadSpanEnabled && f.localBase == 0 {
 		rangeExtent = f.loadRangeExtent(r, off, size)
 	}
 	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent, f.guardMode)
