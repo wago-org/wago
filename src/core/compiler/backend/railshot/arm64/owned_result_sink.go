@@ -10,7 +10,7 @@ var ownedResultSinkEnabled = os.Getenv("WAGO_ARM64_NO_OWNED_RESULT_SINK") != "1"
 // Both remaining inputs are concrete registers, so the ALU can read them before
 // writing a distinct requested result without first copying the owned left.
 func (f *fn) tryOwnedResultSink(node, left, right *elem, dest Reg) Reg {
-	if !ownedResultSinkEnabled || !f.opt(optThreeOpSink) || dest == regNone ||
+	if node.deferredOp() != opXor || !ownedResultSinkEnabled || !f.opt(optThreeOpSink) || dest == regNone ||
 		left.elemKind() != ekValue || left.st.kind != stReg || left.st.reg == dest ||
 		right.elemKind() != ekValue {
 		return regNone
