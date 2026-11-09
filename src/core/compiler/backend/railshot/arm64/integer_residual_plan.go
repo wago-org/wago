@@ -10,6 +10,8 @@ import (
 
 var integerResidualEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_RESIDUAL") != "1"
 
+var integerResidualStoresEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_RESIDUAL_STORES") != "1"
+
 const integerResidualWorkLimit = 4096
 
 type residualLinearTerm struct {
@@ -22,6 +24,12 @@ type residualMap struct {
 	constant uint32
 	divisor  uint32
 }
+type residualStore struct {
+	address, value int
+	offset         uint64
+	delta          uint32
+}
+
 type integerResidualPlan struct {
 	nodes                         [256]shared.LoopExpression
 	deps                          [256]uint32
@@ -30,6 +38,8 @@ type integerResidualPlan struct {
 	maps                          [4]residualMap
 	used                          [256]bool
 	uses                          [256]uint16
+	stores                        [2]residualStore
+	storeN, pointer               int
 	n, localN, mapN               int
 	counter, seed, hash           int // dense candidate-local slots
 	seedStep, multiplier, divisor uint32
@@ -126,8 +136,8 @@ func (f *fn) inspectIntegerResidual(source *wasm.Reader) (p integerResidualPlan,
 			if e != nil || !push(p.add(op, 0, 0, uint64(uint32(v)), pc)) {
 				return p, false
 			}
-		case 0x6a, 0x6b, 0x6c, 0x6d, 0x71, 0x72, 0x73, 0x74, 0x76, 0x47:
-			if depth < 2 {
+		case 0x6a, 0x6b, 0x6c, 0x6d, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x47:
+			if depth < 2 || op == 0x75 && !integerResidualStoresEnabled {
 				return p, false
 			}
 			depth -= 2
@@ -137,12 +147,23 @@ func (f *fn) inspectIntegerResidual(source *wasm.Reader) (p integerResidualPlan,
 			if op == 0x6d && (p.nodes[b].Op != 0x41 || int32(p.nodes[b].Bits) <= 0) {
 				return p, false
 			}
-			if (op == 0x74 || op == 0x76) && p.nodes[b].Op != 0x41 {
+			if (op == 0x74 || op == 0x75 || op == 0x76) && p.nodes[b].Op != 0x41 {
 				return p, false
 			}
 			if !push(p.add(op, a, b, 0, pc)) {
 				return p, false
 			}
+		case 0x36:
+			if !integerResidualStoresEnabled || f.threadedMemory0 || f.memoryAddr64(0) || depth < 2 || p.storeN == len(p.stores) {
+				return p, false
+			}
+			mem, off, err := f.readMemArg(&r)
+			if err != nil || mem != 0 || off > 0xffffffff {
+				return p, false
+			}
+			depth -= 2
+			p.stores[p.storeN] = residualStore{address: stack[depth], value: stack[depth+1], offset: off}
+			p.storeN++
 		case 0x0d:
 			label, e := r.U32()
 			if e != nil || label != 0 || depth != 1 {
@@ -179,7 +200,7 @@ func (p *integerResidualPlan) increment(root, initial int) (uint32, bool) {
 	return delta, true
 }
 func (p *integerResidualPlan) finish(condition int) bool {
-	p.counter, p.seed, p.hash = -1, -1, -1
+	p.counter, p.seed, p.hash, p.pointer = -1, -1, -1, -1
 	if n := p.nodes[condition]; n.Op == 0x47 {
 		if p.nodes[n.Right].Op == 0x41 && p.nodes[n.Right].Bits == 0 {
 			condition = n.Left
@@ -202,8 +223,20 @@ func (p *integerResidualPlan) finish(condition int) bool {
 	if p.counter < 0 {
 		return false
 	}
+	for i := 0; i < p.storeN; i++ {
+		store := &p.stores[i]
+		slot, delta, ok := p.storeAddress(store.address)
+		if !ok || slot == p.counter || p.pointer >= 0 && p.pointer != slot {
+			return false
+		}
+		p.pointer, store.delta = slot, delta
+		cell := p.locals[slot]
+		if step, ok := p.increment(cell.Value, cell.Initial); !cell.Written || !ok || step != 4 {
+			return false
+		}
+	}
 	for i, c := range p.locals[:p.localN] {
-		if !c.Written || !p.entryRead[i] || i == p.counter {
+		if !c.Written || !p.entryRead[i] || i == p.counter || i == p.pointer {
 			continue
 		}
 		if d, ok := p.increment(c.Value, c.Initial); ok && d != 0 {
@@ -280,18 +313,24 @@ func (p *integerResidualPlan) finish(condition int) bool {
 		}
 		for _, t := range m.terms[:m.n] {
 			if t.coefficient != 0 {
-				if p.deps[t.node]&(uint32(1)<<p.counter|uint32(1)<<p.hash) != 0 || !p.mark(t.node) {
+				if p.deps[t.node]&p.carriedMask() != 0 || !p.mark(t.node) {
 					return false
 				}
 				p.uses[t.node]++
 			}
 		}
 	}
+	for _, store := range p.stores[:p.storeN] {
+		if p.deps[store.value]&p.carriedMask() != 0 || !p.mark(store.value) {
+			return false
+		}
+		p.uses[store.value]++
+	}
 	if p.mapN == 0 {
 		return false
 	}
 	for i, c := range p.locals[:p.localN] {
-		if c.Written && p.entryRead[i] && i != p.counter && i != p.seed && i != p.hash {
+		if c.Written && p.entryRead[i] && i != p.counter && i != p.seed && i != p.hash && i != p.pointer {
 			return false
 		}
 	}
@@ -348,12 +387,12 @@ func (p *integerResidualPlan) mark(x int) bool {
 		return true
 	case 0x41:
 		return true
-	case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x76:
+	case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76:
 		if !p.mark(n.Left) {
 			return false
 		}
 		p.uses[n.Left]++
-		if n.Op != 0x74 && n.Op != 0x76 {
+		if n.Op != 0x74 && n.Op != 0x75 && n.Op != 0x76 {
 			if !p.mark(n.Right) {
 				return false
 			}
@@ -362,4 +401,41 @@ func (p *integerResidualPlan) mark(x int) bool {
 		return true
 	}
 	return false
+}
+
+// A single mutable pointer cell advances one i32 word per iteration. Source
+// address arithmetic is modular; the native path separately guards no-wrap.
+func (p *integerResidualPlan) storeAddress(x int) (slot int, delta uint32, ok bool) {
+	if !p.spend() {
+		return -1, 0, false
+	}
+	n := p.nodes[x]
+	if n.Op == 0x20 {
+		slot = p.slot(uint32(n.Left))
+		return slot, 0, slot >= 0 && p.locals[slot].Initial == x
+	}
+	if n.Op != 0x6a && n.Op != 0x6b {
+		return -1, 0, false
+	}
+	a, b := n.Left, n.Right
+	if n.Op == 0x6a && p.nodes[a].Op == 0x41 {
+		a, b = b, a
+	}
+	if p.nodes[b].Op != 0x41 {
+		return -1, 0, false
+	}
+	slot, delta, ok = p.storeAddress(a)
+	if n.Op == 0x6a {
+		delta += uint32(p.nodes[b].Bits)
+	} else {
+		delta -= uint32(p.nodes[b].Bits)
+	}
+	return
+}
+func (p *integerResidualPlan) carriedMask() uint32 {
+	mask := uint32(1)<<p.counter | uint32(1)<<p.hash
+	if p.pointer >= 0 {
+		mask |= uint32(1) << p.pointer
+	}
+	return mask
 }

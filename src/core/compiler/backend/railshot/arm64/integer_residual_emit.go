@@ -27,8 +27,12 @@ func (f *fn) hasIntegerResidualPrefix(source *wasm.Reader) bool {
 		switch op {
 		case 0x6c, 0x73:
 			candidate = true
-		case 0x20, 0x21, 0x22, 0x41, 0x6a, 0x6b, 0x6d, 0x71, 0x72, 0x74, 0x76, 0x47:
-			if f.classifier.ClassifyInto(&r, op, &immediate) != nil {
+		case 0x20, 0x21, 0x22, 0x41, 0x6a, 0x6b, 0x6d, 0x71, 0x72, 0x74, 0x75, 0x76, 0x47:
+			if op == 0x75 && !integerResidualStoresEnabled || f.classifier.ClassifyInto(&r, op, &immediate) != nil {
+				return false
+			}
+		case 0x36:
+			if !integerResidualStoresEnabled || f.classifier.ClassifyInto(&r, op, &immediate) != nil || immediate.MemIndex != 0 {
 				return false
 			}
 		case 0x0d:
@@ -81,7 +85,7 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 		peak = max(peak, live)
 		if n.Op != 0x20 && n.Op != 0x41 {
 			consume(n.Left)
-			if n.Op != 0x74 && n.Op != 0x76 {
+			if n.Op != 0x74 && n.Op != 0x75 && n.Op != 0x76 {
 				consume(n.Right)
 			}
 		}
@@ -105,7 +109,11 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 			free++
 		}
 	}
-	if free < 6 {
+	gpN := 6
+	if p.storeN != 0 {
+		gpN++
+	}
+	if free < gpN {
 		f.stats.peep("integer-residual-gp-reject")
 		return
 	}
@@ -146,7 +154,7 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 		}
 	}
 	oldPins, oldFPins := f.pinned, f.fpinned
-	var gp [6]Reg
+	var gp [7]Reg
 	for i := range gp {
 		gp[i] = regNone
 	}
@@ -158,7 +166,7 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 			}
 		}
 	}()
-	for i := range gp {
+	for i := 0; i < gpN; i++ {
 		gp[i] = f.allocRegOrNone(0)
 		if gp[i] == regNone {
 			return
@@ -182,6 +190,15 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 	read(counterLocal, count)
 	f.cmpImm(count, 17, false)
 	scalar := f.a.Bcond(condB)
+	var storeGuards [3]int
+	storeGuardN := 0
+	pointer := gp[6]
+	pointerLocal := -1
+	if p.storeN != 0 {
+		pointerLocal = int(p.locals[p.pointer].Index)
+		read(pointerLocal, pointer)
+		storeGuards, storeGuardN = f.guardIntegerResidualStores(p, count, pointer, value, magicReg, multiplier)
+	}
 	read(seedLocal, seed)
 	read(hashLocal, hash)
 	f.a.MovImm32(multiplier, int32(p.multiplier))
@@ -282,18 +299,20 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 			f.a.NeonOrr16b(out, a, b)
 		case 0x73:
 			f.a.NeonEor16b(out, a, b)
-		case 0x74, 0x76:
+		case 0x74, 0x75, 0x76:
 			s := uint8(p.nodes[n.Right].Bits & 31)
 			if s == 0 {
 				f.a.NeonMov16b(out, a)
 			} else if n.Op == 0x74 {
 				f.a.NeonShlS(out, a, s)
+			} else if n.Op == 0x75 {
+				f.a.NeonSshrS(out, a, s)
 			} else {
 				f.a.NeonUshrS(out, a, s)
 			}
 		}
 		done(n.Left)
-		if n.Op != 0x74 && n.Op != 0x76 {
+		if n.Op != 0x74 && n.Op != 0x75 && n.Op != 0x76 {
 			done(n.Right)
 		}
 	}
@@ -348,6 +367,14 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 		}
 		release(scratch)
 	}
+	// All ranges passed nontrapping preflight, and separate streams are disjoint
+	// over the entire source trip count. No shared access or load is admitted.
+	for _, store := range p.stores[:p.storeN] {
+		f.floatMapOffset(value, pointer, uint64(store.delta)+store.offset, true, X16)
+		f.a.Add64(value, linMemReg, value)
+		f.a.StrQ(value, 0, values[store.value])
+		done(store.value)
+	}
 	// These updates intentionally remain scalar and in original iteration order.
 	// Positive constant division cannot trap; its exact signed magic sequence
 	// mirrors the existing direct quotient lowering, without changing rounding.
@@ -381,6 +408,9 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 	for _, r := range outputs[:p.mapN] {
 		release(r)
 	}
+	if p.storeN != 0 {
+		f.a.AddImm32(pointer, pointer, 16)
+	}
 	f.floatMapOffset(seed, seed, uint64(4*p.seedStep), false, X16)
 	f.a.SubImm32(count, count, 4)
 	f.cmpImm(count, 5, false)
@@ -400,7 +430,13 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 	publish(counterLocal, count)
 	publish(seedLocal, seed)
 	publish(hashLocal, hash)
+	if p.storeN != 0 {
+		publish(pointerLocal, pointer)
+	}
 	f.patchBranch19(scalar, f.a.Len())
+	for _, site := range storeGuards[:storeGuardN] {
+		f.patchBranch19(site, f.a.Len())
+	}
 	release(lanes)
 	for _, r := range constantRegs[:constantN] {
 		release(r)
@@ -412,4 +448,42 @@ func (f *fn) emitIntegerResidualPlan(p *integerResidualPlan) {
 	}
 	f.integerResidualPlans++
 	f.stats.peep("integer-residual-vector")
+	if p.storeN != 0 {
+		f.stats.peep("integer-residual-store-vector")
+	}
+}
+
+// The guarded path performs no memory operation until every original store is
+// in bounds, every dynamic address is no-wrap, and whole streams are disjoint.
+// Guard failure enters the original loop, preserving its prefix before a trap.
+func (f *fn) guardIntegerResidualStores(p *integerResidualPlan, count, pointer, end, span, scratch Reg) (sites [3]int, n int) {
+	add := func(site int) { sites[n] = site; n++ }
+	f.a.LslImm64(span, count, 2)
+	var dynamic uint32
+	var effective uint64
+	for _, store := range p.stores[:p.storeN] {
+		dynamic = max(dynamic, store.delta)
+		effective = max(effective, uint64(store.delta)+store.offset)
+	}
+	f.floatMapOffset(end, pointer, uint64(dynamic), true, X16)
+	f.a.Add64(end, end, span)
+	f.a.SubImm64(end, end, 4)
+	f.a.MovImm64(scratch, 0xffffffff)
+	f.a.CmpReg64(end, scratch)
+	add(f.a.Bcond(condA))
+	f.floatMapOffset(end, pointer, effective, true, X16)
+	f.a.Add64(end, end, span)
+	f.ld64(scratch, linMemReg, -bdCurBytes)
+	f.a.CmpReg64(end, scratch)
+	add(f.a.Bcond(condA))
+	if p.storeN == 2 {
+		a, b := uint64(p.stores[0].delta)+p.stores[0].offset, uint64(p.stores[1].delta)+p.stores[1].offset
+		if a < b {
+			a, b = b, a
+		}
+		f.a.MovImm64(scratch, a-b)
+		f.a.CmpReg64(span, scratch)
+		add(f.a.Bcond(condA))
+	}
+	return
 }
