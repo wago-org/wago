@@ -216,6 +216,10 @@ func (f *fn) publishTemporaryLoopExit(fr *ctrlFrame) {
 		return
 	}
 	for i := 0; i < int(p.count); i++ {
-		f.storeLocalReg(int(p.local[i]), p.reg[i], false)
+		x := int(p.local[i])
+		f.storeLocalReg(x, p.reg[i], false)
+		// Both locations now hold the source value. Ordinary convergence can
+		// reuse this publication; a cold edge restores the hot state snapshot.
+		f.locals[x].state = lsStackReg
 	}
 }
