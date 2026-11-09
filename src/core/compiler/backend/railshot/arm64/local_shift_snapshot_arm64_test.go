@@ -12,6 +12,7 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 	initial := localShiftSnapshotEnabled
 	defer func() { localShiftSnapshotEnabled = initial }()
 	hits := uint64(0)
+	var concreteConsumerHits [2]uint64
 	for _, wide := range []bool{false, true} {
 		typ, c, add := wasm.I32, byte(0x41), byte(0x6a)
 		if wide {
@@ -24,7 +25,7 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 						for _, suffix := range []int{0, 1, 2, 3, 4} {
 							// The first x is a separate old-value capture. The two x operands in
 							// the pending shifted expression must also survive x's mutation.
-							body := []byte{0, 0x03, 0x7f - (c - 0x41), 0x20, 0}
+							body := []byte{1, 1, 0x7f - (c - 0x41), 0x03, 0x40, 0x20, 0}
 							if suffix == 4 {
 								body = append(body, 0x20, 1)
 							}
@@ -51,8 +52,8 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 							if suffix == 4 {
 								body = append(body, add+1)
 							}
-							body = append(body, 0x20, 0, c, 1, add, 0x21, 0, add+9, 0x20, 0, add+9, 0x20, 1, add+9, 0x0b, 0x0b)
-							m := mod1(t, []wasm.ValType{typ, typ}, []wasm.ValType{typ}, body)
+							body = append(body, 0x20, 0, c, 1, add, 0x21, 0, add+9, 0x20, 0, add+9, 0x20, 1, add+9, 0x21, 3, 0x20, 2, 0x41, 1, 0x6b, 0x22, 2, 0x0d, 0, 0x0b, 0x20, 3, 0x0b)
+							m := mod1(t, []wasm.ValType{typ, typ, wasm.I32}, []wasm.ValType{typ}, body)
 							for _, enabled := range []bool{false, true} {
 								old := localShiftSnapshotEnabled
 								localShiftSnapshotEnabled = enabled
@@ -113,19 +114,25 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 									if diagnosticsEnabled {
 										opts.Stats = &stats
 									}
-									got, err := runArm64WrapperWithOptions(t, m, opts, input, other)
+									got, err := runArm64WrapperWithOptions(t, m, opts, input, other, 1)
 									if err != nil || got != want {
 										t.Fatalf("wide=%v op=%d shift=%d count=%d enabled=%v input=%x got=%x want=%x err=%v", wide, offset, shiftOffset, count, enabled, input, got, want, err)
 									}
 									if diagnosticsEnabled {
 										n := stats.Funcs[0].Peephole["local-shift-snapshot"]
+										if enabled && !wide && count == 13 && shiftOffset == 12 && offset == 9 && suffix == 3 && input == 1 {
+											t.Logf("capture stats %v", stats.Funcs[0].Peephole)
+										}
 										if !enabled && n != 0 {
 											t.Fatal("disabled cover selected")
 										}
-										if enabled && count == 13 && offset == 9 && suffix >= 3 && stats.Funcs[0].Peephole["local-shift-snapshot-consumer"] == 0 {
+										if enabled && count == 13 && offset == 9 && suffix >= 3 && n != 0 && stats.Funcs[0].Peephole["local-shift-snapshot-consumer"] == 0 {
 											t.Fatal("concrete sibling consumer not captured")
 										}
 										hits += uint64(n)
+										if enabled && suffix >= 3 {
+											concreteConsumerHits[suffix-3] += uint64(stats.Funcs[0].Peephole["local-shift-snapshot-consumer"])
+										}
 									}
 								}
 								localShiftSnapshotEnabled = old
@@ -138,5 +145,62 @@ func TestLocalShiftSnapshotPreservesOldAndNewValues(t *testing.T) {
 	}
 	if diagnosticsEnabled && hits == 0 {
 		t.Fatal("snapshot cover never exercised")
+	}
+	if diagnosticsEnabled {
+		for order, n := range concreteConsumerHits {
+			if n == 0 {
+				t.Fatalf("concrete consumer order %d never exercised", order)
+			}
+		}
+	}
+}
+
+func TestLocalShiftSnapshotPreservesHighPressureFallback(t *testing.T) {
+	old := localShiftSnapshotEnabled
+	defer func() { localShiftSnapshotEnabled = old }()
+	params := make([]wasm.ValType, 14)
+	for i := range params {
+		params[i] = wasm.I32
+	}
+	body := []byte{0, 0x03, 0x7f, 0x20, 0, 0x20, 0, 0x20, 0, 0x41, 13, 0x76, 0x73, 0x20, 0, 0x41, 1, 0x6a, 0x21, 0, 0x73}
+	for i := range params {
+		body = append(body, 0x20, byte(i), 0x73)
+	}
+	body = append(body, 0x0b, 0x0b)
+	m := mod1(t, params, []wasm.ValType{wasm.I32}, body)
+	for _, enabled := range []bool{false, true} {
+		localShiftSnapshotEnabled = enabled
+		for _, seed := range []uint32{0, 7, 0x80000001, 0xffffffff} {
+			args := make([]uint64, len(params))
+			for i := range args {
+				args[i] = uint64(seed+uint32(i)*0x87654321) | 0xdeadbeef00000000
+			}
+			a := uint32(args[0])
+			want := a ^ (a ^ (a >> 13))
+			for i, arg := range args {
+				if i == 0 {
+					want ^= a + 1
+				} else {
+					want ^= uint32(arg)
+				}
+			}
+			var stats ModuleStats
+			opts := CompileOptions{}
+			if diagnosticsEnabled {
+				opts.Stats = &stats
+			}
+			got, err := runArm64WrapperWithOptions(t, m, opts, args...)
+			if err != nil || got != uint64(want) {
+				t.Fatalf("enabled=%v seed=%x got=%x want=%x err=%v", enabled, seed, got, want, err)
+			}
+			if diagnosticsEnabled && enabled {
+				if stats.Funcs[0].Peephole["local-shift-snapshot-pressure"] == 0 {
+					t.Fatalf("pressure fallback not exercised: %v", stats.Funcs[0].Peephole)
+				}
+				if stats.Funcs[0].Peephole["local-shift-snapshot"] != 0 {
+					t.Fatal("high-pressure capture admitted")
+				}
+			}
+		}
 	}
 }

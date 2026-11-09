@@ -62,6 +62,27 @@ func (f *fn) snapshotLocalShiftedBinary(first *elem, local int) *elem {
 	default:
 		return nil
 	}
+	// Capturing early changes temporary live ranges and the schedule ahead of
+	// the old local's overwrite. Initially require half the allocatable GP file
+	// to be free without spills or pin eviction; high-pressure code retains the
+	// established leaf snapshots and delayed arithmetic schedule.
+	free := 0
+	blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+	for _, r := range gpAlloc {
+		if f.regUser[r] == nil && !blocked.has(r) {
+			free++
+		}
+		if !diagnosticsEnabled && free >= (len(gpAlloc)+1)/2 {
+			break
+		}
+	}
+	if diagnosticsEnabled && f.stats != nil {
+		f.stats.peep(fmt.Sprintf("local-shift-snapshot-free-%d", free))
+	}
+	if free < (len(gpAlloc)+1)/2 {
+		f.stats.peep("local-shift-snapshot-pressure")
+		return nil
+	}
 	// Keep a short pure suffix with its captured input. Materializing
 	// only the shifted binary can otherwise leave another copy at the suffix's
 	// later sink, and retains a wider value than that sink needs.
@@ -99,16 +120,7 @@ suffix:
 			break suffix
 		}
 	}
-	if diagnosticsEnabled && f.stats != nil {
-		free := 0
-		blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
-		for _, r := range gpAlloc {
-			if f.regUser[r] == nil && !blocked.has(r) {
-				free++
-			}
-		}
-		f.stats.peep(fmt.Sprintf("local-shift-snapshot-free-%d", free))
-	}
+
 	f.condense(root, regNone)
 	f.stats.peep("local-shift-snapshot")
 	return root
