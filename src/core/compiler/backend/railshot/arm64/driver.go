@@ -1278,6 +1278,10 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 			e = f.s.next(square)
 			continue
 		}
+		if captured := f.snapshotLocalShiftedBinary(e, x); captured != nil {
+			e = f.s.next(captured)
+			continue
+		}
 		switch {
 		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
