@@ -13,6 +13,9 @@ import (
 )
 
 func maxSumFixture(t testing.TB, dst, a, b, stride, limit, bias uint32) *wasm.Module {
+	return maxSumFixtureOrder(t, dst, a, b, stride, limit, bias, false)
+}
+func maxSumFixtureOrder(t testing.TB, dst, a, b, stride, limit, bias uint32, swapped bool) *wasm.Module {
 	body := []byte{1, 11, 0x7f}
 	c := func(v uint32) { body = append(body, 0x41); body = append(body, wasmtest.SLEB32(int32(v))...) }
 	get := func(i byte) { body = append(body, 0x20, i) }
@@ -41,17 +44,29 @@ func maxSumFixture(t testing.TB, dst, a, b, stride, limit, bias uint32) *wasm.Mo
 	for lane := uint32(0); lane < 2; lane++ {
 		get(1)
 		get(5)
-		get(2)
-		if lane != 0 {
-			c(stride)
-			body = append(body, 0x6a)
+		loadA := func() {
+			get(2)
+			if lane != 0 {
+				c(stride)
+				body = append(body, 0x6a)
+			}
+			body = append(body, 0x28, 2, 0)
 		}
-		body = append(body, 0x28, 2, 0)
-		get(3)
-		get(10)
-		body = append(body, 0x6a)
-		c(12 + lane*4)
-		body = append(body, 0x6a, 0x22, 7, 0x28, 2, 0, 0x6a, 0x22, 6)
+		loadB := func() {
+			get(3)
+			get(10)
+			body = append(body, 0x6a)
+			c(12 + lane*4)
+			body = append(body, 0x6a, 0x22, 7, 0x28, 2, 0)
+		}
+		if swapped {
+			loadB()
+			loadA()
+		} else {
+			loadA()
+			loadB()
+		}
+		body = append(body, 0x6a, 0x22, 6)
 		get(5)
 		get(6)
 		body = append(body, 0x4a, 0x1b, 0x22, 5, 0x36, 2, 0)
@@ -294,6 +309,27 @@ func checkMaxSumCallerFPAndVectors(t *testing.T, stride uint32) {
 			}
 			if diagnosticsEnabled && stats.Funcs[1].Peephole["max-sum-prefix"] != 1 {
 				t.Fatalf("callee did not vectorize: %v", stats.Funcs[1].Peephole)
+			}
+		}
+	}
+}
+
+func TestMaxSumScalarOffsetFallback(t *testing.T) {
+	old := maxSumLoopEnabled
+	defer func() { maxSumLoopEnabled = old }()
+	for _, stride := range []uint32{1, 2, 4096, 4120, 1 << 20} {
+		for _, swapped := range []bool{false, true} {
+			m := maxSumFixtureOrder(t, 65532, 0, 8192, stride, 16, 0, swapped)
+			want, trap := maxSumOracle(65532, 0, 8192, stride, 16, 0)
+			for _, on := range []bool{false, true} {
+				maxSumLoopEnabled = on
+				for _, compact := range []bool{false, true} {
+					got, err := runScalarUnrollMemory(t, m, CompileOptions{CompactNative: compact})
+					var tr *rt.TrapError
+					if (err != nil) != trap || err != nil && (!errors.As(err, &tr) || tr.Code != rt.TrapLinMemOutOfBounds) || !bytes.Equal(got, want) {
+						t.Fatalf("stride%d swapped%v on%v compact%v trap%v err%v equal%v", stride, swapped, on, compact, trap, err, bytes.Equal(got, want))
+					}
+				}
 			}
 		}
 	}
