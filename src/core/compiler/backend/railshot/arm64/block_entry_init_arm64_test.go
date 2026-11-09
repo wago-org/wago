@@ -78,6 +78,12 @@ func TestBlockEntryInitializationBoundedTypeMask(t *testing.T) {
 	if s.blockEntryLocalEligible(1) {
 		t.Fatal("unknown signature accepted")
 	}
+	imported := &wasm.Module{Types: m.Types, FuncTypes: m.FuncTypes, Code: m.Code,
+		Imports: []wasm.Import{{Type: wasm.NewFuncExternType(wasm.TypeIdx{})}}}
+	s = byteBodyScanner{m: imported, selfIdx: 1}
+	if !s.blockEntryLocalEligible(1) || s.blockEntryLocalEligible(0) {
+		t.Fatal("imported function shifted declared-local mask")
+	}
 }
 
 func blockEntryInitFixture(t *testing.T, typ byte, variant string) *wasm.Module {
@@ -96,20 +102,32 @@ func blockEntryInitFixture(t *testing.T, typ byte, variant string) *wasm.Module 
 		body = appendBlockInitStore(body, typ)
 	}
 	for i := byte(1); i <= 8; i++ {
+		value := i
+		if variant == "zero" {
+			value = 0
+		}
 		switch typ {
 		case 0x7f:
-			body = append(body, 0x41, i)
+			body = append(body, 0x41, value)
 		case 0x7e:
-			body = append(body, 0x42, i)
+			body = append(body, 0x42, value)
 		case 0x7d:
 			body = append(body, 0x43)
-			body = binary.LittleEndian.AppendUint32(body, 0x80000000|uint32(i))
+			bits := uint32(0x80000000) | uint32(i)
+			if variant == "zero" {
+				bits = 0
+			}
+			body = binary.LittleEndian.AppendUint32(body, bits)
 		case 0x7c:
 			body = append(body, 0x44)
-			body = binary.LittleEndian.AppendUint64(body, 0x7ff0000000000000|uint64(i))
+			bits := uint64(0x7ff0000000000000) | uint64(i)
+			if variant == "zero" {
+				bits = 0
+			}
+			body = binary.LittleEndian.AppendUint64(body, bits)
 		case 0x7b:
 			body = append(body, 0xfd, 0x0c)
-			body = append(body, bytes.Repeat([]byte{i}, 16)...)
+			body = append(body, bytes.Repeat([]byte{value}, 16)...)
 		}
 		body = append(body, 0x21, i)
 	}
@@ -152,7 +170,7 @@ func TestBlockEntryInitializationNativeState(t *testing.T) {
 	old := blockEntryInitEnabled
 	defer func() { blockEntryInitEnabled = old }()
 	for _, typ := range []byte{0x7f, 0x7e, 0x7d, 0x7c, 0x7b} {
-		for _, variant := range []string{"block", "nested", "branch-before", "branch-after", "conditional", "read-first"} {
+		for _, variant := range []string{"block", "nested", "branch-before", "branch-after", "conditional", "read-first", "zero"} {
 			m := blockEntryInitFixture(t, typ, variant)
 			for _, condition := range []uint64{0, 1} {
 				initial := bytes.Repeat([]byte{0x9b}, 65536)
@@ -170,7 +188,7 @@ func TestBlockEntryInitializationNativeState(t *testing.T) {
 				for i := 1; i <= 8; i++ {
 					b := want[16*i : 16*i+width]
 					clear(b)
-					if assigned {
+					if assigned && variant != "zero" {
 						switch typ {
 						case 0x7f:
 							binary.LittleEndian.PutUint32(b, uint32(i))
