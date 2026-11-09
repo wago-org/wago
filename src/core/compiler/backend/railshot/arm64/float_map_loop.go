@@ -9,6 +9,8 @@ import (
 )
 
 // Nonzero-immediate maps retain a same-binary scalar control for qualification.
+var floatMapScatterEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_SCATTER") != "1"
+
 var floatMapOffsetsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_OFFSETS") != "1"
 
 var floatMapLaneFPLoadsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_LANE_FP_LOADS") != "1"
@@ -46,6 +48,9 @@ type floatMapPlan struct {
 	localN                       int
 	counter, result, dest, count int
 	step, limit, packet          uint32
+	counterScale                 uint32 // physical source bytes per logical packet byte
+	scatterBudget                int
+	scatterCandidate             bool
 	destOffset                   uint64
 	wide                         bool
 	integer                      bool
@@ -72,6 +77,8 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 	p.integer = f.integerLoadMapProbe
 	p.normalizedInduction = p.integer
 	p.spanScale = 1
+	p.counterScale = 1
+	p.scatterBudget = integerResidualWorkLimit - int(f.integerResidualWork)
 	p.limitLocal = -1
 	p.workLimit = integerLoadMapWorkLimit - int(f.integerLoadMapWork)
 	scan := *source
@@ -226,7 +233,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			}
 			p.count, p.dest, p.result = n, stores[0].Address, stores[0].Value
 			p.destOffset = stores[0].Offset
-			if !p.proveAddresses(f.localType) || p.addresses[p.dest].stride > 1 {
+			if !p.proveAddresses(f.localType) || p.addresses[p.dest].stride > 1 && p.counterScale <= 1 {
 				return p, false
 			}
 			for i := 1; i < ns; i++ {
@@ -348,7 +355,11 @@ func (p *floatMapPlan) affine(x int, types []machineType, visits *int) (floatMap
 	if !walk(x) || base == 0 || counter > 1 || bias > 1<<20 {
 		return floatMapAddress{}, false
 	}
-	return floatMapAddress{base: base - 1, bias: bias, invariant: counter == 0}, true
+	stride := uint32(0)
+	if counter != 0 && p.counterScale > 1 {
+		stride = p.counterScale
+	}
+	return floatMapAddress{base: base - 1, bias: bias, stride: stride, invariant: counter == 0}, true
 }
 func (p *floatMapPlan) proveAddresses(types []machineType) bool {
 	visits := 0
@@ -492,11 +503,16 @@ func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	p, ok := f.inspectFloatMapLoop(source)
 	defer func() {
+		if p.scatterCandidate {
+			// Share the bounded integer-analysis budget without adding another
+			// field to every compiler function or changing ordinary map admission.
+			f.integerResidualWork = uint16(min(integerResidualWorkLimit, int(f.integerResidualWork)+p.work))
+		}
 		if p.integer {
 			f.integerLoadMapWork = uint16(min(integerLoadMapWorkLimit, int(f.integerLoadMapWork)+p.work))
 		}
 	}()
-	if !ok {
+	if !ok || p.counterScale > 1 && f.a.Len() > 64<<10 {
 		return
 	}
 	// Deeply nested copy-only loops often move a handful of words, and even
@@ -794,6 +810,16 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var guards [64]int
 	nGuards := 0
 	guard := func(cc Cond) { guards[nGuards] = f.a.Bcond(cc); nGuards++ }
+	if p.counterScale > 1 {
+		// A source counter in another residue class must retain the original
+		// modular loop. Normalize only an exact multiple of the physical scale.
+		f.a.MovImm64(X17, uint64(p.counterScale))
+		f.a.Udiv32(span, counter, X17)
+		f.a.Msub32(X16, span, X17, counter)
+		f.cmpImm(X16, 0, false)
+		guard(condNE)
+		f.a.MovReg32(counter, span)
+	}
 	if p.normalizedInduction && p.limitLocal >= 0 {
 		read(p.limitLocal, X16)
 		f.cmpRR(counter, X16, false)
@@ -848,7 +874,13 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	for i := 0; i < ng; i++ {
 		g := &groups[i]
 		if !p.normalizedInduction || g.index == p.counter+1 {
-			f.a.Add32(g.reg, g.reg, counter)
+			if p.counterScale > 1 {
+				f.a.MovImm32(X17, int32(p.counterScale))
+				f.a.Mul32(X16, counter, X17)
+				f.a.Add32(g.reg, g.reg, X16)
+			} else {
+				f.a.Add32(g.reg, g.reg, counter)
+			}
 		} else if g.index > 0 {
 			read(g.index-1, X16)
 			f.a.Add32(g.reg, g.reg, X16)
@@ -896,7 +928,13 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.floatMapOffset(X17, d, uint64(dOff), true, X17)
 		f.a.Sub64(X16, X16, X17)
 		f.a.AddImm64(X16, X16, width-1)
-		f.a.AddImm64(X17, span, width-1)
+		if p.counterScale > 1 {
+			f.a.MovImm64(X17, uint64(p.counterScale))
+			f.a.Mul64(X17, span, X17)
+			f.a.AddImm64(X17, X17, width-1)
+		} else {
+			f.a.AddImm64(X17, span, width-1)
+		}
 		f.cmpRR(X16, X17, true)
 		guard(condB)
 	}
@@ -911,6 +949,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	nChecked := 0
 	for i := 0; i < nl; i++ {
 		s, off := locate(p.addresses[loads[i]])
+		if p.counterScale > 1 {
+			width := uint32(4)
+			if p.wide {
+				width = 8
+			}
+			f.floatMapScatterAlias(d, s, dOff, off, span, size, p.counterScale, width, guard)
+			continue
+		}
 		if stride := p.addresses[loads[i]].stride; stride > 1 {
 			// A gather changes the lane address spacing. Require disjoint whole
 			// source/output ranges rather than reusing the unit-stride proof.
@@ -1184,7 +1230,33 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	packet := func(width uint32) {
 		for block = 0; block < int32(width); block += floatMapVectorBytes {
 			value, owned := emit(p.result)
-			f.a.StrQ(d, int32(dOff)+block, value)
+			if p.counterScale > 1 {
+				width := uint32(4)
+				if p.wide {
+					width = 8
+				}
+				for lane := uint32(0); lane < 16/width; lane++ {
+					address := uint64(dOff) + (uint64(block)+uint64(lane*width))*uint64(p.counterScale)
+					base, disp := d, int32(0)
+					if address%uint64(width) == 0 && address/uint64(width) <= 0xfff {
+						disp = int32(address)
+					} else {
+						f.floatMapOffset(X17, d, address, true, X16)
+						base = X17
+					}
+					if lane == 0 {
+						f.a.StrF(base, disp, value, p.wide)
+					} else if p.wide {
+						f.a.NeonUmovD(X16, value, byte(lane))
+						f.a.Store64(X16, base, uint32(disp))
+					} else {
+						f.a.NeonUmovS(X16, value, byte(lane))
+						f.a.Store32(X16, base, uint32(disp))
+					}
+				}
+			} else {
+				f.a.StrQ(d, int32(dOff)+block, value)
+			}
 			if owned {
 				f.fpinned = f.fpinned.remove(value)
 				f.releaseF(value)
@@ -1268,6 +1340,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.setFactsForLocal(local, 0)
 		}
 	}
+	if p.counterScale > 1 {
+		f.a.MovImm32(X16, int32(p.counterScale))
+		f.a.Mul32(counter, counter, X16)
+		f.stats.peep("float-map-scatter-vector")
+	}
 	if reg, _, pin := f.pinReg(p.counter); pin {
 		f.a.MovReg32(reg, counter)
 		f.markLocalDirty(p.counter)
@@ -1343,10 +1420,23 @@ func (p *floatMapPlan) finishFloatInduction(condition, ns int, initialRead []boo
 	if p.wide {
 		size = 8
 	}
-	if local.op != 0x20 || p.locals[p.localSlot(local.a)].Type != mtI32 || stride.op != 0x41 || stride.bits != uint64(size)*uint64(ns) {
+	if local.op != 0x20 || p.locals[p.localSlot(local.a)].Type != mtI32 || stride.op != 0x41 {
 		return false
 	}
-	p.counter, p.step = local.a, uint32(stride.bits)
+	step := size * uint32(ns)
+	scale := uint32(1)
+	if stride.bits != uint64(step) {
+		if !floatMapScatterEnabled || step == 0 || stride.bits > 1<<24 || stride.bits%uint64(step) != 0 {
+			return false
+		}
+		scale = uint32(stride.bits / uint64(step))
+		if scale <= 1 || scale > 1<<16 || p.limit == 0 || p.limit%scale != 0 || p.scatterBudget <= p.work {
+			return false
+		}
+		p.scatterCandidate = true
+		p.workLimit = min(p.workLimit, p.scatterBudget)
+	}
+	p.counter, p.step = local.a, step
 	p.packet = floatMapPacketWidth(p.step)
 	if p.packet == 0 {
 		return false
@@ -1355,9 +1445,14 @@ func (p *floatMapPlan) finishFloatInduction(condition, ns int, initialRead []boo
 		return false
 	}
 	for i, cell := range p.locals[:p.localN] {
+		if scale > 1 && !p.spend() {
+			return false
+		}
 		if cell.Written && initialRead[i] && int(cell.Index) != p.counter {
 			return false
 		}
 	}
+	p.counterScale = scale
+	p.limit /= scale
 	return true
 }
