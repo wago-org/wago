@@ -1573,6 +1573,11 @@ func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifi
 		if err != nil {
 			return nil, true
 		}
+		if uses != nil && uses.work != nil && (op == 0xfb || op == 0xfe) {
+			uses.blocked = true
+			uses.mask = 0
+			return nil, true
+		}
 		// Numeric scalar instructions have neither immediates nor effects on
 		// locals/call admission. Local operations need only their index, so do
 		// not construct a complete classification for these common cases.

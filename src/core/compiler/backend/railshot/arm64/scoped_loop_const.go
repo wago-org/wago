@@ -171,6 +171,9 @@ func (f *fn) hasWideScopedConstPrefix(source *wasm.Reader) bool {
 		if e != nil {
 			return false
 		}
+		if op == 0xfb || op == 0xfe {
+			return false
+		}
 		if op == 0x41 || op == 0x42 {
 			if _, e = uses.consume(op, &r); e != nil {
 				return false

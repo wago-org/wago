@@ -59,7 +59,7 @@ func TestWideScopedConstProbeLimitsAndTableBarrier(t *testing.T) {
 	hints := scopedLoopConstHints{loopIntConstCount: 1, loopIntConstTypes: 2, loopIntConst: [4]int64{-4417276706812531889}}
 	literal := append([]byte{0x42}, wasmtest.SLEB64(hints.loopIntConst[0])...)
 	literal = append(literal, 0x7e, 0x1a)
-	for _, helper := range [][]byte{{0x25, 0}, {0x26, 0}, {0xfc, 16, 0}, {0xfc, 15, 0}} {
+	for _, helper := range [][]byte{{0x25, 0}, {0x26, 0}, {0xfc, 16, 0}, {0xfc, 15, 0}, {0xfb, 0}, {0xfe, 0}} {
 		code := append(append([]byte{}, literal...), helper...)
 		code = append(code, 0x0b)
 		work := uint16(0)
