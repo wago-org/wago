@@ -24,6 +24,7 @@ func TestFPWriteDestinations(t *testing.T) {
 		{"argmax-unzip", 1 << 3, func(a *Asm) { a.NeonUzp1S(3, 4, 5) }},
 		{"narrow", 1 << 3, func(a *Asm) { a.NeonXtnHfromS(3, 4) }},
 		{"unzip", 1 << 3, func(a *Asm) { a.NeonUzp2S(3, 4, 5) }},
+		{"pair-accumulate", 1 << 3, func(a *Asm) { a.NeonUadalpDfromS(3, 4) }},
 		{"reduction", 1 << 3, func(a *Asm) { a.NeonAddvB(3, 4) }},
 		{"shuffle", 1 << 3, func(a *Asm) { a.NeonTbl(3, 4, 5) }},
 		{"round", 1 << 3, func(a *Asm) { a.NeonFrint(3, 4, true, 'n') }},

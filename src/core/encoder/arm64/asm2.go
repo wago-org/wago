@@ -1854,6 +1854,14 @@ func (a *Asm) NeonUaddlpDfromS(dst, n Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 } // UADDLP Vd.2D,Vn.4S
+// NeonUadalpDfromS widens unsigned adjacent i32 pairs, then adds each
+// full-precision pair sum to its modular i64 accumulator lane.
+func (a *Asm) NeonUadalpDfromS(dst, n Reg) {
+	a.word(0x6EA06800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 func (a *Asm) neonLeftShift(bytes int, dst, n Reg, shift uint8) {
 	imm := uint32(bytes*8) + uint32(shift)
 	a.word(0x4F005400 | (imm&0x7F)<<16 | r(n)<<5 | r(dst))

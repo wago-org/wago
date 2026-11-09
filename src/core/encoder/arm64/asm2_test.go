@@ -53,6 +53,8 @@ func TestPortIntEncodings(t *testing.T) {
 		{"umulh x0,x1,x2", func(a *Asm) { a.Umulh(X0, X1, X2) }, 0x9bc27c20},
 		{"smull x0,w1,w2", func(a *Asm) { a.Smull(X0, X1, X2) }, 0x9b227c20},
 		{"umull x0,w1,w2", func(a *Asm) { a.Umull(X0, X1, X2) }, 0x9ba27c20},
+		{"uadalp v0.2d,v1.4s", func(a *Asm) { a.NeonUadalpDfromS(0, 1) }, 0x6ea06820},
+		{"uadalp v31.2d,v30.4s", func(a *Asm) { a.NeonUadalpDfromS(31, 30) }, 0x6ea06bdf},
 		{"ldp q16,q17,[x10]", func(a *Asm) { a.LdpQ(X16, X17, X10, 0) }, 0xad404550},
 		{"stp q16,q17,[x9]", func(a *Asm) { a.StpQ(X16, X17, X9, 0) }, 0xad004530},
 		{"ldp q18,q19,[x10,#32]", func(a *Asm) { a.LdpQ(X18, X19, X10, 32) }, 0xad414d52},
