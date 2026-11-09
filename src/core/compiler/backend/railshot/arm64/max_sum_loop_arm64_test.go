@@ -147,7 +147,7 @@ func TestMaxSumAdmission(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	for _, stride := range []uint32{4, 20, 720} {
 		stats := compileWithStats(t, maxSumFixture(t, 60000, 256, 8192, stride, 32, 0), false).Funcs[0]
-		if stats.Peephole["max-sum-vector"] != 1 {
+		if stats.Peephole["max-sum-prefix"] != 1 {
 			t.Fatalf("stride%d not admitted: %v", stride, stats.Peephole)
 		}
 	}
@@ -200,7 +200,7 @@ func TestMaxSumProbeBudgetEffectsAndAllocations(t *testing.T) {
 }
 
 func TestMaxSumPressureRejectsBeforeEmission(t *testing.T) {
-	m := maxSumFixture(t, 60000, 256, 8192, 720, 32, 0)
+	m := maxSumFixture(t, 60000, 256, 8192, 4, 32, 0)
 	body := m.Code[0].BodyBytes
 	at := bytes.LastIndex(body, []byte{0x03, 0x40})
 	probe := fn{nLocals: 11, localType: make([]machineType, 11)}
@@ -230,9 +230,14 @@ func TestMaxSumPressureRejectsBeforeEmission(t *testing.T) {
 }
 
 func TestMaxSumCallerFPAndVectors(t *testing.T) {
-	callee := maxSumFixture(t, 60000, 256, 8192, 720, 64, 0)
+	for _, stride := range []uint32{4, 720} {
+		checkMaxSumCallerFPAndVectors(t, stride)
+	}
+}
+func checkMaxSumCallerFPAndVectors(t *testing.T, stride uint32) {
+	callee := maxSumFixture(t, 60000, 256, 8192, stride, 64, 0)
 	args := [4]uint64{0, 0, 0, 0}
-	want, trapped := maxSumOracle(60000, 256, 8192, 720, 64, 0)
+	want, trapped := maxSumOracle(60000, 256, 8192, stride, 64, 0)
 	if trapped {
 		t.Fatal("invalid caller fixture")
 	}
@@ -287,7 +292,7 @@ func TestMaxSumCallerFPAndVectors(t *testing.T) {
 			if err != nil || !bytes.Equal(got, want) {
 				t.Fatalf("compact%v stackReg%v err%v equal%v", compact, stackReg, err, bytes.Equal(got, want))
 			}
-			if diagnosticsEnabled && stats.Funcs[1].Peephole["max-sum-vector"] != 1 {
+			if diagnosticsEnabled && stats.Funcs[1].Peephole["max-sum-prefix"] != 1 {
 				t.Fatalf("callee did not vectorize: %v", stats.Funcs[1].Peephole)
 			}
 		}

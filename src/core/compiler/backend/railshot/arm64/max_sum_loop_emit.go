@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+var maxSumScalarGatherEnabled = os.Getenv("WAGO_ARM64_NO_MAX_SUM_SCALAR_GATHER") != "1"
+
 var maxSumLoopEnabled = os.Getenv("WAGO_ARM64_NO_MAX_SUM_LOOP") != "1"
 
 func (f *fn) hasMaxSumPrefix(source *wasm.Reader) bool {
@@ -74,15 +76,18 @@ func (f *fn) emitMaxSumPlan(p *maxSumPlan) {
 	if free < 7 {
 		return
 	}
-	free = 0
-	fpBlocked := f.blockedFRegs(0)
-	for _, r := range fpAllocRegs {
-		if !fpBlocked.has(r) && f.fregUser[r] == nil {
-			free++
+	scalar := maxSumScalarGatherEnabled && (p.streams[0].stride != 4 || p.streams[1].stride != 4)
+	if !scalar {
+		free = 0
+		fpBlocked := f.blockedFRegs(0)
+		for _, r := range fpAllocRegs {
+			if !fpBlocked.has(r) && f.fregUser[r] == nil {
+				free++
+			}
 		}
-	}
-	if free < 3 {
-		return
+		if free < 3 {
+			return
+		}
 	}
 	oldPins, oldFPins := f.pinned, f.fpinned
 	var gp [7]Reg
@@ -91,16 +96,20 @@ func (f *fn) emitMaxSumPlan(p *maxSumPlan) {
 		gp[i] = f.allocRegOrNone(0)
 		f.pinned = f.pinned.add(gp[i])
 	}
-	for i := range fp {
-		fp[i] = f.allocFReg(0)
-		f.fpinned = f.fpinned.add(fp[i])
+	nf := 0
+	if !scalar {
+		for i := range fp {
+			fp[i] = f.allocFReg(0)
+			f.fpinned = f.fpinned.add(fp[i])
+			nf++
+		}
 	}
 	defer func() {
 		f.pinned, f.fpinned = oldPins, oldFPins
 		for _, r := range gp {
 			f.release(r)
 		}
-		for _, r := range fp {
+		for _, r := range fp[:nf] {
 			f.releaseF(r)
 		}
 	}()
@@ -170,41 +179,96 @@ func (f *fn) emitMaxSumPlan(p *maxSumPlan) {
 		f.patchBranch19(separate, f.a.Len())
 	}
 	read(p.acc, acc)
-	f.a.NeonDupGprS(maximum, acc)
-	f.a.Add64(a, a, linMemReg)
-	f.a.Add64(b, b, linMemReg)
-	f.a.Add64(dst, dst, linMemReg)
-	loop := f.a.Len()
-	for i, ptr := range [2]Reg{a, b} {
-		v := va
-		if i == 1 {
-			v = vb
+	if scalar {
+		// Bounds/alias checks are finished. Reuse their size lease as an
+		// independent signed-max accumulator. No extra allocator is needed.
+		f.a.MovReg32(size, acc)
+		f.a.Add64(a, a, linMemReg)
+		f.a.Add64(b, b, linMemReg)
+		packet := func(lanes uint32) {
+			for lane := uint32(0); lane < lanes; lane++ {
+				for i, ptr := range [2]Reg{a, b} {
+					out := X16
+					if i == 1 {
+						out = X17
+					}
+					off := uint64(lane) * uint64(p.streams[i].stride)
+					if off%4 == 0 && off/4 <= 0xfff {
+						f.a.Load32(out, ptr, uint32(off))
+					} else {
+						// dst is reloadable and X17 has not yet received this
+						// lane's second input. Preserve the first input in X16.
+						f.floatMapOffset(dst, ptr, off, true, X17)
+						f.a.Load32(out, dst, 0)
+					}
+				}
+				f.a.Add32(X16, X16, X17)
+				part := acc
+				if lane&1 != 0 {
+					part = size
+				}
+				f.a.CmpReg32(part, X16)
+				f.a.Csel32(part, part, X16, condG)
+			}
+			for i, ptr := range [2]Reg{a, b} {
+				f.floatMapOffset(ptr, ptr, uint64(p.streams[i].stride)*uint64(lanes), true, X16)
+			}
+			f.a.AddImm32(counter, counter, lanes)
+			f.a.SubImm32(remaining, remaining, lanes)
 		}
-		stride := p.streams[i].stride
-		if stride == 4 {
-			f.a.LdrQ(v, ptr, 0)
-		} else {
-			for lane := byte(0); lane < 4; lane++ {
-				f.floatMapOffset(X17, ptr, uint64(lane)*uint64(stride), true, X16)
-				f.a.Load32(X16, X17, 0)
-				f.a.NeonInsS(v, X16, lane)
+		// Max is associative over the already wrapped i32 sums. Two partials
+		// shorten the carried chain, while loads remain in source order.
+		loop := f.a.Len()
+		packet(8)
+		f.cmpImm(remaining, 10, false)
+		f.patchBranch19(f.a.Bcond(condAE), loop)
+		f.cmpImm(remaining, 6, false)
+		tail := f.a.Bcond(condB)
+		packet(4)
+		f.patchBranch19(tail, f.a.Len())
+		f.a.CmpReg32(acc, size)
+		f.a.Csel32(acc, acc, size, condG)
+		read(p.dst, dst)
+		f.a.Add64(dst, dst, linMemReg)
+		f.stats.peep("max-sum-unroll")
+	} else {
+		f.a.NeonDupGprS(maximum, acc)
+		f.a.Add64(a, a, linMemReg)
+		f.a.Add64(b, b, linMemReg)
+		f.a.Add64(dst, dst, linMemReg)
+		loop := f.a.Len()
+		for i, ptr := range [2]Reg{a, b} {
+			v := va
+			if i == 1 {
+				v = vb
+			}
+			stride := p.streams[i].stride
+			if stride == 4 {
+				f.a.LdrQ(v, ptr, 0)
+			} else {
+				for lane := byte(0); lane < 4; lane++ {
+					f.floatMapOffset(X17, ptr, uint64(lane)*uint64(stride), true, X16)
+					f.a.Load32(X16, X17, 0)
+					f.a.NeonInsS(v, X16, lane)
+				}
 			}
 		}
+		f.a.NeonAddS(va, va, vb)
+		f.a.NeonSmaxS(maximum, maximum, va)
+		for i, ptr := range [2]Reg{a, b} {
+			f.floatMapOffset(ptr, ptr, uint64(p.streams[i].stride)*4, true, X16)
+		}
+		f.a.AddImm32(counter, counter, 4)
+		f.a.SubImm32(remaining, remaining, 4)
+		f.cmpImm(remaining, 6, false)
+		f.patchBranch19(f.a.Bcond(condAE), loop)
+		f.a.NeonExt16b(vb, maximum, maximum, 8)
+		f.a.NeonSmaxS(maximum, maximum, vb)
+		f.a.NeonExt16b(vb, maximum, maximum, 4)
+		f.a.NeonSmaxS(maximum, maximum, vb)
+		f.a.NeonUmovS(acc, maximum, 0)
+		f.stats.peep("max-sum-vector")
 	}
-	f.a.NeonAddS(va, va, vb)
-	f.a.NeonSmaxS(maximum, maximum, va)
-	for i, ptr := range [2]Reg{a, b} {
-		f.floatMapOffset(ptr, ptr, uint64(p.streams[i].stride)*4, true, X16)
-	}
-	f.a.AddImm32(counter, counter, 4)
-	f.a.SubImm32(remaining, remaining, 4)
-	f.cmpImm(remaining, 6, false)
-	f.patchBranch19(f.a.Bcond(condAE), loop)
-	f.a.NeonExt16b(vb, maximum, maximum, 8)
-	f.a.NeonSmaxS(maximum, maximum, vb)
-	f.a.NeonExt16b(vb, maximum, maximum, 4)
-	f.a.NeonSmaxS(maximum, maximum, vb)
-	f.a.NeonUmovS(acc, maximum, 0)
 	f.a.Store32(acc, dst, 0)
 	publish := func(local int, r Reg) {
 		if out, _, ok := f.pinReg(local); ok {
@@ -236,5 +300,5 @@ func (f *fn) emitMaxSumPlan(p *maxSumPlan) {
 	}
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
-	f.stats.peep("max-sum-vector")
+	f.stats.peep("max-sum-prefix")
 }
