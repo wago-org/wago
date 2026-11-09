@@ -187,6 +187,7 @@ type fn struct {
 	remainderZeroLoopWrites uint64
 	integerResidualWork     uint16
 	scopedConstWork         uint16
+	loopLocalLeaseWork      uint16
 	integerWordMapWork      uint16
 	integerLoadMapWork      uint16
 	integerLoadMapProbe     bool
@@ -448,6 +449,7 @@ type fn struct {
 	inlineForward           [4]uint32
 	inlineForwardN          uint32
 	loopLocalParams         loopLocalParamHomes
+	loopLocalLease          loopLocalLease
 	inlineTailLoopFrame     int // index+1 of synthetic self-tail loop while inlining
 	inlineWriteVersions     [5]uint32
 	inlineNonzeroPredicates [8]uint32

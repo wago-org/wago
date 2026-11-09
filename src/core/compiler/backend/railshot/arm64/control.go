@@ -1907,6 +1907,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 					f.emitAbsReduceLoop(r)
 				}
 			}
+			f.beginLoopLocalLease(r, &fr)
 			f.preloadScopedLoopConsts(&fr)
 			f.preloadScopedFloatConsts(r)
 			if !f.alignCountedLoopBody(r, &fr) {
@@ -2958,6 +2959,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	f.finishDotLoop(last + 1)
 	f.finishByteReduceLoop(last + 1)
 	f.finishPureReduce(last + 1)
+	f.finishLoopLocalLease(last + 1)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
 	f.releaseFrameBaseTypes(&fr)
