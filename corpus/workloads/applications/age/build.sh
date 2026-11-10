@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-#
-# SPDX-License-Identifier: MPL-2.0
-# Copyright (c) 2026 Wago authors and contributors
-
 set -euo pipefail
 
 # age v1.3.2, commit b74dce4cdbe35b5e5f66c06d9612b72f89028758.

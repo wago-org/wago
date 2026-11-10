@@ -1,10 +1,3 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//
-// SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Wago authors and contributors
-
 // nbody — the Computer Language Benchmarks Game N-body kernel, ported to a
 // no_std wasm32 module. Integrates the Jovian planets of the solar system with
 // a symplectic leapfrog step; f64-heavy (mul/add/sqrt/div), no linear-memory

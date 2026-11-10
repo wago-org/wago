@@ -302,6 +302,6 @@ List contributor names in [NOTICE](NOTICE); imported fixtures and conformance
 submodules keep their upstream terms.
 
 Run `node scripts/license-headers.mjs --write` to add notices to new project
-files and `just lint licenses` to check them. Do not add project headers to
-third-party inputs. When changing a generator, keep its checked-in outputs'
+files and `just lint licenses` to check them. Only Wago-owned code receives headers. Configuration (including YAML and just
+recipes), corpus inputs, guest programs and imported sources are excluded. When changing a generator, keep its checked-in outputs'
 headers reproducible through `go generate ./...`.

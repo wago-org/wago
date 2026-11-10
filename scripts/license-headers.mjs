@@ -20,38 +20,38 @@ export const notice = [
 ];
 // Adapted from json-as's MPL header tooling. Copyright (c) 2026 Jairus Tanaka.
 
-export function isExternalSource(file) {
-  // These bytes are pinned corpus inputs, not Wago implementation sources.
-  if (file.startsWith("tests/fixtures/wasmfyi/")) return true;
-  if (file.startsWith("tests/corpus/regressions/")) {
-    return ![
-      "tests/corpus/regressions/pdfium/oracle.mjs",
-      "tests/corpus/regressions/pdfium/build_input.py",
-    ].includes(file);
-  }
+export function isExcludedSource(file) {
+  // Corpus inputs, guest programs and imported sources keep their own notices.
   return (
-    file.startsWith("corpus/") &&
-    /\/(?:inputs|encode-inputs|decode-inputs|pack-inputs|unpack-inputs)\//.test(
+    /^(?:corpus|tests\/(?:corpus|fixtures|conformance)|bench\/(?:startup|gc-native))\//.test(
       file,
-    )
+    ) ||
+    /\.(?:rs|wat|wast)$/.test(file) ||
+    /^examples\/22-language-guests\/(?:assemblyscript\/|tinygo\/|wat\/|build\.sh$)/.test(
+      file,
+    ) ||
+    /(?:^|\/)(?:vendor|third_party|node_modules)\//.test(file)
   );
 }
 
 export function styleFor(file) {
-  if (/\.(wat|wast)$/.test(file)) return ";;";
+  if (isExcludedSource(file)) return null;
+  // Limit additions to repository-owned implementation and tooling locations.
+  if (
+    file.includes("/") &&
+    !/^(?:src|cli|internal|profile|scripts|tests|bench|examples|\.githooks)\//.test(
+      file,
+    )
+  )
+    return null;
   if (
     file.startsWith("src/core/encoder/riscv64/testdata/") &&
     file.endsWith(".s")
   )
     return "#";
-  if (
-    /\.(py|sh|bash|ps1|just)$/.test(file) ||
-    file === "justfile" ||
-    file.startsWith(".githooks/") ||
-    /^\.github\/workflows\/.*\.ya?ml$/.test(file)
-  )
+  if (/\.(?:py|sh|bash|ps1)$/.test(file) || file.startsWith(".githooks/"))
     return "#";
-  if (/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|go|c|h|cpp|hpp|rs|s)$/.test(file))
+  if (/\.(?:ts|tsx|js|jsx|mjs|cjs|mts|cts|go|c|h|cpp|hpp|s)$/.test(file))
     return "//";
   return null;
 }
@@ -111,13 +111,13 @@ export function processFiles(root, files, write = false) {
   let checked = 0,
     preserved = 0;
   for (const file of files) {
-    const style = styleFor(file);
-    if (!style || !fs.existsSync(path.join(root, file))) continue;
-    const source = fs.readFileSync(path.join(root, file), "utf8");
-    if (isExternalSource(file)) {
+    if (isExcludedSource(file)) {
       preserved++;
       continue;
     }
+    const style = styleFor(file);
+    if (!style || !fs.existsSync(path.join(root, file))) continue;
+    const source = fs.readFileSync(path.join(root, file), "utf8");
     const result = addNotice(source, style);
     if (source !== result) missing.push(file);
     if (write && source !== result)
@@ -150,9 +150,9 @@ function main() {
   console.log(
     "License headers: " +
       result.checked +
-      " project files; " +
+      " owned code files; " +
       result.preserved +
-      " preserved third-party files.",
+      " excluded corpus/fixture paths.",
   );
   if (flag === "--check" && result.missing.length) {
     console.error("Missing MPL-2.0 notices:\n" + result.missing.join("\n"));

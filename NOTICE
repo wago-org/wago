@@ -35,8 +35,9 @@ Additional contributors are recorded in the version-control history.
 Pinned conformance submodules, imported regression corpora, benchmark inputs,
 and external libraries retain the licenses and provenance recorded alongside
 them. The regression corpus has its own tests/corpus/regressions/LICENSE;
-Wago-written support scripts carry their own source notices. Project notices
-do not relicense these third-party works or input data.
+Corpus and guest-source files are excluded from the project header policy;
+their existing notices are retained. Project notices do not relicense
+third-party works or input data.
 
 Release assets include LICENSE, NOTICE, and Apache-2.0.txt (the source-tree
 LICENSES/Apache-2.0.txt). Source for each release is available from the matching

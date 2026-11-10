@@ -1,10 +1,3 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//
-// SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Wago authors and contributors
-
 // Package riscv64 defines RV64G plugin code generation. Plugin packages select
 // this lowering from a //go:build riscv64 source file.
 package riscv64

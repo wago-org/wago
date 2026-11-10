@@ -1,10 +1,3 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//
-// SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Wago authors and contributors
-
 /* Wago semantic-corpus porting header for CoreMark.
  *
  * This is a reviewed, freestanding port of CoreMark's porting layer. It is not

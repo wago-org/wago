@@ -1,10 +1,3 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//
-// SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Wago authors and contributors
-
 // matmul — dense square f64 matrix multiply, a no_std wasm32 kernel. Fills two
 // n×n matrices with a deterministic pattern, computes C = A·B with the classic
 // triple loop, and returns a checksum of C. Combines heavy fp multiply-add with

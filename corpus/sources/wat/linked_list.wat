@@ -1,10 +1,3 @@
-;; This Source Code Form is subject to the terms of the Mozilla Public
-;; License, v. 2.0. If a copy of the MPL was not distributed with this
-;; file, You can obtain one at https://mozilla.org/MPL/2.0/.
-;;
-;; SPDX-License-Identifier: MPL-2.0
-;; Copyright (c) 2026 Wago authors and contributors
-
 ;; linked_list: build a singly-linked list of n nodes in linear memory, then
 ;; traverse it summing values. The traversal is a dependent-load pointer chase
 ;; (each node's .next must be loaded before the next node's address is known) —

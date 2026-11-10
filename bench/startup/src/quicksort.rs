@@ -1,10 +1,3 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//
-// SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Wago authors and contributors
-
 // quicksort — in-place recursive quicksort over a synthetic i32 array, a no_std
 // wasm32 kernel. Fills a fixed array with an LCG-shuffled stream, sorts it, and
 // returns a position-weighted checksum (which also proves the sort ran). Mixes

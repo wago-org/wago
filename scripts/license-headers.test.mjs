@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   addNotice,
-  isExternalSource,
+  isExcludedSource,
   processFiles,
   styleFor,
 } from "./license-headers.mjs";
@@ -60,43 +60,49 @@ test("notices preserve executable preambles, build tags and original source", ()
   );
 });
 
-test("source coverage distinguishes Go and GNU assembly, scripts and data", () => {
+test("headers cover owned code, excluding configuration and corpus builders", () => {
   for (const file of [
     "file.go",
-    "file.rs",
-    "runtime/entry_arm64.s",
-    "file.c",
-    "file.ts",
+    "src/core/runtime/entry_arm64.s",
+    "src/core/runtime/inline_host_yield_arm64.h",
+    "scripts/license-headers.mjs",
+    "examples/01-hello/main.go",
   ])
     assert.equal(styleFor(file), "//");
   for (const file of [
     "install.ps1",
     ".githooks/pre-commit",
-    ".just/lint.just",
-    "justfile",
-    ".github/workflows/ci.yml",
     "scripts/run.py",
     "src/core/encoder/riscv64/testdata/float.s",
   ])
     assert.equal(styleFor(file), "#");
-  assert.equal(styleFor("example.wat"), ";;");
   for (const file of [
     "go.mod",
     "schema.json",
     "README.md",
     "module.wasm",
-    ".github/dependabot.yml",
     "LICENSE",
+    ".just/lint.just",
+    "justfile",
+    ".github/workflows/ci.yml",
+    ".github/dependabot.yml",
+    "unknown/borrowed.go",
+    "vendor/dependency/file.go",
+    "corpus/build/rust.sh",
+    "corpus/sources/rust/kernel.rs",
+    "corpus/workloads/semantic/coremark/core_portme.c",
+    "tests/corpus/regressions/pdfium/oracle.mjs",
+    "tests/fixtures/wasm/example.wat",
+    "src/wago/testdata/example.wat",
+    "bench/startup/src/nbody.rs",
+    "examples/22-language-guests/tinygo/main.go",
+    "examples/22-language-guests/build.sh",
+    "file.rs",
   ])
-    assert.equal(styleFor(file), null);
-  assert(isExternalSource("tests/corpus/regressions/runtime/example.wat"));
-  assert(
-    isExternalSource("corpus/workloads/applications/clang/inputs/source.c"),
-  );
-  assert(isExternalSource("tests/fixtures/wasmfyi/fixture.wat"));
-  assert(!isExternalSource("tests/corpus/regressions/pdfium/oracle.mjs"));
-  assert(!isExternalSource("corpus/workloads/semantic/coremark/core_portme.c"));
-  assert(!isExternalSource("tests/fixtures/wasm/example.wat"));
+    assert.equal(styleFor(file), null, file);
+  assert(isExcludedSource("corpus/build/rust.sh"));
+  assert(isExcludedSource("tests/corpus/regressions/pdfium/oracle.mjs"));
+  assert(!isExcludedSource("scripts/license-headers.mjs"));
 });
 
 test("repository check fails missing notices, repairs new sources, and preserves fixtures", () => {
@@ -121,6 +127,23 @@ test("repository check fails missing notices, repairs new sources, and preserves
       "// SPDX-License-Identifier: MIT\nint main() {}\n",
     );
     fs.writeFileSync(path.join(dir, "data.json"), '{"x":1}\n');
+    const excluded = new Map([
+      [".github/workflows/ci.yml", "name: CI\n"],
+      [".just/lint.just", "all:\n    true\n"],
+      ["justfile", "default:\n    true\n"],
+      ["corpus/sources/rust/kernel.rs", "fn main() {}\n"],
+      ["corpus/build/rust.sh", "#!/bin/sh\nexit 0\n"],
+      ["bench/startup/src/nbody.rs", "fn main() {}\n"],
+      ["examples/22-language-guests/tinygo/main.go", "package main\n"],
+      [
+        "unknown/borrowed.go",
+        "// SPDX-License-Identifier: MIT\npackage borrowed\n",
+      ],
+    ]);
+    for (const [file, content] of excluded) {
+      fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+      fs.writeFileSync(path.join(dir, file), content);
+    }
     const run = (flag) =>
       spawnSync(process.execPath, ["scripts/license-headers.mjs", flag], {
         cwd: dir,
@@ -137,6 +160,12 @@ test("repository check fails missing notices, repairs new sources, and preserves
       fs.readFileSync(path.join(dir, "data.json"), "utf8"),
       '{"x":1}\n',
     );
+    for (const [file, content] of excluded)
+      assert.equal(
+        fs.readFileSync(path.join(dir, file), "utf8"),
+        content,
+        file,
+      );
     assert.equal(processFiles(dir, [fixture], true).preserved, 1);
     assert.equal(run("--invalid").status, 1);
   } finally {

@@ -1,11 +1,4 @@
 #!/usr/bin/env sh
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-#
-# SPDX-License-Identifier: MPL-2.0
-# Copyright (c) 2026 Wago authors and contributors
-
 # Rebuild blake3.wasm from the pinned upstream revision (see ../README.md).
 # The portable BLAKE3 core (blake3.c, blake3_dispatch.c, blake3_portable.c,
 # blake3_impl.h) is compiled byte-for-byte from upstream; only wago_blake3.c is

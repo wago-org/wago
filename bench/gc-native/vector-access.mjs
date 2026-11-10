@@ -1,11 +1,4 @@
 #!/usr/bin/env node
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//
-// SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Wago authors and contributors
-
 // Run from any directory. Each sample times 8192 guest loop iterations per call,
 // like BenchmarkGCVectorArrayAccess; compilation and instantiation are excluded.
 import { readFileSync } from 'node:fs';

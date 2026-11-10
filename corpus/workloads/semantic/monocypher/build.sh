@@ -1,11 +1,4 @@
 #!/usr/bin/env sh
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-#
-# SPDX-License-Identifier: MPL-2.0
-# Copyright (c) 2026 Wago authors and contributors
-
 set -eu
 here=$(cd "$(dirname "$0")" && pwd); root=$(cd "$here/../../../.." && pwd)
 repo=https://github.com/LoupVaillant/Monocypher.git; rev=1830c06d5910fba451cec329c8f30f348fc607db
