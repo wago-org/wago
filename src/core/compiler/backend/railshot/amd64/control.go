@@ -1237,8 +1237,10 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	f.pinned = 0
 	// A straight-line GC address survives stack canonicalization. Its register
 	// remains owned by the cache until an effect or source assignment clears it.
-	if f.gcResolved.valid {
-		f.pinned = f.pinned.add(f.gcResolved.reg)
+	for i := 0; i < gcResolvedLimit; i++ {
+		if c := f.gcCertificate(i); c.valid {
+			f.pinned = f.pinned.add(c.reg)
+		}
 	}
 	f.fpinned = 0
 }
@@ -1761,7 +1763,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 	// The extended FP pin pool can own XMM11, the canonical FP merge register.
 	// Keep those results in stack slots while its local home is reserved.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128 &&
-		(!res0.isFloat() || !f.fpinnedLocalMask.has(mergeFReg)))
+		(!res0.isFloat() || !f.fpinnedLocalMask.has(mergeFReg)) && (res0.isFloat() || !f.pinned.has(mergeReg)))
 	var loopPinnedWrites uint64
 	loopRegState := false
 	var loopFloatConst storage
@@ -1841,7 +1843,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 		f.setFrameBaseTypePrefix(&fr, fr.height)
 		f.captureGCFrameShape(&fr)
 		if kind == cfLoop {
-			if homes, afterBindings, ok := f.planLoopLocalParams(r, &fr, signature); ok {
+			if homes, afterBindings, ok := f.planLoopLocalParams(r, &fr, signature); ok && f.gcLoopRegisters == 0 {
 				f.materializePendingTraps()
 				f.bindLoopLocalParams(homes, pN)
 				f.flush()
@@ -1904,6 +1906,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 			if pN == 0 && rN == 0 {
 				f.emitByteReduceLoop(r)
 			}
+			f.beginGCResolvedLoop(r)
 			if f.compactLoopAlign32 {
 				f.a.AlignLoop32()
 				f.stats.peep("compact-loop-align32")

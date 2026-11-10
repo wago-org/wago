@@ -29,7 +29,10 @@ func TestGCRetainedResolverAdmission(t *testing.T) {
 			t.Fatal(err)
 		}
 		c.CodeImage.Close()
-		want := 15 / objects
+		want := 16
+		if got := stats.Funcs[1].Peephole["gc-resolve-loop-guard"]; got != want {
+			t.Fatalf("objects%d loop guards%d want%d", objects, got, want)
+		}
 		if got := stats.Funcs[1].GCHandleResolutionReuse; got != want {
 			t.Fatalf("objects%d reuse%d want%d", objects, got, want)
 		}

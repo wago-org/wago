@@ -119,8 +119,8 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if f.storeFwd.valid {
 			f.prepareStoreForward(op)
 		}
-		if f.gcResolved.valid {
-			if op == 0x04 {
+		if f.hasGCResolvedObject() {
+			if op == 0x04 && f.gcLoopEndPC == 0 {
 				f.prepareGCPureIf(r, op, minCtrl)
 			}
 			f.prepareGCResolvedObject(op)

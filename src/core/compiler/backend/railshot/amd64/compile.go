@@ -364,7 +364,11 @@ type fn struct {
 	gcSubtypeProofs     [4]gcSubtypeProof
 	gcSubtypeProofN     uint8
 	gcGuardSites        uint8 // bounded prefix-match attempts; shares existing padding
-	nLocalSlots         int   // total local frame slots in 8-byte units
+	gcResolvedExtra     [3]gcResolvedObject
+	gcLoopEndPC         uint32
+	gcLoopScanBytes     uint32
+	gcLoopRegisters     regMask
+	nLocalSlots         int // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
@@ -4315,6 +4319,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if intervalRegion && !intervalControl {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
+	gpPool = f.reserveGCResolvedLoopRegisters(c.BodyBytes, gpPool)
 	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, fpPinLimit, hasCall, pinLocals && f.opt(optV128Pins) && !hasCall)
 	if diagnosticsEnabled && guardCallPinEnabled && guardMode && hasCall && touchesMemory && f.memSizeReg == regNone {
 		for _, x := range f.pinnedLocals {

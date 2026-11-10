@@ -31,9 +31,13 @@ func TestGCRetainedResolverPhaseAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.CodeImage.Close()
-			// Each phase resolves its local once; the other fourteen reads reuse it.
-			if got := stats.Funcs[1].GCHandleResolutionReuse; got != 14 {
-				t.Fatalf("%s reuse%d want14", kind, got)
+			if got := stats.Funcs[1].Peephole["gc-resolve-loop-guard"]; got != 16 {
+				t.Fatalf("loop guards%d want16", got)
+			}
+			// All sixteen read sites guard their local certificate, including
+			// the first site on later loop iterations.
+			if got := stats.Funcs[1].GCHandleResolutionReuse; got != 16 {
+				t.Fatalf("%s reuse%d want16", kind, got)
 			}
 		})
 	}

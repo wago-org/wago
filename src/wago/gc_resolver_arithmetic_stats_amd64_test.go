@@ -18,14 +18,17 @@ func TestGCResolverArithmeticReuseAdmission(t *testing.T) {
 			t.Fatal(err)
 		}
 		var stats backend.ModuleStats
-		c, err := backend.CompileModuleWith(m, backend.CompileOptions{Stats: &stats, GCStructHelpers: true})
+		c, err := backend.CompileModuleWith(m, gcLoopCompileOptions(t, m, &stats))
 		if err != nil {
 			t.Fatal(err)
 		}
 		got := stats.Funcs[1].GCHandleResolutionReuse
 		c.CodeImage.Close()
-		if got != sites-1 {
-			t.Fatalf("sites%d reuse%d want%d", sites, got, sites-1)
+		if guarded := stats.Funcs[1].Peephole["gc-resolve-loop-guard"]; guarded != sites {
+			t.Fatalf("loop guards%d want%d", guarded, sites)
+		}
+		if got != sites {
+			t.Fatalf("sites%d reuse%d want%d", sites, got, sites)
 		}
 	}
 }
@@ -49,7 +52,7 @@ func TestGCCachedReadAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			var stats backend.ModuleStats
-			c, err := backend.CompileModuleWith(m, backend.CompileOptions{Stats: &stats, GCStructHelpers: true})
+			c, err := backend.CompileModuleWith(m, gcLoopCompileOptions(t, m, &stats))
 			if err != nil {
 				t.Fatal(err)
 			}

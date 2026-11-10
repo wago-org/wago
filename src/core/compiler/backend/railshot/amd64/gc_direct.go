@@ -627,20 +627,61 @@ func (f *fn) emitDirectGCObjectWithSubtype(object *elem, localType, requiredByte
 // A nonzero kind selects a shared leaf without changing the ordinary exact
 // resolver's crossover counts. Both paths can reuse the same extent proof.
 func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes uint32, local int, hasLocal bool, kind gcSharedStubKind, retain bool) (obj Reg, done func()) {
-	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
-		f.gcResolved.local == local && f.gcResolved.typeIndex == localType &&
-		requiredBytes <= f.gcResolved.requiredBytes {
-		// Consume the repeated compact local.get while retaining the compact local
-		// itself as the exact root. No raw address is reconstructed.
-		ref := f.materialize(object)
-		f.release(ref)
-		f.stats.addGCHandleResolutionReuse()
-		f.stats.peep("gc-resolve-reuse")
-		return f.gcResolved.reg, func() {}
+	cert := f.findGCResolvedObject(local, localType)
+	if gcResolveReuseEnabled && hasLocal && cert != nil {
+		if cert.loop {
+			// Zero means no dynamic access has succeeded yet. Do not hoist a
+			// null/type/extent check out of its original conditional arm.
+			f.a.TestSelf(cert.reg, true)
+			hit := f.a.JccPlaceholder(condNE)
+			var raw Reg
+			var release func()
+			if kind != gcSharedStubNone || f.gcSharedResolver {
+				resolveKind := kind
+				if resolveKind == gcSharedStubNone {
+					resolveKind = gcSharedStubResolveObject
+				}
+				raw, release = f.emitSharedCheckedGCObject(object, localType, requiredBytes, resolveKind)
+			} else {
+				raw, release = f.emitCheckedGCObject(object, localType, requiredBytes)
+			}
+			f.a.MovReg64(cert.reg, raw)
+			release()
+			f.a.PatchRel32(hit, f.a.Len())
+			// The certificate promises only the smallest inspected extent.
+			// A larger field retains its check at that field's access.
+			if requiredBytes > cert.requiredBytes {
+				tmp := f.allocReg(maskOf(cert.reg))
+				f.a.Load32(tmp, cert.reg, 4)
+				f.a.AluRI(cmpDigit, tmp, int32(requiredBytes), false)
+				f.trapIf(condB, trapCastFailure)
+				f.release(tmp)
+			}
+			f.stats.addGCHandleResolution()
+			f.stats.addGCHandleResolutionReuse()
+			f.stats.peep("gc-resolve-loop-guard")
+			return cert.reg, func() {}
+		}
+		if requiredBytes <= cert.requiredBytes {
+			ref := f.materialize(object)
+			f.release(ref)
+			f.stats.addGCHandleResolutionReuse()
+			f.stats.peep("gc-resolve-reuse")
+			return cert.reg, func() {}
+		}
 	}
 	f.gcPureIfEndPC = 0
-	if !retain {
+	// Other local and nonlocal reads cannot move any certified object.
+	// Replace only an exhausted straight-line set, never a loop certificate.
+	slot := f.freeGCResolvedObject()
+	if cert != nil && !cert.loop && !retain {
+		f.pinned = f.pinned.remove(cert.reg)
+		*cert = gcResolvedObject{}
+		slot = cert
+	}
+	if slot == nil && !retain && hasLocal && gcResolveReuseEnabled && f.gcLoopEndPC == 0 {
 		f.invalidateGCResolvedObject()
+		slot = &f.gcResolved
 	}
 	if kind == gcSharedStubNone && f.gcDeferResolver && f.gcHandleResolutions != 0 {
 		f.gcSharedResolver = true
@@ -657,7 +698,7 @@ func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes u
 		f.gcHandleResolutions++
 	}
 	f.stats.addGCHandleResolution()
-	if retain || !gcResolveReuseEnabled || !hasLocal {
+	if retain || !gcResolveReuseEnabled || !hasLocal || slot == nil {
 		return obj, done
 	}
 	cacheReg := f.gcResolvedRegister()
@@ -667,7 +708,7 @@ func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes u
 	f.a.MovReg64(cacheReg, obj)
 	done()
 	f.pinned = f.pinned.add(cacheReg)
-	f.gcResolved = gcResolvedObject{valid: true, local: local, typeIndex: localType, requiredBytes: requiredBytes, reg: cacheReg}
+	*slot = gcResolvedObject{valid: true, local: local, typeIndex: localType, requiredBytes: requiredBytes, reg: cacheReg}
 	return cacheReg, func() {}
 }
 
@@ -3038,12 +3079,12 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 	required := gc.PayloadOffset + off + uint32(scalar.size)
 	var obj Reg
 	done := func() {}
-	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
-		f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex && required <= f.gcResolved.requiredBytes {
+	cert := f.findGCResolvedObject(local, typeIndex)
+	if gcResolveReuseEnabled && hasLocal && cert != nil && !cert.loop && required <= cert.requiredBytes {
 		// The unchanged local and complete extent are already checked. No call
 		// or new trap needs a canonical operand image on this path.
 		f.dropValue()
-		obj = f.gcResolved.reg
+		obj = cert.reg
 		f.stats.addGCHandleResolutionReuse()
 		f.stats.peep("gc-resolve-reuse")
 		f.stats.peep("gc-resolve-reuse-no-flush")

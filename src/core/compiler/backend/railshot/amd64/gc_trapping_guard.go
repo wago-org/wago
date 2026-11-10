@@ -82,7 +82,7 @@ func (f *fn) gcGuardBlockType(r *wasm.Reader) bool {
 }
 
 func (f *fn) planGCTrappingGuard(typeIndex uint32, reader *wasm.Reader) (p gcTrappingGuardPlan, ok bool) {
-	if f.unreachable || f.inlineDepth != 0 || f.localBase != 0 || f.moduleEH || len(f.customInstructions) != 0 || f.intervalControl || f.vectorRegion.enabled || f.gcGuardSites >= 16 {
+	if f.gcLoopEndPC != 0 || f.unreachable || f.inlineDepth != 0 || f.localBase != 0 || f.moduleEH || len(f.customInstructions) != 0 || f.intervalControl || f.vectorRegion.enabled || f.gcGuardSites >= 16 {
 		return p, false
 	}
 	local, hasLocal := gcLocalProvenance(f.s.back())

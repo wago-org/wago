@@ -14,6 +14,7 @@ package amd64
 // effect-free if may retain an unchanged entry certificate.
 type gcResolvedObject struct {
 	valid         bool
+	loop          bool
 	local         int
 	typeIndex     uint32
 	requiredBytes uint32
@@ -26,7 +27,20 @@ type gcResolvedObject struct {
 // locals retain the transient address. Assigning its source local invalidates
 // it in setLocal. Calls, other control boundaries, and unknown effects drop it.
 func (f *fn) prepareGCResolvedObject(op byte) {
-	if !f.gcResolved.valid {
+	if !f.hasGCResolvedObject() {
+		return
+	}
+	if f.gcLoopEndPC != 0 {
+		if f.wasmPC >= f.gcLoopEndPC {
+			f.invalidateGCResolvedObject()
+			return
+		}
+		// The complete body was proved noncollecting. Only the certificates
+		// established before its header can cross an internal control edge.
+		switch op {
+		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x0f:
+			f.invalidateGCStraightLineObjects()
+		}
 		return
 	}
 	if f.gcPureIfEndPC != 0 && f.wasmPC > f.gcPureIfEndPC {
@@ -48,7 +62,7 @@ func (f *fn) prepareGCResolvedObject(op byte) {
 }
 
 func (f *fn) prepareGCResolvedFB(sub uint32) {
-	if !f.gcResolved.valid {
+	if !f.hasGCResolvedObject() {
 		return
 	}
 	switch sub {
@@ -61,11 +75,17 @@ func (f *fn) prepareGCResolvedFB(sub uint32) {
 
 func (f *fn) invalidateGCResolvedObject() {
 	f.gcPureIfEndPC = 0
-	if !f.gcResolved.valid {
+	f.gcLoopEndPC = 0
+	if !f.hasGCResolvedObject() {
 		return
 	}
-	f.pinned = f.pinned.remove(f.gcResolved.reg)
-	f.gcResolved = gcResolvedObject{}
+	for i := 0; i < gcResolvedLimit; i++ {
+		c := f.gcCertificate(i)
+		if c.valid {
+			f.pinned = f.pinned.remove(c.reg)
+			*c = gcResolvedObject{}
+		}
+	}
 }
 
 func (f *fn) gcResolvedRegister() Reg {
@@ -98,12 +118,61 @@ func markGCLocalProvenance(e *elem, local int) {
 }
 
 func (f *fn) invalidateGCLoadFactsForLocal(local int) {
-	if f.gcResolved.valid && f.gcResolved.local == local {
-		f.invalidateGCResolvedObject()
+	for i := 0; i < gcResolvedLimit; i++ {
+		c := f.gcCertificate(i)
+		if c.valid && c.local == local {
+			// Loop proofs exclude writes to these sources.
+			if c.loop {
+				panic("amd64: write to proved GC loop source")
+			}
+			f.pinned = f.pinned.remove(c.reg)
+			*c = gcResolvedObject{}
+		}
 	}
 }
 
 func (f *fn) invalidateGCMutableLoadFacts() {
 	f.invalidateGCResolvedObject()
 	f.invalidateGCFreshStructFact()
+}
+
+const gcResolvedLimit = 4
+
+// Keep the original first slot for the one-use trapping-guard and replacement
+// heuristic. The remaining slots have the same lifetime and register contract.
+func (f *fn) gcCertificate(i int) *gcResolvedObject {
+	if i == 0 {
+		return &f.gcResolved
+	}
+	return &f.gcResolvedExtra[i-1]
+}
+func (f *fn) hasGCResolvedObject() bool {
+	return f.gcResolved.valid || f.gcResolvedExtra[0].valid || f.gcResolvedExtra[1].valid || f.gcResolvedExtra[2].valid
+}
+func (f *fn) findGCResolvedObject(local int, typ uint32) *gcResolvedObject {
+	for i := 0; i < gcResolvedLimit; i++ {
+		c := f.gcCertificate(i)
+		if c.valid && c.local == local && c.typeIndex == typ {
+			return c
+		}
+	}
+	return nil
+}
+func (f *fn) freeGCResolvedObject() *gcResolvedObject {
+	for i := 0; i < gcResolvedLimit; i++ {
+		if c := f.gcCertificate(i); !c.valid {
+			return c
+		}
+	}
+	return nil
+}
+func (f *fn) invalidateGCStraightLineObjects() {
+	f.gcPureIfEndPC = 0
+	for i := 0; i < gcResolvedLimit; i++ {
+		c := f.gcCertificate(i)
+		if c.valid && !c.loop {
+			f.pinned = f.pinned.remove(c.reg)
+			*c = gcResolvedObject{}
+		}
+	}
 }

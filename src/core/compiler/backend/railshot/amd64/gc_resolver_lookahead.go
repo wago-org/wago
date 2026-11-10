@@ -18,7 +18,7 @@ import (
 // usable read before another read of the new source. This is a replacement
 // heuristic; all checks, root rules and effect invalidations still apply.
 func (f *fn) retainGCResolvedAddress(reader *wasm.Reader, local int, hasLocal bool) bool {
-	if f.inlineDepth != 0 || f.localBase != 0 || !gcResolveReuseEnabled || !hasLocal || !f.gcResolved.valid || f.gcResolved.local == local || len(f.customInstructions) != 0 {
+	if f.freeGCResolvedObject() != nil || f.inlineDepth != 0 || f.localBase != 0 || !gcResolveReuseEnabled || !hasLocal || !f.gcResolved.valid || f.gcResolved.local == local || len(f.customInstructions) != 0 {
 		return false
 	}
 	r := *reader

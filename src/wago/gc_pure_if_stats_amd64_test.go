@@ -20,19 +20,28 @@ func TestGCPureIfAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			var stats backend.ModuleStats
-			c, err := backend.CompileModuleWith(m, backend.CompileOptions{Stats: &stats, GCStructHelpers: true})
+			c, err := backend.CompileModuleWith(m, gcLoopCompileOptions(t, m, &stats))
 			if err != nil {
 				t.Fatal(err)
 			}
 			c.CodeImage.Close()
 			want := 0
-			if kind == "pure" || kind == "noelse" {
-				want = min(regions, 16)
+			// The full-loop proof replaces the smaller pure-if proof except
+			// when assignment or a call rejects the loop.
+			loopReads := 0
+			if kind != "assign" && kind != "call" {
+				loopReads = regions * 5
+			}
+			if got := stats.Funcs[1].Peephole["gc-resolve-loop-guard"]; got != loopReads {
+				t.Fatalf("%s/%d loop guards%d want%d", kind, regions, got, loopReads)
 			}
 			if got := stats.Funcs[1].Peephole["gc-resolve-pure-if"]; got != want {
 				t.Fatalf("%s/%d admission%d want%d", kind, regions, got, want)
 			}
 			reuse := regions*4 - 1 + want
+			if loopReads != 0 {
+				reuse = loopReads
+			}
 			if kind == "call" {
 				reuse = regions * 3
 			}
@@ -53,7 +62,7 @@ func TestGCPureIfPressureAdmission(t *testing.T) {
 			t.Fatal(err)
 		}
 		var stats backend.ModuleStats
-		c, err := backend.CompileModuleWith(m, backend.CompileOptions{Stats: &stats, GCStructHelpers: true})
+		c, err := backend.CompileModuleWith(m, gcLoopCompileOptions(t, m, &stats))
 		if err != nil {
 			t.Fatal(err)
 		}
