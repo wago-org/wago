@@ -1338,6 +1338,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					}
 				}
 				if op == 0x20 {
+					if experimentStoreAddressHint && storeAddressAhead(s.r.Reader) {
+						s.h.noteParamAddress(idx)
+					}
 					addHotness(s.h.localScore, idx, hotnessWeight)
 					if int(idx) < len(s.h.localLastGet) {
 						s.h.localLastGet[idx] = uint32(s.r.off())
