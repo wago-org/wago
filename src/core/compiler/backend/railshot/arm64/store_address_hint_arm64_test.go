@@ -33,3 +33,17 @@ func TestStoreAddressAhead(t *testing.T) {
 		})
 	}
 }
+
+func TestStoreAddressAheadOperationBudget(t *testing.T) {
+	for _, n := range []int{30, 31} {
+		code := []byte{0x41, 1}
+		for i := 0; i < n; i++ {
+			code = append(code, 0x45) // i32.eqz
+		}
+		code = append(code, 0x36, 2, 0)
+		got := storeAddressAhead(wasm.ReaderFrom(code))
+		if want := n == 30; got != want {
+			t.Fatalf("%d unary ops: got %t, want %t", n, got, want)
+		}
+	}
+}
