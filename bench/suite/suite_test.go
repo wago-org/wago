@@ -1,10 +1,3 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//
-// SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Wago authors and contributors
-
 // Package wagobench benchmarks the wago pipeline stage-by-stage across the
 // curated corpus in ../../corpus/catalog.json. Each stage is a
 // separate top-level Benchmark so it can be filtered (e.g. -bench Compile), and

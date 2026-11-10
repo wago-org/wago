@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-#
-# SPDX-License-Identifier: MPL-2.0
-# Copyright (c) 2026 Wago authors and contributors
-
 # macOS comparison of origin/main and PR #802. No writes to the caller's checkout.
 # Requires git, python3 (3.9+), and go; downloads the pinned Go/benchstat tools.
 set -euo pipefail

@@ -1,11 +1,4 @@
 #!/usr/bin/env sh
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-#
-# SPDX-License-Identifier: MPL-2.0
-# Copyright (c) 2026 Wago authors and contributors
-
 # Regenerate the benchmark charts and publish them to the wago-org/docs repo,
 # which the root README.md embeds via raw.githubusercontent.com URLs (json-as
 # style). Charts are generated here, locally, never in CI: shared CI runners

@@ -1,11 +1,4 @@
 #!/usr/bin/env sh
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-#
-# SPDX-License-Identifier: MPL-2.0
-# Copyright (c) 2026 Wago authors and contributors
-
 # Run the public verification gates
 # and render a compact per-package report. Backs `just coverage` and the CI coverage
 # job. When

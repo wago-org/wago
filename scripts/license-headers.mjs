@@ -21,6 +21,7 @@ export const notice = [
 // Adapted from json-as's MPL header tooling. Copyright (c) 2026 Jairus Tanaka.
 
 export function isExcludedSource(file) {
+  if (file.startsWith(".githooks/") || /(?:_test\.go|\.test\.[cm]?[jt]s|\.(?:ps1|ps|sh|bash))$/.test(file) || /(?:^|\/)(?:tests?|testdata)\//.test(file)) return true;
   // Corpus inputs, guest programs and imported sources keep their own notices.
   return (
     /^(?:corpus|tests\/(?:corpus|fixtures|conformance)|bench\/(?:startup|gc-native))\//.test(

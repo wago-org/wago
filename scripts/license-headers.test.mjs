@@ -1,10 +1,3 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//
-// SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Wago authors and contributors
-
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -70,13 +63,17 @@ test("headers cover owned code, excluding configuration and corpus builders", ()
   ])
     assert.equal(styleFor(file), "//");
   for (const file of [
-    "install.ps1",
-    ".githooks/pre-commit",
     "scripts/run.py",
     "src/core/encoder/riscv64/testdata/float.s",
   ])
     assert.equal(styleFor(file), "#");
   for (const file of [
+    "install.ps1",
+    ".githooks/pre-commit",
+    "scripts/run.sh",
+    "src/wago/example_test.go",
+    "scripts/example.test.mjs",
+    "tests/tools/example.go",
     "go.mod",
     "schema.json",
     "README.md",
@@ -119,7 +116,7 @@ test("repository check fails missing notices, repairs new sources, and preserves
       "//go:build arm64\n\npackage sample\n",
     );
     execFileSync("git", ["add", "example.go"], { cwd: dir });
-    fs.writeFileSync(path.join(dir, "untracked.sh"), "#!/bin/sh\nexit 0\n");
+    fs.writeFileSync(path.join(dir, "untracked.py"), "#!/usr/bin/env python3\nprint(1)\n");
     const fixture = "corpus/repro/tool/inputs/main.c";
     fs.mkdirSync(path.dirname(path.join(dir, fixture)), { recursive: true });
     fs.writeFileSync(

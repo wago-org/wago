@@ -1,11 +1,4 @@
 #!/usr/bin/env sh
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-#
-# SPDX-License-Identifier: MPL-2.0
-# Copyright (c) 2026 Wago authors and contributors
-
 # Emit the "WebAssembly spec" section fragment for the CI card: per-version
 # pass/skip counts from TestSpecSuiteExec (the preserved 1.0 MVP baseline, the
 # independently pinned official 2.0 core suite, and the 3.0 proposal aggregate).
