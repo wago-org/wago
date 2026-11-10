@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Wago authors and contributors
+
 """Prepare pinned Release 2/3 fixtures without fetching tools or source.
 
 Usage: scripts/prepare-riscv64-numeric-spec.py [--profile numeric|float|memory|control|multimemory|memory64|fac|call] SPEC_CHECKOUT OUTPUT_DIRECTORY WAST2JSON

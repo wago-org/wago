@@ -293,3 +293,15 @@ For bounded offline operand inspection, see the [native comparison diagnostic](t
 and `just test native-compare` use existing profile/source-map facilities and report coverage explicitly.
 The entire diagnostic requires `wago_nativecompare`; the recipes supply that tag.
 Ordinary broad builds, tests and install discovery exclude the command.
+
+## Source Licensing
+
+Wago source contributions use [MPL-2.0](LICENSE). Keep the MPL Exhibit A and
+SPDX header on project code, and retain any existing third-party notices.
+List contributor names in [NOTICE](NOTICE); imported fixtures and conformance
+submodules keep their upstream terms.
+
+Run `node scripts/license-headers.mjs --write` to add notices to new project
+files and `just lint licenses` to check them. Only Wago-owned code receives headers. Configuration (including YAML and just
+recipes), corpus inputs, guest programs and imported sources are excluded. When changing a generator, keep its checked-in outputs'
+headers reproducible through `go generate ./...`.

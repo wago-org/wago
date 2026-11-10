@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // The .wago build module: a small generated Go module that compiles wago together
 // with a project's plugins into a custom binary. Each plugin is a normal Go module
 // dependency (added with `go get`, recorded in .wago/go.mod), imported through
