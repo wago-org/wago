@@ -215,6 +215,14 @@ func (a *Asm) Rbit(rd, rn Reg, w bool) {
 	}
 }
 
+// Rev reverses the bytes in a 32-bit or 64-bit register.
+func (a *Asm) Rev(rd, rn Reg, w bool) {
+	a.word(wbase(w, 0x5AC00800, 0xDAC00C00) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+
 // Divide + multiply-subtract (remainder = Rn - (Rn/Rm)*Rm via div then Msub).
 func (a *Asm) Sdiv32(rd, rn, rm Reg) {
 	a.word(0x1AC00C00 | r(rm)<<16 | r(rn)<<5 | r(rd))

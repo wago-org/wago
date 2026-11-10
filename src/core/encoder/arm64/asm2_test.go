@@ -42,6 +42,8 @@ func TestPortIntEncodings(t *testing.T) {
 		{"ror x0,x1,x2", func(a *Asm) { a.Rorv64(X0, X1, X2) }, 0x9ac22c20},
 		{"clz w0,w1", func(a *Asm) { a.Clz(X0, X1, true) }, 0x5ac01020},
 		{"clz x0,x1", func(a *Asm) { a.Clz(X0, X1, false) }, 0xdac01020},
+		{"rev w0,w1", func(a *Asm) { a.Rev(X0, X1, true) }, 0x5ac00820},
+		{"rev x0,x1", func(a *Asm) { a.Rev(X0, X1, false) }, 0xdac00c20},
 		{"rbit w0,w1", func(a *Asm) { a.Rbit(X0, X1, true) }, 0x5ac00020},
 		{"rbit x0,x1", func(a *Asm) { a.Rbit(X0, X1, false) }, 0xdac00020},
 		{"sdiv w0,w1,w2", func(a *Asm) { a.Sdiv32(X0, X1, X2) }, 0x1ac20c20},
