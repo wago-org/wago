@@ -1911,10 +1911,6 @@ func CompileValidatedModuleWith(m *wasm.Module, opts CompileOptions, analysis *w
 	return compiled, err
 }
 
-func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
-	return compileModuleWithValidation(m, opts, false)
-}
-
 func compileModuleWithValidation(m *wasm.Module, opts CompileOptions, validatedGCStores bool) (*amd64.CompiledModule, error) {
 	if !opts.AMD64FeaturesSet {
 		opts.AMD64Features = shared.AMD64ModernBaseline | shared.AMD64BMI2

@@ -17,7 +17,7 @@ func TestSourceCallFinalStructuredFailure(t *testing.T) {
 	}
 	cg, m, _ := sourceCallNativeModule(t)
 	defer codegen.CloseSourceContext(cg, m)
-	cm, err := compileModuleWith(m, CompileOptions{Codegen: cg, Optimizations: map[string]bool{"inline": false}})
+	cm, err := compileModuleWithValidation(m, CompileOptions{Codegen: cg, Optimizations: map[string]bool{"inline": false}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
