@@ -64,13 +64,13 @@ test("headers cover owned code, excluding configuration and corpus builders", ()
     assert.equal(styleFor(file), "//");
   for (const file of [
     "scripts/run.py",
-    "src/core/encoder/riscv64/testdata/float.s",
   ])
     assert.equal(styleFor(file), "#");
   for (const file of [
     "install.ps1",
     ".githooks/pre-commit",
     "scripts/run.sh",
+    "src/core/encoder/riscv64/testdata/float.s",
     "src/wago/example_test.go",
     "scripts/example.test.mjs",
     "tests/tools/example.go",
