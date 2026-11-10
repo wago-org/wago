@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // sha256 — a full, standards-correct SHA-256 implementation as a no_std wasm32
 // kernel. Hashes an n-KiB deterministic buffer by processing 64-byte blocks
 // through the 64-round compression function. Rotate/shift/xor/add-heavy 32-bit

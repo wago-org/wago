@@ -1,3 +1,10 @@
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at https://mozilla.org/MPL/2.0/.
+;;
+;; SPDX-License-Identifier: MPL-2.0
+;; Copyright (c) 2026 Wago authors and contributors
+
 ;; memory_tree: recursive call tree where every node churns linear memory.
 ;; Stresses the combined regression surface: internal calls + stack frames +
 ;; repeated load/store traffic in a non-leaf body.

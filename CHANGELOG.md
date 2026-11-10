@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Breaking
 
+- License Wago Source Code Form under MPL-2.0, with source headers and retained
+  third-party license notices.
+
 - Remove the `.wago` native-code artifact format, compiled-module serialization
   and loading APIs, `wago build`, the automatic compiled disk cache, and the
   `wago_precompiled` build profile. Use the original `.wasm` source instead;

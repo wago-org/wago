@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Package railshot is the architecture-NEUTRAL core of the railshot single-pass
 // wasm backend. It holds the valent-block operand-stack model, the on-the-fly
 // register allocator, the scanBody hint pre-scan, control-flow reconciliation

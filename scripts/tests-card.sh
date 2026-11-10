@@ -1,4 +1,11 @@
 #!/usr/bin/env sh
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Wago authors and contributors
+
 # Emit the "Tests" section fragment for the CI card: passed/failed/skipped counts
 # from `go test -json ./...` (subtests included), with deltas vs CARD_BASELINE_REF
 # (e.g. origin/main) measured in a throwaway worktree. Fragment format matches the

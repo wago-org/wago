@@ -1,3 +1,10 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Wago authors and contributors
+
 name: Qualify and publish release
 
 # Beta and stable publication are explicit operations. A version tag does not
@@ -293,6 +300,9 @@ jobs:
         with:
           name: stable-release-${{ matrix.target }}
           path: |
+            LICENSE
+            NOTICE
+            LICENSES/Apache-2.0.txt
             wago-${{ matrix.target }}
             wago-${{ matrix.target }}.sha256
             wago-installer-${{ matrix.target }}
@@ -470,6 +480,7 @@ jobs:
             sed 's/^## New Contributors$/## First-time contributors/' >release-notes.md
           mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
           assets+=(release/release-manifest.json release/release-manifest.json.sha256)
+          assets+=(release/LICENSE release/NOTICE release/LICENSES/Apache-2.0.txt)
           if [ "$RESUME_DRAFT" = "true" ]; then
             release_state=$(gh release view "$VERSION" --repo "${{ github.repository }}" \
               --json isDraft --jq .isDraft)

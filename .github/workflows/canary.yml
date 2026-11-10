@@ -1,3 +1,10 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Wago authors and contributors
+
 name: Publish canary artifacts
 
 # A successful CI run on main builds commit-addressed workflow artifacts.
@@ -251,6 +258,9 @@ jobs:
         with:
           name: canary-${{ needs.prepare.outputs.sha }}-${{ matrix.target }}
           path: |
+            LICENSE
+            NOTICE
+            LICENSES/Apache-2.0.txt
             wago-${{ matrix.target }}
             wago-${{ matrix.target }}.sha256
             wago-installer-${{ matrix.target }}

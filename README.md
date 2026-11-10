@@ -172,7 +172,8 @@ See the feature support on [wasm.fyi](https://wasm.fyi/features/?m=m1&lang=Go)
 
 > 💖 We develop wago free-of-charge. If you or your company benefits from using wago or you'd like developement to continue, *please* consider sponsoring us! It'd truly mean the world
 
-We use the [Apache License 2.0](LICENSE) so you can enjoy wago too!
+Wago is licensed under the [Mozilla Public License 2.0](LICENSE).
+See [NOTICE](NOTICE) for contributors and retained third-party attributions.
 
 [Documentation](https://docs.wago.sh) ·
 [Examples](examples/README.md) ·

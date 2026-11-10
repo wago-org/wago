@@ -1,4 +1,11 @@
 #!/usr/bin/env sh
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Wago authors and contributors
+
 # Compose the wago CI info card posted on PRs: one collapsible <details> section
 # per topic (coverage, benchmarks, tests, memory, ...). Each producer drops a
 # fragment at $CARD_DIR/<key>.md whose first line is the section summary (the

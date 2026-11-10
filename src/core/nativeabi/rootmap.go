@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Package nativeabi defines target-neutral metadata shared by native code
 // generators and runtime subsystems. It must remain free of compiler/runtime
 // implementation dependencies so both sides can validate the same contract.

@@ -1,4 +1,11 @@
 #!/usr/bin/env sh
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Wago authors and contributors
+
 # Run the GitHub Actions CI workflow (.github/workflows/ci.yml) locally with
 # `act` (https://github.com/nektos/act), so you can reproduce a CI failure
 # without pushing. Runner image and arch come from .actrc at the repo root.

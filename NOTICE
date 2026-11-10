@@ -1,5 +1,7 @@
-The following authors have all licensed their contributions to AssemblyScript
-under the licensing terms detailed in LICENSE:
+Wago Source Code Form is distributed under the Mozilla Public License,
+v. 2.0 (LICENSE). Third-party portions retain the terms identified below.
+
+Authors and contributors:
 
 * Jairus Tanaka <me@jairus.dev>
 * Joshua Tenner <tenner.joshua@gmail.com>
@@ -12,7 +14,9 @@ the following terms:
 * WARP WebAssembly Compiler
 
     Copyright (c) Bavarian Motor Works Corporation
-    Apache License, Version 2.0 (https://opensource.org/licenses/Apache-2.0)
+    Apache License, Version 2.0 (LICENSES/Apache-2.0.txt)
+    WARP-derived compiler and runtime portions retain their upstream terms.
+    Wago modifications are identified by MPL-2.0 source notices.
 
 * wasm.fyi benchmark fixtures
 
@@ -25,3 +29,15 @@ the following terms:
     are retained in tests/corpus/regressions/pdfium/LICENSE.pdfium and licenses/.
     The go-pdfium wrapper and upstream binary-packaging notices are retained
     alongside the fixture. See its PROVENANCE.json and README.md.
+
+Additional contributors are recorded in the version-control history.
+
+Pinned conformance submodules, imported regression corpora, benchmark inputs,
+and external libraries retain the licenses and provenance recorded alongside
+them. The regression corpus has its own tests/corpus/regressions/LICENSE;
+Wago-written support scripts carry their own source notices. Project notices
+do not relicense these third-party works or input data.
+
+Release assets include LICENSE, NOTICE, and Apache-2.0.txt (the source-tree
+LICENSES/Apache-2.0.txt). Source for each release is available from the matching
+Git tag at https://github.com/wago-org/wago.

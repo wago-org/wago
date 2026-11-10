@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // spectralnorm — the Computer Language Benchmarks Game kernel, ported to a
 // no_std wasm32 module. Approximates the largest singular value of an infinite
 // matrix A (a_ij = 1/((i+j)(i+j+1)/2 + i + 1)) via a few power-iteration passes

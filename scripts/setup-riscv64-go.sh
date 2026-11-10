@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Wago authors and contributors
+
 # Install a checksum-verified Go toolchain on the native RISE riscv64 runner.
 set -euo pipefail
 : "${GO_VERSION:?GO_VERSION is required}"

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // raytrace — a Whitted-style recursive ray tracer as a no_std wasm32 module, and
 // the corpus's flagship "large real program" on the compilable exec path. It
 // renders an n×n image of a fixed scene (four shaded spheres above a checker
