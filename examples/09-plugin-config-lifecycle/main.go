@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Example 09: plugin configuration, guest arguments, and lifecycle.
 //
 // Run:
@@ -32,7 +39,7 @@ var definition = wago.PluginDefinition{
 	Stability:   wago.Experimental,
 	Provenance: wago.PluginProvenance{
 		Repository: "https://example.com/wago/reporter",
-		License:    "Apache-2.0",
+		License:    "MPL-2.0",
 	},
 	ConfigSchema: json.RawMessage(`{
   "type": "object",

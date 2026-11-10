@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Command benchpub runs the wago benchmark suite (or reads a saved `go test
 // -bench` output), records the results as a versioned JSON run appended to a
 // rolling history, and renders charts: per-stage latency for the latest run and

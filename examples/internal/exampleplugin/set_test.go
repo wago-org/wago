@@ -16,7 +16,7 @@ func TestMustSetCopiesRequestedScopes(t *testing.T) {
 		Version: "1.0.0",
 		Provenance: wago.PluginProvenance{
 			Repository: "https://example.com/test",
-			License:    "Apache-2.0",
+			License:    "MPL-2.0",
 		},
 		Authorities: []wago.AuthorityRequest{{
 			Name:   wago.AuthorityHostImportDefine,

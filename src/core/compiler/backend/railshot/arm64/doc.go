@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Package arm64 holds the AArch64-specific half of the railshot single-pass
 // backend — the twin of railshot/amd64. It provides the same surface (condense
 // engine / instruction selection, linear-memory + bounds lowering, scalar-float
