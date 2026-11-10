@@ -419,3 +419,58 @@ func TestAffineLoopSummarySiblingWorkspaces(t *testing.T) {
 		}
 	}
 }
+
+func TestAffineLoopSummaryUnpinnedOutputJoin(t *testing.T) {
+	old := affineLoopSummaryEnabled
+	t.Cleanup(func() { affineLoopSummaryEnabled = old })
+	base := affineLoopFixture(t, false, 0, 0, 0xfffffff7, false)
+	// Twelve hotter anchors consume the whole-function pin pool. The summarized
+	// loop's outputs therefore use frame homes with argument-register pins
+	// disabled. A subsequent read must work on
+	// both the scalar and fast edges, without forwarding a fast-only store.
+	body := []byte{1, 15, 0x7f}
+	for local := byte(4); local <= 15; local++ {
+		for range 64 {
+			body = append(body, 0x20, local, 0x41, 1, 0x6a, 0x21, local)
+		}
+	}
+	source := base.Code[0].BodyBytes
+	// Read the last published cell (the counter) immediately at the join.
+	body = append(body, source[:len(source)-11]...)
+	body = append(body, 0x20, 1, 0xad, 0x42, 32, 0x86, 0x20, 2, 0xad, 0x84, 0x0b)
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, body)
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	for _, on := range []bool{false, true} {
+		affineLoopSummaryEnabled = on
+		for _, compact := range []bool{false, true} {
+			opts := CompileOptions{CompactNative: compact, Optimizations: map[string]bool{"entry-arg-pins": false}}
+			if diagnosticsEnabled && !profileEnabled {
+				var stats ModuleStats
+				opts.Stats = &stats
+				c, err := CompileModuleWith(m, opts)
+				if err != nil {
+					t.Fatal(err)
+				}
+				c.CodeImage.Close()
+				if on && stats.Funcs[0].Peephole["affine-loop-unpinned-output"] == 0 {
+					t.Fatalf("pressure fixture did not exercise frame output publication: %v", stats.Funcs[0].Peephole)
+				}
+				opts.Stats = nil
+			}
+			for _, limit := range []uint64{1, 17, 64, 257} {
+				g, a := uint32(0x80000007), uint32(0xfffffff7)
+				for i := uint32(0); i < uint32(limit); i++ {
+					g += i
+					a += g
+				}
+				got, _, err := runAffineLoopCells(t, m, opts, limit)
+				want := limit<<32 | uint64(a)
+				if err != nil || got != want {
+					t.Fatalf("unpinned on%v compact%v limit%d got%x want%x err%v", on, compact, limit, got, want, err)
+				}
+			}
+		}
+	}
+}

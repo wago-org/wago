@@ -576,6 +576,9 @@ func (f *fn) finishAffineLoopSummary(depth int) {
 					panic(err)
 				}
 			} else {
+				if _, _, pin := f.pinReg(int(c.index)); !pin {
+					f.stats.peep("affine-loop-unpinned-output")
+				}
 				f.setLocal(nil, int(c.index), false)
 				if reg, _, pin := f.pinReg(int(c.index)); pin {
 					f.storeLocalReg(int(c.index), reg, false)
