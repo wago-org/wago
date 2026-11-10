@@ -1901,25 +1901,30 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if kind == cfLoop {
 			f.settleByteBoundsPhase()
 			if pN == 0 && rN == 0 {
-				f.emitClearBitLoop(r)
-				f.emitPureReduce(r)
-				f.emitIntegerResidualLoop(r)
-				if f.loopMemory {
-					f.emitMaxSumLoop(r)
-					f.emitByteReduceLoop(r)
-					f.emitDotLoop(r)
-					f.emitMinPlusLoop(r)
-					mapStart := f.a.Len()
-					f.emitFloatMapLoop(r)
-					if f.a.Len() == mapStart {
-						f.emitFloatCopyMapLoop(r)
+				f.beginAffineLoopSummary(r)
+				if f.affineLoop == nil {
+					f.emitClearBitLoop(r)
+					f.emitPureReduce(r)
+					f.emitIntegerResidualLoop(r)
+					if f.loopMemory {
+						f.emitMaxSumLoop(r)
+						f.emitByteReduceLoop(r)
+						f.emitDotLoop(r)
+						f.emitMinPlusLoop(r)
+						mapStart := f.a.Len()
+						f.emitFloatMapLoop(r)
+						if f.a.Len() == mapStart {
+							f.emitFloatCopyMapLoop(r)
+						}
+						f.emitIntegerLoadMap(r)
+						f.emitIntegerWordMap(r)
+						f.emitAbsReduceLoop(r)
 					}
-					f.emitIntegerLoadMap(r)
-					f.emitIntegerWordMap(r)
-					f.emitAbsReduceLoop(r)
 				}
 			}
-			f.beginLoopLocalLease(r, &fr)
+			if f.affineLoop == nil {
+				f.beginLoopLocalLease(r, &fr)
+			}
 			f.preloadScopedLoopConsts(&fr)
 			f.preloadScopedFloatConsts(r)
 			if !f.alignCountedLoopBody(r, &fr) {
@@ -2972,6 +2977,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	f.finishByteReduceLoop(last + 1)
 	f.finishPureReduce(last + 1)
 	f.finishLoopLocalLease(last + 1)
+	f.finishAffineLoopSummary(last + 1)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
 	f.releaseFrameBaseTypes(&fr)

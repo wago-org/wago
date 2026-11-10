@@ -185,6 +185,8 @@ type fn struct {
 	filledCopyByte          byte
 	remainderZeroLoopDepth  uint16
 	remainderZeroLoopWrites uint64
+	affineLoop              *affineLoopPlan
+	affineLoopWork          uint16
 	floatStoreWork          uint16
 	shiftedALUShortEnd      int
 	shiftedALUAddressLocals uint64
@@ -746,8 +748,9 @@ func asmCapForBody(bodyLen int) int {
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
 type scratch struct {
-	nativeImportFast bool // isolated guarded variant compilation only
-	scalar           shared.ScalarState
+	affineLoopScratch *affineLoopPlan
+	nativeImportFast  bool // isolated guarded variant compilation only
+	scalar            shared.ScalarState
 
 	stack                 *stack   // the valent-block operand stack
 	stackCap              int      // deferred initial reservation for function-level fallback
