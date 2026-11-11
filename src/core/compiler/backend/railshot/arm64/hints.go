@@ -1388,9 +1388,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if s.collectLoopIntConsts && loopDepth != 0 {
 				if next, ok := s.r.Reader.Peek(); ok {
-					consumer := fusedConstantHintConsumer(prevOp, next, typ, bits)
-					if value, valueType, needed := loopIntConstRegisterValue(consumer, bits, typ); needed {
-						s.noteLoopIntConst(value, valueType, loopDepth, pathWeight, consumer)
+					if value, valueType, needed := loopIntConstRegisterValue(next, bits, typ); needed {
+						s.noteLoopIntConst(value, valueType, loopDepth, pathWeight, next)
 					}
 				}
 			}

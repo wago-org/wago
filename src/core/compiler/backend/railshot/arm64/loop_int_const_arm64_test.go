@@ -17,9 +17,6 @@ func appendI32Const(body []byte, v int32, op byte) []byte {
 }
 
 func TestLoopIntConstHintsOnlyRegisterConsumersArm64(t *testing.T) {
-	oldFused := fusedConstantHintsEnabled
-	fusedConstantHintsEnabled = false
-	t.Cleanup(func() { fusedConstantHintsEnabled = oldFused })
 	old := shiftedImmediateHintFilterEnabled
 	shiftedImmediateHintFilterEnabled = false // retain the legacy scoring control
 	t.Cleanup(func() { shiftedImmediateHintFilterEnabled = old })
