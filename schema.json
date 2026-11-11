@@ -244,8 +244,7 @@
               "wide-loop-int-const",
               "wide-reuse-pins",
               "x8-pin",
-              "zero-branch",
-              "zero-predicate-scan"
+              "zero-branch"
             ]
           },
           "additionalProperties": { "type": "boolean" }

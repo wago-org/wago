@@ -109,7 +109,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("integer-argmax-vector", &integerArgmaxEnabled),
 	optimization.Bind("masked-xor-stripe", &maskedXorStripeEnabled),
 	optimization.Bind("integer-quotient-recurrence", &integerQuotientRecurrenceEnabled),
-	optimization.Bind("zero-predicate-scan", &zeroPredicateScanEnabled),
 	optimization.Bind("regional-condition-fusion", &regionalConditionFusionEnabled),
 	optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
 	optimization.Bind("wide-reuse-pins", &wideReusePinsEnabled),
@@ -242,7 +241,6 @@ var (
 	optIntegerArgmax           = optimizationBindings.Option("integer-argmax-vector")
 	optMaskedXorStripe         = optimizationBindings.Option("masked-xor-stripe")
 	optQuotientRecurrence      = optimizationBindings.Option("integer-quotient-recurrence")
-	optZeroPredicateScan       = optimizationBindings.Option("zero-predicate-scan")
 	optRegionalConditionFusion = optimizationBindings.Option("regional-condition-fusion")
 	optPureReduceVector        = optimizationBindings.Option("pure-reduce-vector")
 	optWideReusePins           = optimizationBindings.Option("wide-reuse-pins")
