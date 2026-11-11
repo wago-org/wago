@@ -160,3 +160,19 @@ func TestRegallocWindowsForwardPhysicalEffects(t *testing.T) {
 		t.Fatalf("outer observer not restored on panic: %+v", observed)
 	}
 }
+
+func TestRegallocCheckSeedsProvenFrameForwardAlias(t *testing.T) {
+	for _, dst := range []Reg{X9, X10} {
+		f := fn{a: &encoder.Asm{}, s: newStack(), policy: currentCodegenPolicy(), localSlot: []uint32{0}}
+		offset := f.localOff(0)
+		f.a.Store64(X9, SP, uint32(offset))
+		f.frameForwardEnd = uint32(f.a.Len())
+		f.frameForwardOff = offset
+		f.frameForwardReg = X9
+		e := f.pushValue(storage{kind: stLocalRef, typ: mtI64, idx: 0})
+		f.checkBeginFlush(nil)
+		f.ld64(dst, SP, offset)
+		f.checkOccupy(e, dst, false)
+		f.checkEndFlush()
+	}
+}

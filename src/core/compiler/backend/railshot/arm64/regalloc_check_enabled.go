@@ -119,6 +119,14 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
 	}
 	c := &allocationRegion{values: make(map[*elem]regalloccheck.Value)}
 	f.allocationCheck = c
+	// The machine-code forwarding proof can retain a frame value in an
+	// otherwise unowned register. Register that proven alias at region entry,
+	// before any transfers are observed, so a forwarded reload has the same
+	// incoming identity as an actual frame load.
+	if source, ok := f.frameForwardSource(f.frameForwardOff); ok {
+		value := c.state.Seed(regalloccheck.Slot(f.frameForwardOff), 8)
+		c.state.Put(checkReg(source, false), value)
+	}
 	for _, e := range roots {
 		f.checkSeed(e)
 	}
