@@ -82,7 +82,7 @@ func (p *floatMapPlan) localWritten(index int) bool {
 
 func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) {
 	p.integer = f.integerLoadMapProbe
-	p.normalizedInduction = p.integer || f.floatCopyMapProbe
+	p.normalizedInduction = p.integer
 	p.spanScale = 1
 	p.counterScale = 1
 	p.scatterBudget = integerResidualWorkLimit - int(f.integerResidualWork)
@@ -221,7 +221,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			if e != nil || end != 0x0b {
 				return p, false
 			}
-			if p.integer || f.floatCopyMapProbe {
+			if p.integer {
 				if !p.finishIntegerInduction(stack[0], ns, initialRead[:]) {
 					return p, false
 				}
@@ -257,7 +257,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 				for i := 0; i < n; i++ {
 					strided = strided || p.load(p.nodes[i].op) && p.addresses[i].stride > 1
 				}
-				if !strided && !f.floatCopyMapProbe {
+				if !strided {
 					return p, false
 				}
 			}
@@ -515,14 +515,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			// field to every compiler function or changing ordinary map admission.
 			f.integerResidualWork = uint16(min(integerResidualWorkLimit, int(f.integerResidualWork)+p.work))
 		}
-		if p.integer || f.floatCopyMapProbe {
+		if p.integer {
 			f.integerLoadMapWork = uint16(min(integerLoadMapWorkLimit, int(f.integerLoadMapWork)+p.work))
 		}
 	}()
 	if !ok || p.counterScale > 1 && f.a.Len() > 64<<10 {
-		return
-	}
-	if f.floatCopyMapProbe && (p.integer || !p.load(p.nodes[p.result].op) || p.addresses[p.result].invariant || p.addresses[p.result].stride > 1 || p.addresses[p.dest].stride > 1) {
 		return
 	}
 	// Deeply nested copy-only loops often move a handful of words, and even
@@ -1375,9 +1372,6 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.stats.peep("integer-load-map-vector")
 	} else {
 		f.stats.peep("float-map-loop-vector")
-		if f.floatCopyMapProbe {
-			f.stats.peep("float-copy-map-vector")
-		}
 	}
 }
 func mapFloatType(wide bool) machineType {

@@ -1911,11 +1911,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 						f.emitByteReduceLoop(r)
 						f.emitDotLoop(r)
 						f.emitMinPlusLoop(r)
-						mapStart := f.a.Len()
 						f.emitFloatMapLoop(r)
-						if f.a.Len() == mapStart {
-							f.emitFloatCopyMapLoop(r)
-						}
 						f.emitIntegerLoadMap(r)
 						f.emitIntegerWordMap(r)
 						f.emitAbsReduceLoop(r)
