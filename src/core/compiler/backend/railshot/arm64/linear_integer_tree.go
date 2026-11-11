@@ -87,8 +87,7 @@ func (w *linearIntegerTree) collect(e *elem, scale uint32) bool {
 }
 
 func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
-	shifted := node.deferredOp() == opShl && shiftedLinearTreeEnabled
-	if !f.opt(optLinearIntegerTree) || !f.hasLoop || node.st.typ != mtI32 || node.deferredDepth() < 2 || (node.deferredOp() != opAdd && node.deferredOp() != opSub && !shifted) || len(f.customInstructions) != 0 {
+	if !f.opt(optLinearIntegerTree) || !f.hasLoop || node.st.typ != mtI32 || node.deferredDepth() < 2 || (node.deferredOp() != opAdd && node.deferredOp() != opSub) || len(f.customInstructions) != 0 {
 		return regNone
 	}
 	w := linearIntegerTree{f: f, budget: 64}
@@ -102,19 +101,13 @@ func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
 		}
 		duplicate = duplicate || t.reads > 1
 	}
-	if !shifted && duplicate && nonzero == 2 && w.operations >= 3 && w.constant == 0 {
+	if duplicate && nonzero == 2 && w.operations >= 3 && w.constant == 0 {
 		if result := f.emitLinearIntegerPair(node, dest, &w); result != regNone {
 			return result
 		}
 	}
-	if shifted {
-		// Distinct current locals avoid hiding an earlier duplicate-source cover
-		// inside the cost comparison. Modular shifts can discard expensive high
-		// coefficient bits even when no source is repeated.
-		if duplicate || nonzero < 2 || nonzero > 4 || !f.profitableShiftedLinearTree(node, &w) {
-			return regNone
-		}
-	} else if node.deferredDepth() < 4 || !duplicate || w.operations < nonzero*2+3 {
+	// Require repeated sources and at least three eliminated arithmetic nodes.
+	if node.deferredDepth() < 4 || !duplicate || w.operations < nonzero*2+3 {
 		return regNone
 	}
 	// Keep every surviving borrowed source live while materializing stack locals.
@@ -160,33 +153,26 @@ func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
 	if result == regNone {
 		result = f.allocReg(0)
 	}
-	first := shifted && w.constant == 0
-	if !first {
-		f.a.MovImm32(result, int32(w.constant))
-	}
+	f.a.MovImm32(result, int32(w.constant))
 	coefficient := regNone
 	for _, t := range w.terms[:w.count] {
 		c := t.coefficient
 		if c == 0 {
 			continue
 		}
-		addend := result
-		if first {
-			addend, first = ZR, false
-		}
 		switch {
 		case c == 1:
-			f.a.Add32(result, addend, t.reg)
+			f.a.Add32(result, result, t.reg)
 		case c == ^uint32(0):
-			f.a.Sub32(result, addend, t.reg)
+			f.a.Sub32(result, result, t.reg)
 		case c&(c-1) == 0:
-			f.a.AddShifted(result, addend, t.reg, uint8(bits.TrailingZeros32(c)), true)
+			f.a.AddShifted(result, result, t.reg, uint8(bits.TrailingZeros32(c)), true)
 		default:
 			if coefficient == regNone {
 				coefficient = f.allocReg(maskOf(result))
 			}
 			f.a.MovImm32(coefficient, int32(c))
-			f.a.Madd32(result, t.reg, coefficient, addend)
+			f.a.Madd32(result, t.reg, coefficient, result)
 		}
 	}
 	if coefficient != regNone {
@@ -202,9 +188,6 @@ func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
 		if t.coefficient != 0 && t.owned && t.reg != result {
 			f.release(t.reg)
 		}
-	}
-	if shifted {
-		f.stats.peep("shifted-linear-tree")
 	}
 	f.stats.peep("linear-integer-tree")
 	f.consumeBlockBelow(node)
