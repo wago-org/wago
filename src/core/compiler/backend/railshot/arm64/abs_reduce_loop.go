@@ -321,7 +321,7 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 		return
 	}
 	oldPinned, oldFPinned := f.pinned, f.fpinned
-	var regs [7]Reg
+	var regs [6]Reg
 	nr := 0
 	alloc := func() Reg {
 		x := f.allocRegOrNone(0)
@@ -374,10 +374,6 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 			f.ld32(dst, SP, f.localOff(local))
 		}
 	}
-	stride := regNone
-	if absReduceRangeEnabled {
-		stride = alloc()
-	}
 	read(p.counter, counter)
 	read(p.index, index)
 	read(p.acc, acc)
@@ -394,118 +390,17 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.fpinned = f.fpinned.add(va)
 	vb := f.allocFReg(0)
 	f.fpinned = f.fpinned.add(vb)
-	vc := regNone
-	if absReduceSelectionEnabled && p.lanes == 8 && available >= 3 {
-		vc = f.allocFReg(0)
-		f.fpinned = f.fpinned.add(vc)
-	}
-	vectorSum := regNone
-	needed := 3
-	if vc != regNone {
-		needed++
-	}
-	if absReduceAccumulatorEnabled && stride != regNone && available >= needed {
-		vectorSum = f.allocFReg(0)
-		f.fpinned = f.fpinned.add(vectorSum)
-	}
-	emitPacket := func(sum Reg) {
-		for off := int32(0); off < int32(4*p.lanes); off += 16 {
-			out := va
-			if vc != regNone && off == 0 {
-				out = vc
-			}
-			f.a.LdrQ(out, a, off)
-			f.a.LdrQ(vb, b, off)
-			f.a.NeonSubS(out, out, vb)
-			f.a.NeonAbsS(out, out)
-			if vc != regNone {
-				if off == 0 {
-					continue
-				}
-				// Preserve wrapping subtraction/absolute-value semantics in each
-				// lane, then combine exact modular sums before crossing to GP.
-				f.a.NeonAddS(va, va, vc)
-			}
-			if sum != regNone {
-				f.a.NeonAddS(sum, sum, va)
-			} else {
-				f.a.NeonAddvS(va, va)
-				f.a.FmovToGpr(X16, va, false)
-				f.a.Add32(acc, acc, X16)
-			}
-		}
-	}
-	// A nontrapping whole-range proof can retain native pointers across rows.
-	// Otherwise enter the original independently checked vector loop below.
-	fastDone := -1
-	if stride != regNone {
-		f.cmpImm(counter, 1, false)
-		short := f.a.Bcond(condBE)
-		if p.stride.op == 0x20 {
-			read(p.stride.a, stride)
-		} else {
-			f.a.MovImm64(stride, uint64(p.stride.v))
-		}
-		read(p.baseA, a)
-		read(p.baseB, b)
-		f.a.Add32(a, a, index)
-		f.absReduceOffset(a, p.biasA)
-		f.a.Add32(b, b, index)
-		f.absReduceOffset(b, p.biasB)
-		// At most counter-1 rows run natively; their last start is
-		// (counter-2)*stride. Both factors are zero-extended i32 values,
-		// so the product plus two i32 bases and 32 bytes cannot overflow u64.
-		f.a.SubImm32(X16, counter, 2)
-		f.a.Mul64(X16, X16, stride)
-		f.a.AddImm64(X16, X16, uint32(4*p.lanes))
-		var misses [4]int
-		for i, base := range [2]Reg{a, b} {
-			f.a.Add64(X17, base, X16)
-			f.cmpRR(X17, size, true)
-			misses[2*i] = f.a.Bcond(condA)
-			// endpoint==2^32 is valid; larger endpoints cross the modular
-			// address boundary. The endpoint is nonzero (access width>=16).
-			f.a.SubImm64(X17, X17, 1)
-			f.a.LsrImm(X17, X17, 32, false)
-			misses[2*i+1] = f.a.Cbnz64(X17)
-		}
-		f.a.Add64(a, a, linMemReg)
-		f.a.Add64(b, b, linMemReg)
-		// The complete range is nontrapping and has no writes or calls.
-		// Integer sums may stay in lanes until this region exits: all
-		// additions wrap modulo 2^32, including INT_MIN absolute values.
-		if vectorSum != regNone {
-			f.a.NeonEor16b(vectorSum, vectorSum, vectorSum)
-		}
-		fastLoop := f.a.Len()
-		emitPacket(vectorSum)
-		f.a.Add64(a, a, stride)
-		f.a.Add64(b, b, stride)
-		f.a.Add32(index, index, stride)
-		f.a.SubImm32(counter, counter, 1)
-		f.cmpImm(counter, 1, false)
-		f.patchBranch19(f.a.Bcond(condA), fastLoop)
-		if vectorSum != regNone {
-			f.a.NeonAddvS(va, vectorSum)
-			f.a.FmovToGpr(X16, va, false)
-			f.a.Add32(acc, acc, X16)
-		}
-		fastDone = f.a.Branch()
-		for _, site := range misses {
-			f.patchBranch19(site, f.a.Len())
-		}
-		f.patchBranch19(short, f.a.Len())
-		f.stats.peep("abs-reduce-range-loop")
-	}
 	loop := f.a.Len()
 	f.cmpImm(counter, 1, false)
 	done := f.a.Bcond(condBE)
 	read(p.baseA, a)
 	read(p.baseB, b)
 	f.a.Add32(a, a, index)
-	f.absReduceOffset(a, p.biasA)
+	f.a.MovImm64(X16, uint64(p.biasA))
+	f.a.Add32(a, a, X16)
 	f.a.Add32(b, b, index)
-	f.absReduceOffset(b, p.biasB)
+	f.a.MovImm64(X16, uint64(p.biasB))
+	f.a.Add32(b, b, X16)
 	f.a.AddImm64(X16, a, uint32(4*p.lanes))
 	f.cmpRR(X16, size, true)
 	badA := f.a.Bcond(condA)
@@ -514,7 +409,15 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	badB := f.a.Bcond(condA)
 	f.a.Add64(a, a, linMemReg)
 	f.a.Add64(b, b, linMemReg)
-	emitPacket(regNone)
+	for off := int32(0); off < int32(4*p.lanes); off += 16 {
+		f.a.LdrQ(va, a, off)
+		f.a.LdrQ(vb, b, off)
+		f.a.NeonSubS(va, va, vb)
+		f.a.NeonAbsS(va, va)
+		f.a.NeonAddvS(va, va)
+		f.a.FmovToGpr(X16, va, false)
+		f.a.Add32(acc, acc, X16)
+	}
 	if p.stride.op == 0x20 {
 		read(p.stride.a, X16)
 	} else {
@@ -525,9 +428,6 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.patchBranch26(f.a.Branch(), loop)
 	for _, site := range []int{done, badA, badB} {
 		f.patchBranch19(site, f.a.Len())
-	}
-	if fastDone >= 0 {
-		f.patchBranch26(fastDone, f.a.Len())
 	}
 	for _, state := range []struct {
 		local int
@@ -544,12 +444,6 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	}
 	f.releaseF(va)
 	f.releaseF(vb)
-	if vc != regNone {
-		f.releaseF(vc)
-	}
-	if vectorSum != regNone {
-		f.releaseF(vectorSum)
-	}
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
 	f.stats.peep("abs-reduce-loop-vector")

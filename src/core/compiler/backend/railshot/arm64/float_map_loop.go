@@ -80,12 +80,14 @@ func (p *floatMapPlan) localWritten(index int) bool {
 	return slot >= 0 && p.locals[slot].Written
 }
 
+const floatMapScatterWorkLimit = 4096
+
 func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) {
 	p.integer = f.integerLoadMapProbe
 	p.normalizedInduction = p.integer
 	p.spanScale = 1
 	p.counterScale = 1
-	p.scatterBudget = integerResidualWorkLimit - int(f.integerResidualWork)
+	p.scatterBudget = floatMapScatterWorkLimit - int(f.floatMapScatterWork)
 	p.limitLocal = -1
 	p.workLimit = integerLoadMapWorkLimit - int(f.integerLoadMapWork)
 	scan := *source
@@ -513,7 +515,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		if p.scatterCandidate {
 			// Share the bounded integer-analysis budget without adding another
 			// field to every compiler function or changing ordinary map admission.
-			f.integerResidualWork = uint16(min(integerResidualWorkLimit, int(f.integerResidualWork)+p.work))
+			f.floatMapScatterWork = uint16(min(floatMapScatterWorkLimit, int(f.floatMapScatterWork)+p.work))
 		}
 		if p.integer {
 			f.integerLoadMapWork = uint16(min(integerLoadMapWorkLimit, int(f.integerLoadMapWork)+p.work))

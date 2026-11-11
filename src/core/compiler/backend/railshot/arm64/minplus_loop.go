@@ -339,71 +339,66 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	f.a.Add64(pivot, pivot, linMemReg)
 	vec := func() Reg { x := f.allocFReg(0); f.fpinned = f.fpinned.add(x); return x }
 	vd, vs, vp := vec(), vec(), vec()
-	if minPlusRunsEnabled && p.scalarReloadPivot && p.limit >= 4*64+8 {
-		f.emitMinPlusRuns(p, d, s, pivot, counter, size, vd, vs, vp, compare)
-	} else {
-		loop := f.a.Len()
-		var scalar [2]int
-		nScalar := 0
-		emitVector := func(bytes uint32) {
-			// Pivot overlap must resume the original body: the source may cache
-			// both pivot loads before its first store.
-			f.a.Sub64(X16, pivot, d)
-			f.a.AddImm64(X16, X16, 3)
-			f.cmpImm(X16, bytes+3, true)
-			scalar[nScalar] = f.a.Bcond(condB)
-			nScalar++
-			f.a.Load32(X16, pivot, 0)
-			f.a.NeonDupGprS(vp, X16)
-			for off := int32(0); off < int32(bytes); off += 16 {
-				f.a.LdrQ(vd, d, off)
-				f.a.LdrQ(vs, s, off)
-				f.a.NeonAddS(vs, vs, vp)
-				f.a.NeonSminS(vd, vd, vs)
-				f.a.StrQ(d, off, vd)
-			}
-			f.a.AddImm64(d, d, bytes)
-			f.a.AddImm64(s, s, bytes)
-			f.a.AddImm32(counter, counter, bytes)
-			f.patchBranch26(f.a.Branch(), loop)
+	loop := f.a.Len()
+	var scalar [2]int
+	nScalar := 0
+	emitVector := func(bytes uint32) {
+		// Pivot overlap must resume the original body: the source may cache
+		// both pivot loads before its first store.
+		f.a.Sub64(X16, pivot, d)
+		f.a.AddImm64(X16, X16, 3)
+		f.cmpImm(X16, bytes+3, true)
+		scalar[nScalar] = f.a.Bcond(condB)
+		nScalar++
+		f.a.Load32(X16, pivot, 0)
+		f.a.NeonDupGprS(vp, X16)
+		for off := int32(0); off < int32(bytes); off += 16 {
+			f.a.LdrQ(vd, d, off)
+			f.a.LdrQ(vs, s, off)
+			f.a.NeonAddS(vs, vs, vp)
+			f.a.NeonSminS(vd, vd, vs)
+			f.a.StrQ(d, off, vd)
 		}
-		// Require four wider iterations to amortize the extra code and tail dispatch.
-		if p.limit >= 4*32+8 {
-			// Amortize loop and alias checks over two SIMD blocks without adding
-			// registers. Keep one original packet for the observable scalar tail.
-			compare(p.limit - 40)
-			tail := f.a.Bcond(condA)
-			emitVector(32)
-			f.stats.peep("minplus-loop-unroll")
-			f.patchBranch19(tail, f.a.Len())
-		}
-		compare(p.limit - 24)
-		done := f.a.Bcond(condA)
-		emitVector(16)
-		for i := 0; i < nScalar; i++ {
-			f.patchBranch19(scalar[i], f.a.Len())
-		}
-		if p.scalarReloadPivot {
-			// This packet is safe only when the source reloads the pivot between
-			// stores. Otherwise overlap resumes the original body below.
-			for off := uint32(0); off < 8; off += 4 {
-				f.a.Load32(X16, s, off)
-				f.a.Load32(X17, pivot, 0)
-				f.a.Add32(X16, X16, X17)
-				f.a.Load32(X17, d, off)
-				f.cmpRR(X16, X17, false)
-				f.a.Csel32(X16, X16, X17, condL)
-				f.a.Store32(X16, d, off)
-			}
-			f.a.AddImm64(d, d, 8)
-			f.a.AddImm64(s, s, 8)
-			f.a.AddImm32(counter, counter, 8)
-			f.patchBranch26(f.a.Branch(), loop)
-		}
-		// Both a completed prefix and pivot overlap resume at the current counter.
-		f.patchBranch19(done, f.a.Len())
-
+		f.a.AddImm64(d, d, bytes)
+		f.a.AddImm64(s, s, bytes)
+		f.a.AddImm32(counter, counter, bytes)
+		f.patchBranch26(f.a.Branch(), loop)
 	}
+	// Require four wider iterations to amortize the extra code and tail dispatch.
+	if p.limit >= 4*32+8 {
+		// Amortize loop and alias checks over two SIMD blocks without adding
+		// registers. Keep one original packet for the observable scalar tail.
+		compare(p.limit - 40)
+		tail := f.a.Bcond(condA)
+		emitVector(32)
+		f.stats.peep("minplus-loop-unroll")
+		f.patchBranch19(tail, f.a.Len())
+	}
+	compare(p.limit - 24)
+	done := f.a.Bcond(condA)
+	emitVector(16)
+	for i := 0; i < nScalar; i++ {
+		f.patchBranch19(scalar[i], f.a.Len())
+	}
+	if p.scalarReloadPivot {
+		// This packet is safe only when the source reloads the pivot between
+		// stores. Otherwise overlap resumes the original body below.
+		for off := uint32(0); off < 8; off += 4 {
+			f.a.Load32(X16, s, off)
+			f.a.Load32(X17, pivot, 0)
+			f.a.Add32(X16, X16, X17)
+			f.a.Load32(X17, d, off)
+			f.cmpRR(X16, X17, false)
+			f.a.Csel32(X16, X16, X17, condL)
+			f.a.Store32(X16, d, off)
+		}
+		f.a.AddImm64(d, d, 8)
+		f.a.AddImm64(s, s, 8)
+		f.a.AddImm32(counter, counter, 8)
+		f.patchBranch26(f.a.Branch(), loop)
+	}
+	// Both a completed prefix and pivot overlap resume at the current counter.
+	f.patchBranch19(done, f.a.Len())
 	if reg, _, pin := f.pinReg(p.counter); pin {
 		f.a.MovReg32(reg, counter)
 	} else {

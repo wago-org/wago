@@ -278,9 +278,9 @@ func TestFloatMapScatterBudgetKeepsOrdinaryMaps(t *testing.T) {
 	probe := fn{nLocals: 6, localType: []machineType{mtI32, mtI32, mtI32, mtI32, mtI32, mtF64}}
 	for _, exhausted := range []bool{false, true} {
 		for _, stride := range []uint32{8, 640} {
-			probe.integerResidualWork = 0
+			probe.floatMapScatterWork = 0
 			if exhausted {
-				probe.integerResidualWork = integerResidualWorkLimit
+				probe.floatMapScatterWork = floatMapScatterWorkLimit
 			}
 			m := scatterFixture(t, 8, 0, 60000, 0, stride, 34)
 			body := m.Code[0].BodyBytes

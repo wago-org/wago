@@ -1881,11 +1881,6 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				f.stats.peep("loop-local-params")
 				return nil
 			}
-			if pN == 0 && rN == 0 && f.loopMemory {
-				f.emitIntegerByteMap(r)
-				f.emitIntegerArgmax(r)
-				f.emitMaskedXorStripe(r)
-			}
 			if fr.has(ctrlLoopCallFree) && callFreeLoopEntryEnabled {
 				// Keep live pins in registers and reload only memory-resident ones.
 				// With no call in the body, every backedge preserves that state.
@@ -1903,11 +1898,8 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			if pN == 0 && rN == 0 {
 				f.beginAffineLoopSummary(r)
 				if f.affineLoop == nil {
-					f.emitClearBitLoop(r)
 					f.emitPureReduce(r)
-					f.emitIntegerResidualLoop(r)
 					if f.loopMemory {
-						f.emitMaxSumLoop(r)
 						f.emitByteReduceLoop(r)
 						f.emitDotLoop(r)
 						f.emitMinPlusLoop(r)
@@ -3124,11 +3116,7 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 			if normalZero && f.opt(optBranchFold) && fr.kind == cfLoop && f.unrollScalarLatch(fr, condNE) {
 				return nil
 			}
-			forwardRemainder := normalZero && f.opt(optBranchFold) && f.remainderForwardExit(fr, creg, testAt)
-			if forwardRemainder && f.pairRemainderLatch(fr, creg, testAt, r) {
-				return nil
-			}
-			if normalZero && !forwardRemainder {
+			if normalZero {
 				// Keep following function entry phases unchanged. This replaces
 				// the removed hot CMP with one word in the unreachable tail.
 				f.phasePadWords++
@@ -3138,15 +3126,6 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 				f.rewindProfileEmission(testAt)
 			}
 			f.truncateNativeCode(testAt)
-			if forwardRemainder && f.opt(optBranchFold) {
-				over := f.a.Cbz32(creg)
-				f.patchBranch26(f.a.Branch(), fr.controlSite)
-				f.patchBranch19(over, f.a.Len())
-				f.stats.peep("remainder-forward-exit")
-				f.stats.peep("normal-zero-branch")
-				f.stats.peep("zero-branch")
-				return nil
-			}
 			if f.opt(optBranchFold) && f.zeroBranchJump(fr, creg) {
 				f.stats.peep("zero-branch")
 				return nil

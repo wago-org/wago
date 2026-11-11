@@ -69,15 +69,13 @@ type Snapshot struct {
 	revision uint64
 }
 
-const selectionWords = 3
-
 // Selection is one immutable, architecture-specific optimization selection.
 // The bit index follows the owning Bindings' stable catalog order. It is safe to
 // copy into a compilation policy and read concurrently for the compilation's
 // lifetime.
 type Selection struct {
 	bindings *Bindings
-	bits     [selectionWords]uint64
+	bits     [2]uint64
 }
 
 // Option is a pre-resolved flag owned by one architecture's Bindings. Backends
@@ -222,10 +220,10 @@ func (b *Bindings) CurrentSnapshot() Snapshot {
 func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[string]bool) (Selection, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if len(b.entries) > selectionWords*64 {
-		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is %d", b.arch, len(b.entries), selectionWords*64)
+	if len(b.entries) > 128 {
+		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is 128", b.arch, len(b.entries))
 	}
-	var bits [selectionWords]uint64
+	var bits [2]uint64
 	matched := 0
 	for index, entry := range b.entries {
 		on := *entry.value
@@ -430,11 +428,7 @@ var catalog = []Definition{
 	arm64("repeated-store-region", "Repeated store region reuse", "remove repeated proven-identical unshared-memory stores while preserving effects"),
 	arm64("arithmetic-tee-branch", "Arithmetic tee backedge flags", "branch on an assigned arithmetic result using its proven surviving zero flag"),
 	arm64("native-loop-const", "Native loop constant leases", "lease a register with proved dead exits for repeated loop materializations"),
-	arm64("loop-store-sink", "Guarded loop output stores", "defer scalar output stores with complete read-range disjointness guards"),
-	arm64("cyclic-load-span", "Guarded cyclic load spans", "prove a cyclic index range with an original checked-loop fallback"),
-	arm64("linear-load-span", "Guarded linear load spans", "check an induction span once with the original checked loop as fallback"),
 	arm64("affine-bounds-loop", "Guarded affine scalar memory loops", "check bounded affine streams once while preserving the original arithmetic and checked fallback"),
-	arm64("descending-memory-range", "Guarded descending memory loops", "check a descending memory range once and retain a checked fallback"),
 	arm64("select-subtract", "Conditional integer subtraction", "share subtraction flags with a select of zero or the subtrahend"),
 	arm64("float-memory-borrow", "Borrow float memory operands", "store read-only float operands directly and load directly into pinned float destinations"),
 	arm64("byte-store-pair", "Adjacent byte stores", "combine two byte stores only when the complete access is proven within the memory minimum"),
@@ -444,10 +438,6 @@ var catalog = []Definition{
 	arm64("uxtw-add", "Extended adds", "fold zero-extension into ADD UXTW"),
 	{Name: "select-group-guard", Label: "Select group guard", Description: "skip pure update groups when their unchanged mask has no selected bits", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "dot-loop-vector", Label: "Scalar loop vectorization", Description: "vectorize proven integer reductions, min-plus updates and independent floating-point maps with guarded scalar fallback", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "integer-byte-map", Label: "Integer byte map vectorization", Description: "vectorize interleaved affine byte producers with exact unsigned division and guarded scalar fallback", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "masked-xor-stripe", Label: "Masked XOR stripes", Description: "guard and vectorize contiguous word XOR updates from a disjoint source stripe", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "integer-argmax-vector", Label: "Integer argmax vectorization", Description: "vectorize guarded cross-product distance scans while retaining earliest unsigned maxima", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "integer-quotient-recurrence", Label: "Integer quotient recurrence", Description: "update unsigned vector quotients and remainders across guarded nonwrapping byte-map packets", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "regional-condition-fusion", Label: "Regional condition fusion", Description: "keep pure branch conditions deferred while writing regional locals to their canonical homes", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "pure-reduce-vector", Label: "Pure integer reduction vectorization", Description: "vectorize independent i32 expressions accumulated into i64 sums with exact scalar tails", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "select-sink-pure-guard", Label: "Pure integer select update guard", Description: "skip bounded costly pure work when an integer select keeps its pinned local", Default: true, Architectures: catalogARM64Architectures},

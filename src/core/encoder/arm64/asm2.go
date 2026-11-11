@@ -1361,15 +1361,6 @@ func (a *Asm) NeonUmaxvB(dst, src Reg) {
 	}
 }
 
-func (a *Asm) NeonUmaxvS(dst, src Reg) {
-	a.word(0x6EB0A800 | r(src)<<5 | r(dst))
-	if regallocCheckEnabled {
-		a.regallocFPWrites(uint32(1) << r(dst))
-	}
-}
-
-func (a *Asm) NeonBit16b(dst, n, m Reg) { a.neon3(0x6EA01C00, 1, dst, n, m) }
-
 // Horizontal unsigned-min (UMINV) and full-width add (ADDV) reductions across a
 // 128-bit vector. UMINV feeds all_true (a lane is zero iff the min lane is
 // zero); ADDV feeds bitmask, where every lane has been ANDed to a distinct
@@ -1524,7 +1515,6 @@ func (a *Asm) NeonUmaxS(dst, n, m Reg) { a.neon3(0x6E206400, 4, dst, n, m) }
 
 func (a *Asm) NeonUrhaddB(dst, n, m Reg)   { a.neon3(0x6E201400, 1, dst, n, m) }
 func (a *Asm) NeonUrhaddH(dst, n, m Reg)   { a.neon3(0x6E201400, 2, dst, n, m) }
-func (a *Asm) NeonMulB(dst, n, m Reg)      { a.neon3(0x4E209C00, 1, dst, n, m) }
 func (a *Asm) NeonMulH(dst, n, m Reg)      { a.neon3(0x4E209C00, 2, dst, n, m) }
 func (a *Asm) NeonMulS(dst, n, m Reg)      { a.neon3(0x4E209C00, 4, dst, n, m) }
 func (a *Asm) NeonMlaS(dst, n, m Reg)      { a.neon3(0x4E209400, 4, dst, n, m) }
@@ -1930,7 +1920,6 @@ func (a *Asm) NeonRev32H(dst, n Reg) {
 }
 
 func (a *Asm) NeonZip1B(dst, n, m Reg) { a.neon3(0x4E003800, 1, dst, n, m) }
-func (a *Asm) NeonUzp1S(dst, n, m Reg) { a.neon3(0x4E001800, 4, dst, n, m) }
 func (a *Asm) NeonUzp2S(dst, n, m Reg) { a.neon3(0x4E005800, 4, dst, n, m) }
 func (a *Asm) NeonZip1H(dst, n, m Reg) { a.neon3(0x4E003800, 2, dst, n, m) }
 func (a *Asm) NeonZip1S(dst, n, m Reg) { a.neon3(0x4E003800, 4, dst, n, m) }

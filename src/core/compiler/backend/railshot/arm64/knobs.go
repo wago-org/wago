@@ -91,11 +91,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("byte-store-pair", &byteStorePairEnabled),
 	optimization.Bind("float-memory-borrow", &floatMemoryBorrowEnabled),
 	optimization.Bind("select-subtract", &selectSubtractEnabled),
-	optimization.Bind("linear-load-span", &linearLoadSpanEnabled),
 	optimization.Bind("affine-bounds-loop", &affineBoundsLoopEnabled),
-	optimization.Bind("descending-memory-range", &descendingRangeEnabled),
-	optimization.Bind("cyclic-load-span", &cyclicLoadSpanEnabled),
-	optimization.Bind("loop-store-sink", &loopStoreSinkEnabled),
 	optimization.Bind("native-loop-const", &nativeLoopConstEnabled),
 	optimization.Bind("arithmetic-tee-branch", &arithmeticTeeBranchEnabled),
 	optimization.Bind("memcopy-tail4", &memcopyTail4Enabled),
@@ -105,10 +101,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("inverted-logical", &invertedLogicalEnabled),
 	optimization.Bind("select-group-guard", &selectGroupEnabled),
 	optimization.Bind("dot-loop-vector", &dotLoopEnabled),
-	optimization.Bind("integer-byte-map", &integerByteMapEnabled),
-	optimization.Bind("integer-argmax-vector", &integerArgmaxEnabled),
-	optimization.Bind("masked-xor-stripe", &maskedXorStripeEnabled),
-	optimization.Bind("integer-quotient-recurrence", &integerQuotientRecurrenceEnabled),
 	optimization.Bind("regional-condition-fusion", &regionalConditionFusionEnabled),
 	optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
 	optimization.Bind("wide-reuse-pins", &wideReusePinsEnabled),
@@ -223,11 +215,7 @@ var (
 	optBranchFold              = optimizationBindings.Option("branch-fold")
 	optStoreLoadFwd            = optimizationBindings.Option("store-load-fwd")
 	optSelectSubtract          = optimizationBindings.Option("select-subtract")
-	optLinearLoadSpan          = optimizationBindings.Option("linear-load-span")
 	optAffineBoundsLoop        = optimizationBindings.Option("affine-bounds-loop")
-	optDescendingMemoryRange   = optimizationBindings.Option("descending-memory-range")
-	optCyclicLoadSpan          = optimizationBindings.Option("cyclic-load-span")
-	optLoopStoreSink           = optimizationBindings.Option("loop-store-sink")
 	optNativeLoopConst         = optimizationBindings.Option("native-loop-const")
 	optArithmeticTeeBranch     = optimizationBindings.Option("arithmetic-tee-branch")
 	optFloatMemoryBorrow       = optimizationBindings.Option("float-memory-borrow")
@@ -237,10 +225,6 @@ var (
 	optUXTWAdd                 = optimizationBindings.Option("uxtw-add")
 	optSelectGroupGuard        = optimizationBindings.Option("select-group-guard")
 	optDotLoopVector           = optimizationBindings.Option("dot-loop-vector")
-	optIntegerByteMap          = optimizationBindings.Option("integer-byte-map")
-	optIntegerArgmax           = optimizationBindings.Option("integer-argmax-vector")
-	optMaskedXorStripe         = optimizationBindings.Option("masked-xor-stripe")
-	optQuotientRecurrence      = optimizationBindings.Option("integer-quotient-recurrence")
 	optRegionalConditionFusion = optimizationBindings.Option("regional-condition-fusion")
 	optPureReduceVector        = optimizationBindings.Option("pure-reduce-vector")
 	optWideReusePins           = optimizationBindings.Option("wide-reuse-pins")
