@@ -294,22 +294,6 @@ func (f *fn) finalizeAffineBoundsLoops(entries ...int) {
 	if n > 64<<10 {
 		return
 	}
-	// The full matcher requires a comparison followed by a not-equal branch.
-	// Keep target-map construction and the larger workspace off functions with
-	// no such latch.
-	for back := 20; back < n; back += 4 {
-		if affineBoundsLatchAt(f.a.B, back) {
-			f.finalizeAffineBoundsCandidates(n, entries...)
-			return
-		}
-	}
-}
-
-func affineBoundsLatchAt(b []byte, back int) bool {
-	return rdWord(b, back)&0xff00001f == 0x54000001 && rdWord(b, back-4)&0xffc0001f == 0x7100001f
-}
-
-func (f *fn) finalizeAffineBoundsCandidates(n int, entries ...int) {
 	var targetStorage [256]uint64
 	targets := targetStorage[:((n/4)+63)/64]
 	for pc := 0; pc < n; pc += 4 {
@@ -325,7 +309,7 @@ func (f *fn) finalizeAffineBoundsCandidates(n int, entries ...int) {
 	for back := 20; back < n && versions < 2; back += 4 {
 		// Avoid constructing/copying the bounded plan at every instruction.
 		// These are necessary conditions already checked by the full matcher.
-		if !affineBoundsLatchAt(f.a.B, back) {
+		if rdWord(f.a.B, back)&0xff00001f != 0x54000001 || rdWord(f.a.B, back-4)&0xffc0001f != 0x7100001f {
 			continue
 		}
 		p, yes := matchAffineBoundsLoop(f.a.B[:n], back, f.memSizeReg, targets, entries, f.relocs)
