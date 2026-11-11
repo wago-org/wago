@@ -113,6 +113,12 @@ func TestScalarLoopUnrollMatcherGuards(t *testing.T) {
 			if ok != tc.accept {
 				t.Fatalf("got%v want%v loop%+v", ok, tc.accept, g)
 			}
+			if ok && !hasScalarUnrollLatch(c) {
+				t.Fatal("screen rejected an admitted loop")
+			}
+			if (tc.name == "wide counter" || tc.name == "other decrement") && hasScalarUnrollLatch(c) {
+				t.Fatal("screen accepted a mismatched latch")
+			}
 		})
 	}
 }

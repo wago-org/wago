@@ -41,6 +41,22 @@ type scalarUnrollLoop struct {
 	counter          uint32
 }
 
+// A candidate must end in a decrement and a nonzero branch. Screen for that
+// necessary latch before allocating the branch-target map for the function.
+func hasScalarUnrollLatch(b []byte) bool {
+	for back := 12; back+4 <= len(b); back += 4 {
+		if rdWord(b, back)&0xff00001f != 0x54000001 {
+			continue
+		}
+		sub := rdWord(b, back-4)
+		counter := sub & 31
+		if sub&0xfffffc00 == 0x71000400 && sub>>5&31 == counter && counter != 31 {
+			return true
+		}
+	}
+	return false
+}
+
 func matchScalarUnroll(b []byte, back, n int) (g scalarUnrollLoop, ok bool) {
 	if back < 12 || back+4 > n {
 		return
@@ -89,7 +105,7 @@ func (f *fn) finalizeScalarLoopUnroll(entries ...int) {
 		return
 	}
 	n := len(f.a.B) &^ 3
-	if n > 64<<10 {
+	if n > 64<<10 || !hasScalarUnrollLatch(f.a.B[:n]) {
 		return
 	}
 	targets := make([]uint64, ((n/4)+63)/64)
