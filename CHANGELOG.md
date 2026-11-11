@@ -91,6 +91,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Improve ARM64 code generation for guarded loops, vector operations, bounds
+  checks, register use, and integer arithmetic.
 - Keep independent AMD64 selection-arm address calculations lazy when
   temporary ownership and condition operands permit.
 - Feed small AMD64 integer selection masks directly into byte TEST flags.
