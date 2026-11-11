@@ -194,7 +194,6 @@ type fn struct {
 	remainderZeroLoopWrites uint64
 	affineLoop              *affineLoopPlan
 	affineLoopWork          uint16
-	floatStoreWork          uint16
 	shiftedALUShortEnd      int
 	shiftedALUAddressLocals uint64
 	shiftedALUAddress       bool

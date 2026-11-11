@@ -158,13 +158,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 				var imm wasm.InstructionImmediate
 				err = f.classifier.ClassifyInto(r, op, &imm)
 			} else {
-				done := false
-				if op == 0x20 && f.floatStorePacketEligible() {
-					done, err = f.tryFloatStorePacket(r)
-				}
-				if !done && err == nil {
-					err = f.emitPlain(r, op)
-				}
+				err = f.emitPlain(r, op)
 			}
 		}
 		f.wideReciprocalActive = false
