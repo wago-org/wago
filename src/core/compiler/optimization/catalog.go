@@ -419,6 +419,7 @@ var catalog = []Definition{
 	arm64("olddest-rhs-sink", "Old destination reuse", "reuse an old destination register as the right operand"),
 	both("branch-fold", "Branch folding", "fold branch pairs into one conditional branch"),
 	arm64("scoped-bounds-certificate", "Invariant local bounds certificates", "retain entry bounds proofs through scopes that never modify their local source"),
+	arm64("conditional-bounds-fallthrough", "Conditional fallthrough bounds certificates", "retain bounds proofs for unchanged locals on conditional fallthrough paths"),
 	arm64("arithmetic-tee-branch", "Arithmetic tee backedge flags", "branch on an assigned arithmetic result using its proven surviving zero flag"),
 	arm64("native-loop-const", "Native loop constant leases", "lease a register with proved dead exits for repeated loop materializations"),
 	arm64("loop-store-sink", "Guarded loop output stores", "defer scalar output stores with complete read-range disjointness guards"),

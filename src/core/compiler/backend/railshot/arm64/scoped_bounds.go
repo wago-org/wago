@@ -76,3 +76,31 @@ func (f *fn) releaseScopedBounds(depth int) {
 		}
 	}
 }
+
+// A conditional branch leaves the fallthrough path dominated by the checks
+// immediately preceding it. A normal flush clears these facts for joins, but
+// the fallthrough may retain local certificates whose source did not change.
+// The usual control-boundary invalidation still applies at the eventual join.
+var conditionalBoundsEnabled = os.Getenv("WAGO_ARM64_NO_CONDITIONAL_BOUNDS") != "1"
+
+func (f *fn) conditionalBoundsEligible() bool {
+	return f.opt(optConditionalBounds) && f.conditionalBoundsSized && f.boundsFacts && !f.moduleEH && !f.threadedMemory0 && !f.interruptible && len(f.customInstructions) == 0
+}
+
+func (f *fn) conditionalBoundsSnapshot(setLocal int) [8]boundsCert {
+	saved := f.boundsCerts
+	for i := range saved {
+		if saved[i].kind != 1 || int(saved[i].idx) == setLocal {
+			saved[i] = boundsCert{}
+		}
+	}
+	return saved
+}
+
+func (f *fn) restoreConditionalBounds(saved [8]boundsCert) {
+	for _, c := range saved {
+		if c.kind != 0 {
+			f.boundsCertUpdate(c.kind, c.idx, c.extent)
+		}
+	}
+}

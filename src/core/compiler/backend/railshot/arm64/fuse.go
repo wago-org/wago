@@ -389,6 +389,9 @@ func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, er
 		f.a.B = f.a.B[:mark]
 		f.restoreLocalStates(saved)
 	}
+	if f.conditionalBoundsEligible() {
+		defer f.restoreConditionalBounds(f.conditionalBoundsSnapshot(-1))
+	}
 	f.flushBelow(top)
 	reg, owned, wide, ok := f.condenseSimpleEqzOperand(top)
 	if !ok {
@@ -477,6 +480,9 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setLocal int) error {
 		}
 		f.a.B = f.a.B[:reconcileMark]
 		f.restoreLocalStates(saved)
+	}
+	if f.conditionalBoundsEligible() {
+		defer f.restoreConditionalBounds(f.conditionalBoundsSnapshot(setLocal))
 	}
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)
