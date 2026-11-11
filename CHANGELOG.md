@@ -6,16 +6,19 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+## [v0.1.0-beta.14] - 2026-11-11
+
 ### Breaking
 
 - License Wago Source Code Form under MPL-2.0, with source headers and retained
-  third-party license notices.
+  third-party license notices. ([#1052](https://github.com/wago-org/wago/pull/1052))
 
 - Remove the `.wago` native-code artifact format, compiled-module serialization
   and loading APIs, `wago build`, the automatic compiled disk cache, and the
   `wago_precompiled` build profile. Use the original `.wasm` source instead;
   existing artifacts cannot be migrated. `wago compile` still builds standalone
   executables containing machine code and the runtime, without a Wasm compiler.
+  ([#1033](https://github.com/wago-org/wago/pull/1033))
 
 ### Fixed
 
@@ -267,8 +270,7 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   policies, zero-live recycling, and bounded native handle batches across
   AMD64 and ARM64. Use exact local roots on both backends outside EH paths.
 
-- Unify ARM64 and AMD64 GC helper dispatch without overlapping helper IDs;
-  cached native GC artifacts require recompilation for ABI version 9.
+- Unify ARM64 and AMD64 GC helper dispatch without overlapping helper IDs.
 
 - Recycle zero-live AMD64 nursery identities in one batch while preserving
   cleanup for owned storage and exact-capacity free lists.
@@ -279,9 +281,6 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Keep ordinary AMD64 GC constructor selection and individual dead allocations
   in the lean TinyGo build to meet the CLI size limit. Other builds retain the
   specialized paths.
-
-- Require recompilation of cached native WasmGC artifacts after the native GC
-  ABI update to version 8.
 
 - Accelerate ARM64 WasmGC scalar constructor reads, small numeric array
   allocation and access, array fills, i31 round trips, and proven nonescaping
@@ -303,10 +302,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
-Require `wago_nativecompare` so ordinary builds and install discovery exclude it.
-
 - Add an opt-in operand-aware native comparison diagnostic with bounded Wasm
   capture, source anchors, explicit opaque-byte coverage and focused test recipes.
+  It requires the `wago_nativecompare` build tag.
+  ([#911](https://github.com/wago-org/wago/pull/911))
+- Add Linux RISC-V64 runtime and release support.
+  ([#962](https://github.com/wago-org/wago/pull/962))
 - Add Linux AMD64 and ARM64 integer conditional-join regression profiles with
   independent result checks, native placement controls, and compile/execution
   benchmarks.
