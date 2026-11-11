@@ -174,47 +174,6 @@ func TestLinearLoadSpanMemoryAliasesAndPartialTraps(t *testing.T) {
 	}
 }
 
-func runLinearSpanMemory(t *testing.T, m *wasm.Module, opts CompileOptions, initial []byte, argsIn ...uint64) ([]byte, error) {
-	t.Helper()
-	return runLinearSpanMemorySize(t, m, opts, 65536, initial, argsIn...)
-}
-
-func runLinearSpanMemorySize(t *testing.T, m *wasm.Module, opts CompileOptions, memoryBytes int, initial []byte, argsIn ...uint64) ([]byte, error) {
-	t.Helper()
-	cm, err := CompileModuleWith(m, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cm.CodeImage.Close()
-	eng, err := rt.NewEngine()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer eng.Close()
-	jm, err := rt.NewJobMemory(memoryBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer jm.Close()
-	copy(jm.CurrentBytes(), initial)
-	ar, err := rt.NewArena(4096)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ar.Close()
-	code, entry, err := rt.MapCode(cm.Code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Unmap(code)
-	args, result, trap := ar.Alloc(max(32, len(argsIn)*8)), ar.Alloc(16), ar.Alloc(rt.TrapBufferBytes)
-	for i, v := range argsIn {
-		binary.LittleEndian.PutUint64(args[i*8:], v)
-	}
-	err = eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, result)
-	return append([]byte{}, jm.CurrentBytes()...), err
-}
-
 func TestLinearLoadSpanNativeRejections(t *testing.T) {
 	a := &enc.Asm{}
 	a.SubImm32(X9, X20, 4)

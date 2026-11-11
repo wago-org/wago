@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	rt "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 )
@@ -81,42 +80,6 @@ func TestScalarUnrollWordGuards(t *testing.T) {
 			t.Fatalf("rejected %08x", w)
 		}
 	}
-}
-
-func runScalarUnrollMemory(t *testing.T, m *wasm.Module, opts CompileOptions, argsIn ...uint64) ([]byte, error) {
-	t.Helper()
-	cm, err := CompileModuleWith(m, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cm.CodeImage.Close()
-	eng, err := rt.NewEngine()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer eng.Close()
-	jm, err := rt.NewJobMemory(65536)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer jm.Close()
-	clear(jm.CurrentBytes())
-	ar, err := rt.NewArena(4096)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ar.Close()
-	code, entry, err := rt.MapCode(cm.Code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Unmap(code)
-	args, results, trap := ar.Alloc(32), ar.Alloc(16), ar.Alloc(rt.TrapBufferBytes)
-	for i, arg := range argsIn {
-		binary.LittleEndian.PutUint64(args[i*8:], arg)
-	}
-	err = eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results)
-	return append([]byte(nil), jm.CurrentBytes()...), err
 }
 
 func TestScalarLoopUnrollMatcherGuards(t *testing.T) {

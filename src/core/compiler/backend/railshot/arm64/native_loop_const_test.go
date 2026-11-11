@@ -77,16 +77,6 @@ func nativeConstantFixture(wide bool) (*enc.Asm, int, int) {
 	return a, start, back
 }
 
-func nativeConstantTargets(b []byte) []uint64 {
-	bits := make([]uint64, ((len(b)/4)+63)/64)
-	for at := 0; at < len(b); at += 4 {
-		if to, ok := branchTarget(at, rdWord(b, at)); ok {
-			branchTargetAdd(bits, to, len(b))
-		}
-	}
-	return bits
-}
-
 func TestNativeLoopConstantProof(t *testing.T) {
 	a, start, back := nativeConstantFixture(true)
 	p, ok := matchNativeLoopConst(a.B, back, nativeConstantTargets(a.B), nil, nil)
