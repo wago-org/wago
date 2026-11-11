@@ -190,8 +190,6 @@ type fn struct {
 	byteReduceLoop          *byteReduceState
 	filledCopyEnd           uint32
 	filledCopyByte          byte
-	remainderZeroLoopDepth  uint16
-	remainderZeroLoopWrites uint64
 	affineLoop              *affineLoopPlan
 	affineLoopWork          uint16
 	shiftedALUShortEnd      int
