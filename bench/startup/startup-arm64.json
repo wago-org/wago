@@ -1,8 +1,8 @@
 {
-  "generated": "2026-09-11",
-  "sourceCommit": "63c1145cb12be3abb62e3799095ca7f05c811fd5",
+  "generated": "2026-11-11",
+  "sourceCommit": "b2c2f572e3ff623a309b15cea070272858fafaf2",
   "machine": "Apple M4 Max, darwin/arm64",
-  "method": "hyperfine -N --warmup 5 --min-runs 30; fresh process per run (spawn→exit)",
+  "method": "hyperfine -N --warmup 5 --min-runs 30; fresh process per run (spawn\u2192exit)",
   "unit": "ms",
   "architecture": "arm64",
   "runtimes": {
@@ -14,7 +14,7 @@
     "wazy": {
       "label": "wazy",
       "tag": "compiler",
-      "version": "v0.3.0"
+      "version": "v0.7.0"
     },
     "wazero": {
       "label": "wazero",
@@ -53,14 +53,14 @@
       "label": "nbody",
       "desc": "Benchmarks-Game N-body leapfrog integrator (f64)",
       "results": {
-        "wago": 17.448,
-        "wazy": 19.088,
-        "wazero": 18.298,
-        "wasmtime": 19.124,
-        "v8": 35.563,
-        "wasm3": 111.078,
-        "wasmi": 229.263,
-        "wavm": 31.86
+        "wago": 21.13,
+        "wazy": 16.603,
+        "wazero": 18.622,
+        "wasmtime": 19.692,
+        "v8": 38.257,
+        "wasm3": 114.351,
+        "wasmi": 227.797,
+        "wavm": 33.349
       }
     },
     {
@@ -68,14 +68,14 @@
       "label": "fib",
       "desc": "recursive Fibonacci",
       "results": {
-        "wago": 6.432,
-        "wazy": 23.069,
-        "wazero": 23.383,
-        "wasmtime": 8.181,
-        "v8": 38.179,
-        "wasm3": 46.45,
-        "wasmi": 55.699,
-        "wavm": 9.295
+        "wago": 11.207,
+        "wazy": 10.787,
+        "wazero": 25.36,
+        "wasmtime": 9.116,
+        "v8": 41.562,
+        "wasm3": 48.383,
+        "wasmi": 57.486,
+        "wavm": 10.28
       }
     },
     {
@@ -83,14 +83,14 @@
       "label": "spectralnorm",
       "desc": "Benchmarks-Game power iteration (f64)",
       "results": {
-        "wago": 3.601,
-        "wazy": 3.999,
-        "wazero": 4.476,
-        "wasmtime": 5.94,
-        "v8": 17.61,
-        "wasm3": 11.924,
-        "wasmi": 18.028,
-        "wavm": 20.171
+        "wago": 9.649,
+        "wazy": 4.5,
+        "wazero": 4.833,
+        "wasmtime": 6.642,
+        "v8": 19.919,
+        "wasm3": 13.374,
+        "wasmi": 18.849,
+        "wavm": 21.727
       }
     },
     {
@@ -98,14 +98,14 @@
       "label": "quicksort",
       "desc": "recursive in-place int sort",
       "results": {
-        "wago": 8.421,
-        "wazy": 10.113,
-        "wazero": 10.463,
-        "wasmtime": 10.663,
-        "v8": 18.993,
-        "wasm3": 23.253,
-        "wasmi": 26.385,
-        "wavm": 43.934
+        "wago": 13.184,
+        "wazy": 10.997,
+        "wazero": 11.232,
+        "wasmtime": 11.954,
+        "v8": 21.147,
+        "wasm3": 24.864,
+        "wasmi": 27.46,
+        "wavm": 46.323
       }
     },
     {
@@ -113,14 +113,14 @@
       "label": "raytrace",
       "desc": "recursive Whitted ray tracer (f64)",
       "results": {
-        "wago": 7.375,
-        "wazy": 7.621,
-        "wazero": 7.076,
-        "wasmtime": 8.969,
-        "v8": 17.047,
-        "wasm3": 18.345,
-        "wasmi": 34.937,
-        "wavm": 32.111
+        "wago": 11.369,
+        "wazy": 7.459,
+        "wazero": 7.578,
+        "wasmtime": 10.005,
+        "v8": 19.116,
+        "wasm3": 19.579,
+        "wasmi": 35.169,
+        "wavm": 31.199
       }
     },
     {
@@ -128,14 +128,14 @@
       "label": "sha256",
       "desc": "64-round SHA-256, integer rotate/xor",
       "results": {
-        "wago": 3.272,
-        "wazy": 3.327,
-        "wazero": 3.376,
-        "wasmtime": 5.728,
-        "v8": 15.87,
-        "wasm3": 3.751,
-        "wasmi": 6.408,
-        "wavm": 21.041
+        "wago": 7.668,
+        "wazy": 3.721,
+        "wazero": 3.482,
+        "wasmtime": 6.169,
+        "v8": 16.394,
+        "wasm3": 4.658,
+        "wasmi": 6.471,
+        "wavm": 22.112
       }
     }
   ]
