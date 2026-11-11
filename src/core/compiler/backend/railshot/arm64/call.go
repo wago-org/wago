@@ -1497,6 +1497,15 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	f.tmpTypes = types
 	f.tmpStackSlots = slotOf
+	// GC lowering supplies immutable type/field constants. Capture them before
+	// flush replaces the operands with their canonical stack slots.
+	scalarStructGet := uint32(importIdx) == gcStructDispatchBit|gcStructGet && p == 3 && d >= p &&
+		roots[d-2].st.kind == stConst && roots[d-1].st.kind == stConst &&
+		uint64(roots[d-2].st.cval) <= 0xffffffff && uint64(roots[d-1].st.cval) <= 0xffffffff
+	var structType, structField uint32
+	if scalarStructGet {
+		structType, structField = uint32(roots[d-2].st.cval), uint32(roots[d-1].st.cval)
+	}
 	// Dynamic wait mismatch can use any declared shared memory. Notify keeps
 	// its existing compact admission; other notify forms are already native
 	// after marshaling through notifyEmptyShortcut.
@@ -1586,6 +1595,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 
 	if uint32(importIdx) == gcStructDispatchBit|gcArrayLen {
 		gcDone = f.arrayLenShortcut(int(slotOf[d-p]))
+	}
+	if scalarStructGet {
+		gcDone = f.scalarStructGetShortcut(structType, structField, int(slotOf[d-p]))
 	}
 
 	// Marshal params into the control frame as wrapper-ABI slots. A v128 occupies
