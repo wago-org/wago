@@ -155,34 +155,19 @@ func TestScopedBoundsControlAndTrapOrder(t *testing.T) {
 			body := append([]byte{0}, tc.code...)
 			body = append(body, 0x41, 0, 0x0b)
 			m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
-			for _, on := range []bool{false, true} {
-				for _, facts := range []bool{false, true} {
-					opts := CompileOptions{Optimizations: map[string]bool{"scoped-bounds-certificate": on, "bounds-facts": facts, "memory-min-bounds": false, "scalar-loop-unroll": false}}
-					for _, ptr := range []uint64{0, 17, 65524, 65528, 65532, 65535, 0xffffffff, 0x8877665500000011} {
-						for _, count := range []uint64{0, 1, 3} {
-							for _, cond := range []uint64{0, 1} {
-								for _, other := range []uint64{41, 65532, 0xffffffff} {
-									s := state{mem: make([]byte, 65536), ptr: uint32(ptr), count: uint32(count), cond: uint32(cond), other: uint32(other)}
-									tc.model(&s)
-									got, err := runScalarUnrollMemory(t, m, opts, ptr, count, cond, other)
-									if (err != nil) != s.trap || !bytes.Equal(got, s.mem) {
-										t.Fatalf("on%v facts%v ptr%x count%d cond%d other%x trap%v err%v equal%v", on, facts, ptr, count, cond, other, s.trap, err, bytes.Equal(got, s.mem))
-									}
+			for _, facts := range []bool{false, true} {
+				opts := CompileOptions{Optimizations: map[string]bool{"bounds-facts": facts, "memory-min-bounds": false, "scalar-loop-unroll": false}}
+				for _, ptr := range []uint64{0, 17, 65524, 65528, 65532, 65535, 0xffffffff, 0x8877665500000011} {
+					for _, count := range []uint64{0, 1, 3} {
+						for _, cond := range []uint64{0, 1} {
+							for _, other := range []uint64{41, 65532, 0xffffffff} {
+								s := state{mem: make([]byte, 65536), ptr: uint32(ptr), count: uint32(count), cond: uint32(cond), other: uint32(other)}
+								tc.model(&s)
+								got, err := runScalarUnrollMemory(t, m, opts, ptr, count, cond, other)
+								if (err != nil) != s.trap || !bytes.Equal(got, s.mem) {
+									t.Fatalf("facts%v ptr%x count%d cond%d other%x trap%v err%v equal%v", facts, ptr, count, cond, other, s.trap, err, bytes.Equal(got, s.mem))
 								}
 							}
-						}
-					}
-					if diagnosticsEnabled {
-						var stats ModuleStats
-						opts.Stats = &stats
-						cm, err := CompileModuleWith(m, opts)
-						if err != nil {
-							t.Fatal(err)
-						}
-						cm.CodeImage.Close()
-						hits := stats.Funcs[0].Peephole["scoped-bounds-certificate"]
-						if hits != 0 {
-							t.Fatalf("on%v facts%v: disabled scoped bounds recorded %d hits", on, facts, hits)
 						}
 					}
 				}

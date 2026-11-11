@@ -197,7 +197,6 @@
               "repeated-native-address",
               "repeated-store-region",
               "scalar-loop-unroll",
-              "scoped-bounds-certificate",
               "scoped-loop-float-const",
               "scoped-loop-int-const",
               "select-group-guard",

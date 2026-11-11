@@ -45,7 +45,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("interval-call-regions", &intervalCallRegionsEnabled),
 	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
-	optimization.Bind("scoped-bounds-certificate", &scopedBoundsEnabled),
 	optimization.Bind("conditional-bounds-fallthrough", &conditionalBoundsEnabled),
 	optimization.Bind("repeated-native-address", &repeatedNativeAddressEnabled),
 	optimization.Bind("repeated-store-region", &repeatedStoreRegionEnabled),
@@ -181,7 +180,6 @@ var (
 	optIntervalCallRegions     = optimizationBindings.Option("interval-call-regions")
 	optLinearSumLoop           = optimizationBindings.Option("linear-sum-loop")
 	optMultiBoundsCert         = optimizationBindings.Option("multi-bounds-cert")
-	optScopedBounds            = optimizationBindings.Option("scoped-bounds-certificate")
 	optConditionalBounds       = optimizationBindings.Option("conditional-bounds-fallthrough")
 	optRepeatedNativeAddress   = optimizationBindings.Option("repeated-native-address")
 	optRepeatedStoreRegion     = optimizationBindings.Option("repeated-store-region")

@@ -1400,7 +1400,6 @@ func (f *fn) popCtrl() {
 		f.loopLocalParams = loopLocalParamHomes{}
 	}
 	fr := f.ctrl[last]
-	f.releaseScopedBounds(last + 1)
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:last]
 	if uint32(last+1) != f.innermostLoop {
@@ -1723,8 +1722,6 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		remainderWrites, remainderCandidate = f.inspectUnsignedRemainderLoop(r)
 	}
 	f.setInlineNonzeroPredicate(predicate)
-	// Scoped bounds reuse is disabled until its interaction with generated code
-	// is understood; ordinary straight-line certificates remain available.
 	if kind == cfLoop && len(f.ctrl) == 1 {
 		f.rootLoopRangeLocal, f.rootLoopRangeMaximum = 0, 0
 		if !f.unreachable {

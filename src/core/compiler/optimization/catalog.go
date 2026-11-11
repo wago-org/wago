@@ -425,7 +425,6 @@ var catalog = []Definition{
 	arm64("three-op-sink", "Three-operand sinking", "sink binary operations into pinned locals"),
 	arm64("olddest-rhs-sink", "Old destination reuse", "reuse an old destination register as the right operand"),
 	both("branch-fold", "Branch folding", "fold branch pairs into one conditional branch"),
-	arm64("scoped-bounds-certificate", "Invariant local bounds certificates", "retain entry bounds proofs through scopes that never modify their local source"),
 	arm64("conditional-bounds-fallthrough", "Conditional fallthrough bounds certificates", "retain bounds proofs for unchanged locals on conditional fallthrough paths"),
 	arm64("repeated-native-address", "Repeated native address reuse", "reuse identical adjacent native memory-address calculations while preserving access order"),
 	arm64("repeated-store-region", "Repeated store region reuse", "remove repeated proven-identical unshared-memory stores while preserving effects"),

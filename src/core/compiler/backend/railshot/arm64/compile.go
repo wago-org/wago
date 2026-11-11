@@ -403,8 +403,6 @@ type fn struct {
 	// retains independent proofs for interleaved arrays without per-local state.
 	boundsCerts    [8]boundsCert
 	nextBoundsCert uint8
-	// Scoped proofs carry only unchanged locals and expire when their frame pops.
-	scopedBounds [8]scopedBoundsCert
 
 	// globalReg[g] value-pins hot mutable-int global g in a register for the whole
 	// function, sharing the GP pin pool with hot locals (WARP's model). The value is

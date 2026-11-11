@@ -979,14 +979,9 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 // in the ordinary cache is dropped by invalidateBoundsCert at flush/flushBelow (every call + control
 // join), memory.grow, and a set of the certified source — exactly the set that
 // makes the proving check dominate this one on every path, so eliding is sound.
-// Scoped entry certificates additionally require no source write anywhere in
-// their lexical scope; see prepareScopedBounds.
 func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
 	if kind == 0 {
 		return false
-	}
-	if f.scopedBoundsCovers(kind, idx, extent) {
-		return true
 	}
 	if !f.opt(optMultiBoundsCert) {
 		c := &f.boundsCerts[0]
@@ -1050,12 +1045,6 @@ func (f *fn) invalidateBoundsCert() {
 
 // invalidateBoundsCertFor drops only the proof whose address source changed.
 func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
-	for i := range f.scopedBounds {
-		c := &f.scopedBounds[i]
-		if c.cert.kind == kind && c.cert.idx == idx {
-			*c = scopedBoundsCert{}
-		}
-	}
 	for i := range f.boundsCerts {
 		c := &f.boundsCerts[i]
 		if c.kind == kind && c.idx == idx {
