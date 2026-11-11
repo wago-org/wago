@@ -1338,7 +1338,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					}
 				}
 				if op == 0x20 {
-					if experimentStoreAddressHint && idx < 64 && int(idx) < len(s.h.localScore) &&
+					if storeAddressHintEnabled && idx < 64 && int(idx) < len(s.h.localScore) &&
 						s.h.localScore[idx]&localScoreParamAddressReuse == 0 && storeAddressAhead(s.r.Reader) {
 						s.h.noteParamAddress(idx)
 					}

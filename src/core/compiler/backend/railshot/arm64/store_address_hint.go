@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-var experimentStoreAddressHint = os.Getenv("WAGO_ARM64_EXPERIMENT_STORE_ADDRESS_HINT") == "1"
+var storeAddressHintEnabled = os.Getenv("WAGO_ARM64_NO_STORE_ADDRESS_HINT") != "1"
 
 // storeAddressAhead asks whether the local.get immediately preceding r is the
 // address beneath one bounded, straight-line scalar value expression. This is
