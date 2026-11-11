@@ -77,6 +77,29 @@ func nativeConstantFixture(wide bool) (*enc.Asm, int, int) {
 	return a, start, back
 }
 
+func TestNativeLoopConstantCandidateScreen(t *testing.T) {
+	a, _, _ := nativeConstantFixture(true)
+	if !hasNativeLoopConstCandidate(a.B) {
+		t.Fatal("rejected a profitable loop")
+	}
+	a = &enc.Asm{}
+	a.MovImm64(X12, 0x123456789abcdef1)
+	if hasNativeLoopConstCandidate(a.B) {
+		t.Fatal("accepted a single materialization")
+	}
+	a = &enc.Asm{}
+	a.MovImm32(X12, 0x12345678)
+	a.MovImm32(X13, 0x12345678)
+	if hasNativeLoopConstCandidate(a.B) {
+		t.Fatal("accepted only two-word materializations")
+	}
+	// A two-word use can accompany a three-or-more-word candidate.
+	a.MovImm64(X14, 0x123456789abcdef1)
+	if !hasNativeLoopConstCandidate(a.B) {
+		t.Fatal("rejected a long materialization with another use")
+	}
+}
+
 func TestNativeLoopConstantProof(t *testing.T) {
 	a, start, back := nativeConstantFixture(true)
 	p, ok := matchNativeLoopConst(a.B, back, nativeConstantTargets(a.B), nil, nil)

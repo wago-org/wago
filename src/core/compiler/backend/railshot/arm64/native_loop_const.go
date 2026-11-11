@@ -64,6 +64,31 @@ func nativeLoopConstAt(b []byte, pc, end int) (c nativeLoopConstant, ok bool) {
 	return c, c.words >= 2
 }
 
+// A profitable loop needs at least two materializations, one of three words
+// or more. Reject functions without those prerequisites before allocating the
+// branch-target map or performing loop and exit analysis.
+func hasNativeLoopConstCandidate(b []byte) bool {
+	count := 0
+	long := false
+	for at := 0; at+8 <= len(b); at += 4 {
+		w := rdWord(b, at)
+		if w&0x1f800000 != 0x12800000 || w>>29&3 != 0 && w>>29&3 != 2 {
+			continue
+		}
+		c, ok := nativeLoopConstAt(b, at, len(b))
+		if !ok {
+			continue
+		}
+		count++
+		long = long || c.words >= 3
+		if count >= 2 && long {
+			return true
+		}
+		at += (c.words - 1) * 4
+	}
+	return false
+}
+
 func nativeLoopConstWord(w uint32) (x guardedIntegerEffects, ok bool) {
 	// Scalar, non-writeback integer memory operations. They remain in place;
 	// every real address and data operand participates in the register proof.
@@ -203,7 +228,7 @@ func (f *fn) finalizeNativeLoopConsts(entries ...int) {
 		return
 	}
 	n := len(f.a.B) &^ 3
-	if n > 64<<10 {
+	if n > 64<<10 || !hasNativeLoopConstCandidate(f.a.B[:n]) {
 		return
 	}
 	targets := make([]uint64, ((n/4)+63)/64)
