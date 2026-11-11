@@ -476,26 +476,32 @@ func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
 	f.emitFloatMapBody(source)
 }
 
-// Every admitted floating map contains a floating store. Check the supported
-// source prefix before reserving the symbolic planner's larger workspace.
+// Every admitted map needs a typed float producer. Decode the prefix without
+// reserving the large symbolic frame for ordinary integer/control loops.
 func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 	scan := *source
 	start := scan.Offset()
 	var imm wasm.InstructionImmediate
 	for scan.Offset()-start < 512 {
-		op, err := scan.Byte()
-		if err != nil {
+		op, e := scan.Byte()
+		if e != nil {
 			return false
 		}
 		switch op {
-		case 0x38, 0x39: // f32.store, f64.store
+		case 0x2a, 0x2b, 0x43, 0x44:
 			return true
-		case 0x20, 0x21, 0x22, 0x28, 0x2a, 0x2b, 0x41, 0x43, 0x44:
+		case 0x20:
+			local, e := scan.U32()
+			if e != nil || local >= uint32(f.nLocals) {
+				return false
+			}
+			if f.localType[local].isFloat() {
+				return true
+			}
+		case 0x21, 0x22, 0x41, 0x6a, 0x47:
 			if f.classifier.ClassifyInto(&scan, op, &imm) != nil {
 				return false
 			}
-		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x47,
-			0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
 		default:
 			return false
 		}
