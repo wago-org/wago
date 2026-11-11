@@ -260,6 +260,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   and RISC-V (threaded memory) code while preserving atomic size visibility
   and nonzero growth checks.
 
+- Fold null extern/any conversions and handle runtime null in native AMD64 and
+  ARM64 code while preserving the ownership helper for every nonzero value.
+
 - Prepare one checked native identity for proven-dead GC batches on both
   backends, avoiding unused live-object handle refills at collection.
 
