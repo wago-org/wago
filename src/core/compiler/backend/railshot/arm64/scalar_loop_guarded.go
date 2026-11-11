@@ -44,7 +44,7 @@ func (f *fn) unrollGuardedScalarLatch(start int, words []uint32, increment int, 
 	}
 
 	group := f.planScalarGroupSum(words, counter, temporary)
-	f.a.B = f.a.B[:start]
+	f.truncateNativeCode(start)
 	sf := last & (1 << 31)
 	// SUBS temporary,bound,counter rejects subtraction borrow before testing
 	// the distance. Therefore distance>=4 proves all four additions stay in range.

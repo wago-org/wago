@@ -128,7 +128,7 @@ func (f *fn) pairRemainderLatch(fr *ctrlFrame, condition Reg, end int, after *wa
 		}
 	}
 	// No code or metadata changes occur until the complete proof succeeds.
-	f.a.B = f.a.B[:start]
+	f.truncateNativeCode(start)
 	appendWord := func(w uint32) { f.a.B = binary.LittleEndian.AppendUint32(f.a.B, w) }
 	appendWord(0x34000000 | uint32(b))
 	loop := f.a.Len()

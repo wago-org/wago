@@ -1480,7 +1480,7 @@ func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 			if profileEnabled && f.stats != nil && f.stats.RecordSources {
 				f.rewindProfileEmission(site)
 			}
-			f.a.B = f.a.B[:site] // out of imm19 range: undo and let the caller fall back
+			f.truncateNativeCode(site) // out of imm19 range: undo and let the caller fall back
 			return false
 		}
 		return true
@@ -1504,7 +1504,7 @@ func (f *fn) zeroBranchJump(fr *ctrlFrame, condition Reg) bool {
 			if profileEnabled && f.stats != nil && f.stats.RecordSources {
 				f.rewindProfileEmission(site)
 			}
-			f.a.B = f.a.B[:site]
+			f.truncateNativeCode(site)
 			return false
 		}
 		return true
@@ -3094,7 +3094,7 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			f.rewindProfileEmission(reconcileMark)
 		}
-		f.a.B = f.a.B[:reconcileMark]
+		f.truncateNativeCode(reconcileMark)
 		f.restoreLocalStates(saved)
 	}
 	if f.conditionalBoundsEligible() {
@@ -3124,7 +3124,7 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			f.rewindProfileEmission(mark)
 		}
-		f.a.B = f.a.B[:mark]
+		f.truncateNativeCode(mark)
 		site := f.a.Bcond(condNE)
 		f.appendFrameColdEdge(fr, coldEdge{site: site, code: coldEdgeCode})
 		fr.set(ctrlEndReachable, true)
@@ -3153,7 +3153,7 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 			if profileEnabled && f.stats != nil && f.stats.RecordSources {
 				f.rewindProfileEmission(testAt)
 			}
-			f.a.B = f.a.B[:testAt]
+			f.truncateNativeCode(testAt)
 			if forwardRemainder && f.opt(optBranchFold) {
 				over := f.a.Cbz32(creg)
 				f.patchBranch26(f.a.Branch(), fr.controlSite)
@@ -3192,7 +3192,7 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			f.rewindProfileEmission(mark)
 		}
-		f.a.B = f.a.B[:mark]
+		f.truncateNativeCode(mark)
 		site := f.a.Bcond(condNE)
 		f.appendFrameColdEdge(fr, coldEdge{site: site, code: edge})
 		return nil
@@ -3203,7 +3203,7 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.rewindProfileEmission(mark)
 	}
-	f.a.B = f.a.B[:mark]
+	f.truncateNativeCode(mark)
 	over := f.a.Bcond(condE) // skip the edge when the condition is false (== 0)
 	f.a.B = append(f.a.B, f.edgeScratch...)
 	f.branchJump(fr)

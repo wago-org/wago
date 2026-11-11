@@ -140,7 +140,7 @@ func (f *fn) unrollScalarLatch(fr *ctrlFrame, cc Cond) bool {
 	}
 	// The first body is already emitted. Replace it only after every proof has
 	// succeeded; a rejected candidate leaves the original instruction stream.
-	f.a.B = f.a.B[:start]
+	f.truncateNativeCode(start)
 	var exits [3]int
 	for phase := 0; phase < 4; phase++ {
 		current := counter

@@ -117,7 +117,7 @@ func (f *fn) unrollScalarPretest(fr *ctrlFrame, after ...*wasm.Reader) bool {
 	// same register homes and preserve an exit check in every iteration.
 	firstPhase := 1
 	if rotate {
-		f.a.B = f.a.B[:start]
+		f.truncateNativeCode(start)
 		firstPhase = 0
 	}
 	for phase := firstPhase; phase < 4; phase++ {
@@ -251,7 +251,7 @@ func (f *fn) unrollScalarCounter(start int, words []uint32, exit int, owner *ctr
 		return true
 	}
 	update := words[increment]
-	f.a.B = f.a.B[:start]
+	f.truncateNativeCode(start)
 	var exits [3]int
 	for phase := 0; phase < 4; phase++ {
 		for i, word := range words {

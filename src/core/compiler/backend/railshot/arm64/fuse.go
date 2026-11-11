@@ -386,7 +386,7 @@ func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, er
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			f.rewindProfileEmission(mark)
 		}
-		f.a.B = f.a.B[:mark]
+		f.truncateNativeCode(mark)
 		f.restoreLocalStates(saved)
 	}
 	if f.conditionalBoundsEligible() {
@@ -478,7 +478,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setLocal int) error {
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			f.rewindProfileEmission(reconcileMark)
 		}
-		f.a.B = f.a.B[:reconcileMark]
+		f.truncateNativeCode(reconcileMark)
 		f.restoreLocalStates(saved)
 	}
 	if f.conditionalBoundsEligible() {
@@ -505,7 +505,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setLocal int) error {
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			f.rewindProfileEmission(mark)
 		}
-		f.a.B = f.a.B[:mark]
+		f.truncateNativeCode(mark)
 		site := f.a.Bcond(cc)
 		f.appendFrameColdEdge(fr, coldEdge{site: site, code: coldEdgeCode})
 		fr.set(ctrlEndReachable, true)
@@ -531,7 +531,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setLocal int) error {
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			f.rewindProfileEmission(mark)
 		}
-		f.a.B = f.a.B[:mark]
+		f.truncateNativeCode(mark)
 		site := f.a.Bcond(cc)
 		f.appendFrameColdEdge(fr, coldEdge{site: site, code: edge})
 		return nil
@@ -542,7 +542,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setLocal int) error {
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.rewindProfileEmission(mark)
 	}
-	f.a.B = f.a.B[:mark]
+	f.truncateNativeCode(mark)
 	over := f.a.Bcond(invertCond(cc)) // fall through when the compare is false
 	f.a.B = append(f.a.B, f.edgeScratch...)
 	f.branchJump(fr)

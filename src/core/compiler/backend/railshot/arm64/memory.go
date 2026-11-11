@@ -369,7 +369,7 @@ func (f *fn) emitTrapStubs() {
 					if profileEnabled && f.stats != nil && f.stats.RecordSources {
 						f.rewindProfileEmission(site)
 					}
-					f.a.B = f.a.B[:site]
+					f.truncateNativeCode(site)
 					f.emitTrapUnwind()
 				} else {
 					sharedTails++
@@ -1292,6 +1292,11 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		ea, eaOwned, _, disp := f.memAddr(off, size, true, 0, f.guardMode)
 		f.pinned = f.pinned.add(ea)
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
+		storeStart := 0
+		trackRepeatedStore := f.hasLoop && f.a.Len() < 16<<10 && f.opt(optRepeatedStoreRegion) && f.inLoop()
+		if trackRepeatedStore {
+			storeStart = f.a.Len()
+		}
 		if size == 8 && v == 0 && wideZeroStoreEnabled {
 			// memAddr has proved all eight bytes valid before this store.
 			f.a.StoreImmIdx(linMemReg, ea, disp, 0, 8)
@@ -1301,6 +1306,9 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 			f.a.StoreImmIdx(linMemReg, ea, disp+4, int32(v>>32), 4)
 		} else {
 			f.a.StoreImmIdx(linMemReg, ea, disp, int32(v), size)
+		}
+		if trackRepeatedStore {
+			f.recordRepeatedWasmStores(storeStart, f.a.Len())
 		}
 		f.pinned = f.pinned.remove(ea)
 		if eaOwned {

@@ -169,7 +169,7 @@ func (f *fn) tryColdTupleLoopExit(r *wasm.Reader, signature wasm.Reader, types [
 	}
 	f.flush()
 	code := append([]byte(nil), f.a.B[mark:]...)
-	f.a.B = f.a.B[:mark]
+	f.truncateNativeCode(mark)
 	f.setDepthTypesWithGCRoots(f.frameBaseTypes(frame), f.frameBaseGCRoots(frame))
 	f.appendFrameColdEdge(frame, coldEdge{site: site, code: code})
 	frame.set(ctrlEndReachable, true)

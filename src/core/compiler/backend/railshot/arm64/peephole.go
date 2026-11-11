@@ -27,7 +27,7 @@ const (
 // the branch-target set is collected once here and threaded into both passes.
 func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	compact := nativeFinalizerEnabled && f.compactNative()
-	if !f.opt(optRepeatedNativeAddress) && !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
+	if !f.opt(optRepeatedNativeAddress) && !f.opt(optRepeatedStoreRegion) && !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
 		return
 	}
 	// The established size-stable peephole abandons a function when it reaches
@@ -153,6 +153,9 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 		for ; hits > 0; hits-- {
 			f.stats.peep("dominated-indexed-base")
 		}
+	}
+	if f.opt(optRepeatedStoreRegion) {
+		f.foldRepeatedStoreRegions(b, targets, entryOffsets...)
 	}
 }
 

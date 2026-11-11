@@ -41,6 +41,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("scoped-bounds-certificate", &scopedBoundsEnabled),
 	optimization.Bind("conditional-bounds-fallthrough", &conditionalBoundsEnabled),
 	optimization.Bind("repeated-native-address", &repeatedNativeAddressEnabled),
+	optimization.Bind("repeated-store-region", &repeatedStoreRegionEnabled),
 	optimization.Bind("leaf-scratch-memsize", &leafScratchMemSizeEnabled),
 	optimization.Bind("loop-trap-cell", &loopTrapCellEnabled),
 	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
@@ -175,6 +176,7 @@ var (
 	optScopedBounds            = optimizationBindings.Option("scoped-bounds-certificate")
 	optConditionalBounds       = optimizationBindings.Option("conditional-bounds-fallthrough")
 	optRepeatedNativeAddress   = optimizationBindings.Option("repeated-native-address")
+	optRepeatedStoreRegion     = optimizationBindings.Option("repeated-store-region")
 	optLeafScratchMemSize      = optimizationBindings.Option("leaf-scratch-memsize")
 	optLoopTrapCell            = optimizationBindings.Option("loop-trap-cell")
 	optPreparedDirectEntry     = optimizationBindings.Option("prepared-direct-entry")

@@ -772,7 +772,10 @@ type scratch struct {
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	trapSites               [trapAtomicUnaligned + 1][]trapSite
 	branchTargets           []uint64
-	branchTargetInline      [64]uint64   // one bit per instruction; covers 16 KiB of native code
+	branchTargetInline      [64]uint64 // one bit per instruction; covers 16 KiB of native code
+	repeatedStoreOrigins    [64]uint64 // bounded Wasm-store origin bits for one candidate function
+	repeatedStoreOriginsSet bool
+	repeatedStoreOriginsN   uint16       // conservative admission count; rollback may overcount
 	finalizerMarkers        map[int]bool // validation-only inventory
 	brTableStubAt           []int        // duplicate-heavy jump-table target positions by control depth
 	finalFragments          []finalizerFragment
@@ -1106,6 +1109,11 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 }
 
 func (sc *scratch) reset() {
+	sc.repeatedStoreOriginsN = 0
+	if sc.repeatedStoreOriginsSet {
+		clear(sc.repeatedStoreOrigins[:])
+		sc.repeatedStoreOriginsSet = false
+	}
 	if len(sc.stack.chunks) != 0 {
 		sc.stack.reset()
 	}
