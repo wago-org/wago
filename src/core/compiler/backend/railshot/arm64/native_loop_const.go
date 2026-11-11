@@ -143,6 +143,32 @@ func matchNativeLoopConst(b []byte, back int, targets []uint64, entries []int, r
 		}
 		used |= x.reads | x.writes
 	}
+	best := 0
+	for at := start; at < back; at += 4 {
+		c, valid := nativeLoopConstAt(b, at, back)
+		if !valid || c.words < 3 {
+			continue
+		}
+		var uses []nativeLoopConstant
+		saving := 0
+		for site := start; site < back; site += 4 {
+			x, valid := nativeLoopConstAt(b, site, back)
+			if valid && x.value == c.value && x.wide == c.wide {
+				uses = append(uses, x)
+				saving += x.words - 1
+				site += (x.words - 1) * 4
+			}
+		}
+		if len(uses) >= 2 && saving > best {
+			best = saving
+			p.constant = c
+			p.uses = uses
+		}
+		at += (c.words - 1) * 4
+	}
+	if best < 4 {
+		return p, false
+	}
 	exits = append(exits, back+4)
 	// Limit the lease to the existing caller-scratch clobber surface. Every
 	// exit independently proves the original value killed before observation.
@@ -167,30 +193,7 @@ func matchNativeLoopConst(b []byte, back int, targets []uint64, entries []int, r
 	if !ok {
 		return p, false
 	}
-	best := 0
-	for at := start; at < back; at += 4 {
-		c, valid := nativeLoopConstAt(b, at, back)
-		if !valid || c.words < 3 {
-			continue
-		}
-		var uses []nativeLoopConstant
-		saving := 0
-		for site := start; site < back; site += 4 {
-			x, valid := nativeLoopConstAt(b, site, back)
-			if valid && x.value == c.value && x.wide == c.wide {
-				uses = append(uses, x)
-				saving += x.words - 1
-				site += (x.words - 1) * 4
-			}
-		}
-		if len(uses) >= 2 && saving > best {
-			best = saving
-			p.constant = c
-			p.uses = uses
-		}
-		at += (c.words - 1) * 4
-	}
-	return p, best >= 4
+	return p, true
 }
 
 // Lease an otherwise unused native register for exactly one loop. No memory
