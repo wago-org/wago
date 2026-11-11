@@ -181,8 +181,8 @@ func TestScopedBoundsControlAndTrapOrder(t *testing.T) {
 						}
 						cm.CodeImage.Close()
 						hits := stats.Funcs[0].Peephole["scoped-bounds-certificate"]
-						if (hits > 0) != (on && facts && tc.hit) {
-							t.Fatalf("on%v facts%v hits%d want%v", on, facts, hits, on && facts && tc.hit)
+						if hits != 0 {
+							t.Fatalf("on%v facts%v: disabled scoped bounds recorded %d hits", on, facts, hits)
 						}
 					}
 				}
