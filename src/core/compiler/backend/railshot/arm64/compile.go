@@ -363,8 +363,9 @@ type fn struct {
 	// memLimitReg caches memBytes-memLimitExtent in call-free explicit-bounds
 	// functions. Exact matching accesses compare their canonical memory32 address
 	// directly with this inclusive limit, removing the per-access end-address ADD.
-	memLimitReg    Reg
-	memLimitExtent int32
+	memLimitReg              Reg
+	memLimitExtent           int32
+	descendingRangeCandidate bool
 	// trapCellReg caches [linMemReg-offTrapCellPtr] in call-free interruptible
 	// loops. The pointer is fixed for an activation; calls are excluded because
 	// cross-instance entry can replace the active trap cell.
@@ -3557,6 +3558,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	hints = &planningHints
 	f.hasLoop = hints.flags.has(hintHasLoop)
+	f.descendingRangeCandidate = f.opt(optDescendingMemoryRange) && hints.bounds4OpCount() >= 4
 	f.localFactsEnabled = f.localFactsEnabled && !hints.flags.has(hintHasControlFlow)
 	f.streamingReduction = f.opt(optStreamReduce) && hints.hasStreamingReduction()
 	// Inlining direct Wasm calls cannot remove GC/table/atomic runtime helpers.
@@ -3913,6 +3915,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.finalizePeepholes(internalOff)
 		f.finalizeNativeLoopConsts(internalOff)
 		f.finalizeAffineBoundsLoops(internalOff)
+		f.finalizeDescendingMemoryRange(internalOff)
 		f.finalizeLinearLoadSpans(internalOff)
 		f.finalizeScalarLoopUnroll(internalOff)
 		if err := f.emitFloatConstPool(); err != nil {
@@ -3960,6 +3963,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.finalizePeepholes()
 	f.finalizeNativeLoopConsts()
 	f.finalizeAffineBoundsLoops()
+	f.finalizeDescendingMemoryRange()
 	f.finalizeLinearLoadSpans()
 	f.finalizeScalarLoopUnroll()
 	if err := f.emitFloatConstPool(); err != nil {

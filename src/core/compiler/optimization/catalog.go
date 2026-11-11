@@ -428,6 +428,7 @@ var catalog = []Definition{
 	arm64("cyclic-load-span", "Guarded cyclic load spans", "prove a cyclic index range with an original checked-loop fallback"),
 	arm64("linear-load-span", "Guarded linear load spans", "check an induction span once with the original checked loop as fallback"),
 	arm64("affine-bounds-loop", "Guarded affine scalar memory loops", "check bounded affine streams once while preserving the original arithmetic and checked fallback"),
+	arm64("descending-memory-range", "Guarded descending memory loops", "check a descending memory range once and retain a checked fallback"),
 	arm64("select-subtract", "Conditional integer subtraction", "share subtraction flags with a select of zero or the subtrahend"),
 	arm64("float-memory-borrow", "Borrow float memory operands", "store read-only float operands directly and load directly into pinned float destinations"),
 	arm64("byte-store-pair", "Adjacent byte stores", "combine two byte stores only when the complete access is proven within the memory minimum"),
