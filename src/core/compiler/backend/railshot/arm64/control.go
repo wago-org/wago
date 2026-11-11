@@ -1378,6 +1378,7 @@ func (f *fn) branchEdgeToMerge1(fr *ctrlFrame, d int) {
 // edge into fr's branch target. Function-frame targets (returns) need nothing —
 // the locals die — so nothing is emitted, keeping conditional returns free.
 func (f *fn) convergeBranchLocals(fr *ctrlFrame) {
+	f.publishTemporaryLoopExit(fr)
 	if fr.kind == cfFunc || f.frameLocalsDie(fr) {
 		return
 	}
