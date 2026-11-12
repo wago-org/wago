@@ -147,7 +147,15 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x05: // else
 			err = f.opElse()
 		case 0x0b: // end
+			skipGCIfAllocationCast := len(f.ctrl) != 0 && f.ctrl[len(f.ctrl)-1].has(ctrlGCIfAllocationCast)
 			err = f.opEnd()
+			if err == nil && skipGCIfAllocationCast {
+				if !consumeProvedGCIfAllocationCast(r) {
+					err = fmt.Errorf("amd64: proved if-allocation cast changed before consumption")
+				} else {
+					f.stats.peep("gc-if-allocation-cast-elide")
+				}
+			}
 		case 0x0c, 0x0d: // br / br_if
 			err = f.opBr(r, op == 0x0d)
 		case 0x0e: // br_table
