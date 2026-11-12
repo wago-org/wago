@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -75,7 +82,7 @@ var nativeImportExecutionFields = [...]int32{
 }
 
 func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uintptr, importIndex uint32) ([]byte, error) {
-	if callee.entry == 0 || callee.entry&15 != 0 || callee.home == 0 || callee.home&7 != 0 || callee.context == 0 || callee.context&7 != 0 || callerHome == 0 || callerHome&7 != 0 || callerContext == 0 || callerContext&7 != 0 || importIndex >= MaxHostFunctionImports {
+	if callee.entry == 0 || callee.entry&15 != 0 || callee.home == 0 || callee.home&7 != 0 || callee.context == 0 || callee.context&7 != 0 || callerHome == 0 || callerHome&7 != 0 || callerContext == 0 || callerContext&7 != 0 || importIndex >= MaxFunctionImports {
 		return nil, fmt.Errorf("rv64: native import requires aligned retained framed target and caller identities")
 	}
 	transportBytes := nativeImportTransportBytes

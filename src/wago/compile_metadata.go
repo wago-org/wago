@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
@@ -571,7 +578,7 @@ func isRefNullConstExpr(body []byte) bool {
 	if op, err := r.Byte(); err != nil || op != 0xd0 {
 		return false
 	}
-	if _, err := r.S33(); err != nil {
+	if _, _, err := r.RefHeapType(); err != nil {
 		return false
 	}
 	end, err := r.Byte()

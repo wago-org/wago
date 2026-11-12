@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build wago_regalloccheck
 
 package wasm
@@ -506,7 +513,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 			}
 			for i := 0; i < base; i++ {
 				b.charge(1)
-				if v.vals[i].unknown || v.vals[i].t != b.ledger.Value(b.stack[i]).Type {
+				if v.vals[i].unknown() || v.vals[i].t != b.ledger.Value(b.stack[i]).Type {
 					result.Coverage = SourceInvalid
 					result.Reason = regalloccheck.InvalidGraph
 					result.Message = "source prefix disagrees with validator"
@@ -531,7 +538,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 			e.outputStart = len(b.ledger.operands)
 			for i := 0; i < outputs; i++ {
 				t := v.vals[base+i].t
-				if v.vals[base+i].unknown || !sourcePrimitive(t) {
+				if v.vals[base+i].unknown() || !sourcePrimitive(t) {
 					result.Reason = regalloccheck.UnsupportedOperation
 					result.Message = "unsupported or polymorphic result"
 					return

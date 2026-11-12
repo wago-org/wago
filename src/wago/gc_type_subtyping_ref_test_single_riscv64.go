@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -70,7 +77,7 @@ func rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(c *Compiled, allowUn
 		len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
 		return 0
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil {
 		return 0
 	}
@@ -124,20 +131,4 @@ func rv64GCTypeSubtypingRefTestSingleExecutionCode(c *Compiled) bool {
 		}
 	}
 	return false
-}
-
-func railshotRestoreGCTypeSubtypingRefTestSingleArtifact(c *Compiled) {
-	variant := rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(c, true, true)
-	if variant == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	if variant >= 5 && variant <= 7 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRefTestMulti
-	} else if variant >= 8 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRefTestDirectionFalse
-	} else {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRefTestSingle
-	}
 }

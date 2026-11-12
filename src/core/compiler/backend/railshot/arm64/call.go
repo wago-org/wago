@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build arm64
 
 package arm64
@@ -25,6 +32,8 @@ func (f *fn) refreshCachedMemoryBoundAfterExternalCall() {
 	}
 }
 
+var tailSelfLoopEnabled = true
+
 // regABIEnabled turns on the register-based internal-call ABI (default on;
 // WAGO_ARM64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
 var regABIEnabled = os.Getenv("WAGO_ARM64_NOREGABI") != "1"
@@ -50,6 +59,7 @@ type callReloc struct {
 	target   uint32 // target function index; gcObject uses the positive helper-fallback byte delta
 	internal bool   // target the callee's register-ABI internal entry (else offset 0)
 	gcObject bool   // target the module checked-object leaf (not a local function)
+	tail     bool   // integer proper-tail transfer eligible for entry-test threading
 }
 
 // callRelocTable stores every module relocation in source-function order. One
@@ -356,6 +366,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
 		if custom, ok := f.customInstructions[idx]; ok && (pluginARM64Lowering(custom) != nil || instructionRecipeEligible(custom)) {
+			// Native lowering replaces the source call without a return address.
+			// Consume its mask so later calls retain their source-site liveness.
+			f.consumeGCFrameCallsite()
 			return f.emitCustomInstruction(custom, ft)
 		}
 	}
@@ -368,7 +381,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		if t := f.inlineTargets.target(int(idx)); t != nil {
 			if _, ok := f.inlineBase[int(idx)]; ok && (!t.recursive() || f.inlineDepth == 0) && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
 				f.consumeGCFrameCallsite()
-				return f.inlineCall(t)
+				return f.inlineCall(t, r)
 			}
 		}
 	}
@@ -413,11 +426,40 @@ func (f *fn) callOp(r *wasm.Reader) error {
 // tail bank and jump to the target wrapper. Both paths release the current native
 // frame before branching, so recursive tail chains remain stack bounded.
 func (f *fn) returnCall(r *wasm.Reader) error {
-	// Tail transfer discards the operand prefix; preserve its traps first.
-	f.materializePendingTraps()
 	idx, err := r.U32()
 	if err != nil {
 		return err
+	}
+	// A sole argument trap can stay attached to its destination-directed
+	// expression. Discarded prefixes and competing traps keep source order.
+	if f.canDeferInlineTailTrap(idx) {
+		f.stats.peep("inline-tail-deferred-trap")
+	} else {
+		f.materializePendingTraps()
+	}
+	return f.returnCallIndex(idx)
+}
+
+func (f *fn) returnCallIndex(idx uint32) error {
+	if f.inlineTailLoopFrame != 0 && idx == f.traceFuncIdx {
+		target := f.inlineTargets.target(int(idx))
+		if target == nil || !target.tailLoop() {
+			return fmt.Errorf("missing inline tail target")
+		}
+		for i := target.paramCount() - 1; i >= 0; i-- {
+			root := f.s.back()
+			if root != nil && root.elemKind() == ekValue && root.st.kind == stLocalReg && root.st.index() == f.localBase+i {
+				f.erase(root)
+				f.stats.peep("inline-tail-identity-arg")
+				continue
+			}
+			f.setLocal(nil, f.localBase+i, false)
+		}
+		f.zeroTailInlineLocals(target, f.localBase)
+		f.branchToInlineTailLoop(f.inlineTailLoopFrame - 1)
+		f.unreachable = true
+		f.stats.peep("inline-tail-loop")
+		return nil
 	}
 	ft, ok := f.functionSignature(idx)
 	if !ok {
@@ -428,6 +470,17 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginARM64Lowering(custom) != nil || instructionRecipeEligible(custom)) {
+			// Custom bundles have no ordinary Wasm return-carrier conversion.
+			// Their registered host shim is native-only, so it is not a fallback.
+			if custom.CustomOutput != nil {
+				return fmt.Errorf("return_call: custom output cannot cross a function boundary")
+			}
+			if err := f.emitCustomInstruction(custom, ft); err != nil {
+				return err
+			}
+			return f.opReturn()
+		}
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
 			binding := f.importBindings[idx]
 			if binding.Dynamic || binding.CrossInstance {
@@ -455,10 +508,38 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if f.opt(optRegABI) && targetRegisterABI {
 		jump := func() {
 			site := f.a.Branch()
-			f.relocs = append(f.relocs, f.newCallReloc(site, target, true))
+			rl := f.newCallReloc(site, target, true)
+			rl.tail = f.canReuseSelfTailFrame() && sigIsIntOnly(ft)
+			f.relocs = append(f.relocs, rl)
 		}
 		if callerRegisterABI {
-			f.emitTailRegisterJump(ft, jump)
+			if int(idx) == int(f.traceFuncIdx) && f.canReuseSelfTailFrame() {
+				// This native backedge no longer has a call relocation. Keep the
+				// logical recursion visible to scheduler-bound finalization.
+				f.hasLoop = true
+				if f.sc != nil {
+					f.sc.directPreparedBounded = false
+				}
+				entry := f.entryTrapEnd
+				localEntry := f.selfTailLocalEntry()
+				if localEntry != 0 {
+					entry = localEntry
+				}
+				f.emitTailIntegerRegisterArgs(ft, localEntry != 0, func() {
+					if f.threadSelfTailEntryTest(entry) {
+						return
+					}
+					site := f.a.Branch()
+					if !f.a.PatchBranch26(site, entry) {
+						panic("arm64 self-tail backedge is out of range")
+					}
+				})
+				f.stats.peep("tail-self-loop")
+			} else if f.canReuseSelfTailFrame() && sigIsIntOnly(ft) {
+				f.emitTailIntegerRegisterArgs(ft, false, func() { f.emitTailFrameRelease(); jump() })
+			} else {
+				f.emitTailRegisterJump(ft, jump)
+			}
 		} else {
 			// Every return_call target has an offset-zero adapter, so a wrapper
 			// caller enters it with the wrapper ABI and its own results buffer.
@@ -505,23 +586,29 @@ func (f *fn) emitTailFrameRelease() {
 	}
 }
 
+// canReuseSelfTailFrame admits the original non-GC register-ABI frame only.
+// Re-entry starts before parameter setup and declared-local initialization.
+// Interruptible/profiled functions retain their ordinary entry checks and maps.
+func (f *fn) canReuseSelfTailFrame() bool {
+	return f.opt(optTailSelfLoop) && f.entryTrapEnd != 0 && f.localBase == 0 &&
+		!f.interruptible && !profileEnabled && !f.moduleEH && f.gcFrameRoots == nil &&
+		len(f.customInstructions) == 0 && len(f.intervalLast) == 0 && !f.lazyZero &&
+		!f.scalarSummary.Eligible && sigIsIntOnly(f.ft)
+}
+
 func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
 	if len(roots) < p {
 		panic("arm64 tail call operand underflow")
 	}
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(X16)
-	argBase := len(types) - p
 	gp, fp := 0, 0
-	for i, typ := range ft.Params {
-		slot := slotOfLogicalTypes(types, argBase+i)
+	for _, typ := range ft.Params {
+		slot := srcSlot
 		mt := mtOf(typ)
 		if mt.isFloat() {
 			f.fld(fpArgRegs[fp], SP, f.spillOff(slot), mt == mtF64)
@@ -530,6 +617,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			f.ld64(intArgRegs[gp], SP, f.spillOff(slot))
 			gp++
 		}
+		srcSlot += mt.stackSlots()
 	}
 	f.emitTailFrameRelease()
 	emitJump()
@@ -541,17 +629,13 @@ func (f *fn) emitTailWrapperToRegisterJump(ft *wasm.CompType, emitJump func()) {
 	if len(roots) < p {
 		panic("arm64 tail wrapper-to-register operand underflow")
 	}
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(X16)
-	argBase := len(types) - p
 	gp, fp := 0, 0
-	for i, typ := range ft.Params {
-		slot := slotOfLogicalTypes(types, argBase+i)
+	for _, typ := range ft.Params {
+		slot := srcSlot
 		mt := mtOf(typ)
 		if mt.isFloat() {
 			f.fld(fpArgRegs[fp], SP, f.spillOff(slot), mt == mtF64)
@@ -560,6 +644,7 @@ func (f *fn) emitTailWrapperToRegisterJump(ft *wasm.CompType, emitJump func()) {
 			f.ld64(intArgRegs[gp], SP, f.spillOff(slot))
 			gp++
 		}
+		srcSlot += mt.stackSlots()
 	}
 	f.ld64(X12, SP, frResultsOff)
 	f.emitTailFrameRelease()
@@ -613,25 +698,21 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
 	if len(roots) < p {
 		panic("arm64 tail wrapper operand underflow")
 	}
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(X16)
 	f.a.MovReg64(X0, linMemReg)
 	f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
-	argBase := len(types) - p
 	dstSlot := 0
-	for i, typ := range ft.Params {
-		srcSlot := slotOfLogicalTypes(types, argBase+i)
+	for _, typ := range ft.Params {
 		n := mtOf(typ).stackSlots()
 		for j := 0; j < n; j++ {
 			f.ld64(X16, SP, f.spillOff(srcSlot+j))
 			f.st64(X0, int32((dstSlot+j)*8), X16)
 		}
 		dstSlot += n
+		srcSlot += n
 	}
 	f.ld64(X2, linMemReg, -int32(abi.TrapCellPtrOffset))
 	f.a.MovReg64(X1, linMemReg)
@@ -693,10 +774,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	if len(roots) < p {
 		panic("arm64 cross-tail operand underflow")
 	}
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(X16)
@@ -725,16 +803,15 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.copyInstanceContext(X10, X11)
 	f.a.MovReg64(X0, X10)
 	f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
-	argBase := len(types) - p
 	dstSlot := 0
-	for i, typ := range ft.Params {
-		srcSlot := slotOfLogicalTypes(types, argBase+i)
+	for _, typ := range ft.Params {
 		n := mtOf(typ).stackSlots()
 		for j := 0; j < n; j++ {
 			f.ld64(X16, SP, f.spillOff(srcSlot+j))
 			f.st64(X0, int32((dstSlot+j)*8), X16)
 		}
 		dstSlot += n
+		srcSlot += n
 	}
 	for _, reg := range []Reg{X10, X11, X12, X17} {
 		f.pinned = f.pinned.remove(reg)
@@ -966,10 +1043,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(X16)
@@ -981,16 +1055,15 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	f.copyInstanceContext(X10, X11)
 	f.a.MovReg64(X0, X10)
 	f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
-	argBase := len(types) - p
 	dstSlot := 0
-	for i, typ := range ft.Params {
-		srcSlot := slotOfLogicalTypes(types, argBase+i)
+	for _, typ := range ft.Params {
 		n := mtOf(typ).stackSlots()
 		for j := 0; j < n; j++ {
 			f.ld64(X16, SP, f.spillOff(srcSlot+j))
 			f.st64(X0, int32((dstSlot+j)*8), X16)
 		}
 		dstSlot += n
+		srcSlot += n
 	}
 
 	transfer := func() {
@@ -1112,6 +1185,13 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	}
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
+	}
+	if index := f.s.back(); index != nil && index.elemKind() == ekValue && index.st.kind == stConst && index.st.typ == mtI32 {
+		if target, ok := f.constantPrivateTailTarget(typeIdx, tableIdx, uint64(uint32(index.st.cval))); ok {
+			f.erase(index)
+			f.stats.peep("tail-constant-private-table")
+			return f.returnCallIndex(uint32(target))
+		}
 	}
 	callerRegisterTail := f.opt(optRegABI) && stagedTailRegisterABI(f.ft, f.stagedTailDescriptors)
 	targetRegisterTail := f.opt(optRegABI) && stagedTailRegisterABI(ft, f.stagedTailDescriptors)
@@ -1417,16 +1497,35 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	f.tmpTypes = types
 	f.tmpStackSlots = slotOf
-	// Only memory32 index zero has this compact canonical-slot fast path.
-	// Other memories retain their existing width-aware helper lowering.
-	atomicFast := f.threadedMemory0 && !f.memoryAddr64(0) &&
-		(atomicWait && p == 4 || notifyFast && p == 3)
-	atomicOffset := uint32(0)
+	// Dynamic wait mismatch can use any declared shared memory. Notify keeps
+	// its existing compact admission; other notify forms are already native
+	// after marshaling through notifyEmptyShortcut.
+	atomicFast := d >= p && (atomicWait && (p == 4 || p == 5) ||
+		f.threadedMemory0 && !f.memoryAddr64(0) && notifyFast && p == 3)
+	atomicIndex, atomicOffset := uint32(0), uint64(0)
 	if atomicFast {
-		offset := roots[d-1].st
-		atomicFast = offset.kind == stConst && uint64(offset.cval) <= 0xffffffff
-		atomicOffset = uint32(offset.cval)
+		offsetSlot := d - 1
+		if atomicWait && p == 5 {
+			index := roots[d-1].st
+			atomicFast = index.kind == stConst && uint64(index.cval) <= 0xffffffff
+			atomicIndex = uint32(index.cval)
+			offsetSlot--
+		}
+		offset := roots[offsetSlot].st
+		atomicOffset = uint64(offset.cval)
+		atomicFast = atomicFast && offset.kind == stConst && f.memoryShared(atomicIndex) &&
+			(atomicWait || atomicOffset <= 0xffffffff)
 	}
+	growFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow &&
+		(p == 1 || p == 2) && roots[d-p].st.kind != stConst
+	growIndex := uint32(0)
+	if growFast && p == 2 {
+		index := roots[d-1].st
+		growFast = index.kind == stConst
+		growIndex = uint32(index.cval)
+	}
+	// Keep the helper when the selected directory entry exceeds scaled LDR64.
+	growFast = growFast && uint64(growIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset <= 0xfff*8
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -1450,11 +1549,15 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 
 	atomicDone := -1
-	if atomicFast {
+	if atomicFast || growFast {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicOffset)
+		if growFast {
+			atomicDone = f.emitSharedMemoryGrowZeroFastPath(int(slotOf[d-p]), growIndex)
+		} else {
+			atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicIndex, atomicOffset)
+		}
 		if notifyFast {
 			f.stats.peep("atomic-notify-empty")
 		}
@@ -2367,8 +2470,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		indirect = X17
 	}
 	p, rN := len(ft.Params), len(ft.Results)
-	d := f.depth()
 	allRoots := f.rootsBottomToTop()
+	d := len(allRoots)
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
@@ -2378,20 +2481,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 	}
 
-	// Identify the p argument roots (top of stack), deepest first.
-	argRoots := f.tmpRoots[:0]
-	if cap(argRoots) < p {
-		argRoots = make([]*elem, 0, p)
-	}
-	argRoots = argRoots[:p]
-	f.tmpRoots = argRoots
-	cur := f.s.back()
-	for i := p - 1; i >= 0; i-- {
-		argRoots[i] = cur
-		if i > 0 {
-			cur = f.s.prev(f.s.baseOfValentBlock(cur))
-		}
-	}
+	// Materialization preserves these roots without reusing their slice.
+	argRoots := allRoots[d-p:]
 
 	// Capture register args and overlapping slots before the lower stack flush.
 	moves := f.tmpMoves[:0]
@@ -2703,8 +2794,8 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		indirect = X17
 	}
 	p, rN := len(ft.Params), len(ft.Results)
-	d := f.depth()
 	allRoots := f.rootsBottomToTop()
+	d := len(allRoots)
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
@@ -3766,4 +3857,17 @@ func nativeSharedArgPrefixSafe(roots []*elem) bool {
 		}
 	}
 	return true
+}
+
+// Compute the argument prefix before flush reuses the operand-root scratch.
+func tailArgumentStartSlot(roots []*elem, params int) int {
+	prefix := roots[:len(roots)-params]
+	// Every operand occupies one slot; v128 occupies one additional slot.
+	slot := len(prefix)
+	for _, root := range prefix {
+		if rootMachineType(root) == mtV128 {
+			slot++
+		}
+	}
+	return slot
 }

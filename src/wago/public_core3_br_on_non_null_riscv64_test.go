@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -200,57 +198,5 @@ func TestRV64Core3BrOnNonNullPinnedSourceGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			rv64RequireCore3SourceValidation(t, source)
 		})
-	}
-}
-
-func TestRV64Core3BrOnNonNullPinnedArtifactGates(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
-		t.Skip("hostile retained artifact admission")
-	}
-	base := rv64NativeTailCompile(t, "core3-br-on-non-null-gates", rv64Core3BrOnNonNullBasicSource(3), false)
-	mutations := map[string]func(*Compiled){
-		"missing-function-witness": func(c *Compiled) { c.nativeReferenceFunctionABI = false },
-		"missing-control-witness":  func(c *Compiled) { c.nativeReferenceControlABI = false },
-		"missing-context-trap":     func(c *Compiled) { c.nativeContextTrapABI = false },
-		"missing-table-context":    func(c *Compiled) { c.nativeTableContextABI = false },
-		"missing-table-reference":  func(c *Compiled) { c.nativeTableReferenceABI = false },
-		"register-abi":             func(c *Compiled) { c.registerABIDisabled = false },
-		"missing-descriptors":      func(c *Compiled) { c.NeedsFuncRefDescs = false },
-		"private-passive-target":   func(c *Compiled) { c.passiveElems[0].Values[0].FuncIndex = 0 },
-		"active-passive-state":     func(c *Compiled) { c.passiveElems[0].Mode = ElemModeActive },
-		"wrong-function-type":      func(c *Compiled) { c.Funcs[9].TypeIndex = 1 },
-		"extra-feature":            func(c *Compiled) { c.requiredFeatures |= CoreFeatureTailCall },
-	}
-	for name, mutate := range mutations {
-		t.Run(name, func(t *testing.T) {
-			bad := rv64ReferenceStartCopy(base.executionView())
-			mutate(bad)
-			if err := railshotValidateCompiled(bad); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("hostile retained br_on_non_null metadata admitted", err)
-			}
-			blob, err := marshalCompiled(bad)
-			if err != nil {
-				return
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("hostile serialized br_on_non_null metadata admitted")
-			}
-		})
-	}
-}
-
-func TestRV64Core3BrOnNonNullCompilerFreeGate(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	if c, err := Compile(nil, rv64Core3BrOnNonNullBasicSource(3)); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		if c != nil {
-			c.Close()
-		}
-		t.Fatal("compiler-free pinned Core 3 br_on_non_null used source compilation", err)
 	}
 }

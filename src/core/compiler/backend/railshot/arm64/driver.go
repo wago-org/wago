@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build arm64
 
 package arm64
@@ -15,17 +22,22 @@ import (
 // Frontend.cpp parseCodeSection opcode switch. Phase 0 covers the integer const/
 // local/ALU subset needed to prove the pipeline end-to-end.
 func (f *fn) body(code []byte) error {
-	if f.gcI31Reduction(code) {
+	// Check necessary shape/helper conditions before entering cold recognizers.
+	if len(code) >= 2 && code[0] == 0x03 && code[1] == 0x40 && f.gcI31Reduction(code) {
 		return f.emitGCI31Reduction()
 	}
-	if typeIndex, ok := f.gcStructReduction(code); ok {
-		return f.emitGCStructReduction(typeIndex)
+	if f.gcStructHelpers {
+		if typeIndex, ok := f.gcStructReduction(code); ok {
+			return f.emitGCStructReduction(typeIndex)
+		}
 	}
-	if typeIndex, length, ok := f.gcArrayReduction(code); ok {
-		return f.emitGCArrayReduction(typeIndex, length)
-	}
-	if typeIndex, length, ok := f.gcArrayFillReduction(code); ok {
-		return f.emitGCArrayReduction(typeIndex, length)
+	if f.gcArrayHelpers {
+		if typeIndex, length, ok := f.gcArrayReduction(code); ok {
+			return f.emitGCArrayReduction(typeIndex, length)
+		}
+		if typeIndex, length, ok := f.gcArrayFillReduction(code); ok {
+			return f.emitGCArrayReduction(typeIndex, length)
+		}
 	}
 	r := wasm.ReaderFrom(code)
 	return f.bodyLoop(&r, 0)
@@ -64,6 +76,8 @@ func (f *fn) representationError() error {
 // synthetic frame, so its terminating `end` (which pops that frame) ends the loop
 // and returns control to the caller's body.
 func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+	// Each recursive inline reader keeps its own position in the sorted hints.
+	remainingHints := f.branchHints
 	for len(f.ctrl) > minCtrl {
 		if f.selectGroupEnd != 0 {
 			f.finishSelectGroup(r.Offset())
@@ -84,14 +98,11 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		f.branchHintUnlikely = false
 		if op == 0x0d {
 			off := f.branchHintLocalDecl + uint32(r.Offset()-1)
-			for i := range f.branchHints {
-				if f.branchHints[i].Offset == off {
-					f.branchHintUnlikely = !f.branchHints[i].Likely
-					break
-				}
-				if f.branchHints[i].Offset > off {
-					break
-				}
+			for len(remainingHints) > 0 && remainingHints[0].Offset < off {
+				remainingHints = remainingHints[1:]
+			}
+			if len(remainingHints) > 0 && remainingHints[0].Offset == off {
+				f.branchHintUnlikely = !remainingHints[0].Likely
 			}
 		}
 		var previous profileOrigin
@@ -122,7 +133,13 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x0b: // end
 			err = f.opEnd(r)
 		case 0x0c, 0x0d: // br / br_if
-			err = f.opBr(r, op == 0x0d)
+			var guarded bool
+			if op == 0x0d {
+				guarded, err = f.tryGuardedDivRem(r)
+			}
+			if !guarded && err == nil {
+				err = f.opBr(r, op == 0x0d)
+			}
 		case 0x0e: // br_table
 			err = f.opBrTable(r)
 		case 0x0f: // return
@@ -208,18 +225,24 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
-		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+		forwarded := x32 < f.inlineForwardN
+		if forwarded {
+			x = f.inlineForward[x32]
+		}
+		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.s.back() == nil {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}
 		}
 		var value *elem
-		f.activateIntervalLocal(int(x), r.Offset(), true)
-		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
-			value = f.pushReg(reg, f.localType[x])
-			value.st.setGCRoot(f.gcFrameLocal(int(x)))
-			f.applyFactsForLocal(value, int(x))
-			break
+		if !forwarded {
+			f.activateIntervalLocal(int(x), r.Offset(), true)
+			if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
+				value = f.pushReg(reg, f.localType[x])
+				value.st.setGCRoot(f.gcFrameLocal(int(x)))
+				f.applyFactsForLocal(value, int(x))
+				break
+			}
 		}
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {
@@ -790,7 +813,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 		return false, nil
 	}
 
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	f.setFactsForLocal(x, 0)
 	// Refs below the select still require x's old value; refs in its three
 	// operand blocks are consumed before the final CSEL overwrites dest.
@@ -874,8 +897,7 @@ func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
 	if !f.opt(optSTFlags) || f.unreachable || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
 		return false, nil
 	}
-	pr, isFloat, ok := f.pinReg(x)
-	if !ok || isFloat {
+	if _, isFloat, ok := f.pinReg(x); !ok || isFloat {
 		return false, nil
 	}
 	top := f.s.back()
@@ -893,11 +915,10 @@ func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	f.invalidateBoundsCertFor(1, uint32(x))
-	if err := f.brIfFusedSet(top, idx, pr); err != nil {
+	f.invalidateLocalWriteFacts(x)
+	if err := f.brIfFusedSet(top, idx, x); err != nil {
 		return false, err
 	}
-	f.markLocalDirty(x)
 	f.stats.addLocalSetDeferred()
 	f.stats.peep("cmp-tee-branch-fuse")
 	return true, nil
@@ -1018,7 +1039,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 		}
 		return false, nil
 	}
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	right := f.s.back()
 	if right == nil {
 		if err := r.JumpTo(save); err != nil {
@@ -1085,7 +1106,7 @@ func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(R
 	if arity == 2 {
 		first = f.s.prev(f.s.baseOfValentBlock(first))
 	}
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	f.realizeLocalRefs(x, first)
 	emit(pr)
 	f.markLocalDirty(x)
@@ -1268,7 +1289,7 @@ func subtreeRefsLocal(s *stack, e *elem, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
-	f.invalidateBoundsCertFor(1, uint32(x))
+	f.invalidateLocalWriteFacts(x)
 	e := f.s.back()
 	if e != nil && e.elemKind() == ekValue && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
@@ -1287,7 +1308,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if e != nil && e.isDeferred() {
 		binarySink := (isBinALU(e.deferredOp()) || isShift(e.deferredOp())) && (!tee || f.opt(optTeeSink))
 		unarySink := (isUnary(e.deferredOp()) || isConvert(e.deferredOp())) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
-		if binarySink || unarySink {
+		divSink := f.inlineTailLoopFrame != 0 && f.opt(optBorrowedDivRem) && isDivRem(e.deferredOp()) && f.canBorrowDivRemOperands(e)
+		if binarySink || unarySink || divSink {
 			skipFrom = f.s.baseOfValentBlock(e)
 		}
 	}

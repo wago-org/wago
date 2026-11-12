@@ -117,7 +117,7 @@ func TestMemoryMinimumBoundsPublicExecution(t *testing.T) {
 								t.Fatal(err)
 							}
 							defer c.Close()
-							for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+							for _, compiled := range []*Compiled{c} {
 								in, err := Instantiate(compiled)
 								if err != nil {
 									t.Fatal(err)
@@ -250,7 +250,7 @@ func TestMemoryMinimumCopyPublicExecution(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					variants := []*Compiled{c, publicArtifactRoundTrip(t, c)}
+					variants := []*Compiled{c}
 					for _, compiled := range variants {
 						in, err := Instantiate(compiled)
 						if err != nil {

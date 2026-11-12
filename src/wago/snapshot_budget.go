@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
@@ -8,7 +15,7 @@ import (
 
 func normalizeSnapshotLimit(limit uint64) uint64 {
 	if limit == 0 {
-		limit = uint64(DefaultArtifactLimits().MaxDecodedBytes)
+		limit = uint64(256 << 20)
 	}
 	return min(limit, uint64(maxInt()))
 }

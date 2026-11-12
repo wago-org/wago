@@ -4,15 +4,12 @@ package wago_test
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
-
-	"github.com/wago-org/wago/src/wago"
 )
 
 func TestExtendedConstFixtureManifest(t *testing.T) {
@@ -43,88 +40,6 @@ func TestExtendedConstFixtureManifest(t *testing.T) {
 	sort.Strings(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("extended-const fixture manifest = %v, want %v", got, want)
-	}
-}
-
-func TestExtendedConstCodecExecution(t *testing.T) {
-	root := filepath.Clean("../../tests/corpus/regressions/extended-const")
-	imports := testWagoImports("spectest.global_i32", wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)}, "spectest.global_i64", wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)})
-	for _, tc := range []struct {
-		name   string
-		file   string
-		export string
-		args   []uint64
-		want   uint64
-	}{
-		{name: "data offset", file: "data.3.wasm"},
-		{name: "element offset", file: "elem.3.wasm", export: "call_in_table", args: []uint64{wago.I32(6)}, want: 42},
-		{name: "global i32 arithmetic", file: "global.0.wasm", export: "get-z5", want: 708},
-		{name: "global i64 arithmetic", file: "global.0.wasm", export: "get-z6", want: 708},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			data, err := os.ReadFile(filepath.Join(root, tc.file))
-			if err != nil {
-				t.Fatal(err)
-			}
-			compiled, err := wago.Compile(wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit), data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer compiled.Close()
-			blob, err := compiled.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := wago.LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			switch tc.name {
-			case "data offset":
-				if !reflect.DeepEqual(loaded.Data, compiled.Data) || len(loaded.Data) != 1 || len(loaded.Data[0].Offset.Expr) == 0 {
-					t.Fatalf("loaded data metadata = %#v, want preserved extended offset %#v", loaded.Data, compiled.Data)
-				}
-			case "element offset":
-				if !reflect.DeepEqual(loaded.Elems, compiled.Elems) || len(loaded.Elems) != 1 || len(loaded.Elems[0].Offset.Expr) == 0 {
-					t.Fatalf("loaded element metadata = %#v, want preserved extended offset %#v", loaded.Elems, compiled.Elems)
-				}
-			default:
-				var compiledExprs, loadedExprs [][]byte
-				for _, global := range compiled.Globals {
-					if len(global.InitExpr) != 0 {
-						compiledExprs = append(compiledExprs, global.InitExpr)
-					}
-				}
-				for _, global := range loaded.Globals {
-					if len(global.InitExpr) != 0 {
-						loadedExprs = append(loadedExprs, global.InitExpr)
-					}
-				}
-				if len(loadedExprs) == 0 || !reflect.DeepEqual(loadedExprs, compiledExprs) {
-					t.Fatalf("loaded global expressions = %#v, want %#v", loadedExprs, compiledExprs)
-				}
-			}
-			in, err := wago.Instantiate(loaded, wago.InstantiateOptions{Imports: imports})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer in.Close()
-			if tc.export == "" {
-				return
-			}
-			got, err := in.Invoke(tc.export, tc.args...)
-			if err != nil || len(got) != 1 || got[0] != tc.want {
-				t.Fatalf("%s%v = %v, %v; want [%d]", tc.export, tc.args, got, err, tc.want)
-			}
-			if tc.name == "element offset" {
-				_, err = in.Invoke(tc.export, wago.I32(0))
-				var trap *wago.TrapError
-				if !errors.As(err, &trap) || trap.Code != wago.TrapIndirectOutOfBounds {
-					t.Fatalf("%s(0) error = %v, want uninitialized-element trap", tc.export, err)
-				}
-			}
-		})
 	}
 }
 

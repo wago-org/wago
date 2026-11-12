@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
@@ -7,7 +14,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 type gcConstValueKind uint8
@@ -335,7 +342,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 			}
 			stack = append(stack, gcConstStackValue{bits: binary.LittleEndian.Uint64(b[:8]), bitsHi: binary.LittleEndian.Uint64(b[8:])})
 		case 0xd0: // ref.null
-			heap, err := r.S33()
+			_, heap, err := r.RefHeapType()
 			if err != nil {
 				return 0, err
 			}

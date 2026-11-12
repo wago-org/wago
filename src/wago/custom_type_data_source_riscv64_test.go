@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo
 
 package wago
 
@@ -28,16 +28,12 @@ func rv64WideDataSource(carrier byte, body []byte, extraTypes ...[]byte) []byte 
 	types = append(types, extraTypes...)
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(types...)), wasmtest.Section(2, wasmtest.Vec(instructionFuncImport("wide", "new1", 0), instructionFuncImport("wide", "new2", 0), instructionFuncImport("wide", "sum", 1), instructionFuncImport("wide", "id", 3))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 4))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
 }
-func rv64PrepareWideData(t *testing.T, rt *Runtime, carrier byte, body []byte) (*Module, []byte) {
+func rv64PrepareWideData(t *testing.T, rt *Runtime, carrier byte, body []byte) *Module {
 	t.Helper()
 	mod, err := rt.Compile(rv64WideDataSource(carrier, body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	blob, err := mod.c.MarshalBinary()
-	if err != nil {
-		mod.Close()
-		t.Fatal(err)
-	}
-	return mod, blob
+	return mod
+
 }

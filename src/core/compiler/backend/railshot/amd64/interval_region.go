@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64
 
 package amd64
@@ -270,6 +277,13 @@ scan:
 	if len(events) != 0 {
 		f.intervalEvents, f.intervalHead = events, head
 	}
+}
+
+// hasIntervalLocal is the shared entry guard for regional reads and writes.
+// A missing plan or an unassigned local makes both activation and final-get
+// transfer no-ops; keep that case in the opcode driver.
+func (f *fn) hasIntervalLocal(x int) bool {
+	return x >= 0 && x < len(f.intervalReg) && f.intervalReg[x] != regNone
 }
 
 // activateIntervalLocal opportunistically restores an assigned regional local

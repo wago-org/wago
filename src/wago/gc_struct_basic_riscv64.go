@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -97,10 +104,3 @@ func rv64GCStructBasicMetadata(c *Compiled, requireInitializers bool) bool {
 }
 
 func rv64GCStructBasic(c *Compiled) bool { return rv64GCStructBasicMetadata(c, true) }
-
-func railshotRestoreGCStructBasicArtifact(c *Compiled) {
-	if !rv64GCStructBasicMetadata(c, false) {
-		return
-	}
-	c.memoryDir.gcStructGlobals = []gcStructGlobalInit{{GlobalIndex: 0, TypeID: 0, FieldCount: 3, Bits: []uint64{1065353216, 1073741824, 1077936128}}, {GlobalIndex: 1, TypeID: 0, FieldCount: 3, Default: true}}
-}

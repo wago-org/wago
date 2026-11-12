@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64 && !tinygo && !wago_profile
 
 package amd64
@@ -23,6 +30,11 @@ func (f *fn) admitScalar(c *wasm.Func) shared.ScalarSummary {
 		return shared.ScalarSummary{}
 	}
 	if profileEnabled && f.stats != nil && (f.stats.RecordSources || f.stats.RecordUnwind || f.stats.RecordAdapterUnwind) {
+		return shared.ScalarSummary{}
+	}
+	// Scalar lowering rejects every loop. Keep its measured admission path
+	// when diagnostics request it; ordinary compilation already has this proof.
+	if f.hasLoop && (!diagnosticsEnabled || f.stats == nil) {
 		return shared.ScalarSummary{}
 	}
 	begin := time.Time{}

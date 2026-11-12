@@ -177,7 +177,7 @@ func TestTailRAProofAdmissionBeforeAnyOwnerAllocation(t *testing.T) {
 			s.sites[i] = base.sites[0]
 		}
 		_, _, err := tailRAOwnedBound(s)
-		if n == maxDirectCalls && err != nil || n > maxDirectCalls && !errors.Is(err, ErrUnsupported) {
+		if n <= maxFunctionCallSites && err != nil || n > maxFunctionCallSites && !errors.Is(err, ErrUnsupported) {
 			t.Fatal("site boundary", n, err)
 		}
 	}

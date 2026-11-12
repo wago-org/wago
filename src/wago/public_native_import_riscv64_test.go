@@ -15,7 +15,6 @@ import (
 	"time"
 	"unsafe"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -375,72 +374,6 @@ func TestRV64PublicNativeImportCancellationAndCloseWhileProducerParked(t *testin
 				t.Fatal("interrupted foreign guest resumed its post-host store")
 			}
 		})
-	}
-}
-
-func TestRV64PublicNativeImportAdmissionABIAndArenaBeforePublication(t *testing.T) {
-	producerCode := rv64PublicStartCompile(t, rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
-	producer, err := Instantiate(producerCode)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer producer.Close()
-	export, err := producer.ExportedFunc("identity")
-	if err != nil {
-		t.Fatal(err)
-	}
-	consumerSource := rv64PublicHostModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
-	for _, artifact := range []bool{false, true} {
-		c := rv64PublicStartCompile(t, consumerSource, artifact)
-		// Frozen ABI metadata is authoritative for both consumer and producer.
-		beforeBase, beforeSealed, beforeRefs := c.codeCache.base, c.codeCache.sealed, c.codeCache.refs
-		beforeRoots := producer.referenceLifetime().snapshot().ResourceRoots
-		producer.c.nativeContextTrapABI = false
-		in, err := Instantiate(c, testImports("env.host", export))
-		producer.c.nativeContextTrapABI = true
-		if in != nil || !errors.Is(err, railshot.ErrUnsupported) || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || c.codeCache.refs != beforeRefs || producer.referenceLifetime().snapshot().ResourceRoots != beforeRoots {
-			t.Fatal("originless producer published", err)
-		}
-		bad := &InstanceExport{inst: producer, localIdx: 99}
-		if in, err := Instantiate(c, testImports("env.host", bad)); in != nil || err == nil || c.codeCache.sealed != beforeSealed {
-			t.Fatal("invalid producer entry published", err)
-		}
-		// An originless old experimental artifact is deliberately incompatible.
-		view := rv64ReferenceImportTailCopy(c)
-		view.nativeContextTrapABI = false
-		view.nativeTableContextABI = false
-		view.nativeTableReferenceABI = false
-		if err := railshotValidateCompiled(view); !errors.Is(err, railshot.ErrUnsupported) {
-			t.Fatal("legacy origin ABI admitted", err)
-		}
-		rv64RequireRejectedArtifact(t, view)
-	}
-	consumer := rv64PublicStartCompile(t, consumerSource, false)
-	if err := consumer.executionView().validateCached(); err != nil {
-		t.Fatal(err)
-	}
-	resolved := testImports("env.host", export).bindings
-	need := consumer.executionView().arenaNeedForImports(resolved, consumer.executionView().importsRequireSync(resolved, false))
-	if railshotNativeImportArenaBytes(consumer.executionView(), resolved) != 0 {
-		t.Fatal("stack transport acquired unused arena storage")
-	}
-	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithMaxInstanceMetadataBytes(uint64(need - 1))))
-	defer rt.Close()
-	mod, err := rt.Module(consumer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mod.Close()
-	before := producer.referenceLifetime().snapshot().ResourceRoots
-	if in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.host", export))); in != nil || err == nil || producer.referenceLifetime().snapshot().ResourceRoots != before {
-		t.Fatal("native edge quota/retention", err)
-	}
-	if err := producer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	fresh := rv64PublicStartCompile(t, consumerSource, false)
-	if in, err := Instantiate(fresh, testImports("env.host", export)); in != nil || err == nil || fresh.codeCache.base != 0 {
-		t.Fatal("new binding to closed producer published", err)
 	}
 }
 

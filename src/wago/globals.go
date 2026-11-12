@@ -1,18 +1,26 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Call arguments and results are raw uint64 value slots: the function
@@ -1313,9 +1321,7 @@ type Compiled struct {
 	// boundsMode records how this code was compiled: BoundsChecksSignalsBased
 	// means eligible memory-0 memory32 checks were elided and execution requires
 	// a guard-page memory + trap handler (Instantiate wires this up). Indexed
-	// memories and memory64 may still contain explicit checks. Not serialized:
-	// MarshalBinary rejects signals-based modules, so a loaded Compiled is always
-	// explicit-checks.
+	// memories and memory64 may still contain explicit checks.
 	boundsMode BoundsCheckMode
 
 	// memoryImport is the "module.name" key of the module's imported memory, if it
@@ -1356,7 +1362,7 @@ type Compiled struct {
 
 	// validateMemo owns immutable validation sidecars and memoizes the
 	// instantiate-boundary metadata validation for modules produced by
-	// Compile/UnmarshalBinary: the full check (which loops all
+	// Compile: the full check (which loops all
 	// funcs/globals/exports/GC descs) then only runs once instead of on every
 	// Instantiate. A nil memo means "validate every time" — which is what a
 	// hand-constructed Compiled (exported fields, no memo) gets, preserving its
@@ -1375,6 +1381,8 @@ type Compiled struct {
 	// local, unexported, immutable, and limited to local function descriptors.
 	// Like direct-prepared entry selection, codecs conservatively discard it.
 	preparedIsolatedTables bool
+	// Fresh source proof; codecs deliberately omit conditional bulk-work limits.
+	boundedBulkPlans []uint64
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the
@@ -1696,7 +1704,9 @@ func (c *Compiled) validateImportedGlobal(key string, g *Global, imp GlobalImpor
 	} else if len(g.cell) < globalCellSize(g.Type) {
 		return fmt.Errorf("imported global %q storage is closed", key)
 	}
-	if actualType != imp.Type {
+	// Reference ABI categories can differ for valid subtypes (i31ref to
+	// anyref, for example). Compare their exact Wasm types below.
+	if actualType != imp.Type && (!isReferenceValType(actualType) || !isReferenceValType(imp.Type)) {
 		return fmt.Errorf("imported global %q has type %s, want %s", key, actualType, imp.Type)
 	}
 	if actualMutable != imp.Mutable {

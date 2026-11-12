@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64 && !wago_regalloccheck
 
 package amd64
@@ -41,3 +48,9 @@ type regallocReadMask struct{}
 func checkProtectRead(*fn, Reg, bool, bool) regallocReadMask { return regallocReadMask{} }
 func checkRestoreRead(*fn, regallocReadMask)                 {}
 func checkGlobalCell(*fn)                                    {}
+
+//lint:ignore U1000 zero-state counterpart of the opt-in checked local-pin scope
+func (*fn) checkProtectLocalPins() regallocReadMask { return regallocReadMask{} }
+
+//lint:ignore U1000 zero-state counterpart of the opt-in checked local-pin output hook
+func (*fn) checkAllowLocalPinWrite(regallocReadMask, int) {}

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build arm64
 
 package arm64
@@ -80,7 +87,7 @@ func (w *linearIntegerTree) collect(e *elem, scale uint32) bool {
 }
 
 func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
-	if !f.opt(optLinearIntegerTree) || !f.hasLoop || node.st.typ != mtI32 || node.deferredDepth() < 4 || (node.deferredOp() != opAdd && node.deferredOp() != opSub) || len(f.customInstructions) != 0 {
+	if !f.opt(optLinearIntegerTree) || !f.hasLoop || node.st.typ != mtI32 || node.deferredDepth() < 2 || (node.deferredOp() != opAdd && node.deferredOp() != opSub) || len(f.customInstructions) != 0 {
 		return regNone
 	}
 	w := linearIntegerTree{f: f, budget: 64}
@@ -94,8 +101,13 @@ func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
 		}
 		duplicate = duplicate || t.reads > 1
 	}
+	if duplicate && nonzero == 2 && w.operations >= 3 && w.constant == 0 {
+		if result := f.emitLinearIntegerPair(node, dest, &w); result != regNone {
+			return result
+		}
+	}
 	// Require repeated sources and at least three eliminated arithmetic nodes.
-	if !duplicate || w.operations < nonzero*2+3 {
+	if node.deferredDepth() < 4 || !duplicate || w.operations < nonzero*2+3 {
 		return regNone
 	}
 	// Keep every surviving borrowed source live while materializing stack locals.
@@ -178,6 +190,66 @@ func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
 		}
 	}
 	f.stats.peep("linear-integer-tree")
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	return result
+}
+
+// emitLinearIntegerPair covers two surviving terms when their coefficients fit
+// one ADD (shifted register). Collection has proved exact modular I32 arithmetic
+// over current-local reads, so cancellation neither drops traps nor old values.
+func (f *fn) emitLinearIntegerPair(node *elem, dest Reg, tree *linearIntegerTree) Reg {
+	var base, index *linearIntegerTerm
+	for i := 0; i < tree.count; i++ {
+		term := &tree.terms[i]
+		if term.coefficient == 0 {
+			continue
+		}
+		if base == nil && term.coefficient == 1 {
+			base = term
+		} else {
+			index = term
+		}
+	}
+	if base == nil || index == nil || index.coefficient == 0 || index.coefficient&(index.coefficient-1) != 0 {
+		return regNone
+	}
+	blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+	needed := 1
+	for _, term := range []*linearIntegerTerm{base, index} {
+		if term.source.st.kind == stLocalReg {
+			blocked = blocked.add(term.source.st.reg)
+		} else {
+			needed++
+		}
+	}
+	available := 0
+	for _, reg := range gpAlloc {
+		if !blocked.has(reg) {
+			available++
+		}
+	}
+	if available < needed {
+		return regNone
+	}
+	saved := f.pinned
+	a, ownA := f.materializeRead(base.source)
+	f.pinned = f.pinned.add(a)
+	b, ownB := f.materializeRead(index.source)
+	f.pinned = f.pinned.add(b)
+	result := dest
+	if result == regNone {
+		result = f.allocReg(0)
+	}
+	f.a.AddShifted(result, a, b, uint8(bits.TrailingZeros32(index.coefficient)), true)
+	f.pinned = saved
+	if ownA && a != result {
+		f.release(a)
+	}
+	if ownB && b != a && b != result {
+		f.release(b)
+	}
+	f.stats.peep("linear-integer-pair")
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
 	return result

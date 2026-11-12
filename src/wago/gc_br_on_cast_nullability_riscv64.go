@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -102,20 +109,4 @@ func rv64GCBrOnCastNullabilityProduct(c *Compiled, fail bool) bool {
 	product := c.stagedGCStructProduct()
 	return (product == wantProduct || product == stagedGCStructGeneric) && c.stagedGCArrayProduct() == 0 && c.stagedFeatures() == CoreFeatureTypedFunctionReferences|CoreFeatureGC &&
 		c.usesGCStructHelpers() && !c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil && c.requiredFeatures == CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.requiredAMD64Features == 0
-}
-
-func railshotRestoreGCBrOnCastNullabilityArtifact(c *Compiled) {
-	if !rv64GCBrOnCastNullability(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructBrOnCastNullability
-}
-
-func railshotRestoreGCBrOnCastFailNullabilityArtifact(c *Compiled) {
-	if !rv64GCBrOnCastFailNullability(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructBrOnCastFailNullability
 }

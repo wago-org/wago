@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -41,7 +48,7 @@ func rv64GCTypeSubtypingRuntimeCallCastProfileWithCode(c *Compiled, allowUnresto
 		requireCode && (len(c.code) != rv64GCTypeSubtypingRuntimeCallCastCodeLen || sha256.Sum256(c.code) != rv64GCTypeSubtypingRuntimeCallCastCodeDigest) {
 		return false
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	return err == nil && len(metadata) == rv64GCTypeSubtypingRuntimeCallCastMetadataLen && sha256.Sum256(metadata) == rv64GCTypeSubtypingRuntimeCallCastMetadataDigest
 }
 
@@ -51,13 +58,4 @@ func rv64GCTypeSubtypingRuntimeCallCast(c *Compiled) bool {
 
 func rv64GCTypeSubtypingRuntimeCallCastExecutionCode(c *Compiled) bool {
 	return c != nil && len(c.code) == rv64GCTypeSubtypingRuntimeCallCastCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingRuntimeCallCastCodeDigest
-}
-
-func railshotRestoreGCTypeSubtypingRuntimeCallCastArtifact(c *Compiled) {
-	if !rv64GCTypeSubtypingRuntimeCallCastProfileWithCode(c, true, true) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRuntimeCallCast
 }

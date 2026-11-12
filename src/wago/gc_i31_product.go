@@ -1,8 +1,16 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
 	"crypto/sha256"
 	"fmt"
+	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -204,4 +212,9 @@ func generalCollectorFreeI31Module(m *wasm.Module) bool {
 		}
 	}
 	return moduleUsesI31Operations(m)
+}
+
+// The override retains the full scan as an attribution/rollback control.
+func compilerGCProductAnalysisNeeded(required CoreFeatures) bool {
+	return required.IsEnabled(CoreFeatureGC) || os.Getenv("WAGO_GC_PRODUCT_SUMMARIES") == "0"
 }

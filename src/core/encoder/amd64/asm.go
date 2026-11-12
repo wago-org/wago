@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Package amd64 is the x86-64 instruction encoder (the Asm type) that the code
 // generator in backend/railshot drives to emit machine code. It holds only the
 // encoder, the Reg/Cond vocabulary, and the CompiledModule result type; the
@@ -445,12 +452,13 @@ func (a *Asm) baseAddr(regField byte, base Reg, disp int32) {
 	modRMOff := len(a.B)
 	rm := byte(base & 7)
 	if rm == 4 {
-		a.emit(mod | ((regField & 7) << 3) | 0x04)
-		a.emit(0x24) // scale=0, index=none, base=RSP/R12
+		a.emit(mod|((regField&7)<<3)|0x04, 0x24) // SIB: scale=0, index=none, base=RSP/R12
 	} else {
 		a.emit(mod | ((regField & 7) << 3) | rm)
 	}
-	a.recordLocalRef(base, mod, modRMOff, len(a.B), disp)
+	if refs := a.LocalRefs; refs != nil && refs.Pending {
+		a.recordLocalRef(base, mod, modRMOff, len(a.B), disp)
+	}
 	a.emitDisp(mod, disp)
 }
 
@@ -491,12 +499,69 @@ func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
 		a.regallocGPMem(opcode, Reg(regField), w || regField >= 8 || base >= 8)
 	}
 
+	// Pending symbolic references retain the general helper's offset accounting.
+	if a.LocalRefs == nil || !a.LocalRefs.Pending {
+		mod := addrMode(base, disp)
+		rm := mod | ((regField & 7) << 3) | byte(base&7)
+		prefix := byte(0)
+		if w || regField >= 8 || base >= 8 {
+			prefix = a.rex(w, regField >= 8, false, base >= 8)
+		}
+		a.recordAddress(base, mod)
+		sib := base&7 == 4
+		if prefix != 0 {
+			switch mod {
+			case 0:
+				if sib {
+					a.B = append(a.B, prefix, opcode, rm, 0x24)
+				} else {
+					a.B = append(a.B, prefix, opcode, rm)
+				}
+			case 0x40:
+				if sib {
+					a.B = append(a.B, prefix, opcode, rm, 0x24, byte(disp))
+				} else {
+					a.B = append(a.B, prefix, opcode, rm, byte(disp))
+				}
+			case 0x80:
+				if sib {
+					a.B = append(a.B, prefix, opcode, rm, 0x24, byte(disp), byte(disp>>8), byte(disp>>16), byte(disp>>24))
+				} else {
+					a.B = append(a.B, prefix, opcode, rm, byte(disp), byte(disp>>8), byte(disp>>16), byte(disp>>24))
+				}
+			}
+		} else {
+			switch mod {
+			case 0:
+				if sib {
+					a.B = append(a.B, opcode, rm, 0x24)
+				} else {
+					a.B = append(a.B, opcode, rm)
+				}
+			case 0x40:
+				if sib {
+					a.B = append(a.B, opcode, rm, 0x24, byte(disp))
+				} else {
+					a.B = append(a.B, opcode, rm, byte(disp))
+				}
+			case 0x80:
+				if sib {
+					a.B = append(a.B, opcode, rm, 0x24, byte(disp), byte(disp>>8), byte(disp>>16), byte(disp>>24))
+				} else {
+					a.B = append(a.B, opcode, rm, byte(disp), byte(disp>>8), byte(disp>>16), byte(disp>>24))
+				}
+			}
+		}
+		return
+	}
+
 	rb := base >= 8
 	rr := regField >= 8
 	if w || rr || rb {
-		a.emit(a.rex(w, rr, false, rb))
+		a.emit(a.rex(w, rr, false, rb), opcode)
+	} else {
+		a.emit(opcode)
 	}
-	a.emit(opcode)
 	a.baseAddr(regField, base, disp)
 }
 
@@ -531,10 +596,10 @@ func (a *Asm) MovImm32(r Reg, v int32) {
 		a.EncodingStats.MovImm32++
 	}
 	if r >= 8 {
-		a.emit(a.rexPrefix(0x41))
+		a.B = append(a.B, a.rexPrefix(0x41), 0xB8|byte(r&7), byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+	} else {
+		a.B = append(a.B, 0xB8|byte(r&7), byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 	}
-	a.emit(0xB8 | byte(r&7))
-	a.imm32(v)
 }
 
 func (a *Asm) MovRegReg32(dst, src Reg) {
@@ -547,11 +612,12 @@ func (a *Asm) MovRegReg32(dst, src Reg) {
 
 	rr := src >= 8
 	rb := dst >= 8
+	modRM := byte(0xC0 | ((byte(src) & 7) << 3) | byte(dst&7))
 	if rr || rb {
-		a.emit(a.rex(false, rr, false, rb))
+		a.emit(a.rex(false, rr, false, rb), 0x89, modRM)
+	} else {
+		a.emit(0x89, modRM)
 	}
-	a.emit(0x89)
-	a.emit(0xC0 | ((byte(src) & 7) << 3) | byte(dst&7))
 }
 
 func (a *Asm) sseBitOp(opcode byte, dst, src Reg, w bool) {
@@ -708,11 +774,12 @@ func (a *Asm) alu(opcode byte, dst, src Reg, w bool) {
 		a.regallocGPRR(opcode, dst, src, w || src >= 8 || dst >= 8)
 	}
 
+	modRM := byte(0xC0 | ((byte(src) & 7) << 3) | byte(dst&7))
 	if w || src >= 8 || dst >= 8 {
-		a.emit(a.rex(w, src >= 8, false, dst >= 8))
+		a.emit(a.rex(w, src >= 8, false, dst >= 8), opcode, modRM)
+	} else {
+		a.emit(opcode, modRM)
 	}
-	a.emit(opcode)
-	a.emit(0xC0 | ((byte(src) & 7) << 3) | byte(dst&7))
 }
 
 func (a *Asm) Add32(dst, src Reg) { a.alu(0x01, dst, src, false) }
@@ -802,6 +869,15 @@ func (a *Asm) TestImm(r Reg, imm uint32, w bool) {
 	a.emit(0xF7)
 	a.emit(0xC0 | byte(r&7)) // /0
 	a.imm32(int32(imm))
+}
+
+// TestImm8 emits TEST r8,imm8. Only the register's low byte contributes to flags.
+func (a *Asm) TestImm8(r Reg, imm byte) {
+	if r >= 4 {
+		// SPL/BPL/SIL/DIL require REX even without an extended register.
+		a.emit(a.rex(false, false, false, r >= 8))
+	}
+	a.emit(0xF6, 0xC0|byte(r&7), imm)
 }
 
 // BtImm copies the selected register bit into CF. Unlike TEST r,imm32, its
@@ -1216,10 +1292,18 @@ func (a *Asm) Cld() { a.emit(0xFC) } // clear direction flag (increment)
 // sibAddr emits ModRM + SIB and the shortest displacement for a
 // [base + index + disp] operand (scale 1) with the given reg field.
 func (a *Asm) sibAddr(reg, base, index Reg, disp int32) {
+	// SIB index=RSP means no index (R12 remains a real index via REX.X).
+	// Use the ordinary base/displacement form when its encoding is shorter.
+	if index == RSP {
+		a.baseAddr(byte(reg), base, disp)
+		return
+	}
 	mod := addrMode(base, disp)
 	a.recordAddress(base, mod)
-	a.emit(mod | ((byte(reg) & 7) << 3) | 0x04)     // ModRM rm=100 (SIB)
-	a.emit(((byte(index) & 7) << 3) | byte(base&7)) // SIB scale=0 index base
+	a.emit(
+		mod|((byte(reg)&7)<<3)|0x04,       // ModRM rm=100 (SIB)
+		((byte(index)&7)<<3)|byte(base&7), // SIB scale=0 index base
+	)
 	a.emitDisp(mod, disp)
 }
 
@@ -1634,6 +1718,12 @@ func (a *Asm) AlignLoop() {
 func (a *Asm) AlignLoop32() {
 	pad := (32 - len(a.B)%32) % 32
 	a.nop(pad)
+}
+
+// AlignLoop64 keeps a peeled entry and its following hot block in a stable
+// cache-line position. The enclosing function must have matching alignment.
+func (a *Asm) AlignLoop64() {
+	a.nop((-len(a.B)) & 63)
 }
 
 func (a *Asm) nop(pad int) {

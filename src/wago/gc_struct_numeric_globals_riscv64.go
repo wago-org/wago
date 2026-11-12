@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -76,17 +83,4 @@ func rv64GCStructNumericGlobalsMetadata(c *Compiled, requireInitializers, allowU
 
 func rv64GCStructNumericGlobals(c *Compiled) bool {
 	return rv64GCStructNumericGlobalsMetadata(c, true, false)
-}
-
-func railshotRestoreGCStructNumericGlobalsArtifact(c *Compiled) {
-	if !rv64GCStructNumericGlobalsMetadata(c, false, true) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= c.requiredFeatures & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
-	c.codeCache.gcStructProduct = stagedGCStructNumericGlobals
-	c.memoryDir.gcStructGlobals = []gcStructGlobalInit{
-		{GlobalIndex: 0, TypeID: 0, FieldCount: 2, Bits: []uint64{10, 11}},
-		{GlobalIndex: 1, TypeID: 0, FieldCount: 2, Bits: []uint64{20, 21}},
-	}
 }

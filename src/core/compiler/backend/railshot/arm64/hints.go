@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build arm64
 
 package arm64
@@ -1360,8 +1367,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				bits, typ = v, 2
 			}
 			if s.collectLoopIntConsts && loopDepth != 0 {
-				if next, ok := s.r.Reader.Peek(); ok && loopIntConstNeedsRegister(next, bits, typ) {
-					s.noteLoopIntConst(bits, typ, loopDepth, pathWeight)
+				if next, ok := s.r.Reader.Peek(); ok {
+					if value, valueType, needed := loopIntConstRegisterValue(next, bits, typ); needed {
+						s.noteLoopIntConst(value, valueType, loopDepth, pathWeight)
+					}
 				}
 			}
 		case 0x43: // f32.const
@@ -1565,13 +1574,12 @@ func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop boo
 }
 
 func (s *byteBodyScanner) branchHintAt(offset uint32) (bool, bool) {
-	for i := range s.branchHints {
-		if s.branchHints[i].Offset == offset {
-			return s.branchHints[i].Likely, true
-		}
-		if s.branchHints[i].Offset > offset {
-			break
-		}
+	// The scanner visits instructions in bytecode order.
+	for len(s.branchHints) > 0 && s.branchHints[0].Offset < offset {
+		s.branchHints = s.branchHints[1:]
+	}
+	if len(s.branchHints) > 0 && s.branchHints[0].Offset == offset {
+		return s.branchHints[0].Likely, true
 	}
 	return false, false
 }

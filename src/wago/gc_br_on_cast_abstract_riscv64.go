@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -133,22 +140,4 @@ func rv64GCBrOnCastAbstractMetadata(c *Compiled, wantProduct stagedGCStructProdu
 	productWitness := product == wantProduct && arrayProduct == 0 || product == stagedGCStructGeneric && arrayProduct == stagedGCArrayProductGeneric
 	return productWitness && c.stagedFeatures() == CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.usesGCStructHelpers() && c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil &&
 		c.requiredFeatures == CoreFeatureBulkMemoryOperations|CoreFeatureMultiValue|CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.requiredAMD64Features == 0
-}
-
-func railshotRestoreGCBrOnCastAbstractArtifact(c *Compiled) {
-	if !rv64GCBrOnCastAbstract(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructBrOnCastAbstract
-	c.codeCache.gcArrayProduct = 0
-}
-
-func railshotRestoreGCBrOnCastFailAbstractArtifact(c *Compiled) {
-	if !rv64GCBrOnCastFailAbstract(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructBrOnCastFailAbstract
-	c.codeCache.gcArrayProduct = 0
 }

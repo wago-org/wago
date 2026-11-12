@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -114,7 +121,7 @@ func (d sourceFunctionTypeDirectory) subtypeKeys(index uint32) ([]uint64, bool) 
 		return nil, false
 	}
 	indexes, ok := d.module.FunctionSubtypeTypeIndexes(index)
-	if !ok || len(indexes) == 0 || len(indexes) > MaxFunctions {
+	if !ok || len(indexes) == 0 || len(indexes) > MaxTypeDeclarations {
 		return nil, false
 	}
 	keys := make([]uint64, len(indexes))

@@ -264,21 +264,13 @@ func TestRV64OwnedTableActiveCancellationCloseAndArtifact(t *testing.T) {
 	for _, action := range []string{"cancel", "close"} {
 		t.Run(action, func(t *testing.T) {
 			c := ownedTableCompile(t, data)
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			in, err := Instantiate(loaded)
+
+			in, err := Instantiate(c)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			if err := loaded.Close(); err != nil {
+			if err := c.Close(); err != nil {
 				t.Fatal(err)
 			}
 			ctx, cancel := context.WithCancel(context.Background())

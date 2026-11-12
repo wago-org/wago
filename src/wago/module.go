@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
@@ -693,13 +700,6 @@ func (c *Compiled) importModuleEndSections() (functions, tables, memories, tags 
 	memoryStart := tableStart + tableCount
 	tagStart := memoryStart + memoryCount
 	return ends[:tableStart], ends[tableStart:memoryStart], ends[memoryStart:tagStart], ends[tagStart:], true
-}
-
-func (c *Compiled) appendImportModuleEnd(moduleEnd uint64) {
-	if c.validateMemo == nil {
-		c.validateMemo = &validateMemo{}
-	}
-	c.validateMemo.importModuleEnds = append(c.validateMemo.importModuleEnds, moduleEnd)
 }
 
 func (c *Compiled) validateImportModuleEnds() error {

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Package plugins defines Wago's compiler-plugin instruction model independently
 // of any compiler backend. Backends integrate it through small compatibility
 // adapters at their own seams.
@@ -489,8 +496,15 @@ func stackCompatibleInstructionRecipe(r *instructionRecipe, inputs int) bool {
 		}
 	}
 	stack := append([]int(nil), inputNodes...)
+	// Shared constant subexpressions can expand this walk exponentially. Keep
+	// classification linear in the source recipe; the general path remains valid.
+	remaining := len(r.nodes)
 	var walk func(int) bool
 	walk = func(id int) bool {
+		if remaining == 0 {
+			return false
+		}
+		remaining--
 		if id < 0 || id >= len(r.nodes) {
 			return false
 		}

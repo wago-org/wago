@@ -8,21 +8,11 @@ import (
 )
 
 func TestGlobalImporterCounterMappedRelease(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, callbackPanic := range []bool{false, true} {
 			t.Run(fmt.Sprintf("artifact%t-panic%t", artifact, callbackPanic), func(t *testing.T) {
 				c := importedGlobalCompile(t, false, 0, true)
-				if artifact {
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					c, err = LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					t.Cleanup(func() { _ = c.Close() })
-				}
+
 				producer, err := Instantiate(c)
 				if err != nil {
 					t.Fatal(err)

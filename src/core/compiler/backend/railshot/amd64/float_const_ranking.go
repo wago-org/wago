@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64
 
 package amd64
@@ -30,7 +37,6 @@ func (f *fn) rankFloatConsts(code []byte) (choice [2]storage, count int, changed
 		}
 	}
 	r := wasm.NewReader(code)
-	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -52,7 +58,7 @@ func (f *fn) rankFloatConsts(code []byte) (choice [2]storage, count int, changed
 			}
 			typ, bits = mtF64, int64(value)
 		default:
-			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+			if err := f.classifier.SkipImmediate(r, op); err != nil {
 				return choice, 0, false
 			}
 			continue

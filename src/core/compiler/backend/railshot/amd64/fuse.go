@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64
 
 package amd64
@@ -24,16 +31,31 @@ func isFusableCompare(e *elem) bool {
 	return e != nil && e.isDeferred() && (isCompare(e.deferredOp()) || isFloatCompare(e.deferredOp()) || e.deferredOp() == opEqz)
 }
 
-// tryMaskedEqzToFlags recognizes `(x & mask) == 0`, the core reduction used by
-// packed-byte/SWAR algorithms, and emits TEST directly. The ordinary lowering
-// materializes x&mask and then tests that result; TEST computes identical flags
-// without writing the temporary. The helper consumes the two deferred nodes but
-// leaves the outer node for either a branch consumer or SETcc materialization.
-func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
-	if !swarMaskTestEnabled || node == nil || node.deferredOp() != opEqz {
+// Small i32 mask conditions can use a short byte TEST for select's zero flag.
+func isMaskedI32Condition(node *elem) bool {
+	if !swarMaskTestEnabled || node == nil || !node.isDeferred() || node.deferredOp() != opAnd ||
+		node.valueType() != mtI32 || node.arg1 == nil || !node.arg1.isValue() || node.arg1.st.kind != stConst {
+		return false
+	}
+	mask := uint32(node.arg1.st.cval)
+	return mask != 0 && mask <= 0xff
+}
+
+// tryMaskedPredicateToFlags lowers a nonzero i32 mask condition or an eqz
+// around either integer width's mask. TEST avoids a temporary AND result.
+// The helper consumes the operands but leaves the outer node for its consumer.
+func (f *fn) tryMaskedPredicateToFlags(node *elem) (Cond, bool) {
+	if !swarMaskTestEnabled || node == nil {
 		return 0, false
 	}
-	inner := node.arg0
+	nonzero := isMaskedI32Condition(node)
+	if !nonzero && node.deferredOp() != opEqz {
+		return 0, false
+	}
+	inner := node
+	if !nonzero {
+		inner = node.arg0
+	}
 	if inner == nil || !inner.isDeferred() || inner.deferredOp() != opAnd ||
 		inner.arg1 == nil || !inner.arg1.isValue() || inner.arg1.st.kind != stConst ||
 		inner.arg1.st.cval == 0 {
@@ -63,6 +85,11 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 		f.a.BtImm(x, uint8(bits.TrailingZeros64(mask)), w)
 		cc = condAE // BT copies the selected bit to CF; AE means CF=0.
 		f.stats.peep("single-bit-mask-test")
+	} else if nonzero {
+		// Admission proves every significant mask bit is in this byte. The
+		// consumer needs only ZF; byte TEST's sign flag is deliberately unused.
+		f.a.TestImm8(x, byte(mask))
+		f.stats.peep("select-mask-byte-test")
 	} else if !w || fitsImm32(c) {
 		f.a.TestImm(x, uint32(c), w)
 	} else {
@@ -77,6 +104,9 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	}
 	f.stats.peep("swar-mask-test")
 	f.consumeBlockBelow(node)
+	if nonzero {
+		cc = invertCond(cc)
+	}
 	return cc, true
 }
 
@@ -160,7 +190,7 @@ func (f *fn) flushBelow(node *elem) int {
 	return len(below)
 }
 
-// condenseToFlags emits a relational/eqz node's CMP/TEST (no SETcc), consumes the
+// condenseToFlags emits a comparison or masked predicate's CMP/TEST, consumes the
 // node and its operands, and returns the condition code that is true when the
 // comparison holds. The CMP must be the last flag-affecting instruction before
 // the branch, so callers flush everything below first.
@@ -186,7 +216,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 	}
 	if !invert {
-		if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+		if cc, ok := f.tryMaskedPredicateToFlags(node); ok {
 			f.erase(node)
 			return cc
 		}
@@ -223,7 +253,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		default:
 			L, ownedL = f.materialize(a), true
 		}
-		f.a.TestSelf(L, w)
+		if !f.reuseInlineTailArgumentFlags(L, w) {
+			f.a.TestSelf(L, w)
+		}
 		if ownedL {
 			f.release(L)
 		}
@@ -232,9 +264,34 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		return applyInvert(condE)
 	}
 	cc := applyInvert(condOf(node.deferredOp()))
+	left, right := node.arg0, node.arg1
+	// Specialization often exposes a constant on the source comparison's
+	// left. Commute two concrete operands so CMP can use its immediate form.
+	if f.inlineTailConstants != nil && left.isValue() && left.st.kind == stConst && fitsImm32(left.st.cval) && right.isValue() &&
+		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) {
+		switch cc {
+		case condB:
+			cc = condA
+		case condA:
+			cc = condB
+		case condBE:
+			cc = condAE
+		case condAE:
+			cc = condBE
+		case condL:
+			cc = condG
+		case condG:
+			cc = condL
+		case condLE:
+			cc = condGE
+		case condGE:
+			cc = condLE
+		}
+		left, right = right, left
+		f.stats.peep("inline-tail-compare-immediate")
+	}
 	// CMP does not write its left operand, so a register-resident left (an owned
 	// temp or a pinned local) can be compared in place — no copy needed.
-	left := node.arg0
 	var L Reg
 	ownedL := false
 	switch {
@@ -245,7 +302,6 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	default:
 		L, ownedL = f.materialize(left), true
 	}
-	right := node.arg1
 	if right.isDeferred() {
 		// condense rewrites the existing operand node in place; keep that owner
 		// instead of allocating a duplicate register-value node.
@@ -255,10 +311,14 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		L, ownedL = f.materializeRead(left)
 	}
 	f.pinned = f.pinned.add(L)
+	compareStart := f.a.Len()
+	reused := f.tryReuseInlineTailCompare(L, right, w)
 	switch right.st.kind {
 	case stConst:
 		if fitsImm32(right.st.cval) {
-			f.a.AluRI(cmpDigit, L, int32(right.st.cval), w)
+			if !reused {
+				f.a.AluRI(cmpDigit, L, int32(right.st.cval), w)
+			}
 		} else {
 			t := f.allocReg(maskOf(L))
 			f.loadConst(t, right.st)
@@ -266,10 +326,14 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 			f.release(t)
 		}
 	case stReg:
-		f.cmpRR(L, right.st.reg, w)
+		if !reused {
+			f.cmpRR(L, right.st.reg, w)
+		}
 		f.release(right.st.reg)
 	case stLocalReg, stGlobReg:
-		f.cmpRR(L, right.st.reg, w)
+		if !reused {
+			f.cmpRR(L, right.st.reg, w)
+		}
 	case stSlot:
 		f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
@@ -287,6 +351,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 		f.releaseMemRef(right.st)
 	}
+	if !reused && f.inlineTailCompare.active {
+		f.inlineTailCompare.lastCompare = compareStart
+	}
 	f.pinned = f.pinned.remove(L)
 	if ownedL {
 		f.release(L)
@@ -298,7 +365,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional jump.
 func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
-	fi := len(f.ctrl) - 1 - int(labelIdx)
+	fi := f.sourceLabelFrame(labelIdx)
 	if fi < 0 {
 		return errBadLabel
 	}
@@ -325,17 +392,32 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		loopHeader = false
 	}
 	cc := f.condenseToFlags(top)
+	directExit := false
 	if coldExit {
 		// Predicate evaluation can reclaim pins too. Snapshot the state actually
 		// present on the fallthrough path, after all deferred work has run.
 		saved, _ = f.snapshotLocalStates()
+		directExit = f.retainCallFreeLoopExitRegisters(fi)
 	} else if f.pinRelinquished {
 		// The compare can home a pin after the initial convergence. All lazy
 		// zeros were materialized above, so this repair emits only flag-preserving
 		// loads and stores before the conditional jump.
 		f.convergeBranchLocals(fr)
 	}
+	if f.tryScalarPosttestLoop(fr, fi, k, cc) {
+		return nil
+	}
 	a := fr.branchArity()
+	if directExit && k == 0 && a == 0 && !loopHeader {
+		// Every pin already satisfies the register-only target. No reconciliation,
+		// payload move or handler restore can execute on this guarded void edge.
+		f.frameAddEnd(fr, f.a.JccPlaceholder(cc))
+		fr.set(ctrlEndReachable, true)
+		f.restoreLocalStates(saved)
+		f.stats.peep("callfree-loop-exit-cold")
+		f.stats.peep("callfree-loop-direct-exit")
+		return nil
+	}
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
 	if coldExit {
 		// MOV loads/stores used by local reconciliation preserve x86 flags, so

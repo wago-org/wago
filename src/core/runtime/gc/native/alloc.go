@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package gc
 
 import (
@@ -285,7 +292,9 @@ func (c *Collector) validateStoredRef(r Ref, nullable bool) error {
 		return errors.New("gc: invalid object ref")
 	}
 	if c.cfg.Profile == ProfileTiny && c.tinySweepActive() {
-		if c.tinyGC.scan.handle == handleOf(r) {
+		// The shared cursor denotes pending reclamation only during sweep.
+		// When sweep yields to marking, it owns a live gray object instead.
+		if c.tinyGC.state == tinySweep && c.tinyGC.scan.handle == handleOf(r) {
 			return errors.New("gc: Tiny object is pending bounded sweep reclamation")
 		}
 		if err := c.validateTinySweepRootPublication(r); err != nil {

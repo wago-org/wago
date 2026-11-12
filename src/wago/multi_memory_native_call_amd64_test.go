@@ -581,9 +581,6 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalTableComposition(t *test
 		t.Fatalf("concurrent global+table re-entry: %s", err)
 	}
 
-	if _, err := chain.middle.c.MarshalBinary(); err != nil {
-		t.Fatalf("marshal global+table structural module: %v", err)
-	}
 	if _, err := compatibilityDefaultConfig().Compile(sameMemoryNativeGlobalTableTenantModule("A", 20)); err == nil {
 		t.Fatal("public compile admitted global+table staged multi-memory composition")
 	}
@@ -707,9 +704,6 @@ func TestStagedMultiMemoryNativeSameMemoryImportedTableComposition(t *testing.T)
 		t.Fatalf("concurrent imported-table re-entry: %s", err)
 	}
 
-	if _, err := chain.middle.c.MarshalBinary(); err != nil {
-		t.Fatalf("marshal table-composed structural module: %v", err)
-	}
 	if _, err := compatibilityDefaultConfig().Compile(sameMemoryNativeTableTenantModule("A", 20)); err == nil {
 		t.Fatal("public compile admitted imported-table staged multi-memory composition")
 	}
@@ -820,9 +814,6 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 		t.Fatalf("concurrent imported-global re-entry: %s", err)
 	}
 
-	if _, err := chain.middle.c.MarshalBinary(); err != nil {
-		t.Fatalf("marshal composed structural module: %v", err)
-	}
 	if _, err := compatibilityDefaultConfig().Compile(sameMemoryNativeGlobalTenantModule("A", 20)); err == nil {
 		t.Fatal("public compile admitted imported-global same-memory native composition")
 	}
@@ -931,15 +922,6 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 	chain := instantiateSameMemoryNativeChain(t)
 	defer chain.close()
 
-	blob, err := chain.middle.c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("codec structural same-memory module: %v", err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("public reload of multi-memory module: %v", err)
-	}
-	defer loaded.Close()
 	if _, err := compatibilityDefaultConfig().Compile(sameMemoryNativeTenantModule("A", 20)); err == nil {
 		t.Fatal("public default compile admitted staged multi-memory native calls")
 	}

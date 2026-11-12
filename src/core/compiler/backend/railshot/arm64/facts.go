@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build arm64
 
 package arm64
@@ -13,7 +20,8 @@ const (
 	factBoolean
 	storageGCRoot
 	storageEHRoot
-	valueFactMask = factUpper32Zero | factBoolean
+	factNonZero
+	valueFactMask = factUpper32Zero | factBoolean | factNonZero
 )
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
@@ -60,6 +68,9 @@ func (f *fn) factsForLocal(x int) valueFacts {
 	if f.localFactsEnabled {
 		facts |= f.locals[x].facts
 	}
+	if f.inlineLocalNonzero(x) {
+		facts |= factNonZero
+	}
 	return facts
 }
 
@@ -95,7 +106,7 @@ func canonicalI32ParamMask(hints *funcHintView, localTypes []machineType, nParam
 
 func (f *fn) setFactsForLocal(x int, facts valueFacts) {
 	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
-		f.locals[x].facts = facts
+		f.locals[x].facts = facts &^ factNonZero
 	}
 }
 

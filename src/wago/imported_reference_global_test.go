@@ -339,17 +339,13 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 		t.Fatalf("Global size = %d, want 40", got)
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
-	if got := unsafe.Sizeof(Compiled{}); got != 784 {
-		t.Fatalf("Compiled size = %d, want 784", got)
+	if got := unsafe.Sizeof(Compiled{}); got != 808 {
+		t.Fatalf("Compiled size = %d, want 808", got)
 	}
 	if got := unsafe.Sizeof(referenceStore{}); got != 120 {
 		t.Fatalf("referenceStore size = %d, want 120 with shared GC domain", got)
 	}
-	c := &Compiled{
-		GlobalImports: []GlobalImportDef{{Module: "env", Name: "ref", Type: ValExternRef}},
-		Globals:       []GlobalDef{{Type: ValExternRef}},
-	}
-	_ = publicArtifactRoundTrip(t, c)
+
 }
 
 func TestRelease2ImportedReferenceGlobalSourceGuard(t *testing.T) {

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -428,13 +435,13 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 // can reach signatures with no local definition, so their frozen type directory
 // contributes too, including currently unused indirect signatures.
 func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, error) {
-	if rv64StructuralCodecMetadata(c) {
+	if rv64StructuralMetadata(c) {
 		// This legacy image declares no executable RV64 ABI. Common codec
 		// validation has checked its stored signatures; native transport sizing
 		// is only needed after execution admission succeeds.
 		return params, results, nil
 	}
-	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.importFuncSigs) != c.NumImports {
+	if c.NumImports < 0 || c.NumImports > railshot.MaxFunctionImports || len(c.importFuncSigs) != c.NumImports {
 		return 0, 0, fmt.Errorf("RV64 imported call signature directory is invalid")
 	}
 	if c.usesDynamicFuncRefTest() {

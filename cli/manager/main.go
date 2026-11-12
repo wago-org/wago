@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package manager
 
 import (
@@ -491,7 +498,6 @@ func managerUsage(w *os.File) {
 		{"module", "<command>", "inspect module imports and capabilities"},
 		{"self", "<command>", "update or uninstall Wago"},
 		{"compile", "<file>", "build a standalone executable"},
-		{"build", "<file>", "precompile a module to .wago"},
 		{"validate", "<file>", "validate a WebAssembly module"},
 		{"version", "<command>", "manage Wago runtimes"},
 		{"cache", "<command>", "inspect and clean cached data"},

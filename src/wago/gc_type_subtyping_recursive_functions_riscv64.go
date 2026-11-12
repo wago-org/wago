@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -170,13 +177,4 @@ func rv64GCTypeSubtypingRecursiveFunctionsExecutionCode(c *Compiled) bool {
 		}
 	}
 	return false
-}
-
-func railshotRestoreGCTypeSubtypingRecursiveFunctionsArtifact(c *Compiled) {
-	if rv64GCTypeSubtypingRecursiveFunctionsProfile(c, true) == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingRecursiveFunctions
 }

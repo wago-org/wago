@@ -10,9 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -35,51 +33,14 @@ func rv64Core3CallRefMainSource(t *testing.T) []byte {
 
 func rv64Core3CallRefMainCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_MODE")
-	path := filepath.Join(dir, "call_ref.0.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Fatal("compiler-free runner selected source case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = c.Close() })
-		return c
-	}
+
 	c, err := rv64NativeTailConfig().Compile(rv64Core3CallRefMainSource(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	sourceCompiled := c
 	t.Cleanup(func() { _ = sourceCompiled.Close() })
-	if artifact || mode == "prepare" {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if mode == "prepare" {
-			if err = os.MkdirAll(dir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err = os.WriteFile(path, blob, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if artifact {
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = loaded.Close() })
-			c = loaded
-		}
-	}
+
 	return c
 }
 
@@ -113,7 +74,7 @@ func mapsEqual(a, b map[string]int) bool {
 }
 
 func TestRV64Core3CallRefMainExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			if os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_MODE") == "load" && !artifact {
 				t.Skip("compiler-free artifact case only")
@@ -253,16 +214,4 @@ func TestRV64Core3CallRefMainPublicRuntime(t *testing.T) {
 		t.Fatal("public Core 3 instantiation", err)
 	}
 	_ = compiled.Close()
-}
-
-func TestRV64Core3CallRefMainCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	if c, err := Compile(nil, rv64Core3CallRefMainSource(t)); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		if c != nil {
-			_ = c.Close()
-		}
-		t.Fatal("compiler-free call_ref.0 test used source compilation", err)
-	}
 }

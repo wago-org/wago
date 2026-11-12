@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -32,52 +31,15 @@ func rv64PublicGCExternBytes(t testing.TB) []byte {
 
 func rv64PublicGCExternCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_GC_EXTERN_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_EXTERN_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-extern.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = loaded.Close() })
-		return loaded
-	}
+
 	original, err := rv64I31Config().Compile(rv64PublicGCExternBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = original.Close() })
-	if !artifact && mode != "prepare" {
-		return original
-	}
-	blob, err := original.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return original
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = loaded.Close() })
-	return loaded
+
+	return original
+
 }
 
 func TestRV64PublicGCExternExecutionAndArtifact(t *testing.T) {
@@ -263,18 +225,5 @@ func TestRV64PublicGCExternAdmissionIsExact(t *testing.T) {
 				t.Fatal("hostile retained gc/extern mutation admitted", err)
 			}
 		})
-	}
-}
-
-func TestRV64PublicGCExternCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_EXTERN_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(rv64PublicGCExternBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free gc/extern path used source compilation", err)
 	}
 }

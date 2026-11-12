@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64
 
 package amd64
@@ -42,7 +49,10 @@ func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
 			if op != opNone {
 				right := f.s.back()
 				left := baseOfValentBlock(right).prev
-				node := f.s.alloc()
+				node := f.s.tryAlloc()
+				if node == nil {
+					node = f.s.allocNextChunk()
+				}
 				node.setElemKind(ekDeferred)
 				node.setDeferredOp(op)
 				node.setValueType(mtI32)

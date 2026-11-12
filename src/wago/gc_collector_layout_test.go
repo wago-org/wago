@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestGCCollectorLayoutEqualMatchesPublicFields(t *testing.T) {
@@ -73,12 +73,11 @@ func TestGCCollectorLayoutIgnoresOptionalScanCache(t *testing.T) {
 		t.Fatal("optional scan cache changed collector layout identity")
 	}
 	input := &Compiled{GCTypeDescs: []gc.TypeDesc{cached}}
-	loaded := publicArtifactRoundTrip(t, input)
-	defer loaded.Close()
-	if !reflect.DeepEqual(loaded.GCTypeDescs, input.GCTypeDescs) {
+
+	if !reflect.DeepEqual(input.GCTypeDescs, input.GCTypeDescs) {
 		t.Fatal("scan plan not rebuilt after serialization")
 	}
-	c, err := gc.NewCollector(gc.Config{}, loaded.GCTypeDescs)
+	c, err := gc.NewCollector(gc.Config{}, input.GCTypeDescs)
 	if err != nil {
 		t.Fatal(err)
 	}

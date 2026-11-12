@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64
 
 package amd64
@@ -49,6 +56,7 @@ type callReloc struct {
 	target   uint32 // target local-function index (into m.Code)
 	internal bool   // target the callee's register-ABI internal entry (else offset 0)
 	gcStub   gcSharedStubKind
+	tailEdge uint8 // optional zero/nonzero edge into a proved frameless local entry
 }
 
 const invalidCallRelocField = ^uint32(0)
@@ -363,6 +371,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
 		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
+			// Native lowering replaces the source call without a return address.
+			// Consume its mask so later calls retain their source-site liveness.
+			f.consumeGCFrameCallsite()
 			return f.emitCustomInstruction(custom, ft)
 		}
 	}
@@ -377,7 +388,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 			f.consumeGCFrameCallsite()
 			f.stats.peep("gc-numeric-leaf-inline")
 		}
-		return f.inlineCall(t)
+		return f.inlineCall(t, r)
 	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
@@ -435,6 +446,9 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 		if len(roots) < len(ft.Params) {
 			return fmt.Errorf("custom instruction %d has %d stack argument(s), want %d", f.globalIdx, len(roots), len(ft.Params))
 		}
+		// Snapshotting an argument can trap before an earlier deferred stack
+		// value. Resolve pending traps in bytecode order before visiting arguments.
+		f.materializePendingTraps()
 		args = append([]*elem(nil), roots[len(roots)-len(ft.Params):]...)
 		argSlots = make([]int, len(args))
 		for i, arg := range args {
@@ -586,11 +600,16 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 		maskTop(custom.ResultWidth)
 	}
 	if !custom.StackCompatible {
-		result := f.popValue()
+		// Keep the result node (and its register ownership) on the stack while
+		// removing the argument snapshots below it. Copying detached storage
+		// into a new node leaves regUser pointing at the old result.
+		result := f.s.back()
+		if result.isDeferred() {
+			f.condense(result, regNone)
+		}
 		for _, arg := range args {
 			f.erase(arg)
 		}
-		f.pushValue(result.st)
 	}
 	f.stats.call("custom")
 	return nil
@@ -610,6 +629,36 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	return f.returnCallIndex(idx)
+}
+
+func (f *fn) returnCallIndex(idx uint32) error {
+	if f.inlineTailLoopFrame != 0 && idx == f.inlineTailRoot {
+		target := f.inlineTargets.target(int(idx))
+		if target == nil || !target.tailLoop() {
+			return fmt.Errorf("missing inline tail target")
+		}
+		constants, lastAssignment := f.bindInlineTailTransfer(target)
+		if expanded, err := f.tryExpandInlineTail(target, constants); expanded || err != nil {
+			return err
+		}
+		f.branchToInlineTailLoop(f.inlineTailLoopFrame-1, lastAssignment)
+		f.unreachable = true
+		f.stats.peep("inline-tail-loop")
+		return nil
+	}
+	if f.inlineTailLoopFrame != 0 && f.inlineTailPartner != 0 && idx+1 == f.inlineTailPartner {
+		target := f.inlineTargets.target(int(idx))
+		if target == nil || !target.tailLoop() {
+			return fmt.Errorf("missing inline tail partner")
+		}
+		constants, lastAssignment := f.bindInlineTailTransfer(target)
+		if err := f.emitInlineTailCopy(target, constants, lastAssignment); err != nil {
+			return err
+		}
+		f.stats.peep("inline-tail-pair")
+		return nil
+	}
 	ft, ok := f.functionSignature(idx)
 	if !ok {
 		return fmt.Errorf("return_call: unknown function %d", idx)
@@ -617,8 +666,29 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call: target %d result shape differs from caller", idx)
 	}
+	if f.selfTailLoop && idx == f.traceFuncIdx {
+		f.emitSelfTailLoop()
+		return nil
+	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || tailInstructionRecipeEligible(custom)) {
+			// Custom bundles have no ordinary Wasm return-carrier conversion.
+			// Their registered host shim is native-only, so it is not a fallback.
+			if custom.CustomOutput != nil {
+				return fmt.Errorf("return_call: custom output cannot cross a function boundary")
+			}
+			if err := f.emitCustomInstruction(custom, ft); err != nil {
+				return err
+			}
+			// The existing stack-compatible input recipe retains the physical
+			// i32 word. Canonicalize its narrow logical result on this new path.
+			if pluginAMD64Lowering(custom) == nil && custom.StackCompatible && custom.ResultWidth < 32 && custom.Nodes[custom.Output].Op == CustomInstructionInput {
+				f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64((uint64(1) << uint(custom.ResultWidth)) - 1)})
+				f.pushBinOp(opAnd, mtI32)
+			}
+			return f.opReturn()
+		}
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
 			binding := f.importBindings[idx]
 			if binding.Dynamic && sigFitsRegABI(f.ft) && sigFitsRegABI(ft) && sigFitsDirectCrossTailABI(ft) {
@@ -655,6 +725,9 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	targetRegisterABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
 	if f.opt(optRegABI) && callerRegisterABI && targetRegisterABI {
 		f.stats.call("tail-direct")
+		if f.tryThreadLocalIntegerTail(ft, int(idx)-imported) {
+			return nil
+		}
 		f.emitTailRegisterJump(ft, func() {
 			site := f.a.JmpPlaceholder()
 			f.relocs = append(f.relocs, f.newCallReloc(site, int(idx)-imported, true))
@@ -715,10 +788,7 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, target int) {
 func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
@@ -734,11 +804,10 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	f.copyInstanceContext(R11, R10)
 	f.a.MovReg64(RDI, R11)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
-	argBase := len(types) - p
 	for i := range ft.Params {
-		srcSlot := slotOfLogicalTypes(types, argBase+i)
 		f.a.Load64(RAX, RSP, f.spillOff(srcSlot))
 		f.a.Store64(RDI, int32(i*8), RAX)
+		srcSlot += mtOf(ft.Params[i]).stackSlots()
 	}
 	f.a.Load64(R9, R8, disp+runtime.ImportDispatchCodePtrOffset)
 	f.a.Load64(R8, R8, disp+runtime.ImportDispatchCallerContextOffset)
@@ -807,10 +876,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
@@ -818,7 +884,7 @@ func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 	f.a.MovImm64(R11, b.CalleeLinMem)
 	f.a.MovReg64(RDI, R11)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
-	f.storeTailBankArgs(ft, types, len(types)-p)
+	f.storeTailBankArgs(ft, srcSlot)
 
 	f.emitTailFrameRelease()
 
@@ -879,26 +945,22 @@ func (f *fn) emitTailCrossDirectJump(ft *wasm.CompType, b ImportBinding) {
 func (f *fn) emitTailWrapperJumpVia(ft *wasm.CompType, emitJump func()) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
 
 	f.a.MovReg64(RDI, RBX)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
-	argBase := len(types) - p
 	dstSlot := 0
-	for i, param := range ft.Params {
-		srcSlot := slotOfLogicalTypes(types, argBase+i)
+	for _, param := range ft.Params {
 		n := mtOf(param).stackSlots()
 		for slot := 0; slot < n; slot++ {
 			f.a.Load64(RAX, RSP, f.spillOff(srcSlot+slot))
 			f.a.Store64(RDI, int32((dstSlot+slot)*8), RAX)
 		}
 		dstSlot += n
+		srcSlot += mtOf(param).stackSlots()
 	}
 	f.a.Load64(RCX, RSP, frResultsOff)
 	f.a.Load64(RDX, RBX, -int32(abi.TrapCellPtrOffset))
@@ -917,26 +979,22 @@ func (f *fn) emitTailWrapperJumpVia(ft *wasm.CompType, emitJump func()) {
 func (f *fn) emitTailRegisterToWrapperJump(ft *wasm.CompType, emitJump func()) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
 
 	f.a.MovReg64(RDI, RBX)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
-	argBase := len(types) - p
 	dstSlot := 0
-	for i, param := range ft.Params {
-		srcSlot := slotOfLogicalTypes(types, argBase+i)
+	for _, param := range ft.Params {
 		n := mtOf(param).stackSlots()
 		for slot := 0; slot < n; slot++ {
 			f.a.Load64(RAX, RSP, f.spillOff(srcSlot+slot))
 			f.a.Store64(RDI, int32((dstSlot+slot)*8), RAX)
 		}
 		dstSlot += n
+		srcSlot += mtOf(param).stackSlots()
 	}
 	f.a.Load64(RDX, RBX, -int32(abi.TrapCellPtrOffset))
 	f.a.MovReg64(RSI, RBX)
@@ -1324,15 +1382,32 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	f.tmpTypes = types
 	f.tmpStackSlots = slotOf
-	// Only memory32 index zero has this compact canonical-slot fast path.
-	// Other memories retain their existing width-aware helper lowering.
-	atomicFast := f.threadedMemory0 && !f.memoryAddr64(0) &&
-		(atomicWait && p == 4 || notifyFast && p == 3)
-	atomicOffset := uint32(0)
+	// Dynamic wait mismatch can use any declared shared memory. Notify keeps
+	// its existing compact admission; other notify forms are already native
+	// after marshaling through notifyEmptyShortcut.
+	atomicFast := d >= p && (atomicWait && (p == 4 || p == 5) ||
+		f.threadedMemory0 && !f.memoryAddr64(0) && notifyFast && p == 3)
+	atomicIndex, atomicOffset := uint32(0), uint64(0)
 	if atomicFast {
-		offset := roots[d-1].st
-		atomicFast = offset.kind == stConst && uint64(offset.cval) <= 0xffffffff
-		atomicOffset = uint32(offset.cval)
+		offsetSlot := d - 1
+		if atomicWait && p == 5 {
+			index := roots[d-1].st
+			atomicFast = index.kind == stConst && uint64(index.cval) <= 0xffffffff
+			atomicIndex = uint32(index.cval)
+			offsetSlot--
+		}
+		offset := roots[offsetSlot].st
+		atomicOffset = uint64(offset.cval)
+		atomicFast = atomicFast && offset.kind == stConst && f.memoryShared(atomicIndex) &&
+			(atomicWait || atomicOffset <= 0xffffffff)
+	}
+	growFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow &&
+		(p == 1 || p == 2) && roots[d-p].st.kind != stConst
+	growIndex := uint32(0)
+	if growFast && p == 2 {
+		index := roots[d-1].st
+		growFast = index.kind == stConst
+		growIndex = uint32(index.cval)
 	}
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
@@ -1358,13 +1433,17 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 
 	atomicDone := -1
-	if atomicFast {
+	if atomicFast || growFast {
 		f.materializeGCFrameRootLocalsForCall(importIdx)
 		f.spillLocalsForCall()
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicOffset)
+		if growFast {
+			atomicDone = f.emitSharedMemoryGrowZeroFastPath(int(slotOf[d-p]), growIndex)
+		} else {
+			atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicIndex, atomicOffset)
+		}
 		if notifyFast {
 			f.stats.peep("atomic-notify-empty")
 		}
@@ -1405,7 +1484,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// registers are caller-saved. Exact GC frame-root publication also requires
 	// lazy-zero reference locals to have concrete frame slots before RSP is
 	// published. Then store every dirty pinned local and mark it for lazy reload.
-	if !atomicFast {
+	if !atomicFast && !growFast {
 		f.materializeGCFrameRootLocalsForCall(importIdx)
 		f.spillLocalsForCall()
 	}
@@ -2211,7 +2290,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	return nil
 }
 
-// Advance the source mask when an inline zero-timeout wait cannot suspend.
+// Advance the source mask when lowering eliminates a source call.
 func (f *fn) consumeGCFrameCallsite() {
 	plan := f.gcFrameRoots
 	if plan == nil || !plan.Candidate {
@@ -2286,7 +2365,7 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
 // or an indirect register call. Explicit operands avoid a closure per wasm call.
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) uint32 {
 	p, rN := len(ft.Params), len(ft.Results)
-	callTarget := f.preserveIndirectCallTarget(indirect, p)
+	callTarget, callTargetSpilled := f.preserveIndirectCallTarget(indirect, p)
 	allRoots := f.rootsBottomToTop()
 	d := len(allRoots)
 	allTypes := f.logicalTypes(allRoots)
@@ -2388,8 +2467,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		f.a.CallReg(callTarget)
-		if callTarget != indirect {
+		if callTargetSpilled {
+			f.a.CallMem(RBX, -int32(offSpillRegion))
+		} else {
+			f.a.CallReg(callTarget)
+		}
+		if callTarget != regNone && callTarget != indirect {
 			f.pinned = f.pinned.remove(callTarget)
 			f.release(callTarget)
 		}
@@ -2476,19 +2559,26 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 // argument staging. Stack canonicalization clears the compiler's pinned mask,
 // so even a target outside the fixed argument registers must be re-pinned here.
 // A target inside an argument register is first moved to a safe register.
-func (f *fn) preserveIndirectCallTarget(indirect Reg, paramCount int) Reg {
+func (f *fn) preserveIndirectCallTarget(indirect Reg, paramCount int) (Reg, bool) {
 	if indirect == regNone {
-		return indirect
+		return indirect, false
 	}
 	argRegs := maskOf(intArgRegs[:paramCount]...)
 	if !argRegs.has(indirect) {
 		f.pinned = f.pinned.add(indirect)
-		return indirect
+		return indirect, false
 	}
-	target := f.allocReg(argRegs)
+	target := f.allocRegOrNone(argRegs)
+	if target == regNone {
+		// Every non-argument register can be reserved by persistent module state.
+		// The instance scratch cell survives argument staging and is already the
+		// canonical home for wrapper-call targets, so call through it directly.
+		f.a.Store64(RBX, -int32(offSpillRegion), indirect)
+		return regNone, true
+	}
 	f.a.MovReg64(target, indirect)
 	f.pinned = f.pinned.add(target)
-	return target
+	return target, false
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.
@@ -3063,19 +3153,18 @@ func (f *fn) returnCallRefType(typeIdx uint32, stat string) error {
 	return nil
 }
 
-// storeTailBankArgs copies the top len(ft.Params) operands, starting at logical
-// operand argBase, into the wrapper argument bank at RDI using wrapper slot
-// widths (a v128 takes two slots).
-func (f *fn) storeTailBankArgs(ft *wasm.CompType, types []machineType, argBase int) {
+// storeTailBankArgs copies arguments from the canonical source slot into the
+// wrapper bank at RDI. A v128 takes two slots.
+func (f *fn) storeTailBankArgs(ft *wasm.CompType, srcSlot int) {
 	dstSlot := 0
-	for i, param := range ft.Params {
-		srcSlot := slotOfLogicalTypes(types, argBase+i)
+	for _, param := range ft.Params {
 		n := mtOf(param).stackSlots()
 		for slot := 0; slot < n; slot++ {
 			f.a.Load64(RAX, RSP, f.spillOff(srcSlot+slot))
 			f.a.Store64(RDI, int32((dstSlot+slot)*8), RAX)
 		}
 		dstSlot += n
+		srcSlot += n
 	}
 }
 
@@ -3108,10 +3197,7 @@ func (f *fn) emitTailWrapperToAdapterJump(ft *wasm.CompType) {
 func (f *fn) emitTailWrapperCallerDescriptorJump(ft *wasm.CompType) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
@@ -3122,7 +3208,7 @@ func (f *fn) emitTailWrapperCallerDescriptorJump(ft *wasm.CompType) {
 	f.stripDescriptorHomeTags(R11)
 	f.a.MovReg64(RDI, R11)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
-	f.storeTailBankArgs(ft, types, len(types)-p)
+	f.storeTailBankArgs(ft, srcSlot)
 	f.a.Load64(RCX, RSP, frResultsOff)
 	f.emitTailFrameRelease()
 
@@ -3172,21 +3258,17 @@ func (f *fn) emitTailWrapperCallerDescriptorJump(ft *wasm.CompType) {
 func (f *fn) emitTailHostWrapperJump(ft *wasm.CompType) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
 
 	f.a.MovReg64(RDI, RBX)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
-	argBase := len(types) - p
 	for i := range ft.Params {
-		srcSlot := slotOfLogicalTypes(types, argBase+i)
 		f.a.Load64(RAX, RSP, f.spillOff(srcSlot))
 		f.a.Store64(RDI, int32(i*8), RAX)
+		srcSlot += mtOf(ft.Params[i]).stackSlots()
 	}
 	// GC-reference descriptor tails use the wrapper ABI: the current frame owns
 	// the result pointer at frResultsOff. Preserve that pointer before discarding
@@ -3211,10 +3293,7 @@ func (f *fn) emitTailHostWrapperJump(ft *wasm.CompType) {
 func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
-	}
+	srcSlot := tailArgumentStartSlot(roots, p)
 	f.flush()
 	f.storePinnedGlobals(false)
 	f.storeModuleGlobals(RDX)
@@ -3230,7 +3309,7 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.copyInstanceContext(R11, R10)
 	f.a.MovReg64(RDI, R11)
 	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
-	f.storeTailBankArgs(ft, types, len(types)-p)
+	f.storeTailBankArgs(ft, srcSlot)
 
 	f.emitTailFrameRelease()
 
@@ -3323,6 +3402,13 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	}
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
+	}
+	if index := f.s.back(); index != nil && index.isValue() && index.st.kind == stConst && index.st.typ == mtI32 {
+		if target, ok := f.constantPrivateTailTarget(typeIdx, tableIdx, uint64(uint32(index.st.cval))); ok {
+			f.erase(index)
+			f.stats.peep("tail-constant-private-table")
+			return f.returnCallIndex(uint32(target))
+		}
 	}
 	callerRegisterTail := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
 	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
@@ -3832,4 +3918,13 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	// Pop the args and publish results without imposing a physical-register
 	// arity limit on legal multi-value signatures.
 	f.finishWrapperResultsWithRoots(belowTypes, belowGCRoots, resultSlot, ft.Results)
+}
+
+// Compute the argument prefix before flush reuses the operand-root scratch.
+func tailArgumentStartSlot(roots []*elem, params int) int {
+	slot := 0
+	for _, root := range roots[:len(roots)-params] {
+		slot += rootMachineType(root).stackSlots()
+	}
+	return slot
 }

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -31,16 +38,17 @@ type memorySpec struct {
 	module, name     string
 }
 type moduleState struct {
-	sourceFunctions       *sourceFunctionTypeDirectory
-	production            bool
-	publicReferences      bool
-	publicReferenceStores bool
-	exceptionModule       *wasm.Module
-	localTailCalls        bool
-	foreignTableCalls     bool
-	importTailCalls       bool
-	dynamicTailCalls      bool
-	referenceCalls        bool
+	referenceDirectoryAdmitted bool // immutable module directory checked by the first integer fallback
+	sourceFunctions            *sourceFunctionTypeDirectory
+	production                 bool
+	publicReferences           bool
+	publicReferenceStores      bool
+	exceptionModule            *wasm.Module
+	localTailCalls             bool
+	foreignTableCalls          bool
+	importTailCalls            bool
+	dynamicTailCalls           bool
+	referenceCalls             bool
 	// The exact public two-token boundary may pass one authenticated funcref
 	// argument through call_ref in addition to the callable target reference.
 	publicReferenceCarriers            bool
@@ -538,7 +546,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("table export requires the public owned table profile")
 			}
 			tableExports++
-			if tableExports > MaxFunctions {
+			if tableExports > MaxModuleExports {
 				return s, unsupported("owned table export count bound")
 			}
 		default:
@@ -577,7 +585,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			flatTypeIndex++
 		}
 	}
-	if s.importedFunctions > MaxHostFunctionImports || s.importedFunctions+len(m.Code) > MaxFunctions && !(production && publicExports) {
+	if s.importedFunctions > MaxFunctionImports || s.importedFunctions+len(m.Code) > MaxModuleFunctions && !(production && publicExports) {
 		return s, unsupported("aggregate function count bound")
 	}
 	for _, im := range m.Imports {

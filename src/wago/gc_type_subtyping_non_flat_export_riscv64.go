@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -46,7 +53,7 @@ func rv64GCTypeSubtypingNonFlatExportProfileWithCode(c *Compiled, allowUnrestore
 	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
 		return false
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil || len(metadata) != rv64GCTypeSubtypingNonFlatExportMetadataLen || sha256.Sum256(metadata) != rv64GCTypeSubtypingNonFlatExportMetadataDigest {
 		return false
 	}
@@ -59,13 +66,4 @@ func rv64GCTypeSubtypingNonFlatExport(c *Compiled) bool {
 
 func rv64GCTypeSubtypingNonFlatExportExecutionCode(c *Compiled) bool {
 	return c != nil && len(c.code) == rv64GCTypeSubtypingNonFlatExportCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingNonFlatExportCodeDigest
-}
-
-func railshotRestoreGCTypeSubtypingNonFlatExportArtifact(c *Compiled) {
-	if !rv64GCTypeSubtypingNonFlatExportProfileWithCode(c, true, true) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingNonFlatExport
 }

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64
 
 package amd64
@@ -20,6 +27,10 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("simd-load-extract", &simdLoadExtractEnabled),
 	optimization.Bind("simd-store-load-address", &simdStoreLoadAddressEnabled),
 	optimization.Bind("bulk-fill-vector", &bulkFillVectorEnabled),
+	optimization.Bind("bulk-copy-vector", &bulkCopyVectorEnabled),
+	optimization.Bind("byte-reduce-loop", &byteReduceLoopEnabled),
+	optimization.Bind("bulk-memory-loops", &bulkMemoryLoopsEnabled),
+	optimization.Bind("bulk-fill-copy-forward", &bulkFillCopyForwardEnabled),
 	optimization.Bind("straight-line-block", &straightLineBlockEnabled),
 	optimization.Bind("simd-reduction-borrow", &simdReductionBorrowEnabled),
 	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
@@ -29,6 +40,11 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("wide-loop-int-const", &wideLoopIntConstEnabled),
 	optimization.Bind("compact-loop-align32", &compactLoopAlign32Enabled),
 	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
+	optimization.Bind("scalar-loop-unroll", &scalarLoopUnrollEnabled),
+	optimization.Bind("loop-local-params", &loopLocalParamsEnabled),
+	optimization.Bind("tuple-if-select", &tupleIfSelectEnabled),
+	optimization.Bind("pure-integer-if-select", &pureIntegerIfSelectEnabled),
+	optimization.Bind("linear-integer-tree", &linearIntegerTreeEnabled),
 	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
 	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
 	optimization.Bind("callfree-loop-reg-state", &callFreeLoopRegStateEnabled),
@@ -41,6 +57,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("memsize-regional-lease", &memSizeRegionalLeaseEnabled),
 	optimization.Bind("module-global-regional-lease", &moduleGlobalRegionalLeaseEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
+	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
 	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
 	optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
 	optimization.Bind("st-flags", &stFlagsEnabled),
@@ -82,6 +99,8 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
+	optimization.Bind("tail-self-loop", &tailSelfLoopEnabled),
+	optimization.Bind("tail-loop-inline", &tailLoopInlineEnabled),
 	optimization.Bind("direct-reference-abi", &directReferenceABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
@@ -96,7 +115,11 @@ var (
 	optAtomicZeroWait          = optimizationBindings.Option("atomic-wait-zero-timeout")
 	optBoundsFacts             = optimizationBindings.Option("bounds-facts")
 	optStraightLineBlock       = optimizationBindings.Option("straight-line-block")
+	optByteReduceLoop          = optimizationBindings.Option("byte-reduce-loop")
+	optBulkCopyVector          = optimizationBindings.Option("bulk-copy-vector")
 	optBulkFillVector          = optimizationBindings.Option("bulk-fill-vector")
+	optBulkMemoryLoops         = optimizationBindings.Option("bulk-memory-loops")
+	optBulkFillCopyForward     = optimizationBindings.Option("bulk-fill-copy-forward")
 	optSIMDStoreLoadAddress    = optimizationBindings.Option("simd-store-load-address")
 	optSIMDLoadExtract         = optimizationBindings.Option("simd-load-extract")
 	optSIMDSuperopt            = optimizationBindings.Option("simd-superopt")
@@ -108,6 +131,8 @@ var (
 	optWideLoopIntConst        = optimizationBindings.Option("wide-loop-int-const")
 	optCompactLoopAlign32      = optimizationBindings.Option("compact-loop-align32")
 	optCountedLoopLatch        = optimizationBindings.Option("counted-loop-latch")
+	optScalarLoopUnroll        = optimizationBindings.Option("scalar-loop-unroll")
+	optLoopLocalParams         = optimizationBindings.Option("loop-local-params")
 	optLinearSumLoop           = optimizationBindings.Option("linear-sum-loop")
 	optCallFreeLoopColdExit    = optimizationBindings.Option("callfree-loop-cold-exit")
 	optLoopRegState            = optimizationBindings.Option("callfree-loop-reg-state")
@@ -120,6 +145,7 @@ var (
 	optMemSizeRegionalLease    = optimizationBindings.Option("memsize-regional-lease")
 	optModuleGlobalRegionLease = optimizationBindings.Option("module-global-regional-lease")
 	optMagicDiv                = optimizationBindings.Option("magic-div")
+	optBorrowedDivRem          = optimizationBindings.Option("borrowed-div-rem")
 	optSharedTrapBody          = optimizationBindings.Option("shared-trap-body")
 	optSharedAdapters          = optimizationBindings.Option("shared-adapters")
 	optSTFlags                 = optimizationBindings.Option("st-flags")
@@ -161,8 +187,13 @@ var (
 	optV128ConstCache          = optimizationBindings.Option("v128-const-cache")
 	optV128Pins                = optimizationBindings.Option("v128-pins")
 	optRegABI                  = optimizationBindings.Option("reg-abi")
+	optTailSelfLoop            = optimizationBindings.Option("tail-self-loop")
+	optTailLoopInline          = optimizationBindings.Option("tail-loop-inline")
 	optDirectReferenceABI      = optimizationBindings.Option("direct-reference-abi")
 	optInline                  = optimizationBindings.Option("inline")
+	optTupleIfSelect           = optimizationBindings.Option("tuple-if-select")
+	optPureIntegerIfSelect     = optimizationBindings.Option("pure-integer-if-select")
+	optLinearIntegerTree       = optimizationBindings.Option("linear-integer-tree")
 	optStackFence              = optimizationBindings.Option("stack-fence")
 	optStackReg                = optimizationBindings.Option("stack-reg")
 )

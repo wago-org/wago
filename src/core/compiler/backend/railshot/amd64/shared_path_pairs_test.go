@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"bytes"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/compilerpair"
 	"testing"
@@ -36,7 +37,7 @@ func compilePathPairWithSources(raw []byte, requestShared, sources bool) (compil
 	if cm.CodeImage != nil {
 		defer cm.CodeImage.Close()
 	}
-	a := compilerpair.Artifact{HostEvents: len(m.Imports) != 0, Code: cm.Code, Entry: cm.Entry, FeatureMask: cm.RequiredAMD64Features}
+	a := compilerpair.Artifact{HostEvents: len(m.Imports) != 0, Code: bytes.Clone(cm.Code), Entry: cm.Entry, FeatureMask: cm.RequiredAMD64Features}
 	if diagnosticsEnabled {
 		for _, f := range stats.Funcs {
 			a.Shared = append(a.Shared, f.SharedScalar)

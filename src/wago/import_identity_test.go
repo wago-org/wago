@@ -2,7 +2,6 @@ package wago
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"reflect"
 	"strings"
@@ -101,58 +100,6 @@ func TestRuntimeCompilePreservesExactImportIdentitiesAcrossArtifact(t *testing.T
 		t.Fatalf("source metadata identities = %#v, want %#v", gotMetadata, want)
 	}
 
-	artifact, err := module.c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	if err := module.Close(); err != nil {
-		t.Fatalf("close source module: %v", err)
-	}
-	var compiled Compiled
-	if err := compiled.UnmarshalBinary(artifact); err != nil {
-		t.Fatalf("UnmarshalBinary: %v", err)
-	}
-	loaded, err := rt.Module(&compiled)
-	if err != nil {
-		t.Fatalf("Runtime.Module: %v", err)
-	}
-	defer loaded.Close()
-	if got := moduleImportIdentities(loaded); !reflect.DeepEqual(got, want) {
-		t.Fatalf("artifact import identities = %#v, want %#v", got, want)
-	}
-}
-
-func TestCompiledCodecRejectsMalformedImportModuleEnd(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig(), exactImportIdentityModule(false))
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	defer compiled.Close()
-	metadata, err := marshalCompiledMetadata(compiled)
-	if err != nil {
-		t.Fatalf("marshalCompiledMetadata: %v", err)
-	}
-
-	r := compiledReader{data: metadata}
-	if _, err := r.intSlice(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.intSlice(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.uvar(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.stringSlice(); err != nil {
-		t.Fatal(err)
-	}
-	moduleEndOffset := len(metadata) - len(r.data)
-	metadata[moduleEndOffset]++ // Move the one-byte boundary from '.' onto 'c'.
-
-	var decoded Compiled
-	if err := unmarshalCompiledMetadata(&decoded, metadata); err == nil || !strings.Contains(err.Error(), "does not identify the import-key separator") {
-		t.Fatalf("malformed import module-name end error = %v", err)
-	}
 }
 
 func TestRuntimePluginBindingRequiresExactImportIdentity(t *testing.T) {
@@ -338,29 +285,5 @@ func TestRuntimeRejectsMixedExactAndFlatOverride(t *testing.T) {
 		if instance, err := rt.Instantiate(context.Background(), module, opts...); err == nil || instance != nil || !strings.Contains(err.Error(), "both WithImport and WithImports") {
 			t.Fatalf("mixed override = %v, %v; want explicit rejection", instance, err)
 		}
-	}
-}
-
-func TestCompiledCodecBoundsDecodedImportDirectoryAllocation(t *testing.T) {
-	const count = 3
-	var prefix [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(prefix[:], uint64(count))
-	encoded := make([]byte, n+2*count)
-	copy(encoded, prefix[:n])
-	r := compiledReader{data: encoded}
-	if _, _, err := r.importDirectoryWithAllocationLimit(count, 1); err == nil || !strings.Contains(err.Error(), "decoded directory allocation limit") {
-		t.Fatalf("oversized import directory error = %v", err)
-	}
-}
-
-func TestCompiledCodecRejectsImportCountMismatchBeforeAllocation(t *testing.T) {
-	const encodedCount = 3
-	var prefix [binary.MaxVarintLen64]byte
-	n := binary.PutUvarint(prefix[:], encodedCount)
-	encoded := make([]byte, n+2*encodedCount)
-	copy(encoded, prefix[:n])
-	r := compiledReader{data: encoded}
-	if _, _, err := r.importDirectoryWithAllocationLimit(0, maxImportDirectoryAllocationBytes); err == nil || !strings.Contains(err.Error(), "directory count 3 != NumImports 0") {
-		t.Fatalf("mismatched import count error = %v", err)
 	}
 }

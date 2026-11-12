@@ -73,7 +73,7 @@ func (plugin exitTeardownPlugin) Register(registrar *wago.Registrar) error {
 	}})
 }
 
-func TestRunAndRunArtifactReportZeroExitTeardownFailure(t *testing.T) {
+func TestRunReportsZeroExitTeardownFailure(t *testing.T) {
 	// (module (import "env" "exit" (func))
 	//   (func (export "_start") (call 0)))
 	source := []byte{0, 'a', 's', 'm', 1, 0, 0, 0,
@@ -82,10 +82,6 @@ func TestRunAndRunArtifactReportZeroExitTeardownFailure(t *testing.T) {
 		3, 2, 1, 0,
 		7, 10, 1, 6, '_', 's', 't', 'a', 'r', 't', 0, 1,
 		10, 6, 1, 4, 0, 0x10, 0, 0x0b}
-	artifact, err := CompileArtifact(source, wago.PluginSet{}, Options{DeferBoundsChecks: true})
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, code := range []int32{0, 7} {
 		definition := wago.PluginDefinition{
 			ID: "example.com/cli/standalone-exit-teardown", Version: "1.0.0",
@@ -118,7 +114,6 @@ func TestRunAndRunArtifactReportZeroExitTeardownFailure(t *testing.T) {
 			run  func() int
 		}{
 			{"source", func() int { return Run(source, set, Options{DeferBoundsChecks: true}, nil) }},
-			{"artifact", func() int { return RunArtifact(artifact, set, Options{DeferBoundsChecks: true}, nil) }},
 		} {
 			t.Run(mode.name+"/"+strconv.Itoa(int(code)), func(t *testing.T) {
 				if got := mode.run(); got != want {
@@ -189,20 +184,6 @@ func TestExecuteClosesModuleAndWaitsForRuntimeTeardown(t *testing.T) {
 	case <-plugin.stopped:
 	default:
 		t.Fatal("execute returned without completing plugin teardown")
-	}
-}
-
-func TestCompileAndRunArtifact(t *testing.T) {
-	options := Options{DeferBoundsChecks: true}
-	artifact, err := CompileArtifact(emptyStartModule(), wago.PluginSet{}, options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !wago.IsCompiled(artifact) {
-		t.Fatal("CompileArtifact did not return a .wago artifact")
-	}
-	if code := RunArtifact(artifact, wago.PluginSet{}, options, []string{"hello"}); code != 0 {
-		t.Fatalf("exit code = %d, want 0", code)
 	}
 }
 
@@ -407,17 +388,6 @@ func BenchmarkRuntimeConfig(b *testing.B) {
 				}
 			}
 		})
-	}
-}
-
-func BenchmarkCompileArtifact(b *testing.B) {
-	source := addModule()
-	options := Options{Features: wago.CoreFeaturesV2, FeaturesSet: true, DeferBoundsChecks: true}
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		if _, err := CompileArtifact(source, wago.PluginSet{}, options); err != nil {
-			b.Fatal(err)
-		}
 	}
 }
 

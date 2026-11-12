@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Package frontend contains compiler front-end passes shared by the CLI and API.
 package frontend
 
@@ -1250,7 +1257,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		if isRefTypeLeadByte(b) {
 			if b == 0x63 || b == 0x64 {
-				heap, err := r.S33()
+				exact, heap, err := r.RefHeapType()
 				if err != nil {
 					return err
 				}
@@ -1259,7 +1266,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 				// requirement as their bare aliases. Every non-null form still
 				// requires typed references, including GC and exception heaps.
 				nullableLegacy := b == 0x63 && (heap == -16 || heap == -17)
-				if !p.feat.ReferenceTypes || b == 0x64 && !p.feat.TypedFunctionReferences || !(nullableLegacy || (p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || p.supportedGCHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
+				if !p.feat.ReferenceTypes || (b == 0x64 || exact) && !p.feat.TypedFunctionReferences || !(nullableLegacy || (p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || p.supportedGCHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
 					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references/exception-references disabled or unsupported)", heap), ctx())
 				}
 				return nil
@@ -1467,10 +1474,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, nil
 	case 0xd0:
-		if b, ok := r.Peek(); ok && b == 0x62 { // exact indexed heap prefix
-			_, _ = r.Byte()
-		}
-		heap, err := r.S33()
+		_, heap, err := r.RefHeapType()
 		if err != nil {
 			return false, err
 		}
@@ -1867,7 +1871,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 				return p.unsupported("const expression", "integer add/sub/mul (extended-constant-expressions disabled)", ctx())
 			}
 		case 0xd0:
-			heap, err := r.S33()
+			_, heap, err := r.RefHeapType()
 			if err != nil {
 				return err
 			}
@@ -2654,15 +2658,14 @@ func exprBytesRequireSIMDWithClassifier(body []byte, classifier wasm.ModuleInstr
 					return true
 				}
 				if b == 0x63 || b == 0x64 {
-					if _, err := r.S33(); err != nil {
+					if _, _, err := r.RefHeapType(); err != nil {
 						return false
 					}
 				}
 			}
 			continue
 		}
-		var imm wasm.InstructionImmediate
-		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+		if err := classifier.SkipImmediate(r, op); err != nil {
 			return false
 		}
 	}
@@ -2678,7 +2681,7 @@ func blockTypeBytesRequireSIMD(r *wasm.Reader) (uses bool, ok bool) {
 		return true, true
 	}
 	if b == 0x63 || b == 0x64 {
-		if _, err := r.S33(); err != nil {
+		if _, _, err := r.RefHeapType(); err != nil {
 			return false, false
 		}
 		return false, true

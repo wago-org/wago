@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
@@ -62,7 +69,7 @@ type CodeProfileStatus = jitprofile.Status
 func NewCodeProfile(options CodeProfileOptions) *CodeProfile { return newCodeProfile(options) }
 
 // WithCodeProfile requires a build with -tags=wago_profile and enables code-neutral finalized regions and compiler statistics.
-// The session must outlive capture. Profiling metadata is not serialized in .wago
+// The session must outlive capture. Profiling metadata stays with the compiled module;
 // artifacts; reloaded artifacts report unknown regions until recompiled.
 func (c *RuntimeConfig) WithCodeProfile(session *CodeProfile) *RuntimeConfig {
 	n := *c

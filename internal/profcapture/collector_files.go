@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package profcapture
 
 import (
@@ -87,7 +94,6 @@ func ensureCollectorBundle(o Options, runErr error) error {
 	m.RawStackBytes = o.RawStackBytes
 	m.UnwindMapsRequested = o.UnwindMaps
 	m.SourceMapsRequested = o.SourceMaps
-	m.ReloadArtifact = o.ReloadArtifact || o.Phase == "reload"
 	m.PhaseIsolation = "unknown"
 	m.CPUModel, m.OSVersion = hostIdentity()
 	return errors.Join(runErr, writeJSON(path, m))

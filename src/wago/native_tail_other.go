@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build !riscv64
 
 package wago
@@ -14,8 +21,7 @@ func railshotStagedGCFeatures(*RuntimeConfig) CoreFeatures                      
 func railshotI31Frontend(*RuntimeConfig) bool                                           { return false }
 func railshotConfigureNativeTail(CoreFeatures, *RuntimeConfig, *railshotCompileOptions) {}
 func railshotStoreNativeTail(*Compiled, *railshotCompiledModule, *RuntimeConfig) error  { return nil }
-func railshotWriteNativeTail(*compiledWriter, *Compiled) error                          { return nil }
-func railshotReadNativeTail(*compiledReader, *Compiled) error                           { return nil }
+
 func railshotPrepareNativeTail(*Instance, resolvedImports, uintptr, []int, map[uint32]uint64) error {
 	return nil
 }
@@ -40,4 +46,4 @@ func railshotNonCallableFunction(*Compiled, int) bool { return false }
 
 func railshotNativeLeafAllowed(*Compiled) bool { return false }
 
-func railshotValidateDecodedNativeTail(*Compiled) error { return nil }
+func railshotWriteNativeTail(*compiledWriter, *Compiled) error { return nil }

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -130,13 +137,3 @@ func rv64GCArrayReferenceMetadata(c *Compiled, requireInitializer bool) bool {
 }
 
 func rv64GCArrayReference(c *Compiled) bool { return rv64GCArrayReferenceMetadata(c, true) }
-
-func railshotRestoreGCArrayReferenceArtifact(c *Compiled) {
-	if !rv64GCArrayReferenceMetadata(c, false) {
-		return
-	}
-	c.memoryDir.gcArrayElement = &gcArrayElementInit{SegmentIndex: 0, TypeID: 0, Count: 2, Values: []gcArrayElementValueInit{
-		{Mode: gcArrayGlobalInitUniform, Length: 3, Bits: []uint64{7}},
-		{Mode: gcArrayGlobalInitFixed, Length: 2, Bits: []uint64{1, 2}},
-	}}
-}

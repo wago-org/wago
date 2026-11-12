@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Refresh ../website's hardcoded performance section from benchmark results.
 //
 // The website intentionally ships static fallback numbers in index.html. This
@@ -284,13 +291,13 @@ function buildGeneralSummary(metrics, raw, modules) {
   );
   const compileTime = pairedMetricGeomeans(metrics, "CompileFull/", "WazeroCompile/", false, includedModules);
   const summary = [
-    ["Compile", "fresh process", "ns", compileTime],
+    ["Compile", "per compile", "ns", compileTime],
     ["Compile heap", "per compile", "bytes",
       pairedMetricGeomeans(metrics, "CompileFull/", "WazeroCompile/", false, includedModules, "bytes")],
     ["Machine code", "compiled corpus", "code", machineCode],
     ["Instantiate", "runnable corpus", "ns", instantiate],
     ["Execution", "runnable corpus", "ns", execution],
-    ["End-to-end latency", "compile + instantiate", "ns", Object.fromEntries(
+    ["Compile + instantiate", "sum of geometric means", "ns", Object.fromEntries(
       ENGINES.map(({ id }) => [id, Number(compileTime[id] ?? 0) + Number(instantiate[id] ?? 0)]),
     )],
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));

@@ -25,8 +25,8 @@ func TestThreadsFenceRequiresNoMemory(t *testing.T) {
 	if c.threadedMemory0() || c.memoryCount() != 0 {
 		t.Fatal("fence synthesized shared memory")
 	}
-	loaded := publicArtifactRoundTrip(t, c)
-	for _, compiled := range []*Compiled{c, loaded} {
+
+	for _, compiled := range []*Compiled{c} {
 		in, err := Instantiate(compiled, InstantiateOptions{})
 		if err != nil {
 			t.Fatal(err)

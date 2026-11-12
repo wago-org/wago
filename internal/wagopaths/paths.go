@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Package wagopaths resolves Wago's manager, runner, configuration, and cache
 // paths without importing the runtime.
 package wagopaths
@@ -148,7 +155,6 @@ func (d Dirs) LegacyRunnerBinary(version, profile string) string {
 	return filepath.Join(d.Versions, version, profile, name)
 }
 
-func (d Dirs) CachePath(key string) string   { return filepath.Join(d.Cache, key+".wago") }
 func (d Dirs) ConfigFile(name string) string { return filepath.Join(d.Config, name) }
 
 func (d Dirs) Ensure() error {

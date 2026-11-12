@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && (wago_codegenstats || wago_profile) && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && (wago_codegenstats || wago_profile) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -44,16 +44,8 @@ func TestRV64PublicFinalizedStatistics(t *testing.T) {
 			}
 			defer in.Close()
 			importedGlobalInvoke(t, in, "identity", values, values...)
-			blob, err := measured.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			if _, ok := loaded.GCNativeCodeTelemetry(); ok {
+
+			if _, ok := measured.GCNativeCodeTelemetry(); ok {
 				t.Fatal("artifact synthesized compilation statistics")
 			}
 		})

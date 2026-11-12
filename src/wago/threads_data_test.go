@@ -79,7 +79,7 @@ func TestThreadsSharedDataExecutionAndCodec(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+			for _, compiled := range []*Compiled{c} {
 				opts := InstantiateOptions{}
 				if imported {
 					memory, err := NewSharedMemory(1, 3)
@@ -254,7 +254,7 @@ func TestThreadsSharedDataConstantLengths(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+			for _, compiled := range []*Compiled{c} {
 				in, err := Instantiate(compiled, nil)
 				if err != nil {
 					t.Fatal(err)
@@ -327,7 +327,7 @@ func TestThreadsSharedDataLiveValuesAndCodec(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+				for _, compiled := range []*Compiled{c} {
 					in, err := Instantiate(compiled, nil)
 					if err != nil {
 						t.Fatal(err)

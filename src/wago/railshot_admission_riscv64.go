@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -12,11 +19,15 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
-var _ [railshot.MaxHostFunctionImports - rv64RootedMaxHostFunctionImports]struct{}
-var _ [rv64RootedMaxHostFunctionImports - railshot.MaxHostFunctionImports]struct{}
+var _ [railshot.MaxModuleTables - maxRV64ExecutionTables]struct{}
+var _ [maxRV64ExecutionTables - railshot.MaxModuleTables]struct{}
+var _ [railshot.MaxModuleExports - rv64MaxModuleExports]struct{}
+var _ [rv64MaxModuleExports - railshot.MaxModuleExports]struct{}
+var _ [railshot.MaxFunctionImports - rv64RootedMaxHostFunctionImports]struct{}
+var _ [rv64RootedMaxHostFunctionImports - railshot.MaxFunctionImports]struct{}
 
 func rv64FreshRootedGC(c *Compiled) bool {
 	if c == nil || c.nativeGCABIRequirement() != gc.NativeABIVersion {
@@ -29,11 +40,11 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	}
 	var artifactReceipt validateMemo
 	if memo != nil && contract != nil {
-		if !rv64ArtifactContractValid(c) {
+		if !rv64SourceContractValid(c) {
 			return false
 		}
 		if !memo.rv64FreshRootedGC {
-			if !rv64PopulateArtifactReceipt(&artifactReceipt, c) {
+			if !rv64PopulateSourceReceipt(&artifactReceipt, c) {
 				return false
 			}
 			memo = &artifactReceipt
@@ -42,8 +53,8 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if memo == nil || !memo.rv64FreshRootedGC || sha256.Sum256(c.code) != memo.rv64FreshRootedGCDigest || c.syncHostSlots != memo.rv64FreshRootedGCSyncHostSlots {
 		return false
 	}
-	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 && !c.hasNoFunctionCode() && !(len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary()) || len(c.Funcs) > railshot.MaxFunctions ||
-		len(c.FuncTypeID) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions ||
+	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 && !c.hasNoFunctionCode() && !(len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary()) || len(c.Funcs) > railshot.MaxModuleFunctions ||
+		len(c.FuncTypeID) > railshot.MaxModuleFunctions || len(c.Exports) > railshot.MaxModuleExports ||
 		compiledStructuralRequiredFeatures(c)&^c.requiredFeatures != 0 {
 		return false
 	}
@@ -57,7 +68,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	// staging either allocation/mutation helper family.
 	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers ||
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
-		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports ||
+		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > railshot.MaxFunctionImports || len(c.Imports) != c.NumImports ||
 		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > maxRV64ExecutionTables || c.memoryCount() > rv64RootedMaxMemories ||
 		len(c.GlobalImports) > 256 || len(c.GlobalImports) > len(c.Globals) || len(c.Globals) > 256 || len(c.Elems) > 256 ||
 		len(c.passiveElems) > 256 || len(c.PassiveData) > 256 {
@@ -781,7 +792,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c != nil && c.rv64ExecutionContract() != nil {
 		// A general contract cannot fall back to an older image profile when
 		// its bound code or metadata changes, including for state-only modules.
-		if !rv64ArtifactContractValid(c) {
+		if !rv64SourceContractValid(c) {
 			return fmt.Errorf("%w: RV64 native execution contract lacks admitted source or artifact metadata", railshot.ErrUnsupported)
 		}
 		if compiledStructuralRequiredFeatures(c)&^c.requiredFeatures != 0 {
@@ -814,7 +825,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	functionOnlyTypes := compiledFunctionOnlyTypeGraph(c)
 	// Dynamic tail metadata is executable state. Require its source or artifact
 	// receipt before any declared type graph can grant execution permission.
-	if rv64HasDynamicTail(rv64NativeTailModule(c)) && !rv64ArtifactContractValid(c) && c.rv64ExecutionContract() == nil {
+	if rv64HasDynamicTail(rv64NativeTailModule(c)) && !rv64SourceContractValid(c) && c.rv64ExecutionContract() == nil {
 		return reject("dynamic tail requires admitted source or artifact metadata")
 	}
 	// A verified general contract binds the full code and metadata. Legacy
@@ -1157,7 +1168,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		remaining -= len(data.Bytes)
 	}
-	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || uint64(c.NumImports)+uint64(len(c.Funcs)) > uint64(railshot.MaxPublicCodeBytes)/16 || c.dynamicImports != (c.NumImports > 0) {
+	if c.NumImports < 0 || c.NumImports > railshot.MaxFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || uint64(c.NumImports)+uint64(len(c.Funcs)) > uint64(railshot.MaxPublicCodeBytes)/16 || c.dynamicImports != (c.NumImports > 0) {
 		return reject("dynamic function import shape")
 	}
 	if c.NumImports+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount() > railshot.MaxPublicImports {
@@ -1321,7 +1332,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	// Dead validated reference-tail instructions need no emitted plan or ABI
 	// flag. Their retained syntax feature still needs its full code binding.
-	emptyTypedTail := rv64NativeTailModule(c) != nil && len(rv64NativeTailModule(c).Plans) == 0 && rv64ArtifactContractValid(c)
+	emptyTypedTail := rv64NativeTailModule(c) != nil && len(rv64NativeTailModule(c).Plans) == 0 && rv64SourceContractValid(c)
 	if primitiveReferences || functionOnlyTypes {
 		qualifiedFeatures |= CoreFeatureGC
 	}
@@ -1358,7 +1369,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 
 	if vectorProfile {
-		if len(c.GlobalExports) > railshot.MaxFunctions {
+		if len(c.GlobalExports) > railshot.MaxModuleExports {
 			return reject("global export count bound")
 		}
 		for _, index := range c.GlobalExports {
@@ -1499,7 +1510,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	if hasReferenceGlobal {
-		if len(c.GlobalExports) > railshot.MaxFunctions {
+		if len(c.GlobalExports) > railshot.MaxModuleExports {
 			return reject("reference-global export count bound")
 		}
 		for _, index := range c.GlobalExports {
@@ -1553,7 +1564,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("primary memory reservation metadata mismatch")
 		}
 	}
-	if len(c.memoryExportMap()) > railshot.MaxFunctions {
+	if len(c.memoryExportMap()) > railshot.MaxModuleExports {
 		return reject("memory export count bound")
 	}
 	for _, index := range c.memoryExportMap() {

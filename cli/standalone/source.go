@@ -1,4 +1,11 @@
-//go:build !wago_precompiled
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
+//go:build !wago_standalone
 
 package standalone
 
@@ -24,20 +31,4 @@ func execute(source []byte, plugins wago.PluginSet, options Options, args []stri
 		return err
 	}
 	return executeModule(runtime, module, options, args)
-}
-
-// CompileArtifact applies the selected plugins and compilation options once and
-// returns the target-specific artifact embedded by standalone builds.
-func CompileArtifact(source []byte, plugins wago.PluginSet, options Options) (artifact []byte, err error) {
-	runtime, err := loadRuntime(plugins, options, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer finishRuntime(runtime, &err)
-	module, err := runtime.Compile(source)
-	if err != nil {
-		return nil, err
-	}
-	defer finishModule(module, &err)
-	return module.Compiled().MarshalBinary()
 }

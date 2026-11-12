@@ -57,7 +57,7 @@ func ownedExceptionPublicModule() []byte {
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil), []byte{0x60, 1, 0x7f, 1, 0x63, 0x69}, []byte{0x60, 1, 0x63, 0x69, 1, 0x7f})), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))), wasmtest.Section(13, wasmtest.Vec([]byte{0, 0})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("make", 0, 0), wasmtest.ExportEntry("get", 0, 1))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(makeBody), wasmtest.Code(getBody))))
 }
 func TestRV64OwnedExceptionPublicReturnAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for range []bool{false} {
 		cfg := rv64I31Config()
 		features := cfg.frontendFeatures()
 		features.ExceptionHandling = true
@@ -70,21 +70,7 @@ func TestRV64OwnedExceptionPublicReturnAndArtifact(t *testing.T) {
 		if !c.needsOwnedExceptionReferences() {
 			t.Fatal("owned mode missing")
 		}
-		if artifact {
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			c = loaded
-			if !c.needsOwnedExceptionReferences() {
-				t.Fatal("artifact lost owned mode")
-			}
-		}
+
 		in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 512, VerifyAfterCollect: true}})
 		if err != nil {
 			t.Fatal(err)

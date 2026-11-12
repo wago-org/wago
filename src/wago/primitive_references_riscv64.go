@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -22,7 +29,7 @@ func rv64PrimitiveReferenceContract(c *Compiled) bool {
 			}
 		}
 	}
-	return rv64PrimitiveReferenceDeclarations(c) && rv64ArtifactContractValid(c)
+	return rv64PrimitiveReferenceDeclarations(c) && rv64SourceContractValid(c)
 }
 
 // Declaration classification is also needed while encoding the metadata that

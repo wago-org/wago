@@ -22,7 +22,7 @@ func TestActiveDataFailureRespectsCoreVersionAndArtifact(t *testing.T) {
 		wasmtest.Section(11, wasmtest.Vec(segment(0, 'a'), segment(65536, 'b'))),
 	)
 	for _, features := range []CoreFeatures{CoreFeaturesV1, CoreFeaturesV2} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(fmt.Sprintf("core1=%t/artifact=%t", features == CoreFeaturesV1, artifact), func(t *testing.T) {
 				cfg := NewRuntimeConfig().WithCoreFeatures(features).WithBoundsChecks(BoundsChecksExplicit)
 				c, err := CompileWithConfig(cfg, module)
@@ -30,17 +30,7 @@ func TestActiveDataFailureRespectsCoreVersionAndArtifact(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				if artifact {
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					c, err = LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer c.Close()
-				}
+
 				ownerModule := wasmtest.Module(
 					wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 					wasmtest.Section(3, []byte{1, 0}),
@@ -95,7 +85,7 @@ func TestMemory64ActiveDataGlobalOffsetPreservesHighBits(t *testing.T) {
 		wasmtest.Section(11, wasmtest.Vec([]byte{0, 0x23, 0, 0x0b, 1, 'a'})),
 	)
 	for _, preflight := range []bool{false, true} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(fmt.Sprintf("preflight=%t/artifact=%t", preflight, artifact), func(t *testing.T) {
 				cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFeatures(CoreFeatureMemory64).
 					WithFeature(CoreFeatureExtendedConstExpressions, false).
@@ -105,17 +95,7 @@ func TestMemory64ActiveDataGlobalOffsetPreservesHighBits(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				if artifact {
-					blob, err := c.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					c, err = LoadTrustedArtifact(blob)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer c.Close()
-				}
+
 				offset := NewGlobalI64(1<<32, false)
 				defer offset.Close()
 				in, err := Instantiate(c, NewImports().Global("env", "offset", offset))

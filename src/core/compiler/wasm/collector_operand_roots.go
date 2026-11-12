@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wasm
 
 // CollectorOperandRoots retains only typed collector operands at native call,
@@ -385,13 +392,13 @@ func buildCollectorOperandRoots(v *moduleValidator, fv *funcValidator, localFunc
 		if selected {
 			var roots, functions, externs []uint32
 			for i, value := range fv.vals {
-				if !value.unknown && CollectorReferenceType(m, value.t) {
+				if !value.unknown() && CollectorReferenceType(m, value.t) {
 					roots = append(roots, uint32(i))
 					(*rootCount)++
-				} else if !value.unknown && FunctionReferenceType(m, value.t) {
+				} else if !value.unknown() && FunctionReferenceType(m, value.t) {
 					functions = append(functions, uint32(i))
 					(*rootCount)++
-				} else if !value.unknown && ExternReferenceType(value.t) {
+				} else if !value.unknown() && ExternReferenceType(value.t) {
 					externs = append(externs, uint32(i))
 					(*rootCount)++
 				}

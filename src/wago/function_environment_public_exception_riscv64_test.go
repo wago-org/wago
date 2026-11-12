@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_guardpage && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_guardpage
 
 package wago
 
@@ -13,7 +13,7 @@ import (
 
 func TestRV64ManagedFunctionExceptionExecutionAndArtifacts(t *testing.T) {
 	for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			for _, kind := range []string{"provider", "local", "operand"} {
 				t.Run(fmt.Sprintf("profile%d/artifact%t/%s", profile, artifact, kind), func(t *testing.T) {
 					cfg := rv64I31Config()
@@ -25,17 +25,7 @@ func TestRV64ManagedFunctionExceptionExecutionAndArtifacts(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					if artifact {
-						blob, err := c.MarshalBinary()
-						if err != nil {
-							t.Fatal(err)
-						}
-						c, err = LoadTrustedArtifact(blob)
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer c.Close()
-					}
+
 					rt := NewRuntime()
 					defer rt.Close()
 					in, err := instantiateCore(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{Profile: profile, CollectEveryAlloc: true, StressNurseryBytes: 512, TinyHeapBytes: 64 << 10, VerifyAfterCollect: true}})
@@ -78,7 +68,7 @@ func TestRV64ManagedFunctionExceptionExecutionAndArtifacts(t *testing.T) {
 
 func TestRV64ManagedFunctionExceptionForeignExecutionAndArtifacts(t *testing.T) {
 	for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(fmt.Sprintf("profile%d/artifact%t", profile, artifact), func(t *testing.T) {
 				cfg := rv64I31Config()
 				features := cfg.frontendFeatures()
@@ -91,18 +81,7 @@ func TestRV64ManagedFunctionExceptionForeignExecutionAndArtifacts(t *testing.T) 
 					}
 					original := c
 					t.Cleanup(func() { original.Close() })
-					if artifact {
-						blob, err := c.MarshalBinary()
-						if err != nil {
-							t.Fatal(err)
-						}
-						loaded, err := LoadTrustedArtifact(blob)
-						if err != nil {
-							t.Fatal(err)
-						}
-						t.Cleanup(func() { loaded.Close() })
-						c = loaded
-					}
+
 					return c
 				}
 				rt := NewRuntime()
@@ -160,7 +139,7 @@ func TestRV64ManagedFunctionExceptionForeignExecutionAndArtifacts(t *testing.T) 
 }
 
 func TestRV64ManagedFunctionExceptionCrossStoreNumericOwner(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			cfg := rv64I31Config()
 			features := cfg.frontendFeatures()
@@ -171,19 +150,9 @@ func TestRV64ManagedFunctionExceptionCrossStoreNumericOwner(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { original.Close() })
-				if !artifact {
-					return original
-				}
-				blob, err := original.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { loaded.Close() })
-				return loaded
+
+				return original
+
 			}
 			producerCode := compile(wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("target", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 42, 0x0b})))))
 			consumerCode := compile(rv64OwnedFunctionExceptionFixture("import"))

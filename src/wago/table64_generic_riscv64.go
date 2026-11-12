@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -8,7 +15,7 @@ import "fmt"
 // native execution binding. The older operation-specific witnesses remain
 // limited to their exact images and metadata.
 func rv64GenericTable64(c *Compiled) bool {
-	return c != nil && c.nativeTable64ABI == nativeTable64NoABI && c.requiredFeatures.IsEnabled(CoreFeatureTable64) && rv64ArtifactContractValid(c)
+	return c != nil && c.nativeTable64ABI == nativeTable64NoABI && c.requiredFeatures.IsEnabled(CoreFeatureTable64) && rv64SourceContractValid(c)
 }
 
 func rv64ValidateGenericTable64(c *Compiled) error {

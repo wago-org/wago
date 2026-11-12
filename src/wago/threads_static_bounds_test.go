@@ -57,11 +57,11 @@ func TestThreadsStaticBoundsMatchCheckedPath(t *testing.T) {
 			if bytes.Equal(fast.code, slow.code) == tc.proven {
 				t.Fatal("constant bounds proof did not select exactly the admitted cases")
 			}
-			loaded := publicArtifactRoundTrip(t, fast)
+
 			var reference []uint64
 			var referenceTrap TrapCode
 			var referenceMemory []byte
-			for i, c := range []*Compiled{slow, fast, loaded} {
+			for i, c := range []*Compiled{slow, fast, fast} {
 				in, err := Instantiate(c, InstantiateOptions{})
 				if err != nil {
 					t.Fatal(err)

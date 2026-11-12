@@ -4,9 +4,7 @@ package wago
 
 import (
 	"fmt"
-	"os"
 	"runtime"
-	"slices"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -106,74 +104,4 @@ func TestRV64PublicReferenceCopies(t *testing.T) {
 
 func TestRV64PublicReferenceCopyRetiredWriter(t *testing.T) {
 	testRV64PublicReferenceGlobalRetiredWriter(t, true)
-}
-
-func TestRV64PublicReferenceCopyAdmission(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source and artifact metadata mutations")
-	}
-	source := rv64ReferenceCopyModule(t, false, false, false, false, 3, true)
-	if c, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureExtendedConstExpressions, false), source); c != nil || err == nil {
-		if c != nil {
-			c.Close()
-		}
-		t.Fatal("disabled local-copy feature", err)
-	}
-	c := rv64TableStageCompile(t, "ref-copy-metadata", source, false)
-	for index, mutate := range []func(*Compiled){
-		func(v *Compiled) { v.requiredFeatures &^= CoreFeatureExtendedConstExpressions },
-		func(v *Compiled) { v.Globals[1].InitGlobal = 1 },
-		func(v *Compiled) { v.Globals[1].InitGlobal = 2 },
-		func(v *Compiled) { v.Globals[1].InitGlobal = -1 },
-		func(v *Compiled) { v.Globals[0].Mutable = true },
-		func(v *Compiled) {
-			v.Globals[0].Type = ValI64
-			v.Globals[0].HasValueType = false
-			v.Globals[0].HasInitFunc = false
-		},
-		func(v *Compiled) { v.Globals[1].HasInitFunc = true; v.Globals[1].InitFunc = 0 },
-		func(v *Compiled) { v.Globals[1].Bits = 1 },
-		func(v *Compiled) { v.Globals[1].V128[8] = 1 },
-		func(v *Compiled) { v.Globals[1].InitExpr = []byte{0x23, 0, 0x0b} },
-		func(v *Compiled) { v.ValueTypes[v.Globals[0].ValueTypeIndex].Ref.Nullable = false },
-		func(v *Compiled) { v.GlobalImports = []GlobalImportDef{{Module: "env", Name: "ref", Type: ValFuncRef}} },
-	} {
-		v := *c.executionView()
-		v.Globals = slices.Clone(v.Globals)
-		v.ValueTypes = slices.Clone(v.ValueTypes)
-		mutate(&v)
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("invalid reference copy metadata", index)
-		}
-		blob, err := marshalCompiled(&v)
-		if err != nil {
-			continue
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if index == 0 {
-			if err != nil || loaded == nil || loaded.requiredFeatures != c.requiredFeatures || railshotValidateCompiled(loaded.executionView()) != nil {
-				t.Fatal("reference-copy feature was not reconstructed", loaded, err)
-			}
-			loaded.Close()
-			continue
-		}
-		if err == nil && index >= 6 && index <= 9 {
-			// The wire format carries a single initializer kind. Conflicting
-			// inactive fields above are rejected in memory but are not encoded.
-			view := loaded.executionView()
-			g := view.Globals[1]
-			valid := g.HasInitGlobal && g.InitGlobal == 0 && !g.HasInitFunc && len(g.InitExpr) == 0 && g.Bits == 0 && g.V128 == (V128{}) && railshotValidateCompiled(view) == nil
-			loaded.Close()
-			if !valid {
-				t.Fatal("conflicting initializer survived codec normalization", index)
-			}
-			continue
-		}
-		if loaded != nil {
-			loaded.Close()
-		}
-		if err == nil {
-			t.Fatal("invalid reference copy artifact", index)
-		}
-	}
 }

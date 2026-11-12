@@ -8,12 +8,12 @@ import (
 )
 
 func TestRV64Core3RefIsNullExecution(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64Core3RefIsNullExecutionCompile(t, artifact)
 			t.Cleanup(func() { _ = compiled.Close() })
 			view := compiled.executionView()
-			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
+			if !rv64SourceContractValid(view) || railshotValidateCompiled(view) != nil {
 				t.Fatal("source compiler lost the general ref_is_null contract", railshotValidateCompiled(view))
 			}
 			cache := compiled.loadCodeCache()

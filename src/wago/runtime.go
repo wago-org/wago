@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
@@ -747,7 +754,7 @@ func (rt *Runtime) compile(wasmBytes []byte, allowLoading bool) (*Module, error)
 }
 
 // Module binds an already compiled artifact to this runtime's plugin imports
-// and lifecycle. It is the precompiled counterpart of Runtime.Compile.
+// and lifecycle. It adopts an in-memory Compiled rather than compiling Wasm again.
 func (rt *Runtime) Module(c *Compiled) (*Module, error) {
 	return rt.bindModule(c, false)
 }

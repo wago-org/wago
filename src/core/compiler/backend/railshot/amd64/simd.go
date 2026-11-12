@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64
 
 package amd64
@@ -424,14 +431,13 @@ func (f *fn) preloadV128Consts(code []byte) {
 		}
 	}
 	r := wasm.NewReader(code)
-	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return
 		}
 		if op != 0xFD { // not the SIMD prefix
-			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+			if err := f.classifier.SkipImmediate(r, op); err != nil {
 				return
 			}
 			continue
@@ -459,7 +465,7 @@ func (f *fn) preloadV128Consts(code []byte) {
 		if err := r.JumpTo(afterPrefix); err != nil {
 			return
 		}
-		if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+		if err := f.classifier.SkipImmediate(r, op); err != nil {
 			return
 		}
 	}

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -70,7 +77,7 @@ func compileSWARModulePolicy(data []byte, mode emissionMode, policy swarModulePo
 	if err := admitSWARWirePolicy(owned, policy); err != nil {
 		return nil, err
 	}
-	decoded, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxTypeDeclarations, MaxMetadataBytes: 16 << 20})
 	if err != nil {
 		return nil, err
 	}
@@ -176,9 +183,9 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	}
 	tableLimit := 1
 	if state.publicStarts && state.exports {
-		tableLimit = MaxFunctions
+		tableLimit = MaxModuleTables
 	}
-	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions && !state.publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions && !state.publicStarts || len(m.Imports) > productionImportLimit(state.publicStarts) || len(m.Tables) > tableLimit || len(m.Globals) > productionGlobalLimit(state.publicStarts) || len(m.Tags) != 0 && mode.exceptionModule == nil || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > productionElementSegmentLimit(state.publicStarts) || len(m.Data) > 256 && !state.publicStarts || !state.publicStarts && m.BranchHints != nil || len(m.Memories) > MaxProductionMemories {
+	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxModuleFunctions && !state.publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxTypeDeclarations && !state.publicStarts || len(m.Imports) > productionImportLimit(state.publicStarts) || len(m.Tables) > tableLimit || len(m.Globals) > productionGlobalLimit(state.publicStarts) || len(m.Tags) != 0 && mode.exceptionModule == nil || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > productionElementSegmentLimit(state.publicStarts) || len(m.Data) > 256 && !state.publicStarts || !state.publicStarts && m.BranchHints != nil || len(m.Memories) > MaxProductionMemories {
 		return nil, unsupported("SWAR module state/features/function bound")
 	}
 	imported, memoryImports, globalImports := 0, 0, 0
@@ -222,7 +229,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if memoryImports+len(m.Memories) > maxMemories {
 		return nil, unsupported("SWAR imported memory profile")
 	}
-	if imported+len(m.Code) == 0 && !state.publicStarts || imported > MaxHostFunctionImports || imported+len(m.Code) > MaxFunctions && !state.publicStarts || imported != 0 && !mode.interruptible {
+	if imported+len(m.Code) == 0 && !state.publicStarts || imported > MaxFunctionImports || imported+len(m.Code) > MaxModuleFunctions && !state.publicStarts || imported != 0 && !mode.interruptible {
 		return nil, unsupported("SWAR module aggregate functions/host bridge")
 	}
 	if !tables && (len(m.Tables) != 0 || len(m.Elements) != 0 && !mode.gcRootedScalar) {
@@ -475,12 +482,14 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			if err != nil {
 				return nil, fmt.Errorf("rv64: hybrid integer function %d: %w", i, err)
 			}
+			state.integerState.referenceDirectoryAdmitted = true
 			continue
 		}
-		summaries[i], err = walkSWARPairsWithOwnedExceptions(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, nil, mode.primitiveTailTypes)
+		summaries[i], err = walkSWARPairsWithAdmittedDirectories(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, nil, mode.swarDirectoriesAdmitted, mode.primitiveTailTypes)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
+		mode.swarDirectoriesAdmitted = true
 		importTailCount += summaries[i].importTails
 		if mode.importTailCalls && importTailCount > tailRAMaxSites-int(mode.tailSiteBase) {
 			return nil, unsupported("private SWAR imported-tail module site bound")
@@ -669,14 +678,14 @@ func admitSWARDecodedBudgetReferencesLimit(m *wasm.Module, publicStarts, referen
 	maxTables := 1
 	if publicStarts {
 		maxMemories = MaxProductionMemories
-		maxTables = MaxFunctions
+		maxTables = MaxModuleTables
 	}
 	if m.UsesCompactImports && !publicStarts {
 		return unsupported("compact imports require public production")
 	}
 	// Count and byte budgets precede validation, metadata expansion and payload
 	// copies. Decoded callers do not necessarily retain a bounded source blob.
-	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions && !publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions && !publicStarts || len(m.Imports) > productionImportLimit(publicStarts) || len(m.Tables) > maxTables || len(m.Memories) > maxMemories || len(m.Globals) > productionGlobalLimit(publicStarts) || len(m.Data) > 256 && !publicStarts || len(m.Elements) > productionElementSegmentLimit(publicStarts) || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || !publicStarts && m.BranchHints != nil {
+	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxModuleFunctions && !publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxTypeDeclarations && !publicStarts || len(m.Imports) > productionImportLimit(publicStarts) || len(m.Tables) > maxTables || len(m.Memories) > maxMemories || len(m.Globals) > productionGlobalLimit(publicStarts) || len(m.Data) > 256 && !publicStarts || len(m.Elements) > productionElementSegmentLimit(publicStarts) || len(m.Exports) > MaxModuleExports || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || !publicStarts && m.BranchHints != nil {
 		return unsupported("SWAR module state/features/function bound")
 	}
 	globalCount, functionCount, memoryCount := len(m.Globals), 0, len(m.Memories)
@@ -693,7 +702,7 @@ func admitSWARDecodedBudgetReferencesLimit(m *wasm.Module, publicStarts, referen
 	if functionCount+len(m.Code) == 0 && !publicStarts {
 		return unsupported("SWAR module state/features/function bound")
 	}
-	if functionCount > MaxHostFunctionImports {
+	if functionCount > MaxFunctionImports {
 		return unsupported("SWAR function import bound")
 	}
 	if memoryCount > maxMemories {
@@ -843,7 +852,7 @@ func admitSWARWirePolicy(data []byte, policy swarModulePolicy) error {
 			start := 8 + r.Offset()
 			types := wasm.ReaderFrom(data[start : start+int(size)])
 			count, err := types.U32()
-			if err != nil || count > MaxFunctions {
+			if err != nil || count > MaxTypeDeclarations {
 				return unsupported("SWAR wire type count")
 			}
 			for range count {

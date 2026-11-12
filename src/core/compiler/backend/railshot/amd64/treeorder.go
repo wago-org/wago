@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64
 
 package amd64
@@ -34,8 +41,28 @@ func combineRegisterNeed(left, right int16, binary bool) int16 {
 // tree shape. Keep this as the single construction seam for future selector
 // labels (effects, target forms, and competing costs).
 func labelDeferredNode(e *elem) {
-	e.setDeferredDepth(1 + max16(deferDepthOf(e.arg0), deferDepthOf(e.arg1)))
-	e.setRegisterNeed(combineRegisterNeed(treeRegisterNeed(e.arg0), treeRegisterNeed(e.arg1), e.arg1 != nil))
+	leftDepth, leftNeed := storedTreeLabels(e.arg0)
+	rightDepth, rightNeed := storedTreeLabels(e.arg1)
+	if leftNeed == 0 {
+		leftNeed = treeRegisterNeed(e.arg0)
+	}
+	if rightNeed == 0 {
+		rightNeed = treeRegisterNeed(e.arg1)
+	}
+	depth := uint8(1 + max16(leftDepth, rightDepth))
+	need := uint8(combineRegisterNeed(leftNeed, rightNeed, e.arg1 != nil))
+	e.st.slot = e.st.slot&^0x00ffff00 | uint32(depth)<<8 | uint32(need)<<16
+}
+
+// A deferred child's labels occupy adjacent bytes of the same word. Load them
+// together; zero demand retains the recursive fallback for unlabelled nodes.
+// Leaves (including the absent right child of a unary node) need one register.
+func storedTreeLabels(e *elem) (depth, need int16) {
+	if e == nil || !e.isDeferred() {
+		return 0, 1
+	}
+	labels := e.st.slot
+	return int16(uint8(labels >> 8)), int16(uint8(labels >> 16))
 }
 
 // treeReorderSafe excludes any leaf or operation whose evaluation can trap.

@@ -7,10 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"path/filepath"
-	"slices"
-	"strings"
 	"testing"
 )
 
@@ -33,61 +29,22 @@ func rv64PublicGCTypeSubtypingNonFlatExportBytes(t testing.TB) []byte {
 func rv64PublicGCTypeSubtypingNonFlatExportCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
 	source := rv64PublicGCTypeSubtypingNonFlatExportBytes(t)
-	dir, mode := os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_NON_FLAT_EXPORT_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_NON_FLAT_EXPORT_ARTIFACT_MODE")
-	path := filepath.Join(dir, "gc-type-subtyping-non-flat-export.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return loaded
-	}
+
 	compiled, err := rv64I31Config().Compile(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !artifact && mode != "prepare" {
-		return compiled
-	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		compiled.Close()
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			compiled.Close()
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			compiled.Close()
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return compiled
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	compiled.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return loaded
+
+	return compiled
+
 }
 
 func TestRV64PublicGCTypeSubtypingNonFlatExportExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingNonFlatExportCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64ArtifactContractValid(view) || view.validate() != nil {
+			if !rv64SourceContractValid(view) || view.validate() != nil {
 				t.Fatal("invalid public non-flat export execution contract")
 			}
 			cache := compiled.loadCodeCache()
@@ -152,54 +109,4 @@ func TestRV64PublicGCTypeSubtypingNonFlatExportExecutionAndArtifact(t *testing.T
 		})
 	}
 
-}
-
-func TestRV64PublicGCTypeSubtypingNonFlatExportAdmissionIsExact(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_NON_FLAT_EXPORT_ARTIFACT_MODE") == "load" {
-		t.Skip("compiler-free runner selected")
-	}
-	compiled := rv64PublicGCTypeSubtypingNonFlatExportCompile(t, false)
-	base := compiled.executionView()
-	for name, mutate := range map[string]func(*Compiled){
-		"code":       func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"entry":      func(v *Compiled) { v.Entry[5] += 16; v.InternalEntry[5] += 16 },
-		"function":   func(v *Compiled) { v.Funcs[1].TypeIndex = 0 },
-		"type":       func(v *Compiled) { v.Types[0].Final = true },
-		"type-key":   func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
-		"descriptor": func(v *Compiled) { v.GCTypeDescs[0].Final = true },
-		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-		"export":     func(v *Compiled) { v.Exports["f6"] = 0 },
-		"function-abi": func(v *Compiled) {
-			v.nativeReferenceFunctionABI = !v.nativeReferenceFunctionABI
-		},
-		"missing-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(nil) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := rv64ReferenceStartCopy(base)
-			mutate(candidate)
-			if err := candidate.validate(); err == nil {
-				t.Fatal("hostile retained non-flat export mutation admitted")
-			}
-			if name == "feature" {
-				rv64RequireRestoredGCFeature(t, candidate)
-				return
-			}
-			rv64RequireRejectedArtifact(t, candidate)
-		})
-	}
-	compiled.Close()
-
-}
-
-func TestRV64PublicGCTypeSubtypingNonFlatExportCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_NON_FLAT_EXPORT_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	c, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingNonFlatExportBytes(t))
-	if c != nil {
-		_ = c.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		t.Fatal("compiler-free non-flat-export path used source compilation", err)
-	}
 }

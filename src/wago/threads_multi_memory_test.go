@@ -112,7 +112,7 @@ func TestThreadsPrivateSecondaryMemoryIsolationGrowthAndCodec(t *testing.T) {
 								t.Fatal(err)
 							}
 							defer c.Close()
-							for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+							for _, compiled := range []*Compiled{c} {
 								imports := NewImports()
 								var provider *Instance
 								if imported {
@@ -313,7 +313,7 @@ func TestThreadsImportedSecondaryMemoryUsesSharedLease(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+			for _, compiled := range []*Compiled{c} {
 				binary.LittleEndian.PutUint32(secondary.UnsafeBytes(), 0)
 				instances := make([]*Instance, 8)
 				for i := range instances {
@@ -371,7 +371,7 @@ func TestThreadsImportedSecondaryAddressWidthsGrowthAndCodec(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+					for _, compiled := range []*Compiled{c} {
 						provider, err := Instantiate(providerModule)
 						if err != nil {
 							t.Fatal(err)
@@ -544,7 +544,7 @@ func testThreadsSecondaryAtomicMatrix(t *testing.T, secondaryShared bool) {
 								t.Fatal(err)
 							}
 							defer c.Close()
-							for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+							for _, compiled := range []*Compiled{c} {
 								imports := NewImports()
 								if imported {
 									pc, err := cfg.Compile(threadsSecondaryAtomicModuleWithSharing(primary64, secondary64, false, constant, secondaryShared))

@@ -38,7 +38,7 @@ func TestSharedSecondaryGrowOnlyInitializesHelpers(t *testing.T) {
 				if !c.usesAtomicWaitHelpers() {
 					t.Fatal("grow-only module omitted required helper context")
 				}
-				for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+				for _, compiled := range []*Compiled{c} {
 					if !compiled.usesAtomicWaitHelpers() {
 						t.Fatal("codec lost required grow helper")
 					}

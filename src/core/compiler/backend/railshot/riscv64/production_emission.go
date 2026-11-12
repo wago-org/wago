@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -60,7 +67,7 @@ func admitProductionWireProfile(data []byte, public bool) error {
 			if id == 4 && public {
 				// The public runtime addresses tables through a directory. Apply
 				// the same metadata count bound as decoded admission.
-				limit = MaxFunctions
+				limit = MaxModuleTables
 			} else if id == 9 {
 				limit = uint32(productionElementSegmentLimit(public))
 			}

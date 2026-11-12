@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Package optimization owns the compiler optimization catalog shared by
 // backends, the CLI, configuration, and standalone cross-compilation.
 package optimization
@@ -99,7 +106,7 @@ func (s Selection) EnabledOption(option Option) bool {
 // EnabledResolvedOption is the hot-path form for an Option resolved by the
 // same Bindings that produced this Selection. Backend initialization validates
 // that ownership once, so per-instruction lowering need only test the bit.
-func (s Selection) EnabledResolvedOption(option Option) bool {
+func (s *Selection) EnabledResolvedOption(option Option) bool {
 	return s.bits[option.word]&option.mask != 0
 }
 
@@ -456,16 +463,27 @@ var catalog = []Definition{
 	arm64("atomic-lse", "LSE atomics", "use native acquire/release atomic RMW and compare-exchange on LSE hosts"),
 	both("atomic-static-bounds", "Constant atomic bounds", "prove aligned constant atomic addresses against the declared memory minimum"),
 	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
-	both("straight-line-block", "Straight-line blocks", "retain operand residency through small blocks without branches or calls"),
+	both("straight-line-block", "Straight-line blocks", "retain operand residency through bounded fallthrough blocks and fully spliced private callees"),
+	both("loop-local-params", "Loop parameter locals", "transfer bounded integer loop parameters directly into pinned local homes"),
+	both("scalar-loop-unroll", "Scalar loop unrolling", "replicate bounded register-only integer loops and streamline short pinned-local loop backedges"),
+	arm64("cold-tuple-loop-exit", "Cold integer tuple loop exits", "defer local-only tuple exit arms so loop continuations fall through"),
+	arm64("guarded-div-rem", "Guarded integer division", "reuse an immediately preceding local zero guard for one integer division or remainder"),
+	both("tuple-if-select", "Integer pair selection", "select pinned integer pair operands without a structured merge"),
+	both("pure-integer-if-select", "Pure integer if selection", "select bounded nontrapping integer expressions without a structured merge"),
+	arm64("inline-integer-tuples", "Integer tuple inlining", "inline bounded numeric tuple leaves with structured control and private local homes"),
 	both("bulk-fill-vector", "Constant vector fills", "broadcast a byte into native vector stores for 16 to 64 byte constant fills"),
+	both("bulk-copy-vector", "Constant vector copies", "load complete 16 to 64 byte source spans before overlap-safe vector stores"),
+	both("bulk-memory-loops", "Wide bulk-memory loops", "align bulk stores and reduce loop overhead with architecture-specific wide groups"),
+	both("bulk-fill-copy-forward", "Filled-source copies", "reuse a proven constant fill for an adjacent unshared copy while retaining both range checks"),
+	both("byte-reduce-loop", "Read-only byte reductions", "guard complete unsigned byte-reduction ranges and lower modular byte sums in native groups"),
 	both("simd-store-load-address", "Adjacent SIMD memory addresses", "reuse an identical pure address expression for a vector store and following real load"),
 	both("simd-load-extract", "SIMD load lane extraction", "load the consumed scalar lane while retaining the original vector access bounds"),
 	both("memory-min-bounds", "Declared minimum memory bounds", "prove bounded integer address expressions fit the selected memory minimum"),
-	arm64("linear-integer-tree", "Repeated integer linear terms", "collect repeated pure local terms in bounded wrapping i32 expressions"),
+	both("linear-integer-tree", "Repeated integer linear terms", "collect repeated pure local terms in bounded wrapping i32 expressions"),
 	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
 	{Name: "prepared-direct-entry", Label: "Direct prepared entry", Description: "enter compiler-proved integer functions through the register ABI", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	arm64("prepared-light-entry", "Light prepared entry", "use caller-clobber proofs to select a smaller native entry thunk"),
-	{Name: "prepared-bounded-entry", Label: "Bounded prepared entry", Description: "keep compiler-bounded native leaves on the Go scheduler", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
+	{Name: "prepared-bounded-entry", Label: "Bounded prepared entry", Description: "keep compiler-proven bounded native invocations on the Go scheduler", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	{Name: "native-leaf-host", Label: "Native scalar host leaves", Description: "lower proven pure Go scalar callbacks into native import trampolines", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	both("direct-go-host-import", "Direct Go host imports", "bypass cross-instance marshaling for bound Go imports in bounded numeric functions"),
 	amd64("wide-loop-int-const", "Wide loop integer constants", "keep repeatedly materialized non-imm32 i64 loop constants in otherwise-idle registers"),
@@ -484,7 +502,7 @@ var catalog = []Definition{
 	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "bounded-branch-index", Label: "Bounded branch indices", Description: "omit branch-vector bounds tests for direct i32 masks and constants proved in range", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: catalogARM64Architectures},
+	both("borrowed-div-rem", "Read-only division operands", "read concrete pinned integer division and remainder operands without copying"),
 	{Name: "bounded-signed-quotient", Label: "Bounded signed quotient", Description: "skip exact i32 division when a subsequent signed clamp saturates", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "taken-zero-branch", Label: "Known zero branch targets", Description: "thread direct zero branches through tests implied by their taken edge", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: catalogARM64Architectures},
@@ -521,6 +539,8 @@ var catalog = []Definition{
 	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
 	arm64("zero-branch", "Zero branches", "select direct zero-test branches when flags are not live"),
 	arm64("mul-add-fuse", "Multiply-add fusion", "fuse multiply-add and multiply-subtract expressions"),
+	both("tail-self-loop", "Self-tail loops", "reuse the native frame for eligible direct self-tail transfers"),
+	both("tail-loop-inline", "Tail-loop inlining", "inline bounded numeric tail-call bodies as call-free native loops"),
 	arm64("entry-init-elision", "Entry initialization elision", "skip initialization of locals overwritten before their first read"),
 	arm64("v128-direct-results", "Direct vector results", "write vector results directly into eligible pinned locals"),
 	amd64("dead-gc-new", "Dead GC constructors", "remove dropped GC constructor trees while preserving traps"),

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -140,14 +147,4 @@ func rv64GCArrayDefaultOfficialMetadata(c *Compiled, requireInitializer bool) bo
 
 func rv64GCArrayDefaultOfficial(c *Compiled) bool {
 	return rv64GCArrayDefaultOfficialMetadata(c, true)
-}
-
-func railshotRestoreGCArrayDefaultOfficialArtifact(c *Compiled) {
-	if !rv64GCArrayDefaultOfficialMetadata(c, false) {
-		return
-	}
-	c.memoryDir.gcArrayGlobals = []gcArrayGlobalInit{
-		{GlobalIndex: 0, TypeID: 0, Length: 3, Mode: gcArrayGlobalInitUniform, Bits: []uint64{0x3f800000}},
-		{GlobalIndex: 1, TypeID: 0, Length: 3, Mode: gcArrayGlobalInitDefault},
-	}
 }

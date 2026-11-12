@@ -160,9 +160,9 @@ func TestLocalExternrefGlobalsRespectFeatureStoreAndLifetimeBoundaries(t *testin
 }
 
 func TestLocalExternrefGlobalsRemainOutOfSerializedState(t *testing.T) {
-	c := compileExplicitArtifact(t, nullableLocalExternrefGlobalsModule())
+	c := compileExplicitSource(t, nullableLocalExternrefGlobalsModule())
 	defer c.Close()
-	_ = publicArtifactRoundTrip(t, c)
+
 	if _, err := Instantiate(&Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: 1}}}); err == nil || !strings.Contains(err.Error(), "non-null externref global initializer") {
 		t.Fatalf("Instantiate forged externref metadata error = %v", err)
 	}

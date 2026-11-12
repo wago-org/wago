@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -32,9 +32,8 @@ func TestRV64CompactExternHostGlobalPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{c, loaded} {
+
+		for artifact, candidate := range []*Compiled{c} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt := NewRuntime()
@@ -229,9 +228,8 @@ func TestRV64CompactExternHostGlobalCyclePrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer source.Close()
-		loaded := publicArtifactRoundTrip(t, source)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{source, loaded} {
+
+		for artifact, candidate := range []*Compiled{source} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				for _, held := range []bool{false, true} {
 					t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d/held%t", vector, artifact != 0, profile, held), func(t *testing.T) {
@@ -328,9 +326,8 @@ func TestRV64CompactExternHostGlobalActiveClosePrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer source.Close()
-		loaded := publicArtifactRoundTrip(t, source)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{source, loaded} {
+
+		for artifact, candidate := range []*Compiled{source} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt := NewRuntime()
@@ -410,9 +407,8 @@ func TestRV64CompactExternHostGlobalSequentialCyclesPrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer source.Close()
-		loaded := publicArtifactRoundTrip(t, source)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{source, loaded} {
+
+		for artifact, candidate := range []*Compiled{source} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt := NewRuntime()
@@ -512,7 +508,7 @@ func BenchmarkRV64CompactExternHostGlobalOwnedGet(b *testing.B) {
 }
 
 func TestRV64CompactExternHostGlobalRuntimeClosePrivate(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, otherOpen := range []bool{false, true} {
 			for _, pinned := range []bool{false, true} {
 				t.Run(fmt.Sprintf("artifact%t/otherOpen%t/pinned%t", artifact, otherOpen, pinned), func(t *testing.T) {
@@ -521,10 +517,7 @@ func TestRV64CompactExternHostGlobalRuntimeClosePrivate(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer source.Close()
-					if artifact {
-						source = publicArtifactRoundTrip(t, source)
-						defer source.Close()
-					}
+
 					rt := NewRuntime()
 					defer rt.Close()
 					global, err := rt.NewExternRefGlobal(ExternRef{}, true)
@@ -636,9 +629,8 @@ func TestRV64CompactExternHostGlobalForeignRuntimeClosePrivate(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for artifact, candidate := range []*Compiled{c, loaded} {
+
+		for artifact, candidate := range []*Compiled{c} {
 			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
 					rt, other := NewRuntime(), NewRuntime()

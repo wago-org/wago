@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build wago_regalloccheck
 
 package wasm
@@ -133,7 +140,7 @@ func (g *sourceCFGBuilder) stackTypes() ([]ValType, bool) {
 	}
 	types := make([]ValType, len(b.v.vals))
 	for i, v := range b.v.vals {
-		if v.unknown || !sourcePrimitive(v.t) {
+		if v.unknown() || !sourcePrimitive(v.t) {
 			return nil, false
 		}
 		types[i] = v.t

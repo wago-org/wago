@@ -83,7 +83,7 @@ func TestThreadsSharedMemory64BoundsGrowthWaitsAndCodec(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer compiled.Close()
-					for _, c := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+					for _, c := range []*Compiled{compiled} {
 						imports := NewImports()
 						if imported {
 							providerModule, err := cfg.Compile(threadsMemory64Module(false))
@@ -295,7 +295,7 @@ func TestThreadsSharedMemory64ScalarAndSIMDAccess(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer shared.Close()
-						for _, compiled := range []*Compiled{shared, publicArtifactRoundTrip(t, shared)} {
+						for _, compiled := range []*Compiled{shared} {
 							in, err := Instantiate(compiled)
 							if err != nil {
 								t.Fatal(err)
@@ -346,7 +346,7 @@ func TestThreadsSharedMemory64BulkBoundsAndOverlap(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+					for _, compiled := range []*Compiled{c} {
 						in, err := Instantiate(compiled)
 						if err != nil {
 							t.Fatal(err)
@@ -415,7 +415,7 @@ func TestThreadsSharedMemory64DataSegmentsAndCodec(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+					for _, compiled := range []*Compiled{c} {
 						imports := NewImports()
 						if imported {
 							providerModule, err := cfg.Compile(threadsMemory64Module(false))
@@ -492,7 +492,7 @@ func TestThreadsUnsharedMemory64Atomics(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer c.Close()
-					for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+					for _, compiled := range []*Compiled{c} {
 						imports := NewImports()
 						if imported {
 							providerModule, err := cfg.Compile(threadsMemory64ModuleWithSharing(false, false))

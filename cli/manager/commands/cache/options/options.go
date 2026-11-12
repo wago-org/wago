@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package options
 
 import "github.com/wago-org/wago/cli/internal/command"
@@ -9,7 +16,7 @@ type Selection struct {
 
 func Flags() []command.Flag {
 	return []command.Flag{
-		{Name: "downloads", Short: "d", Bool: true, Help: "include downloaded and compiled module cache"},
+		{Name: "downloads", Short: "d", Bool: true, Help: "include downloaded resources and cached files"},
 		{Name: "builds", Short: "b", Bool: true, Help: "include local and global plugin builds"},
 		{Name: "all", Short: "a", Bool: true, Help: "include every regenerable cache"},
 	}

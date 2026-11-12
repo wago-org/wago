@@ -3,12 +3,8 @@
 package wago
 
 import (
-	"context"
 	"fmt"
 	rv "github.com/wago-org/wago/codegen/riscv64"
-	"os"
-	"path/filepath"
-	"testing"
 )
 
 type rv64WideDataExtension struct {
@@ -138,107 +134,4 @@ func (e rv64WideDataExtension) Register(reg *Registry) error {
 		}
 		return nil
 	}}})
-}
-
-func TestRV64CustomWideDataSourceArtifact(t *testing.T) {
-	mode, dir := os.Getenv("WAGO_RV64_CUSTOM_ARTIFACT_MODE"), os.Getenv("WAGO_RV64_CUSTOM_ARTIFACT_DIR")
-	carriers := []struct {
-		typ  WasmType
-		wire byte
-	}{{WasmI32, 0x7f}, {WasmI64, 0x7e}, {WasmF32, 0x7d}, {WasmF64, 0x7c}, {WasmV128, 0x7b}, {WasmFuncRef, 0x70}, {WasmExternRef, 0x6f}}
-	for _, size := range []int32{32, 64, 128, 256, 512} {
-		for _, carrier := range carriers {
-			t.Run(fmt.Sprintf("size%d-carrier%x", size, carrier.wire), func(t *testing.T) {
-				rt := NewRuntime()
-				defer rt.Close()
-				if err := rt.Use(rv64WideDataExtension{size: size, carrier: carrier.typ}); err != nil {
-					t.Fatal(err)
-				}
-				bodies := []struct {
-					name string
-					body []byte
-					seed int
-				}{
-					{"direct", []byte{0x10, 0, 0x10, 2, 0x0b}, 1},
-					{"managed-identity", []byte{0x10, 0, 0x10, 3, 0x10, 2, 0x0b}, 1},
-					{"block-params", []byte{0x10, 0, 0x02, 3, 0x0b, 0x10, 2, 0x0b}, 1},
-					{"loop-params", []byte{0x10, 0, 0x03, 3, 0x0b, 0x10, 2, 0x0b}, 1},
-					{"branch", []byte{0x02, carrier.wire, 0x10, 0, 0x10, 1, 0x0c, 0, 0x0b, 0x10, 2, 0x0b}, 2},
-					{"branch-table", []byte{0x02, carrier.wire, 0x10, 0, 0x10, 1, 0x41, 0, 0x0e, 1, 0, 0, 0x0b, 0x10, 2, 0x0b}, 2},
-					{"join-then", []byte{0x41, 1, 0x04, carrier.wire, 0x10, 0, 0x05, 0x10, 1, 0x0b, 0x10, 2, 0x0b}, 1},
-					{"join-else", []byte{0x41, 0, 0x04, carrier.wire, 0x10, 0, 0x05, 0x10, 1, 0x0b, 0x10, 2, 0x0b}, 2},
-					{"select-first", []byte{0x10, 0, 0x10, 1, 0x41, 1, 0x1c, 1, carrier.wire, 0x10, 2, 0x0b}, 1},
-					{"select-second", []byte{0x10, 0, 0x10, 1, 0x41, 0, 0x1c, 1, carrier.wire, 0x10, 2, 0x0b}, 2},
-					{"spills", []byte{0x10, 0, 0x10, 1, 0x10, 1, 0x10, 1, 0x10, 2, 0x1a, 0x10, 2, 0x1a, 0x10, 2, 0x1a, 0x10, 2, 0x0b}, 1},
-				}
-				mixed := []byte{0x10, 0}
-				for range 255 {
-					mixed = append(mixed, 0x41, 1)
-				}
-				for range 255 {
-					mixed = append(mixed, 0x1a)
-				}
-				mixed = append(mixed, 0x10, 2, 0x0b)
-				bodies = append(bodies, struct {
-					name string
-					body []byte
-					seed int
-				}{"mixed-scalars", mixed, 1})
-				for _, test := range bodies {
-					t.Run(test.name, func(t *testing.T) {
-						var blob []byte
-						var err error
-						entries := make([]struct {
-							name string
-							mod  *Module
-						}, 0, 2)
-						artifactPath := filepath.Join(dir, fmt.Sprintf("size%d-carrier%x-%s.wago", size, carrier.wire, test.name))
-						if mode == "load" {
-							blob, err = os.ReadFile(artifactPath)
-						} else {
-							var mod *Module
-							mod, blob = rv64PrepareWideData(t, rt, carrier.wire, test.body)
-							defer mod.Close()
-							entries = append(entries, struct {
-								name string
-								mod  *Module
-							}{"source", mod})
-							if mode == "prepare" {
-								err = os.WriteFile(artifactPath, blob, 0600)
-							}
-						}
-						if err != nil {
-							t.Fatal(err)
-						}
-						loaded, err := LoadTrustedArtifact(blob)
-						if err != nil {
-							t.Fatal(err)
-						}
-						loadedMod, err := rt.AdoptModule(loaded)
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer loadedMod.Close()
-						entries = append(entries, struct {
-							name string
-							mod  *Module
-						}{"artifact", loadedMod})
-						for _, entry := range entries {
-							t.Run(entry.name, func(t *testing.T) {
-								in, err := rt.Instantiate(context.Background(), entry.mod)
-								if err != nil {
-									t.Fatal(err)
-								}
-								defer in.Close()
-								got, err := in.Invoke("run")
-								if err != nil || len(got) != 1 || got[0] != rv64WideSum(size, test.seed) {
-									t.Fatalf("sum=%x error=%v want=%x", got, err, rv64WideSum(size, test.seed))
-								}
-							})
-						}
-					})
-				}
-			})
-		}
-	}
 }

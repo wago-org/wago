@@ -50,9 +50,8 @@ func TestBulkFillVectorAllLengths(t *testing.T) {
 						defer c.Close()
 						cases := []*Compiled{c}
 						if !guardPageBuilt {
-							loaded := publicArtifactRoundTrip(t, c)
-							defer loaded.Close()
-							cases = append(cases, loaded)
+
+							cases = append(cases, c)
 						}
 						for _, compiled := range cases {
 							in, err := Instantiate(compiled)

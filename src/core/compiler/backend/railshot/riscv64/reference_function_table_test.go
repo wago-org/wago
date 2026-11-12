@@ -220,7 +220,7 @@ func TestReferenceFunctionOwnedTableDeadCountBoundary(t *testing.T) {
 				pressure := 0
 				o.MemoryPressure = func() { pressure++ }
 				image, err := CompileModuleWith(m, o)
-				if n == maxDirectCalls {
+				if n <= maxFunctionCallSites {
 					if image == nil || err != nil || pressure != 1 {
 						t.Fatal("exact indirect site bound", err, pressure)
 					}

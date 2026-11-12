@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -18,23 +17,8 @@ import (
 
 func invocationCleanupCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_INVOCATION_CLEANUP_ARTIFACT_DIR"), os.Getenv("WAGO_INVOCATION_CLEANUP_ARTIFACT_MODE")
-	path := filepath.Join(dir, "invocation-cleanup.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Fatal("compiler-free runner selected source")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = c.Close() })
-		return c
-	}
+	_, mode := os.Getenv("WAGO_INVOCATION_CLEANUP_ARTIFACT_DIR"), os.Getenv("WAGO_INVOCATION_CLEANUP_ARTIFACT_MODE")
+
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -46,27 +30,9 @@ func invocationCleanupCompile(t *testing.T, artifact bool) *Compiled {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	if !artifact {
-		return c
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, blob, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = loaded.Close() })
-	return loaded
+
+	return c
+
 }
 
 func TestCloseMappedPhysicalPanicReportsAndCompletes(t *testing.T) {

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -77,7 +84,7 @@ func rv64GCTypeSubtypingStructMismatchLinkProfileWithCode(c *Compiled, allowUnre
 	default:
 		return 0
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil || len(metadata) != rv64GCTypeSubtypingStructMismatchLinkMetadataLens[variant-1] || sha256.Sum256(metadata) != rv64GCTypeSubtypingStructMismatchLinkMetadataDigests[variant-1] {
 		return 0
 	}
@@ -90,18 +97,4 @@ func rv64GCTypeSubtypingStructMismatchLink(c *Compiled) bool {
 
 func rv64GCTypeSubtypingStructMismatchLinkExecutionCode(c *Compiled) bool {
 	return c != nil && (len(c.code) == rv64GCTypeSubtypingStructMismatchLinkProviderCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingStructMismatchLinkProviderCodeDigest || len(c.code) == 0)
-}
-
-func railshotRestoreGCTypeSubtypingStructMismatchLinkArtifact(c *Compiled) {
-	variant := rv64GCTypeSubtypingStructMismatchLinkProfileWithCode(c, true, true)
-	if variant == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	if variant == 1 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingStructMismatchLinkProvider
-	} else {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingStructMismatchLinkConsumer
-	}
 }

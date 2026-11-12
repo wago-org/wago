@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -13,7 +20,7 @@ func admitPublicDynamicHostReferenceBoundaryWire(data []byte) bool {
 	if !admitExactProductWireShape(data, nil) {
 		return false
 	}
-	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxTypeDeclarations, MaxMetadataBytes: 16 << 20})
 	return err == nil && admitPublicDynamicHostReferenceBoundary(decoded.Module)
 }
 
@@ -21,7 +28,7 @@ func admitPublicReferenceCallBoundaryWire(data []byte) bool {
 	if !publicReferenceCallBoundaryWireShape(data) {
 		return false
 	}
-	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxTypeDeclarations, MaxMetadataBytes: 16 << 20})
 	return err == nil && admitPublicReferenceCallBoundary(decoded.Module)
 }
 
@@ -377,7 +384,7 @@ func admitProductionReferenceFunctionModule(m *wasm.Module, vector bool) error {
 }
 
 func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
-	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions || len(m.Elements) > MaxOwnedElementSegments || len(m.Customs) > MaxFunctions {
+	if m == nil || len(m.Imports) > MaxPublicImports || len(m.Code) == 0 || len(m.Code) > MaxModuleFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxTypeDeclarations || len(m.Exports) > MaxModuleExports || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("closed reference module directory bound")
 	}
 	if !vector && isCore3RefIsNullExecution(m) {
@@ -460,7 +467,11 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			return err
 		}
 	}
-	var references [MaxFunctions]bool
+	scratchRemaining := MaxModuleBytes
+	if !consumeDirectoryBytes(imported+len(m.Code), 1, &scratchRemaining) || !consumeDirectoryBytes(imported, 8, &scratchRemaining) {
+		return unsupported("closed reference scratch byte budget")
+	}
+	references := make([]bool, imported+len(m.Code))
 	// The imported prefix is numeric except for the exact single-host forwarding
 	// boundary. No unused import or broader module topology inherits that bridge.
 	for _, im := range m.Imports {
@@ -483,7 +494,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			}
 		}
 	}
-	var importSignatures [MaxHostFunctionImports]*wasm.CompType
+	importSignatures := make([]*wasm.CompType, imported)
 	importedOrdinal := 0
 	for _, im := range m.Imports {
 		if im.Type.Kind == wasm.ExternFunc {

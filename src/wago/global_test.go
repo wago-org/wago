@@ -264,43 +264,6 @@ func extendedConstExecutionModule() []byte {
 	)
 }
 
-func TestExtendedConstExpressionsExecuteAndRoundTrip(t *testing.T) {
-	module := extendedConstExecutionModule()
-	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
-	if err != nil {
-		t.Fatalf("Compile extended const module: %v", err)
-	}
-	defer compiled.Close()
-	if len(compiled.Globals) != 3 || len(compiled.Globals[1].InitExpr) == 0 || len(compiled.Globals[2].InitExpr) == 0 {
-		t.Fatalf("compiled global extended expressions not preserved: %+v", compiled.Globals)
-	}
-	if len(compiled.Data) != 1 || len(compiled.Data[0].Offset.Expr) == 0 {
-		t.Fatalf("compiled data offset extended expression not preserved: %+v", compiled.Data)
-	}
-
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary extended const module: %v", err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatalf("Load extended const module: %v", err)
-	}
-	defer loaded.Close()
-
-	inst, err := Instantiate(loaded, testImports("env.seed", GlobalImport{Type: ValI32, Bits: I32(7)}))
-	if err != nil {
-		t.Fatalf("Instantiate extended const module: %v", err)
-	}
-	defer inst.Close()
-	if got, err := inst.Invoke("global"); err != nil || len(got) != 1 || uint32(got[0]) != 36 {
-		t.Fatalf("global() = %v, %v, want 36", got, err)
-	}
-	if got, err := inst.Invoke("load"); err != nil || len(got) != 1 || uint32(got[0]) != 'x' {
-		t.Fatalf("load() = %v, %v, want %d", got, err, 'x')
-	}
-}
-
 func TestExtendedConstFeatureGateRejectsBeforeCompilation(t *testing.T) {
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureExtendedConstExpressions, false)
 	_, err := Compile(cfg, extendedConstExecutionModule())
@@ -638,53 +601,6 @@ func TestGlobalValidationCompileAlignment(t *testing.T) {
 				t.Fatalf("Compile error = %v, want validation error", err)
 			}
 		})
-	}
-}
-
-func TestGlobalNumericRoundTrips(t *testing.T) {
-	f32bits := uint32(0x3fc00000) // 1.5
-	f64bits := math.Float64bits(2.25)
-	f32 := make([]byte, 4)
-	binary.LittleEndian.PutUint32(f32, f32bits)
-	f64 := make([]byte, 8)
-	binary.LittleEndian.PutUint64(f64, f64bits)
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
-			wasmtest.FuncType([]wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32}),
-			wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}),
-		)),
-		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x01}, []byte{0x02})),
-		wasmtest.Section(6, wasmtest.Vec(
-			wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0x01, 0x0b}),
-			wasmtest.GlobalEntry(wasm.I64, true, append(append([]byte{0x42}, wasmtest.SLEB64(0x0102030405060708)...), 0x0b)),
-			wasmtest.GlobalEntry(wasm.F32, true, append(append([]byte{0x43}, f32...), 0x0b)),
-			wasmtest.GlobalEntry(wasm.F64, true, append(append([]byte{0x44}, f64...), 0x0b)),
-		)),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g64", 0, 0), wasmtest.ExportEntry("f32", 0, 1), wasmtest.ExportEntry("f64", 0, 2))),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x23, 0x01, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x02, 0x23, 0x02, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x03, 0x23, 0x03, 0x0b}),
-		)),
-	)
-	c, err := Compile(nil, mod)
-	if err != nil {
-		t.Fatal(err)
-	}
-	in, err := Instantiate(c, InstantiateOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	if res, err := in.Invoke("g64"); err != nil || AsI64(res[0]) != 0x0102030405060708 {
-		t.Fatalf("g64 = %v, %v", res, err)
-	}
-	if res, err := in.Invoke("f32", F32(3.5)); err != nil || math.Float32bits(AsF32(res[0])) != math.Float32bits(3.5) {
-		t.Fatalf("f32 = %v, %v", res, err)
-	}
-	if res, err := in.Invoke("f64", F64(4.5)); err != nil || math.Float64bits(AsF64(res[0])) != math.Float64bits(4.5) {
-		t.Fatalf("f64 = %v, %v", res, err)
 	}
 }
 

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wasm
 
 import (
@@ -400,16 +407,17 @@ func (v *moduleValidator) validateModule() error {
 		if err := v.validateTableType(t.Type); err != nil {
 			return err
 		}
+		globalLimit := len(v.importsOfKind(ExternGlobal))
 		hasInit := t.Init != nil
 		if v.direct != nil {
 			hasInit = i < len(v.direct.tableHasInit) && v.direct.tableHasInit[i]
 			if hasInit {
-				if err := v.validateConstExprDirect(v.direct.tableInits[i], RefVal(t.Type.Ref)); err != nil {
+				if err := v.validateConstExprDirectWithGlobalLimit(v.direct.tableInits[i], RefVal(t.Type.Ref), globalLimit); err != nil {
 					return err
 				}
 			}
 		} else if hasInit {
-			if err := v.validateConstExpr(*t.Init, RefVal(t.Type.Ref)); err != nil {
+			if err := v.validateConstExprWithGlobalLimit(*t.Init, RefVal(t.Type.Ref), globalLimit); err != nil {
 				return err
 			}
 		}
@@ -995,12 +1003,19 @@ func (v *funcValidator) elemRefType(index uint32) (RefType, error) {
 }
 
 type val struct {
-	t       ValType
-	unknown bool
+	t ValType
 }
 
+// Canonical value types use lo bits only through bit49. Keep the validator's
+// polymorphic-stack marker in an otherwise unused bit, preserving all64 bits
+// of hi for exact resolved type coordinates. Bot and reference bottom remain
+// ordinary known types; this marker never enters a module declaration.
+const unknownValidationBit = uint64(1) << 63
+
+func (v val) unknown() bool { return v.t.lo&unknownValidationBit != 0 }
+
 func nonNullValidationType(x val) ValType {
-	if x.unknown {
+	if x.unknown() {
 		// A reference instruction constrains value bottom to reference bottom.
 		return RefVal(Ref(false, HeapType{lo: uint64(heapBottom)}, false))
 	}
@@ -1153,7 +1168,7 @@ func (v *funcValidator) pop() (val, error) {
 	f := v.top()
 	if len(v.vals) == f.height {
 		if f.unreachable {
-			return val{unknown: true}, nil
+			return val{t: ValType{lo: unknownValidationBit}}, nil
 		}
 		return val{}, v.verr(ErrTypeMismatch, "stack underflow")
 	}
@@ -1166,7 +1181,7 @@ func (v *funcValidator) popExpect(t ValType) error {
 	if err != nil {
 		return err
 	}
-	if !x.unknown && !v.subtype(x.t, t) {
+	if !x.unknown() && !v.subtype(x.t, t) {
 		return v.verr(ErrTypeMismatch, x.t.String()+" is not "+t.String())
 	}
 	return nil

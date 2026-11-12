@@ -1,13 +1,16 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package runtime
 
 import (
-	"path/filepath"
-
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
-	"github.com/wago-org/wago/cli/runtime/internal/artifactcache"
 	runtimeplugin "github.com/wago-org/wago/cli/runtime/internal/plugin"
-	"github.com/wago-org/wago/internal/wagopaths"
 )
 
 // commandEnvironment adapts the compiled runtime profile to command packages.
@@ -20,13 +23,6 @@ func (commandEnvironment) ProfileFlags() []command.Flag {
 
 func (commandEnvironment) LoadRuntime(config *wago.RuntimeConfig, guestArgs []string) *wago.Runtime {
 	return runtimeplugin.LoadRuntime(config, guestArgs)
-}
-
-func (commandEnvironment) ArtifactCache() artifactcache.Cache {
-	return artifactcache.Cache{
-		Dir:      filepath.Join(wagopaths.DirsFor(versionString()).Cache, "modules"),
-		Identity: []byte(artifactCacheIdentity),
-	}
 }
 
 func (commandEnvironment) ScopeLabel() string {

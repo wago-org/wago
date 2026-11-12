@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package plugin
 
 import (
@@ -33,7 +40,7 @@ type pluginPlanReview struct {
 
 func reviewResolvedPluginPlan(plan ResolutionPlan, options pkgOpts) (reviewedPluginPlan, error) {
 	if len(plan.Reviews) == 0 && len(plan.ContractReviews) == 0 && len(options.scopes) == 0 {
-		return reviewedPluginPlan{Lock: plan.Lock}, nil
+		return reviewedPluginPlan{Lock: plan.Lock, Warnings: unmetPluginRequirementWarnings(plan.Lock)}, nil
 	}
 	choices, reviewKeys := map[string]bool{}, map[string]bool{}
 	requestedNames := map[string]bool{}

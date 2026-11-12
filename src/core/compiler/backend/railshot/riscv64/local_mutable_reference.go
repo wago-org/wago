@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -22,7 +29,7 @@ func admitLocalMutableFunctionGlobals(m *wasm.Module) (bool, error) {
 	if admitPublicPrimitiveReferenceModule(m, false) || admitPublicPrimitiveReferenceModule(m, true) {
 		return true, nil
 	}
-	if len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions {
+	if len(m.Types) > MaxTypeDeclarations || len(m.Exports) > MaxModuleExports {
 		return false, unsupported("local mutable references require bounded table-free private cells")
 	}
 	for _, im := range m.Imports {

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -181,7 +188,7 @@ func railshotInitializeExecutionSnapshot(c *Compiled) error {
 		}
 		c.ensureCompileIndexes().railshotTail.primitiveTailTypeKeys = keys
 	}
-	if !rv64RootedClosedCallableOwner(c) || len(c.Funcs) > railshot.MaxFunctions {
+	if !rv64RootedClosedCallableOwner(c) || len(c.Funcs) > railshot.MaxModuleFunctions {
 		return nil
 	}
 	hasCollectorSignature := false
@@ -219,7 +226,7 @@ func railshotExecutionSnapshotCacheBytes(c *Compiled) uintptr {
 			primitiveBytes += unsafe.Sizeof([]uint64(nil)) + uintptr(len(c.Types))*unsafe.Sizeof(uint64(0))
 		}
 	}
-	if len(c.Funcs) > railshot.MaxFunctions || !rv64RootedClosedCallableOwner(c) {
+	if len(c.Funcs) > railshot.MaxModuleFunctions || !rv64RootedClosedCallableOwner(c) {
 		return primitiveBytes
 	}
 	if memo := c.loadValidateMemo(); memo == nil || !memo.rv64FreshRootedGC && c.rv64ExecutionContract() == nil {
@@ -1080,10 +1087,10 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	publicDynamicHostReferenceBoundary := rv64PublicDynamicHostReferenceBoundary(c)
 	publicReferenceCallBoundary := rv64PublicReferenceCallBoundary(c)
 	privateRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c) || rv64GCTypeSubtypingRuntimeFinalityCallCast(c) || rv64GCTypeSubtypingRuntimeTypedTableCall(c) || rv64GCTypeSubtypingRefTestSingle(c)
-	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports > 0) {
+	if c.NumImports < 0 || c.NumImports > railshot.MaxFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports > 0) {
 		return reject("bounded numeric import directory required")
 	}
-	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions-c.NumImports || len(c.Types) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
+	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxModuleFunctions-c.NumImports || len(c.Types) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxModuleExports || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return reject("bounded framed function ABI required")
 	}
 	if c.dynamicFuncrefEscape && !privateRuntimeCallCast && !publicReferenceCallBoundary && !publicHostReferenceBoundary && !publicDynamicHostReferenceBoundary || !c.HasStart && c.StartIsImport || (!c.HasStart || c.StartIsImport) && c.StartLocalFunc != 0 || (!c.HasStart || !c.StartIsImport) && c.StartImportIdx != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.tableExports) != 0 || len(c.customInstructions) != 0 {
@@ -1244,7 +1251,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 // when the authenticated rooted frame contract exposes only numeric callable
 // parameters/results. Reference metadata remains private to the compiled owner.
 func rv64RootedInternalFunctionContract(c *Compiled) bool {
-	if c == nil || !rv64ArtifactContractValid(c) || !rv64FreshRootedGC(c) {
+	if c == nil || !rv64SourceContractValid(c) || !rv64FreshRootedGC(c) {
 		return false
 	}
 	numeric := func(sig FuncSig) bool {

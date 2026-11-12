@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -27,54 +25,14 @@ func rv64Core3RefIsNullExecutionSource(t testing.TB) []byte {
 
 func rv64Core3RefIsNullExecutionCompile(t *testing.T, artifact bool) *Compiled {
 	t.Helper()
-	dir := os.Getenv("WAGO_RV64_CORE3_REF_IS_NULL_ARTIFACT_DIR")
-	mode := os.Getenv("WAGO_RV64_CORE3_REF_IS_NULL_ARTIFACT_MODE")
-	path := filepath.Join(dir, "core3-ref-is-null.wago")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free runner selected artifact case")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		compiled, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return compiled
-	}
+
 	compiled, err := rv64NativeTailConfig().Compile(rv64Core3RefIsNullExecutionSource(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mode != "prepare" && !artifact {
-		return compiled
-	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		compiled.Close()
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0o700); err != nil {
-			compiled.Close()
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, blob, 0o600); err != nil {
-			compiled.Close()
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return compiled
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	compiled.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return loaded
+
+	return compiled
+
 }
 
 func rv64Core3RefIsNullExecutionRetainedFixture(t testing.TB) *Compiled {
@@ -211,29 +169,6 @@ func TestRV64Core3RefIsNullExecutionRetainedClassifier(t *testing.T) {
 	}
 }
 
-func TestRV64Core3RefIsNullExecutionArtifactRoundTrip(t *testing.T) {
-	base := rv64Core3RefIsNullExecutionRetainedFixture(t)
-	blob, err := base.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	view := loaded.executionView()
-	if !rv64Core3RefIsNullExecution(view) {
-		t.Fatal("trusted artifact lost exact retained witness")
-	}
-	if err := railshotValidateReferenceFunctionInstance(loaded, InstantiateOptions{railshotTailPolicy: railshotInstantiateTailPolicy{referenceFunctions: true}}); err != nil {
-		t.Fatal("qualified loaded artifact was rejected:", err)
-	}
-	if err := railshotValidateReferenceFunctionInstance(loaded, InstantiateOptions{}); !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("loaded artifact escaped private runtime permission:", err)
-	}
-}
-
 func TestRV64Core3RefIsNullExecutionFeatureGates(t *testing.T) {
 	if os.Getenv("WAGO_RV64_CORE3_REF_IS_NULL_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
@@ -246,17 +181,5 @@ func TestRV64Core3RefIsNullExecutionFeatureGates(t *testing.T) {
 			}
 			t.Fatalf("ref_is_null compiled with feature %v disabled: %v", feature, err)
 		}
-	}
-}
-
-func TestRV64Core3RefIsNullExecutionCompilerFreeRejectsSource(t *testing.T) {
-	if os.Getenv("WAGO_RV64_CORE3_REF_IS_NULL_ARTIFACT_MODE") != "load" {
-		t.Skip("actual compiler-free runtime only")
-	}
-	if c, err := Compile(nil, rv64Core3RefIsNullExecutionSource(t)); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		if c != nil {
-			_ = c.Close()
-		}
-		t.Fatal("compiler-free ref_is_null path used source compilation", err)
 	}
 }

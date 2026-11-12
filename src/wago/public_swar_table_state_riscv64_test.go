@@ -74,7 +74,7 @@ func TestRV64PublicSWAROwnedTableStateImportsContextAndRetirement(t *testing.T) 
 			positions = []int{0, 1, 2}
 		}
 		for _, position := range positions {
-			for _, artifact := range []bool{false, true} {
+			for _, artifact := range []bool{false} {
 				t.Run(fmt.Sprintf("borrow%t-position%d-artifact%t", borrowed, position, artifact), func(t *testing.T) {
 					memoryProducer, memory := importedMemoryProvider(t)
 					producerCode, err := Compile(nil, rv64PublicSWARGlobalExportsModule())
@@ -104,20 +104,7 @@ func TestRV64PublicSWAROwnedTableStateImportsContextAndRetirement(t *testing.T) 
 						t.Fatal(err)
 					}
 					defer c.Close()
-					if artifact {
-						blob, err := c.MarshalBinary()
-						if err != nil {
-							t.Fatal(err)
-						}
-						loaded, err := LoadTrustedArtifact(blob)
-						if loaded != nil {
-							defer loaded.Close()
-						}
-						if err != nil {
-							t.Fatal(err)
-						}
-						c = loaded
-					}
+
 					instances := make([]*Instance, 2)
 					for i := range instances {
 						instances[i], err = Instantiate(c, imports)
@@ -134,20 +121,7 @@ func TestRV64PublicSWAROwnedTableStateImportsContextAndRetirement(t *testing.T) 
 							t.Fatal(err)
 						}
 						defer limitedCode.Close()
-						if artifact {
-							blob, err := limitedCode.MarshalBinary()
-							if err != nil {
-								t.Fatal(err)
-							}
-							loaded, err := LoadTrustedArtifact(blob)
-							if loaded != nil {
-								defer loaded.Close()
-							}
-							if err != nil {
-								t.Fatal(err)
-							}
-							limitedCode = loaded
-						}
+
 						// Resource quotas are execution policy and do not travel in artifacts.
 						limited, err = Instantiate(limitedCode, InstantiateOptions{Imports: imports, memoryLimitPages: 1})
 						if err != nil {
@@ -276,19 +250,15 @@ func TestRV64PublicSWAROwnedTableStateImportsFailureRestoresProvider(t *testing.
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if loaded != nil {
-		defer loaded.Close()
+
+	if c != nil {
+		defer c.Close()
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
 	count := uint64(10)
-	for _, code := range []*Compiled{c, loaded} {
+	for _, code := range []*Compiled{c} {
 		for range 2 {
 			before := producer.jm.CaptureInstanceContext()
 			if in, err := Instantiate(code, imports); in != nil || err == nil || errors.Is(err, railshot.ErrUnsupported) {

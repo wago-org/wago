@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Wago authors and contributors
+
 """Convert the official reference interpreter's binary script to WABT-like JSON.
 
 The Release 3 interpreter accepts text forms that WABT 1.0.41 does not. Running

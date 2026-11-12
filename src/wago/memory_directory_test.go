@@ -2,69 +2,9 @@ package wago
 
 import (
 	"errors"
-	"reflect"
-	goruntime "runtime"
 	"strings"
 	"testing"
 )
-
-func TestCompiledIndexedMemoryDirectoryCodecAndMetadata(t *testing.T) {
-	c := newHandBuiltCompiled([]byte{0xc3}, Compiled{
-		Exports:       map[string]int{},
-		GlobalExports: map[string]int{},
-		HasMemory:     true,
-		MemMinPages:   1,
-		MemMaxPages:   2,
-		memoryDir: &compiledMemoryDirectory{
-			defs:         []memoryDef{{ImportKey: "env.first", Min: 1, Max: 2, HasMax: true}, {Min: 3, Max: 5, HasMax: true, Shared: true}},
-			exports:      map[string]int{"imported": 0, "local": 1},
-			exactExports: true,
-		},
-		requiredFeatures: CoreFeatureMultiMemory | CoreFeatureThreads,
-	})
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	if blob[4] != wagoVersion {
-		t.Fatalf("codec version = %d, want %d", blob[4], wagoVersion)
-	}
-	var got Compiled
-	if err := unmarshalCompiled(&got, blob[5:]); err != nil {
-		t.Fatalf("decode codec payload: %v", err)
-	}
-	got.memoryDir.exactExports = true
-	var public Compiled
-	publicErr := public.UnmarshalBinary(blob)
-	if supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
-		if publicErr != nil {
-			t.Fatalf("public multi-memory load: %v", publicErr)
-		}
-		defer public.Close()
-	} else if publicErr == nil {
-		t.Fatal("public multi-memory load unexpectedly succeeded on an incomplete backend")
-	}
-	if !reflect.DeepEqual(got.memoryDir.defs, c.memoryDir.defs) || !reflect.DeepEqual(got.memoryDir.exports, c.memoryDir.exports) {
-		t.Fatalf("memory directory changed: memories=%#v exports=%#v", got.memoryDir.defs, got.memoryDir.exports)
-	}
-	if got.MemMinPages != 1 || got.MemMaxPages != 2 || !got.HasMemory {
-		t.Fatalf("memory-0 cache changed: present=%v min/max=%d/%d", got.HasMemory, got.MemMinPages, got.MemMaxPages)
-	}
-	if keys := got.MemoryImports(); !reflect.DeepEqual(keys, []string{"env.first"}) {
-		t.Fatalf("MemoryImports = %v, want [env.first]", keys)
-	}
-
-	meta := (&Module{c: &got}).Metadata()
-	if !reflect.DeepEqual(meta.ExportedMemories, []string{"imported", "local"}) || len(meta.Memories) != 2 {
-		t.Fatalf("memory metadata = exports %v memories %#v", meta.ExportedMemories, meta.Memories)
-	}
-	if m := meta.Memories[0]; m.ImportModule != "env" || m.ImportName != "first" || m.Min != 1 || m.Max != 2 || !m.HasMax || !reflect.DeepEqual(m.Exports, []string{"imported"}) {
-		t.Fatalf("imported memory metadata = %#v", m)
-	}
-	if m := meta.Memories[1]; m.ImportModule != "" || m.Min != 3 || m.Max != 5 || !m.Shared || !reflect.DeepEqual(m.Exports, []string{"local"}) {
-		t.Fatalf("local memory metadata = %#v", m)
-	}
-}
 
 func TestIndexedMemoryDirectoryValidationAndPolicyAccounting(t *testing.T) {
 	base := *newHandBuiltCompiled([]byte{0xc3}, Compiled{

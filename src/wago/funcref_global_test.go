@@ -171,78 +171,6 @@ func TestRelease2NullableLocalFuncrefGlobals(t *testing.T) {
 	}
 }
 
-func TestLocalFuncrefGlobalRoundTripRetainsProducer(t *testing.T) {
-	rt := NewRuntime()
-	defer rt.Close()
-
-	producerModule, err := rt.Compile(funcrefCallableProducerModule())
-	if err != nil {
-		t.Fatalf("Compile producer: %v", err)
-	}
-	globalModule, err := rt.Compile(nullableLocalFuncrefGlobalsModule())
-	if err != nil {
-		t.Fatalf("Compile global module: %v", err)
-	}
-	producer, err := rt.Instantiate(context.Background(), producerModule)
-	if err != nil {
-		t.Fatalf("Instantiate producer: %v", err)
-	}
-	global, err := rt.Instantiate(context.Background(), globalModule)
-	if err != nil {
-		t.Fatalf("Instantiate global module: %v", err)
-	}
-	defer global.Close()
-
-	out, err := producer.InvokeValues(context.Background(), "get")
-	if err != nil || len(out) != 1 || out[0].FuncRef().IsNull() {
-		t.Fatalf("producer get = %v, %v; want non-null funcref", out, err)
-	}
-	token := out[0]
-	if global.globalCells[1].owner != nil {
-		t.Fatal("local exported mutable cell acquired an owner before host ingress")
-	}
-	if err := global.SetGlobalValue("mutable", token); err != nil {
-		t.Fatalf("initial SetGlobalValue(mutable, token): %v", err)
-	}
-	if global.globalCells[1].instanceOwner() != global {
-		t.Fatal("host ingress did not install the local reference container owner")
-	}
-	if err := producer.Close(); err != nil {
-		t.Fatalf("Close producer after initial host ingress: %v", err)
-	}
-	got, err := global.GlobalValue("mutable")
-	if err != nil || got.Bits() != token.Bits() {
-		t.Fatalf("GlobalValue after early producer close = %v, %v; want retained token %#x", got, err, token.Bits())
-	}
-
-	roundTrip, err := global.InvokeValues(context.Background(), "set_and_get", token)
-	if err != nil || len(roundTrip) != 1 || roundTrip[0].Bits() != token.Bits() {
-		t.Fatalf("set_and_get(token) = %v, %v; want token %#x", roundTrip, err, token.Bits())
-	}
-	if err := global.SetGlobalValue("mutable", token); err != nil {
-		t.Fatalf("SetGlobalValue(mutable, token): %v", err)
-	}
-	got, err = global.GlobalValue("mutable")
-	if err != nil || got.Bits() != token.Bits() {
-		t.Fatalf("GlobalValue(mutable) = %v, %v; want token %#x", got, err, token.Bits())
-	}
-	raw, err := global.ExportedGlobalObject("mutable")
-	if err != nil {
-		t.Fatalf("ExportedGlobalObject(mutable): %v", err)
-	}
-	if bits := raw.Get(); bits != 0 {
-		t.Fatalf("reference Global.Get() = %#x, want fail-closed zero", bits)
-	}
-	if err := raw.Set(token.Bits()); err == nil || !strings.Contains(err.Error(), "reference type") {
-		t.Fatalf("reference Global.Set(token) error = %v, want typed-accessor rejection", err)
-	}
-
-	got, err = global.GlobalValue("mutable")
-	if err != nil || got.Bits() != token.Bits() {
-		t.Fatalf("GlobalValue after producer close = %v, %v; want retained token %#x", got, err, token.Bits())
-	}
-}
-
 func TestNullableLocalFuncrefGlobalsRespectFeatureAndOwnershipBoundaries(t *testing.T) {
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false)
 	if _, err := Compile(cfg, nullableLocalFuncrefGlobalsModule()); err == nil || !strings.Contains(err.Error(), "reference-types disabled") {
@@ -288,10 +216,9 @@ func TestInstantiateRejectsUnsupportedReferenceGlobalMetadata(t *testing.T) {
 }
 
 func TestNullableLocalFuncrefGlobalsRemainOutOfSerializedState(t *testing.T) {
-	c := compileExplicitArtifact(t, nullableLocalFuncrefGlobalsModule())
+	c := compileExplicitSource(t, nullableLocalFuncrefGlobalsModule())
 	defer c.Close()
 
-	_ = publicArtifactRoundTrip(t, c)
 }
 
 func TestRelease2NullableFuncrefGlobalSourceGuard(t *testing.T) {

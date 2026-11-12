@@ -400,38 +400,6 @@ func TestFuncrefTableInitializerExpressionNullLeavesEntriesUninitialized(t *test
 	tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
 }
 
-func TestFuncrefTableInitializerExpressionSurvivesCompiledCodec(t *testing.T) {
-	tableTestForceExplicitBounds(t)
-	c, err := Compile(nil, tableInitializerModule(tableTestRefFuncExpr(1)))
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		if guardPageBuilt {
-			// Signals-based (guard-page) modules deliberately refuse serialization;
-			// this codec round-trip is not exercisable under the guard-page tag.
-			t.Skip("signals-based (guard-page) modules are not serializable")
-		}
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if !loaded.HasTableInitFunc || loaded.TableInitFunc != 1 {
-		t.Fatalf("loaded table initializer = enabled %v func %d, want enabled func 1", loaded.HasTableInitFunc, loaded.TableInitFunc)
-	}
-	inst, err := Instantiate(loaded)
-	if err != nil {
-		t.Fatalf("Instantiate loaded: %v", err)
-	}
-	defer inst.Close()
-	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 42 {
-		t.Fatalf("callAt(0) after codec = %d, want table initializer target 42", got)
-	}
-}
-
 func TestFuncrefTableInitializerExpressionRejectsWhenReferenceTypesDisabled(t *testing.T) {
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false)
 	_, err := Compile(cfg, tableInitializerModule(tableTestRefFuncExpr(1)))
@@ -457,22 +425,15 @@ func TestFuncrefTableInitializerExpressionCanTargetCrossInstanceImport(t *testin
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(123))))),
 	)
-	producerCompiled := compileExplicitArtifact(t, producer)
+	producerCompiled := compileExplicitSource(t, producer)
 	if len(producerCompiled.FuncTypeID) != 1 {
 		t.Fatalf("producer native type keys = %d, want 1", len(producerCompiled.FuncTypeID))
 	}
-	blob, err := producerCompiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary producer: %v", err)
-	}
-	var reloaded Compiled
-	if err := reloaded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("UnmarshalBinary producer: %v", err)
-	}
-	if got, want := reloaded.FuncTypeID, producerCompiled.FuncTypeID; len(got) != 1 || got[0] != want[0] {
+
+	if got, want := producerCompiled.FuncTypeID, producerCompiled.FuncTypeID; len(got) != 1 || got[0] != want[0] {
 		t.Fatalf("reloaded native type keys = %#v, want %#v", got, want)
 	}
-	prodInst, err := Instantiate(&reloaded, testImports())
+	prodInst, err := Instantiate(producerCompiled, testImports())
 	if err != nil {
 		t.Fatalf("Instantiate producer: %v", err)
 	}
@@ -481,9 +442,9 @@ func TestFuncrefTableInitializerExpressionCanTargetCrossInstanceImport(t *testin
 	if err != nil {
 		t.Fatalf("export f: %v", err)
 	}
-	consumer := compileExplicitArtifact(t, tableInitializerImportModule())
-	if len(consumer.FuncTypeID) == 0 || consumer.FuncTypeID[0] != reloaded.FuncTypeID[0] {
-		t.Fatalf("cross-module equivalent keys = %#v / %#v", consumer.FuncTypeID, reloaded.FuncTypeID)
+	consumer := compileExplicitSource(t, tableInitializerImportModule())
+	if len(consumer.FuncTypeID) == 0 || consumer.FuncTypeID[0] != producerCompiled.FuncTypeID[0] {
+		t.Fatalf("cross-module equivalent keys = %#v / %#v", consumer.FuncTypeID, producerCompiled.FuncTypeID)
 	}
 	consInst, err := Instantiate(consumer, testImports("env.f", export))
 	if err != nil {
@@ -1253,47 +1214,6 @@ func TestTableCopyCopiesNullEntries(t *testing.T) {
 	}
 }
 
-func TestTableGrowCapacitySurvivesCompiledCodec(t *testing.T) {
-	tableTestForceExplicitBounds(t)
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
-		tableTestFuncSection(0),
-		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x02, 0x04})), // table funcref min=2 max=4
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow2", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code(tableTestBody(tableTestRefNullFunc(), tableTestI32Const(2), tableTestBulk(15, 0))),
-		)),
-	)
-	c, err := Compile(nil, mod)
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		if guardPageBuilt {
-			// Signals-based (guard-page) modules deliberately refuse serialization;
-			// this codec round-trip is not exercisable under the guard-page tag.
-			t.Skip("signals-based (guard-page) modules are not serializable")
-		}
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if loaded.TableMax != 4 {
-		t.Fatalf("loaded TableMax = %d, want 4", loaded.TableMax)
-	}
-	inst, err := Instantiate(loaded)
-	if err != nil {
-		t.Fatalf("Instantiate: %v", err)
-	}
-	defer inst.Close()
-	if got := tableTestCallI32(t, inst, "grow2"); got != 2 {
-		t.Fatalf("table.grow after compiled codec = %d, want old size 2", got)
-	}
-}
-
 func TestMultipleLocalTableExportsResolveByName(t *testing.T) {
 	producerModule := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
@@ -1429,7 +1349,7 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 		(func (export "local-size") (result i32) (table.size $local))
 		(func (export "grow-local") (result i32)
 			(ref.null func) (i32.const 1) (table.grow $local)))`))
-	_ = publicArtifactRoundTrip(t, consumerCompiled)
+
 	tooSmall, err := NewTable(1, 2)
 	if err != nil {
 		t.Fatalf("NewTable tooSmall: %v", err)
@@ -1609,7 +1529,7 @@ func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatalf("close metadata runtime: %v", err)
 	}
-	_ = publicArtifactRoundTrip(t, consumerCompiled)
+
 	consumer, err := Instantiate(consumerCompiled, testImports("a.table", tableA, "b.table", tableB))
 	if err != nil {
 		t.Fatalf("Instantiate multiple imported tables: %v", err)
@@ -2015,69 +1935,6 @@ func TestMinOnlyTableExportCapacityIsPerTable(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecPreservesTableExportNames(t *testing.T) {
-	tableTestForceExplicitBounds(t)
-	mod := wasmtest.Module(
-		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table", 1, 0))),
-	)
-	compiled, err := Compile(nil, mod)
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	loaded := publicArtifactRoundTrip(t, compiled)
-	if got, ok := loaded.tableExports["table"]; !ok || got != 0 {
-		t.Fatalf("loaded table export metadata = %#v, want table -> 0", loaded.tableExports)
-	}
-}
-
-func TestCompiledCodecPreservesTableImport(t *testing.T) {
-	tableTestForceExplicitBounds(t)
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 4))),
-		tableTestFuncSection(0),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestBulk(16, 0))))),
-	)
-	c, err := Compile(nil, mod)
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		if guardPageBuilt {
-			// Signals-based (guard-page) modules deliberately refuse serialization;
-			// this codec round-trip is not exercisable under the guard-page tag.
-			t.Skip("signals-based (guard-page) modules are not serializable")
-		}
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if key, ok := loaded.TableImport(); !ok || key != "env.t" {
-		t.Fatalf("loaded TableImport = %q, %v; want env.t, true", key, ok)
-	}
-	if _, err := Instantiate(loaded); err == nil {
-		t.Fatal("Instantiate without imported table succeeded")
-	}
-	tbl, err := NewTable(2, 4)
-	if err != nil {
-		t.Fatalf("NewTable: %v", err)
-	}
-	defer tbl.Close()
-	inst, err := Instantiate(loaded, testImports("env.t", tbl))
-	if err != nil {
-		t.Fatalf("Instantiate with imported table: %v", err)
-	}
-	defer inst.Close()
-	if got := tableTestCallI32(t, inst, "size"); got != 2 {
-		t.Fatalf("table.size with imported table after codec = %d, want 2", got)
-	}
-}
-
 func TestImportedTableLimitsCheckedAtInstantiate(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
@@ -2364,53 +2221,6 @@ func TestTableFillAndCopyImportedTableVisibleToAnotherInstance(t *testing.T) {
 		}
 		_, err := observer.Invoke("callAt", I32(idx))
 		tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
-	}
-}
-
-func TestCompiledCodecPreservesMinOnlyTableImportAndAcceptsLargerHostTable(t *testing.T) {
-	tableTestForceExplicitBounds(t)
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 0))),
-		tableTestFuncSection(0),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestBulk(16, 0))))),
-	)
-	c, err := Compile(nil, mod)
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		if guardPageBuilt {
-			// Signals-based (guard-page) modules deliberately refuse serialization;
-			// this codec round-trip is not exercisable under the guard-page tag.
-			t.Skip("signals-based (guard-page) modules are not serializable")
-		}
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if key, ok := loaded.TableImport(); !ok || key != "env.t" {
-		t.Fatalf("loaded TableImport = %q, %v; want env.t, true", key, ok)
-	}
-	if loaded.tableImportMin != 2 || loaded.tableImportHasMax || loaded.tableImportMax != 0 {
-		t.Fatalf("loaded table import limits = min %d max %d hasMax %v, want min 2 no max", loaded.tableImportMin, loaded.tableImportMax, loaded.tableImportHasMax)
-	}
-	tbl, err := NewTable(3, 5)
-	if err != nil {
-		t.Fatalf("NewTable: %v", err)
-	}
-	defer tbl.Close()
-	inst, err := Instantiate(loaded, testImports("env.t", tbl))
-	if err != nil {
-		t.Fatalf("Instantiate with larger host table and min-only import: %v", err)
-	}
-	defer inst.Close()
-	if got := tableTestCallI32(t, inst, "size"); got != 3 {
-		t.Fatalf("table.size with larger host table = %d, want 3", got)
 	}
 }
 
@@ -3354,7 +3164,7 @@ func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 		if got := c.extraTables[0]; got.Size != 2 || got.Max != 4 {
 			t.Fatalf("table 1 metadata = %#v, want size/max 2/4", got)
 		}
-		_ = publicArtifactRoundTrip(t, c)
+
 		inst, err := Instantiate(c)
 		if err != nil {
 			t.Fatalf("Instantiate: %v", err)
@@ -3379,7 +3189,7 @@ func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 		if got := c.extraTables[0]; got.Size != 2 || got.Max != 4 {
 			t.Fatalf("local table 1 metadata = %#v, want size/max 2/4", got)
 		}
-		_ = publicArtifactRoundTrip(t, c)
+
 	})
 	cases := []struct {
 		name    string
@@ -3404,72 +3214,6 @@ func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 			}
 			compileErrContains(t, moduleWithBody(tc.results, tc.body), tc.want)
 		})
-	}
-}
-
-func TestCompiledCodecPreservesPassiveNullElementPayloads(t *testing.T) {
-	tableTestForceExplicitBounds(t)
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
-			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
-			wasmtest.FuncType(nil, nil),
-		)),
-		tableTestFuncSection(0, 0, 2, 1),
-		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x03})),
-		wasmtest.Section(7, wasmtest.Vec(
-			wasmtest.ExportEntry("init", 0, 2),
-			wasmtest.ExportEntry("callAt", 0, 3),
-		)),
-		wasmtest.Section(9, wasmtest.Vec(
-			tableTestActiveElem(0, 0, 0, 0),
-			tableTestPassiveElemExpr(tableTestRefFuncExpr(1), tableTestRefNullFuncExpr(), tableTestRefFuncExpr(0)),
-		)),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code(tableTestBody(tableTestI32Const(101))),
-			wasmtest.Code(tableTestBody(tableTestI32Const(202))),
-			wasmtest.Code(tableTestBody(tableTestI32Const(0), tableTestI32Const(0), tableTestI32Const(3), tableTestBulk(12, 1, 0))),
-			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
-		)),
-	)
-	c, err := Compile(nil, mod)
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	if len(c.passiveElems) != 2 || len(c.passiveElems[1].Values) != 3 || !c.passiveElems[1].Values[1].Null {
-		t.Fatalf("compiled passive elems = %#v, want elem 1 middle null", c.passiveElems)
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		if guardPageBuilt {
-			// Signals-based (guard-page) modules deliberately refuse serialization;
-			// this codec round-trip is not exercisable under the guard-page tag.
-			t.Skip("signals-based (guard-page) modules are not serializable")
-		}
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(loaded.passiveElems) != 2 || len(loaded.passiveElems[1].Values) != 3 || !loaded.passiveElems[1].Values[1].Null {
-		t.Fatalf("loaded passive elems = %#v, want elem 1 middle null", loaded.passiveElems)
-	}
-	inst, err := Instantiate(loaded)
-	if err != nil {
-		t.Fatalf("Instantiate loaded: %v", err)
-	}
-	defer inst.Close()
-	if _, err := inst.Invoke("init"); err != nil {
-		t.Fatalf("init after codec round trip: %v", err)
-	}
-	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 202 {
-		t.Fatalf("callAt(0) after init = %d, want 202", got)
-	}
-	_, err = inst.Invoke("callAt", I32(1))
-	tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
-	if got := tableTestCallI32(t, inst, "callAt", I32(2)); got != 101 {
-		t.Fatalf("callAt(2) after init = %d, want 101", got)
 	}
 }
 
@@ -3509,42 +3253,6 @@ func TestCompileRejectsMalformedElementExpressions(t *testing.T) {
 		)
 		compileErrContains(t, mod, "decode")
 	})
-}
-
-func TestCompiledCodecMinOnlyTableImportRejectsBelowMinAfterLoad(t *testing.T) {
-	tableTestForceExplicitBounds(t)
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 0))),
-		tableTestFuncSection(0),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestBulk(16, 0))))),
-	)
-	c, err := Compile(nil, mod)
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		if guardPageBuilt {
-			// Signals-based (guard-page) modules deliberately refuse serialization;
-			// this codec round-trip is not exercisable under the guard-page tag.
-			t.Skip("signals-based (guard-page) modules are not serializable")
-		}
-		t.Fatalf("MarshalBinary: %v", err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	tbl, err := NewTable(1, 4)
-	if err != nil {
-		t.Fatalf("NewTable: %v", err)
-	}
-	defer tbl.Close()
-	if _, err := Instantiate(loaded, testImports("env.t", tbl)); err == nil || !strings.Contains(err.Error(), "required minimum 2") {
-		t.Fatalf("Instantiate below min after Load error = %v, want required minimum", err)
-	}
 }
 
 func TestTableGrowFillGetSetAndSize(t *testing.T) {

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wasm
 
 import "encoding/binary"
@@ -113,6 +120,18 @@ func (r *Reader) U32() (uint32, error) {
 }
 func (r *Reader) U64() (uint64, error) { return r.leb128(false, 64) }
 func (r *Reader) S33() (int64, error)  { v, err := r.leb128(true, 33); return int64(v), err }
+
+// RefHeapType consumes a reference heap-type immediate, including the optional
+// exact marker used before indexed heap types.
+func (r *Reader) RefHeapType() (exact bool, heap int64, err error) {
+	if b, ok := r.Peek(); ok && b == 0x62 {
+		_, _ = r.Byte()
+		exact = true
+	}
+	heap, err = r.S33()
+	return
+}
+
 func (r *Reader) I32() (int32, error) {
 	if r.pos < len(r.data) {
 		if b := r.data[r.pos]; b < 0x80 {

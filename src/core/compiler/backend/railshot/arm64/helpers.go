@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build arm64
 
 package arm64
@@ -99,10 +106,34 @@ func (f *fn) ldst(store bool, size int, rt, base Reg, disp int32) {
 	}
 }
 
-func (f *fn) ld64(rt, base Reg, disp int32)     { f.ldst(false, 8, rt, base, disp) }
-func (f *fn) ld32(rt, base Reg, disp int32)     { f.ldst(false, 4, rt, base, disp) }
-func (f *fn) st64(base Reg, disp int32, rt Reg) { f.ldst(true, 8, rt, base, disp) }
-func (f *fn) st32(base Reg, disp int32, rt Reg) { f.ldst(true, 4, rt, base, disp) }
+func (f *fn) ld64(rt, base Reg, disp int32) {
+	if uint32(disp) <= 0xfff*8 && disp&7 == 0 {
+		f.a.Load64(rt, base, uint32(disp))
+		return
+	}
+	f.ldst(false, 8, rt, base, disp)
+}
+func (f *fn) ld32(rt, base Reg, disp int32) {
+	if uint32(disp) <= 0xfff*4 && disp&3 == 0 {
+		f.a.Load32(rt, base, uint32(disp))
+		return
+	}
+	f.ldst(false, 4, rt, base, disp)
+}
+func (f *fn) st64(base Reg, disp int32, rt Reg) {
+	if uint32(disp) <= 0xfff*8 && disp&7 == 0 {
+		f.a.Store64(rt, base, uint32(disp))
+		return
+	}
+	f.ldst(true, 8, rt, base, disp)
+}
+func (f *fn) st32(base Reg, disp int32, rt Reg) {
+	if uint32(disp) <= 0xfff*4 && disp&3 == 0 {
+		f.a.Store32(rt, base, uint32(disp))
+		return
+	}
+	f.ldst(true, 4, rt, base, disp)
+}
 
 // Float spill load/store helpers (fld/fst/stF) — scalar S/D via the encoder's
 // FLoadDisp/FStoreDisp (scaled-imm or address-materialized fallback).

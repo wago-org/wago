@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -7,10 +14,16 @@ import (
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
+	"unsafe"
 )
 
 const callFrameHeader = 48
-const maxDirectCalls = 1024
+const maxDirectCalls = 1024 // historical boundary retained by regression fixtures
+
+// A relocation/helper call record occupies 40 bytes on a 64-bit host. Charge
+// the private metadata extent before growing the per-function site directory;
+// emitted code and instruction-work budgets independently constrain each body.
+const maxFunctionCallSites = MaxModuleBytes / int(unsafe.Sizeof(directCall{}))
 
 type directCall struct {
 	atomicHelper uint32

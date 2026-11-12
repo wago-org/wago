@@ -70,7 +70,7 @@ func rv64ClosedReferenceSource(vector, tails, indexed, nullable bool) []byte {
 }
 
 func TestRV64PublicReferenceFunctionsSourceArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, vector := range []bool{false, true} {
 			for _, tails := range []bool{false, true} {
 				for _, indexed := range []bool{false, true} {
@@ -153,7 +153,7 @@ func rv64BareReferenceFunctionSource() []byte {
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.FuncRef}))), wasmtest.Section(3, []byte{2, 0, 1}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x10, 1, 0xd1, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x0b}))))
 }
 func TestRV64PublicReferenceFunctionsBaselineAndDestination(t *testing.T) {
-	if unsafe.Sizeof(Compiled{}) != 784 {
+	if unsafe.Sizeof(Compiled{}) != 808 {
 		t.Fatal("compiled footprint", unsafe.Sizeof(Compiled{}))
 	}
 	source := rv64BareReferenceFunctionSource()
@@ -174,19 +174,11 @@ func TestRV64PublicReferenceFunctionsBaselineAndDestination(t *testing.T) {
 	if c.requiredFeatures != CoreFeatureReferenceTypes || !c.nativeReferenceFunctionABI || c.nativeReferenceControlABI || c.nativeReferenceCallABI {
 		t.Fatal("baseline feature metadata", c.requiredFeatures)
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
+
+	if c.codeCache.sealed || c.codeCache.flags&compiledCacheWritableCode != 0 || c.codeCache.base != 0 {
+		t.Fatal("source compilation did not defer code mapping")
 	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.codeCache.sealed || loaded.codeCache.flags&compiledCacheWritableCode == 0 || loaded.codeCache.base == 0 {
-		t.Fatal("decode did not retain unpublished RW staging")
-	}
-	standalone, err := Instantiate(loaded)
+	standalone, err := Instantiate(c)
 	if err != nil {
 		t.Fatal("public standalone instantiation", err)
 	}
@@ -196,13 +188,13 @@ func TestRV64PublicReferenceFunctionsBaselineAndDestination(t *testing.T) {
 	standalone.Close()
 	ordinary := NewRuntime(WithRuntimeConfig(cfg.WithCoreFeatures(0)))
 	defer ordinary.Close()
-	publicInstance := rv64NativeTokenInstantiate(t, ordinary, loaded, NewImports())
+	publicInstance := rv64NativeTokenInstantiate(t, ordinary, c, NewImports())
 	if got, err := publicInstance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{1}) {
 		t.Fatal("default Runtime reference call", got, err)
 	}
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
-	in := rv64NativeTokenInstantiate(t, rt, loaded, NewImports())
+	in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
 	if in.c.needsFuncRefDescs() || len(in.funcRefDescs) != 0 || rv64TailTargetsArenaBytes(in.c) != 0 {
 		t.Fatal("null-only module acquired indexed arenas", len(in.funcRefDescs))
 	}

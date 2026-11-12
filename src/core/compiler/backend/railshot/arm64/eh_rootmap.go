@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build arm64
 
 package arm64
@@ -72,7 +79,9 @@ func catchAllPayloadRootKinds(m *wasm.Module) ([shared.EHPayloadLanes]nativeabi.
 // frame; funcref lanes describe identities whose producers the instance keeps
 // alive and are not scanned by the collector.
 func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error) {
-	if m == nil || m.TagCount() == 0 {
+	// Tag-free modules can still catch foreign exceptions through catch_all_ref.
+	// Scan their bodies so the dedicated GC payload lanes remain rooted.
+	if m == nil {
 		return nil, nil
 	}
 	maps := make([]nativeabi.FunctionRootMap, 0, len(m.Code))

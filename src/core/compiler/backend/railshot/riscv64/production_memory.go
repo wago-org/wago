@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -93,11 +100,24 @@ func (f *integerEmitter) productionMemorySizeGrowAt(index uint32, grow bool) {
 func (f *integerEmitter) productionMemorySizeGrowTypedAt(index uint32, grow, address64 bool) {
 	if f.mode.threadedMemory && index == 0 {
 		if grow {
+			// A dynamic zero delta is a size query, not a growth attempt. Read the
+			// authoritative shared backing with acquire ordering and bypass the
+			// helper's quota and serialization path. RISC-V has no load-acquire
+			// instruction before Zalasr, so use an acquire LR on the aligned size
+			// word. The supported threaded profile has exactly memory32 index zero.
+			nonzero := f.a.BranchLong(enc.NE, enc.X5, enc.Zero)
+			f.productionMemoryBaseAt(index, enc.X28)
+			f.a.Addi(enc.X28, enc.X28, -abi.ActualLinMemByteSize64Offset)
+			f.a.LrD(enc.X5, enc.X28, enc.AtomicAcquire)
+			f.a.Srli(enc.X5, enc.X5, 16)
+			done := f.Jump()
+			f.patchBulk(nonzero)
 			f.restoreCallTransport()
 			f.a.Sd(enc.X5, enc.X10, 0)
 			f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), atomicHelper: shared.AtomicWaitDispatchBit | shared.AtomicHelperMemoryGrow})
 			f.restoreCallTransport()
 			f.a.Lwu(enc.X5, enc.X13, 0)
+			f.patchBulk(done)
 		} else {
 			f.productionMemorySizeAt(index, enc.X5)
 			f.a.Srli(enc.X5, enc.X5, 16)

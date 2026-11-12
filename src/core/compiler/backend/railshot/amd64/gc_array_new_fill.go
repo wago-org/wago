@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64 && (!tinygo || !wago_lean)
 
 package amd64
@@ -101,10 +108,14 @@ func (p gcArrayNewFillPlan) replaceInitializer(f *fn) {
 // fusion moves this read before array.new, so it must also preserve interval
 // ownership, pinned dirty values, and lazy-zero locals.
 func (f *fn) pushI32LocalValue(x, pos int) {
-	f.activateIntervalLocal(x, pos, true)
-	if reg, ok := f.takeFinalIntervalGet(x, pos); ok {
-		f.pushReg(reg, mtI32)
-		return
+	if f.hasIntervalLocal(x) {
+		f.activateIntervalLocal(x, pos, true)
+		if !f.intervalControl {
+			if reg, ok := f.takeFinalIntervalGet(x, pos); ok {
+				f.pushReg(reg, mtI32)
+				return
+			}
+		}
 	}
 	if f.localConstZero(x) {
 		if pr, _, ok := f.pinReg(x); ok {

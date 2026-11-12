@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled && wago_profile
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && wago_profile
 
 package wago
 
@@ -99,21 +99,13 @@ func TestRV64PublicProfileArtifactHasNoInventedSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
+
 	session := NewCodeProfile(CodeProfileOptions{IncludeCode: true, SourceMaps: true})
 	defer session.Close()
-	if err := loaded.AttachCodeProfile(session); err != nil {
+	if err := compiled.AttachCodeProfile(session); err != nil {
 		t.Fatal(err)
 	}
-	instance, err := Instantiate(loaded)
+	instance, err := Instantiate(compiled)
 	if err != nil {
 		t.Fatal(err)
 	}

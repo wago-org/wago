@@ -138,6 +138,35 @@ func TestExtendedConstValidationRejectsStrictly(t *testing.T) {
 		)))
 		validateBoth(t, data, ErrConstExprRequired)
 	})
+	t.Run("table initializer cannot read defined global", func(t *testing.T) {
+		data := extModule(
+			extSection(4, extVec([]byte{
+				0x40, 0x00, // table with initializer form
+				0x70, 0x00, 0x0a, // funcref, min 10
+				0x23, 0x00, 0x0b, // global.get 0
+			})),
+			extSection(6, extVec(extGlobalEntry(FuncRef, false, []byte{0xd0, 0x70, 0x0b}))),
+		)
+		features := ValidationFeatures{ExtendedConstGlobals: true}
+		for _, validate := range []struct {
+			name string
+			fn   func([]byte) error
+		}{{"AST decode", func(b []byte) error {
+			m, err := DecodeModule(b)
+			if err != nil {
+				return err
+			}
+			return ValidateModuleWithFeatures(m, features)
+		}}, {"byte-backed", func(b []byte) error { return ValidateByteBackedModuleWithFeatures(b, features) }}} {
+			t.Run(validate.name, func(t *testing.T) {
+				err := validate.fn(data)
+				var ve *ValidationError
+				if !errors.As(err, &ve) || ve.Code != ErrConstExprRequired {
+					t.Fatalf("error = %v, want validation code %v", err, ErrConstExprRequired)
+				}
+			})
+		}
+	})
 	t.Run("mutable prior global", func(t *testing.T) {
 		data := extModule(extSection(6, extVec(
 			extGlobalEntry(I32, true, []byte{0x41, 0, 0x0b}),

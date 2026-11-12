@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
@@ -478,7 +485,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 		// Only the fresh RV64 compiler can prove that all function bodies are
 		// non-collecting. This proof is never carried by a saved artifact.
 		memo := c.loadValidateMemo()
-		if compiledArchitecture == 4 && rootMap == c.genericGCFrameRoots() && rv64ArtifactContractValid(c) && len(rootMap.adapterReturnOffsets) == 0 {
+		if compiledArchitecture == 4 && rootMap == c.genericGCFrameRoots() && rv64SourceContractValid(c) && len(rootMap.adapterReturnOffsets) == 0 {
 			return nil
 		}
 		if compiledArchitecture == 4 && memo != nil && memo.rv64FreshRootedGC && memo.rv64RootedNoCollectingBodies && sha256.Sum256(c.code) == memo.rv64FreshRootedGCDigest && len(rootMap.adapterReturnOffsets) == 0 {

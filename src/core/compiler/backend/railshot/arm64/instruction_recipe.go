@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build arm64
 
 package arm64
@@ -71,6 +78,9 @@ func (f *fn) emitInstructionRecipe(custom railcore.CustomInstruction, ft *wasm.C
 		if len(roots) < len(ft.Params) {
 			return fmt.Errorf("custom instruction %d has %d stack argument(s), want %d", f.traceFuncIdx, len(roots), len(ft.Params))
 		}
+		// Snapshotting an argument can trap before an earlier deferred stack
+		// value. Resolve pending traps in bytecode order before visiting arguments.
+		f.materializePendingTraps()
 		args = append([]*elem(nil), roots[len(roots)-len(ft.Params):]...)
 		argSlots = make([]int, len(args))
 		for i, arg := range args {

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package frontend
 
 import (
@@ -27,10 +34,24 @@ type GCTypeMetadata struct {
 
 // BuildGCTypeMetadata lowers one module's immutable GC type metadata once.
 func BuildGCTypeMetadata(m *wasm.Module) (GCTypeMetadata, error) {
+	return BuildGCTypeMetadataWithOptions(m, GCTypeMetadataOptions{})
+}
+
+// GCTypeMetadataOptions describes runtime representation guarantees that cannot
+// be inferred from Wasm types alone.
+type GCTypeMetadataOptions struct {
+	// OwnedExceptionReferences permits compact, collector-traced exception
+	// handles. Backends using pointers into native catch frames must leave this
+	// false: those pointers cannot escape into heap objects.
+	OwnedExceptionReferences bool
+}
+
+// BuildGCTypeMetadataWithOptions lowers metadata for a runtime representation.
+func BuildGCTypeMetadataWithOptions(m *wasm.Module, opts GCTypeMetadataOptions) (GCTypeMetadata, error) {
 	if m == nil {
 		return GCTypeMetadata{}, fmt.Errorf("frontend: nil wasm module")
 	}
-	return LowerGCTypeMetadata(m.Types)
+	return lowerGCTypeMetadata(m.Types, opts)
 }
 
 // LowerGCTypeDescs flattens recursive groups in decoder/validator order and
@@ -48,6 +69,10 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 
 // LowerGCTypeMetadata derives runtime and compiler layout metadata in one pass.
 func LowerGCTypeMetadata(types []wasm.RecType) (GCTypeMetadata, error) {
+	return lowerGCTypeMetadata(types, GCTypeMetadataOptions{})
+}
+
+func lowerGCTypeMetadata(types []wasm.RecType, opts GCTypeMetadataOptions) (GCTypeMetadata, error) {
 	flat, hasLayouts := flattenGCTypes(types)
 	descs := make([]gc.TypeDesc, len(flat))
 	var layouts []codegen.GCTypeLayout
@@ -57,7 +82,7 @@ func LowerGCTypeMetadata(types []wasm.RecType) (GCTypeMetadata, error) {
 	for i, ft := range flat {
 		st := ft.Source
 		id := gc.TypeID(i)
-		resolver := gcTypeResolver{total: len(flat), recBase: ft.RecBase, recLen: ft.RecLen, flat: flat}
+		resolver := gcTypeResolver{total: len(flat), recBase: ft.RecBase, recLen: ft.RecLen, flat: flat, ownedExceptionReferences: opts.OwnedExceptionReferences}
 		layout := codegen.GCTypeLayout{Type: st, RecBase: uint32(ft.RecBase), RecLen: uint32(ft.RecLen), PointerFree: true, DirectCast: st.Final && (st.Comp.Kind == wasm.CompStruct || st.Comp.Kind == wasm.CompArray), DirectLen: st.Final && st.Comp.Kind == wasm.CompArray}
 		var d gc.TypeDesc
 		var err error
@@ -235,10 +260,11 @@ type flattenedGCType struct {
 }
 
 type gcTypeResolver struct {
-	total   int
-	recBase int
-	recLen  int
-	flat    []flattenedGCType
+	ownedExceptionReferences bool
+	total                    int
+	recBase                  int
+	recLen                   int
+	flat                     []flattenedGCType
 }
 
 func (r gcTypeResolver) resolve(idx wasm.TypeIdx) (uint32, error) {
@@ -343,6 +369,13 @@ func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, er
 				opaque = gc.StorageFuncRef
 			case wasm.HeapExtern, wasm.HeapNoExtern:
 				opaque = gc.StorageExternRef
+			case wasm.HeapExn, wasm.HeapNoExn:
+				if !resolver.ownedExceptionReferences {
+					return 0, fmt.Errorf("exception reference storage requires owned exception references")
+				}
+				// Only owned exception values are compact collector handles.
+				// Native catch-frame pointers have neither this layout nor the
+				// lifetime required by struct fields and array elements.
 			}
 		}
 		if opaque != 0 {

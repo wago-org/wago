@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -10,7 +17,7 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Qualification only. Public feature defaults and SupportedFeatures stay
@@ -202,7 +209,7 @@ func (s rv64TailSignatureView) result(i int) ValType {
 // The dispatcher receives the retained element, so its plan does not depend on
 // the number of tables. Full execution admission still checks each directory.
 func rv64NativeTailIndexedTables(c *Compiled) bool {
-	if !c.nativeTableContextABI || !c.nativeTableReferenceABI || c.tableCount() == 0 || c.tableCount() > railshot.MaxFunctions {
+	if !c.nativeTableContextABI || !c.nativeTableReferenceABI || c.tableCount() == 0 || c.tableCount() > railshot.MaxModuleTables {
 		return false
 	}
 	function, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -432,63 +439,6 @@ func railshotWriteNativeTail(w *compiledWriter, c *Compiled) error {
 	}
 	return nil
 }
-func railshotReadNativeTail(r *compiledReader, c *Compiled) error {
-	if !c.requiredFeatures.IsEnabled(CoreFeatureTailCall) {
-		return nil
-	}
-	v, err := r.u32()
-	if err != nil {
-		return err
-	}
-	if v != 1 && v != 2 {
-		return fmt.Errorf("RV64 native tail plan version %d", v)
-	}
-	wire := 24
-	if v == 2 {
-		wire = 36
-	}
-	n, err := r.countElements("RV64 native tail plans", wire, unsafe.Sizeof(encoder.NativeTailPlan{}))
-	if err != nil {
-		return err
-	}
-	if n > 4096 {
-		return fmt.Errorf("RV64 native tail plan count")
-	}
-	m := &encoder.NativeTailModule{Plans: make([]encoder.NativeTailPlan, n)}
-	for i := range m.Plans {
-		var kind, typeIndex, referenceBase uint32
-		if v == 2 {
-			kind, err = r.u32()
-			if err != nil {
-				return err
-			}
-			typeIndex, err = r.u32()
-			if err != nil {
-				return err
-			}
-			referenceBase, err = r.u32()
-			if err != nil {
-				return err
-			}
-		}
-		var fields [6]uint32
-		for j := range fields {
-			fields[j], err = r.u32()
-			if err != nil {
-				return err
-			}
-		}
-		m.Plans[i] = encoder.NativeTailPlan{Kind: kind, TypeIndex: typeIndex, ReferenceBase: int(referenceBase), FunctionIndex: fields[0], ImportIndex: fields[1], SourcePC: fields[2], FrameBytes: int(fields[3]), SourceBase: int(fields[4]), SourceStride: int(fields[5])}
-	}
-	rv64StoreNativeTailModule(c, m)
-	// Decoder-owned, unpublished state. Source compilation derives this marker
-	// from validated Wasm requirements; warm validation never mutates it.
-	if rv64HasReferenceTail(c) {
-		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
-	}
-	return nil
-}
-func railshotValidateDecodedNativeTail(c *Compiled) error { return rv64ValidateNativeTail(c) }
 
 func rv64HasDynamicTail(m *encoder.NativeTailModule) bool {
 	if m != nil {
@@ -551,5 +501,5 @@ func railshotNativeTailImport(c *Compiled, index int) bool {
 
 func railshotNativeLeafAllowed(c *Compiled) bool {
 	indexes := c.loadCompileIndexes()
-	return indexes != nil && indexes.railshotTail.nativeLeafHost && rv64NativeTailModule(c) == nil && !c.needsFuncRefDescs() && rv64ArtifactContractValid(c)
+	return indexes != nil && indexes.railshotTail.nativeLeafHost && rv64NativeTailModule(c) == nil && !c.needsFuncRefDescs() && rv64SourceContractValid(c)
 }
