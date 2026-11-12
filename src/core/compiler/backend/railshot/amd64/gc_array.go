@@ -95,6 +95,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if fuseFill {
 			fill.finish(f, r)
 		}
+		f.skipSameTypeGCAllocationCast(r, typeIndex)
 		return nil
 	case 10: // array.new_elem typeidx elemidx
 		typeIndex, err := r.U32()

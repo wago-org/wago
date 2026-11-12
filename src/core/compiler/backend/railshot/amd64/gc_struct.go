@@ -174,6 +174,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				value:       freshValue,
 			})
 		}
+		f.skipSameTypeGCAllocationCast(r, typeIndex)
 		return nil
 	case 1: // struct.new_default typeidx
 		typeIndex, err := r.U32()
