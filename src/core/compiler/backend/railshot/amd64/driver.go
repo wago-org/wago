@@ -998,11 +998,25 @@ func (f *fn) emitSelect() {
 	// then stale. Linking also keeps that slot visible to curSpillSlot, so later
 	// spills cannot overwrite it before the operand is reloaded.
 	cond := f.s.back()
-	f.materialize(cond) // Resolve the i32 condition, but recover its register later.
-	b := cond.prev
+	b := baseOfValentBlock(cond).prev
 	a := baseOfValentBlock(b).prev
 	at, bt := rootMachineType(a), rootMachineType(b)
 	gcRoot := a.st.hasGCRoot() || b.st.hasGCRoot()
+	// A read-only condition in a stable local register can be tested directly.
+	// Reserve it while branch expressions are realized, just like a borrowed
+	// CMOV source; fixed-role registers can be reclaimed by those expressions.
+	savedReserved, savedPinned := f.reserved, f.pinned
+	// Keep the extra reservation for a select whose first arm still needs
+	// expression lowering; simple alternatives are cheaper to materialize
+	// through the ordinary path without extending a pinned register's lifetime.
+	borrowCond := selectConditionBorrowEnabled && selectReadBorrowEnabled && a.isDeferred() && !at.isFloat() && !bt.isFloat() && !at.isV128() && !bt.isV128() && selectReadBorrowable(cond)
+	if borrowCond {
+		f.reserved = f.reserved.add(cond.st.reg)
+		f.pinned = f.pinned.add(cond.st.reg)
+		f.stats.peep("select-condition-read-borrow")
+	} else {
+		f.materialize(cond) // Resolve the condition; recover its register later.
+	}
 
 	// XMM operands have no cmov, so branch. Scalar floats use scalar moves;
 	// v128 uses a full-vector copy. Integer operands use cmov.
@@ -1065,7 +1079,6 @@ func (f *fn) emitSelect() {
 	// cond's register. The second materialize(b) reloads a displaced b; cond is
 	// recovered last. At that point only plain values remain, so allocator pins
 	// protect a and b while a reload obtains the condition's final register.
-	savedReserved, savedPinned := f.reserved, f.pinned
 	bReg, bOwned := regNone, true
 	if selectCmovReadBorrowEnabled && selectReadBorrowEnabled && selectReadBorrowable(b) {
 		bReg, bOwned = f.materializeSelectReadBranch(b, bt)
@@ -1083,13 +1096,18 @@ func (f *fn) emitSelect() {
 		bReg = f.materialize(b)
 	}
 	f.pinned = f.pinned.add(bReg)
-	condReg := f.materialize(cond)
+	condReg := cond.st.reg
+	if !borrowCond {
+		condReg = f.materialize(cond)
+	}
 	f.stats.peep("select-cmov")
 	f.a.TestSelf(condReg, false)
 	f.a.Cmovcc(condE, aReg, bReg, w) // cond == 0 → a = b
 	f.pinned = savedPinned
 	f.reserved = savedReserved
-	f.release(condReg)
+	if !borrowCond {
+		f.release(condReg)
+	}
 	if bOwned {
 		f.release(bReg)
 	}
@@ -1163,6 +1181,8 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 
 // Default only on the platform qualified with native corpus measurements.
 var selectReadBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_SELECT_READ_BORROW") != "0"
+
+var selectConditionBorrowEnabled = os.Getenv("WAGO_AMD64_NO_SELECT_CONDITION_BORROW") != "1"
 
 // Keep ordinary CMOV borrowing independently reversible during qualification.
 var selectCmovReadBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_SELECT_CMOV_READ_BORROW") != "0"
