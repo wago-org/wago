@@ -19,6 +19,8 @@
 // same way they drive the amd64 encoder.
 package arm64
 
+import "math/bits"
+
 // Reg is a physical register number. GPRs are 0..30 (X0..X30 / W0..W30); 31 is
 // the zero register (XZR/WZR) in most encodings and the stack pointer (SP) in a
 // few (add/sub-immediate, load/store base) — the caller picks the meaning by
@@ -693,23 +695,18 @@ func encodeLogicalImm(imm uint64, is64 bool) (n, immr, imms uint32, ok bool) {
 		mask = (uint64(1) << uint(size)) - 1
 	}
 	e := imm & mask
-	ones := bitCount(e)
+	ones := bits.OnesCount64(e)
 	if ones == 0 || ones == size {
 		return 0, 0, 0, false
 	}
-	// The element must be a rotation of a contiguous run of `ones` ones.
-	run := (uint64(1) << uint(ones)) - 1
-	rot := -1
-	for k := 0; k < size; k++ {
-		cand := ((run << uint(k)) | (run >> uint(size-k))) & mask
-		if cand == e {
-			rot = k
-			break
-		}
-	}
-	if rot < 0 {
+	// A rotated contiguous run has exactly one circular zero-to-one edge.
+	// Its bit index is the left rotation of the low, unrotated run.
+	previous := (e<<1 | e>>uint(size-1)) & mask
+	start := e &^ previous
+	if start == 0 || start&(start-1) != 0 {
 		return 0, 0, 0, false
 	}
+	rot := bits.TrailingZeros64(start)
 	immr = uint32((size - rot) % size)
 	// imms high bits mark the element size (a run of ones for esize<64 that the
 	// decoder finds via HighestSetBit(N:NOT(imms))); low log2(esize) bits hold
@@ -719,15 +716,6 @@ func encodeLogicalImm(imm uint64, is64 bool) (n, immr, imms uint32, ok bool) {
 	}
 	imms = (^uint32((size<<1)-1))&0x3F | uint32(ones-1)
 	return n, immr, imms, true
-}
-
-func bitCount(x uint64) int {
-	c := 0
-	for x != 0 {
-		x &= x - 1
-		c++
-	}
-	return c
 }
 
 // --- Branches / calls ---
