@@ -647,10 +647,15 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	f.materializePendingTraps()
 	sourceLocal, hasSourceLocal := gcLocalProvenance(f.s.back())
 	finalTarget := false
+	objectTarget := false
 	if heap >= 0 {
-		if target, ok := f.stagedGCType(uint32(heap)); ok && target.Final {
-			finalTarget = true
+		if target, ok := f.stagedGCType(uint32(heap)); ok {
+			finalTarget = target.Final
+			objectTarget = target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray
 		}
+	}
+	if f.gcStructHelpers && objectTarget {
+		f.skipIdenticalGCCasts(r, sub, heap, exactTarget)
 	}
 	if f.gcStructHelpers && heap >= 0 {
 		if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {

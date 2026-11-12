@@ -18,7 +18,7 @@ import (
 )
 
 // This plan owns one complete prefix, not a general call/control exemption:
-// final cast/get; selected integer comparison inline; if { trap } else {
+// final cast/get; direct or selected inline integer comparison; if { trap } else {
 // same-local final cast/get }. No native call or moving-GC point is emitted
 // while its one-use address is live. The enclosing if continues normally after
 // the second load, with the address already released.
@@ -134,11 +134,16 @@ func (f *fn) planGCTrappingGuard(typeIndex uint32, reader *wasm.Reader) (p gcTra
 	}
 	base := reader.Offset()
 	p.firstEnd = base + r.Offset()
-	if !byteIs(0x10) {
+	comparison, e := r.Byte()
+	if e != nil {
 		return p, false
 	}
-	idx, e := r.U32()
-	if e != nil || !f.gcGuardComparison(idx) {
+	if comparison == 0x10 {
+		idx, e := r.U32()
+		if e != nil || !f.gcGuardComparison(idx) {
+			return p, false
+		}
+	} else if comparison < 0x46 || comparison > 0x4f {
 		return p, false
 	}
 	if !byteIs(0x04) {
@@ -150,7 +155,7 @@ func (f *fn) planGCTrappingGuard(typeIndex uint32, reader *wasm.Reader) (p gcTra
 	if !byteIs(0x00) {
 		return p, false
 	}
-	// Eight fixed operations include both casts/loads, call, if, else and local
+	// Fixed operations include both casts/loads, comparison, if, else and local
 	// read. At most 24 trap/nop operations keep the whole prefix within 32.
 	ops := 9
 	for {
@@ -255,6 +260,8 @@ func (f *fn) tryGCTrappingGuard(typeIndex uint32, nullable bool, r *wasm.Reader)
 			previous = f.enterProfileInstruction()
 		}
 		switch op {
+		case 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
+			err = f.emitPlain(r, op)
 		case 0x10:
 			f.prepareStoreForward(op)
 			f.invalidateGCFreshStructFact()

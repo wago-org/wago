@@ -12,7 +12,14 @@ import (
 )
 
 func TestGCTrappingGuardAdmission(t *testing.T) {
-	data, err := os.ReadFile("../../tests/fixtures/wasm/gc-trapping-guard.wasm")
+	for _, fixture := range []string{"gc-trapping-guard", "gc-trapping-guard-direct"} {
+		t.Run(fixture, func(t *testing.T) { testGCTrappingGuardAdmissionFixture(t, fixture) })
+	}
+}
+
+func testGCTrappingGuardAdmissionFixture(t *testing.T, fixture string) {
+	direct := fixture == "gc-trapping-guard-direct"
+	data, err := os.ReadFile("../../tests/fixtures/wasm/" + fixture + ".wasm")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,12 +47,18 @@ func TestGCTrappingGuardAdmission(t *testing.T) {
 		}
 		c.CodeImage.Close()
 		want := map[string]int{"read": 1, "nullable": 1, "roots": 1, "dirty": 1, "noninline": 0, "store": 0, "local-write": 0, "both-arms": 0, "larger": 0, "different-type": 0, "budget": 0, "pressure": 0, "subtype": 0, "same-field": 1, "packed-s": 1, "packed-u": 1, "indexed-block": 1, "block-param": 0, "block-multi": 0}
+		if direct {
+			want["roots-call"] = 1
+			for _, op := range []string{"eq", "ne", "lt_s", "lt_u", "gt_s", "gt_u", "le_s", "le_u", "ge_s", "ge_u"} {
+				want["cmp-"+op] = 1
+			}
+		}
 		for _, e := range m.Exports {
 			n, ok := want[e.Name]
 			if !ok {
 				continue
 			}
-			if !inline {
+			if !inline && !direct {
 				n = 0
 			}
 			s := stats.Funcs[e.Index.Index]
@@ -56,12 +69,34 @@ func TestGCTrappingGuardAdmission(t *testing.T) {
 				t.Errorf("inline=%v %s reuse=%d want%d calls=%v", inline, e.Name, got, n, s.Calls)
 			}
 			p := plan.Function(int(e.Index.Index))
+			if e.Name == "roots-call" {
+				if p == nil || !p.Exact || p.CallsiteCount() != 1 || p.SafepointCount() != 0 {
+					t.Fatalf("allocating source call plan=%+v; want one exact callsite", p)
+				}
+				var saved uint32
+				found := false
+				for _, local := range p.Locals {
+					if local.Index == 2 {
+						saved, found = local.Offset, true
+					}
+				}
+				call, ok := p.Callsite(0)
+				if !found || !ok {
+					t.Fatal("missing saved root or source callsite")
+				}
+				if len(call.Offsets()) != 1 || call.Offsets()[0] != saved {
+					t.Fatalf("source call roots=%v; want saved local2 at %d", call.Offsets(), saved)
+				}
+			}
 			if e.Name == "roots" {
+				if p == nil {
+					t.Fatal("missing allocating function root plan")
+				}
 				if s.Peephole["gc-dead-new"] != 0 || s.Peephole["gc-dead-new-checked"] != 0 {
 					t.Errorf("root retention test allocation was removed: %v", s.Peephole)
 				}
 				calls := 1
-				if inline {
+				if inline || direct {
 					calls = 0
 				}
 				if p.CallsiteCount() != calls || p.SafepointCount() != 1 {
@@ -87,16 +122,24 @@ func TestGCTrappingGuardAdmission(t *testing.T) {
 				}
 			}
 
-			if !p.Exact || p.CallMaskCount() != 1 {
-				t.Errorf("%s exact=%v source masks=%d want1", e.Name, p.Exact, p.CallMaskCount())
+			masks := 1
+			if direct && e.Name != "noninline" && e.Name != "roots-call" {
+				masks = 0
+			}
+			if (p != nil && !p.Exact) || p.CallMaskCount() != masks {
+				t.Errorf("%s source root plan=%+v masks=%d want%d", e.Name, p, p.CallMaskCount(), masks)
 			}
 			if e.Name == "read" || e.Name == "nullable" || e.Name == "dirty" {
 				calls := 1
-				if inline {
+				if inline || direct {
 					calls = 0
 				}
-				if p.CallsiteCount() != calls {
-					t.Errorf("%s native calls=%d want%d", e.Name, p.CallsiteCount(), calls)
+				got := 0
+				if p != nil {
+					got = p.CallsiteCount()
+				}
+				if got != calls {
+					t.Errorf("%s native calls=%d want%d", e.Name, got, calls)
 				}
 			}
 			t.Logf("inline=%v %s reuse=%d locals=%d globals=%d frame=%d spills=%d code=%d calls=%v", inline, e.Name, s.Peephole["gc-trapping-guard-reuse"], s.PinnedLocals, s.PinnedGlobalsValue, s.FrameBytes, s.Spills, s.CodeBytes, s.Calls)
