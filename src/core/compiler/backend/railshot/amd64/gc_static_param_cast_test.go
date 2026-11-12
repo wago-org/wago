@@ -26,6 +26,21 @@ func staticParameterForwardModule() []byte {
 	)
 }
 
+func staticParameterEHModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 1, 0x7f, 1},
+			[]byte{0x60, 1, 0x64, 0, 1, 0x7f},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+		wasmtest.Section(13, wasmtest.Vec([]byte{0, 2})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0xfb, 22, 0, 0x1a, 0x41, 7, 0x0b}),
+		)),
+	)
+}
+
 func TestGCStaticParameterCastAndForwardCall(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	m, err := wasm.DecodeModule(staticParameterForwardModule())
@@ -56,6 +71,33 @@ func TestGCStaticParameterCastAndForwardCall(t *testing.T) {
 	}
 	if got := stats.Funcs[2].Calls[callKindWrapper]; got != 1 || stats.Funcs[2].Calls[callKindMixed] != 0 {
 		t.Errorf("forwarded call must use the destination wrapper ABI: %v", stats.Funcs[2].Calls)
+	}
+}
+
+func TestGCStaticParameterCastInEHModule(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	m, err := wasm.DecodeModule(staticParameterEHModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, GCArrayHelpers: true, Stats: &stats, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: meta.Descs, GCTypeLayouts: meta.Layouts}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cm.CodeImage.Close()
+	if got := stats.Funcs[0].Peephole["gc-static-param-cast-elide"]; got != 1 {
+		t.Errorf("EH-module parameter cast elisions=%d want1", got)
+	}
+	if got := stats.Funcs[0].Calls["gcnative"]; got != 0 {
+		t.Errorf("EH-module redundant parameter cast emitted%d native checks", got)
 	}
 }
 
