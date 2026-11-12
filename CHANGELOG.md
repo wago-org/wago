@@ -6,6 +6,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Changed
+
+- Reduce AMD64 strict Q15 multiply saturation correction to a result comparison
+  and XOR, with one fewer vector constant and no change to relaxed Q15 results.
+  ([#1053](https://github.com/wago-org/wago/pull/1053))
+
 ## [v0.1.0-beta.14] - 2026-11-11
 
 ### Breaking

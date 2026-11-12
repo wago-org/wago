@@ -110,10 +110,9 @@ func emulationConsts(sub uint32) [][2]uint64 {
 		return [][2]uint64{
 			{0x7070707070707070, 0x7070707070707070},
 		}
-	case 130: // i16x8.q15mulr_sat_s: INT16_MIN detect + INT16_MAX saturate
+	case 130: // i16x8.q15mulr_sat_s: detect the wrapped INT16_MIN result
 		return [][2]uint64{
 			{0x8000800080008000, 0x8000800080008000},
-			{0x7fff7fff7fff7fff, 0x7fff7fff7fff7fff},
 		}
 	case 251: // f32x4.convert_i32x4_u: low-16 mask + 65536.0f scale
 		return [][2]uint64{
@@ -1807,29 +1806,17 @@ func (f *fn) i16x8Q15mulrSatS() {
 	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.add(xb)
 
-	min := f.v128ConstReg(0x8000800080008000, 0x8000800080008000)
-	f.fpinned = f.fpinned.add(min)
-	mask := f.allocFReg(0)
-	f.fpinned = f.fpinned.add(mask)
-	opVPcmpeqw.emit(f, mask, xa, min)
-	tmp := f.allocFReg(0)
-	opVPcmpeqw.emit(f, tmp, xb, min)
-	opVPand.emit(f, mask, mask, tmp)
-	f.releaseF(tmp)
-	f.fpinned = f.fpinned.remove(min)
-	f.releaseF(min)
-
 	opVPmulhrsw.emit(f, xa, xa, xb)
 	f.fpinned = f.fpinned.remove(xb)
 	f.releaseF(xb)
 
-	max := f.v128ConstReg(0x7fff7fff7fff7fff, 0x7fff7fff7fff7fff)
-	opVPand.emit(f, max, max, mask)
-	opVPandn.emit(f, xa, mask, xa)
-	opVPor.emit(f, xa, xa, max)
-	f.releaseF(max)
-	f.fpinned = f.fpinned.remove(xa).remove(mask)
+	// Only -32768 * -32768 rounds to 32768, wrapping to -32768 in
+	// PMULHRSW (and its SSE2 fallback). Flip that lane to saturate to 32767.
+	mask := f.v128ConstReg(0x8000800080008000, 0x8000800080008000)
+	opVPcmpeqw.emit(f, mask, mask, xa)
+	opVPxor.emit(f, xa, xa, mask)
 	f.releaseF(mask)
+	f.fpinned = f.fpinned.remove(xa)
 	f.pushVReg(xa)
 }
 
