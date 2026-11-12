@@ -1224,10 +1224,9 @@ func (f *fn) i64x2ExtmulI32x4(signed, high bool) {
 	f.pushVReg(xa)
 }
 
-// relaxedDotI8x16I7x16 returns eight signed, saturating pair sums. Widening
-// multiplies preserve every i8 product, SADDLP forms exact i32 pair sums, and
-// SQXTN performs the same i16 saturation as the former scalar clamp loop.
-func (f *fn) relaxedDotI8x16I7x16() Reg {
+// relaxedDotI8x16I7x16 computes signed dot products. The i16 result wraps
+// pair sums; the i32 result keeps full-precision sums of four products.
+func (f *fn) relaxedDotI8x16I7x16(wide bool) Reg {
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -1238,10 +1237,13 @@ func (f *fn) relaxedDotI8x16I7x16() Reg {
 
 	f.a.NeonSmullHfromB(lo, xa, xb)
 	f.a.NeonSmull2HfromB(xa, xa, xb)
-	f.a.NeonSaddlpSfromH(lo, lo)
-	f.a.NeonSaddlpSfromH(xa, xa)
-	f.a.NeonSqxtnHfromS(lo, lo)
-	f.a.NeonSqxtn2HfromS(lo, xa)
+	if wide {
+		f.a.NeonSaddlpSfromH(lo, lo)
+		f.a.NeonSaddlpSfromH(xa, xa)
+		f.a.NeonAddpS(lo, lo, xa)
+	} else {
+		f.a.NeonAddpH(lo, lo, xa)
+	}
 
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
 	f.releaseF(xb)
@@ -1250,15 +1252,14 @@ func (f *fn) relaxedDotI8x16I7x16() Reg {
 }
 
 func (f *fn) i16x8RelaxedDotI8x16I7x16S() {
-	f.pushVReg(f.relaxedDotI8x16I7x16())
+	f.pushVReg(f.relaxedDotI8x16I7x16(false))
 }
 
 func (f *fn) i32x4RelaxedDotI8x16I7x16AddS() {
 	cElem := f.popValue()
 	xc := f.materializeV128(cElem)
 	f.fpinned = f.fpinned.add(xc)
-	out := f.relaxedDotI8x16I7x16()
-	f.a.NeonSaddlpSfromH(out, out)
+	out := f.relaxedDotI8x16I7x16(true)
 	f.a.NeonAddS(out, out, xc)
 	f.fpinned = f.fpinned.remove(xc)
 	f.releaseF(xc)
@@ -2221,9 +2222,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmax(dst, s1, s2, true) })
 	case 273: // i16x8.relaxed_q15mulr_s: deterministic raw SQRDMULH choice.
 		return f.v128Bin(r, f.a.NeonSqrdmulhH)
-	case 274: // i16x8.relaxed_dot_i8x16_i7x16_s: deterministic signed scalar dot with i16 saturation.
+	case 274: // i16x8.relaxed_dot_i8x16_i7x16_s: deterministic signed dot with i16 wrapping.
 		f.i16x8RelaxedDotI8x16I7x16S()
-	case 275: // i32x4.relaxed_dot_i8x16_i7x16_add_s: deterministic signed scalar dot-add.
+	case 275: // i32x4.relaxed_dot_i8x16_i7x16_add_s: deterministic signed dot-add with i32 wrapping.
 		f.i32x4RelaxedDotI8x16I7x16AddS()
 	case 15, 16, 17, 18, 19, 20: // splat
 		f.v128Splat(sub)

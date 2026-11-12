@@ -5,6 +5,7 @@ package arm64
 import (
 	"encoding/binary"
 	"math"
+	"math/rand"
 	"testing"
 	"unsafe"
 
@@ -458,13 +459,14 @@ func TestSIMDQ15MulrAndDotExec(t *testing.T) {
 }
 
 func TestSIMDRelaxedDotExec(t *testing.T) {
-	a := i8x16Bytes(-128, -128, 127, 127, 1, 2, -3, 4, 10, -20, 30, -40, 50, -60, 70, -80)
-	b := i8x16Bytes(-128, -128, 127, 127, 5, 6, 7, 8, -1, -2, -3, -4, -5, -6, -7, -8)
+	// WebAssembly/spec#2312, merged as e22ec2272bfbc06b995b00c1f1172a61d613fdd8.
+	a := i8x16Bytes(-128, -128, -128, -128, -128, -128, -128, -128, 127, 127, 127, 127, 127, 127, 127, 127)
+	b := i8x16Bytes(-128, -128, -128, -128, -127, -127, -127, -127, -128, -128, -128, -128, -1, -1, -1, -1)
 
 	t.Run("i16x8.relaxed_dot_i8x16_i7x16_s", func(t *testing.T) {
 		body := v128BinaryBody(a, b, 274)
 		m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
-		want := i16x8Bytes(32767, 32258, 17, 11, 30, 70, 110, 150)
+		want := i16x8Bytes(-32768, -32768, 32512, 32512, -32512, -32512, -254, -254)
 		if got := runArm64V128(t, m); got != want {
 			t.Fatalf("relaxed dot = % x, want % x", got, want)
 		}
@@ -474,15 +476,95 @@ func TestSIMDRelaxedDotExec(t *testing.T) {
 		body := []byte{0x00}
 		body = append(body, simdConst(a)...)
 		body = append(body, simdConst(b)...)
-		body = append(body, simdConst(i32x4Bytes(1, -2, 3, -4))...)
+		body = append(body, simdConst(i32x4Bytes(1, 2, 3, 4))...)
 		body = append(body, simdOp(275)...)
 		body = append(body, 0x0b)
 		m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
-		want := i32x4Bytes(65026, 26, 103, 256)
+		want := i32x4Bytes(65537, 65026, -65021, -504)
 		if got := runArm64V128(t, m); got != want {
 			t.Fatalf("relaxed dot add = % x, want % x", got, want)
 		}
 	})
+}
+
+// Check the signed implementation against an independent scalar oracle, including
+// the full-byte inputs whose behavior differs from signed i16 saturation.
+func TestSIMDRelaxedDotSignedOracleExec(t *testing.T) {
+	rng := rand.New(rand.NewSource(2312))
+	for sample := 0; sample < 132; sample++ {
+		var a, b, c [16]byte
+		rng.Read(a[:])
+		rng.Read(b[:])
+		rng.Read(c[:])
+		switch sample {
+		case 0:
+			// Every pair exceeds the signed i16 range: 0x80 * 0x80.
+			for i := range a {
+				a[i], b[i] = 0x80, 0x80
+			}
+			c = [16]byte{}
+		case 1:
+			for i := range a {
+				a[i], b[i] = 0x80, 0x80
+			}
+			c = i32x4Bytes(math.MaxInt32, math.MinInt32, -1, 0)
+		case 2:
+			for i := range a {
+				a[i], b[i] = 0x80, 0x7f
+			}
+			c = i32x4Bytes(math.MinInt32, math.MaxInt32, -1, 0)
+		case 3:
+			// The mandated seven-bit range is exact, including negative values.
+			for i := range b {
+				b[i] = byte(int8(i*8 - 64))
+			}
+		}
+		for _, wide := range []bool{false, true} {
+			op, n := uint32(274), 2
+			var want [16]byte
+			if wide {
+				op, n = 275, 3
+				for lane := 0; lane < 4; lane++ {
+					sum := binary.LittleEndian.Uint32(c[lane*4:])
+					for j := 0; j < 4; j++ {
+						k := lane*4 + j
+						sum += uint32(int32(int8(a[k])) * int32(int8(b[k])))
+					}
+					binary.LittleEndian.PutUint32(want[lane*4:], sum)
+				}
+			} else {
+				for lane := 0; lane < 8; lane++ {
+					k := lane * 2
+					sum := int32(int8(a[k]))*int32(int8(b[k])) + int32(int8(a[k+1]))*int32(int8(b[k+1]))
+					binary.LittleEndian.PutUint16(want[lane*2:], uint16(sum))
+				}
+			}
+			// Keep all operands live in locals across the destructive lowering, then
+			// incorporate them into the result to detect corrupted pinned registers.
+			body := []byte{1, byte(n), 0x7b}
+			operands := [][16]byte{a, b, c}
+			for i := 0; i < n; i++ {
+				body = append(body, simdConst(operands[i])...)
+				body = append(body, 0x21, byte(i))
+			}
+			for i := 0; i < n; i++ {
+				body = append(body, 0x20, byte(i))
+			}
+			body = append(body, simdOp(op)...)
+			for i := 0; i < n; i++ {
+				body = append(body, 0x20, byte(i))
+				body = append(body, simdOp(81)...)
+				for k := range want {
+					want[k] ^= operands[i][k]
+				}
+			}
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			if got := runArm64V128(t, m); got != want {
+				t.Fatalf("sample=%d wide=%v a=%x b=%x c=%x got=%x want=%x", sample, wide, a, b, c, got, want)
+			}
+		}
+	}
 }
 
 func TestSIMDArm64NativeCompareExec(t *testing.T) {

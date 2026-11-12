@@ -1457,6 +1457,7 @@ func (a *Asm) neon3(base uint32, bytes int, dst, n, m Reg) {
 func (a *Asm) NeonAddB(dst, n, m Reg)  { a.neon3(0x4E208400, 1, dst, n, m) }
 func (a *Asm) NeonAddH(dst, n, m Reg)  { a.neon3(0x4E208400, 2, dst, n, m) }
 func (a *Asm) NeonAddS(dst, n, m Reg)  { a.neon3(0x4E208400, 4, dst, n, m) }
+func (a *Asm) NeonAddpH(dst, n, m Reg) { a.neon3(0x4E20BC00, 2, dst, n, m) }
 func (a *Asm) NeonAddpS(dst, n, m Reg) { a.neon3(0x4E20BC00, 4, dst, n, m) }
 func (a *Asm) NeonAddD(dst, n, m Reg)  { a.neon3(0x4E208400, 8, dst, n, m) }
 func (a *Asm) NeonSubB(dst, n, m Reg)  { a.neon3(0x6E208400, 1, dst, n, m) }
