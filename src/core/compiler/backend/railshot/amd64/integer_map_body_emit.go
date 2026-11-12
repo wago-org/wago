@@ -344,6 +344,10 @@ func (e *integerMapBodyEmitter) emit() {
 		}
 	}
 	e.a.Load32(e.gp[0], RSP, e.guard.slot(e.guard.countSlot()))
+	unrolled := -1
+	if integerMapWideUnroll && e.slpWide {
+		unrolled = e.a.JmpPlaceholder()
+	}
 	e.a.AlignLoop()
 	top := e.a.Len()
 	e.a.AluRI(7, e.gp[0], int32(e.guard.plan.lanes), false)
@@ -351,61 +355,7 @@ func (e *integerMapBodyEmitter) emit() {
 	siteN := 0
 	scalarSites[siteN] = e.a.JccPlaceholder(condB)
 	siteN++
-	// Group writes in the same proven stream so a single conservative span
-	// covers their overlap checks against a common invariant read.
-	var grouped [integerMapMaxAliasPairs]bool
-	for i, pair := range e.guard.plan.packetPairs[:e.guard.plan.packetN] {
-		if grouped[i] {
-			continue
-		}
-		base, delta := shareStream(&e.guard.plan.memory, int(pair.a))
-		lo, hi := delta, delta+4
-		stream := e.guard.plan.memory.streams[pair.a]
-		for j := i + 1; j < int(e.guard.plan.packetN); j++ {
-			other := e.guard.plan.packetPairs[j]
-			otherBase, otherDelta := shareStream(&e.guard.plan.memory, int(other.a))
-			if other.b != pair.b || otherBase != base || e.guard.plan.memory.streams[other.a].stride != stream.stride {
-				continue
-			}
-			if otherDelta < lo {
-				lo = otherDelta
-			}
-			if otherDelta+4 > hi {
-				hi = otherDelta + 4
-			}
-			grouped[j] = true
-		}
-		start, _ := e.streamReadAddress(int(pair.a), e.gp[1])
-		if lo != 0 {
-			e.a.LeaDisp(e.gp[1], start, lo)
-			start = e.gp[1]
-		}
-		other, d := e.streamReadAddress(int(pair.b), e.gp[3])
-		if d != 0 {
-			e.a.LeaDisp(e.gp[3], other, d)
-			other = e.gp[3]
-		}
-		span := int64(e.guard.plan.lanes-1)*int64(stream.stride) + int64(hi) - int64(lo)
-		if span > 0 && span <= 0x7ffffffc {
-			// Both ranges have already passed widened bounds checks. For a
-			// four-byte access, the unsigned distance (other+3)-start is
-			// below span+3 exactly when the ranges overlap. Subtraction wraps
-			// for disjoint addresses below start, making them compare above it.
-			e.a.LeaDisp(e.gp[2], other, 3)
-			e.a.AluRR(0x29, e.gp[2], start, true)
-			e.a.AluRI(7, e.gp[2], int32(span+3), true)
-			scalarSites[siteN] = e.a.JccPlaceholder(condB)
-		} else {
-			e.a.LeaDisp(e.gp[2], start, int32(span))
-			e.a.Cmp64(e.gp[2], other)
-			safe := e.a.JccPlaceholder(condBE)
-			e.a.LeaDisp(e.gp[3], other, 4)
-			e.a.Cmp64(e.gp[3], start)
-			scalarSites[siteN] = e.a.JccPlaceholder(condA)
-			e.a.PatchRel32(safe, e.a.Len())
-		}
-		siteN++
-	}
+	siteN = e.emitPacketGuards(e.guard.plan.lanes, &scalarSites, siteN)
 
 	if e.slpWide {
 		e.emitSLPWide()
@@ -422,6 +372,7 @@ func (e *integerMapBodyEmitter) emit() {
 	e.a.AluRI(5, e.gp[0], int32(e.guard.plan.lanes), false)
 	again := e.a.JccPlaceholder(condNE)
 	e.a.PatchRel32(again, top)
+	vectorDone := e.a.Len()
 	if e.slpWide {
 		var extracted [integerMapMaxNodes + 1]bool
 		for _, id := range e.slp.localNode {
@@ -460,7 +411,92 @@ func (e *integerMapBodyEmitter) emit() {
 		e.a.PatchRel32(again, top)
 	}
 	e.publish(1, false)
+	if unrolled >= 0 {
+		const lanes = uint8(16)
+		skip := e.a.JmpPlaceholder()
+		e.a.PatchRel32(unrolled, e.a.Len())
+		e.a.AlignLoop()
+		fastTop := e.a.Len()
+		e.a.AluRI(7, e.gp[0], int32(lanes), false)
+		small := e.a.JccPlaceholder(condB)
+		e.a.PatchRel32(small, top)
+		var fallback [integerMapMaxAliasPairs + 1]int
+		n := e.emitPacketGuards(lanes, &fallback, 0)
+		for _, site := range fallback[:n] {
+			e.a.PatchRel32(site, top)
+		}
+		for i := uint8(0); i < lanes; i += 4 {
+			e.emitSLPWide()
+			e.advance(4)
+		}
+		e.a.AluRI(5, e.gp[0], int32(lanes), false)
+		again = e.a.JccPlaceholder(condNE)
+		e.a.PatchRel32(again, fastTop)
+		finish := e.a.JmpPlaceholder()
+		e.a.PatchRel32(finish, vectorDone)
+		e.a.PatchRel32(skip, e.a.Len())
+	}
 	e.a.PatchRel32(done, e.a.Len())
+}
+
+func (e *integerMapBodyEmitter) emitPacketGuards(lanes uint8, sites *[integerMapMaxAliasPairs + 1]int, siteN int) int {
+	// Group writes in the same proven stream so a single conservative span
+	// covers their overlap checks against a common invariant read.
+	var grouped [integerMapMaxAliasPairs]bool
+	for i, pair := range e.guard.plan.packetPairs[:e.guard.plan.packetN] {
+		if grouped[i] {
+			continue
+		}
+		base, delta := shareStream(&e.guard.plan.memory, int(pair.a))
+		lo, hi := delta, delta+4
+		stream := e.guard.plan.memory.streams[pair.a]
+		for j := i + 1; j < int(e.guard.plan.packetN); j++ {
+			other := e.guard.plan.packetPairs[j]
+			otherBase, otherDelta := shareStream(&e.guard.plan.memory, int(other.a))
+			if other.b != pair.b || otherBase != base || e.guard.plan.memory.streams[other.a].stride != stream.stride {
+				continue
+			}
+			if otherDelta < lo {
+				lo = otherDelta
+			}
+			if otherDelta+4 > hi {
+				hi = otherDelta + 4
+			}
+			grouped[j] = true
+		}
+		start, _ := e.streamReadAddress(int(pair.a), e.gp[1])
+		if lo != 0 {
+			e.a.LeaDisp(e.gp[1], start, lo)
+			start = e.gp[1]
+		}
+		other, d := e.streamReadAddress(int(pair.b), e.gp[3])
+		if d != 0 {
+			e.a.LeaDisp(e.gp[3], other, d)
+			other = e.gp[3]
+		}
+		span := int64(lanes-1)*int64(stream.stride) + int64(hi) - int64(lo)
+		if span > 0 && span <= 0x7ffffffc {
+			// Both ranges have already passed widened bounds checks. For a
+			// four-byte access, the unsigned distance (other+3)-start is
+			// below span+3 exactly when the ranges overlap. Subtraction wraps
+			// for disjoint addresses below start, making them compare above it.
+			e.a.LeaDisp(e.gp[2], other, 3)
+			e.a.AluRR(0x29, e.gp[2], start, true)
+			e.a.AluRI(7, e.gp[2], int32(span+3), true)
+			sites[siteN] = e.a.JccPlaceholder(condB)
+		} else {
+			e.a.LeaDisp(e.gp[2], start, int32(span))
+			e.a.Cmp64(e.gp[2], other)
+			safe := e.a.JccPlaceholder(condBE)
+			e.a.LeaDisp(e.gp[3], other, 4)
+			e.a.Cmp64(e.gp[3], start)
+			sites[siteN] = e.a.JccPlaceholder(condA)
+			e.a.PatchRel32(safe, e.a.Len())
+		}
+		siteN++
+	}
+
+	return siteN
 }
 
 func (e *integerMapBodyEmitter) emitPacket(lanes uint8) {

@@ -116,6 +116,9 @@ func TestIntegerMapPackedStreams(t *testing.T) {
 			if on && tc.fast && packed && wide && diagnosticsEnabled && (stats.Funcs[0].Peephole["integer-map-slp-wide"] != 0) != (mode >= 15 && mode < 17) {
 				t.Fatalf("mode=%d wide selection=%v", mode, stats.Funcs[0].Peephole)
 			}
+			if on && tc.fast && packed && wide && diagnosticsEnabled && (stats.Funcs[0].Peephole["integer-map-slp-wide-unroll"] != 0) != (integerMapWideUnroll && mode >= 15 && mode < 17) {
+				t.Fatalf("mode=%d unroll selection=%v", mode, stats.Funcs[0].Peephole)
+			}
 			if !on {
 				expected = mem
 				result = got
