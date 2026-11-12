@@ -121,6 +121,14 @@ func (r *Reader) U32() (uint32, error) {
 func (r *Reader) U64() (uint64, error) { return r.leb128(false, 64) }
 func (r *Reader) S33() (int64, error)  { v, err := r.leb128(true, 33); return int64(v), err }
 
+// BlockType consumes a complete block type, including typed reference results.
+func (r *Reader) BlockType() (BlockType, error) {
+	internal := reader{data: r.data, pos: r.pos}
+	block, err := decodeBlockType(&internal)
+	r.pos = internal.pos
+	return block, err
+}
+
 // RefHeapType consumes a reference heap-type immediate, including the optional
 // exact marker used before indexed heap types.
 func (r *Reader) RefHeapType() (exact bool, heap int64, err error) {
