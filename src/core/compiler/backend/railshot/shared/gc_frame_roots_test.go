@@ -140,6 +140,40 @@ func TestGCFrameCallsiteStream(t *testing.T) {
 	}
 }
 
+func TestGCFrameSyntheticReturnFrame(t *testing.T) {
+	plan := GCFrameRootPlan{Exact: true, FrameBytes: 120}
+	if !plan.AppendCallsite(16, 64, []uint32{8}) {
+		t.Fatal("ordinary callsite rejected")
+	}
+	plan.RecordSyntheticFrameCallsite(40, 24)
+	ordinary, ok := plan.Callsite(0)
+	if !ok || ordinary.FrameBytes(plan.FrameBytes) != 120 || ordinary.StackAdjust() != 64 || len(ordinary.Offsets()) != 1 {
+		t.Fatal("ordinary frame contract changed")
+	}
+	if !plan.ShiftCallsiteReturnOffsets(32, 8) {
+		t.Fatal("synthetic return PC remap failed")
+	}
+	synthetic, ok := plan.Callsite(1)
+	if !ok || synthetic.ReturnOffset() != 32 || synthetic.FrameBytes(plan.FrameBytes) != 24 || synthetic.StackAdjust() != 0 || len(synthetic.Offsets()) != 0 {
+		t.Fatal("synthetic frame must skip the saved context and reach the original caller")
+	}
+	if plan.AppendCallsite(48, gcSyntheticFrameFlag|24, nil) {
+		t.Fatal("ordinary append accepted the reserved synthetic tag")
+	}
+	for _, size := range []uint32{0, 7, 25, 1<<20 + 8} {
+		bad := GCFrameRootPlan{Exact: true}
+		bad.RecordSyntheticFrameCallsite(40, size)
+		if bad.Exact || bad.CallsiteCount() != 0 {
+			t.Fatalf("invalid synthetic frame size %d was accepted", size)
+		}
+	}
+	for _, data := range [][]uint32{{40, gcSyntheticFrameFlag | 25, 0}, {40, gcSyntheticFrameFlag | 24, 1, 8}} {
+		if (GCFrameCallsite{data: data}).FrameBytes(120) != 0 {
+			t.Fatal("malformed synthetic record acquired a frame size")
+		}
+	}
+}
+
 func TestGCFrameRootPlanWideMaskWords(t *testing.T) {
 	plan := &GCFrameRootPlan{
 		Locals:              make([]GCFrameLocal, 65),
