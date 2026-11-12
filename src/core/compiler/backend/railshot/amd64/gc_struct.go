@@ -233,6 +233,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return nil
 		}
 		if f.emitDirectGCStructGet(r, typeIndex, fieldIndex, helper) {
+			f.skipProvedGCFieldResultCast(r, resultType)
 			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -241,6 +242,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err := f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
 			return err
 		}
+		f.skipProvedGCFieldResultCast(r, resultType)
 		return nil
 	case 5: // struct.set typeidx fieldidx
 		typeIndex, err := r.U32()
@@ -668,7 +670,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
 		}
-		if objectTarget && hasSourceLocal && f.localBase == 0 && !f.moduleEH &&
+		if objectTarget && hasSourceLocal && f.localBase == 0 &&
 			staticGCParameterCast(f.m, f.ft, sourceLocal, sub, heap, exactTarget) {
 			f.markTopGCReference()
 			f.stats.peep("gc-static-param-cast-elide")

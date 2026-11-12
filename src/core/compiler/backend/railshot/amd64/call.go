@@ -418,13 +418,14 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("call: unknown function %d", idx)
 	}
+	declaredType := ft
 	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
 		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
 			// Native lowering replaces the source call without a return address.
 			// Consume its mask so later calls retain their source-site liveness.
 			f.consumeGCFrameCallsite()
-			return f.emitCustomInstruction(custom, ft)
+			return f.finishProvedGCCallResultCast(r, declaredType, f.emitCustomInstruction(custom, ft))
 		}
 	}
 	// Auto-inlining (WAGO_INLINE): splice a straight-line leaf callee's body here
@@ -452,16 +453,16 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
-			return f.emitDynamicHostOrCrossInstance(f.importBindings[idx], ft)
+			return f.finishProvedGCCallResultCast(r, declaredType, f.emitDynamicHostOrCrossInstance(f.importBindings[idx], ft))
 		}
 		// A module with any returning host import uses the synchronous control
 		// frame for ALL its host calls, so the async log and the control frame
 		// never both occupy offCustomCtx. Otherwise void imports keep the cheaper
 		// async log-and-replay path.
 		if f.syncHostCalls || len(ft.Results) != 0 {
-			return f.callHostSync(int(idx), ft) // synchronous re-entry
+			return f.finishProvedGCCallResultCast(r, declaredType, f.callHostSync(int(idx), ft)) // synchronous re-entry
 		}
-		return f.callHost(int(idx), ft) // void: async log-and-replay
+		return f.finishProvedGCCallResultCast(r, declaredType, f.callHost(int(idx), ft)) // void: async log-and-replay
 	}
 	// `call f; local.set x` fusion: an int-only register-ABI call whose single
 	// int result feeds a pinned local moves RAX straight into the local's
@@ -485,7 +486,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	// Resolve trapping roots before register staging visits the arguments.
 	f.materializeTrapsBefore(f.s.head)
-	return f.callInternal(int(idx)-imported, ft, hint)
+	return f.finishProvedGCCallResultCast(r, declaredType, f.callInternal(int(idx)-imported, ft, hint))
 }
 
 func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) error {
