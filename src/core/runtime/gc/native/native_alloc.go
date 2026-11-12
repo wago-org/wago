@@ -87,7 +87,6 @@ func (c *Collector) reserveNativeHandles(batch int) {
 	if newHandles != 0 {
 		c.handles = slices.Grow(c.handles, newHandles)
 		c.mark = slices.Grow(c.mark, newHandles)
-		c.tinyGC.color = slices.Grow(c.tinyGC.color, newHandles)
 	}
 	c.nurseryHandles = slices.Grow(c.nurseryHandles, batch)
 	if c.checkedHandles != nil {
@@ -111,9 +110,6 @@ func (c *Collector) reserveNativeHandles(batch int) {
 		marks := len(c.mark)
 		c.mark = c.mark[:marks+newHandles]
 		clear(c.mark[marks:])
-		colors := len(c.tinyGC.color)
-		c.tinyGC.color = c.tinyGC.color[:colors+newHandles]
-		clear(c.tinyGC.color[colors:])
 		for i := reused; i < batch; i++ {
 			s.Handles[i] = uint32(base + i - reused)
 		}

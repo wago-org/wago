@@ -494,6 +494,11 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 		}
 	}
 	h := c.newHandle(handleEntry{off: off, size: size, space: spaceTiny})
+	// A fresh identity extends the handle table by one. Reused identities keep
+	// their existing color slot; tinyPostAlloc assigns the current epoch state.
+	if len(c.tinyGC.color) < len(c.handles) {
+		c.tinyGC.color = append(c.tinyGC.color, 0)
+	}
 	r := makeObjRef(h)
 	flags := uint32(0)
 	if !d.HasRefs {

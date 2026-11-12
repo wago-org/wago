@@ -440,6 +440,16 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		}
 		return f.inlineCall(t, r)
 	}
+	// A forwarding body replaces one source call with one real destination call.
+	// Its equal signature keeps the existing caller liveness mask applicable.
+	for hop := 0; hop < 4; hop++ {
+		target, targetType, ok := f.gcForwardCallTarget(idx, ft)
+		if !ok {
+			break
+		}
+		idx, ft = target, targetType
+		f.stats.peep("gc-forward-call")
+	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
 			return f.emitDynamicHostOrCrossInstance(f.importBindings[idx], ft)

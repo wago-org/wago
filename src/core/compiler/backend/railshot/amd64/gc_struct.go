@@ -667,6 +667,12 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
 		}
+		if objectTarget && hasSourceLocal && f.localBase == 0 && !f.moduleEH &&
+			staticGCParameterCast(f.m, f.ft, sourceLocal, sub, heap, exactTarget) {
+			f.markTopGCReference()
+			f.stats.peep("gc-static-param-cast-elide")
+			return nil
+		}
 		if target, ok := f.stagedGCType(uint32(heap)); ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
 			if err := f.emitNativeDefinedCast(uint32(heap), sub == 23, exactTarget); err != nil {
 				return err
