@@ -1816,7 +1816,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 		}
 		// Preserve older spill homes; an isolated owned predicate can remain
 		// tracked without a canonical stack round trip.
-		f.flushBranchPredicate(cond)
+		f.flushBranchPredicate(cond, false)
 		f.convergeFrameEntryState(&fr)
 		creg, cOwned := f.popBranchCondition()
 		fr.height = f.depth() - pN
@@ -2674,17 +2674,6 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		}
 		return f.brIfFused(r, top, idx)
 	}
-	var predicate *elem
-	if conditional {
-		predicate = f.s.back()
-		f.materializeTrapsBefore(predicate)
-		if predicate.isDeferred() {
-			f.condense(predicate, regNone)
-		}
-		// Keep the predicate tracked through local convergence, staging
-		// existing spill homes whenever there is an older operand.
-		f.flushBranchPredicate(predicate)
-	}
 	idx, err := r.U32()
 	if err != nil {
 		return err
@@ -2692,6 +2681,16 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	fi := f.sourceLabelFrame(idx)
 	if fi < 0 {
 		return errBadLabel
+	}
+	if conditional {
+		predicate := f.s.back()
+		f.materializeTrapsBefore(predicate)
+		if predicate.isDeferred() {
+			f.condense(predicate, regNone)
+		}
+		// Keep the predicate tracked through local convergence, staging
+		// existing spill homes whenever there is an older operand.
+		f.flushBranchPredicate(predicate, f.ctrl[fi].kind == cfLoop)
 	}
 	if !conditional {
 		f.branchToFrame(fi)

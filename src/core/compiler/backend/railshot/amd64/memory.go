@@ -22,6 +22,8 @@ import (
 // an exact A/B and correctness oracle.
 var storeValueLoadFoldEnabled = os.Getenv("WAGO_AMD64_NO_STORE_VALUE_LOAD_FOLD") != "1"
 
+var fallthroughBoundsEnabled = os.Getenv("WAGO_AMD64_NO_FALLTHROUGH_BOUNDS") != "1"
+
 // storeValueLastFoldableLoad returns the last deferred load in a pure integer
 // value tree. Earlier loads are forced in source order before condensation, so
 // only the final load may move among nontrapping operations.
@@ -444,6 +446,10 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // valid when the access is emitted immediately (stores), not deferred (loads);
 // eaOwned reports whether the caller must release ea.
 func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	return f.memAddrModular(off, size, aliasPinned, rangeExtent, modularLoadGroup{})
+}
+
+func (f *fn) memAddrModular(off uint32, size int, aliasPinned bool, rangeExtent int32, group modularLoadGroup) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	minimumAccess := !f.guardMode && f.minimumMemoryAccess(0, uint64(off), size)
 	f.materializePendingTraps()
 	e := f.popValue()
@@ -453,6 +459,10 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	// stable key. See boundsCertMeasure.
 	bcKind, bcIdx := boundsSource(e.st)
 	hoistedLoopBounds := f.hoistedLoopBoundsCover(bcKind, bcIdx)
+	// The address may be an owned snapshot of a local whose value changed after
+	// a successful check. Its proof belongs to that snapshot, not the new local.
+	capturedBounds := capturedBoundsEnabled && f.boundsFacts && e.st.kind == stReg && e.st.typ == mtI32 &&
+		e.st.meta&uint8(storageCapturedBounds) != 0 && int64(off)+int64(size) <= e.st.cval
 	// The preheader proof zero-extends the induction local, and the admitted
 	// update is a 32-bit add. Its physical register therefore remains canonical
 	// throughout the loop; don't emit a self-move before every access.
@@ -499,7 +509,21 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 		}
 		return ea, eaOwned, borrow, disp
 	}
-	if hoistedLoopBounds {
+	if group.valid {
+		if f.modularLoadGroupCovers(group.local, group.first) {
+			f.stats.addBoundsElidable()
+			return ea, eaOwned, borrow, disp
+		}
+		if !group.covered {
+			f.checkModularLoadGroup(ea, group)
+			f.addModularLoadGroup(group)
+			return ea, eaOwned, borrow, disp
+		}
+	}
+	if hoistedLoopBounds || capturedBounds {
+		if capturedBounds {
+			f.stats.peep("captured-bounds")
+		}
 		f.stats.addBoundsElidable()
 		return ea, eaOwned, borrow, disp
 	}
@@ -579,7 +603,11 @@ func boundsSource(s storage) (kind uint8, idx uint32) {
 	}
 }
 
-const maxStraightLineRangeOps = 4096
+// Limit both one scan and the sum of failed and successful scans per function.
+const (
+	maxStraightLineRangeOps = 4096
+	maxFunctionRangeOps     = 32768
+)
 
 // straightLineLoadExtent finds later direct scalar loads from the same stable
 // source that may safely share the current access's bounds check. The scan is
@@ -591,7 +619,8 @@ const maxStraightLineRangeOps = 4096
 func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, extent int32) int32 {
 	scan := *r
 	prevKind, prevIdx := uint8(0), uint32(0)
-	for n := 0; n < maxStraightLineRangeOps && scan.HasNext(); n++ {
+	for n := 0; n < maxStraightLineRangeOps && f.boundsScanWork < maxFunctionRangeOps && scan.HasNext(); n++ {
+		f.boundsScanWork++
 		op, err := scan.Byte()
 		if err != nil {
 			break
@@ -702,6 +731,21 @@ func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, 
 	return ea, eaOwned, borrow, disp
 }
 
+// boundsCertExtent returns an existing proof for a stable source. The source
+// filter avoids walking the bounded certificate set on the ordinary path.
+func (f *fn) boundsCertExtent(kind uint8, idx uint32) int32 {
+	if kind == 0 || f.boundsCertSources&boundsCertSourceBit(kind, idx) == 0 {
+		return 0
+	}
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			return c.extent
+		}
+	}
+	return 0
+}
+
 // boundsCertCovers reports whether the active straight-line certificate already
 // proves this access in-bounds (P6.1): the same keyable source, with this
 // access's extent (off+size) within the proven extent. A check proves
@@ -782,12 +826,16 @@ func (f *fn) invalidateBoundsCert() {
 
 // invalidateBoundsCertFor drops the proof for one source whose value changed.
 func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
-	if f.boundsCertSources&boundsCertSourceBit(kind, idx) == 0 {
+	sources := boundsCertSourceBit(kind, idx)
+	if kind == 1 {
+		sources |= boundsCertSourceBit(3, idx)
+	}
+	if f.boundsCertSources&sources == 0 {
 		return
 	}
 	for i := range f.boundsCerts {
 		c := &f.boundsCerts[i]
-		if c.kind == kind && c.idx == idx {
+		if c.idx == idx && (c.kind == kind || kind == 1 && c.kind == 3) {
 			*c = boundsCert{}
 		}
 	}
@@ -1022,7 +1070,17 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// liftToRegInPlace): the deferred load records the borrow so a local.set of
 	// that local realizes the load first, and consumers neither write nor
 	// release the register.
-	ea, eaOwned, borrow, disp := f.memAddr(off32, size, true, rangeExtent)
+	var group modularLoadGroup
+	if modularLoadGroupEnabled && f.boundsFacts && !f.guardMode && f.memSizeReg != regNone && size == 4 && off32 == 0 {
+		if local, displacement, ok := modularLoadAddress(f.s.back()); ok {
+			if f.modularLoadGroupCovers(local, displacement) {
+				group = modularLoadGroup{local: local, first: displacement, valid: true, covered: true}
+			} else if displacement != 0 && f.inLoop() {
+				group = f.scanModularLoadGroup(r, local, displacement)
+			}
+		}
+	}
+	ea, eaOwned, borrow, disp := f.memAddrModular(off32, size, true, rangeExtent, group)
 	// Defer the load: push a bounds-checked memory reference (the mov is emitted
 	// when the value is materialized, or folded as an r/m operand into a consumer).
 	st := memRefStorage(ea, disp, size, signed, wide, borrow)

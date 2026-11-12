@@ -157,6 +157,18 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		}
 		return dest
 	}
+	// Integer subtraction from zero is modular negation. Reuse the operand's
+	// owned register, copying borrowed locals through ordinary materialization.
+	if dest == regNone && node.deferredOp() == opSub && left.isValue() &&
+		left.st.kind == stConst && left.st.cval == 0 {
+		r := f.materialize(right)
+		f.a.Neg(r, w)
+		f.consumeBlockBelow(node)
+		f.occupy(node, r)
+		node.setDeferredOp(opNone)
+		f.stats.peep("negate-zero-sub")
+		return r
+	}
 	// Keep trapping children in bytecode order. The tracked left value stays
 	// spillable while the right subtree claims fixed registers.
 	if right.isDeferred() && !treeReorderSafe(right) && !treeReorderSafe(left) {

@@ -10,11 +10,37 @@
 package amd64
 
 import (
+	"os"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreplugins "github.com/wago-org/wago/src/core/plugins"
 )
+
+// Disable for paired code-generation and performance comparisons.
+var repeatedLocalEarly = os.Getenv("WAGO_AMD64_NO_REPEATED_LOCAL_EARLY") != "1"
+
+func treeUsesBorrowedLocal(e *elem, kind storageKind, idx uint32) bool {
+	if e == nil {
+		return false
+	}
+	if e.isValue() {
+		return e.st.kind == kind && e.st.idx == idx
+	}
+	return e.isDeferred() && (treeUsesBorrowedLocal(e.arg0, kind, idx) || treeUsesBorrowedLocal(e.arg1, kind, idx))
+}
+
+// Look only at a short portion of the pending stack. Another deferred root can
+// compete with this tree for registers; constants and already-placed values do
+// not justify materializing this expression early on their own.
+func (f *fn) hasNearbyDeferredRoot(node *elem) bool {
+	for e, n := baseOfValentBlock(node).prev, 0; e != f.s.head && n < 16; e, n = e.prev, n+1 {
+		if e.st.hasLogicalRoot() && e.isDeferred() {
+			return true
+		}
+	}
+	return false
+}
 
 func (s *stack) nodeMemory() (used, reserved uint64) {
 	for i := range s.chunks {
@@ -682,6 +708,17 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	node.arg0, node.arg1 = left, right
 	labelDeferredNode(node)
 	f.s.pushDeferred(node)
+	// A repeated borrowed local keeps intermediate values live until a larger
+	// pending expression is eventually consumed. Under stack pressure, finish
+	// this pure arithmetic tree now so the allocator can release those values.
+	// Materialize earlier trapping roots first to preserve source trap order.
+	if repeatedLocalEarly && (op == opAdd || op == opSub || op == opMul) && f.s.logicalDepth >= 2 && left.isDeferred() && right.isValue() &&
+		(right.st.kind == stLocalReg || right.st.kind == stLocalRef) &&
+		treeUsesBorrowedLocal(left, right.st.kind, right.st.idx) && treeReorderSafe(node) && f.hasNearbyDeferredRoot(node) {
+		f.materializeTrapsBefore(node)
+		f.materialize(node)
+		f.stats.peep("repeated-local-early")
+	}
 	if f.guardMode && isDivRem(op) {
 		// A later guard-backed load can execute when its address is evicted.
 		// Emit this mandatory trap before such a load becomes a spill candidate.

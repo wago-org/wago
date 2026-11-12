@@ -443,6 +443,22 @@ func (a *Asm) YMovdqu(dst, src Reg) {
 	a.vex3RRReservedL(vexMap0F, 0b10, 0x6F, dst, src, 1)
 }
 
+// YBroadcastD reads exactly one 32-bit word and broadcasts it to eight lanes.
+func (a *Asm) YBroadcastDLoadDisp(dst, base Reg, disp int32) {
+	a.vex3MemDispL(vexMap0F38, 1, 0x58, dst, 0, false, base, disp, 1)
+}
+func (a *Asm) YBroadcastDLoadIdx(dst, base, index Reg, disp int32) {
+	a.vex3MemIdxL(vexMap0F38, 1, 0x58, dst, 0, false, base, index, disp, 1)
+}
+func (a *Asm) YPshufd(dst, src Reg, imm byte) {
+	a.vex3RRReservedL(vexMap0F, 1, 0x70, dst, src, 1)
+	a.emit(imm)
+}
+func (a *Asm) YExtractI128(dst, src Reg, lane byte) {
+	a.vex3RRReservedL(vexMap0F3A, 1, 0x39, src, dst, 1)
+	a.emit(lane)
+}
+
 func (a *Asm) YPaddb(d, x, y Reg)  { a.vex3RRRMapL(vexMap0F, 0b01, 0xFC, d, x, y, 1) }
 func (a *Asm) YPsubb(d, x, y Reg)  { a.vex3RRRMapL(vexMap0F, 0b01, 0xF8, d, x, y, 1) }
 func (a *Asm) YPaddw(d, x, y Reg)  { a.vex3RRRMapL(vexMap0F, 0b01, 0xFD, d, x, y, 1) }

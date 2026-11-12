@@ -370,6 +370,22 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
+	// A successful check before a forward branch also dominates its
+	// fallthrough. Keep only local-based facts, which are invalidated when
+	// their source local changes; other certificate kinds have different rules.
+	var savedBounds [2]boundsCert
+	if fallthroughBoundsEnabled && fr.kind == cfBlock && fi < len(f.ctrl)-1 && f.boundsCertSources != 0 {
+		n := 0
+		for _, c := range f.boundsCerts {
+			if c.kind == 1 {
+				savedBounds[n] = c
+				n++
+				if n == len(savedBounds) {
+					break
+				}
+			}
+		}
+	}
 	loopHeader := false
 	counter := -1
 	if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && top.deferredOp() == opEqz &&
@@ -416,6 +432,11 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		f.restoreLocalStates(saved)
 		f.stats.peep("callfree-loop-exit-cold")
 		f.stats.peep("callfree-loop-direct-exit")
+		for _, c := range savedBounds {
+			if c.kind != 0 {
+				f.boundsCertUpdate(c.kind, c.idx, c.extent)
+			}
+		}
 		return nil
 	}
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
@@ -443,6 +464,11 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		if pinned && !isFloat {
 			f.tryHoistLinearSumBounds(r, counter, loop)
 			f.ensureCtrlMerge(loop).setCountedLoop(counter, f.a.Len())
+		}
+	}
+	for _, c := range savedBounds {
+		if c.kind != 0 {
+			f.boundsCertUpdate(c.kind, c.idx, c.extent)
 		}
 	}
 	return nil

@@ -101,6 +101,7 @@ func (f *fn) occupy(e *elem, r Reg) {
 	}
 	e.setElemKind(ekValue)
 	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
+	e.st.meta &^= uint8(storageCapturedBounds)
 	e.st.idx, e.st.slot = 0, 0
 	if e.st.hasGCRoot() && e.st.hasLogicalRoot() {
 		f.s.hasGCRoots = true
