@@ -50,7 +50,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	f.prepareGCResolvedFB(sub)
+	// Ref.cast lowering needs its decoded source and target before it can decide
+	// whether a proved no-op declared-local cast may retain the certificate.
+	if sub != 22 && sub != 23 {
+		f.prepareGCResolvedFB(sub)
+	}
 	f.prepareGCFreshStructFB(sub)
 	f.gcOpcodeBarrier = false
 	defer func() { f.recordGCOpcodeBytes(sub, f.a.Len()-before) }()
@@ -647,7 +651,6 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	f.materializePendingTraps()
 	sourceLocal, hasSourceLocal := gcLocalProvenance(f.s.back())
 	finalTarget := false
 	objectTarget := false
@@ -657,10 +660,24 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			objectTarget = target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray
 		}
 	}
+	staticDeclaredLocal := f.gcStructHelpers && objectTarget && hasSourceLocal && f.localBase == 0 && sourceLocal >= f.nParams &&
+		staticGCDeclaredLocalCast(f.m, f.ft, f.localRuns, sourceLocal, sub, heap, exactTarget)
+	if !staticDeclaredLocal {
+		// Opcode preparation defers ref.cast invalidation until its immediate and
+		// source are known. Every cast except this proved no-op keeps the ordinary
+		// transient-address invalidation rule.
+		f.invalidateGCResolvedObject()
+	}
+	f.materializePendingTraps()
 	if f.gcStructHelpers && objectTarget {
 		f.skipIdenticalGCCasts(r, sub, heap, exactTarget)
 	}
 	if f.gcStructHelpers && heap >= 0 {
+		if staticDeclaredLocal {
+			f.markTopGCReference()
+			f.stats.peep("gc-static-local-cast-elide")
+			return nil
+		}
 		if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
 		}
@@ -670,7 +687,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
 		}
-		if objectTarget && hasSourceLocal && f.localBase == 0 &&
+		if objectTarget && hasSourceLocal && f.localBase == 0 && sourceLocal < f.nParams &&
 			staticGCParameterCast(f.m, f.ft, sourceLocal, sub, heap, exactTarget) {
 			f.markTopGCReference()
 			f.stats.peep("gc-static-param-cast-elide")
