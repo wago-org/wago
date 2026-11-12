@@ -17,6 +17,7 @@ import (
 // The bounded vector cache exchanges four whole-function pins for four regional
 // leases. Set WAGO_AMD64_VECTOR_REGIONS=0 to use whole-function pins alone.
 var vectorRegionsEnabled = os.Getenv("WAGO_AMD64_VECTOR_REGIONS") != "0"
+var vectorRegionsBroaderEnabled = os.Getenv("WAGO_AMD64_NO_BROADER_VECTOR_REGIONS") != "1"
 
 type vectorRegionState struct {
 	locals  [4]uint16

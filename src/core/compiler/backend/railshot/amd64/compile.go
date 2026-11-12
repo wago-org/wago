@@ -4069,8 +4069,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.vectorRegion.enabled = vectorRegionsEnabled && pinLocals && regABI &&
 		!moduleEH && len(gcTypeLayouts) == 0 && len(custom) == 0 && len(inlinedCallees) == 0 &&
-		hints.flags.has(hintHasSIMD) && !hints.flags.has(hintUsesBulkMem) &&
-		f.nLocals >= 16 && f.nLocals <= 256 && len(c.BodyBytes) >= 128 && len(c.BodyBytes) <= 16<<10
+		hints.flags.has(hintHasSIMD) && (!hints.flags.has(hintUsesBulkMem) || vectorRegionsBroaderEnabled) &&
+		(f.nLocals >= 16 || vectorRegionsBroaderEnabled && f.nLocals >= 8) && f.nLocals <= 256 && len(c.BodyBytes) >= 128 && len(c.BodyBytes) <= 16<<10
 	if f.vectorRegion.enabled && fpPinLimit > 8 {
 		fpPinLimit = 8
 	}
