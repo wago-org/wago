@@ -56,6 +56,7 @@ const (
 
 // Bits 12 and 13 encode the floating-constant cache depth below.
 const ctrlInlineFallthrough ctrlFlags = 1 << 14
+const ctrlGCIfAllocationCast ctrlFlags = 1 << 15
 
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
@@ -1737,6 +1738,8 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 		}
 	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
+	fr.set(ctrlGCIfAllocationCast, kind == cfIf && !f.unreachable && pN == 0 && rN == 1 && res0 == mtI64 &&
+		f.gcIfReferenceResult(signature) && f.provedGCIfAllocationCast(r))
 	fr.setFloatConstBase(len(f.fconsts))
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if f.straightLineBlock(r, kind, pN, rN, res0, signature) {
