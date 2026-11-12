@@ -3,9 +3,12 @@
 package amd64
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -195,7 +198,7 @@ func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 }
 
 func TestModuleGCResolverFamilyCounts(t *testing.T) {
-	for _, kinds := range [][]gcSharedStubKind{nil, {gcSharedStubResolveObject}, {gcSharedStubResolveSubtypeObject}, {gcSharedStubResolveBoundedObject}, {gcSharedStubResolveArrayObject}, {gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject}} {
+	for _, kinds := range [][]gcSharedStubKind{nil, {gcSharedStubResolveObject}, {gcSharedStubResolveSubtypeObject}, {gcSharedStubResolveBoundedObject}, {gcSharedStubResolveArrayObject}, {gcSharedStubTrustedFinalCast}, {gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject, gcSharedStubTrustedFinalCast}} {
 		relocs := make([]callReloc, len(kinds))
 		for i, kind := range kinds {
 			relocs[i].gcStub = kind
@@ -216,6 +219,36 @@ func TestModuleGCResolverFamilyCounts(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestModuleGCTrustedFinalCastSharesFailureTail(t *testing.T) {
+	sc := scratch{asm: &x64.Asm{}}
+	f := fn{a: sc.asm, sc: &sc}
+	for range 8 {
+		sc.gcTrustedCastFailSites = append(sc.gcTrustedCastFailSites, f.a.JccPlaceholder(condNE))
+	}
+	before := f.a.Len()
+	f.emitModuleGCTrustedFinalCastFailureStub()
+	if got := len(sc.trapSites[trapCastFailure]); got != 1 {
+		t.Fatalf("cast-failure trap tails=%d want1", got)
+	}
+	if got := f.a.Len() - before; got != 5 {
+		t.Fatalf("failure-tail bytes=%d want5", got)
+	}
+}
+
+func TestModuleGCTrustedFinalCastOverlapsIndependentLoads(t *testing.T) {
+	a := &x64.Asm{}
+	emitModuleGCTrustedFinalCastStub(a)
+
+	offset := &x64.Asm{}
+	offset.Load32(RDI, RCX, gc.NativeHandleOffsetOffset)
+	space := &x64.Asm{}
+	space.LoadIdx(RCX, RCX, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	offsetAt, spaceAt := bytes.Index(a.B, offset.B), bytes.Index(a.B, space.B)
+	if offsetAt < 0 || spaceAt < 0 || offsetAt > spaceAt {
+		t.Fatalf("offset load at %d, space load at %d; want independent offset load first", offsetAt, spaceAt)
 	}
 }
 

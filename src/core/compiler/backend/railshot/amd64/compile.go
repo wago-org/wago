@@ -910,6 +910,7 @@ type scratch struct {
 	brFoldSites             []int
 	gcArrayLenStubSites     []int
 	gcFinalCastStubSites    []int
+	gcTrustedCastFailSites  []int
 	gcDefinedTestStubSites  []int
 	gcArrayRefGetSites      []int
 	gcCastArrayGetSites     [5][]int
@@ -1183,6 +1184,7 @@ func (sc *scratch) reset() {
 	sc.fragmentOverflow = false
 	sc.gcArrayLenStubSites = sc.gcArrayLenStubSites[:0]
 	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
+	sc.gcTrustedCastFailSites = sc.gcTrustedCastFailSites[:0]
 	sc.gcDefinedTestStubSites = sc.gcDefinedTestStubSites[:0]
 	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
 	for i := range sc.gcCastArrayGetSites {

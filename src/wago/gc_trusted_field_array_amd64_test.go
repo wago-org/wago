@@ -88,6 +88,78 @@ func TestGCTrustedFieldArrayGetRuntime(t *testing.T) {
 	}
 }
 
+func gcTrustedStoredCastModule() []byte {
+	types := [][]byte{
+		{0x4f, 0, 0x5e, 0x7f, 1},    // 0: final (array (mut i32))
+		{0x4f, 0, 0x5f, 1, 0x6d, 1}, // 1: final (struct (field (mut eqref)))
+		{0x4f, 0, 0x5f, 1, 0x7f, 1}, // 2: final (struct (field (mut i32)))
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	cast := func(value []byte) []byte {
+		return wasmtest.Code(append(value,
+			0xfb, 0, 1, // struct.new 1
+			0xfb, 2, 1, 0, // struct.get 1 0
+			0xfb, 22, 0, // ref.cast (ref 0)
+			0x1a,     // drop
+			0x41, 42, // i32.const 42
+			0x0b,
+		))
+	}
+	bodies := [][]byte{
+		cast([]byte{0x41, 7, 0x41, 1, 0xfb, 6, 0}), // array.new 0
+		cast([]byte{0xd0, 0x6d}),                   // ref.null eq
+		cast([]byte{0x41, 1, 0xfb, 28}),            // ref.i31
+		cast([]byte{0xfb, 1, 2}),                   // struct.new_default 2
+	}
+	names := []string{"valid", "null", "i31", "wrong"}
+	funcs := make([][]byte, len(bodies))
+	exports := make([][]byte, len(bodies))
+	for i, name := range names {
+		funcs[i] = wasmtest.ULEB(3)
+		exports[i] = wasmtest.ExportEntry(name, byte(wasm.ExternFunc), uint32(i))
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(funcs...)),
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
+		wasmtest.Section(10, wasmtest.Vec(bodies...)),
+	)
+}
+
+func TestGCTrustedStoredCastSharedRuntime(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcTrustedStoredCastModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	for _, cfg := range []GCConfig{
+		{VerifyAfterCollect: true},
+		{CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true},
+		{Profile: GCProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, VerifyAfterCollect: true},
+	} {
+		in, err := Instantiate(c, InstantiateOptions{GC: cfg})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := in.Invoke("valid")
+		if err != nil || len(got) != 1 || got[0] != 42 {
+			in.Close()
+			t.Fatalf("profile=%v valid=%v,%v want[42]", cfg.Profile, got, err)
+		}
+		for _, name := range []string{"null", "i31", "wrong"} {
+			_, err = in.Invoke(name)
+			var trap *TrapError
+			if !errors.As(err, &trap) || trap.Code != TrapCastFailure {
+				in.Close()
+				t.Fatalf("profile=%v %s=%v want trap%d", cfg.Profile, name, err, TrapCastFailure)
+			}
+		}
+		if err := in.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func gcTrustedGuardFieldArrayModule() []byte {
 	guard := wasmtest.Code([]byte{
 		0x20, 1, // local.get index
