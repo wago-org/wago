@@ -9,7 +9,7 @@ import (
 )
 
 // TestCallExec compiles a 2-function module where f(x) = g(x) + 1 and g(x) = 2x,
-// then executes f through its runtime wrapper — exercising an
+// then executes f through its runtime wrapper, exercising an actual
 // inter-function call (BL relocation + reg-ABI arg/result passing).
 func TestCallExec(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
@@ -19,8 +19,19 @@ func TestCallExec(t *testing.T) {
 		// func 1 (g): local.get 0; local.get 0; i32.add  (= 2x)
 		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x20, 0x00, 0x6a, 0x0b}},
 	)
-	for _, x := range []uint64{5, 0, 100} {
-		if got := runArm64u(t, m, x); uint32(got) != uint32(2*x+1) {
+	cm, err := CompileModuleWith(m, CompileOptions{Optimizations: map[string]bool{"inline": false}})
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	for _, x := range []uintptr{5, 0, 100} {
+		got, err := runArm64CompiledWrapper(t, cm, uint64(x))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != uint32(2*x+1) {
 			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), 2*x+1)
 		}
 	}
@@ -55,8 +66,19 @@ func TestMixedCallWrapperArgsExec(t *testing.T) {
 	if got := stats.Calls["mixed"]; got != 1 {
 		t.Fatalf("mixed register calls = %d, want 1 (all: %v)", got, stats.Calls)
 	}
-	for _, x := range []uint64{0, 1, 7, 100} {
-		if got := runArm64u(t, m, x); uint32(got) != uint32(2*x) {
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	for _, x := range []uintptr{0, 1, 7, 100} {
+		got, err := runArm64CompiledWrapper(t, cm, uint64(x))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != uint32(2*x) {
 			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), 2*x)
 		}
 	}
@@ -96,8 +118,19 @@ func TestTwoIntegerResultRegisterCall(t *testing.T) {
 	if got := stats.Calls["regabi"]; got != 1 {
 		t.Fatalf("regabi calls = %d, want 1 (all: %v)", got, stats.Calls)
 	}
-	for _, x := range []uint64{0, 1, 7, 100} {
-		if got := runArm64u(t, m, x); uint32(got) != uint32(2*x+1) {
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	for _, x := range []uintptr{0, 1, 7, 100} {
+		got, err := runArm64CompiledWrapper(t, cm, uint64(x))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != uint32(2*x+1) {
 			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), 2*x+1)
 		}
 	}

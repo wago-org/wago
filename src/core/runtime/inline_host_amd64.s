@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build (linux || darwin) && amd64 && !tinygo
+//go:build (linux || darwin || windows) && amd64 && !tinygo
 
 #include "textflag.h"
 #include "funcdata.h"

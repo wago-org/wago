@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build (linux || darwin || windows) && (amd64 || arm64) && (windows || tinygo)
+//go:build (linux || darwin || windows) && (amd64 || arm64) && ((windows && arm64) || tinygo)
 
 package runtime
 
@@ -15,6 +15,7 @@ import (
 )
 
 func preparedScalarHostAvailable() bool     { return false }
+func windowsTypedI64HostAvailable() bool    { return false }
 func preparedScalarHostBridge() uintptr     { return 0 }
 func preparedScalarHostViewBridge() uintptr { return 0 }
 

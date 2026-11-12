@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build (linux || darwin) && (amd64 || arm64) && !tinygo
+//go:build (linux || darwin || (windows && amd64)) && (amd64 || arm64) && !tinygo
 
 package runtime
 
@@ -31,7 +31,7 @@ func inlineHostBridgeAddr() uintptr
 //lint:ignore U1000 Used by the inline host assembly bridges via go_asm.h.
 const inlineHostTrapCellOffset = abi.TrapCellPtrOffset
 
-var inlineHostEnabled = scalarGoABI(goruntime.Version()) && os.Getenv("WAGO_"+strings.ToUpper(goruntime.GOARCH)+"_NO_INLINE_HOST") != "1"
+var inlineHostEnabled = goruntime.GOOS != "windows" && scalarGoABI(goruntime.Version()) && os.Getenv("WAGO_"+strings.ToUpper(goruntime.GOARCH)+"_NO_INLINE_HOST") != "1"
 
 func (e *Engine) tryInlineBoundedHost(code uintptr, args []byte, linMem uintptr, trap, results, ctrl []byte, slots uint32, fixed FixedScalarHostCall) (bool, error) {
 	if !inlineHostEnabled {
