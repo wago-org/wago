@@ -4,23 +4,40 @@ package amd64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
+const maxStaticGCDeclaredLocalRuns = 8
+
 // The declared type of a parameter remains valid after local.set. Restrict the
 // proof to absolute type indexes; recursive-local indexes need their own owner.
 func staticGCParameterCast(m *wasm.Module, ft *wasm.CompType, local int, sub uint32, heap int64, exact bool) bool {
 	if m == nil || ft == nil || local < 0 || local >= len(ft.Params) || heap < 0 || heap > int64(^uint32(0)) {
 		return false
 	}
-	source := ft.Params[local]
+	return staticGCReferenceTypeCast(m, ft.Params[local], sub, uint32(heap), exact)
+}
+
+// A declared local retains its validation type across every assignment. Bound
+// the compact run scan so adversarial local declarations cannot add unbounded
+// work at each cast site.
+func staticGCDeclaredLocalCast(m *wasm.Module, ft *wasm.CompType, runs []wasm.LocalRun, local int, sub uint32, heap int64, exact bool) bool {
+	if m == nil || ft == nil || local < len(ft.Params) || local < 0 || len(runs) > maxStaticGCDeclaredLocalRuns ||
+		heap < 0 || heap > int64(^uint32(0)) {
+		return false
+	}
+	source, ok := wasm.LocalType(ft.Params, runs, uint32(local))
+	return ok && staticGCReferenceTypeCast(m, source, sub, uint32(heap), exact)
+}
+
+func staticGCReferenceTypeCast(m *wasm.Module, source wasm.ValType, sub, heap uint32, exact bool) bool {
 	if source.Kind() != wasm.ValRef {
 		return false
 	}
 	ref := source.Ref()
 	typ := ref.Heap()
-	if typ.Kind() != wasm.HeapTypeIndex || typ.Type().Rec || typ.Type().Index != uint32(heap) ||
+	if typ.Kind() != wasm.HeapTypeIndex || typ.Type().Rec || typ.Type().Index != heap ||
 		(sub != 22 && sub != 23) || sub == 22 && ref.Nullable() {
 		return false
 	}
-	target, ok := m.TypeSubType(uint32(heap))
+	target, ok := m.TypeSubType(heap)
 	return ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) &&
 		(!exact || target.Final || ref.Exact())
 }

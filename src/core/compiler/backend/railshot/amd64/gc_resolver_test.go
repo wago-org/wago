@@ -126,6 +126,19 @@ func TestGCResolvedHandleReuseAndInvalidation(t *testing.T) {
 	if stats.GCHandleResolutions != 2 || stats.GCHandleResolutionReuse != 0 {
 		t.Fatalf("control-boundary resolutions = %d reused = %d, want 2/0", stats.GCHandleResolutions, stats.GCHandleResolutionReuse)
 	}
+
+	dynamicCastBody := []byte{
+		0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0xfb, 0x16, 0x00, 0x1a,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	nullableRefTo0I32 := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x7f}
+	stats = gcResolveReuseStats(t, []byte{0x5f, 0x01, 0x7f, 0x00}, nullableRefTo0I32, dynamicCastBody)
+	if stats.GCHandleResolutions != 2 || stats.GCHandleResolutionReuse != 0 {
+		t.Fatalf("dynamic-cast resolutions = %d reused = %d, want 2/0", stats.GCHandleResolutions, stats.GCHandleResolutionReuse)
+	}
 }
 
 func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {

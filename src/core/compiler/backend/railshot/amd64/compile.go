@@ -333,6 +333,7 @@ type fn struct {
 	s             *stack     // the valent-block operand stack
 	m             *wasm.Module
 	ft            *wasm.CompType // this function's signature
+	localRuns     []wasm.LocalRun
 	gcTypeLayouts []codegen.GCTypeLayout
 	transient
 	globalIdx           int
@@ -3696,7 +3697,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// fields, even though the compiler state itself is already worker-owned.
 	gcLocalTypes := f.gcLocalTypes
 	*f = fn{}
-	f.a, f.s, f.sc, f.m, f.ft = sc.asm, sc.stack, sc, m, ft
+	f.a, f.s, f.sc, f.m, f.ft, f.localRuns = sc.asm, sc.stack, sc, m, ft, c.Locals.Runs
 	f.gcTypeLayouts, f.transient = gcTypeLayouts, sc.transient
 	f.globalIdx, f.traceFuncIdx, f.tracePCBase = globalIdx, uint32(globalIdx), c.LocalDeclBytes
 	f.customInstructions = custom

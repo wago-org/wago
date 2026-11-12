@@ -101,6 +101,55 @@ func TestGCStaticParameterCastInEHModule(t *testing.T) {
 	}
 }
 
+func TestGCStaticDeclaredLocalCast(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	body := []byte{
+		0x01, 0x01, 0x64, 0x00, // one non-null (ref 0) local
+		0x20, 0x00, 0x21, 0x01, // local 1 = parameter 0
+		0x02, 0x40, 0x0b, // preserve the proof across control flow
+		0x20, 0x01, 0xfb, 22, 0, // local.get 1; ref.cast (ref 0)
+		0xfb, 0x02, 0x00, 0x01, // struct.get 0 1 proves the larger extent
+		0x20, 0x01, 0xfb, 22, 0, // local.get 1; ref.cast (ref 0)
+		0xfb, 0x02, 0x00, 0x00, // struct.get 0 0 reuses that extent
+		0x6a, // i32.add
+		0x0b,
+	}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 2, 0x7f, 0, 0x7f, 0},
+			[]byte{0x60, 1, 0x64, 0, 1, 0x7f},
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, GCArrayHelpers: true, Stats: &stats, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: meta.Descs, GCTypeLayouts: meta.Layouts}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cm.CodeImage.Close()
+	if got := stats.Funcs[0].Peephole["gc-static-local-cast-elide"]; got != 2 {
+		t.Errorf("same-type declared-local cast elisions=%d want2", got)
+	}
+	if got := stats.Funcs[0].GCHandleResolutions; got != 1 {
+		t.Errorf("declared-local field read resolutions=%d want1", got)
+	}
+	if got := stats.Funcs[0].GCHandleResolutionReuse; got != 1 {
+		t.Errorf("declared-local field read resolution reuse=%d want1", got)
+	}
+}
+
 func TestGCStaticParameterCastProofLimits(t *testing.T) {
 	for _, tc := range []struct {
 		name                                               string
@@ -130,10 +179,27 @@ func TestGCStaticParameterCastProofLimits(t *testing.T) {
 			if got := staticGCParameterCast(m, ft, 0, tc.sub, 0, tc.exactCast); got != tc.want {
 				t.Fatalf("proof=%t want%t", got, tc.want)
 			}
+			declared := &wasm.CompType{}
+			runs := []wasm.LocalRun{{Count: 1, Type: typ}}
+			if got := staticGCDeclaredLocalCast(m, declared, runs, 0, tc.sub, 0, tc.exactCast); got != tc.want {
+				t.Fatalf("declared-local proof=%t want%t", got, tc.want)
+			}
 			if staticGCParameterCast(m, ft, 1, tc.sub, 0, tc.exactCast) || staticGCParameterCast(m, ft, 0, tc.sub, 1, tc.exactCast) {
 				t.Fatal("proof crossed parameter or type bounds")
 			}
+			if staticGCDeclaredLocalCast(m, declared, runs, 1, tc.sub, 0, tc.exactCast) ||
+				staticGCDeclaredLocalCast(m, declared, runs, 0, tc.sub, 1, tc.exactCast) {
+				t.Fatal("declared-local proof crossed local or type bounds")
+			}
 		})
+	}
+	tooManyRuns := make([]wasm.LocalRun, maxStaticGCDeclaredLocalRuns+1)
+	for i := range tooManyRuns {
+		tooManyRuns[i] = wasm.LocalRun{Count: 1, Type: wasm.I32}
+	}
+	tooManyRuns[len(tooManyRuns)-1].Type = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{}), false))
+	if staticGCDeclaredLocalCast(&wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompStruct}}}}}}, &wasm.CompType{}, tooManyRuns, len(tooManyRuns)-1, 22, 0, false) {
+		t.Fatal("declared-local proof exceeded the bounded run scan")
 	}
 }
 
