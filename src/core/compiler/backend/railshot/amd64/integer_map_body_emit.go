@@ -15,25 +15,28 @@ import "github.com/wago-org/wago/src/core/encoder/amd64"
 // registers and frame slots are leased by the caller; it does not allocate or
 // change compiler ownership. Initial recipes use two or four i32 lanes and SSE4.1.
 type integerMapBodyEmitter struct {
-	a            *amd64.Asm
-	plan         *integerMapPlan
-	guard        *integerMapGuardEmitter
-	recipe       *integerMapRecipe
-	slp          *integerMapSLP
-	slpWide      bool
-	facts        *[integerMapMaxNodes + 1]integerMapAffine
-	induction    integerMapInduction
-	gp           [4]Reg
-	fp           [16]Reg
-	increment    Reg
-	hasIncrement bool
-	addressBase  [2]int
-	addressReg   [2]Reg
-	addressN     uint8
-	memoryBase   Reg
-	outputBase   int32
-	cacheBase    [2]int
-	cacheUsed    [2]bool
+	a                   *amd64.Asm
+	plan                *integerMapPlan
+	guard               *integerMapGuardEmitter
+	recipe              *integerMapRecipe
+	slp                 *integerMapSLP
+	slpWide             bool
+	facts               *[integerMapMaxNodes + 1]integerMapAffine
+	induction           integerMapInduction
+	gp                  [4]Reg
+	fp                  [16]Reg
+	increment           Reg
+	hasIncrement        bool
+	addressBase         [2]int
+	addressReg          [2]Reg
+	addressN            uint8
+	memoryBase          Reg
+	outputBase          int32
+	cacheBase           [2]int
+	cacheUsed           [2]bool
+	wideInvariant       bool
+	wideInvariantStream uint8
+	wideInvariantReg    Reg
 }
 
 // integerMapBodySupported is checked before emitting any native state. The
@@ -157,6 +160,11 @@ func (e *integerMapBodyEmitter) streamReadAddress(stream int, scratch Reg) (Reg,
 	}
 	e.a.Load64(scratch, RSP, e.guard.slot(e.guard.startSlot(base)))
 	return scratch, delta
+}
+
+func (e *integerMapBodyEmitter) refreshWideInvariant() {
+	addr, disp := e.streamReadAddress(int(e.wideInvariantStream), e.gp[1])
+	e.a.YBroadcastDLoadIdx(e.wideInvariantReg, e.memoryBase, addr, disp)
 }
 
 func (e *integerMapBodyEmitter) load(id uint8, lanes uint8) {
@@ -311,6 +319,30 @@ func (e *integerMapBodyEmitter) emit() {
 	if e.slp == nil {
 		e.initialVectors()
 	}
+	if integerMapWideInvariantCache && e.slpWide {
+		for i := uint8(1); i <= e.slp.count; i++ {
+			n := e.slp.nodes[i]
+			if n.op == 0x28 && e.guard.plan.memory.streams[n.stream].stride == 0 {
+				// Reuse the plan's own register only if no other scheduled
+				// node writes it anywhere in a packet.
+				unique := true
+				for j := uint8(1); j <= e.slp.count; j++ {
+					if i != j && e.slp.nodes[j].reg == n.reg {
+						unique = false
+						break
+					}
+				}
+				if !unique {
+					continue
+				}
+				e.wideInvariant = true
+				e.wideInvariantStream = n.stream
+				e.wideInvariantReg = e.fp[n.reg]
+				e.refreshWideInvariant()
+				break
+			}
+		}
+	}
 	e.a.Load32(e.gp[0], RSP, e.guard.slot(e.guard.countSlot()))
 	e.a.AlignLoop()
 	top := e.a.Len()
@@ -415,8 +447,18 @@ func (e *integerMapBodyEmitter) emit() {
 	e.emitPacket(1)
 	e.advance(1)
 	e.a.AluRI(5, e.gp[0], 1, false)
-	again = e.a.JccPlaceholder(condNE)
-	e.a.PatchRel32(again, top)
+	if e.wideInvariant {
+		finished := e.a.JccPlaceholder(condE)
+		// A scalar packet may have overwritten the invariant address. Reload
+		// after its ordered effects before the next packet uses the cache.
+		e.refreshWideInvariant()
+		again = e.a.JmpPlaceholder()
+		e.a.PatchRel32(again, top)
+		e.a.PatchRel32(finished, e.a.Len())
+	} else {
+		again = e.a.JccPlaceholder(condNE)
+		e.a.PatchRel32(again, top)
+	}
 	e.publish(1, false)
 	e.a.PatchRel32(done, e.a.Len())
 }

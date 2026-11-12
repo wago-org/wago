@@ -48,6 +48,7 @@ func TestIntegerMapPackedStreams(t *testing.T) {
 		{1024, 1024, 128, 4096, false}, {1024, 1028, 128, 4096, false}, {1028, 1024, 128, 4096, false},
 		{65520, 2048, 32, 4096, false}, {1024, 65520, 32, 4096, false}, {1024, 2048, 128, 65536, false},
 		{0xfffffffc, 2048, 32, 4096, false}, {1024, 0xfffffffc, 32, 4096, false}, {1024, 2048, 8, 4096, false},
+		{1024, 2048, 32, 1020, false}, {1024, 2048, 40, 1028, false},
 	}
 	// Sweep just before, within, and just beyond the full output span; the
 	// unaligned four-byte invariant access can overlap either packet edge.
@@ -57,6 +58,17 @@ func TestIntegerMapPackedStreams(t *testing.T) {
 			fast                 bool
 		}{1024, 2048, 128, 1020 + offset, true})
 	}
+	// Exercise packet-to-scalar transitions at each short-loop tail, including
+	// byte-overlap on either edge of the output span.
+	for _, limit := range []uint64{136, 144, 152} {
+		for offset := uint64(0); offset < limit+8; offset++ {
+			cases = append(cases, struct {
+				dst, src, limit, inv uint64
+				fast                 bool
+			}{1024, 2048, limit, 1020 + offset, true})
+		}
+	}
+	cacheHits := 0
 	for _, tc := range cases {
 		var expected []byte
 		var result uint64
@@ -92,6 +104,9 @@ func TestIntegerMapPackedStreams(t *testing.T) {
 					mem[i] = byte(i*17 + 3)
 				}
 			}, tc.dst, 0, tc.src, tc.limit, tc.inv)
+			if diagnosticsEnabled && tc.fast && mode >= 15 && mode < 17 {
+				cacheHits += stats.Funcs[0].Peephole["integer-map-wide-invariant-cache"]
+			}
 			if on && tc.fast && diagnosticsEnabled && (stats.Funcs[0].Peephole["integer-map-packed-stores"] != 0) != packed {
 				t.Fatalf("packed=%v selection=%v", packed, stats.Funcs[0].Peephole)
 			}
@@ -111,6 +126,9 @@ func TestIntegerMapPackedStreams(t *testing.T) {
 				t.Fatalf("mode=%d case=%+v got=%d want=%d memory=%v trap=%v want=%s", mode, tc, got, result, bytes.Equal(mem, expected), err, trap)
 			}
 		}
+	}
+	if diagnosticsEnabled && cpu.X86.HasAVX2 && integerMapWideInvariantCache && cacheHits == 0 {
+		t.Fatal("alias sweep did not select invariant caching")
 	}
 	integerMapLoopEnabled, integerMapPackEnabled, integerMapWideInterleave, integerMapSLPEnabled, integerMapSLPWide, integerMapTestFast = true, true, true, true, true, false
 	for _, tc := range []struct {
@@ -175,6 +193,7 @@ func TestIntegerMapPackedSignedMinimumAndLiveOut(t *testing.T) {
 			fast                 bool
 		}{1024, 2048, 128, 1024 + offset, true})
 	}
+	cacheHits := 0
 	for _, tc := range cases {
 		var expected []byte
 		var result uint64
@@ -197,6 +216,9 @@ func TestIntegerMapPackedSignedMinimumAndLiveOut(t *testing.T) {
 					mem[i] = byte(i*97 + 131)
 				}
 			}, tc.dst, 0, tc.src, tc.limit, tc.inv)
+			if diagnosticsEnabled && tc.fast && mode == 3 {
+				cacheHits += stats.Funcs[0].Peephole["integer-map-wide-invariant-cache"]
+			}
 			if on && tc.fast && diagnosticsEnabled && stats.Funcs[0].Peephole["integer-map-packed-stores"] == 0 {
 				t.Fatalf("packed path not selected: %v", stats.Funcs[0].Peephole)
 			}
@@ -216,6 +238,9 @@ func TestIntegerMapPackedSignedMinimumAndLiveOut(t *testing.T) {
 				t.Fatalf("case=%+v got=%d want=%d memory=%v trap=%v want=%s", tc, got, result, bytes.Equal(mem, expected), err, trap)
 			}
 		}
+	}
+	if diagnosticsEnabled && cpu.X86.HasAVX2 && integerMapWideInvariantCache && cacheHits == 0 {
+		t.Fatal("live-out alias sweep did not select invariant caching")
 	}
 }
 

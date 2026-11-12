@@ -27,6 +27,7 @@ var integerMapAddressCache = os.Getenv("WAGO_AMD64_NO_INTEGER_MAP_ADDRESS_CACHE"
 var integerMapAffineExit = os.Getenv("WAGO_AMD64_NO_INTEGER_MAP_AFFINE_EXIT") != "1"
 var integerMapSLPEnabled = os.Getenv("WAGO_AMD64_NO_INTEGER_MAP_SLP") != "1"
 var integerMapSLPWide = os.Getenv("WAGO_AMD64_NO_INTEGER_MAP_SLP_WIDE") != "1"
+var integerMapWideInvariantCache = os.Getenv("WAGO_AMD64_NO_WIDE_INVARIANT_CACHE") != "1"
 
 const integerMapFunctionWorkLimit = 256
 
@@ -370,6 +371,9 @@ func (f *fn) tryIntegerMapCandidate(r *wasm.Reader) (bool, error) {
 			}
 		}
 		be.emit()
+		if be.wideInvariant {
+			f.stats.peep("integer-map-wide-invariant-cache")
+		}
 		for i, needed := range reload[:f.nLocals] {
 			if needed {
 				f.loadLocalReg(i, f.locals[i].reg, false)

@@ -276,10 +276,13 @@ func (e *integerMapBodyEmitter) emitSLPWide() {
 			e.a.Store32(RSP, e.outputBase, e.gp[2])
 			e.a.YBroadcastDLoadDisp(out, RSP, e.outputBase)
 		case 0x28:
-			addr, disp := e.streamReadAddress(int(n.stream), e.gp[1])
 			if e.guard.plan.memory.streams[n.stream].stride == 0 {
-				e.a.YBroadcastDLoadIdx(out, e.memoryBase, addr, disp)
+				if !e.wideInvariant || n.stream != e.wideInvariantStream || out != e.wideInvariantReg {
+					addr, disp := e.streamReadAddress(int(n.stream), e.gp[1])
+					e.a.YBroadcastDLoadIdx(out, e.memoryBase, addr, disp)
+				}
 			} else {
+				addr, disp := e.streamReadAddress(int(n.stream), e.gp[1])
 				e.a.YMovdquLoadIdx(out, e.memoryBase, addr, disp)
 				if n.swap {
 					e.a.YPshufd(out, out, 0xb1)
