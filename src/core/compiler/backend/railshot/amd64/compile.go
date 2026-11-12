@@ -1952,7 +1952,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// without storing module-pinned globals. Give every return_call target the
 	// adapter that implements the wrapper entry.
 	for i := range hostAdapters {
-		if allHints[i].tailCallTarget() {
+		if allHints[i].tailWrapperRequired() {
 			hostAdapters[i] = true
 		}
 	}
@@ -2983,6 +2983,13 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 		}
 	}
 	for i := range allHints {
+		// Preserve only source tails that could otherwise gain the reference ABI.
+		// Numeric and unsupported signatures retain their existing adapter policy.
+		if !moduleEH && policy.EnabledOption(optRegABI) && policy.EnabledOption(optDirectReferenceABI) && allHints[i].flags.has(hintHasTailCall) {
+			if ft, ok := m.LocalFuncType(i); ok && sigFitsDirectReferenceRegABI(ft) {
+				allHints[i].inlineCallSites |= 0x80
+			}
+		}
 		allHints[i].flags.assign(hintHasTailCall, moduleHasTailCall)
 		allHints[i].flags.assign(hintModuleEH, moduleEH)
 	}
@@ -3904,7 +3911,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.stats.peep("all-calls-inlined")
 	}
 	directReferenceABI := f.opt(optRegABI) && f.directReferenceRegABI(funcIdx, ft)
-	regABI := f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft, f.m)) || directReferenceABI)
+	regABI := f.opt(optRegABI) && (directReferenceABI || sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft, f.m)))
 	if directReferenceABI && !hostAdapter {
 		return nil, nil, 0, fmt.Errorf("amd64: direct reference target %d has no wrapper adapter", funcIdx)
 	}
