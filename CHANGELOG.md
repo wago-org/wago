@@ -6,6 +6,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Changed
+
+- Improve AMD64 execution of integer maps, branches, and register-resident
+  expressions while preserving checked scalar fallback for unsupported loops.
+
 ## [v0.1.0-beta.14] - 2026-11-11
 
 ### Breaking
