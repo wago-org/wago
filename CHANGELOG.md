@@ -99,6 +99,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Avoid copying entire GC struct field lists for each access or construction
+  during validation, preventing allocation amplification from repeated accesses.
 - Prioritize direct integer call dispatch while retaining GC admission and
   fallback behavior. ([#1055](https://github.com/wago-org/wago/pull/1055))
 - Keep independent AMD64 selection-arm address calculations lazy when
