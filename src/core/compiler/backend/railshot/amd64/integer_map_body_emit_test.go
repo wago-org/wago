@@ -129,6 +129,13 @@ func testIntegerMapNativeBody(t *testing.T, step byte, lanes uint8) {
 			if i%3 == 0 {
 				v = 0xfffffff0 + i
 			}
+			// Scalar vector moves must preserve arbitrary integer bits, including
+			// representations that would be exceptional as floating-point values.
+			if i%8 == 0 {
+				v = 0x7f800001
+			} else if i%8 == 1 {
+				v = 0x80000000
+			}
 			binary.LittleEndian.PutUint32(mem[tc.src+i*4:], v)
 		}
 		expected := append([]byte(nil), mem...)

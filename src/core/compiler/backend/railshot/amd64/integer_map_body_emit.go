@@ -167,13 +167,11 @@ func (e *integerMapBodyEmitter) load(id uint8, lanes uint8) {
 	disp := e.streamStart(stream, addr)
 	switch s.stride {
 	case 0:
-		e.a.LoadIdx(tmp, e.memoryBase, addr, disp, 4, false, false)
-		e.a.MovGprToXmm(out, tmp, false)
+		e.a.FLoadIdx(out, e.memoryBase, addr, disp, false)
 		e.a.Pshufd(out, out, 0)
 	case 4:
 		if lanes == 1 {
-			e.a.LoadIdx(tmp, e.memoryBase, addr, disp, 4, false, false)
-			e.a.MovGprToXmm(out, tmp, false)
+			e.a.FLoadIdx(out, e.memoryBase, addr, disp, false)
 		} else if lanes == 2 {
 			e.a.FLoadIdx(out, e.memoryBase, addr, disp, true)
 		} else {
@@ -240,8 +238,7 @@ func (e *integerMapBodyEmitter) load(id uint8, lanes uint8) {
 				break
 			}
 		}
-		e.a.LoadIdx(tmp, e.memoryBase, addr, disp, 4, false, false)
-		e.a.MovGprToXmm(out, tmp, false)
+		e.a.FLoadIdx(out, e.memoryBase, addr, disp, false)
 		for lane := byte(1); lane < lanes; lane++ {
 			e.a.LoadIdx(tmp, e.memoryBase, addr, disp+int32(lane)*8, 4, false, false)
 			e.a.Pinsrd(out, tmp, lane)
@@ -259,15 +256,15 @@ func (e *integerMapBodyEmitter) store(effect uint8, lanes uint8) {
 	switch s.stride {
 	case 4:
 		if lanes == 1 {
-			e.a.Pextrd(tmp, value, 0)
-			e.a.StoreIdx(e.memoryBase, addr, tmp, disp, 4)
+			e.a.FStoreIdx(e.memoryBase, addr, value, disp, false)
 		} else if lanes == 2 {
 			e.a.FStoreIdx(e.memoryBase, addr, value, disp, true)
 		} else {
 			e.a.MovdquStoreIdx(e.memoryBase, addr, value, disp)
 		}
 	case 8:
-		for lane := byte(0); lane < lanes; lane++ {
+		e.a.FStoreIdx(e.memoryBase, addr, value, disp, false)
+		for lane := byte(1); lane < lanes; lane++ {
 			e.a.Pextrd(tmp, value, lane)
 			e.a.StoreIdx(e.memoryBase, addr, tmp, disp+int32(lane)*8, 4)
 		}
