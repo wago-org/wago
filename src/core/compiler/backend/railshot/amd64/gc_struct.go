@@ -694,7 +694,8 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			return nil
 		}
 		if target, ok := f.stagedGCType(uint32(heap)); ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
-			if err := f.emitNativeDefinedCast(uint32(heap), sub == 23, exactTarget); err != nil {
+			trustStored := finalTarget && sub == 22 && !exactTarget
+			if err := f.emitNativeDefinedCast(uint32(heap), sub == 23, exactTarget, trustStored); err != nil {
 				return err
 			}
 			if sub == 22 {

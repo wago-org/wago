@@ -30,6 +30,7 @@ const (
 	gcSharedStubResolveSubtypeObject
 	gcSharedStubResolveBoundedObject
 	gcSharedStubResolveArrayObject
+	gcSharedStubTrustedFinalCast
 	gcSharedStubMax
 )
 
@@ -401,7 +402,7 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 	for i := range offsets {
 		offsets[i] = -1
 	}
-	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] {
+	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] && !used[gcSharedStubTrustedFinalCast] {
 		return nil, offsets
 	}
 	a := &x64.Asm{}
@@ -410,10 +411,14 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 		// modules that previously needed no shared resolver island.
 		a.B = make([]byte, 0, 256)
 	}
-	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject} {
+	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject, gcSharedStubTrustedFinalCast} {
 		if used[kind] {
 			offsets[kind] = a.Len()
-			emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject || kind == gcSharedStubResolveArrayObject, kind == gcSharedStubResolveArrayObject)
+			if kind == gcSharedStubTrustedFinalCast {
+				emitModuleGCTrustedFinalCastStub(a)
+			} else {
+				emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject || kind == gcSharedStubResolveArrayObject, kind == gcSharedStubResolveArrayObject)
+			}
 		}
 	}
 	return a.B, offsets
@@ -568,6 +573,59 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded, arrayOperand bo
 	if arrayOperand {
 		a.Load64(R8, RBX, -offCustomCtx)
 	}
+	a.Ret()
+}
+
+// emitModuleGCTrustedFinalCastStub checks a non-nullable cast to a final type.
+// RAX is a compact reference already proved to come from collector storage, and
+// EDX is the module-local target type. The proof makes handle range, space,
+// offset, and extent checks redundant. The leaf still rejects null, i31, and a
+// different canonical type. It returns the original reference with EDX zero on
+// success, or zero with EDX=trapCastFailure on failure.
+// It clobbers RAX, RCX, RDX, RDI, R8, and flags, matching the shared leaf ABI.
+func emitModuleGCTrustedFinalCastStub(a *x64.Asm) {
+	var failures []int
+	failIf := func(cond Cond) { failures = append(failures, a.JccPlaceholder(cond)) }
+	a.TestSelf(RAX, false)
+	failIf(condE)
+	a.TestImm(RAX, 1, false)
+	failIf(condNE)
+
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(RCX, R8, gc.NativeInstanceViewLocalTypesOffset)
+	a.ImulRI(RDX, 4, true)
+	a.LoadIdx(RDX, RCX, RDX, 0, 4, false, false)
+	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+	a.Load64(RCX, R8, gc.NativeViewHandlesOffset)
+	// Object references encode handle<<1. A 16-byte handle entry is therefore
+	// addressed by ref<<3 without first recovering the handle index. Keep RAX
+	// unchanged for the result and issue the independent object-offset load
+	// before the space-descriptor chain.
+	a.MovRegReg32(RDI, RAX)
+	a.ShiftImm(4, RDI, 3, true)
+	a.Add64(RCX, RDI)
+	a.Load32(RDI, RCX, gc.NativeHandleOffsetOffset)
+	a.LoadIdx(RCX, RCX, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	if gc.NativeViewSpaceStride != 16 {
+		panic("amd64: native GC space descriptor stride is not 16")
+	}
+	a.ShiftImm(4, RCX, 4, false)
+	a.LoadIdx(R8, R8, RCX, gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset, 8, false, true)
+	a.Add64(R8, RDI)
+	a.Load32(RCX, R8, 0)
+	a.Cmp32(RCX, RDX)
+	failIf(condNE)
+	a.XorSelf32(RDX)
+	done := a.JmpPlaceholder()
+
+	failure := a.Len()
+	a.MovImm32(RDX, int32(trapCastFailure))
+	a.XorSelf32(RAX)
+	for _, branch := range failures {
+		a.PatchRel32(branch, failure)
+	}
+	finish := a.Len()
+	a.PatchRel32(done, finish)
 	a.Ret()
 }
 
@@ -787,8 +845,9 @@ func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error 
 	return nil
 }
 
-func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error {
+func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStored bool) error {
 	object := f.popValue()
+	trusted := gcSharedStubsEnabled && trustStored && f.opt(optValueFacts) && object.isValue() && object.st.valueFacts().has(factGCStoredRef)
 	f.flush()
 	ref := f.materialize(object)
 	if ref != RAX {
@@ -796,6 +855,21 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error
 	}
 	f.release(ref)
 	f.a.MovImm32(RDX, int32(typeIndex))
+	if trusted {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		site := f.a.CallRel32()
+		f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubTrustedFinalCast))
+		f.stats.call("gcnative-leaf")
+		f.stats.peep("gc-trusted-stored-cast")
+		f.a.TestSelf(RDX, false)
+		f.sc.gcTrustedCastFailSites = append(f.sc.gcTrustedCastFailSites, f.a.JccPlaceholder(condNE))
+		result := f.pushReg(RAX, mtI64)
+		result.st.setValueFacts(factGCStoredRef)
+		f.setStackGCRoot(result, true)
+		return nil
+	}
 	if nullable {
 		f.a.MovImm32(RCX, 1)
 	} else {
@@ -1118,6 +1192,7 @@ func (f *fn) emitNativeGCStubs() {
 			f.a.PatchRel32(site, stub)
 		}
 	}
+	f.emitModuleGCTrustedFinalCastFailureStub()
 	if len(f.sc.gcDefinedTestStubSites) != 0 {
 		stub := f.a.Len()
 		f.emitNativeDefinedTestStub()
@@ -1152,6 +1227,18 @@ func (f *fn) emitNativeGCStubs() {
 		for _, site := range f.sc.gcArrayRefSetStubSites {
 			f.a.PatchRel32(site, stub)
 		}
+	}
+}
+
+func (f *fn) emitModuleGCTrustedFinalCastFailureStub() {
+	sites := f.sc.gcTrustedCastFailSites
+	if len(sites) == 0 {
+		return
+	}
+	failure := f.a.Len()
+	f.trapAlwaysUnknownPC(trapCastFailure)
+	for _, site := range sites {
+		f.a.PatchRel32(site, failure)
 	}
 }
 
