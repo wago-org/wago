@@ -21,6 +21,7 @@ const (
 	storageGCRoot
 	storageEHRoot
 	storageLogicalRoot
+	storageCapturedBounds
 	valueFactMask = factUpper32Zero | factBoolean
 )
 

@@ -31,7 +31,7 @@ func TestSourceLoopEncoderProofControls(t *testing.T) {
 		name string
 		want regalloccheck.Verdict
 	}{
-		{"positive", regalloccheck.Verified}, {"padding", regalloccheck.Verified}, {"wide spill", regalloccheck.Verified}, {"dead scratch kill", regalloccheck.Verified},
+		{"positive", regalloccheck.Verified}, {"direct condition", regalloccheck.Verified}, {"direct wrong condition", regalloccheck.Rejected}, {"padding", regalloccheck.Verified}, {"wide spill", regalloccheck.Verified}, {"dead scratch kill", regalloccheck.Verified},
 		{"wrong entry", regalloccheck.Rejected}, {"duplicate pins", regalloccheck.Rejected}, {"duplicate swap source", regalloccheck.Rejected}, {"wrong swap order", regalloccheck.Rejected},
 		{"backedge-only live kill", regalloccheck.Rejected}, {"wrong condition", regalloccheck.Rejected}, {"wrong exit", regalloccheck.Rejected},
 		{"frame bounds", regalloccheck.Rejected}, {"SP balance", regalloccheck.Rejected},
@@ -50,7 +50,11 @@ func TestSourceLoopEncoderProofControls(t *testing.T) {
 			if tc.name == "missing observer" {
 				a.ObserveGPWrites(nil)
 			}
-			a.SubRsp(40)
+			frame := int32(40)
+			if tc.name == "direct condition" || tc.name == "direct wrong condition" {
+				frame = 0
+			}
+			a.SubRsp(frame)
 			entry := x86.RAX
 			if tc.name == "wrong entry" {
 				entry = x86.RCX
@@ -92,16 +96,20 @@ func TestSourceLoopEncoderProofControls(t *testing.T) {
 				off = 40
 			}
 			condition := x86.R11
-			if tc.name == "wrong condition" {
+			if tc.name == "wrong condition" || tc.name == "direct wrong condition" {
 				condition = x86.R9
 			}
-			if tc.name == "wide spill" {
-				a.Store64(x86.RSP, off, condition)
+			if tc.name == "direct condition" || tc.name == "direct wrong condition" {
+				a.TestSelf(condition, false)
 			} else {
-				a.Store32(x86.RSP, off, condition)
+				if tc.name == "wide spill" {
+					a.Store64(x86.RSP, off, condition)
+				} else {
+					a.Store32(x86.RSP, off, condition)
+				}
+				a.Load32(x86.RDI, x86.RSP, off)
+				a.TestSelf(x86.RDI, false)
 			}
-			a.Load32(x86.RDI, x86.RSP, off)
-			a.TestSelf(x86.RDI, false)
 			predicate := x86.CondNE
 			if tc.name == "wrong predicate" {
 				predicate = x86.CondE
@@ -115,7 +123,7 @@ func TestSourceLoopEncoderProofControls(t *testing.T) {
 				result = x86.R10
 			}
 			a.MovRegReg32(x86.RAX, result)
-			restore := int32(40)
+			restore := frame
 			if tc.name == "SP balance" {
 				restore = 48
 			}

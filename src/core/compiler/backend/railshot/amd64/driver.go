@@ -127,6 +127,13 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			}
 		case 0x01: // nop
 		case 0x02, 0x03, 0x04: // block / loop / if
+			if op == 0x03 && integerMapLoopEnabled && !f.integerMapActive {
+				var done bool
+				done, err = f.tryIntegerMapLoop(r)
+				if done || err != nil {
+					break
+				}
+			}
 			if op == 0x03 && (regionLoopEnabled || regionAdjacentEnabled || regionZeroCounterEnabled || scalarMemoryRecurrenceEnabled) {
 				var done bool
 				done, err = f.tryRegionLoop(r)
@@ -240,6 +247,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x1a: // drop
 		f.dropValue()
 	case 0x1b: // select
+		if done, err := f.trySelectLocalSink(r); done || err != nil {
+			return err
+		}
 		f.emitSelect()
 	case 0x1c: // select t (typed) — consume the declared result types
 		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
@@ -858,6 +868,114 @@ func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(R
 	return true, nil
 }
 
+var selectLocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_SELECT_LOCAL_SINK") != "1"
+
+// trySelectLocalSink coalesces a conditional assignment into its pinned local
+// when one alternative is the local's current value. Both alternatives and the
+// predicate are still evaluated before the local changes.
+func (f *fn) trySelectLocalSink(r *wasm.Reader) (bool, error) {
+	if !selectLocalSinkEnabled || profileEnabled {
+		return false, nil
+	}
+	op, ok := r.Peek()
+	if !ok || op != 0x21 && op != 0x22 {
+		return false, nil
+	}
+	look := *r
+	_, _ = look.Byte()
+	idx, err := look.U32()
+	if err != nil {
+		return false, nil
+	}
+	x := int(idx) + f.localBase
+	pr, isFloat, pinned := f.pinReg(x)
+	if !pinned || isFloat || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 || pr == RAX || pr == RDX || pr == RCX {
+		return false, nil
+	}
+	cond := f.s.back()
+	if !isFusableCompare(cond) || cond.valueType().isFloat() {
+		return false, nil
+	}
+	b := baseOfValentBlock(cond).prev
+	if b == f.s.head {
+		return false, nil
+	}
+	a := baseOfValentBlock(b).prev
+	if a == f.s.head || rootMachineType(a) != mtI32 || rootMachineType(b) != mtI32 || a.st.hasGCRoot() || b.st.hasGCRoot() {
+		return false, nil
+	}
+	isTarget := func(e *elem) bool {
+		return e.isValue() && e.st.kind == stLocalReg && e.st.idx == uint32(x) && e.st.reg == pr
+	}
+	if isTarget(a) == isTarget(b) {
+		return false, nil
+	}
+	// Only coalesce when the predicate already depends on the destination.
+	// Otherwise the conditional move introduces a new dependency on its old
+	// value, which can lengthen an independent chain of conditional updates.
+	if (cond.arg0 == nil || !isTarget(cond.arg0)) && (cond.arg1 == nil || !isTarget(cond.arg1)) {
+		return false, nil
+	}
+	// An immediate still needs a temporary register for CMOV. Leave it to the
+	// ordinary selector, which can choose the register holding the alternative.
+	other := b
+	useTrue := false
+	if isTarget(b) {
+		other, useTrue = a, true
+	}
+	if other.isValue() && other.st.kind == stConst {
+		return false, nil
+	}
+	// Prefer coalescing an actual comparison of the two alternatives. This
+	// retains the ordinary lowering for independent conditional assignments.
+	sameValue := func(x, y *elem) bool {
+		if x == nil || y == nil || !x.isValue() || !y.isValue() {
+			return false
+		}
+		switch x.st.kind {
+		case stLocalReg, stLocalRef:
+			return (y.st.kind == stLocalReg || y.st.kind == stLocalRef) && x.st.idx == y.st.idx
+		case stReg:
+			return y.st.kind == stReg && x.st.reg == y.st.reg
+		}
+		return false
+	}
+	if !sameValue(other, cond.arg0) && !sameValue(other, cond.arg1) {
+		return false, nil
+	}
+	// Select already has to resolve earlier traps before lowering its condition.
+	// Preserve any older borrowed references to x before overwriting its home.
+	f.materializeTrapsBefore(cond)
+	f.realizeLocalRefs(x, baseOfValentBlock(a))
+	savedReserved, savedPinned := f.reserved, f.pinned
+	f.reserved = f.reserved.add(pr)
+	f.pinned = f.pinned.add(pr)
+	otherReg, owned := f.materializeSelectReadBranch(other, mtI32)
+	if !owned {
+		f.reserved = f.reserved.add(otherReg)
+	}
+	f.pinned = f.pinned.add(otherReg)
+	cc := f.condenseToFlags(cond)
+	if !useTrue {
+		cc = invertCond(cc)
+	}
+	f.a.Cmovcc(cc, pr, otherReg, false)
+	f.pinned, f.reserved = savedPinned, savedReserved
+	if owned {
+		f.release(otherReg)
+	}
+	f.erase(b)
+	f.erase(a)
+	f.pushReg(pr, mtI32)
+	*r = look
+	if x < 64 {
+		f.localWritten |= 1 << uint(x)
+	}
+	f.setLocal(r, x, op == 0x22)
+	f.stats.peep("select-local-sink")
+	return true, nil
+}
+
 // emitSelect lowers `select`: result = cond != 0 ? a : b, where the operand
 // stack holds a, then b, then cond on top. Lowered to test + cmove (if cond == 0,
 // move b into a). Materialized eagerly (select is a sink for its operands).
@@ -880,11 +998,25 @@ func (f *fn) emitSelect() {
 	// then stale. Linking also keeps that slot visible to curSpillSlot, so later
 	// spills cannot overwrite it before the operand is reloaded.
 	cond := f.s.back()
-	f.materialize(cond) // Resolve the i32 condition, but recover its register later.
-	b := cond.prev
+	b := baseOfValentBlock(cond).prev
 	a := baseOfValentBlock(b).prev
 	at, bt := rootMachineType(a), rootMachineType(b)
 	gcRoot := a.st.hasGCRoot() || b.st.hasGCRoot()
+	// A read-only condition in a stable local register can be tested directly.
+	// Reserve it while branch expressions are realized, just like a borrowed
+	// CMOV source; fixed-role registers can be reclaimed by those expressions.
+	savedReserved, savedPinned := f.reserved, f.pinned
+	// Keep the extra reservation for a select whose first arm still needs
+	// expression lowering; simple alternatives are cheaper to materialize
+	// through the ordinary path without extending a pinned register's lifetime.
+	borrowCond := selectConditionBorrowEnabled && selectReadBorrowEnabled && a.isDeferred() && !at.isFloat() && !bt.isFloat() && !at.isV128() && !bt.isV128() && selectReadBorrowable(cond)
+	if borrowCond {
+		f.reserved = f.reserved.add(cond.st.reg)
+		f.pinned = f.pinned.add(cond.st.reg)
+		f.stats.peep("select-condition-read-borrow")
+	} else {
+		f.materialize(cond) // Resolve the condition; recover its register later.
+	}
 
 	// XMM operands have no cmov, so branch. Scalar floats use scalar moves;
 	// v128 uses a full-vector copy. Integer operands use cmov.
@@ -947,7 +1079,6 @@ func (f *fn) emitSelect() {
 	// cond's register. The second materialize(b) reloads a displaced b; cond is
 	// recovered last. At that point only plain values remain, so allocator pins
 	// protect a and b while a reload obtains the condition's final register.
-	savedReserved, savedPinned := f.reserved, f.pinned
 	bReg, bOwned := regNone, true
 	if selectCmovReadBorrowEnabled && selectReadBorrowEnabled && selectReadBorrowable(b) {
 		bReg, bOwned = f.materializeSelectReadBranch(b, bt)
@@ -965,13 +1096,18 @@ func (f *fn) emitSelect() {
 		bReg = f.materialize(b)
 	}
 	f.pinned = f.pinned.add(bReg)
-	condReg := f.materialize(cond)
+	condReg := cond.st.reg
+	if !borrowCond {
+		condReg = f.materialize(cond)
+	}
 	f.stats.peep("select-cmov")
 	f.a.TestSelf(condReg, false)
 	f.a.Cmovcc(condE, aReg, bReg, w) // cond == 0 → a = b
 	f.pinned = savedPinned
 	f.reserved = savedReserved
-	f.release(condReg)
+	if !borrowCond {
+		f.release(condReg)
+	}
 	if bOwned {
 		f.release(bReg)
 	}
@@ -1046,6 +1182,8 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 // Default only on the platform qualified with native corpus measurements.
 var selectReadBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_SELECT_READ_BORROW") != "0"
 
+var selectConditionBorrowEnabled = os.Getenv("WAGO_AMD64_NO_SELECT_CONDITION_BORROW") != "1"
+
 // Keep ordinary CMOV borrowing independently reversible during qualification.
 var selectCmovReadBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_SELECT_CMOV_READ_BORROW") != "0"
 
@@ -1100,7 +1238,22 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		next := e.next
 		switch {
 		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
+			// Capturing an i32 local emits a 32-bit load or move. Its owned
+			// copy has a zero upper half even if the original local is later
+			// overwritten, so retain that fact with the captured value.
+			cleanI32 := e.st.typ == mtI32
+			var extent int32
+			if capturedBoundsEnabled && cleanI32 && f.boundsFacts && !f.guardMode {
+				extent = f.boundsCertExtent(1, uint32(x))
+			}
 			f.materializeByType(e)
+			if extent > 0 && e.st.kind == stReg {
+				e.st.cval = int64(extent)
+				e.st.meta |= uint8(storageCapturedBounds)
+			}
+			if cleanI32 {
+				e.st.setValueFacts(e.st.valueFacts() | factUpper32Zero)
+			}
 		case e.isValue() && e.st.kind == stMemRef && e.st.memBorrow() == x:
 			// A deferred load addressing through x's pinned register: emit it
 			// before x is overwritten.
@@ -1186,7 +1339,6 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if regallocCheckEnabled {
 		checkNativeSourceSet(f, x, tee, f.s.back())
 	}
-	f.invalidateBoundsCertFor(1, uint32(x))
 	f.clearV128LocalAliases(x)
 	e := f.s.back()
 	// Once an exception reference escapes into a local, dropping the operand
@@ -1223,6 +1375,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 	}
 	f.realizeLocalRefs(x, skipFrom)
+	f.invalidateBoundsCertFor(1, uint32(x))
 	if reader != nil && f.hasIntervalLocal(x) {
 		f.activateIntervalLocal(x, reader.Offset(), false)
 	}
