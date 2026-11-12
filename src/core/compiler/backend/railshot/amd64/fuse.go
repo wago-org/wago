@@ -11,6 +11,8 @@ package amd64
 
 import (
 	"math/bits"
+	"os"
+	"runtime"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -29,6 +31,14 @@ func invertCond(c Cond) Cond { return c ^ 1 }
 // result can be branched on directly.
 func isFusableCompare(e *elem) bool {
 	return e != nil && e.isDeferred() && (isCompare(e.deferredOp()) || isFloatCompare(e.deferredOp()) || e.deferredOp() == opEqz)
+}
+
+var zeroCompareEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_NO_ZERO_COMPARE") != "1"
+
+// XOR and modular subtraction are zero exactly when their inputs are equal.
+// This applies only when the result is consumed as a truth value.
+func isFusableBranchPredicate(e *elem) bool {
+	return isFusableCompare(e) || zeroCompareEnabled && e != nil && e.isDeferred() && (e.deferredOp() == opXor || e.deferredOp() == opSub)
 }
 
 // Small i32 mask conditions can use a short byte TEST for select's zero flag.
@@ -206,7 +216,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
 	invert := false
 	if f.opt(optSTFlags) {
-		for node.deferredOp() == opEqz && isFusableCompare(node.arg0) {
+		for node.deferredOp() == opEqz && isFusableBranchPredicate(node.arg0) {
 			inner := node.arg0
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
 			f.s.exposeLogicalRoot(inner)
@@ -263,7 +273,13 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		f.erase(node)
 		return applyInvert(condE)
 	}
-	cc := applyInvert(condOf(node.deferredOp()))
+	cc := condNE
+	if node.deferredOp() != opXor && node.deferredOp() != opSub {
+		cc = condOf(node.deferredOp())
+	} else {
+		f.stats.peep("zero-compare")
+	}
+	cc = applyInvert(cc)
 	left, right := node.arg0, node.arg1
 	// Specialization often exposes a constant on the source comparison's
 	// left. Commute two concrete operands so CMP can use its immediate form.

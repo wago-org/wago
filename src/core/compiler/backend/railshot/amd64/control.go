@@ -1795,7 +1795,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 	if kind == cfIf {
 		f.deferIfPrefix(r, &fr)
 		cond := f.s.back()
-		if isFusableCompare(cond) {
+		if isFusableBranchPredicate(cond) {
 			f.flushBelow(cond)
 			f.convergeFrameEntryState(&fr)
 			cc := f.condenseToFlags(cond)
@@ -2666,7 +2666,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	}
 	// Fuse `<compare> br_if L` into CMP + conditional jump. (Local convergence is
 	// per-target and happens after the label frame is resolved.)
-	if conditional && isFusableCompare(f.s.back()) {
+	if conditional && isFusableBranchPredicate(f.s.back()) {
 		top := f.s.back()
 		idx, err := r.U32()
 		if err != nil {
