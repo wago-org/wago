@@ -3904,7 +3904,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.stats.peep("all-calls-inlined")
 	}
 	directReferenceABI := f.opt(optRegABI) && f.directReferenceRegABI(funcIdx, ft)
-	regABI := f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)) || directReferenceABI)
+	regABI := f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft, f.m)) || directReferenceABI)
 	if directReferenceABI && !hostAdapter {
 		return nil, nil, 0, fmt.Errorf("amd64: direct reference target %d has no wrapper adapter", funcIdx)
 	}
