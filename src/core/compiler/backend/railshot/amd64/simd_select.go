@@ -50,6 +50,8 @@ const (
 	opVPminuw    simdBinaryOp = 0x3A | simdBinaryOp(shared.AMD64SSE41)<<12
 	opVPmuldq    simdBinaryOp = 0x28 | simdBinaryOp(shared.AMD64SSE41)<<12
 	opVPmulhrsw  simdBinaryOp = 0x0B | simdBinaryOp(shared.AMD64SSSE3)<<12
+	opVPmulhw    simdBinaryOp = 0xE5
+	opVPmulhuw   simdBinaryOp = 0xE4
 	opVPmulld    simdBinaryOp = 0x40 | simdBinaryOp(shared.AMD64SSE41)<<12
 	opVPmullw    simdBinaryOp = 0xD5
 	opVPmuludq   simdBinaryOp = 0xF4
