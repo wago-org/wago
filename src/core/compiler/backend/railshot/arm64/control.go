@@ -1611,6 +1611,23 @@ func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifi
 			}
 			continue
 		}
+		if op >= 0x41 && op <= 0x44 && (uses == nil || op >= 0x43) {
+			var err error
+			switch op {
+			case 0x41:
+				_, err = r.I32()
+			case 0x42:
+				_, err = r.I64()
+			case 0x43:
+				err = r.Step(4)
+			case 0x44:
+				err = r.Step(8)
+			}
+			if err != nil {
+				return nil, true
+			}
+			continue
+		}
 		if uses != nil && (op == 0x41 || op == 0x42) {
 			imm = wasm.InstructionImmediate{}
 			imm.Kind, err = uses.consume(op, r)

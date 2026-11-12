@@ -434,7 +434,7 @@ func TestLoopSetScanKeepsImmediatesNestingAndWideLocals(t *testing.T) {
 			t.Fatalf("scan = %v, want %v", got, want)
 		}
 	}
-	for _, body := range [][]byte{{0x21}, {0x21, 0x80, 0x80, 4, 0x0b}, {0x10, 0, 0x0b}, {0x40, 0, 0x0b}, {0x26, 0, 0x0b}} {
+	for _, body := range [][]byte{{0x21}, {0x21, 0x80, 0x80, 4, 0x0b}, {0x10, 0, 0x0b}, {0x40, 0, 0x0b}, {0x26, 0, 0x0b}, {0x41, 0x80}, {0x42, 0x80}, {0x43, 0, 0, 0}, {0x44, 0, 0, 0, 0, 0, 0, 0}} {
 		r := wasm.ReaderFrom(body)
 		_, calls := scanLoopSetLocals(&r, classifier, nil, nil)
 		if !calls || r.Offset() != 0 {
