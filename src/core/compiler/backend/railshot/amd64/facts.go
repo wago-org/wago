@@ -21,7 +21,8 @@ const (
 	storageGCRoot
 	storageEHRoot
 	storageLogicalRoot
-	valueFactMask = factUpper32Zero | factBoolean
+	factGCStoredRef
+	valueFactMask = factUpper32Zero | factBoolean | factGCStoredRef
 )
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }

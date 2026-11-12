@@ -301,7 +301,9 @@ func (f *fn) tryGCTrappingGuard(typeIndex uint32, nullable bool, r *wasm.Reader)
 	out := f.allocReg(maskOf(p.cache))
 	if p.secondRef {
 		f.a.Load32(out, p.cache, int32(gc.PayloadOffset+p.secondOffset))
-		f.setStackGCRoot(f.pushReg(out, mtI64), true)
+		result := f.pushReg(out, mtI64)
+		result.st.setValueFacts(factGCStoredRef)
+		f.setStackGCRoot(result, true)
 	} else {
 		scalar := p.secondScalar
 		f.a.LoadIdx(out, p.cache, RSP, int32(gc.PayloadOffset+p.secondOffset), scalar.size, p.secondSigned, scalar.typ == mtI64)

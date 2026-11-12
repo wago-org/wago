@@ -46,7 +46,7 @@ func TestDeferredMetadataSharesCompactStorageAMD64(t *testing.T) {
 	e.setValueType(mtI64)
 	e.setDeferredDepth(maxDeferDepth)
 	e.setRegisterNeed(maxDeferDepth + 1)
-	e.st.setValueFacts(factUpper32Zero | factBoolean)
+	e.st.setValueFacts(factUpper32Zero | factBoolean | factGCStoredRef)
 	e.st.setGCRoot(true)
 	e.st.setEHRoot(true)
 	if got := e.elemKind(); got != ekDeferred {
@@ -64,11 +64,11 @@ func TestDeferredMetadataSharesCompactStorageAMD64(t *testing.T) {
 	if got := e.registerNeed(); got != maxDeferDepth+1 {
 		t.Fatalf("register need = %d, want %d", got, maxDeferDepth+1)
 	}
-	if got := e.st.valueFacts(); got != factUpper32Zero|factBoolean || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
+	if got := e.st.valueFacts(); got != factUpper32Zero|factBoolean|factGCStoredRef || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
 		t.Fatalf("value metadata = %#x, want facts and both roots", e.st.meta)
 	}
 	e.setElemKind(ekValue)
-	if got := e.st.valueFacts(); got != factUpper32Zero|factBoolean || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
+	if got := e.st.valueFacts(); got != factUpper32Zero|factBoolean|factGCStoredRef || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
 		t.Fatalf("kind transition changed value metadata: %#x", e.st.meta)
 	}
 }
@@ -116,12 +116,12 @@ func TestStorageMetadataFieldsAreIndependentAMD64(t *testing.T) {
 	var st storage
 	st.setGCRoot(true)
 	st.setEHRoot(true)
-	st.setValueFacts(factUpper32Zero | factBoolean)
+	st.setValueFacts(factUpper32Zero | factBoolean | factGCStoredRef)
 	if !st.hasGCRoot() || !st.hasEHRoot() {
 		t.Fatalf("setting facts cleared roots: meta=%#x", st.meta)
 	}
-	if got := st.valueFacts(); got != factUpper32Zero|factBoolean {
-		t.Fatalf("value facts = %#x, want upper-zero and boolean", got)
+	if got := st.valueFacts(); got != factUpper32Zero|factBoolean|factGCStoredRef {
+		t.Fatalf("value facts = %#x, want upper-zero, boolean, and stored-ref", got)
 	}
 	st.setValueFacts(0)
 	if !st.hasGCRoot() || !st.hasEHRoot() {

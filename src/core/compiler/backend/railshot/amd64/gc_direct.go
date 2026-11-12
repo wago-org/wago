@@ -875,6 +875,7 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 	}
 	f.a.Load32(RAX, RAX, int32(gc.PayloadOffset+fieldOffset))
 	result := f.pushReg(RAX, mtI64)
+	result.st.setValueFacts(factGCStoredRef)
 	f.setStackGCRoot(result, true)
 	return nil
 }
@@ -1045,6 +1046,16 @@ func (f *fn) emitNativeGCStubs() {
 		}
 		entry := f.a.Len()
 		f.emitNativeFinalCastArrayGetStub(1 << i)
+		for _, site := range sites {
+			f.a.PatchRel32(site, entry)
+		}
+	}
+	for i, sites := range f.sc.gcTrustedCastGetSites {
+		if len(sites) == 0 {
+			continue
+		}
+		entry := f.a.Len()
+		f.emitNativeTrustedFinalCastArrayGetStub(1 << i)
 		for _, site := range sites {
 			f.a.PatchRel32(site, entry)
 		}
