@@ -135,7 +135,20 @@ func (r *reader) i32() (int32, error) {
 	v, err := r.leb(true, 32)
 	return int32(v), err
 }
-func (r *reader) i64() (int64, error) { v, err := r.leb(true, 64); return int64(v), err }
+func (r *reader) i64() (int64, error) {
+	if r.pos < len(r.data) {
+		if b := r.data[r.pos]; b < 0x80 {
+			r.pos++
+			value := int64(b)
+			if b&0x40 != 0 {
+				value |= ^int64(0x7f)
+			}
+			return value, nil
+		}
+	}
+	v, err := r.leb(true, 64)
+	return int64(v), err
+}
 func (r *reader) name() (string, error) {
 	n, err := r.u32()
 	if err != nil {
