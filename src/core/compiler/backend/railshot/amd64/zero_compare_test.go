@@ -10,6 +10,8 @@
 package amd64
 
 import (
+	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -76,5 +78,33 @@ func TestZeroComparePredicates(t *testing.T) {
 	}
 	if diagnosticsEnabled && selected == 0 {
 		t.Fatal("no test exercised the zero comparison lowering")
+	}
+}
+
+func TestZeroComparePreservesTrapEffects(t *testing.T) {
+	old := zeroCompareEnabled
+	defer func() { zeroCompareEnabled = old }()
+	for _, op := range []byte{0x6b, 0x73} {
+		// The store must remain visible even if either comparison input traps.
+		body := []byte{0, 0x41, 8, 0x41, 7, 0x36, 2, 0, 0x20, 0, 0x28, 2, 0, 0x20, 1, 0x28, 2, 0, op, 0x04, 0x7f, 0x41, 1, 0x05, 0x41, 0, 0x0b, 0x0b}
+		m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+		for _, guard := range []bool{false, true} {
+			for _, args := range [][2]uint64{{65535, 16}, {16, 65535}, {16, 20}} {
+				var expectedResult uint64
+				var expectedMemory []byte
+				var expectedTrap string
+				for _, enabled := range []bool{false, true} {
+					zeroCompareEnabled = enabled
+					got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"pure-integer-if-select": false}}, nil, args[:]...)
+					if !enabled {
+						expectedResult, expectedMemory, expectedTrap = got, mem, fmt.Sprint(err)
+						continue
+					}
+					if got != expectedResult || !bytes.Equal(mem, expectedMemory) || fmt.Sprint(err) != expectedTrap {
+						t.Fatalf("op=%x guard=%v args=%v: result=%d trap=%v memoryEqual=%v; want result=%d trap=%s", op, guard, args, got, err, bytes.Equal(mem, expectedMemory), expectedResult, expectedTrap)
+					}
+				}
+			}
+		}
 	}
 }
