@@ -16,6 +16,11 @@ func TestLonePredicateExecution(t *testing.T) {
 	savedSelect := pureIntegerIfSelectEnabled
 	pureIntegerIfSelectEnabled = false
 	defer func() { pureIntegerIfSelectEnabled = savedSelect }()
+	// XOR truth tests can now be compared directly, bypassing this fixture's
+	// owned-predicate staging path. Keep that independent fusion disabled here.
+	savedZeroCompare := zeroCompareEnabled
+	zeroCompareEnabled = false
+	defer func() { zeroCompareEnabled = savedZeroCompare }()
 	for _, branch := range []bool{false, true} {
 		body := []byte{0, 0x20, 0, 0x41, 1, 0x73, 0x04, 0x7f, 0x41, 7, 0x05, 0x41, 9, 0x0b, 0x0b}
 		if branch {
