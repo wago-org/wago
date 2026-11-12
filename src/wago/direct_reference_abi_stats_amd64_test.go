@@ -120,7 +120,7 @@ func TestDirectReferenceABIModuleScope(t *testing.T) {
 				}
 				defer cm.CodeImage.Close()
 				want := 0
-				if registerABI && scope == "ordinary" {
+				if registerABI && (scope == "ordinary" || scope == "tail") {
 					want = 1
 				}
 				if got := stats.Funcs[1].Calls[shared.CallMixed]; got != want {
