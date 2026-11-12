@@ -13,9 +13,9 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // A successful ordinary allocation returns a non-null reference whose dynamic
 // type is the allocated absolute type. An immediately following ordinary cast
-// to that same type therefore preserves the value and cannot trap. Decode on a
-// copy so every rejected or malformed candidate leaves the source untouched.
-func consumeSameTypeGCAllocationCast(r *wasm.Reader, typeIndex uint32) bool {
+// to a proved supertype therefore preserves the value and cannot trap. Decode
+// on a copy so every rejected or malformed candidate leaves the source untouched.
+func consumeProvedGCAllocationCast(m *wasm.Module, r *wasm.Reader, typeIndex uint32) bool {
 	next := *r
 	op, err := next.Byte()
 	if err != nil || op != 0xfb {
@@ -26,15 +26,20 @@ func consumeSameTypeGCAllocationCast(r *wasm.Reader, typeIndex uint32) bool {
 		return false
 	}
 	target, exact, err := readRefHeapTypeImmediate(&next)
-	if err != nil || exact || target < 0 || uint64(target) != uint64(typeIndex) {
+	if err != nil || exact || target < 0 || uint64(target) > uint64(^uint32(0)) {
+		return false
+	}
+	actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false)
+	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(target)}), false)
+	if !m.ReferenceTypeSubtype(actual, required) {
 		return false
 	}
 	*r = next
 	return true
 }
 
-func (f *fn) skipSameTypeGCAllocationCast(r *wasm.Reader, typeIndex uint32) {
-	if !consumeSameTypeGCAllocationCast(r, typeIndex) {
+func (f *fn) skipProvedGCAllocationCast(r *wasm.Reader, typeIndex uint32) {
+	if !consumeProvedGCAllocationCast(f.m, r, typeIndex) {
 		return
 	}
 	// Match the state transitions that emitFB would perform for subopcode 22.
