@@ -44,6 +44,12 @@ func BenchmarkSIMDRelaxedDotCompile(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	codeBytes := len(cm.Code)
+	if cm.CodeImage != nil {
+		if err := cm.CodeImage.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -52,8 +58,13 @@ func BenchmarkSIMDRelaxedDotCompile(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchSIMDModuleSink = cm
+		if cm.CodeImage != nil {
+			if err := cm.CodeImage.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}
 	}
-	b.ReportMetric(float64(len(cm.Code)), "code-B")
+	b.ReportMetric(float64(codeBytes), "code-B")
 }
 
 func relaxedDotSignedOracle(a, b, c [16]byte, add bool) (out [16]byte) {
