@@ -378,47 +378,6 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 		return fn.invokeGeneral(args)
 	}
 	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
-		if fn.gcRevocableContext {
-			in := fn.in
-			state := in.pluginState.Load()
-			if state != nil && state.invokeMu.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
-				if !in.privateGCStateValid(state) || fn.gcDeadInductionLayout == 0 && !fn.privateGCNativeContextValid(state) {
-					in.endFastInvocation(state)
-				} else {
-					// This proven Go-only path cannot call guest/host code or collect.
-					// Every successful admission is released here or transferred to
-					// the ordinary driver, whose defer owns all collecting fallbacks.
-					if gcDeadInductionSupported && fn.gcDeadInductionLayout != 0 {
-						if err := validateNativeGCEntry(in); err != nil {
-							in.endFastInvocation(state)
-							return nil, err
-						}
-						if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
-							if err := clearPreparedInductionTrap(in); err != nil {
-								in.endFastInvocation(state)
-								return nil, err
-							}
-						}
-						n := uint64(uint32(args[0]))
-						if fn.gcDeadBatch.TryReserve(max(uint32(n), 1)) {
-							value := uint64(uint32(n * (n - 1) / 2))
-							if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
-								err := wruntime.ConsumePreparedIntTrap(in.trap)
-								in.endFastInvocation(state)
-								return nil, err
-							}
-							out := in.resultVals[:1]
-							out[0] = value
-							in.endFastInvocation(state)
-							goruntime.KeepAlive(in)
-							goruntime.KeepAlive(in.c)
-							return out, nil
-						}
-					}
-					return fn.invokePrivateGCScalar(args[0], state)
-				}
-			}
-		}
 		if gcI31InductionSupported && fn.gcI31Induction {
 			in := fn.in
 			if in.rt == nil && fn.directGate != nil && fn.directGate.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
@@ -459,6 +418,49 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 				return fn.invokeDirectIntFixed(args[0], args[1], args[2], 0)
 			case 4:
 				return fn.invokeDirectIntFixed(args[0], args[1], args[2], args[3])
+			}
+		}
+		// Revocable GC contexts exclude direct integer entries, so the common
+		// numeric call can avoid this check without changing GC admission.
+		if fn.gcRevocableContext {
+			in := fn.in
+			state := in.pluginState.Load()
+			if state != nil && state.invokeMu.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
+				if !in.privateGCStateValid(state) || fn.gcDeadInductionLayout == 0 && !fn.privateGCNativeContextValid(state) {
+					in.endFastInvocation(state)
+				} else {
+					// This proven Go-only path cannot call guest/host code or collect.
+					// Every successful admission is released here or transferred to
+					// the ordinary driver, whose defer owns all collecting fallbacks.
+					if gcDeadInductionSupported && fn.gcDeadInductionLayout != 0 {
+						if err := validateNativeGCEntry(in); err != nil {
+							in.endFastInvocation(state)
+							return nil, err
+						}
+						if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+							if err := clearPreparedInductionTrap(in); err != nil {
+								in.endFastInvocation(state)
+								return nil, err
+							}
+						}
+						n := uint64(uint32(args[0]))
+						if fn.gcDeadBatch.TryReserve(max(uint32(n), 1)) {
+							value := uint64(uint32(n * (n - 1) / 2))
+							if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+								err := wruntime.ConsumePreparedIntTrap(in.trap)
+								in.endFastInvocation(state)
+								return nil, err
+							}
+							out := in.resultVals[:1]
+							out[0] = value
+							in.endFastInvocation(state)
+							goruntime.KeepAlive(in)
+							goruntime.KeepAlive(in.c)
+							return out, nil
+						}
+					}
+					return fn.invokePrivateGCScalar(args[0], state)
+				}
 			}
 		}
 		if preparedDirectFloatSupported && fn.directFloatFast {
