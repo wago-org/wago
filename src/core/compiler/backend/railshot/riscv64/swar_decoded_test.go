@@ -89,8 +89,8 @@ func TestSWARDecodedAdapterBudgetsAndNormalValidation(t *testing.T) {
 		{"oversized-table-init", func(m *wasm.Module) {
 			m.Tables = []wasm.Table{{Init: &wasm.Expr{BodyBytes: make([]byte, MaxModuleBytes+1)}}}
 		}},
-		{"exports", func(m *wasm.Module) { m.Exports = make([]wasm.Export, MaxFunctions+1) }},
-		{"custom-count", func(m *wasm.Module) { m.Customs = make([]wasm.CustomSec, MaxFunctions+1) }},
+		{"exports", func(m *wasm.Module) { m.Exports = []wasm.Export{{Name: string(make([]byte, MaxModuleBytes))}} }},
+		{"custom-count", func(m *wasm.Module) { m.Customs = make([]wasm.CustomSec, MaxModuleBytes/16+1) }},
 		{"custom-bytes", func(m *wasm.Module) {
 			m.Customs = []wasm.CustomSec{{Name: "producers", Data: make([]byte, MaxModuleBytes)}}
 		}},
@@ -100,15 +100,15 @@ func TestSWARDecodedAdapterBudgetsAndNormalValidation(t *testing.T) {
 			name := string(bytes.Repeat([]byte{'a'}, MaxModuleBytes))
 			m.NameSec = &wasm.NameSec{ModuleName: &name}
 		}},
-		{"parsed-name-map", func(m *wasm.Module) { m.NameSec = &wasm.NameSec{FunctionNames: make(wasm.NameMap, MaxFunctions+1)} }},
+		{"parsed-name-map", func(m *wasm.Module) { m.NameSec = &wasm.NameSec{FunctionNames: make(wasm.NameMap, MaxModuleBytes/2+1)} }},
 		{"parsed-name-string", func(m *wasm.Module) {
 			m.NameSec = &wasm.NameSec{FunctionNames: wasm.NameMap{{Name: string(bytes.Repeat([]byte{'a'}, MaxModuleBytes))}}}
 		}},
 		{"parsed-indirect-map", func(m *wasm.Module) {
-			m.NameSec = &wasm.NameSec{LocalNames: make(wasm.IndirectNameMap, MaxFunctions+1)}
+			m.NameSec = &wasm.NameSec{LocalNames: make(wasm.IndirectNameMap, MaxModuleBytes/2+1)}
 		}},
 		{"parsed-indirect-rows", func(m *wasm.Module) {
-			m.NameSec = &wasm.NameSec{LabelNames: wasm.IndirectNameMap{{Names: make(wasm.NameMap, MaxFunctions+1)}}}
+			m.NameSec = &wasm.NameSec{LabelNames: wasm.IndirectNameMap{{Names: make(wasm.NameMap, MaxModuleBytes/2+1)}}}
 		}},
 		{"parsed-indirect-string", func(m *wasm.Module) {
 			m.NameSec = &wasm.NameSec{FieldNames: wasm.IndirectNameMap{{Names: wasm.NameMap{{Name: string(bytes.Repeat([]byte{'a'}, MaxModuleBytes))}}}}}
@@ -206,10 +206,10 @@ func TestSWARDecodedAdapterRequiresSeparateWireProvenance(t *testing.T) {
 
 func TestSWARDecodedAdapterNamePayloadBudgetBoundary(t *testing.T) {
 	mode := emissionMode{production: true, interruptible: true}
-	for _, n := range []int{MaxModuleBytes - 11, MaxModuleBytes - 10} {
+	for _, n := range []int{MaxModuleBytes - 27, MaxModuleBytes - 26} {
 		// An unknown name subsection is inert and retained in both raw and
 		// custom representations. Count its payload once: subsection header4,
-		// custom name4, body1, declarations1 and export name1 consume11 bytes.
+		// custom name4, body1, declarations1 and export name1 and the custom directory record16 consume27 bytes.
 		payload := uleb([]byte{99}, uint32(n))
 		payload = append(payload, make([]byte, n)...)
 		source := section(binaryModule(fixtureFunc{body: []byte{0x0b}}), 0, append([]byte{4, 'n', 'a', 'm', 'e'}, payload...))
@@ -218,7 +218,7 @@ func TestSWARDecodedAdapterNamePayloadBudgetBoundary(t *testing.T) {
 			t.Fatal("retained duplicate raw name fixture", err)
 		}
 		image, err := compileSWARDecodedModule(m, mode, swarModulePlain)
-		if n == MaxModuleBytes-11 && (err != nil || image == nil) || n == MaxModuleBytes-10 && (image != nil || !errors.Is(err, ErrUnsupported)) {
+		if n == MaxModuleBytes-27 && (err != nil || image == nil) || n == MaxModuleBytes-26 && (image != nil || !errors.Is(err, ErrUnsupported)) {
 			t.Fatal("decoded name payload aggregate boundary", n, err)
 		}
 	}

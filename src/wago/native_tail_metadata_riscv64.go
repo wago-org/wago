@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -202,7 +209,7 @@ func (s rv64TailSignatureView) result(i int) ValType {
 // The dispatcher receives the retained element, so its plan does not depend on
 // the number of tables. Full execution admission still checks each directory.
 func rv64NativeTailIndexedTables(c *Compiled) bool {
-	if !c.nativeTableContextABI || !c.nativeTableReferenceABI || c.tableCount() == 0 || c.tableCount() > railshot.MaxFunctions {
+	if !c.nativeTableContextABI || !c.nativeTableReferenceABI || c.tableCount() == 0 || c.tableCount() > railshot.MaxModuleTables {
 		return false
 	}
 	function, _ := valueTypeDescriptorFromValType(ValFuncRef)

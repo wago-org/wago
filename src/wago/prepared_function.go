@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
@@ -49,6 +56,8 @@ type WasmFunc struct {
 	scalarResultWide      bool
 	resultWide            []bool
 	boundedWrapper        bool
+	boundedBulkLimit      uint32
+	boundedBulkArgument   uint8
 	privateFast           bool
 	isolatedFast          bool
 	directIsolated        bool
@@ -279,6 +288,8 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		gcPrepared:          (goruntime.GOARCH == "arm64" || goruntime.GOARCH == "amd64") && in.gc != nil && scalarFast && in.c.NumImports == 0 && !in.c.usesAtomicWaitHelpers(),
 		resultWide:          resultWide,
 		boundedWrapper:      in.c.directPreparedBoundedAt(ic.li) || in.isolatedNativeScalarLeaf(),
+		boundedBulkLimit:    uint32(in.c.boundedBulkArgumentPlan(ic.li) >> 32),
+		boundedBulkArgument: uint8(in.c.boundedBulkArgumentPlan(ic.li)),
 	}
 	fn.gcScalar32 = fn.gcPrepared && fn.gcMaintenance && in.syncMode && ic.paramSlots == 1 && ic.resultSlots == 1 && scalarWideMask == 0 && !resultWide[0]
 	// The collector/config and compiled root plan are fixed before publication.
@@ -367,47 +378,6 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 		return fn.invokeGeneral(args)
 	}
 	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
-		if fn.gcRevocableContext {
-			in := fn.in
-			state := in.pluginState.Load()
-			if state != nil && state.invokeMu.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
-				if !in.privateGCStateValid(state) || fn.gcDeadInductionLayout == 0 && !fn.privateGCNativeContextValid(state) {
-					in.endFastInvocation(state)
-				} else {
-					// This proven Go-only path cannot call guest/host code or collect.
-					// Every successful admission is released here or transferred to
-					// the ordinary driver, whose defer owns all collecting fallbacks.
-					if gcDeadInductionSupported && fn.gcDeadInductionLayout != 0 {
-						if err := validateNativeGCEntry(in); err != nil {
-							in.endFastInvocation(state)
-							return nil, err
-						}
-						if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
-							if err := clearPreparedInductionTrap(in); err != nil {
-								in.endFastInvocation(state)
-								return nil, err
-							}
-						}
-						n := uint64(uint32(args[0]))
-						if fn.gcDeadBatch.TryReserve(max(uint32(n), 1)) {
-							value := uint64(uint32(n * (n - 1) / 2))
-							if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
-								err := wruntime.ConsumePreparedIntTrap(in.trap)
-								in.endFastInvocation(state)
-								return nil, err
-							}
-							out := in.resultVals[:1]
-							out[0] = value
-							in.endFastInvocation(state)
-							goruntime.KeepAlive(in)
-							goruntime.KeepAlive(in.c)
-							return out, nil
-						}
-					}
-					return fn.invokePrivateGCScalar(args[0], state)
-				}
-			}
-		}
 		if gcI31InductionSupported && fn.gcI31Induction {
 			in := fn.in
 			if in.rt == nil && fn.directGate != nil && fn.directGate.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
@@ -448,6 +418,49 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 				return fn.invokeDirectIntFixed(args[0], args[1], args[2], 0)
 			case 4:
 				return fn.invokeDirectIntFixed(args[0], args[1], args[2], args[3])
+			}
+		}
+		// Revocable GC contexts exclude direct integer entries, so the common
+		// numeric call can avoid this check without changing GC admission.
+		if fn.gcRevocableContext {
+			in := fn.in
+			state := in.pluginState.Load()
+			if state != nil && state.invokeMu.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
+				if !in.privateGCStateValid(state) || fn.gcDeadInductionLayout == 0 && !fn.privateGCNativeContextValid(state) {
+					in.endFastInvocation(state)
+				} else {
+					// This proven Go-only path cannot call guest/host code or collect.
+					// Every successful admission is released here or transferred to
+					// the ordinary driver, whose defer owns all collecting fallbacks.
+					if gcDeadInductionSupported && fn.gcDeadInductionLayout != 0 {
+						if err := validateNativeGCEntry(in); err != nil {
+							in.endFastInvocation(state)
+							return nil, err
+						}
+						if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+							if err := clearPreparedInductionTrap(in); err != nil {
+								in.endFastInvocation(state)
+								return nil, err
+							}
+						}
+						n := uint64(uint32(args[0]))
+						if fn.gcDeadBatch.TryReserve(max(uint32(n), 1)) {
+							value := uint64(uint32(n * (n - 1) / 2))
+							if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+								err := wruntime.ConsumePreparedIntTrap(in.trap)
+								in.endFastInvocation(state)
+								return nil, err
+							}
+							out := in.resultVals[:1]
+							out[0] = value
+							in.endFastInvocation(state)
+							goruntime.KeepAlive(in)
+							goruntime.KeepAlive(in.c)
+							return out, nil
+						}
+					}
+					return fn.invokePrivateGCScalar(args[0], state)
+				}
 			}
 		}
 		if preparedDirectFloatSupported && fn.directFloatFast {
@@ -968,7 +981,7 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	} else {
 		var err error
 		if fn.isolatedFast {
-			err = in.callPreparedIsolated(fn.entry, in.trap, false, fn.boundedWrapper)
+			err = in.callPreparedIsolated(fn.entry, in.trap, false, fn.boundedWrapper || fn.boundedBulkArguments(args))
 		} else if fn.privateFast {
 			err = in.callPreparedPrivate(fn.entry, in.trap)
 		} else {

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && (amd64 || arm64 || riscv64) && !tinygo && !wago_target_tinygo
 
 package riscv64
@@ -431,9 +438,6 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
 			return nil, err
 		}
-	}
-	if len(m.Customs) > MaxFunctions {
-		return nil, unsupported("decoded custom section count bound")
 	}
 	if err := admitPublicBranchHints(m, true, &remaining); err != nil {
 		return nil, err

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_standalone
 
 package wago
@@ -53,7 +60,7 @@ func newGCFrameRootPlanOwned(m *wasm.Module, exactRoots bool, diagnostic *string
 	importedTables := m.ImportedTableCount()
 	memoryCount := importedMemories + len(m.Memories)
 	tableCount := importedTables + len(m.Tables)
-	if importedFunctions+importedGlobals+importedMemories+importedTables+m.ImportedTagCount() != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > maxRV64ExecutionTables || tableCount > maxRV64ExecutionTables || memoryCount > rv64RootedMaxMemories || m.TagCount() > railshot.MaxFunctions || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	if importedFunctions+importedGlobals+importedMemories+importedTables+m.ImportedTagCount() != len(m.Imports) || importedFunctions > railshot.MaxFunctionImports || importedFunctions+len(m.Code) > railshot.MaxModuleFunctions || len(m.Tables) > maxRV64ExecutionTables || tableCount > maxRV64ExecutionTables || memoryCount > rv64RootedMaxMemories || m.TagCount() > railshot.MaxModuleTags || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
 	rootedImportValue := func(typ wasm.ValType) bool {

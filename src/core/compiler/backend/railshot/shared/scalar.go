@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package shared
 
 import (
@@ -991,7 +998,10 @@ func (s *ScalarState) compileScalar(code []byte, summary ScalarSummary, localWid
 					s.node(old).home = 0
 				}
 				s.release(old)
-				s.materialize(id, 0)
+				// Keep constants available for folding through local.set/local.tee.
+				if s.node(id).kind != ScalarConstant {
+					s.materialize(id, 0)
+				}
 				s.locals[x] = id
 				if op == 0x22 {
 					s.retain(id)

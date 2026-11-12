@@ -74,7 +74,7 @@ var Definition = wago.PluginDefinition{
 	Stability:   wago.Experimental,
 	Provenance: wago.PluginProvenance{
 		Repository: "https://github.com/wago-org/wago",
-		License:    "Apache-2.0",
+		License:    "MPL-2.0",
 	},
 	Authorities: []wago.AuthorityRequest{
 		{

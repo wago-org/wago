@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -16,6 +23,23 @@ const MaxPublicGlobals = MaxPublicCodeBytes / 16
 const MaxPublicImports = MaxPublicCodeBytes / 16
 const MaxPublicElementSegments = MaxPublicCodeBytes / 16
 
+// Independent directory extents. These are minimum record charges, not a
+// guarantee that a module fits the configured metadata/native-code quotas.
+// The stricter function bound reserves a nonzero index+1 source packet.
+const MaxModuleFunctions = MaxPublicCodeBytes / 16
+const MaxFunctionImports = MaxModuleFunctions
+const MaxModuleTables = MaxPublicCodeBytes / 32
+const MaxModuleExports = MaxPublicCodeBytes / 16
+const MaxModuleTags = MaxPublicCodeBytes / 16
+
+func consumeDirectoryBytes(count, width int, remaining *int) bool {
+	if count < 0 || width <= 0 || *remaining < 0 || count > *remaining/width {
+		return false
+	}
+	*remaining -= count * width
+	return true
+}
+
 func productionElementSegmentLimit(public bool) int {
 	if public {
 		return MaxPublicElementSegments
@@ -23,12 +47,7 @@ func productionElementSegmentLimit(public bool) int {
 	return MaxOwnedElementSegments
 }
 
-func productionImportLimit(public bool) int {
-	if public {
-		return MaxPublicImports
-	}
-	return MaxProductionImports
-}
+func productionImportLimit(_ bool) int { return MaxPublicImports }
 
 func productionGlobalLimit(public bool) int {
 	if public {
@@ -70,7 +89,7 @@ func admitPublicDecodedDirectoryBudget(m *wasm.Module, opts CompileOptions) erro
 	}
 	// Each published function retains entry offsets; compact data needs at
 	// least one 16-byte record. These are lower bounds, not temporary sizes.
-	if m == nil || !consume(len(m.Code)+m.ImportedFuncCount(), 16) || !consume(len(m.Globals)+m.ImportedGlobalCount(), 16) || !consume(len(m.Data), 16) {
+	if m == nil || len(m.Code) > MaxModuleFunctions || m.ImportedFuncCount() > MaxModuleFunctions-len(m.Code) || !consume(len(m.Code)+m.ImportedFuncCount(), 16) || !consume(len(m.Globals)+m.ImportedGlobalCount(), 16) || !consume(len(m.Data), 16) || !consume(len(m.Tables)+m.ImportedTableCount(), 32) || !consume(len(m.Exports), 16) {
 		return &coreruntime.ResourceLimitError{Resource: "metadata bytes", Scope: "compiled snapshot", Requested: limit + 1, Limit: limit}
 	}
 	for _, group := range m.Types {

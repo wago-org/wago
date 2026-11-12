@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build (linux || darwin || windows) && (amd64 || arm64) && !tinygo
 
 package runtime
@@ -23,6 +30,10 @@ func enterNative(code, serArgs, linMem, trap, results, stack uintptr) {
 	nativeExitSyscall()
 }
 
+// Bounded entry is reserved for a complete finite-work proof, including any
+// loops and native helpers. It returns to the Go stack before ordinary Go
+// preemption/GC can proceed; no Go callback may run on the foreign stack.
+//
 //go:nosplit
 func enterNativeBounded(code, serArgs, linMem, trap, results, stack uintptr) {
 	enterNativeRaw(code, serArgs, linMem, trap, results, stack)

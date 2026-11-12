@@ -2,7 +2,7 @@ set working-directory := '..'
 
 # Run every lint check used by CI.
 [default]
-all: fmt generated vet staticcheck scripts
+all: licenses fmt generated vet staticcheck scripts
 
 # Check Go formatting.
 fmt:
@@ -41,3 +41,8 @@ scripts:
     node --test scripts/update-website-startup.test.mjs
     node --test scripts/engine-state-oracle.test.mjs
     node --test scripts/fuzz-engine-state.test.mjs
+
+# Check project source notices and preserve upstream fixture licensing.
+licenses:
+    node scripts/license-headers.mjs --check
+    node --test scripts/license-headers.test.mjs

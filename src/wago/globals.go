@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
@@ -1374,6 +1381,8 @@ type Compiled struct {
 	// local, unexported, immutable, and limited to local function descriptors.
 	// Like direct-prepared entry selection, codecs conservatively discard it.
 	preparedIsolatedTables bool
+	// Fresh source proof; codecs deliberately omit conditional bulk-work limits.
+	boundedBulkPlans []uint64
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the
@@ -1695,7 +1704,9 @@ func (c *Compiled) validateImportedGlobal(key string, g *Global, imp GlobalImpor
 	} else if len(g.cell) < globalCellSize(g.Type) {
 		return fmt.Errorf("imported global %q storage is closed", key)
 	}
-	if actualType != imp.Type {
+	// Reference ABI categories can differ for valid subtypes (i31ref to
+	// anyref, for example). Compare their exact Wasm types below.
+	if actualType != imp.Type && (!isReferenceValType(actualType) || !isReferenceValType(imp.Type)) {
 		return fmt.Errorf("imported global %q has type %s, want %s", key, actualType, imp.Type)
 	}
 	if actualMutable != imp.Mutable {

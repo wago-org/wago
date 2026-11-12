@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -250,7 +257,7 @@ func ValidateCustomInstructions(m *wasm.Module, instructions map[uint32]railcore
 }
 
 func admitCustomInstructions(m *wasm.Module, instructions map[uint32]railcore.CustomInstruction) error {
-	if len(instructions) != 0 && (m == nil || len(instructions) > MaxHostFunctionImports || m.ImportedFuncCount() > MaxHostFunctionImports) {
+	if len(instructions) != 0 && (m == nil || len(instructions) > MaxFunctionImports || m.ImportedFuncCount() > MaxFunctionImports) {
 		return unsupported("RV64 plugin import directory bound")
 	}
 	for index, instruction := range instructions {

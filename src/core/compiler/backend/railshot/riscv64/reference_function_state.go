@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -10,7 +17,7 @@ type closedReferenceImports struct{ functions, globals, memories int }
 
 func countClosedReferenceImports(m *wasm.Module) (closedReferenceImports, error) {
 	var counts closedReferenceImports
-	if m == nil || len(m.Imports) > MaxProductionImports {
+	if m == nil || len(m.Imports) > MaxPublicImports {
 		return counts, unsupported("closed reference import directory bound")
 	}
 	for _, im := range m.Imports {
@@ -25,7 +32,7 @@ func countClosedReferenceImports(m *wasm.Module) (closedReferenceImports, error)
 			return counts, unsupported("closed reference numeric imports only")
 		}
 	}
-	if counts.functions > MaxHostFunctionImports || len(m.Code) > MaxFunctions-counts.functions || len(m.Globals) > 256-counts.globals || len(m.Memories) > MaxProductionMemories-counts.memories {
+	if counts.functions > MaxFunctionImports || len(m.Code) > MaxModuleFunctions-counts.functions || len(m.Globals) > 256-counts.globals || len(m.Memories) > MaxProductionMemories-counts.memories {
 		return counts, unsupported("closed reference import namespace bound")
 	}
 	return counts, nil

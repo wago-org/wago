@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -28,7 +35,7 @@ func admitPublicBranchHints(m *wasm.Module, public bool, remaining *int) error {
 		}
 		return nil
 	}
-	if customs > 1 || len(m.BranchHints) > MaxFunctions {
+	if customs > 1 {
 		return unsupported("branch hint section/group bound")
 	}
 	consume := func(count, width int) bool {

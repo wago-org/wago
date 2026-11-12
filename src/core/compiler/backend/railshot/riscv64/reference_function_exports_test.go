@@ -62,8 +62,8 @@ func TestReferenceFunctionResourceExports(t *testing.T) {
 			t.Fatal("exact combined export count", err)
 		}
 		m.Exports = append(m.Exports, wasm.Export{Name: "overflow", Index: wasm.ExternIdx{Kind: wasm.ExternGlobal, Index: 1}})
-		if err := admitClosedReferenceFunctionModule(m, vector); !errors.Is(err, ErrUnsupported) {
-			t.Fatal("combined export count overflow", err)
+		if err := admitClosedReferenceFunctionModule(m, vector); err != nil {
+			t.Fatal("combined export count above historical boundary", err)
 		}
 		m = referenceResourceDecode(t, vector, false, false)
 		buffer := make([]byte, MaxModuleBytes)

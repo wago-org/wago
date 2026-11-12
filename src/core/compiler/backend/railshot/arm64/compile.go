@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build arm64
 
 package arm64
@@ -180,6 +187,9 @@ type fn struct {
 	requiresLSE             bool // selected optional instructions in this function
 	scalarSummary           shared.ScalarSummary
 	dotLoop                 *dotLoopState
+	byteReduceLoop          *byteReduceState
+	filledCopyEnd           uint32
+	filledCopyByte          byte
 	pureReduce              *pureReduceJoin
 	// Physical frame access emitted by the shared lowerer, not logical state.
 	scalarFrameUsed bool

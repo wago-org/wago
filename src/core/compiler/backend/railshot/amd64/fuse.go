@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64
 
 package amd64
@@ -385,10 +392,12 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		loopHeader = false
 	}
 	cc := f.condenseToFlags(top)
+	directExit := false
 	if coldExit {
 		// Predicate evaluation can reclaim pins too. Snapshot the state actually
 		// present on the fallthrough path, after all deferred work has run.
 		saved, _ = f.snapshotLocalStates()
+		directExit = f.retainCallFreeLoopExitRegisters(fi)
 	} else if f.pinRelinquished {
 		// The compare can home a pin after the initial convergence. All lazy
 		// zeros were materialized above, so this repair emits only flag-preserving
@@ -399,6 +408,16 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		return nil
 	}
 	a := fr.branchArity()
+	if directExit && k == 0 && a == 0 && !loopHeader {
+		// Every pin already satisfies the register-only target. No reconciliation,
+		// payload move or handler restore can execute on this guarded void edge.
+		f.frameAddEnd(fr, f.a.JccPlaceholder(cc))
+		fr.set(ctrlEndReachable, true)
+		f.restoreLocalStates(saved)
+		f.stats.peep("callfree-loop-exit-cold")
+		f.stats.peep("callfree-loop-direct-exit")
+		return nil
+	}
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
 	if coldExit {
 		// MOV loads/stores used by local reconciliation preserve x86 flags, so

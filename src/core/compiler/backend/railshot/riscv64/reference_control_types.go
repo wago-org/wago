@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -189,13 +196,13 @@ func admitDeclaredControlSignature(sig *wasm.CompType, types internalReferenceTy
 // frontend validation expands type metadata. Both source paths share the charge;
 // reference encodings conservatively use a prefix plus a maximal S33 heap index.
 func chargeDeclaredTypeBytes(m *wasm.Module, remaining *int) error {
-	if len(m.Types) > MaxFunctions || *remaining < 0 {
+	if len(m.Types) > MaxTypeDeclarations || *remaining < 0 {
 		return unsupported("decoded declared type byte bound")
 	}
 	flatTypes := 0
 	for _, group := range m.Types {
 		flatTypes += len(group.SubTypes)
-		if flatTypes > MaxFunctions {
+		if flatTypes > MaxTypeDeclarations {
 			return unsupported("decoded declared type directory bound")
 		}
 		for subtypeIndex := range group.SubTypes {

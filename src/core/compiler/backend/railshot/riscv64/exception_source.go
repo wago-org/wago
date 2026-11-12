@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -282,7 +289,7 @@ func AdmitExceptionHandlingInitializers(m *wasm.Module) error {
 }
 
 func AdmitExceptionHandlingModule(m *wasm.Module) bool {
-	if m == nil || len(m.Code) > MaxFunctions || m.TagCount() > MaxFunctions {
+	if m == nil || len(m.Code) > MaxModuleFunctions || m.TagCount() > MaxModuleTags {
 		return false
 	}
 	hasException := m.TagCount() != 0 || exceptionReferenceDeclarations(m)

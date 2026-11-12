@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -119,7 +126,7 @@ func (f *integerEmitter) functionReferenceCast(base int, keys []uint64, nullable
 }
 
 func (f *integerEmitter) functionReferenceCastAt(base int, keys []uint64, nullable bool, spill func(int) int32, types ...uint32) {
-	if !f.mode.referenceCalls && f.mode.primitiveTailTypes == nil || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || len(keys) == 0 || len(keys) > MaxFunctions {
+	if !f.mode.referenceCalls && f.mode.primitiveTailTypes == nil || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || len(keys) == 0 || len(keys) > MaxTypeDeclarations {
 		f.err = unsupported("function ref.cast owner/signature contract")
 		return
 	}
@@ -158,7 +165,7 @@ func (f *integerEmitter) functionReferenceTest(base int, keys []uint64, nullable
 }
 
 func (f *integerEmitter) functionReferenceTestAt(base int, keys []uint64, nullable bool, spill func(int) int32, types ...uint32) {
-	if !f.mode.referenceFunctions && !f.mode.gcRootedScalar && f.mode.primitiveTailTypes == nil || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || len(keys) == 0 || len(keys) > MaxFunctions {
+	if !f.mode.referenceFunctions && !f.mode.gcRootedScalar && f.mode.primitiveTailTypes == nil || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || len(keys) == 0 || len(keys) > MaxTypeDeclarations {
 		f.err = unsupported("function ref.test owner/signature contract")
 		return
 	}

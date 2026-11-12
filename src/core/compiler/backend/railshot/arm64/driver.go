@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build arm64
 
 package arm64
@@ -69,6 +76,8 @@ func (f *fn) representationError() error {
 // synthetic frame, so its terminating `end` (which pops that frame) ends the loop
 // and returns control to the caller's body.
 func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+	// Each recursive inline reader keeps its own position in the sorted hints.
+	remainingHints := f.branchHints
 	for len(f.ctrl) > minCtrl {
 		if f.selectGroupEnd != 0 {
 			f.finishSelectGroup(r.Offset())
@@ -89,14 +98,11 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		f.branchHintUnlikely = false
 		if op == 0x0d {
 			off := f.branchHintLocalDecl + uint32(r.Offset()-1)
-			for i := range f.branchHints {
-				if f.branchHints[i].Offset == off {
-					f.branchHintUnlikely = !f.branchHints[i].Likely
-					break
-				}
-				if f.branchHints[i].Offset > off {
-					break
-				}
+			for len(remainingHints) > 0 && remainingHints[0].Offset < off {
+				remainingHints = remainingHints[1:]
+			}
+			if len(remainingHints) > 0 && remainingHints[0].Offset == off {
+				f.branchHintUnlikely = !remainingHints[0].Likely
 			}
 		}
 		var previous profileOrigin
@@ -223,7 +229,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if forwarded {
 			x = f.inlineForward[x32]
 		}
-		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.s.back() == nil {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}

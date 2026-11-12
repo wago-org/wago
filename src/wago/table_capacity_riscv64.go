@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -32,7 +39,7 @@ func (c *Compiled) setRV64ExecutionTableCapacities(values []uint32) {
 }
 
 func railshotStoreTableCapacities(c *Compiled, shapes []frontend.TableRuntimeShape) error {
-	if len(shapes) != c.tableCount() || len(shapes) > railshot.MaxFunctions {
+	if len(shapes) != c.tableCount() || len(shapes) > railshot.MaxModuleTables {
 		return fmt.Errorf("RV64 table reservation directory count")
 	}
 	different := false
@@ -64,7 +71,7 @@ func railshotValidateTableCapacities(c *Compiled) error {
 	if len(values) == 0 {
 		return nil
 	}
-	if len(values) != c.tableCount() || len(values) > railshot.MaxFunctions {
+	if len(values) != c.tableCount() || len(values) > railshot.MaxModuleTables {
 		return fmt.Errorf("RV64 table reservation directory count")
 	}
 	for index, value := range values {

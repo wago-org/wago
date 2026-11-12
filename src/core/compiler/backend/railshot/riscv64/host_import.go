@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -5,7 +12,7 @@ package riscv64
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 const (
-	MaxHostFunctionImports = 256
+	MaxHostFunctionImports = 256                                                      // legacy tail-owner/proxy policy; module admission uses MaxFunctionImports
 	MaxProductionImports   = MaxHostFunctionImports + 256 + MaxProductionMemories + 1 // functions, globals, memories, table
 	trapImportMissing      = 11
 	trapImportContext      = 12
@@ -22,7 +29,7 @@ func admitHostBindings(m *wasm.Module, opts *CompileOptions) error {
 			count++
 		}
 	}
-	if count > MaxHostFunctionImports {
+	if count > MaxFunctionImports {
 		return unsupported("aggregate function import bound")
 	}
 	if len(opts.ImportBindings) != count || (count == 0 && opts.SyncHostCalls && atomicHelperSlots(m) == 0 && !opts.OwnedExceptionReferences && !NeedsFunctionSubtypeHelpers(m)) {

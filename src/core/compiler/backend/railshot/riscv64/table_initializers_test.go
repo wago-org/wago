@@ -71,8 +71,8 @@ func TestPublicTableInitializerRejectBeforeStaging(t *testing.T) {
 
 func TestPublicTableInitializerCountPreflight(t *testing.T) {
 	m := &wasm.Module{Tables: make([]wasm.Table, MaxFunctions+1)}
-	if err := AdmitPublicInitializers(m); err == nil {
-		t.Fatal("table count not checked before initializer walk")
+	if err := AdmitPublicInitializers(m); err != nil {
+		t.Fatal("historical table count ceiling survived", err)
 	}
 }
 

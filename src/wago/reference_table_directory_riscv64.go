@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -30,7 +37,7 @@ func rv64ValidatePlainReferenceTableDirectory(c *Compiled, allow64 bool) error {
 	if rv64HasExternTable32(c) && !rv64SourceContractValid(c) {
 		return fmt.Errorf("public compact table32 requires an authenticated execution contract")
 	}
-	if c.tableCount() > railshot.MaxFunctions || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) && !allow64 {
+	if c.tableCount() > railshot.MaxModuleTables || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxModuleExports || !c.registerABIDisabled || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) && !allow64 {
 		return fmt.Errorf("public table32 directory requires bounded framed reference metadata")
 	}
 	for index := 0; index < c.tableCount(); index++ {

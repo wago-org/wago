@@ -257,14 +257,14 @@ function assertDOMContract(html) {
 	assert.doesNotMatch(html, />0(?:\.0)?ns</);
   assert.doesNotMatch(html, /<span class="vs__label">lua<\/span>/);
   assert.match(html, /Summary metrics · lower is better/);
-  assert.match(html, /<span class="vs__sub">fresh process<\/span>/);
+  assert.match(html, /<span class="vs__sub">per compile<\/span>/);
   assert.match(html, /<span class="vs__sub">runnable corpus<\/span>/);
-  assert.match(html, /<span class="vs__sub">compile \+ instantiate<\/span>/);
+  assert.match(html, /<span class="vs__sub">sum of geometric means<\/span>/);
   assert.equal(matches(html, /<div class="vs__group">Application corpora<\/div>/g), 8);
   for (const suite of ["embench", "sightglass", "tacle"]) {
     assert.equal(matches(html, new RegExp(`<span class="vs__label">${suite} · `, "g")), 8);
   }
-  assert.match(html, /End-to-end latency/);
+  assert.match(html, /Compile \+ instantiate/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);
   assert.doesNotMatch(html, /class="[^"]*"[^>]+class="/);

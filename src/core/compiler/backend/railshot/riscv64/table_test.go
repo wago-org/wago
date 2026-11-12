@@ -168,7 +168,7 @@ func TestProductionOwnedTableExportAliasBounds(t *testing.T) {
 		}
 		pressure := 0
 		image, err := CompileModuleWith(&m, CompileOptions{DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-		if count == MaxFunctions {
+		if count <= MaxModuleExports {
 			if err != nil || image == nil || len(image.Entry) != len(m.Code) || pressure != 1 {
 				t.Fatal("bounded aliases did not stage", err, pressure)
 			}

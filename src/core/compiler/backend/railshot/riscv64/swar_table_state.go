@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && !tinygo
 
 package riscv64
@@ -95,7 +102,7 @@ func (image *swarModuleImage) instantiateTablesWithArena(job *coreruntime.JobMem
 	if ctx.TablePtr != 0 || ctx.FuncRefDescPtr != 0 || ctx.PassiveElemPtr != 0 {
 		return nil, unsupported("SWAR table owner requires unbound job")
 	}
-	if allocate == nil || code == nil || len(image.code) == 0 || len(image.code) > MaxCodeBytes || len(code.Bytes()) != len(image.code) || !bytes.Equal(code.Bytes(), image.code) || len(image.functions) == 0 || len(image.functions) > MaxFunctions || len(image.functionKeys) != len(image.functions) || len(image.elements) > MaxOwnedElementSegments {
+	if allocate == nil || code == nil || len(image.code) == 0 || len(image.code) > MaxCodeBytes || len(code.Bytes()) != len(image.code) || !bytes.Equal(code.Bytes(), image.code) || len(image.functions) == 0 || len(image.functions) > MaxModuleFunctions || len(image.functionKeys) != len(image.functions) || len(image.elements) > MaxOwnedElementSegments {
 		return nil, unsupported("SWAR table owner image/code/directory bound")
 	}
 	previousEnd := 0

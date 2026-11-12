@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 // Package amd64 is the x86-64 instruction encoder (the Asm type) that the code
 // generator in backend/railshot drives to emit machine code. It holds only the
 // encoder, the Reg/Cond vocabulary, and the CompiledModule result type; the
@@ -1285,6 +1292,12 @@ func (a *Asm) Cld() { a.emit(0xFC) } // clear direction flag (increment)
 // sibAddr emits ModRM + SIB and the shortest displacement for a
 // [base + index + disp] operand (scale 1) with the given reg field.
 func (a *Asm) sibAddr(reg, base, index Reg, disp int32) {
+	// SIB index=RSP means no index (R12 remains a real index via REX.X).
+	// Use the ordinary base/displacement form when its encoding is shorter.
+	if index == RSP {
+		a.baseAddr(byte(reg), base, disp)
+		return
+	}
 	mod := addrMode(base, disp)
 	a.recordAddress(base, mod)
 	a.emit(

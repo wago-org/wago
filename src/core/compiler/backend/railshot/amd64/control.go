@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build amd64
 
 package amd64
@@ -1887,6 +1894,9 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 					f.stats.peep("callfree-loop-fconst")
 				}
 			}
+			if pN == 0 && rN == 0 {
+				f.emitByteReduceLoop(r)
+			}
 			if f.compactLoopAlign32 {
 				f.a.AlignLoop32()
 				f.stats.peep("compact-loop-align32")
@@ -2574,6 +2584,8 @@ func (f *fn) opEnd() error {
 		}
 		f.ehTryDepth--
 	}
+	f.finishByteReduceLoop(last + 1)
+
 	if fr.has(ctrlLoopPinExchange) {
 		f.restoreLoopPinExchange(f.ctrlMerge(&fr).loopPinPlan, endReachable)
 	}

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package wago
 
 import (
@@ -7,7 +14,7 @@ import (
 	"sync/atomic"
 )
 
-const maxRV64ExecutionTables = 1024
+const maxRV64ExecutionTables = (1<<31 - 1) / 32
 
 type rv64ExecutionContract struct {
 	digest   [sha256.Size]byte

@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 package amd64
 
 // EVEX helpers used by the wide-SIMD plugin path. The managed surface keeps
@@ -66,6 +73,11 @@ func (a *Asm) evexMemIdx(opcodeMap, pp, op byte, w bool, reg, base, index Reg, d
 	a.evexPrefix(opcodeMap, pp, w, reg, 0, base, index, true)
 	mod, encodedDisp := evexAddrMode(base, disp, tupleScale)
 	a.recordAddress(base, mod)
+	if index == RSP && base&7 != 4 {
+		a.emit(op, mod|byte(reg&7)<<3|byte(base&7))
+		a.emitDisp(mod, encodedDisp)
+		return
+	}
 	a.emit(op, mod|byte(reg&7)<<3|0x04)
 	a.emit(byte(index&7)<<3 | byte(base&7))
 	a.emitDisp(mod, encodedDisp)
@@ -127,4 +139,9 @@ func (a *Asm) XPrordImm(dst, src Reg, imm byte) {
 	}
 	p1 := byte(0x05) | ((^byte(dst) & 0x0f) << 3) // 66 prefix, W=0
 	a.emit(0x62, p0, p1, 0x08, 0x72, 0xc0|byte(src&7), imm)
+}
+
+// ZMovdqa64StoreIdx requires a 64-byte aligned effective address.
+func (a *Asm) ZMovdqa64StoreIdx(base, index, src Reg, disp int32) {
+	a.evexMemIdx(vexMap0F, 0b01, 0x7f, true, src, base, index, disp, 64)
 }

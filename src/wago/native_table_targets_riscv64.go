@@ -1,3 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Wago authors and contributors
+
 //go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
@@ -386,7 +393,7 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 		// The immutable owner snapshot has already authenticated every table's
 		// type and layout. Keep the reachability walk bounded without repeating
 		// source-profile hashing or rebuilding type graphs on this hot path.
-		if owner.c.tableCount() > railshot.MaxFunctions {
+		if owner.c.tableCount() > railshot.MaxModuleTables {
 			return fmt.Errorf("RV64 table target table directory bound")
 		}
 
