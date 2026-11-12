@@ -913,6 +913,7 @@ type scratch struct {
 	gcDefinedTestStubSites  []int
 	gcArrayRefGetSites      []int
 	gcCastArrayGetSites     [5][]int
+	gcTrustedCastGetSites   [5][]int
 	gcStructRefGetStubSites []int
 	gcStructRefSetStubSites []int
 	gcArrayRefSetStubSites  []int
@@ -1186,6 +1187,7 @@ func (sc *scratch) reset() {
 	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
 	for i := range sc.gcCastArrayGetSites {
 		sc.gcCastArrayGetSites[i] = sc.gcCastArrayGetSites[i][:0]
+		sc.gcTrustedCastGetSites[i] = sc.gcTrustedCastGetSites[i][:0]
 	}
 	sc.gcStructRefGetStubSites = sc.gcStructRefGetStubSites[:0]
 	sc.gcStructRefSetStubSites = sc.gcStructRefSetStubSites[:0]
