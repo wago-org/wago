@@ -3385,8 +3385,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// Guard mode removes the intervening bounds checks, so nearby accesses can
 	// straddle a control-flow join without executing the ADD that seeds X16.
 	sc.asm.ReuseIndexedBase = !guardMode && policy.EnabledOption(optIndexedBaseReuse)
+	// Repeated execution can repay the encoder's bitmask-matching work even
+	// when whole-function native compaction is disabled.
 	sc.asm.DisableLogicalMoveImmediate = !logicalMoveImmediateEnabled ||
-		!policy.CompactNative
+		(!policy.CompactNative && !hints.flags.has(hintHasLoop))
 	sc.asm.AllowSingleNegativeMove32 = policy.EnabledOption(optSingleNegativeMove32)
 	sc.asm.DisableCompactMoveImmediate32 = !compactMoveImmediate32Enabled ||
 		!policy.CompactNative
