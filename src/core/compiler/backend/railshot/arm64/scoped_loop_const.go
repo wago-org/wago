@@ -124,7 +124,7 @@ func (f *fn) preloadScopedLoopConsts(fr *ctrlFrame) {
 		}
 	}
 	base := f.iconstN
-	f.reserveLoopIntConsts(&h)
+	f.reserveLoopIntConsts(&h, true)
 	if f.iconstN != base {
 		fr.flags |= ctrlLoopConstScope | ctrlFlags(base)<<12
 		f.stats.peep("scoped-loop-int-const")

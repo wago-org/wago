@@ -37,10 +37,10 @@ func (f *fn) preloadLoopIntConsts(h *funcHintView) {
 	if !f.opt(optLoopIntConst) || f.makesCalls || h.loopIntConstCount == 0 {
 		return
 	}
-	f.reserveLoopIntConsts(h)
+	f.reserveLoopIntConsts(h, false)
 }
 
-func (f *fn) reserveLoopIntConsts(h *funcHintView) {
+func (f *fn) reserveLoopIntConsts(h *funcHintView, scoped bool) {
 	for i := 0; i < int(h.loopIntConstCount) && int(f.iconstN) < len(f.iconsts); i++ {
 		if h.loopIntConstTypes>>(2*i)&3 != 3 {
 			typ := mtI32
@@ -65,9 +65,11 @@ func (f *fn) reserveLoopIntConsts(h *funcHintView) {
 			}
 			if candidate == X14 || candidate == X13 {
 				// Fixed-register bulk/table/EH lowering cannot preserve scratch
-				// constants. Keep an ordinary temporary-register floor too.
+				// constants. A scoped lease has scanned the entire loop for those
+				// barriers, even if an unrelated table exists in the module.
+				// Keep an ordinary temporary-register floor too.
 				if h.flags.has(hintUsesBulkMem|hintMutatesTable|hintModuleEH) || f.moduleEH ||
-					(f.m != nil && len(f.m.Tables) != 0) || len(f.customInstructions) != 0 {
+					(f.m != nil && len(f.m.Tables) != 0 && (!scoped || !wideScopedLoopConstsEnabled)) || len(f.customInstructions) != 0 {
 					continue
 				}
 				free := 0

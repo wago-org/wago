@@ -152,8 +152,23 @@ func TestWideScopedConstPreservesLiveGP(t *testing.T) {
 	f.regUser[X14] = owner
 	f.regUser[X13] = owner
 	h := funcHintView{loopIntConstCount: 1, loopIntConstTypes: 2, loopIntConst: [4]int64{-4417276706812531889}}
-	f.reserveLoopIntConsts(&h)
+	f.reserveLoopIntConsts(&h, true)
 	if f.iconstN != 0 || f.regUser[X14] != owner || f.regUser[X13] != owner {
 		t.Fatal("leased an occupied register")
+	}
+}
+
+func TestScopedScratchLeaseWithModuleTable(t *testing.T) {
+	old := wideScopedLoopConstsEnabled
+	wideScopedLoopConstsEnabled = true
+	t.Cleanup(func() { wideScopedLoopConstsEnabled = old })
+	for _, scoped := range []bool{false, true} {
+		f := fn{a: &a64.Asm{}, policy: currentCodegenPolicy(), m: &wasm.Module{Tables: []wasm.Table{{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc)}}}}}
+		f.pinnedLocalMask = maskOf(X25).union(maskOf(X24)).union(maskOf(X23)).union(maskOf(X27))
+		h := funcHintView{loopIntConstCount: 1, loopIntConstTypes: 2, loopIntConst: [4]int64{-4417276706812531889}}
+		f.reserveLoopIntConsts(&h, scoped)
+		if (f.iconstN != 0) != scoped {
+			t.Fatalf("scoped=%v leases=%d", scoped, f.iconstN)
+		}
 	}
 }
