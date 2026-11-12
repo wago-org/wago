@@ -6,6 +6,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Performance
+
+- Keep AMD64 16-bit widening vector multiplication in SIMD registers on SSE2,
+  using word-product halves instead of the scalar PMULLD fallback.
+
 ## [v0.1.0-beta.14] - 2026-11-11
 
 ### Breaking

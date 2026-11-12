@@ -1598,17 +1598,9 @@ func (f *fn) i32x4ExtmulI16x8(signed, high bool) {
 	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.add(xb)
 
-	if signed {
-		if high {
-			opVPunpckhwd.emit(f, xa, xa, xa)
-			opVPunpckhwd.emit(f, xb, xb, xb)
-		} else {
-			opVPunpcklwd.emit(f, xa, xa, xa)
-			opVPunpcklwd.emit(f, xb, xb, xb)
-		}
-		opVPsradImm.emit(f, xa, xa, 16)
-		opVPsradImm.emit(f, xb, xb, 16)
-	} else {
+	// On SSE4.1-capable CPUs the unsigned extend/PMULLD sequence retains
+	// a shorter dependency chain in measured repeated-use cases.
+	if !signed && f.cpuHas(shared.AMD64SSE41) {
 		z := f.allocFReg(maskOf(xa, xb))
 		opVPxor.emit(f, z, z, z)
 		if high {
@@ -1619,10 +1611,31 @@ func (f *fn) i32x4ExtmulI16x8(signed, high bool) {
 			opVPunpcklwd.emit(f, xb, xb, z)
 		}
 		f.releaseF(z)
+		f.fpinned = f.fpinned.remove(xa).remove(xb)
+		opVPmulld.emit(f, xa, xa, xb)
+		f.releaseF(xb)
+		f.pushVReg(xa)
+		return
 	}
+
+	// Keep the low and high halves of each word product, then interleave
+	// the selected four lanes into full-width dwords. All three operations
+	// are available on SSE2, avoiding PMULLD's scalar fallback.
+	hi := f.allocFReg(maskOf(xa, xb))
+	if signed {
+		opVPmulhw.emit(f, hi, xa, xb)
+	} else {
+		opVPmulhuw.emit(f, hi, xa, xb)
+	}
+	opVPmullw.emit(f, xa, xa, xb)
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
-	opVPmulld.emit(f, xa, xa, xb)
 	f.releaseF(xb)
+	if high {
+		opVPunpckhwd.emit(f, xa, xa, hi)
+	} else {
+		opVPunpcklwd.emit(f, xa, xa, hi)
+	}
+	f.releaseF(hi)
 	f.pushVReg(xa)
 }
 
