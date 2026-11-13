@@ -193,6 +193,12 @@ func SkipInstructionImmediateWithMemarg64(r *Reader, op byte, memarg64 bool) err
 // It retains the classifier's memory-index grammar and per-memory offset width.
 
 func (c ModuleInstructionClassifier) SkipScalarMemoryImmediate(r *Reader) error {
+	// Most memory accesses have an implicit memory index and one-byte offset.
+	// This encoding has the same extent for both 32- and 64-bit memories.
+	if r.pos+1 < len(r.data) && r.data[r.pos] < 64 && r.data[r.pos+1] < 0x80 {
+		r.pos += 2
+		return nil
+	}
 	internal := reader{data: r.data, pos: r.pos}
 	err := skipScalarMemoryImmediate(&internal, c.widths, c.multiMemory)
 	r.pos = internal.pos
