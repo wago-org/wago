@@ -2717,19 +2717,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 // directCalleePreservesPins returns the module-precomputed leaf classification
 // for one direct target. This is compile-time only; execution stays a plain BL.
 func (f *fn) directCalleePreservesPins(localIdx int) bool {
-	// Even a pin-preserving leaf can throw. An active catch needs current local
-	// homes, so keep the spill-managed call path until this try_table ends.
-	if f.ehTryDepth != 0 {
+	// A catch needs current local homes. The leaf proof also reserves only GP
+	// pins: even an integer-signature leaf may use FP or SIMD scratch registers.
+	if f.ehTryDepth != 0 || f.fpinnedLocalMask != 0 {
 		return false
-	}
-	// The leaf proof reserves caller GP pins, but an integer-signature leaf can
-	// still use SIMD temporaries. It does not reserve the caller's V registers.
-	if f.fpinnedLocalMask != 0 {
-		for i := 0; i < f.nLocals; i++ {
-			if f.localType[i] == mtV128 && f.locals[i].reg != regNone {
-				return false
-			}
-		}
 	}
 	if localIdx < 0 || localIdx >= len(f.calleeHints) {
 		return false
