@@ -1710,6 +1710,39 @@ func (f *fn) fillLoop(dst, pat, n Reg) {
 	f.a.FmovFromGpr(vec, pat, true)
 	f.a.NeonInsD(vec, pat, 1)
 	if f.opt(optBulkMemoryLoops) {
+		// DC ZVA is optional at EL0. Admit only allowed 64/128-byte blocks,
+		// and zero a complete in-range prefix before aligning the cursor.
+		nonzero := f.a.Cbnz64(pat)
+		f.cmpImm(n, 1024, true)
+		short := f.a.Bcond(condB)
+		f.a.ReadDCZID(X16)
+		f.a.AndImm32(X16, X16, 31) // DZP plus log2(block bytes / 4).
+		f.a.SubImm32(X16, X16, 4)
+		f.cmpImm(X16, 1, false)
+		unsupported := f.a.Bcond(condA)
+		f.a.MovImm64(X12, 64)
+		f.a.Lslv64(X12, X12, X16)
+		for offset := int32(0); offset < 128; offset += 32 {
+			f.a.StpQ(vec, vec, dst, offset)
+		}
+		f.a.SubImm64(X17, X12, 1)
+		f.a.And64(X16, dst, X17)
+		f.a.Sub64(X16, X12, X16)
+		f.a.Add64(dst, dst, X16)
+		f.a.Sub64(n, n, X16)
+		loop := f.a.Len()
+		f.a.CmpReg64(n, X12)
+		tail := f.a.Bcond(condB)
+		f.a.ZeroCacheLine(dst)
+		f.a.Add64(dst, dst, X12)
+		f.a.Sub64(n, n, X12)
+		f.patchBranch26(f.a.Branch(), loop)
+		f.patchBranch19(tail, f.a.Len())
+		f.patchBranch19(nonzero, f.a.Len())
+		f.patchBranch19(short, f.a.Len())
+		f.patchBranch19(unsupported, f.a.Len())
+	}
+	if f.opt(optBulkMemoryLoops) {
 		f.cmpImm(n, 256, true)
 		small := f.a.Bcond(condB)
 		f.a.AndImm64(X16, dst, 31)

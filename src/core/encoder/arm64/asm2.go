@@ -1284,6 +1284,17 @@ func (a *Asm) Stur32(rt, rn Reg, off int32) {
 // Nop is the canonical A64 no-op.
 func (a *Asm) Nop() { a.word(0xD503201F) }
 
+// ReadDCZID reads the EL0 zeroing permission and cache-block size descriptor.
+func (a *Asm) ReadDCZID(dst Reg) {
+	a.word(0xD53B00E0 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(dst, false))
+	}
+}
+
+// ZeroCacheLine requires a permitted DC ZVA block fully inside validated memory.
+func (a *Asm) ZeroCacheLine(address Reg) { a.word(0xD50B7420 | r(address)) }
+
 // Nop4 emits four canonical no-ops with one slice-capacity check. Loop-header
 // phase padding uses this exact fixed-width run for every admitted poll-free
 // loop, so keeping it as one encoder operation avoids four append checks in a

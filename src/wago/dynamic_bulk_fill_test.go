@@ -51,8 +51,12 @@ func TestDynamicBulkFillBoundaries(t *testing.T) {
 					defer c.Close()
 					cases := []*Compiled{c}
 					if !guardPageBuilt {
-
-						cases = append(cases, c)
+						fallback, err := NewRuntimeConfig().WithCoreFeatures(features).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", abi).WithOptimization("bulk-memory-loops", false).Compile(dynamicBulkFillModule(shared, index))
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer fallback.Close()
+						cases = append(cases, fallback)
 					}
 					for _, compiled := range cases {
 						in, err := Instantiate(compiled)
@@ -67,8 +71,8 @@ func TestDynamicBulkFillBoundaries(t *testing.T) {
 						mem := memory.UnsafeBytes()
 						before := bytes.Repeat([]byte{0x5a}, len(mem))
 						want := bytes.Clone(before)
-						for _, n := range []int{0, 1, 7, 8, 15, 16, 31, 32, 33, 63, 64, 65, 95, 96, 127, 128, 129, 255, 256, 257, 1023, 1024, 4096, 65535, 65536} {
-							for _, dst := range []int{0, 1, 7, 15, 31, len(mem) - n} {
+						for _, n := range []int{0, 1, 7, 8, 15, 16, 31, 32, 33, 63, 64, 65, 95, 96, 127, 128, 129, 255, 256, 257, 1023, 1024, 1025, 1151, 1152, 1153, 2047, 2048, 2049, 4096, 65535, 65536} {
+							for _, dst := range []int{0, 1, 7, 15, 31, 63, 64, 65, 127, 128, 129, len(mem) - n} {
 								if dst+n > len(mem) {
 									continue
 								}
