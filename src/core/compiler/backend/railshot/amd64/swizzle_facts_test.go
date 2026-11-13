@@ -5,14 +5,15 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build amd64
+//go:build linux && amd64
 
 package amd64
 
 import (
+	"testing"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"testing"
 )
 
 func TestSwizzleFactMetadataAndTransfer(t *testing.T) {
