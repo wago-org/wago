@@ -1919,10 +1919,76 @@ func (f *fn) dataDrop(r *wasm.Reader) error {
 	return nil
 }
 
-// memoryCopy lowers memory.copy with memmove semantics (overlap-safe). The three
-// i32 operands (dst, src, n) are read from canonical slots into the scratch
-// registers X9/X10/X11. The bulk hint excludes X9-X14 from local/global pins;
-// the flush releases their transient operand owners.
+// stageBulkOperands preserves the operand prefix while moving the three integer
+// operands to the bulk helper's fixed registers. It follows the same capture,
+// prefix flush, parallel move and deferred-load order used by register calls.
+func (f *fn) stageBulkOperands(targets [3]Reg) int {
+	roots := f.rootsBottomToTop()
+	d := len(roots)
+	args := [3]*elem{roots[d-3], roots[d-2], roots[d-1]}
+	belowSlots := slotsOfTypes(f.logicalTypes(roots[:d-3]))
+	var moves [3]regMove
+	var deferred [3]deferredArg
+	nMoves, nDeferred := 0, 0
+	savedPinned := f.pinned
+	for i, root := range args {
+		capture := root.isDeferred()
+		if root.elemKind() == ekValue {
+			switch root.st.kind {
+			case stReg, stLocalReg, stGlobReg, stMemRef:
+				capture = true
+			case stSlot:
+				capture = root.st.slotIndex() < belowSlots
+			}
+		}
+		if capture {
+			var reg Reg
+			if root.elemKind() == ekValue && root.st.kind == stLocalReg {
+				reg = root.st.reg
+			} else {
+				reg = f.materialize(root)
+			}
+			f.pinned = f.pinned.add(reg)
+			moves[nMoves] = regMove{dst: targets[i], src: reg}
+			nMoves++
+		} else {
+			deferred[nDeferred] = deferredArg{target: targets[i], root: root}
+			nDeferred++
+		}
+	}
+	f.flushBelow(args[0])
+	f.pinned = savedPinned
+	var checkMoves func()
+	if regallocCheckEnabled {
+		checkMoves = f.checkBeginRegMoves(moves[:nMoves], false)
+		defer checkMoves()
+	}
+	resolveRegMoves(moves[:nMoves], func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(a, b Reg) {
+		f.a.MovReg64(X16, a)
+		f.a.MovReg64(a, b)
+		f.a.MovReg64(b, X16)
+	})
+	if regallocCheckEnabled {
+		checkMoves()
+	}
+	for _, arg := range deferred[:nDeferred] {
+		switch arg.root.st.kind {
+		case stConst:
+			f.loadConst(arg.target, arg.root.st)
+		case stSlot:
+			f.ld64(arg.target, SP, f.spillOff(arg.root.st.slotIndex()))
+		case stLocalRef:
+			f.ld64(arg.target, SP, f.localOff(arg.root.st.index()))
+		default:
+			panic("arm64: unsupported bulk operand")
+		}
+	}
+	return d
+}
+
+// memoryCopy lowers memory.copy with memmove semantics (overlap-safe). The
+// address-width operands are staged in X9/X10/X11; the bulk hint excludes
+// fixed scratch registers from long-lived local/global pins.
 func (f *fn) memoryCopy(r *wasm.Reader) error {
 	dstMemory, err := r.U32()
 	if err != nil {
@@ -1945,15 +2011,8 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		}
 	}
 	f.materializePendingLoads()
-	f.flush()
-	d := f.depth()
-	countArg := f.s.back()
-	valueArg := f.s.prev(countArg)
-	dstArg := f.s.prev(valueArg)
 	const dst, src, count, scratch = X9, X10, X11, X12
-	f.ld64(dst, SP, f.spillOff(dstArg.st.slotIndex()))     // dst offset
-	f.ld64(src, SP, f.spillOff(valueArg.st.slotIndex()))   // src offset
-	f.ld64(count, SP, f.spillOff(countArg.st.slotIndex())) // n
+	d := f.stageBulkOperands([3]Reg{dst, src, count})
 	if !f.memoryAddr64(dstMemory) {
 		f.a.MovReg32(dst, dst)
 	}
