@@ -2722,6 +2722,15 @@ func (f *fn) directCalleePreservesPins(localIdx int) bool {
 	if f.ehTryDepth != 0 {
 		return false
 	}
+	// The leaf proof reserves caller GP pins, but an integer-signature leaf can
+	// still use SIMD temporaries. It does not reserve the caller's V registers.
+	if f.fpinnedLocalMask != 0 {
+		for i := 0; i < f.nLocals; i++ {
+			if f.localType[i] == mtV128 && f.locals[i].reg != regNone {
+				return false
+			}
+		}
+	}
 	if localIdx < 0 || localIdx >= len(f.calleeHints) {
 		return false
 	}

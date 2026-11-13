@@ -145,12 +145,9 @@ var (
 	unaryLocalSinkEnabled   = os.Getenv("WAGO_ARM64_NOUNARYSINK") != "1"
 	teeLocalSinkEnabled     = os.Getenv("WAGO_ARM64_NOTEESINK") != "1"
 	// v128LocalPinsEnabled caches hot v128 locals in NEON V registers for the whole
-	// function, exactly like the scalar-float pin pool. Restricted to CALL-FREE
-	// functions: a wasm→wasm call only preserves the low 64 bits of the AAPCS64
-	// callee-saved V range (and the STACK_REG spill helpers store 64-bit S/D), so a
-	// 128-bit pin cannot survive a call. In a call-free function nothing clobbers the
-	// register between the prologue init and the epilogue, so the full 128 bits stay
-	// live and every local.get/set becomes a register op instead of LdrQ/StrQ.
+	// function, exactly like the scalar-float pin pool. Calls spill and lazily
+	// restore the full 128 bits through the existing local-state machinery; the
+	// AAPCS64 callee-saved low half alone is not sufficient for a vector local.
 	v128LocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_V128_PINS") != "1"
 )
 
@@ -4250,10 +4247,9 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		}
 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
 	}
-	// Float locals use the separate V pin pool. Call-free functions also pin hot
-	// v128 locals here (same V registers, full 128-bit): a wasm→wasm call would only
-	// preserve the low 64 bits, so a v128 pin is confined to the call-free class.
-	pinV128 := f.opt(optV128Pins) && !hasCall
+	// Float and v128 locals share the V pin pool. Call boundaries home vector
+	// locals at full width and recover them lazily after the call.
+	pinV128 := f.opt(optV128Pins)
 	hotV128Candidates := 0
 	if pinLocals && f.nLocals <= 64 {
 		for i := 0; i < f.nLocals; i++ {
