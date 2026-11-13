@@ -50,7 +50,6 @@ func (p *integerWordMapPlan) elementBytes() uint32 {
 // the screen, are charged to one finite per-function work counter.
 func (f *fn) hasIntegerWordMapPrefix(source *wasm.Reader) bool {
 	r := *source
-	var imm wasm.InstructionImmediate
 	for i := 0; i < 24 && f.integerWordMapWork < integerWordMapWorkLimit; i++ {
 		f.integerWordMapWork++
 		op, err := r.Byte()
@@ -60,10 +59,16 @@ func (f *fn) hasIntegerWordMapPrefix(source *wasm.Reader) bool {
 		switch op {
 		case 0x6c, 0x71, 0x72, 0x73, 0x74, 0x76:
 			return true
-		case 0x20, 0x21, 0x22, 0x41, 0x6a, 0x6b:
-			if f.classifier.ClassifyInto(&r, op, &imm) != nil {
+		case 0x20, 0x21, 0x22:
+			if _, err := r.U32(); err != nil {
 				return false
 			}
+		case 0x41:
+			if _, err := r.I32(); err != nil {
+				return false
+			}
+		case 0x6a, 0x6b:
+			// Fixed-width arithmetic has no immediate.
 		default:
 			return false
 		}

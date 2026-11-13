@@ -184,6 +184,48 @@ func TestIntegerWordMapProbeBudgetsAndOwnedReads(t *testing.T) {
 	}
 }
 
+func TestIntegerWordMapPrefixDecoding(t *testing.T) {
+	m := integerWordMapFixture(t, 2, true, true, 0, 32, 128, 4, 17, 0x9e3779b9, 16)
+	for _, body := range [][]byte{
+		{0x20, 0x80, 0x01, 0x41, 0x7f, 0x6a, 0x6c},
+		{0x21, 0, 0x22, 1, 0x6b, 0x71},
+		{0x20}, {0x20, 0x80}, {0x41}, {0x41, 0x80},
+		{0x20, 0x80, 0x80, 0x80, 0x80, 0x10, 0x6c},
+		{0x41, 0x80, 0x80, 0x80, 0x80, 0x10, 0x6c},
+		{0x20, 0, 0x28, 0, 0},
+	} {
+		for _, work := range []uint16{0, integerWordMapWorkLimit - 1, integerWordMapWorkLimit} {
+			classifier := wasm.NewModuleInstructionClassifier(m, true)
+			r := wasm.ReaderFrom(body)
+			scan := r
+			want, expectedWork := false, work
+			var imm wasm.InstructionImmediate
+			for i := 0; i < 24 && expectedWork < integerWordMapWorkLimit; i++ {
+				expectedWork++
+				op, err := scan.Byte()
+				if err != nil {
+					break
+				}
+				if op == 0x6c || op == 0x71 || op == 0x72 || op == 0x73 || op == 0x74 || op == 0x76 {
+					want = true
+					break
+				}
+				if op != 0x20 && op != 0x21 && op != 0x22 && op != 0x41 && op != 0x6a && op != 0x6b {
+					break
+				}
+				if classifier.ClassifyInto(&scan, op, &imm) != nil {
+					break
+				}
+			}
+			f := fn{classifier: classifier, integerWordMapWork: work}
+			got := f.hasIntegerWordMapPrefix(&r)
+			if got != want || f.integerWordMapWork != expectedWork || r.Offset() != 0 {
+				t.Fatalf("body %x work %d: got %v/%d offset %d, want %v/%d", body, work, got, f.integerWordMapWork, r.Offset(), want, expectedWork)
+			}
+		}
+	}
+}
+
 func TestIntegerWordMapOperationRecipes(t *testing.T) {
 	old := integerWordMapEnabled
 	defer func() { integerWordMapEnabled = old }()
