@@ -703,11 +703,15 @@ func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes u
 }
 
 func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes uint32, kind gcSharedStubKind) (obj Reg, done func()) {
-	obj = f.emitSharedCheckedGCObjectPinned(object, localType, requiredBytes, kind)
+	obj = f.emitSharedCheckedGCObjectPinnedTrap(object, localType, requiredBytes, kind, trapNullReference)
 	return obj, func() { f.pinned = f.pinned.remove(RAX) }
 }
 
 func (f *fn) emitSharedCheckedGCObjectPinned(object *elem, localType, requiredBytes uint32, kind gcSharedStubKind) Reg {
+	return f.emitSharedCheckedGCObjectPinnedTrap(object, localType, requiredBytes, kind, trapNullReference)
+}
+
+func (f *fn) emitSharedCheckedGCObjectPinnedTrap(object *elem, localType, requiredBytes uint32, kind gcSharedStubKind, nullTrap uint32) Reg {
 	ref := f.materialize(object)
 	if ref != RAX {
 		f.a.MovReg64(RAX, ref)
@@ -725,8 +729,10 @@ func (f *fn) emitSharedCheckedGCObjectPinned(object *elem, localType, requiredBy
 
 	f.a.TestSelf(RDX, false)
 	success := f.a.JccPlaceholder(condE)
-	f.a.AluRI(cmpDigit, RDX, int32(trapNullReference), false)
-	f.trapIf(condE, trapNullReference)
+	if nullTrap != trapCastFailure {
+		f.a.AluRI(cmpDigit, RDX, int32(trapNullReference), false)
+		f.trapIf(condE, nullTrap)
+	}
 	f.trapAlways(trapCastFailure)
 	f.a.PatchRel32(success, f.a.Len())
 	f.pinned = f.pinned.add(RAX)
@@ -971,6 +977,49 @@ func (f *fn) emitNativeFinalCastStructScalarGet(typeIndex, fieldOffset uint32, s
 	default:
 		f.a.LoadIdx(RAX, RAX, RSP, disp, scalar.size, signed, scalar.typ == mtI64)
 		f.pushReg(RAX, scalar.typ)
+	}
+	return nil
+}
+
+// emitNativeOpenCastStructScalarGet resolves one dynamic cast to an open
+// struct and immediately reads an inherited scalar field. The shared subtype
+// resolver proves the canonical relation, complete object extent, and stable
+// field layout before it returns the short-lived raw object address.
+func (f *fn) emitNativeOpenCastStructScalarGet(typeIndex, fieldOffset uint32, scalar directGCScalar, signed, nullable bool) error {
+	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + uint64(scalar.size)
+	if required > math.MaxInt32 {
+		return fmt.Errorf("amd64: open struct field extent %d exceeds native immediate", required)
+	}
+	f.flush()
+	oldFloor := f.spillFloor
+	f.spillFloor = f.curSpillSlot()
+	object := f.popValue()
+	nullTrap := uint32(trapCastFailure)
+	if nullable {
+		nullTrap = trapNullReference
+	}
+	obj := f.emitSharedCheckedGCObjectPinnedTrap(object, typeIndex, uint32(required), gcSharedStubResolveSubtypeObject, nullTrap)
+	done := func() { f.pinned = f.pinned.remove(RAX) }
+	disp := int32(gc.PayloadOffset + fieldOffset)
+	switch {
+	case scalar.typ == mtV128:
+		x := f.allocFReg(0)
+		f.mov128LoadDisp(x, obj, disp)
+		done()
+		f.spillFloor = oldFloor
+		f.pushVReg(x)
+	case scalar.typ.isFloat():
+		x := f.allocFReg(0)
+		f.a.FLoadDisp(x, obj, disp, scalar.typ == mtF64)
+		done()
+		f.spillFloor = oldFloor
+		f.pushFReg(x, scalar.typ)
+	default:
+		result := f.allocReg(maskOf(obj))
+		f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64)
+		done()
+		f.spillFloor = oldFloor
+		f.pushReg(result, scalar.typ)
 	}
 	return nil
 }
