@@ -442,3 +442,25 @@ func TestLoopSetScanKeepsImmediatesNestingAndWideLocals(t *testing.T) {
 		}
 	}
 }
+
+func TestLoopSetScanScalarMemoryImmediates(t *testing.T) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	var body []byte
+	for op := byte(0x28); op <= 0x3e; op++ {
+		// The alignment and offset look like a loop end and a call opcode;
+		// neither may be interpreted as an instruction.
+		body = append(body, op, 0x0b, 0x10)
+	}
+	body = append(body, 0x21, 7, 0x0b)
+	r := wasm.ReaderFrom(body)
+	got, calls := scanLoopSetLocals(&r, classifier, nil, nil)
+	if calls || len(got) != 1 || got[0] != 7 || r.Offset() != 0 {
+		t.Fatalf("scan = %v, calls=%v, offset=%d", got, calls, r.Offset())
+	}
+	for _, malformed := range [][]byte{{0x28}, {0x28, 0}, {0x28, 0x40, 0x80}} {
+		r := wasm.ReaderFrom(malformed)
+		if _, calls := scanLoopSetLocals(&r, classifier, nil, nil); !calls || r.Offset() != 0 {
+			t.Fatalf("malformed loop %x admitted: calls=%v, offset=%d", malformed, calls, r.Offset())
+		}
+	}
+}

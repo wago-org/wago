@@ -1597,6 +1597,14 @@ func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifi
 		if op >= 0x45 && op <= 0xc4 {
 			continue
 		}
+		// Scalar memory accesses cannot write locals or call a helper. Skip
+		// their memarg directly, retaining module-specific memory widths.
+		if op >= 0x28 && op <= 0x3e {
+			if err := classifier.SkipScalarMemoryImmediate(r); err != nil {
+				return nil, true
+			}
+			continue
+		}
 		if op >= 0x20 && op <= 0x22 {
 			index, err := r.U32()
 			if err != nil || op != 0x20 && index > uint32(^uint16(0)) {
