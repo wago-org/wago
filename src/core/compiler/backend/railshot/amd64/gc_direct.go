@@ -921,7 +921,7 @@ func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
 	return nil
 }
 
-func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, fieldBytes uint32, nullable bool) error {
+func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, required uint32, nullable bool) error {
 	object := f.popValue()
 	f.flush()
 	ref := f.materialize(object)
@@ -929,7 +929,6 @@ func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, field
 		f.a.MovReg64(RAX, ref)
 	}
 	f.release(ref)
-	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + uint64(fieldBytes)
 	if required > math.MaxInt32 {
 		return fmt.Errorf("amd64: final struct field extent %d exceeds native immediate", required)
 	}
@@ -949,34 +948,103 @@ func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, field
 	return nil
 }
 
-func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, nullable bool) error {
-	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, 4, nullable); err != nil {
+// A final cast/get can retain the same transient raw-address certificate as an
+// ordinary direct struct.get. The certificate is valid only for an unchanged
+// source local, one final type, and the checked byte extent. Calls, allocation,
+// control flow, and writes to the source local invalidate it centrally.
+func (f *fn) emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffset, fieldBytes uint32, nullable, cache bool) (Reg, error) {
+	required64 := uint64(gc.PayloadOffset) + uint64(fieldOffset) + uint64(fieldBytes)
+	if required64 > math.MaxInt32 {
+		return regNone, fmt.Errorf("amd64: final struct field extent %d exceeds native immediate", required64)
+	}
+	required := uint32(required64)
+	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok && layout.Type.Final {
+		if layout.ObjectSize <= math.MaxInt32 && layout.ObjectSize >= required {
+			required = layout.ObjectSize
+		}
+	} else if st, ok := f.stagedStructType(typeIndex); ok && st.Final {
+		// Direct CompileModuleWith callers do not always provide precomputed GC
+		// metadata. Derive the checked field extent without allocating the native
+		// constructor's temporary field slice.
+		for i := range st.Comp.Fields {
+			field, _, found := f.gcStructFieldLayout(typeIndex, uint32(i))
+			if !found {
+				break
+			}
+			end := uint64(gc.PayloadOffset) + uint64(field.Offset) + uint64(field.Size)
+			if end > math.MaxInt32 {
+				break
+			}
+			if uint32(end) > required {
+				required = uint32(end)
+			}
+		}
+	}
+	local, hasLocal := gcLocalProvenance(f.s.back())
+	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
+		f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex && required <= f.gcResolved.requiredBytes {
+		f.dropValue()
+		f.stats.addGCHandleResolutionReuse()
+		f.stats.peep("gc-final-cast-resolve-reuse")
+		return f.gcResolved.reg, nil
+	}
+
+	f.invalidateGCResolvedObject()
+	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, required, nullable); err != nil {
+		return regNone, err
+	}
+	if !cache || !gcResolveReuseEnabled || !hasLocal {
+		return RAX, nil
+	}
+	cacheReg := f.gcResolvedRegister()
+	if cacheReg == regNone {
+		return RAX, nil
+	}
+	f.a.MovReg64(cacheReg, RAX)
+	f.pinned = f.pinned.add(cacheReg)
+	f.gcResolved = gcResolvedObject{valid: true, local: local, typeIndex: typeIndex, requiredBytes: required, reg: cacheReg}
+	f.stats.peep("gc-final-cast-resolve-cache")
+	return cacheReg, nil
+}
+
+func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, nullable, cache bool) error {
+	obj, err := f.emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffset, 4, nullable, cache)
+	if err != nil {
 		return err
 	}
-	f.a.Load32(RAX, RAX, int32(gc.PayloadOffset+fieldOffset))
-	result := f.pushReg(RAX, mtI64)
+	resultReg := obj
+	if obj != RAX {
+		resultReg = f.allocReg(maskOf(obj))
+	}
+	f.a.Load32(resultReg, obj, int32(gc.PayloadOffset+fieldOffset))
+	result := f.pushReg(resultReg, mtI64)
 	result.st.setValueFacts(factGCStoredRef)
 	f.setStackGCRoot(result, true)
 	return nil
 }
 
-func (f *fn) emitNativeFinalCastStructScalarGet(typeIndex, fieldOffset uint32, scalar directGCScalar, signed, nullable bool) error {
-	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, uint32(scalar.size), nullable); err != nil {
+func (f *fn) emitNativeFinalCastStructScalarGet(typeIndex, fieldOffset uint32, scalar directGCScalar, signed, nullable, cache bool) error {
+	obj, err := f.emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffset, uint32(scalar.size), nullable, cache)
+	if err != nil {
 		return err
 	}
 	disp := int32(gc.PayloadOffset + fieldOffset)
 	switch {
 	case scalar.typ == mtV128:
 		x := f.allocFReg(0)
-		f.mov128LoadDisp(x, RAX, disp)
+		f.mov128LoadDisp(x, obj, disp)
 		f.pushVReg(x)
 	case scalar.typ.isFloat():
 		x := f.allocFReg(0)
-		f.a.FLoadDisp(x, RAX, disp, scalar.typ == mtF64)
+		f.a.FLoadDisp(x, obj, disp, scalar.typ == mtF64)
 		f.pushFReg(x, scalar.typ)
 	default:
-		f.a.LoadIdx(RAX, RAX, RSP, disp, scalar.size, signed, scalar.typ == mtI64)
-		f.pushReg(RAX, scalar.typ)
+		result := obj
+		if obj != RAX {
+			result = f.allocReg(maskOf(obj))
+		}
+		f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64)
+		f.pushReg(result, scalar.typ)
 	}
 	return nil
 }

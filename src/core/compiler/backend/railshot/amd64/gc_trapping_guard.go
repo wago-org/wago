@@ -228,7 +228,7 @@ func (f *fn) tryGCTrappingGuard(typeIndex uint32, nullable bool, r *wasm.Reader)
 	// Ordinary first-read materialization flushes the stack and clears transient
 	// pins. Establish the certificate and its lease together after that flush
 	// and the full resolver have returned, before any later instruction.
-	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, p.firstOffset, 4, nullable); err != nil {
+	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, p.required, nullable); err != nil {
 		return true, err
 	}
 	if f.regUser[p.cache] != nil || f.pinned.union(f.pinnedLocalMask).union(f.reserved).has(p.cache) {

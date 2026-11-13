@@ -654,15 +654,19 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	sourceLocal, hasSourceLocal := gcLocalProvenance(f.s.back())
 	finalTarget := false
 	objectTarget := false
+	structTarget := false
 	if heap >= 0 {
 		if target, ok := f.stagedGCType(uint32(heap)); ok {
 			finalTarget = target.Final
 			objectTarget = target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray
+			structTarget = target.Comp.Kind == wasm.CompStruct
 		}
 	}
 	staticDeclaredLocal := f.gcStructHelpers && objectTarget && hasSourceLocal && f.localBase == 0 && sourceLocal >= f.nParams &&
 		staticGCDeclaredLocalCast(f.m, f.ft, f.localRuns, sourceLocal, sub, heap, exactTarget)
-	if !staticDeclaredLocal {
+	reuseFinalStruct := f.gcStructHelpers && structTarget && finalTarget && sub == 22 && !exactTarget &&
+		hasSourceLocal && f.gcResolved.valid && f.gcResolved.local == sourceLocal && f.gcResolved.typeIndex == uint32(heap)
+	if !staticDeclaredLocal && !reuseFinalStruct {
 		// Opcode preparation defers ref.cast invalidation until its immediate and
 		// source are known. Every cast except this proved no-op keeps the ordinary
 		// transient-address invalidation rule.
@@ -686,6 +690,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		}
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
+		}
+		if reuseFinalStruct {
+			f.invalidateGCResolvedObject()
 		}
 		if objectTarget && hasSourceLocal && f.localBase == 0 && sourceLocal < f.nParams &&
 			staticGCParameterCast(f.m, f.ft, sourceLocal, sub, heap, exactTarget) {
@@ -830,7 +837,9 @@ func (f *fn) tryFuseCastStructGet(typeIndex uint32, nullable, exactTarget bool, 
 			return true, f.emitNativeOpenCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable)
 		}
 		f.stats.peep("final-cast-scalar-get-fuse")
-		return true, f.emitNativeFinalCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable)
+		local, hasLocal := gcLocalProvenance(f.s.back())
+		cache := hasLocal && f.cacheGCFinalCastStructAddress(r, local, typeIndex)
+		return true, f.emitNativeFinalCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable, cache)
 	}
 	if !st.Final {
 		_ = r.JumpTo(start)
@@ -839,7 +848,9 @@ func (f *fn) tryFuseCastStructGet(typeIndex uint32, nullable, exactTarget bool, 
 	if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && layout.CollectorRef {
 		if final && layout.Size == 4 {
 			f.stats.peep("final-cast-struct-get-fuse")
-			if err := f.emitNativeFinalCastStructRefGet(typeIndex, layout.Offset, nullable); err != nil {
+			local, hasLocal := gcLocalProvenance(f.s.back())
+			cache := hasLocal && f.cacheGCFinalCastStructAddress(r, local, typeIndex)
+			if err := f.emitNativeFinalCastStructRefGet(typeIndex, layout.Offset, nullable, cache); err != nil {
 				return true, err
 			}
 			return true, nil
