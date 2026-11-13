@@ -131,6 +131,43 @@ func TestLoopLocalLeaseImmediateFreeOps(t *testing.T) {
 	}
 }
 
+func TestLoopLocalLeaseMemoryImmediates(t *testing.T) {
+	old := loopLocalLeaseEnabled
+	loopLocalLeaseEnabled = true
+	defer func() { loopLocalLeaseEnabled = old }()
+	tail := []byte{0x20, 3, 0x20, 3, 0x0d, 0, 0x0b}
+	for _, tc := range []struct {
+		name   string
+		addr64 bool
+		memarg []byte
+		ok     bool
+	}{
+		{"implicit32", false, []byte{0, 0x80, 1}, true},
+		{"implicit64", true, []byte{0, 0x80, 0x80, 0x80, 0x80, 0x10}, true},
+		{"wide-on-32", false, []byte{0, 0x80, 0x80, 0x80, 0x80, 0x10}, false},
+		{"explicit-zero", false, []byte{0x40, 0, 0}, true},
+		{"explicit-other", false, []byte{0x40, 1, 0}, false},
+		{"truncated", false, []byte{0}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Addr64: tc.addr64}}, {}}}
+			f := fn{nLocals: 73, localType: make([]machineType, 73), classifier: wasm.NewModuleInstructionClassifier(m, true)}
+			for i := range f.localType {
+				f.localType[i] = mtI32
+			}
+			body := append([]byte{0x28}, tc.memarg...)
+			if tc.name != "truncated" {
+				body = append(body, tail...)
+			}
+			r := wasm.ReaderFrom(body)
+			_, ok := f.planLoopLocalLease(&r)
+			if ok != tc.ok || r.Offset() != 0 {
+				t.Fatalf("accepted=%v offset=%d", ok, r.Offset())
+			}
+		})
+	}
+}
+
 func TestLoopLocalLeaseExactExecution(t *testing.T) {
 	old := loopLocalLeaseEnabled
 	defer func() { loopLocalLeaseEnabled = old }()

@@ -115,9 +115,15 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 		case op == 0x42:
 			_, err = peek.I64()
 		case op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37 || op >= 0x3a && op <= 0x3e:
-			err = f.classifier.ClassifyInto(&peek, op, &imm)
-			if err == nil && imm.MemIndex != 0 {
-				return plan, false
+			if align, ok := peek.Peek(); ok && align < 64 {
+				// An implicit index always selects memory zero. The shared
+				// skipper still handles its 32- or 64-bit offset correctly.
+				err = f.classifier.SkipScalarMemoryImmediate(&peek)
+			} else {
+				err = f.classifier.ClassifyInto(&peek, op, &imm)
+				if err == nil && imm.MemIndex != 0 {
+					return plan, false
+				}
 			}
 		default:
 			return plan, false
