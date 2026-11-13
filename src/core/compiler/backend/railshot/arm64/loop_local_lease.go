@@ -100,10 +100,15 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 			}
 			return plan, plan.count != 0
 		}
-		if !(op == 0x01 || op == 0x1a || op == 0x1b || op >= 0x20 && op <= 0x22 ||
+		// These admitted operations have no immediates and neither access
+		// memory nor name locals. The full classifier is unnecessary here.
+		if op == 0x01 || op == 0x1a || op == 0x1b || op >= 0x45 && op <= 0x5a ||
+			op >= 0x67 && op <= 0x8a || op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4 {
+			continue
+		}
+		if !(op >= 0x20 && op <= 0x22 ||
 			op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37 || op >= 0x3a && op <= 0x3e ||
-			op == 0x41 || op == 0x42 || op >= 0x45 && op <= 0x5a || op >= 0x67 && op <= 0x8a ||
-			op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4) ||
+			op == 0x41 || op == 0x42) ||
 			f.classifier.ClassifyInto(&peek, op, &imm) != nil {
 			return plan, false
 		}

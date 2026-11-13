@@ -109,6 +109,21 @@ func TestLoopLocalLeaseProbeBounds(t *testing.T) {
 	}
 }
 
+func TestLoopLocalLeaseImmediateFreeOps(t *testing.T) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	for op := 0; op < 256; op++ {
+		if !(op == 0x01 || op == 0x1a || op == 0x1b || op >= 0x45 && op <= 0x5a ||
+			op >= 0x67 && op <= 0x8a || op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4) {
+			continue
+		}
+		r := wasm.ReaderFrom(nil)
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(&r, byte(op), &imm); err != nil || r.Offset() != 0 || imm.TouchesMemory {
+			t.Fatalf("opcode %x: immediate=%+v offset=%d err=%v", op, imm, r.Offset(), err)
+		}
+	}
+}
+
 func TestLoopLocalLeaseExactExecution(t *testing.T) {
 	old := loopLocalLeaseEnabled
 	defer func() { loopLocalLeaseEnabled = old }()
