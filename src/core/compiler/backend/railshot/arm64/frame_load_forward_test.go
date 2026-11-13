@@ -87,3 +87,43 @@ func TestFrameLoadForwardMemoryAndJoins(t *testing.T) {
 		}
 	}
 }
+
+func TestFrameLoadForwardIfCondition(t *testing.T) {
+	// Keep local 70 in its frame home and use its tee result and a later read
+	// in one deferred condition. Both branches then overwrite the home.
+	body := []byte{1, 70, 0x7f, 0x41, 0, 0x28, 2, 0, 0x1a}
+	// Give other locals higher use scores so this local keeps a frame home.
+	for local := byte(1); local <= 20; local++ {
+		for n := 0; n < 5; n++ {
+			body = append(body, 0x20, 0, 0x21, local)
+		}
+	}
+	body = append(body,
+		0x20, 0, 0x22, 70, 0x41, 0xc0, 0, 0x49, // x < 64
+		0x20, 70, 0x41, 0xff, 0x00, 0x4b, // x > 127
+		0x72, 0x04, 0x40, // or; if
+		0x41, 7, 0x21, 70,
+		0x05, 0x41, 9, 0x21, 70, 0x0b,
+		0x20, 70, 0x0b)
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	for _, on := range []bool{false, true} {
+		for _, arg := range []uint64{0, 63, 64, 127, 128, 0xffffffff} {
+			var stats ModuleStats
+			opts := CompileOptions{Optimizations: map[string]bool{"store-load-fwd": on, "interval-region-pins": false}}
+			if diagnosticsEnabled {
+				opts.Stats = &stats
+			}
+			got, err := runArm64WrapperWithOptions(t, m, opts, arg)
+			want := uint64(9)
+			if arg < 64 || arg > 127 {
+				want = 7
+			}
+			if err != nil || got != want {
+				t.Fatalf("on=%v x=%d got=%d err=%v, want %d", on, arg, got, err, want)
+			}
+			if diagnosticsEnabled && on && stats.Funcs[0].Peephole["frame-load-forward"] == 0 {
+				t.Fatalf("condition forwarding not selected: %v", stats.Funcs[0].Peephole)
+			}
+		}
+	}
+}

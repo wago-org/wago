@@ -162,3 +162,15 @@ func TestInternalI64SingleByteFastPath(t *testing.T) {
 		}
 	}
 }
+
+func TestReaderI64SingleByteFastPath(t *testing.T) {
+	for b := 0; b < 128; b++ {
+		data := []byte{byte(b), 0xff}
+		fast, reference := Reader{data: data}, Reader{data: data}
+		got, err := fast.I64()
+		want, wantErr := reference.leb128(true, 64)
+		if err != nil || wantErr != nil || got != int64(want) || fast.pos != reference.pos {
+			t.Fatalf("byte=%x got=%d/%v at %d, want=%d/%v at %d", b, got, err, fast.pos, int64(want), wantErr, reference.pos)
+		}
+	}
+}

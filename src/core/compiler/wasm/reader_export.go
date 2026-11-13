@@ -146,8 +146,6 @@ func (r *Reader) I32() (int32, error) {
 	v, err := r.leb128(true, 32)
 	return int32(uint32(v)), err
 }
-func (r *Reader) I64() (int64, error) { v, err := r.leb128(true, 64); return int64(v), err }
-
 func (r *Reader) Peek() (byte, bool) {
 	if r.pos >= len(r.data) {
 		return 0, false

@@ -120,7 +120,15 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		frameForwardSafe := frameForwardOpcode(op)
 		f.wideReciprocalActive = frameForwardSafe && op != 0x20
 		if !frameForwardSafe {
-			f.frameForwardEnd, f.wideReciprocalEnd = 0, 0
+			// An if consumes a condition already captured before the control
+			// boundary. Let that condition use the native-word forwarding proof;
+			// the proof is still cleared after lowering this opcode. Any emitted
+			// branch, call, frame store, or carrier write invalidates it first.
+			if op != 0x04 {
+				f.frameForwardEnd = 0
+			}
+			f.frameForwardLocalLive = false
+			f.wideReciprocalEnd = 0
 		}
 		f.prepareStoreForward(op)
 		switch op {
