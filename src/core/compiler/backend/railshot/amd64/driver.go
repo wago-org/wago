@@ -1274,6 +1274,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if pr, _, ok := f.pinReg(x); ok && f.localType[x] == mtV128 {
 		// Register-pinned v128 local: 128-bit move into its XMM register (the
 		// scalar FMov below would drop the upper 64 bits).
+		facts := e.st.valueFacts()
 		f.evictRelinquishedFReg(pr)
 		if e.isValue() && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
@@ -1288,7 +1289,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 		f.markLocalDirty(x)
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: pr, idx: uint32(x)})
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: pr, idx: uint32(x), meta: uint8(facts)})
 		} else {
 			f.erase(e)
 		}
