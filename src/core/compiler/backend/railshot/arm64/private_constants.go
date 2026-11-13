@@ -72,25 +72,34 @@ func (f *fn) provePrivateConstants() (globals, stableLocals uint64) {
 		if err != nil || op >= 0xfb {
 			return 0, 0
 		}
-		literalReader := r
 		var bits int64
-		if op == 0x41 {
-			v, e := literalReader.I32()
+		var index uint32
+		switch {
+		case op == 0x41:
+			v, e := r.I32()
 			if e != nil {
 				return 0, 0
 			}
 			bits = int64(v)
-		}
-		if op == 0x42 {
-			v, e := literalReader.I64()
+		case op == 0x42:
+			v, e := r.I64()
 			if e != nil {
 				return 0, 0
 			}
 			bits = v
-		}
-		var imm wasm.InstructionImmediate
-		if err := f.classifier.ClassifyInto(&r, op, &imm); err != nil {
-			return 0, 0
+		case op >= 0x20 && op <= 0x24:
+			index, err = r.U32()
+			if err != nil {
+				return 0, 0
+			}
+		case op >= 0x45 && op <= 0xc4:
+			// Numeric scalar operations have no immediates.
+		default:
+			var imm wasm.InstructionImmediate
+			if err := f.classifier.ClassifyInto(&r, op, &imm); err != nil {
+				return 0, 0
+			}
+			index = imm.Index
 		}
 		if (op == 0x21 || op == 0x22) && depth == 0 && int(f.privateInitializerN) < len(f.privateInitializers) && previous[0].op == 0x23 {
 			if global, ok := privateGlobalLiteralAt(m, previous[0].index, globals); ok {
@@ -105,12 +114,12 @@ func (f *fn) provePrivateConstants() (globals, stableLocals uint64) {
 					if integer32 {
 						global.cval = int64(int32(global.cval))
 					}
-					f.privateInitializers[f.privateInitializerN] = privateConstantInitializer{offset: r.Offset(), local: imm.Index, global: previous[0].index, value: global}
+					f.privateInitializers[f.privateInitializerN] = privateConstantInitializer{offset: r.Offset(), local: index, global: previous[0].index, value: global}
 					f.privateInitializerN++
 				}
 			}
 		}
-		previous[0], previous[1], previous[2] = previous[1], previous[2], sourceOp{op: op, index: imm.Index, bits: bits}
+		previous[0], previous[1], previous[2] = previous[1], previous[2], sourceOp{op: op, index: index, bits: bits}
 		switch op {
 		case 0x02, 0x03, 0x04, 0x06, 0x1f:
 			if depth == len(loops) {
@@ -129,9 +138,9 @@ func (f *fn) provePrivateConstants() (globals, stableLocals uint64) {
 				}
 			}
 		case 0x24:
-			globals &^= uint64(1) << imm.Index
+			globals &^= uint64(1) << index
 		case 0x21, 0x22:
-			bit := uint64(1) << imm.Index
+			bit := uint64(1) << index
 			if loopDepth != 0 {
 				loopWrites |= bit
 			}

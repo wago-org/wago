@@ -9,6 +9,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	rt "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func runPrivateGlobalCells(t *testing.T, m *wasm.Module, opts CompileOptions, arg uint64, values ...uint64) (uint64, error) {
@@ -165,6 +166,21 @@ func TestPrivateConstantProofRejectsOpaqueAndWrittenState(t *testing.T) {
 		globals, _ := f.provePrivateConstants()
 		if (globals != 0) != (mode == "private") {
 			t.Fatalf("mode=%s globals=%x", mode, globals)
+		}
+	}
+}
+
+func TestPrivateConstantProofSignedImmediateWidths(t *testing.T) {
+	for _, immediate := range []int64{-129, -65, -64, 63, 64, 127, 1 << 40} {
+		body := []byte{1, 1, 0x7e, 0x23, 0, 0x42}
+		body = append(body, wasmtest.SLEB64(immediate)...)
+		body = append(body, 0x7c, 0x21, 0, 0x20, 0, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.I64}, body)
+		m.Globals = []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I64, Mutable: true}, Init: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI64Const, I64: 11}}}}}
+		f := fn{m: m, policy: currentCodegenPolicy(), classifier: wasm.NewModuleInstructionClassifier(m, true)}
+		globals, locals := f.provePrivateConstants()
+		if globals != 1 || locals != 1 || f.privateInitializerN != 1 || f.privateInitializers[0].value.cval != 11+immediate {
+			t.Fatalf("immediate=%d globals=%x locals=%x initializers=%+v", immediate, globals, locals, f.privateInitializers[:f.privateInitializerN])
 		}
 	}
 }
