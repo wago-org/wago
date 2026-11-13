@@ -106,17 +106,26 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 			op >= 0x67 && op <= 0x8a || op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4 {
 			continue
 		}
-		if !(op >= 0x20 && op <= 0x22 ||
-			op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37 || op >= 0x3a && op <= 0x3e ||
-			op == 0x41 || op == 0x42) ||
-			f.classifier.ClassifyInto(&peek, op, &imm) != nil {
+		var x uint32
+		switch {
+		case op >= 0x20 && op <= 0x22:
+			x, err = peek.U32()
+		case op == 0x41:
+			_, err = peek.I32()
+		case op == 0x42:
+			_, err = peek.I64()
+		case op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37 || op >= 0x3a && op <= 0x3e:
+			err = f.classifier.ClassifyInto(&peek, op, &imm)
+			if err == nil && imm.MemIndex != 0 {
+				return plan, false
+			}
+		default:
 			return plan, false
 		}
-		if imm.TouchesMemory && imm.MemIndex != 0 {
+		if err != nil {
 			return plan, false
 		}
 		if op >= 0x20 && op <= 0x22 {
-			x := imm.Index
 			if uint64(x) >= uint64(len(f.localType)) || x > 65535 || (f.localType[x] != mtI32 && f.localType[x] != mtI64) {
 				return plan, false
 			}

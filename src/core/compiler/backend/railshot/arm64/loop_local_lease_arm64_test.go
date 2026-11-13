@@ -102,6 +102,13 @@ func TestLoopLocalLeaseProbeBounds(t *testing.T) {
 			t.Fatalf("admitted barrier %x", prefix)
 		}
 	}
+	for _, malformed := range [][]byte{{0x20}, {0x21, 0x80}, {0x22, 0x80}, {0x41, 0x80}, {0x42, 0x80}} {
+		f.loopLocalLeaseWork = 0
+		r := wasm.ReaderFrom(malformed)
+		if _, ok := f.planLoopLocalLease(&r); ok || r.Offset() != 0 {
+			t.Fatalf("admitted malformed %x", malformed)
+		}
+	}
 	f.loopLocalLeaseWork = loopLocalLeaseWorkLimit - 1
 	r := wasm.ReaderFrom(body)
 	if _, ok := f.planLoopLocalLease(&r); ok || f.loopLocalLeaseWork != loopLocalLeaseWorkLimit || r.Offset() != 0 {
