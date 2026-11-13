@@ -92,3 +92,83 @@ func (f *fn) retainGCResolvedAddress(reader *wasm.Reader, local int, hasLocal bo
 	}
 	return false
 }
+
+// cacheGCFinalCastStructAddress recognizes a later same-local final cast/get
+// before any effect that can move the object or change the local. It keeps
+// one-off cast/get sites unchanged and bounds compile work to 32 operations and
+// 64 source bytes.
+func (f *fn) cacheGCFinalCastStructAddress(reader *wasm.Reader, local int, typeIndex uint32) bool {
+	if f.inlineDepth != 0 || f.localBase != 0 || !gcResolveReuseEnabled || len(f.customInstructions) != 0 {
+		return false
+	}
+	r := *reader
+	window, err := r.Bytes(min(64, r.BytesLeft()))
+	if err != nil {
+		return false
+	}
+	r = wasm.ReaderFrom(window)
+	previous, castSource := -1, -1
+	for ops := 0; ops < 32; ops++ {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		source := previous
+		previous = -1
+		if castSource >= 0 && op != 0xfb {
+			return false
+		}
+		switch op {
+		case 0x20:
+			index, e := r.U32()
+			if e != nil {
+				return false
+			}
+			previous = int(index)
+		case 0x21, 0x22:
+			index, e := r.U32()
+			if e != nil || int(index) == local {
+				return false
+			}
+		case 0x41:
+			_, err = r.I32()
+		case 0x42:
+			_, err = r.I64()
+		case 0xfb:
+			sub, e := r.U32()
+			if e != nil {
+				return false
+			}
+			if castSource >= 0 {
+				if sub < 2 || sub > 4 {
+					return false
+				}
+				typ, e := r.U32()
+				if e != nil {
+					return false
+				}
+				_, e = r.U32() // field index
+				return e == nil && castSource == local && typ == typeIndex
+			}
+			if sub != 22 || source != local {
+				return false
+			}
+			heap, exact, e := readRefHeapTypeImmediate(&r)
+			if e != nil || exact || heap != int64(typeIndex) {
+				return false
+			}
+			castSource = source
+		case 0x1a,
+			0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
+			0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a,
+			0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78,
+			0x7c, 0x7d, 0x7e, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a:
+		default:
+			return false
+		}
+		if err != nil {
+			return false
+		}
+	}
+	return false
+}

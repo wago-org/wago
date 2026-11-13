@@ -144,6 +144,73 @@ func TestGCResolvedHandleReuseAndInvalidation(t *testing.T) {
 	}
 }
 
+func TestGCFinalCastFieldReadsReuseResolvedLocal(t *testing.T) {
+	// The scalar local.set operations do not change the reference local or
+	// collect. One successful final cast/get therefore proves the same local and
+	// complete extent for the following field read.
+	finalStruct := []byte{0x5f, 0x02, 0x7f, 0x00, 0x7f, 0x00}
+	function := []byte{0x60, 0x01, 0x6e, 0x01, 0x7f}
+	body := []byte{
+		0x01, 0x02, 0x7f, // two i32 locals
+		0x20, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x21, 0x01,
+		0x20, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x01, 0x21, 0x02,
+		0x20, 0x01, 0x20, 0x02, 0x6a, 0x0b,
+	}
+	stats := gcResolveReuseStats(t, finalStruct, function, body)
+	native := stats.Calls["gcnative"] + stats.Calls["gcnative-leaf"]
+	if native != 1 || stats.GCHandleResolutionReuse != 1 {
+		t.Fatalf("final cast/get native calls = %d reused = %d, want 1/1 (calls: %v, rewrites: %v)",
+			native, stats.GCHandleResolutionReuse, stats.Calls, stats.Peephole)
+	}
+	if got := stats.Peephole["gc-final-cast-resolve-cache"]; got != 1 {
+		t.Fatalf("final cast/get cache sites = %d, want 1", got)
+	}
+}
+
+func TestGCFinalCastFieldReadReuseLimits(t *testing.T) {
+	finalStruct := []byte{0x5f, 0x02, 0x7f, 0x00, 0x7f, 0x00}
+	function := []byte{0x60, 0x01, 0x6e, 0x01, 0x7f}
+	read := func(cast, field byte) []byte {
+		return []byte{0x20, 0x00, 0xfb, cast, 0x00, 0xfb, 0x02, 0x00, field}
+	}
+	for _, tc := range []struct {
+		name string
+		body []byte
+		want int
+	}{
+		{name: "one-off", body: append([]byte{0x00}, append(read(0x16, 0), 0x0b)...), want: 1},
+		{name: "source-overwrite", body: append(append(append([]byte{0x00}, read(0x16, 0)...), 0x1a, 0xd0, 0x6e, 0x21, 0x00), append(read(0x16, 1), 0x0b)...), want: 2},
+		{name: "control-boundary", body: append(append(append([]byte{0x00}, read(0x16, 0)...), 0x1a, 0x02, 0x40, 0x0b), append(read(0x16, 1), 0x0b)...), want: 2},
+		{name: "nullable-cast", body: append(append(append([]byte{0x00}, read(0x17, 0)...), 0x1a), append(read(0x17, 1), 0x0b)...), want: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stats := gcResolveReuseStats(t, finalStruct, function, tc.body)
+			native := stats.Calls["gcnative"] + stats.Calls["gcnative-leaf"]
+			if native != tc.want || stats.GCHandleResolutionReuse != 0 || stats.Peephole["gc-final-cast-resolve-cache"] != 0 {
+				t.Fatalf("native calls=%d reuse=%d cache=%d, want %d/0/0 (rewrites: %v)", native,
+					stats.GCHandleResolutionReuse, stats.Peephole["gc-final-cast-resolve-cache"], tc.want, stats.Peephole)
+			}
+		})
+	}
+}
+
+func TestGCFinalCastReferenceFieldReadsReuseResolvedLocal(t *testing.T) {
+	finalStruct := []byte{0x5f, 0x02, 0x7f, 0x00, 0x63, 0x6e, 0x00}
+	function := []byte{0x60, 0x01, 0x6e, 0x01, 0x6e}
+	body := []byte{
+		0x00,
+		0x20, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x01,
+		0x0b,
+	}
+	stats := gcResolveReuseStats(t, finalStruct, function, body)
+	native := stats.Calls["gcnative"] + stats.Calls["gcnative-leaf"]
+	if native != 1 || stats.GCHandleResolutionReuse != 1 || stats.Peephole["gc-final-cast-resolve-cache"] != 1 {
+		t.Fatalf("reference field native calls=%d reuse=%d cache=%d, want 1/1/1 (rewrites: %v)", native,
+			stats.GCHandleResolutionReuse, stats.Peephole["gc-final-cast-resolve-cache"], stats.Peephole)
+	}
+}
+
 func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	compile := func(m *wasm.Module, shared, reuse bool) (int, ModuleStats) {
