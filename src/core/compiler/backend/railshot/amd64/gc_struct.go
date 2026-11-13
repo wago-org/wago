@@ -678,7 +678,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			f.stats.peep("gc-static-local-cast-elide")
 			return nil
 		}
-		if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
+		if fused, err := f.tryFuseCastStructGet(uint32(heap), sub == 23, exactTarget, r); fused || err != nil {
 			return err
 		}
 		if fused, err := f.tryFuseFinalCastArrayGet(uint32(heap), sub == 23, r); fused || err != nil {
@@ -771,12 +771,15 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	return nil
 }
 
-func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
+func (f *fn) tryFuseCastStructGet(typeIndex uint32, nullable, exactTarget bool, r *wasm.Reader) (bool, error) {
 	if done, err := f.tryGCTrappingGuard(typeIndex, nullable, r); done || err != nil {
 		return done, err
 	}
 	st, ok := f.stagedStructType(typeIndex)
-	if !ok || !st.Final {
+	if !ok {
+		return false, nil
+	}
+	if exactTarget && !st.Final {
 		return false, nil
 	}
 	start := r.Offset()
@@ -815,11 +818,23 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 	}
 	if direct {
 		layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex)
-		if !layoutOK || !final || layout.Size != uint32(scalar.size) {
-			return false, fmt.Errorf("amd64: final cast/load field %d.%d has inconsistent layout", typeIndex, fieldIndex)
+		if !layoutOK || layout.Size != uint32(scalar.size) {
+			return false, fmt.Errorf("amd64: cast/load field %d.%d has inconsistent layout", typeIndex, fieldIndex)
+		}
+		if !final {
+			if !gcSharedStubsEnabled {
+				_ = r.JumpTo(start)
+				return false, nil
+			}
+			f.stats.peep("open-cast-scalar-get-fuse")
+			return true, f.emitNativeOpenCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable)
 		}
 		f.stats.peep("final-cast-scalar-get-fuse")
 		return true, f.emitNativeFinalCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable)
+	}
+	if !st.Final {
+		_ = r.JumpTo(start)
+		return false, nil
 	}
 	if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && layout.CollectorRef {
 		if final && layout.Size == 4 {
