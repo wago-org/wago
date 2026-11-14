@@ -205,16 +205,18 @@ func (f *fn) emitNativeTrustedFinalCastArrayGetStub(width int) {
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.ShiftImm(5, RAX, 1, false) // compact handle index
+	// A non-i31 compact reference is handle<<1, so ref*8 selects its
+	// 16-byte handle directly. Zero-extend before the scaled address.
+	a.MovRegReg32(R10, RAX)
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
-	a.ShiftImm(4, RAX, 4, true)
-	a.Add64(R9, RAX)
-	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
-	a.ImulRI(R10, gc.NativeViewSpaceStride, true)
-	a.LeaDisp(R8, R8, gc.NativeViewSpacesOffset)
-	a.Add64(R8, R10)
-	a.Load64(R11, R8, gc.NativeSpaceBaseOffset)
+	a.LeaScaled(R9, R9, R10, 3, 0)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
+	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	if gc.NativeViewSpaceStride != 16 {
+		panic("amd64: native GC space descriptor stride is not 16")
+	}
+	a.ShiftImm(4, R10, 4, false)
+	a.LoadIdx(R11, R8, R10, gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset, 8, false, true)
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0)
 	a.Cmp32(RCX, RDX)
@@ -297,6 +299,8 @@ func (f *fn) emitNativeFinalCastArrayGetStub(width int) {
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
+	// Start the independent offset read before selecting the backing space.
+	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(R10, false)
@@ -308,7 +312,6 @@ func (f *fn) emitNativeFinalCastArrayGetStub(width int) {
 	a.Add64(R8, R10)
 	a.Load64(R11, R8, gc.NativeSpaceBaseOffset)
 	a.Load32(R8, R8, gc.NativeSpaceBytesOffset)
-	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
 	castFailure(condA)
 	a.Sub32(R8, RAX)

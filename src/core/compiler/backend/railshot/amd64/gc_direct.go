@@ -487,6 +487,8 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded, arrayOperand bo
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
+	// Start the independent offset read before selecting the backing space.
+	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(R10, false)
@@ -494,7 +496,6 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded, arrayOperand bo
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
 	castFailures = append(castFailures, a.JccPlaceholder(condA))
 	emitGCSelectIndexedSpace(a)
-	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
 	castFailures = append(castFailures, a.JccPlaceholder(condA))
 	a.Sub32(R8, RAX)
@@ -606,8 +607,7 @@ func emitModuleGCTrustedFinalCastStub(a *x64.Asm) {
 	// unchanged for the result and issue the independent object-offset load
 	// before the space-descriptor chain.
 	a.MovRegReg32(RDI, RAX)
-	a.ShiftImm(4, RDI, 3, true)
-	a.Add64(RCX, RDI)
+	a.LeaScaled(RCX, RCX, RDI, 3, 0)
 	a.Load32(RDI, RCX, gc.NativeHandleOffsetOffset)
 	a.LoadIdx(RCX, RCX, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	if gc.NativeViewSpaceStride != 16 {
@@ -681,6 +681,8 @@ func emitModuleGCDefinedCastStub(a *x64.Asm) {
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
+	// Start the independent offset read before selecting the backing space.
+	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(R10, false)
@@ -688,7 +690,6 @@ func emitModuleGCDefinedCastStub(a *x64.Asm) {
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
 	failIf(condA)
 	emitGCSelectIndexedSpace(a)
-	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
 	failIf(condA)
 	a.Sub32(R8, RAX)
