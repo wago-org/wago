@@ -49,7 +49,7 @@ func (f *fn) emitInlineTailCopy(t *inlineTarget, constants *inlineTailConstants,
 		constants.entry = previousConstants.entry
 	}
 	f.inlineTailConstants = constants
-	f.traceFuncIdx, f.tracePCBase = uint32(t.globalIdx), t.localDeclBytes
+	f.traceFuncIdx, f.tracePCBase = uint32(t.globalIdx), t.localDeclByteCount()
 	defer func() {
 		f.inlineTailSourceFrame = previousSource
 		f.inlineTailArgumentStart = previousArgument

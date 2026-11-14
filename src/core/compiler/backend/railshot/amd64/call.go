@@ -339,10 +339,11 @@ func sigFitsReferenceResultRegABI(ft *wasm.CompType, m *wasm.Module) bool {
 	return true
 }
 
-// sigFitsTypedReferenceRegABI extends the physical register classification used
-// by return_call_ref to one-slot reference parameters/results. Ownership and GC
-// domain checks remain separate from this purely mechanical ABI predicate.
-func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
+// sigFitsGeneralRegABI classifies signatures that can stay entirely in the
+// physical register ABI. It accepts integer, floating-point and reference
+// values. Ownership and GC-domain checks remain separate from this mechanical
+// predicate.
+func sigFitsGeneralRegABI(ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
 	}
@@ -373,6 +374,12 @@ func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
 		}
 	}
 	return true
+}
+
+// sigFitsTypedReferenceRegABI retains the tail-call predicate name used by the
+// typed-reference ABI paths. Its register classification is general.
+func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
+	return sigFitsGeneralRegABI(ft)
 }
 
 func tailResultABICompatible(a, b []wasm.ValType) bool {

@@ -1254,6 +1254,12 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 				extent = f.boundsCertExtent(1, uint32(x))
 			}
 			f.materializeByType(e)
+			// This register is a snapshot of the pre-assignment value, not a
+			// continuing alias of the local. Do not let a later GC access reuse a
+			// raw-address certificate for the local's newly assigned value.
+			if e.isValue() && e.st.kind == stReg {
+				e.st.slot = 0
+			}
 			if extent > 0 && e.st.kind == stReg {
 				e.st.cval = int64(extent)
 				e.st.meta |= uint8(storageCapturedBounds)

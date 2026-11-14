@@ -93,11 +93,11 @@ func (f *fn) retainGCResolvedAddress(reader *wasm.Reader, local int, hasLocal bo
 	return false
 }
 
-// cacheGCFinalCastStructAddress recognizes a later same-local final cast/get
+// cacheGCCastStructAddress recognizes a later same-local cast/get
 // before any effect that can move the object or change the local. It keeps
 // one-off cast/get sites unchanged and bounds compile work to 32 operations and
 // 64 source bytes.
-func (f *fn) cacheGCFinalCastStructAddress(reader *wasm.Reader, local int, typeIndex uint32) bool {
+func (f *fn) cacheGCCastStructAddress(reader *wasm.Reader, local int, typeIndex uint32) bool {
 	if f.inlineDepth != 0 || f.localBase != 0 || !gcResolveReuseEnabled || len(f.customInstructions) != 0 {
 		return false
 	}
