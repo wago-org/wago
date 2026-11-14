@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	goruntime "runtime"
 	"sort"
 	"strings"
@@ -1095,10 +1096,21 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		GCConstExpr:          features.GCStructProducts || features.GCArrayProducts || features.GCI31Products,
 	}
 	var validationAnalysis wasm.ValidatedModuleAnalysis
-	if err := wasm.ValidateModuleWithAnalysis(m, validationFeatures, workers, wasm.ValidationLimits{
-		MaxFunctionLocals:    cfg.maxFunctionLocals,
-		MaxMemoriesPerModule: cfg.maxMemoriesPerModule,
-	}, &validationAnalysis); err != nil {
+	var bodySource *wasm.OwnedBodySource
+	validationLimits := wasm.ValidationLimits{MaxFunctionLocals: cfg.maxFunctionLocals, MaxMemoriesPerModule: cfg.maxMemoriesPerModule}
+	var initialValidationErr error
+	useBodySource := os.Getenv("WAGO_AMD64_NO_GC_CARRIER_ELISION") != "1" && gcOptionMayContainCarrier(m) && cfg.codeProfile == nil && len(instructions) == 0 && len(m.BranchHints) == 0 && goruntime.GOARCH == "amd64" && goruntime.GOOS == "linux"
+	for _, custom := range m.Customs {
+		if custom.Name == "metadata.code.branch_hint" {
+			useBodySource = false
+		}
+	}
+	if useBodySource {
+		bodySource, validationAnalysis, initialValidationErr = wasm.NewOwnedBodySourceWithAnalysis(m, validationFeatures, workers, validationLimits)
+	} else {
+		initialValidationErr = wasm.ValidateModuleWithAnalysis(m, validationFeatures, workers, validationLimits, &validationAnalysis)
+	}
+	if err := initialValidationErr; err != nil {
 		if deferredSyntax {
 			if _, syntaxErr := wasm.DecodeModuleWithFeatures(wasmBytes, decodeFeatures); syntaxErr != nil {
 				return nil, wrapContextError("decode", syntaxErr)
@@ -1393,6 +1405,37 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err := frontend.RejectUnsupportedWithFeaturesFactsAndValidation(m, features, moduleFacts, &validationAnalysis); err != nil {
 		return nil, wrapContextError("compile", err)
 	}
+	var optionView *gcOptionView
+	if useBodySource {
+		optionView, err = buildGCOptionBodyViewWithLocalLimit(m, cfg.maxFunctionLocals)
+		if err != nil {
+			return nil, wrapContextError("private GC view", err)
+		}
+		if optionView != nil {
+			if bodySource != nil {
+				edits := make([]wasm.BodyEdit, 0, len(optionView.Origins))
+				imported := uint32(m.ImportedFuncCount())
+				for global := range optionView.Origins {
+					local := global - imported
+					code := optionView.Module.Code[local]
+					edits = append(edits, wasm.BodyEdit{LocalFunction: local, BodyBytes: code.BodyBytes, Locals: code.Locals})
+				}
+				m, validationAnalysis, err = bodySource.Apply(edits, validationFeatures, workers, validationLimits)
+				if err != nil {
+					return nil, wrapContextError("private GC validation", err)
+				}
+			} else {
+				m = optionView.Module
+				if err = wasm.ValidateModuleWithAnalysis(m, validationFeatures, workers, validationLimits, &validationAnalysis); err != nil {
+					return nil, wrapContextError("private GC validation", err)
+				}
+			}
+			optionView.Module = m
+			requirements = analyzeModuleRequirementsWithValidation(m, &validationAnalysis)
+		} else {
+			optionView = nil
+		}
+	}
 	ownedExceptionReferences := railshotManagedExceptionReferences(m)
 	gcMetadata, err := frontend.BuildGCTypeMetadataWithOptions(m, frontend.GCTypeMetadataOptions{OwnedExceptionReferences: ownedExceptionReferences})
 	if err != nil {
@@ -1464,6 +1507,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	compileOptions := railshotCompileOptions{BitCountFeatures: bitCountHostFeaturesSupported(), Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers || ownedExceptionReferences || foreignFunctionSubtypeHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats, SourceMaps: codeProfileEnabled && cfg.codeProfile.IncludeSources(), UnwindMaps: codeProfileEnabled && cfg.codeProfile.IncludeUnwind(), Profile: codeProfileEnabled && cfg.codeProfile != nil}
+	if optionView != nil {
+		compileOptions.Codegen.Module.GCBodyViews = optionView.metadata()
+	}
 	railshotConfigureResourceLimits(cfg, &compileOptions)
 	railshotConfigureI31Core(exactI31CoreSource, &compileOptions)
 	if compiledArchitecture == 4 {

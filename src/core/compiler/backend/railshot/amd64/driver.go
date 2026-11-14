@@ -1233,6 +1233,11 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if e != nil && e.isValue() && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
 	}
+	if !tee && f.gcBodyViews != nil && gcPrivateSinkDropEnabled && f.certifiedUnreadGCSink(x) {
+		f.dropValue()
+		f.stats.peep("gc-private-sink-drop")
+		return
+	}
 	// A deferred load can borrow x's pinned register as its address. Condensing
 	// another child directly into x first would destroy that address. Materialize
 	// the complete value into ordinary allocator storage before considering the

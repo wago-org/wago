@@ -103,7 +103,7 @@ func TestGCResolversLoadSpaceByte(t *testing.T) {
 			if diagnosticsEnabled {
 				calls := stats.Funcs[0].Calls
 				wantCalls := uint64(1)
-				if tc.name == "inline-struct" {
+				if tc.name == "inline-struct" || tc.name == "defined-cast" && gcInlineCastsEnabled {
 					wantCalls = 0
 				}
 				if got := calls["gcnative"] + calls["gcnative-leaf"]; uint64(got) != wantCalls || calls[callKindHostSync] != 0 {

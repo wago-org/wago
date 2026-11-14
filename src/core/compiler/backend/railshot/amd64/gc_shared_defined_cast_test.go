@@ -18,9 +18,9 @@ import (
 
 func compileSharedDefinedCastFixture(t *testing.T, shared bool) (ModuleStats, int) {
 	t.Helper()
-	saved := gcSharedStubsEnabled
-	gcSharedStubsEnabled = shared
-	defer func() { gcSharedStubsEnabled = saved }()
+	saved, savedInline := gcSharedStubsEnabled, gcInlineCastsEnabled
+	gcSharedStubsEnabled, gcInlineCastsEnabled = shared, false
+	defer func() { gcSharedStubsEnabled, gcInlineCastsEnabled = saved, savedInline }()
 
 	data := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

@@ -1394,9 +1394,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
 	nativeStructType := f.nativeStructAllocType
 	nativeStructDead := f.nativeStructAllocDead
+	nativeStructVirtual := f.nativeStructAllocVirtual
 	nativeArray := f.nativeArrayAlloc
 	f.nativeStructAllocType = 0
 	f.nativeStructAllocDead = false
+	f.nativeStructAllocVirtual = false
 	f.nativeStructDirectUsed = false
 	f.nativeArrayAlloc = gcArrayAllocStubSite{}
 	p, rN := len(ft.Params), len(ft.Results)
@@ -1486,7 +1488,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
 	f.flush() // operands to canonical slot-width slots
-	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled {
+	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled && !nativeStructVirtual {
 		if localStates, ok := f.snapshotLocalStates(); ok {
 			f.nativeStructDirectUsed = true
 			return f.callNativeStructDirectSlots(importIdx, ft, nativeStructType-1, nativeStructDead, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates)
@@ -1562,7 +1564,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		if nativeGCStructInlineEnabled {
+		if nativeGCStructInlineEnabled && !nativeStructVirtual {
 			f.emitNativeStructAllocStub(typeIndex, nativeStructDead, true)
 		} else {
 			site := f.a.CallRel32()
@@ -1599,6 +1601,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	if regallocCheckEnabled {
 		f.checkCallClobber()
+	}
+	if internalGC {
+		f.storeModuleGlobals(RAX)
 	}
 	f.a.CallMem(R8, hcTrampoline)
 	if recordRoots {
@@ -1765,6 +1770,7 @@ func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeI
 	if regallocCheckEnabled {
 		f.checkCallClobber()
 	}
+	f.storeModuleGlobals(RAX)
 	f.a.CallMem(R8, hcTrampoline)
 	f.a.Load64(R8, RBX, -offCustomCtx)
 	f.a.Load64(RAX, R8, hcResults)
