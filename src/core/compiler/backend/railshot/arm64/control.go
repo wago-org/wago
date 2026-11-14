@@ -74,6 +74,10 @@ const (
 // have no such leases and use one bit for terminal local liveness.
 const ctrlIfLocalsDie ctrlFlags = 1 << 12
 
+// Non-loop frames use this upper bit to retain their lexical join context.
+// Loop frames use all upper bits for scoped-constant leases instead.
+const ctrlAcyclicLocalMerge ctrlFlags = 1 << 13
+
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
 	kind       ctrlKind
@@ -786,15 +790,22 @@ func (f *fn) appendFrameColdEdge(fr *ctrlFrame, edge coldEdge) {
 	cold.coldEdges = append(cold.coldEdges, edge)
 }
 
+// A register-only join inside a loop can move a rare arm's spills onto every
+// backedge by forgetting clean slot guarantees. Keep canonical loop-contained
+// targets; acyclic targets can retain registers without that repeated cost.
+func (f *fn) registerOnlyMergeFor(fr *ctrlFrame) bool {
+	return registerOnlyMergeEnabled && !f.moduleEH && (!registerMergeLoopLimitEnabled || fr.kind != cfLoop && fr.has(ctrlAcyclicLocalMerge))
+}
+
 func (f *fn) convergeFrameBranchState(fr *ctrlFrame) {
 	state := f.frameBranchState(fr)
-	f.convergeEdgeTo(&state)
+	f.convergeEdgeToWithDead(&state, 0, 0, f.registerOnlyMergeFor(fr), nil)
 	f.setFrameBranchState(fr, state)
 }
 
-func (f *fn) convergeFrameBranchStateWithDead(fr *ctrlFrame, deadGP, deadFP regMask) {
+func (f *fn) convergeFrameBranchStateWithDead(fr *ctrlFrame, deadGP, deadFP regMask, preferredEntry *packedLocStates) {
 	state := f.frameBranchState(fr)
-	f.convergeEdgeToWithDead(&state, deadGP, deadFP)
+	f.convergeEdgeToWithDead(&state, deadGP, deadFP, f.registerOnlyMergeFor(fr), preferredEntry)
 	f.setFrameBranchState(fr, state)
 }
 
@@ -808,7 +819,7 @@ func (f *fn) convergeFrameEntryState(fr *ctrlFrame) {
 		return
 	}
 	state := f.frameEntryState(fr)
-	f.convergeEdgeTo(&state)
+	f.convergeEdgeToWithDead(&state, 0, 0, f.registerOnlyMergeFor(fr), nil)
 	f.setFrameEntryState(fr, state)
 }
 
@@ -1769,6 +1780,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
 	fr.set(ctrlCallFreeRegion, callFreeLoopRegionEnabled && kind != cfLoop && f.inCallFreeLoop())
+	fr.set(ctrlAcyclicLocalMerge, kind != cfLoop && f.innermostLoop == 0)
 	// A bounded block wrapping a call-free loop can retain the same register
 	// invariant through its exit. Establish every pin before the region so a
 	// preceding call cannot leave a stale register marked live at the merge.
@@ -2824,7 +2836,11 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
 			deadGP, deadFP := f.planForwardMergeDeadLocals(r, branchState, packedLocStates{})
-			f.convergeFrameBranchStateWithDead(&fr, deadGP, deadFP)
+			var preferredEntry *packedLocStates
+			if fr.kind == cfIf && !fr.has(ctrlHasElse|ctrlEntryUnreachable) {
+				preferredEntry = &entryState
+			}
+			f.convergeFrameBranchStateWithDead(&fr, deadGP, deadFP, preferredEntry)
 			branchState = f.frameBranchState(&fr)
 		}
 		if fr.has(ctrlRegMerge1) {
@@ -2846,11 +2862,19 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		// value in mergeReg), a stub on this edge converges it. The then
 		// fall-through jumps over the stub.
 		deadGP, deadFP := f.planForwardMergeDeadLocals(r, branchState, entryState)
-		needLoads := false
+		needLocals := false
 		if f.usesCalls && !branchState.empty() && !entryState.empty() {
 			for x := 0; x < f.nLocals; x++ {
 				reg, isFloat, ok := f.pinReg(x)
-				if !ok || branchState.get(x) != lsStackReg || entryState.get(x) != lsMem {
+				if !ok {
+					continue
+				}
+				target, source := branchState.get(x), entryState.get(x)
+				if source == lsReg && target != lsReg {
+					needLocals = true
+					break
+				}
+				if (target != lsStackReg && target != lsReg) || source != lsMem {
 					continue
 				}
 				dead := deadGP.has(reg)
@@ -2858,13 +2882,13 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 					dead = deadFP.has(reg)
 				}
 				if !dead {
-					needLoads = true
+					needLocals = true
 					break
 				}
 			}
 		}
 		skip := -1
-		if (fr.has(ctrlRegMerge1) || needLoads) && fallthroughReachable {
+		if (fr.has(ctrlRegMerge1) || needLocals) && fallthroughReachable {
 			skip = f.a.Branch()
 		}
 		f.patchBranch19(fr.controlSite, f.a.Len()) // the false edge is a B.cond (imm19)
@@ -2882,7 +2906,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			f.markPinnedLocalsDirty()
 		} else {
 			f.setLocalsState(entryState)
-			f.convergeFrameBranchStateWithDead(&fr, deadGP, deadFP)
+			f.convergeFrameBranchStateWithDead(&fr, deadGP, deadFP, nil)
 			branchState = f.frameBranchState(&fr)
 		}
 		if skip != -1 {
