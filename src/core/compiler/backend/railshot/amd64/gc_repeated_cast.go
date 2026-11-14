@@ -87,8 +87,14 @@ func consumeProvedGCCallResultCast(m *wasm.Module, r *wasm.Reader, ft *wasm.Comp
 }
 
 func (f *fn) finishProvedGCCallResultCast(r *wasm.Reader, ft *wasm.CompType, err error) error {
-	if err != nil || !consumeProvedGCCallResultCast(f.m, r, ft) {
+	if err != nil {
 		return err
+	}
+	if ft != nil && len(ft.Results) == 1 {
+		f.setPendingGCReference(ft.Results[0])
+	}
+	if !consumeProvedGCCallResultCast(f.m, r, ft) {
+		return nil
 	}
 	// Match the state transitions that emitFB would perform for subopcode 22.
 	f.prepareGCResolvedFB(22)

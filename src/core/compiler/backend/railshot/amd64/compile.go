@@ -359,7 +359,9 @@ type fn struct {
 	gcSubtypeProofs     [4]gcSubtypeProof
 	gcSubtypeProofN     uint8
 	gcGuardSites        uint8 // bounded prefix-match attempts; shares existing padding
-	nLocalSlots         int   // total local frame slots in 8-byte units
+	gcLocalTypeFacts    gcLocalTypeFacts
+	gcPendingReference  gcReferenceTypeFact
+	nLocalSlots         int // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and

@@ -526,6 +526,47 @@ func (m *Module) ReferenceTypeSubtype(actual, required RefType) bool {
 	return (&moduleValidator{m: m}).refSubtype(actual, required)
 }
 
+// DeclaredTypeSubtype reports whether actual equals required or reaches it by
+// following at most maxDepth explicit single-supertype edges. It deliberately
+// excludes structural equivalence. This makes it a conservative,
+// allocation-free query for validated modules and hot compiler proofs.
+func (m *Module) DeclaredTypeSubtype(actual, required uint32, maxDepth int) bool {
+	if m == nil || maxDepth < 0 {
+		return false
+	}
+	current := actual
+	for depth := 0; depth <= maxDepth; depth++ {
+		st, group, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: current})
+		if !ok {
+			return false
+		}
+		if current == required {
+			return true
+		}
+		if depth == maxDepth || len(st.Supers) != 1 {
+			return false
+		}
+		super := st.Supers[0]
+		if !super.Rec {
+			current = super.Index
+			continue
+		}
+		if group < 0 || group >= len(m.Types) || super.Index >= uint32(len(m.Types[group].SubTypes)) {
+			return false
+		}
+		base := uint64(0)
+		for i := 0; i < group; i++ {
+			base += uint64(len(m.Types[i].SubTypes))
+		}
+		next := base + uint64(super.Index)
+		if next > uint64(^uint32(0)) {
+			return false
+		}
+		current = uint32(next)
+	}
+	return false
+}
+
 //go:noinline
 func (m *Module) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int, bool) {
 	directory := m.typeIndex()
