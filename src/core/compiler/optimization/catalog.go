@@ -508,6 +508,7 @@ var catalog = []Definition{
 	amd64("memsize-regional-lease", "Regional memory-size leasing", "lend the memory-size register to proved straight-line local regions"),
 	amd64("module-global-regional-lease", "Regional module-global leasing", "lend an unreferenced module-global register to proved straight-line local regions"),
 	{Name: "loop-memory-base", Label: "Loop memory page bases", Description: "hoist repeated linear-memory page bases into idle loop-constant registers", Default: true, Architectures: catalogARM64Architectures},
+	arm64("layout-padding-skip", "Skip layout padding", "branch over long alignment-preserving padding runs"),
 	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
 	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: catalogARM64Architectures},

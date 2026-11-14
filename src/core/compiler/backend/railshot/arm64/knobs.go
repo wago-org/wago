@@ -17,6 +17,7 @@ import (
 // The binding inventory is checked against the arm64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("arm64",
+	optimization.Bind("layout-padding-skip", &layoutPaddingSkipEnabled),
 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
 	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
 	optimization.Bind("memory-min-bounds", &memoryMinimumBoundsEnabled),
@@ -265,6 +266,7 @@ var (
 	optV128Pins                = optimizationBindings.Option("v128-pins")
 	optTailSelfLoop            = optimizationBindings.Option("tail-self-loop")
 	optTailLoopInline          = optimizationBindings.Option("tail-loop-inline")
+	optLayoutPaddingSkip       = optimizationBindings.Option("layout-padding-skip")
 	optRegABI                  = optimizationBindings.Option("reg-abi")
 	optInline                  = optimizationBindings.Option("inline")
 	optInlineIntegerTuples     = optimizationBindings.Option("inline-integer-tuples")

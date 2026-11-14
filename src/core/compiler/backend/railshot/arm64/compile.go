@@ -41,6 +41,8 @@ import (
 // the architecture-specific name is the public A/B oracle going forward.
 var regMergeEnabled = os.Getenv("WAGO_ARM64_NO_REG_MERGE") != "1" && os.Getenv("WAGO_REG_MERGE") != "0"
 
+var layoutPaddingSkipEnabled = os.Getenv("WAGO_ARM64_NO_LAYOUT_PADDING_SKIP") != "1"
+
 // directGoImportEnabled bypasses cross-instance marshaling for bound Go imports
 // in bounded numeric functions. The dispatch tag remains an instance decision.
 var directGoImportEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_GO_IMPORT") != "1"
@@ -5115,8 +5117,19 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 }
 
 func (f *fn) emitPhasePadding() {
-	for range f.phasePadWords {
-		f.a.Nop()
+	words := f.phasePadWords
+	// Preserve downstream fetch alignment while avoiding a long run of NOPs
+	// on the entry path. No control-flow target exists inside this padding.
+	if words >= 8 && f.opt(optLayoutPaddingSkip) {
+		branch := f.a.Branch()
+		for range words - 1 {
+			f.a.Nop()
+		}
+		f.patchBranch26(branch, f.a.Len())
+	} else {
+		for range words {
+			f.a.Nop()
+		}
 	}
 	f.phasePadWords = 0
 	f.byteBoundsPhaseWords = 0
