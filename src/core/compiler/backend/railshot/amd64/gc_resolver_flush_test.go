@@ -36,3 +36,31 @@ func TestGCResolvedObjectRemainsPinnedAfterFlush(t *testing.T) {
 		}
 	}
 }
+
+func TestGCResolvedObjectSpillRemainsReservedAfterFlush(t *testing.T) {
+	f := &fn{
+		a: &x86.Asm{}, s: newStackWithCap(minStackArenaCap), sc: &scratch{},
+		memSizeReg: regNone, globalCellReg: regNone, spillFloor: 2,
+	}
+	f.cacheGCResolvedObjectInSpill(9, 2, 24, RAX, 2)
+	if !f.gcResolved.valid || !f.gcResolved.spill || f.gcResolved.spillSlot != 2 || f.spillFloor != 3 {
+		t.Fatalf("spill certificate = %+v floor=%d, want slot2 floor3", f.gcResolved, f.spillFloor)
+	}
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 0x4e96ea})
+	f.flush()
+	if !f.gcResolved.valid || f.spillFloor != 3 || f.allocSpillSlot() < 3 {
+		t.Fatalf("flush exposed certificate slot: valid=%t floor=%d next=%d", f.gcResolved.valid, f.spillFloor, f.allocSpillSlot())
+	}
+	address, done := f.materializeGCResolvedObject()
+	if address == regNone || !f.pinned.has(address) {
+		t.Fatalf("materialized spill address reg=%d pinned=%#x", address, f.pinned)
+	}
+	done()
+	if f.pinned.has(address) {
+		t.Fatalf("materialized spill address remained pinned: reg=%d pinned=%#x", address, f.pinned)
+	}
+	f.invalidateGCResolvedObject()
+	if f.gcResolved.valid || f.spillFloor != 2 {
+		t.Fatalf("spill certificate release: valid=%t floor=%d, want false/2", f.gcResolved.valid, f.spillFloor)
+	}
+}

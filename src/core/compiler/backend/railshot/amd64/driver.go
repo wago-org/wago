@@ -1109,6 +1109,12 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		switch {
 		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
+			// This register is a snapshot of the pre-assignment value, not a
+			// continuing alias of the local. Do not let a later GC access reuse a
+			// raw-address certificate for the local's newly assigned value.
+			if e.isValue() && e.st.kind == stReg {
+				e.st.slot = 0
+			}
 		case e.isValue() && e.st.kind == stMemRef && e.st.memBorrow() == x:
 			// A deferred load addressing through x's pinned register: emit it
 			// before x is overwritten.

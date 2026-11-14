@@ -40,6 +40,14 @@ import (
 // WAGO_INLINE_MAXBYTES.
 const inlineMaxBodyBytes = 160
 
+// Tiny leaves are cheaper to splice than to call even when several callers use
+// them. Count decoded instructions so a long immediate does not make a trivial
+// helper look complex. The byte limit remains a secondary code-growth bound.
+const (
+	inlineTinyLeafMaxInstructions = 5
+	inlineTinyLeafMaxBodyBytes    = 32
+)
+
 // inlineCallSeqBytes is a rough per-call-site machine-code cost for the call
 // sequence an inline removes (arg staging + call + result handling). Used only
 // to estimate the saved bytes in the report, so an approximate constant is fine.
@@ -95,7 +103,10 @@ type inlineFacts struct {
 	results          int
 	declaredLocals   int
 	callSites        int
+	instructions     int  // decoded instructions, excluding the final end
+	collectCallees   bool // report scan retains direct target indices
 	regABIIntOnly    bool // signature fits the int-only register ABI
+	tinyLeafABI      bool // signature fits the general register ABI
 	boundedTupleLoop bool // small pure integer tuple leaf with bounded control
 }
 
@@ -208,7 +219,9 @@ func inlineOK(f inlineFacts, policy CodegenPolicy) bool {
 		return false
 	case f.calleeCount > 0:
 		return false
-	case !f.regABIIntOnly:
+	case !f.regABIIntOnly && !f.tinyLeafABI:
+		return false
+	case !f.regABIIntOnly && !tinyLeafInlineOK(f):
 		return false
 	case f.hasLoop && !f.inlineTupleLoop(policy):
 		return false
@@ -234,8 +247,10 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 		// mode register pressure in ways that regressed sqlite/bignum. Leaf-only keeps
 		// the transform to bodies that add no call machinery.
 		return false, fmt.Sprintf("non-leaf (%d call(s))", f.calleeCount)
-	case !f.regABIIntOnly:
-		return false, "signature not int-only reg-ABI"
+	case !f.regABIIntOnly && !f.tinyLeafABI:
+		return false, "signature not register-ABI compatible"
+	case !f.regABIIntOnly && !tinyLeafInlineOK(f):
+		return false, "non-integer leaf exceeds tiny straight-line class"
 	case f.hasLoop && !f.inlineTupleLoop(policy):
 		// A leaf callee that contains a LOOP is excluded: splicing its loop into the
 		// caller's hot region adds sustained register pressure and code size, while
@@ -249,10 +264,48 @@ func inlineClass(f inlineFacts, policy CodegenPolicy) (bool, string) {
 }
 
 func compactInlineOK(f inlineFacts, policy CodegenPolicy) bool {
-	return !f.moduleEH && !f.hasControlCall && f.calleeCount == 0 &&
-		f.callSites == 1 && f.straightLine() && f.bodyBytes <= compactInlineBodyLimit(policy) &&
-		f.params <= 1 && f.results <= 1 && f.declaredLocals == 0 &&
-		!f.touchesMem && !f.touchesGlobal
+	if f.moduleEH || f.hasControlCall || f.calleeCount != 0 || !f.straightLine() ||
+		f.bodyBytes > compactInlineBodyLimit(policy) || f.declaredLocals != 0 {
+		return false
+	}
+	if tinyLeafInlineOK(f) {
+		return true
+	}
+	return f.callSites == 1 && f.params <= 1 && f.results <= 1 &&
+		!f.touchesMem && !f.touchesGlobal && f.regABIIntOnly
+}
+
+func tinyLeafInlineOK(f inlineFacts) bool {
+	return f.tinyLeafABI && f.instructions <= inlineTinyLeafMaxInstructions &&
+		f.bodyBytes <= inlineTinyLeafMaxBodyBytes && f.straightLine() &&
+		f.declaredLocals == 0 &&
+		f.calleeCount == 0 && !f.hasControlCall
+}
+
+// tinyReferenceInlineSignature is the stricter class whose sole reference
+// parameter can be forwarded from an exact-root caller without adding a root
+// home. General tiny-leaf admission uses tinyLeafInlineSignature instead.
+func tinyReferenceInlineSignature(ft *wasm.CompType) bool {
+	if ft == nil || len(ft.Params) > 1 || len(ft.Results) > 1 {
+		return false
+	}
+	hasReference := false
+	for _, types := range [][]wasm.ValType{ft.Params, ft.Results} {
+		for _, typ := range types {
+			if typ.Kind() == wasm.ValRef {
+				hasReference = true
+				continue
+			}
+			if !isIntValType(typ) {
+				return false
+			}
+		}
+	}
+	return hasReference && sigFitsTypedReferenceRegABI(ft)
+}
+
+func tinyLeafInlineSignature(ft *wasm.CompType) bool {
+	return sigFitsGeneralRegABI(ft)
 }
 
 // inlineDecision layers the call-site gate on inlineClass for the report (a
@@ -278,11 +331,12 @@ func inlineDecision(f inlineFacts, callSites int, policy CodegenPolicy) (bool, s
 // scanInlineFacts collects a single local function's inline facts, from the
 // byte-backed body (the DecodeModule path) or the AST body (frontend/test path).
 func scanInlineFacts(m *wasm.Module, fn wasm.Func, localIdx, importedFuncs int, classifier wasm.ModuleInstructionClassifier) (inlineFacts, error) {
-	var f inlineFacts
+	f := inlineFacts{collectCallees: true}
 	if ft, ok := m.LocalFuncType(localIdx); ok {
 		f.params = len(ft.Params)
 		f.results = len(ft.Results)
 		f.regABIIntOnly = sigFitsRegABI(ft) && sigIsIntOnly(ft)
+		f.tinyLeafABI = tinyLeafInlineSignature(ft)
 	}
 	for _, run := range fn.Locals.Runs {
 		f.declaredLocals += int(run.Count)
@@ -324,6 +378,9 @@ func scanInlineFactsBytesWithClassifier(body []byte, f *inlineFacts, classifier 
 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return err
 		}
+		if op != 0x0b {
+			f.instructions++
+		}
 		if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 			f.hasControlFlow = true
 		}
@@ -336,7 +393,9 @@ func scanInlineFactsBytesWithClassifier(body []byte, f *inlineFacts, classifier 
 		switch imm.Kind {
 		case wasm.InstrCall:
 			f.calleeCount++
-			f.callees = append(f.callees, imm.Index)
+			if f.collectCallees {
+				f.callees = append(f.callees, imm.Index)
+			}
 		case wasm.InstrCallIndirect, wasm.InstrReturnCall, wasm.InstrReturnCallIndirect,
 			wasm.InstrCallRef, wasm.InstrReturnCallRef:
 			f.hasControlCall = true
@@ -350,6 +409,7 @@ func scanInlineFactsBytesWithClassifier(body []byte, f *inlineFacts, classifier 
 func scanInlineFactsAST(instrs []wasm.Instruction, f *inlineFacts) {
 	for i := range instrs {
 		in := &instrs[i]
+		f.instructions++
 		if shared.InstructionNeedsInlineBoundary(0, in.Kind) {
 			f.hasControlFlow = true
 		}
@@ -359,7 +419,9 @@ func scanInlineFactsAST(instrs []wasm.Instruction, f *inlineFacts) {
 		switch in.Kind {
 		case wasm.InstrCall:
 			f.calleeCount++
-			f.callees = append(f.callees, in.Index)
+			if f.collectCallees {
+				f.callees = append(f.callees, in.Index)
+			}
 		case wasm.InstrCallIndirect, wasm.InstrReturnCall, wasm.InstrReturnCallIndirect,
 			wasm.InstrCallRef, wasm.InstrReturnCallRef:
 			f.hasControlCall = true
@@ -476,8 +538,7 @@ func envDefaultOn(v string) bool {
 	}
 }
 
-// inlineTarget is a callee that will be spliced at its call sites: a straight-line
-// leaf with an int-only register-ABI signature and a small body.
+// inlineTarget is a small callee that will be spliced at its call sites.
 type inlineTarget struct {
 	body           []byte // the callee's expression bytecode (ends in the terminating `end`)
 	globalIdx      int    // global function index (what a `call` immediate names)
@@ -499,11 +560,28 @@ const (
 	inlineTupleLoopFlag    = uint32(1 << 28)
 	inlineTupleSelectFlag  = uint32(1 << 27)
 	inlineTailLoopFlag     = uint32(1 << 26)
+	inlineMakesCallsFlag   = uint32(1 << 25)
+	inlineGCParamsFlag     = uint32(1 << 24)
 	// Register-ABI candidates have at most eight integer parameters. Keep a
 	// separate byte for tail initialization without growing every target record.
 	inlineTailZeroShift = 16
 	inlineParamMask     = (1 << inlineTailZeroShift) - 1
 )
+
+func (t *inlineTarget) makesPhysicalCalls() bool { return t.params&inlineMakesCallsFlag != 0 }
+func (t *inlineTarget) hasGCParam() bool         { return t.params&inlineGCParamsFlag != 0 }
+func (t *inlineTarget) gcParamMask() uint16 {
+	if !t.hasGCParam() {
+		return 0
+	}
+	return uint16(t.localDeclBytes >> 16)
+}
+func (t *inlineTarget) localDeclByteCount() uint32 {
+	if !t.hasGCParam() {
+		return t.localDeclBytes
+	}
+	return t.localDeclBytes & uint32(^uint16(0))
+}
 
 var tailLoopInlineEnabled = true
 
@@ -668,6 +746,19 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		if recursiveInlineCandidate(m, allHints, i, facts, policy) {
 			params |= inlineRecursiveFlag
 		}
+		if h.flags.has(hintHasCall) {
+			params |= inlineMakesCallsFlag
+		}
+		var gcParamMask uint16
+		for i, typ := range ft.Params {
+			if typ.Kind() == wasm.ValRef {
+				gcParamMask |= uint16(1) << uint(i)
+			}
+		}
+		if gcParamMask != 0 {
+			params |= inlineGCParamsFlag
+			localDeclBytes |= uint32(gcParamMask) << 16
+		}
 		data.targets = append(data.targets, inlineTarget{
 			body:           m.Code[i].BodyBytes,
 			globalIdx:      importedFuncs + i,
@@ -767,8 +858,32 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 		declaredLocals: int(h.localCount) - len(ft.Params),
 		callSites:      int(h.inlineCallSiteCount()),
 		regABIIntOnly:  sigFitsRegABI(ft) && sigIsIntOnly(ft),
+		tinyLeafABI:    tinyLeafInlineSignature(ft),
 	}
-	if h.flags.has(hintHasCall) {
+	scannedTiny := false
+	if facts.tinyLeafABI && facts.bodyBytes <= inlineTinyLeafMaxBodyBytes {
+		var scanned inlineFacts
+		scanned.bodyBytes = facts.bodyBytes
+		scanned.params = facts.params
+		scanned.results = facts.results
+		scanned.declaredLocals = facts.declaredLocals
+		scanned.callSites = facts.callSites
+		scanned.regABIIntOnly = facts.regABIIntOnly
+		scanned.tinyLeafABI = true
+		if err := scanInlineFactsBytesWithClassifier(body, &scanned, wasm.NewModuleInstructionClassifier(m, true)); err != nil {
+			return nil, inlineFacts{}, false
+		}
+		scannedTiny = true
+		if facts.regABIIntOnly {
+			// Preserve the existing integer hint policy. The general tiny class
+			// needs only its decoded cost; replacing the other facts would change
+			// established compact-mode admission outside this optimization.
+			facts.instructions = scanned.instructions
+		} else {
+			facts = scanned
+		}
+	}
+	if h.flags.has(hintHasCall) && (facts.regABIIntOnly || !scannedTiny) {
 		facts.calleeCount = 1
 	}
 	facts.boundedTupleLoop = boundedIntegerTupleLoopBody(m.Code[i], facts, wasm.NewModuleInstructionClassifier(m, true))
@@ -870,6 +985,19 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
 		}
+		if t.hasGCParam() {
+			words := (len(f.localType) + 63) / 64
+			if len(f.gcLocalTypes) < words {
+				f.gcLocalTypes = append(f.gcLocalTypes, make([]uint64, words-len(f.gcLocalTypes))...)
+			}
+			gcParamMask := t.gcParamMask()
+			for param := 0; param < t.paramCount(); param++ {
+				if gcParamMask&(uint16(1)<<uint(param)) != 0 {
+					index := base + param
+					f.gcLocalTypes[index/64] |= uint64(1) << uint(index%64)
+				}
+			}
+		}
 		if t.tailLoop() && !f.makesCalls {
 			pool := gpPinPool(nil, true, f.nParams, true, f.opt(optEntryArgPins))
 			if len(callees) == 1 && f.inlineTailSpareR8() {
@@ -930,7 +1058,7 @@ func (a *inlineCallerAccumulator) add(plan *inlineCallerPlan, target *inlineTarg
 	if target == nil {
 		return false
 	}
-	inline := !target.recursive()
+	inline := !target.recursive() && !target.makesPhysicalCalls()
 	if a.largeSeen != nil {
 		if _, duplicate := a.largeSeen[target.globalIdx]; duplicate {
 			return inline
@@ -1112,7 +1240,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	base := f.inlineBase[t.globalIdx]
 	constants := f.captureInlineTailConstants(t, base)
 	previousForward, previousForwardN := f.inlineForward, f.inlineForwardN
-	if !f.forwardIntegerParams(t) {
+	if !f.forwardInlineParams(t) {
 		f.bindInlineParams(t, base)
 	}
 	var prefix [8]storage
@@ -1125,7 +1253,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 		defer f.leaveProfileInline(previous)
 	}
 	f.localBase = base
-	f.traceFuncIdx, f.tracePCBase = uint32(t.globalIdx), t.localDeclBytes
+	f.traceFuncIdx, f.tracePCBase = uint32(t.globalIdx), t.localDeclByteCount()
 	oldInlineDepth := f.inlineDepth
 	oldLoopAlign32 := f.compactLoopAlign32
 	if t.tupleLoop() && f.opt(optCompactLoopAlign32) {
@@ -1169,6 +1297,29 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	}
 	f.stats.addInlineSiteBytes(f.a.Len() - start)
 	return nil
+}
+
+func (f *fn) forwardInlineParams(t *inlineTarget) bool {
+	return f.forwardIntegerParams(t) || f.forwardTinyReferenceParam(t)
+}
+
+func (f *fn) forwardTinyReferenceParam(t *inlineTarget) bool {
+	if t.gcParamMask() != 1 || t.paramCount() != 1 || int(t.localTypeEnd-t.typeStart) != 1 ||
+		f.inlineDepth != 0 || f.localBase != 0 || f.moduleEH ||
+		len(f.customInstructions) != 0 || profileEnabled {
+		return false
+	}
+	argument := f.s.back()
+	if argument == nil || !argument.isValue() ||
+		(argument.st.kind != stLocalRef && argument.st.kind != stLocalReg) ||
+		int(argument.st.idx) >= f.nLocals || argument.st.typ != mtI64 {
+		return false
+	}
+	f.inlineForward[0] = argument.st.idx
+	f.inlineForwardN = 1
+	f.erase(argument)
+	f.stats.peep("inline-reference-param-forward")
+	return true
 }
 
 // forwardIntegerParams keeps a bounded read-only integer helper on the

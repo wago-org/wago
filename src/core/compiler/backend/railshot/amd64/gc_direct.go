@@ -31,6 +31,7 @@ const (
 	gcSharedStubResolveBoundedObject
 	gcSharedStubResolveArrayObject
 	gcSharedStubTrustedFinalCast
+	gcSharedStubDefinedCast
 	gcSharedStubMax
 )
 
@@ -402,7 +403,7 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 	for i := range offsets {
 		offsets[i] = -1
 	}
-	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] && !used[gcSharedStubTrustedFinalCast] {
+	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] && !used[gcSharedStubTrustedFinalCast] && !used[gcSharedStubDefinedCast] {
 		return nil, offsets
 	}
 	a := &x64.Asm{}
@@ -411,12 +412,15 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 		// modules that previously needed no shared resolver island.
 		a.B = make([]byte, 0, 256)
 	}
-	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject, gcSharedStubTrustedFinalCast} {
+	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject, gcSharedStubTrustedFinalCast, gcSharedStubDefinedCast} {
 		if used[kind] {
 			offsets[kind] = a.Len()
-			if kind == gcSharedStubTrustedFinalCast {
+			switch kind {
+			case gcSharedStubTrustedFinalCast:
 				emitModuleGCTrustedFinalCastStub(a)
-			} else {
+			case gcSharedStubDefinedCast:
+				emitModuleGCDefinedCastStub(a)
+			default:
 				emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject || kind == gcSharedStubResolveArrayObject, kind == gcSharedStubResolveArrayObject)
 			}
 		}
@@ -629,6 +633,127 @@ func emitModuleGCTrustedFinalCastStub(a *x64.Asm) {
 	a.Ret()
 }
 
+// emitModuleGCDefinedCastStub checks a nullable or non-nullable cast to a
+// defined collector type. It keeps the existing fail-closed compact-reference
+// validation, but emits it once per module instead of once per function.
+//
+// RAX is the compact reference, EDX the module-local target type, ECX the
+// nullable flag, and ESI the no-proper-subtype flag. It returns the original
+// reference with EDX zero on success, or zero with EDX=trapCastFailure.
+// R9-R11 are preserved so functions with pinned locals can call the same leaf.
+func emitModuleGCDefinedCastStub(a *x64.Asm) {
+	a.Push(R9)
+	a.Push(R10)
+	a.Push(R11)
+
+	failures := make([]int, 0, 16)
+	failIf := func(cond Cond) { failures = append(failures, a.JccPlaceholder(cond)) }
+
+	// A foreign anyref token has a nonzero upper half and cannot satisfy a
+	// defined collector type, even when its low half aliases a live handle.
+	a.MovReg64(R10, RAX)
+	a.ShiftImm(5, R10, 32, true)
+	a.TestSelf(R10, true)
+	failIf(condNE)
+
+	a.MovRegReg32(RDI, RAX) // retain the original compact reference
+	a.TestSelf(RAX, false)
+	nonNull := a.JccPlaceholder(condNE)
+	a.TestSelf(RCX, false)
+	failIf(condE)
+	nullSuccess := a.JmpPlaceholder()
+	a.PatchRel32(nonNull, a.Len())
+
+	a.TestImm(RAX, 1, false)
+	failIf(condNE) // i31 cannot satisfy a defined struct or array target
+
+	// Resolve the module-local target into the collector's canonical domain.
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
+	a.ImulRI(RDX, 4, true)
+	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+
+	// Resolve and validate the compact handle against the current heap backing.
+	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+	a.ShiftImm(5, RAX, 1, false)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
+	failIf(condAE)
+	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
+	a.ShiftImm(4, RAX, 4, true)
+	a.Add64(R9, RAX)
+
+	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	a.TestSelf(R10, false)
+	failIf(condE)
+	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
+	failIf(condA)
+	emitGCSelectIndexedSpace(a)
+	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
+	a.Cmp32(RAX, R8)
+	failIf(condA)
+	a.Sub32(R8, RAX)
+	a.Load32(RCX, R9, gc.NativeHandleSizeOffset)
+	a.Cmp32(RCX, R8)
+	failIf(condA)
+	a.AluRI(cmpDigit, RCX, int32(gc.HeaderSize), false)
+	failIf(condB)
+
+	a.Add64(R11, RAX)
+	a.Load32(RCX, R11, 0) // actual canonical type ID
+	a.Cmp32(RCX, RDX)
+	identityDone := a.JccPlaceholder(condE)
+
+	// Exact casts and ordinary casts to final types reject proper subtypes.
+	a.TestSelf(RSI, false)
+	failIf(condNE)
+
+	// Open targets use the collector's immutable subtype interval table.
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+	a.MovRegReg32(RAX, RCX)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+	failIf(condAE)
+	a.MovRegReg32(RAX, RDX)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+	failIf(condAE)
+	a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+	a.TestSelf(R10, true)
+	failIf(condE)
+	a.MovRegReg32(RAX, RCX)
+	a.ImulRI(RAX, 8, true)
+	a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
+	a.MovRegReg32(RAX, RDX)
+	a.ImulRI(RAX, 8, true)
+	a.LoadIdx(R10, R10, RAX, 0, 8, false, true)
+	a.MovReg64(RAX, R9)
+	a.ShiftImm(5, RAX, 32, true)
+	a.MovReg64(RCX, R10)
+	a.ShiftImm(5, RCX, 32, true)
+	a.Cmp32(RAX, RCX)
+	failIf(condB)
+	a.Cmp32(R9, R10)
+	failIf(condA)
+
+	success := a.Len()
+	a.PatchRel32(identityDone, success)
+	a.PatchRel32(nullSuccess, success)
+	a.MovRegReg32(RAX, RDI)
+	a.XorSelf32(RDX)
+	done := a.JmpPlaceholder()
+
+	failure := a.Len()
+	a.MovImm32(RDX, int32(trapCastFailure))
+	a.XorSelf32(RAX)
+	for _, branch := range failures {
+		a.PatchRel32(branch, failure)
+	}
+	a.PatchRel32(done, a.Len())
+	a.Pop(R11)
+	a.Pop(R10)
+	a.Pop(R9)
+	a.Ret()
+}
+
 // R10 is the already range-checked space byte. Select that exact descriptor
 // without a generation-specific branch. Return R11=base and R8D=bytes.
 func emitGCSelectIndexedSpace(a *x64.Asm) {
@@ -648,16 +773,24 @@ func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, l
 }
 
 func (f *fn) emitDirectGCObjectWithSubtype(object *elem, localType, requiredBytes uint32, local int, hasLocal, subtype, retain bool) (obj Reg, done func()) {
+	return f.emitDirectGCObjectWithSubtypeCache(object, localType, requiredBytes, local, hasLocal, subtype, retain, false, 0)
+}
+
+func (f *fn) emitDirectGCObjectWithSubtypeCache(object *elem, localType, requiredBytes uint32, local int, hasLocal, subtype, retain, spillCache bool, previousFloor int) (obj Reg, done func()) {
 	kind := gcSharedStubNone
 	if subtype {
 		kind = gcSharedStubResolveSubtypeObject
 	}
-	return f.emitDirectGCObjectWithStub(object, localType, requiredBytes, local, hasLocal, kind, retain)
+	return f.emitDirectGCObjectWithStubCache(object, localType, requiredBytes, local, hasLocal, kind, retain, spillCache, previousFloor)
 }
 
 // A nonzero kind selects a shared leaf without changing the ordinary exact
 // resolver's crossover counts. Both paths can reuse the same extent proof.
 func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes uint32, local int, hasLocal bool, kind gcSharedStubKind, retain bool) (obj Reg, done func()) {
+	return f.emitDirectGCObjectWithStubCache(object, localType, requiredBytes, local, hasLocal, kind, retain, false, 0)
+}
+
+func (f *fn) emitDirectGCObjectWithStubCache(object *elem, localType, requiredBytes uint32, local int, hasLocal bool, kind gcSharedStubKind, retain, spillCache bool, previousFloor int) (obj Reg, done func()) {
 	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
 		f.gcResolved.local == local && f.gcResolved.typeIndex == localType &&
 		requiredBytes <= f.gcResolved.requiredBytes {
@@ -667,7 +800,7 @@ func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes u
 		f.release(ref)
 		f.stats.addGCHandleResolutionReuse()
 		f.stats.peep("gc-resolve-reuse")
-		return f.gcResolved.reg, func() {}
+		return f.materializeGCResolvedObject()
 	}
 	f.gcPureIfEndPC = 0
 	if !retain {
@@ -693,6 +826,12 @@ func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes u
 	}
 	cacheReg := f.gcResolvedRegister()
 	if cacheReg == regNone {
+		if spillCache {
+			f.cacheGCResolvedObjectInSpill(local, localType, requiredBytes, obj, previousFloor)
+			done()
+			f.stats.peep("gc-resolve-spill-cache")
+			return obj, func() {}
+		}
 		return obj, done
 	}
 	f.a.MovReg64(cacheReg, obj)
@@ -881,10 +1020,31 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 	} else {
 		f.a.MovImm32(RCX, 0)
 	}
-	if exact {
+	noProperSubtype := exact
+	if target, ok := f.stagedGCType(typeIndex); ok && target.Final {
+		noProperSubtype = true
+		if !exact {
+			f.stats.peep("gc-final-defined-cast-exact")
+		}
+	}
+	if noProperSubtype {
 		f.a.MovImm32(RSI, 1)
 	} else {
 		f.a.MovImm32(RSI, 0)
+	}
+	if gcSharedStubsEnabled {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		site := f.a.CallRel32()
+		f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubDefinedCast))
+		f.stats.call("gcnative-leaf")
+		f.stats.peep("gc-shared-defined-cast")
+		f.a.TestSelf(RDX, false)
+		f.sc.gcTrustedCastFailSites = append(f.sc.gcTrustedCastFailSites, f.a.JccPlaceholder(condNE))
+		result := f.pushReg(RAX, mtI64)
+		f.setStackGCRoot(result, true)
+		return nil
 	}
 	if regallocCheckEnabled {
 		f.checkCallClobber()
@@ -981,7 +1141,7 @@ func (f *fn) emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffse
 		}
 	}
 	local, hasLocal := gcLocalProvenance(f.s.back())
-	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
+	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid && !f.gcResolved.spill &&
 		f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex && required <= f.gcResolved.requiredBytes {
 		f.dropValue()
 		f.stats.addGCHandleResolutionReuse()
@@ -1053,11 +1213,48 @@ func (f *fn) emitNativeFinalCastStructScalarGet(typeIndex, fieldOffset uint32, s
 // struct and immediately reads an inherited scalar field. The shared subtype
 // resolver proves the canonical relation, complete object extent, and stable
 // field layout before it returns the short-lived raw object address.
-func (f *fn) emitNativeOpenCastStructScalarGet(typeIndex, fieldOffset uint32, scalar directGCScalar, signed, nullable bool) error {
+func (f *fn) emitNativeOpenCastStructScalarGet(typeIndex, fieldOffset uint32, scalar directGCScalar, signed, nullable, cache bool) error {
 	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + uint64(scalar.size)
 	if required > math.MaxInt32 {
 		return fmt.Errorf("amd64: open struct field extent %d exceeds native immediate", required)
 	}
+	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok {
+		if layout.ObjectSize > math.MaxInt32 {
+			return fmt.Errorf("amd64: open struct extent %d exceeds native immediate", layout.ObjectSize)
+		}
+		if layout.ObjectSize > uint32(required) {
+			required = uint64(layout.ObjectSize)
+		}
+	} else if st, ok := f.stagedStructType(typeIndex); ok {
+		for i := range st.Comp.Fields {
+			field, _, found := f.gcStructFieldLayout(typeIndex, uint32(i))
+			if !found {
+				break
+			}
+			end := uint64(gc.PayloadOffset) + uint64(field.Offset) + uint64(field.Size)
+			if end > math.MaxInt32 {
+				return fmt.Errorf("amd64: open struct extent %d exceeds native immediate", end)
+			}
+			if end > required {
+				required = end
+			}
+		}
+	}
+	local, hasLocal := gcLocalProvenance(f.s.back())
+	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
+		f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex && uint32(required) <= f.gcResolved.requiredBytes {
+		f.dropValue()
+		f.stats.addGCHandleResolutionReuse()
+		f.stats.peep("gc-open-cast-resolve-reuse")
+		obj, done := f.materializeGCResolvedObject()
+		err := f.emitOpenCastStructScalarLoad(obj, fieldOffset, scalar, signed)
+		done()
+		if !cache {
+			f.invalidateGCResolvedObject()
+		}
+		return err
+	}
+	f.invalidateGCResolvedObject()
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
@@ -1068,25 +1265,44 @@ func (f *fn) emitNativeOpenCastStructScalarGet(typeIndex, fieldOffset uint32, sc
 	}
 	obj := f.emitSharedCheckedGCObjectPinnedTrap(object, typeIndex, uint32(required), gcSharedStubResolveSubtypeObject, nullTrap)
 	done := func() { f.pinned = f.pinned.remove(RAX) }
+	if cache && gcResolveReuseEnabled && hasLocal {
+		if cacheReg := f.gcResolvedRegister(); cacheReg != regNone {
+			f.a.MovReg64(cacheReg, obj)
+			done()
+			f.pinned = f.pinned.add(cacheReg)
+			f.gcResolved = gcResolvedObject{valid: true, local: local, typeIndex: typeIndex, requiredBytes: uint32(required), reg: cacheReg}
+			f.stats.peep("gc-open-cast-resolve-cache")
+			obj = cacheReg
+			done = func() {}
+		} else {
+			f.cacheGCResolvedObjectInSpill(local, typeIndex, uint32(required), obj, oldFloor)
+			done()
+			f.stats.peep("gc-open-cast-resolve-spill-cache")
+			done = func() {}
+		}
+	}
+	err := f.emitOpenCastStructScalarLoad(obj, fieldOffset, scalar, signed)
+	done()
+	if !f.gcResolved.valid || !f.gcResolved.spill {
+		f.spillFloor = oldFloor
+	}
+	return err
+}
+
+func (f *fn) emitOpenCastStructScalarLoad(obj Reg, fieldOffset uint32, scalar directGCScalar, signed bool) error {
 	disp := int32(gc.PayloadOffset + fieldOffset)
 	switch {
 	case scalar.typ == mtV128:
 		x := f.allocFReg(0)
 		f.mov128LoadDisp(x, obj, disp)
-		done()
-		f.spillFloor = oldFloor
 		f.pushVReg(x)
 	case scalar.typ.isFloat():
 		x := f.allocFReg(0)
 		f.a.FLoadDisp(x, obj, disp, scalar.typ == mtF64)
-		done()
-		f.spillFloor = oldFloor
 		f.pushFReg(x, scalar.typ)
 	default:
 		result := f.allocReg(maskOf(obj))
 		f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64)
-		done()
-		f.spillFloor = oldFloor
 		f.pushReg(result, scalar.typ)
 	}
 	return nil
@@ -2453,7 +2669,8 @@ func (f *fn) emitNativeDefinedCastStub() { f.emitNativeDefinedTypeCheckStub(fals
 func (f *fn) emitNativeDefinedTestStub() { f.emitNativeDefinedTypeCheckStub(true) }
 
 // emitNativeDefinedTypeCheckStub consumes EAX=compact reference,
-// EDX=module-local target type, ECX=nullable flag, and ESI=exact flag. Test mode
+// EDX=module-local target type, ECX=nullable flag, and ESI=no-proper-subtype
+// flag. Exact casts and ordinary casts to final types both set ESI. Test mode
 // returns zero/one in EAX; cast mode returns the original compact reference.
 func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	a := f.a
@@ -3191,8 +3408,36 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 		return false
 	}
 	local, hasLocal := gcLocalProvenance(f.s.back())
+	if !hasLocal && f.gcResolved.valid && f.gcResolved.inputTop {
+		local, hasLocal = f.gcResolved.local, true
+	}
+	if f.gcResolved.valid {
+		f.gcResolved.inputTop = false
+	}
 	oldFloor := f.spillFloor
+	spillCache := hasLocal && f.cacheGCCastStructAddress(reader, local, typeIndex)
 	required := gc.PayloadOffset + off + uint32(scalar.size)
+	if spillCache {
+		if layout, found := f.gcTypeLayout(typeIndex, wasm.CompStruct); found {
+			if layout.ObjectSize <= math.MaxInt32 && layout.ObjectSize > required {
+				required = layout.ObjectSize
+			}
+		} else if st, found := f.stagedStructType(typeIndex); found {
+			for i := range st.Comp.Fields {
+				field, _, ok := f.gcStructFieldLayout(typeIndex, uint32(i))
+				if !ok {
+					break
+				}
+				end := uint64(gc.PayloadOffset) + uint64(field.Offset) + uint64(field.Size)
+				if end > math.MaxInt32 {
+					break
+				}
+				if uint32(end) > required {
+					required = uint32(end)
+				}
+			}
+		}
+	}
 	var obj Reg
 	done := func() {}
 	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
@@ -3200,7 +3445,7 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 		// The unchanged local and complete extent are already checked. No call
 		// or new trap needs a canonical operand image on this path.
 		f.dropValue()
-		obj = f.gcResolved.reg
+		obj, done = f.materializeGCResolvedObject()
 		f.stats.addGCHandleResolutionReuse()
 		f.stats.peep("gc-resolve-reuse")
 		f.stats.peep("gc-resolve-reuse-no-flush")
@@ -3208,14 +3453,20 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 		f.flush()
 		f.spillFloor = f.curSpillSlot()
 		object := f.popValue()
-		obj, done = f.emitDirectGCObjectWithSubtype(object, typeIndex, required, local, hasLocal, !final, f.retainGCResolvedAddress(reader, local, hasLocal))
+		obj, done = f.emitDirectGCObjectWithSubtypeCache(object, typeIndex, required, local, hasLocal, !final,
+			f.retainGCResolvedAddress(reader, local, hasLocal), spillCache, oldFloor)
 	}
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
 		x := f.allocFReg(0)
 		f.a.FLoadDisp(x, obj, disp, scalar.typ == mtF64)
 		done()
-		f.spillFloor = oldFloor
+		if f.gcResolved.valid && f.gcResolved.spill && !spillCache {
+			f.invalidateGCResolvedObject()
+		}
+		if !f.gcResolved.valid || !f.gcResolved.spill {
+			f.spillFloor = oldFloor
+		}
 		f.pushFReg(x, scalar.typ)
 		return true
 	}
@@ -3223,7 +3474,12 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 	signed := helper == gcStructGetS
 	f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64 && !collectorRef)
 	done()
-	f.spillFloor = oldFloor
+	if f.gcResolved.valid && f.gcResolved.spill && !spillCache {
+		f.invalidateGCResolvedObject()
+	}
+	if !f.gcResolved.valid || !f.gcResolved.spill {
+		f.spillFloor = oldFloor
+	}
 	f.pushReg(result, scalar.typ)
 	if collectorRef {
 		// Publish the loaded compact child as a root, without assigning it the

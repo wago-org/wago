@@ -662,11 +662,12 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			structTarget = target.Comp.Kind == wasm.CompStruct
 		}
 	}
-	staticDeclaredLocal := f.gcStructHelpers && objectTarget && hasSourceLocal && f.localBase == 0 && sourceLocal >= f.nParams &&
+	originalSourceLocal := hasSourceLocal && sourceLocal >= 0 && sourceLocal < f.nLocals
+	staticDeclaredLocal := f.gcStructHelpers && objectTarget && originalSourceLocal && sourceLocal >= f.nParams &&
 		staticGCDeclaredLocalCast(f.m, f.ft, f.localRuns, sourceLocal, sub, heap, exactTarget)
-	reuseFinalStruct := f.gcStructHelpers && structTarget && finalTarget && sub == 22 && !exactTarget &&
+	reuseResolvedStruct := f.gcStructHelpers && structTarget && sub == 22 && !exactTarget &&
 		hasSourceLocal && f.gcResolved.valid && f.gcResolved.local == sourceLocal && f.gcResolved.typeIndex == uint32(heap)
-	if !staticDeclaredLocal && !reuseFinalStruct {
+	if !staticDeclaredLocal && !reuseResolvedStruct {
 		// Opcode preparation defers ref.cast invalidation until its immediate and
 		// source are known. Every cast except this proved no-op keeps the ordinary
 		// transient-address invalidation rule.
@@ -679,6 +680,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if f.gcStructHelpers && heap >= 0 {
 		if staticDeclaredLocal {
 			f.markTopGCReference()
+			if reuseResolvedStruct {
+				f.gcResolved.inputTop = true
+			}
 			f.stats.peep("gc-static-local-cast-elide")
 			return nil
 		}
@@ -691,13 +695,17 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
 		}
-		if reuseFinalStruct {
+		if reuseResolvedStruct {
 			f.invalidateGCResolvedObject()
 		}
-		if objectTarget && hasSourceLocal && f.localBase == 0 && sourceLocal < f.nParams &&
+		if objectTarget && originalSourceLocal && sourceLocal < f.nParams &&
 			staticGCParameterCast(f.m, f.ft, sourceLocal, sub, heap, exactTarget) {
 			f.markTopGCReference()
-			f.stats.peep("gc-static-param-cast-elide")
+			stat := "gc-static-param-cast-elide"
+			if f.inlineDepth != 0 {
+				stat = "gc-static-cast-call-elide"
+			}
+			f.stats.peep(stat)
 			return nil
 		}
 		if target, ok := f.stagedGCType(uint32(heap)); ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
@@ -834,11 +842,13 @@ func (f *fn) tryFuseCastStructGet(typeIndex uint32, nullable, exactTarget bool, 
 				return false, nil
 			}
 			f.stats.peep("open-cast-scalar-get-fuse")
-			return true, f.emitNativeOpenCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable)
+			local, hasLocal := gcLocalProvenance(f.s.back())
+			cache := hasLocal && f.cacheGCCastStructAddress(r, local, typeIndex)
+			return true, f.emitNativeOpenCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable, cache)
 		}
 		f.stats.peep("final-cast-scalar-get-fuse")
 		local, hasLocal := gcLocalProvenance(f.s.back())
-		cache := hasLocal && f.cacheGCFinalCastStructAddress(r, local, typeIndex)
+		cache := hasLocal && f.cacheGCCastStructAddress(r, local, typeIndex)
 		return true, f.emitNativeFinalCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable, cache)
 	}
 	if !st.Final {
@@ -849,7 +859,7 @@ func (f *fn) tryFuseCastStructGet(typeIndex uint32, nullable, exactTarget bool, 
 		if final && layout.Size == 4 {
 			f.stats.peep("final-cast-struct-get-fuse")
 			local, hasLocal := gcLocalProvenance(f.s.back())
-			cache := hasLocal && f.cacheGCFinalCastStructAddress(r, local, typeIndex)
+			cache := hasLocal && f.cacheGCCastStructAddress(r, local, typeIndex)
 			if err := f.emitNativeFinalCastStructRefGet(typeIndex, layout.Offset, nullable, cache); err != nil {
 				return true, err
 			}

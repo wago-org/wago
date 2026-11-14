@@ -74,6 +74,74 @@ func TestGCStaticParameterCastAndForwardCall(t *testing.T) {
 	}
 }
 
+func TestGCStaticCastWrapperCallElided(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x50, 0, 0x5f, 0},             // type 0: open empty struct
+			[]byte{0x50, 1, 0, 0x5f, 0},          // type 1: final subtype of type 0
+			[]byte{0x60, 1, 0x64, 0, 1, 0x64, 1}, // type 2: (ref 0) -> (ref 1)
+			[]byte{0x60, 1, 0x64, 1, 1, 0x64, 1}, // type 3: (ref 1) -> (ref 1)
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{2}, []byte{3}, []byte{2})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0xfb, 22, 1, 0x0b}), // wrapper: cast parameter to type 1
+			wasmtest.Code([]byte{0x20, 0, 0x10, 0, 0x0b}),     // proved caller
+			wasmtest.Code([]byte{0x20, 0, 0x10, 0, 0x0b}),     // broad caller retains the cast
+		)),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, GCArrayHelpers: true, Stats: &stats, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: meta.Descs, GCTypeLayouts: meta.Layouts}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cm.CodeImage.Close()
+	if got := stats.Funcs[1].Peephole["gc-static-cast-call-elide"]; got != 1 {
+		t.Fatalf("static cast-wrapper call elisions=%d want1 (calls=%v)", got, stats.Funcs[1].Calls)
+	}
+	if calls := stats.Funcs[1].Calls; calls[callKindMixed]+calls[callKindWrapper]+calls["gcnative"]+calls["gcnative-leaf"] != 0 {
+		t.Fatalf("proved cast-wrapper caller emitted runtime work: %v", calls)
+	}
+	if got := stats.Funcs[1].Calls[callKindInline]; got != 1 {
+		t.Fatalf("proved cast-wrapper caller inline calls=%d want1", got)
+	}
+	if got := stats.Funcs[2].Calls[callKindInline]; got != 1 {
+		t.Fatalf("broad cast-wrapper caller inline calls=%d want1", got)
+	}
+	if got := stats.Funcs[2].Peephole["gc-static-cast-call-elide"]; got != 0 {
+		t.Fatalf("broad cast-wrapper caller elisions=%d want0", got)
+	}
+	if calls := stats.Funcs[2].Calls; calls[callKindWrapper] != 0 || calls["gcnative"]+calls["gcnative-leaf"] == 0 {
+		t.Fatalf("broad cast-wrapper caller did not retain its dynamic check: %v", calls)
+	}
+
+	var compactStats ModuleStats
+	compact, err := CompileModuleWith(m, CompileOptions{CompactNative: true, GCStructHelpers: true, GCArrayHelpers: true, Stats: &compactStats, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: meta.Descs, GCTypeLayouts: meta.Layouts}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compact.CodeImage.Close()
+	for _, caller := range []int{1, 2} {
+		if got := compactStats.Funcs[caller].Calls[callKindInline]; got != 1 {
+			t.Fatalf("compact caller%d inline calls=%d want1", caller, got)
+		}
+		if got := compactStats.Funcs[caller].Calls[callKindWrapper]; got != 0 {
+			t.Fatalf("compact caller%d wrapper calls=%d want0", caller, got)
+		}
+	}
+}
+
 func TestGCStaticParameterCastInEHModule(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	m, err := wasm.DecodeModule(staticParameterEHModule())
