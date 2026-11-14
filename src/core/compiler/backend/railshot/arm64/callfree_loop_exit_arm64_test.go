@@ -31,6 +31,8 @@ func callFreeLoopExitModule(t testing.TB) *wasm.Module {
 
 func TestCallFreeLoopExitReconciliationIsColdArm64(t *testing.T) {
 	requireCompilerDiagnostics(t)
+	savedMerge := registerOnlyMergeEnabled
+	defer func() { registerOnlyMergeEnabled = savedMerge }()
 	m := callFreeLoopExitModule(t)
 	compile := func(enabled bool) (*ModuleStats, int) {
 		var stats ModuleStats
@@ -50,17 +52,25 @@ func TestCallFreeLoopExitReconciliationIsColdArm64(t *testing.T) {
 		}
 		return &stats, len(cm.Code)
 	}
-	on, onBytes := compile(true)
-	off, offBytes := compile(false)
-	if got := on.Funcs[0].Peephole["callfree-loop-exit-cold"]; got != 1 {
-		t.Fatalf("cold loop exits = %d, want 1 (all: %v)", got, on.Funcs[0].Peephole)
-	}
-	if got := off.Funcs[0].Peephole["callfree-loop-exit-cold"]; got != 0 {
-		t.Fatalf("disabled cold loop exits = %d, want 0", got)
-	}
-	// The cold edge adds one branch but must stay within that one-word cost.
-	if onBytes > offBytes+4 {
-		t.Fatalf("cold loop exit code = %d bytes, eager = %d", onBytes, offBytes)
+	for _, registerOnly := range []bool{false, true} {
+		registerOnlyMergeEnabled = registerOnly
+		on, onBytes := compile(true)
+		off, offBytes := compile(false)
+		wantCold := 1
+		if registerOnly {
+			wantCold = 0 // the acyclic target no longer needs a spill
+		}
+		if got := on.Funcs[0].Peephole["callfree-loop-exit-cold"]; got != wantCold {
+			t.Fatalf("register-only=%v cold loop exits = %d, want %d (all: %v)", registerOnly, got, wantCold, on.Funcs[0].Peephole)
+		}
+		if got := off.Funcs[0].Peephole["callfree-loop-exit-cold"]; got != 0 {
+			t.Fatalf("disabled cold loop exits = %d, want 0", got)
+		}
+		// A required cold edge costs at most one word. A register-only exit
+		// needs no reconciliation, so toggling cold placement changes no bytes.
+		if onBytes > offBytes+4 || registerOnly && onBytes != offBytes {
+			t.Fatalf("register-only=%v cold loop exit code = %d bytes, eager = %d", registerOnly, onBytes, offBytes)
+		}
 	}
 }
 
