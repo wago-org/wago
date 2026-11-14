@@ -148,6 +148,7 @@
               "interval-region-pins",
               "interval-scratch-lease",
               "inverted-logical",
+              "layout-padding-skip",
               "leaf-scratch-memsize",
               "leaf-scratch-pins",
               "legacy-fp-pins",
