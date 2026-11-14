@@ -552,3 +552,26 @@ func TestArrayLenParameterRejectsInlineAndNonParameterLocals(t *testing.T) {
 		}
 	}
 }
+
+// An owned snapshot can outlive a write even when no borrowed read or cached
+// address is pending. Only its identity as the current local must be removed.
+func TestGCOwnedSnapshotLocalWriteInvalidation(t *testing.T) {
+	f := &fn{gcStructHelpers: true}
+	old := &elem{st: storage{kind: stReg, typ: mtI64, reg: RAX, slot: 1}}
+	old.st.setGCRoot(true)
+	old.st.setValueFacts(factGCStoredRef)
+	other := &elem{st: storage{kind: stReg, typ: mtI64, reg: RCX, slot: 2}}
+	f.regUser[RAX], f.regUser[RCX] = old, other
+	before := old.st
+	f.invalidateGCLoadFactsForLocal(0)
+	if old.st.slot != 0 {
+		t.Fatalf("owned snapshot still identifies local 0: slot=%d", old.st.slot)
+	}
+	before.slot = 0
+	if old.st != before {
+		t.Fatalf("snapshot value or root changed: got%+v want%+v", old.st, before)
+	}
+	if other.st.slot != 2 {
+		t.Fatalf("unrelated local marker changed: %d", other.st.slot)
+	}
+}

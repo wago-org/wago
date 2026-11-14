@@ -132,8 +132,8 @@ func (f *fn) gcResolvedRegister() Reg {
 	return regNone
 }
 
-// Only borrowed local reads identify the current local value. An owned
-// register is a snapshot that can survive assignment to its source local.
+// Borrowed reads and owned snapshots can identify the current local value.
+// Assignment must clear the marker on outstanding owned snapshots.
 func gcLocalProvenance(e *elem) (int, bool) {
 	if e == nil || !e.isValue() {
 		return 0, false
@@ -161,6 +161,23 @@ func markGCLocalProvenance(e *elem, local int) {
 func (f *fn) invalidateGCLoadFactsForLocal(local int) {
 	if f.gcResolved.valid && f.gcResolved.local == local {
 		f.invalidateGCResolvedObject()
+	}
+	if !f.gcStructHelpers {
+		return
+	}
+	// Collector references use i64 storage. Numeric locals of another width
+	// cannot own an object-address certificate.
+	if uint(local) < uint(len(f.localType)) && f.localType[local] != mtI64 {
+		return
+	}
+	// Owned values retain the old value after assignment, but no longer name
+	// the current local. Clear their identity even without a cached address or
+	// a pending borrowed local read. The register-owner table has fixed size.
+	marker := uint32(local + 1)
+	for _, e := range f.regUser[:] {
+		if e != nil && e.st.kind == stReg && e.st.slot == marker {
+			e.st.slot = 0
+		}
 	}
 }
 
