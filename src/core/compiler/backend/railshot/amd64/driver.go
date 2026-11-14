@@ -114,6 +114,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if f.gcSubtypeProofN&gcFreshStructFactMode != 0 {
 			f.prepareGCFreshStructFact(op)
 		}
+		if f.gcLocalTypeFactsEnabled() && (f.gcPendingReference.valid() || f.gcLocalTypeFacts.n != 0) {
+			f.prepareGCLocalTypeFacts(op)
+		}
 		switch op {
 		case 0x00: // unreachable
 			if !f.unreachable {
@@ -308,11 +311,17 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 				if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
 					value = f.pushReg(reg, f.localType[x])
 					f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
+					if fact, ok := f.loadGCLocalTypeFact(int(x)); ok {
+						f.gcPendingReference = fact
+					}
 					break
 				}
 			}
 		}
 		f.pushPlainLocalGet(x)
+		if fact, ok := f.loadGCLocalTypeFact(int(x)); ok {
+			f.gcPendingReference = fact
+		}
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
@@ -334,7 +343,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			if next, ok := look.Peek(); ok && next == 0x20 {
 				_, _ = look.Byte()
 				if got, err := look.U32(); err == nil && got == x {
+					fact := f.gcPendingReference
 					f.setLocal(r, written, true)
+					f.storeGCLocalTypeFact(written, fact)
 					if err := r.JumpTo(look.Offset()); err != nil {
 						return err
 					}
@@ -343,7 +354,12 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 				}
 			}
 		}
-		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
+		fact := f.gcPendingReference
+		f.setLocal(r, written, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
+		f.storeGCLocalTypeFact(written, fact)
+		if op == 0x21 {
+			f.gcPendingReference = gcReferenceTypeFact{}
+		}
 		if op == 0x22 {
 			f.tryByteSwapAfterTee(r, written)
 		}
@@ -1196,6 +1212,7 @@ func (f *fn) v128TeeOverwritten(r *wasm.Reader, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+	f.invalidateGCLocalTypeFact(x)
 	f.inlineTailConstantSet(x)
 	if regallocCheckEnabled {
 		checkNativeSourceSet(f, x, tee, f.s.back())

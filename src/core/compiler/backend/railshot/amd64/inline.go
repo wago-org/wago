@@ -1430,6 +1430,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 					f.locals[local].state = lsMem
 				}
 				f.invalidateGCLoadFactsForLocal(local)
+				f.invalidateGCLocalTypeFact(local)
 				if loopInitialized&(uint64(1)<<i) != 0 {
 					f.stats.peep("inline-loop-entry-init")
 				} else {
@@ -1442,6 +1443,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 				f.a.XorSelf32(reg)
 				f.locals[local].state = lsReg
 				f.invalidateGCLoadFactsForLocal(local)
+				f.invalidateGCLocalTypeFact(local)
 				continue
 			}
 			if z == regNone {
@@ -1453,6 +1455,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 			}
 			f.locals[local].state = lsMem
 			f.invalidateGCLoadFactsForLocal(local)
+			f.invalidateGCLocalTypeFact(local)
 		}
 		if z != regNone {
 			f.release(z)

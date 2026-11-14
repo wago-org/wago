@@ -54,6 +54,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	// whether a proved no-op declared-local cast may retain the certificate.
 	if sub != 22 && sub != 23 {
 		f.prepareGCResolvedFB(sub)
+		f.gcPendingReference = gcReferenceTypeFact{}
 	}
 	f.prepareGCFreshStructFB(sub)
 	f.gcOpcodeBarrier = false
@@ -651,6 +652,8 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	sourceFact := f.gcPendingReference
+	f.setPendingGCCastReference(sub, heap, exactTarget)
 	sourceLocal, hasSourceLocal := gcLocalProvenance(f.s.back())
 	finalTarget := false
 	objectTarget := false
@@ -665,9 +668,23 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	originalSourceLocal := hasSourceLocal && sourceLocal >= 0 && sourceLocal < f.nLocals
 	staticDeclaredLocal := f.gcStructHelpers && objectTarget && originalSourceLocal && sourceLocal >= f.nParams &&
 		staticGCDeclaredLocalCast(f.m, f.ft, f.localRuns, sourceLocal, sub, heap, exactTarget)
+	staticLocalFlow := f.gcStructHelpers && objectTarget && sourceFact.provesCast(f.m, sub, heap, exactTarget)
+	if f.gcStructHelpers && objectTarget && sourceFact.valid() {
+		f.stats.peep("gc-local-type-cast-candidate")
+		if !staticLocalFlow {
+			switch {
+			case sub == 22 && sourceFact.flags&gcReferenceFactNullable != 0:
+				f.stats.peep("gc-local-type-cast-retained-null")
+			case exactTarget:
+				f.stats.peep("gc-local-type-cast-retained-exact")
+			default:
+				f.stats.peep("gc-local-type-cast-retained-subtype")
+			}
+		}
+	}
 	reuseResolvedStruct := f.gcStructHelpers && structTarget && sub == 22 && !exactTarget &&
 		hasSourceLocal && f.gcResolved.valid && f.gcResolved.local == sourceLocal && f.gcResolved.typeIndex == uint32(heap)
-	if !staticDeclaredLocal && !reuseResolvedStruct {
+	if !staticDeclaredLocal && !staticLocalFlow && !reuseResolvedStruct {
 		// Opcode preparation defers ref.cast invalidation until its immediate and
 		// source are known. Every cast except this proved no-op keeps the ordinary
 		// transient-address invalidation rule.
@@ -678,6 +695,11 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		f.skipIdenticalGCCasts(r, sub, heap, exactTarget)
 	}
 	if f.gcStructHelpers && heap >= 0 {
+		if staticLocalFlow {
+			f.markTopGCReference()
+			f.stats.peep("gc-local-type-cast-elide")
+			return nil
+		}
 		if staticDeclaredLocal {
 			f.markTopGCReference()
 			if reuseResolvedStruct {
@@ -1219,7 +1241,13 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		payload = helper
 	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
-	return f.callHostSync(int(gcStructDispatchBit|payload), ft)
+	if err := f.callHostSync(int(gcStructDispatchBit|payload), ft); err != nil {
+		return err
+	}
+	if len(results) == 1 {
+		f.setPendingGCReference(results[0])
+	}
+	return nil
 }
 
 func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
