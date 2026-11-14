@@ -12,6 +12,7 @@ package amd64
 import (
 	"fmt"
 	"math"
+	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
@@ -22,6 +23,24 @@ import (
 // directGCScalar describes a pointer-free scalar storage location that can be
 // accessed without entering the parked Go helper. Reference writes and v128
 // storage use separate checked barrier/vector paths.
+// Keep the shared-leaf path available for differential qualification.
+var gcInlineCastsEnabled = os.Getenv("WAGO_AMD64_NO_GC_CAST_INLINE") != "1"
+
+func (f *fn) inlineGCCastPreserveMask() uint8 {
+	var mask uint8
+	for _, local := range f.pinnedLocals {
+		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
+			mask |= 1 << (reg - R9)
+		}
+	}
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		if reg := globalRegValue(f.globalReg[global]); reg >= R9 && reg <= R11 {
+			mask |= 1 << (reg - R9)
+		}
+	}
+	return mask
+}
+
 type gcSharedStubKind uint8
 
 const (
@@ -589,6 +608,10 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded, arrayOperand bo
 // success, or zero with EDX=trapCastFailure on failure.
 // It clobbers RAX, RCX, RDX, RDI, R8, and flags, matching the shared leaf ABI.
 func emitModuleGCTrustedFinalCastStub(a *x64.Asm) {
+	emitGCTrustedFinalCastBody(a, true)
+}
+
+func emitGCTrustedFinalCastBody(a *x64.Asm, returnToCaller bool) {
 	var failures []int
 	failIf := func(cond Cond) { failures = append(failures, a.JccPlaceholder(cond)) }
 	a.TestSelf(RAX, false)
@@ -630,7 +653,9 @@ func emitModuleGCTrustedFinalCastStub(a *x64.Asm) {
 	}
 	finish := a.Len()
 	a.PatchRel32(done, finish)
-	a.Ret()
+	if returnToCaller {
+		a.Ret()
+	}
 }
 
 // emitModuleGCDefinedCastStub checks a nullable or non-nullable cast to a
@@ -642,9 +667,15 @@ func emitModuleGCTrustedFinalCastStub(a *x64.Asm) {
 // reference with EDX zero on success, or zero with EDX=trapCastFailure.
 // R9-R11 are preserved so functions with pinned locals can call the same leaf.
 func emitModuleGCDefinedCastStub(a *x64.Asm) {
-	a.Push(R9)
-	a.Push(R10)
-	a.Push(R11)
+	emitGCDefinedCastBody(a, true, 7)
+}
+
+func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8) {
+	for i := Reg(0); i < 3; i++ {
+		if preserveMask&(1<<i) != 0 {
+			a.Push(R9 + i)
+		}
+	}
 
 	failures := make([]int, 0, 16)
 	failIf := func(cond Cond) { failures = append(failures, a.JccPlaceholder(cond)) }
@@ -749,10 +780,14 @@ func emitModuleGCDefinedCastStub(a *x64.Asm) {
 		a.PatchRel32(branch, failure)
 	}
 	a.PatchRel32(done, a.Len())
-	a.Pop(R11)
-	a.Pop(R10)
-	a.Pop(R9)
-	a.Ret()
+	for i := 2; i >= 0; i-- {
+		if preserveMask&(1<<i) != 0 {
+			a.Pop(R9 + Reg(i))
+		}
+	}
+	if returnToCaller {
+		a.Ret()
+	}
 }
 
 // R10 is the already range-checked space byte. Select that exact descriptor
@@ -1005,9 +1040,14 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		site := f.a.CallRel32()
-		f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubTrustedFinalCast))
-		f.stats.call("gcnative-leaf")
+		if gcInlineCastsEnabled {
+			emitGCTrustedFinalCastBody(f.a, false)
+			f.stats.peep("gc-inline-trusted-cast")
+		} else {
+			site := f.a.CallRel32()
+			f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubTrustedFinalCast))
+			f.stats.call("gcnative-leaf")
+		}
 		f.stats.peep("gc-trusted-stored-cast")
 		f.a.TestSelf(RDX, false)
 		f.sc.gcTrustedCastFailSites = append(f.sc.gcTrustedCastFailSites, f.a.JccPlaceholder(condNE))
@@ -1037,10 +1077,15 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		site := f.a.CallRel32()
-		f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubDefinedCast))
-		f.stats.call("gcnative-leaf")
-		f.stats.peep("gc-shared-defined-cast")
+		if gcInlineCastsEnabled {
+			emitGCDefinedCastBody(f.a, false, f.inlineGCCastPreserveMask())
+			f.stats.peep("gc-inline-defined-cast")
+		} else {
+			site := f.a.CallRel32()
+			f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubDefinedCast))
+			f.stats.call("gcnative-leaf")
+			f.stats.peep("gc-shared-defined-cast")
+		}
 		f.a.TestSelf(RDX, false)
 		f.sc.gcTrustedCastFailSites = append(f.sc.gcTrustedCastFailSites, f.a.JccPlaceholder(condNE))
 		result := f.pushReg(RAX, mtI64)
@@ -1119,28 +1164,9 @@ func (f *fn) emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffse
 		return regNone, fmt.Errorf("amd64: final struct field extent %d exceeds native immediate", required64)
 	}
 	required := uint32(required64)
-	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok && layout.Type.Final {
-		if layout.ObjectSize <= math.MaxInt32 && layout.ObjectSize >= required {
-			required = layout.ObjectSize
-		}
-	} else if st, ok := f.stagedStructType(typeIndex); ok && st.Final {
-		// Direct CompileModuleWith callers do not always provide precomputed GC
-		// metadata. Derive the checked field extent without allocating the native
-		// constructor's temporary field slice.
-		for i := range st.Comp.Fields {
-			field, _, found := f.gcStructFieldLayout(typeIndex, uint32(i))
-			if !found {
-				break
-			}
-			end := uint64(gc.PayloadOffset) + uint64(field.Offset) + uint64(field.Size)
-			if end > math.MaxInt32 {
-				break
-			}
-			if uint32(end) > required {
-				required = uint32(end)
-			}
-		}
-	}
+	// Check this read's extent. A later wider read must perform its check at
+	// its own source operation, after any intervening guard or trap.
+
 	local, hasLocal := gcLocalProvenance(f.s.back())
 	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid && !f.gcResolved.spill &&
 		f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex && required <= f.gcResolved.requiredBytes {
@@ -2082,7 +2108,7 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	}
 	fields, objectSize, objectAlign, pointerFree := plan.fields, plan.objectSize, plan.objectAlign, plan.pointerFree
 	if dead {
-		f.emitNativeDeadStructChargeStub(objectSize, objectAlign, inline, resultSlot)
+		f.emitNativeDeadStructChargeStub(typeIndex, objectSize, objectAlign, inline, argSlot, resultSlot)
 		return
 	}
 	st, ok := f.stagedStructType(typeIndex)
@@ -2412,7 +2438,7 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 // compiler-proven unreachable struct without publishing an object handle. The
 // full aligned nursery charge keeps collection and bounded-resource behavior;
 // the ordinary rooted helper remains the fallback at every boundary.
-func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32, inline bool, resultSlot int) {
+func (f *fn) emitNativeDeadStructChargeStub(typeIndex, objectSize, objectAlign uint32, inline bool, argSlot, resultSlot int) {
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -2447,6 +2473,50 @@ func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32, inli
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+
+	// The only reference-bearing dead shape admitted by the private view is
+	// (i32, nullable eqref). Keep the original constructor's compact-reference
+	// checks, and send every failure to the full initialized rooted helper.
+	st, _ := f.stagedStructType(typeIndex)
+	refs := false
+	for _, field := range st.Comp.Fields {
+		refs = refs || field.Storage().Val().Kind() == wasm.ValRef
+	}
+	if refs {
+		if len(st.Comp.Fields) != 2 || !wasm.EqualValType(st.Comp.Fields[0].Storage().Val(), wasm.I32) || !wasm.EqualValType(st.Comp.Fields[1].Storage().Val(), wasm.EqRef) {
+			panic("unsupported checked dead struct shape")
+		}
+		if argSlot >= 0 {
+			a.Load64(RAX, RSP, f.spillOff(argSlot+1)+stackDelta)
+		} else {
+			a.Load64(RAX, RDI, hcArgs+8)
+		}
+		a.MovReg64(RDX, RAX)
+		a.ShiftImm(5, RDX, 32, true)
+		a.TestSelf(RDX, true)
+		addFallback(a.JccPlaceholder(condNE))
+		a.TestSelf(RAX, false)
+		nullOK := a.JccPlaceholder(condE)
+		a.MovRegReg32(RDX, RAX)
+		a.AluRI(4, RDX, 1, false)
+		a.TestSelf(RDX, false)
+		i31OK := a.JccPlaceholder(condNE)
+		a.ShiftImm(5, RAX, 1, false)
+		a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
+		addFallback(a.JccPlaceholder(condAE))
+		a.Load64(R10, R8, gc.NativeViewHandlesOffset)
+		a.ShiftImm(4, RAX, 4, true)
+		a.Add64(R10, RAX)
+		a.Load32(RAX, R10, gc.NativeHandleMetadataOffset)
+		a.ShiftImm(5, RAX, 16, false)
+		a.AluRI(4, RAX, 0xff, false)
+		a.TestSelf(RAX, false)
+		addFallback(a.JccPlaceholder(condE))
+		a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceTiny), false)
+		addFallback(a.JccPlaceholder(condA))
+		a.PatchRel32(nullOK, a.Len())
+		a.PatchRel32(i31OK, a.Len())
+	}
 	a.CmpImm32Mem(R8, gc.NativeViewNurseryObjectMaxBytesOffset, int32(objectSize))
 	addFallback(a.JccPlaceholder(condBE))
 

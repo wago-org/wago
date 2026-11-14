@@ -70,8 +70,21 @@ var GCRefLayout = RefLayout{
 	ObjectTagValue: 0,
 }
 
+// GCBodyView certifies compiler-only constructor and source-position metadata.
+type GCBodyView struct {
+	BodySHA256   [32]byte
+	Constructors map[uint32]GCDeadConstructor
+	Origins      []GCBodyOrigin
+}
+type GCDeadConstructor struct{ Type, Sink uint32 }
+type GCBodyOrigin struct {
+	NewPC, OldFunction, OldPC uint32
+	Linear                    bool
+}
+
 // ModuleInfo is the heap-relevant module metadata passed to HeapABI.
 type ModuleInfo struct {
+	GCBodyViews   map[uint32]GCBodyView
 	Features      Features
 	GCTypeDescs   []gc.TypeDesc
 	GCTypeLayouts []GCTypeLayout

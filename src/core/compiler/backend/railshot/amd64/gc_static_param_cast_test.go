@@ -122,7 +122,7 @@ func TestGCStaticCastWrapperCallElided(t *testing.T) {
 	if got := stats.Funcs[2].Peephole["gc-static-cast-call-elide"]; got != 0 {
 		t.Fatalf("broad cast-wrapper caller elisions=%d want0", got)
 	}
-	if calls := stats.Funcs[2].Calls; calls[callKindWrapper] != 0 || calls["gcnative"]+calls["gcnative-leaf"] == 0 {
+	if calls := stats.Funcs[2].Calls; calls[callKindWrapper] != 0 || calls["gcnative"]+calls["gcnative-leaf"] == 0 && stats.Funcs[2].Peephole["gc-inline-defined-cast"] == 0 {
 		t.Fatalf("broad cast-wrapper caller did not retain its dynamic check: %v", calls)
 	}
 

@@ -1309,6 +1309,20 @@ func (f *fn) forwardTinyReferenceParam(t *inlineTarget) bool {
 		len(f.customInstructions) != 0 || profileEnabled {
 		return false
 	}
+	// Forward only read-only parameters. A callee write must target its own
+	// private slot, while the caller's local retains its original value.
+	if len(t.body) > inlineTinyLeafMaxBodyBytes {
+		return false
+	}
+	r := wasm.ReaderFrom(t.body)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil || f.classifier.ClassifyInto(&r, op, &imm) != nil ||
+			(op == 0x21 || op == 0x22) && imm.Index == 0 {
+			return false
+		}
+	}
 	argument := f.s.back()
 	if argument == nil || !argument.isValue() ||
 		(argument.st.kind != stLocalRef && argument.st.kind != stLocalReg) ||

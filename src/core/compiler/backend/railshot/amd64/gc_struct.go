@@ -148,7 +148,8 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		if native {
 			f.nativeStructAllocType = typeIndex + 1
-			f.nativeStructAllocDead = scalarReplacement
+			f.nativeStructAllocVirtual = f.certifiedDeadConstructor(typeIndex, r)
+			f.nativeStructAllocDead = scalarReplacement || f.nativeStructAllocVirtual
 		}
 		if err := f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result}); err != nil {
 			return err
@@ -709,12 +710,21 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			return nil
 		}
 		if fused, err := f.tryFuseCastStructGet(uint32(heap), sub == 23, exactTarget, r); fused || err != nil {
+			// The fused read replaces the cast result with a projected value.
+			// Its type is independent of the container's successful cast.
+			f.gcPendingReference = gcReferenceTypeFact{}
 			return err
 		}
 		if fused, err := f.tryFuseFinalCastArrayGet(uint32(heap), sub == 23, r); fused || err != nil {
+			// The fused read replaces the cast result with a projected value.
+			// Its type is independent of the container's successful cast.
+			f.gcPendingReference = gcReferenceTypeFact{}
 			return err
 		}
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
+			// The fused read replaces the cast result with a projected value.
+			// Its type is independent of the container's successful cast.
+			f.gcPendingReference = gcReferenceTypeFact{}
 			return err
 		}
 		if reuseResolvedStruct {
