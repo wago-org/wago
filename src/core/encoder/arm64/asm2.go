@@ -222,6 +222,14 @@ func (a *Asm) Rbit(rd, rn Reg, w bool) {
 	}
 }
 
+// Rev reverses the bytes in a 32-bit or 64-bit register.
+func (a *Asm) Rev(rd, rn Reg, w bool) {
+	a.word(wbase(w, 0x5AC00800, 0xDAC00C00) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+
 // Divide + multiply-subtract (remainder = Rn - (Rn/Rm)*Rm via div then Msub).
 func (a *Asm) Sdiv32(rd, rn, rm Reg) {
 	a.word(0x1AC00C00 | r(rm)<<16 | r(rn)<<5 | r(rd))
@@ -1276,6 +1284,17 @@ func (a *Asm) Stur32(rt, rn Reg, off int32) {
 // Nop is the canonical A64 no-op.
 func (a *Asm) Nop() { a.word(0xD503201F) }
 
+// ReadDCZID reads the EL0 zeroing permission and cache-block size descriptor.
+func (a *Asm) ReadDCZID(dst Reg) {
+	a.word(0xD53B00E0 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(dst, false))
+	}
+}
+
+// ZeroCacheLine requires a permitted DC ZVA block fully inside validated memory.
+func (a *Asm) ZeroCacheLine(address Reg) { a.word(0xD50B7420 | r(address)) }
+
 // Nop4 emits four canonical no-ops with one slice-capacity check. Loop-header
 // phase padding uses this exact fixed-width run for every admitted poll-free
 // loop, so keeping it as one encoder operation avoids four append checks in a
@@ -1510,6 +1529,7 @@ func (a *Asm) NeonUrhaddH(dst, n, m Reg)   { a.neon3(0x6E201400, 2, dst, n, m) }
 func (a *Asm) NeonMulH(dst, n, m Reg)      { a.neon3(0x4E209C00, 2, dst, n, m) }
 func (a *Asm) NeonMulS(dst, n, m Reg)      { a.neon3(0x4E209C00, 4, dst, n, m) }
 func (a *Asm) NeonMlaS(dst, n, m Reg)      { a.neon3(0x4E209400, 4, dst, n, m) }
+func (a *Asm) NeonSqdmulhS(dst, n, m Reg)  { a.neon3(0x4E20B400, 4, dst, n, m) }
 func (a *Asm) NeonSqrdmulhH(dst, n, m Reg) { a.neon3(0x6E20B400, 2, dst, n, m) }
 func (a *Asm) NeonHaddH(dst, n, m Reg)     { a.neon3(0x4E202800, 2, dst, n, m) }
 func (a *Asm) NeonHaddS(dst, n, m Reg)     { a.neon3(0x4E202800, 4, dst, n, m) }
@@ -1832,6 +1852,12 @@ func (a *Asm) NeonXtnBfromH(dst, n Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 } // XTN Vd.8B,Vn.8H
+func (a *Asm) NeonXtnHfromS(dst, n Reg) {
+	a.word(0x0E612800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // XTN Vd.4H,Vn.4S
 func (a *Asm) NeonXtnSfromD(dst, n Reg) {
 	a.word(0x0EA12800 | r(n)<<5 | r(dst))
 	if regallocCheckEnabled {
@@ -1844,6 +1870,14 @@ func (a *Asm) NeonUaddlpDfromS(dst, n Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 } // UADDLP Vd.2D,Vn.4S
+// NeonUadalpDfromS widens unsigned adjacent i32 pairs, then adds each
+// full-precision pair sum to its modular i64 accumulator lane.
+func (a *Asm) NeonUadalpDfromS(dst, n Reg) {
+	a.word(0x6EA06800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 func (a *Asm) neonLeftShift(bytes int, dst, n Reg, shift uint8) {
 	imm := uint32(bytes*8) + uint32(shift)
 	a.word(0x4F005400 | (imm&0x7F)<<16 | r(n)<<5 | r(dst))
@@ -1897,6 +1931,7 @@ func (a *Asm) NeonRev32H(dst, n Reg) {
 }
 
 func (a *Asm) NeonZip1B(dst, n, m Reg) { a.neon3(0x4E003800, 1, dst, n, m) }
+func (a *Asm) NeonUzp2S(dst, n, m Reg) { a.neon3(0x4E005800, 4, dst, n, m) }
 func (a *Asm) NeonZip1H(dst, n, m Reg) { a.neon3(0x4E003800, 2, dst, n, m) }
 func (a *Asm) NeonZip1S(dst, n, m Reg) { a.neon3(0x4E003800, 4, dst, n, m) }
 func (a *Asm) NeonZip1D(dst, n, m Reg) { a.neon3(0x4E003800, 8, dst, n, m) }

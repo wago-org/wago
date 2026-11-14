@@ -10,12 +10,15 @@
 package arm64
 
 import (
+	"os"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
+
+var blockEntryInitEnabled = os.Getenv("WAGO_ARM64_NO_BLOCK_ENTRY_INIT") != "1"
 
 func funcHintStorageBytes(hints []funcHints, sidecar funcHintSidecar) (headers, sidecars uint64) {
 	headers = uint64(cap(hints)) * uint64(unsafe.Sizeof(funcHints{}))
@@ -1027,6 +1030,8 @@ type byteBodyScanner struct {
 	importedFuncs          int
 	entryPrefix            bool
 	entrySeen              uint64
+	entryBlockGP           uint64
+	entryBlockTypesReady   bool
 	collectLoopIntConsts   bool
 	collectLoopMemoryBases bool
 	loopIntConsts          [maxLoopIntConstCandidates]loopIntConstCandidate
@@ -1076,12 +1081,18 @@ func loopIntConstNeedsRegister(next byte, bits int64, typ uint8) bool {
 	}
 }
 
-func (s *byteBodyScanner) noteLoopIntConst(bits int64, typ uint8, loopDepth int, pathWeight int64) {
+func (s *byteBodyScanner) noteLoopIntConst(bits int64, typ uint8, loopDepth int, pathWeight int64, consumer byte) {
 	if loopDepth == 0 {
 		return
 	}
 	cost := intConstWideMoveCost(bits, typ)
 	score := uint64(pathWeight * loopWeight(loopDepth) * int64(cost))
+	// Keep the bounded discovery frontier stable. An immediate-only use still
+	// occupies its original candidate slot, but cannot displace a costly use.
+	// A later multiply of the same value contributes its ordinary score.
+	if discountShiftedImmediateHint(consumer, bits) {
+		score = 0
+	}
 	for i := 0; i < int(s.loopIntConstN); i++ {
 		c := &s.loopIntConsts[i]
 		if c.bits == bits && c.typ() == typ {
@@ -1106,7 +1117,7 @@ func (s *byteBodyScanner) finishLoopIntConsts() {
 		var best *loopIntConstCandidate
 		for i := 0; i < int(s.loopIntConstN); i++ {
 			c := &s.loopIntConsts[i]
-			if c.typ() != 0 && (best == nil || c.score() > best.score()) {
+			if c.typ() != 0 && c.score() != 0 && (best == nil || c.score() > best.score()) {
 				best = c
 			}
 		}
@@ -1195,7 +1206,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
 			s.h.flags.set(hintHasControlFlow)
-			s.entryPrefix = false
+			// Entering a block cannot skip its initial source instructions.
+			// Keep first-write facts through this unconditional prefix only;
+			// an actual branch, loop or conditional still ends it permanently.
+			if op != 0x02 || !blockEntryInitEnabled {
+				s.entryPrefix = false
+			}
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
 			s.h.noteControlDepth(depth + 1)
 			if loopDepth != 0 && op != 0x03 && encodedScalarMergeBlockType(s.r.Reader, s.m) {
@@ -1323,7 +1339,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					bit := uint64(1) << idx
 					if s.entrySeen&bit == 0 {
 						s.entrySeen |= bit
-						if op != 0x20 {
+						if op != 0x20 && (depth == 0 || s.blockEntryLocalEligible(idx)) {
 							s.h.markEntryInitialized(idx)
 						}
 					}
@@ -1369,7 +1385,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if s.collectLoopIntConsts && loopDepth != 0 {
 				if next, ok := s.r.Reader.Peek(); ok {
 					if value, valueType, needed := loopIntConstRegisterValue(next, bits, typ); needed {
-						s.noteLoopIntConst(value, valueType, loopDepth, pathWeight)
+						s.noteLoopIntConst(value, valueType, loopDepth, pathWeight, next)
 					}
 				}
 			}
@@ -1427,9 +1443,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 				s.h.flags.set(hintHasControlFlow)
+				s.entryPrefix = false
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.flags.set(hintModuleEH)
+				s.entryPrefix = false
 			}
 			if op == 0xfb {
 				s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
@@ -1522,12 +1540,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 				s.h.flags.set(hintHasControlFlow)
-				if op == 0x0e { // br_table is the only unprefixed boundary in this path.
-					s.entryPrefix = false
-				}
+				s.entryPrefix = false
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.flags.set(hintModuleEH)
+				s.entryPrefix = false
 			}
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)

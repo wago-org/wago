@@ -107,6 +107,9 @@ func (f *fn) ldst(store bool, size int, rt, base Reg, disp int32) {
 }
 
 func (f *fn) ld64(rt, base Reg, disp int32) {
+	if base == SP && f.forwardFrameLoad(rt, disp) {
+		return
+	}
 	if uint32(disp) <= 0xfff*8 && disp&7 == 0 {
 		f.a.Load64(rt, base, uint32(disp))
 		return

@@ -190,6 +190,10 @@ func TestCodegenStatsPeepholesArm64(t *testing.T) {
 				if other.peep == tc.peep {
 					continue
 				}
+				// The result-if sink may itself use a three-operand sink in an arm.
+				if tc.name == "if-local-sink" && other.peep == "local-3op-sink" {
+					continue
+				}
 				if got := s.Peephole[other.peep]; got != 0 {
 					t.Errorf("unexpected Peephole[%q] = %d for body %q", other.peep, got, tc.name)
 				}

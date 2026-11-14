@@ -82,7 +82,9 @@ func (f *fn) recordFilledCopy(r *wasm.Reader, memory uint32) {
 		return
 	}
 	destination, err := scan.U32()
-	if err != nil || f.memoryAddr64(destination) || f.memoryShared(destination) {
+	// Same-memory forwarding can remove overlap dependencies. Distinct-memory
+	// copies keep the ordinary read/store schedule for large streaming spans.
+	if err != nil || destination != memory || f.memoryAddr64(destination) || f.memoryShared(destination) {
 		return
 	}
 	source, err := scan.U32()

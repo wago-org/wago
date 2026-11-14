@@ -46,17 +46,17 @@ func TestScalarLoopDestinationLastUse(t *testing.T) {
 		uses := p.fpUses()
 		for i, s := range p.stores[:p.storeN] {
 			id := p.reductionLoad[i]
-			if got := p.scalarRecurrenceDestination(s.value, &uses); got != id {
+			if got := p.scalarRecurrenceDestination(s.Value, &uses); got != id {
 				t.Fatal("missing destination", got, id)
 			}
 			live := uses
 			live[id]++
-			if got := p.scalarRecurrenceDestination(s.value, &live); got != 0 {
+			if got := p.scalarRecurrenceDestination(s.Value, &live); got != 0 {
 				t.Fatal("old value is still live", got)
 			}
 			q := p
 			q.scalar = false
-			if q.scalarRecurrenceDestination(s.value, &uses) != 0 {
+			if q.scalarRecurrenceDestination(s.Value, &uses) != 0 {
 				t.Fatal("packed loop admitted")
 			}
 		}

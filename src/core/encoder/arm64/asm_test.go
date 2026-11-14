@@ -31,6 +31,7 @@ func TestEncodings(t *testing.T) {
 		{"adc x5,x6,x7", func(a *Asm) { a.Adc64(X5, X6, X7) }, 0x9a0700c5},
 		{"sbc x5,x6,x7", func(a *Asm) { a.Sbc64(X5, X6, X7) }, 0xda0700c5},
 		{"adds x5,x6,x7", func(a *Asm) { a.Adds64(X5, X6, X7) }, 0xab0700c5},
+		{"subs w5,w6,w7", func(a *Asm) { a.Subs32(X5, X6, X7) }, 0x6b0700c5},
 		{"subs x5,x6,x7", func(a *Asm) { a.Subs64(X5, X6, X7) }, 0xeb0700c5},
 		{"adc x5,x6,x7", func(a *Asm) { a.Adc64(X5, X6, X7) }, 0x9a0700c5},
 		{"sbc x5,x6,x7", func(a *Asm) { a.Sbc64(X5, X6, X7) }, 0xda0700c5},

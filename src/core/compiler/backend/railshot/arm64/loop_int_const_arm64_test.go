@@ -17,6 +17,9 @@ func appendI32Const(body []byte, v int32, op byte) []byte {
 }
 
 func TestLoopIntConstHintsOnlyRegisterConsumersArm64(t *testing.T) {
+	old := shiftedImmediateHintFilterEnabled
+	shiftedImmediateHintFilterEnabled = false // retain the legacy scoring control
+	t.Cleanup(func() { shiftedImmediateHintFilterEnabled = old })
 	body := []byte{0x03, 0x40}                    // loop
 	body = appendI32Const(body, 0x12345678, 0x6c) // mul: no immediate form
 	body = appendI32Const(body, 4095, 0x6a)       // add: encodable immediate

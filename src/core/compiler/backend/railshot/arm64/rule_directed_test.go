@@ -12,13 +12,20 @@ import (
 
 func ruleGuideCompiler(raw []byte, disabled bool, rule string) (ruleguide.Artifact, error) {
 	saved := swarMaskTestEnabled
+	savedSwap := byteSwapCoverEnabled
+	defer func() { byteSwapCoverEnabled = savedSwap }()
+	byteSwapCoverEnabled = true
 	defer func() { swarMaskTestEnabled = saved }()
 	swarMaskTestEnabled = true
 	if disabled {
-		if rule != "swar-mask-test" {
+		switch rule {
+		case "swar-mask-test":
+			swarMaskTestEnabled = false
+		case "i32-bswap-tee":
+			byteSwapCoverEnabled = false
+		default:
 			return ruleguide.Artifact{}, fmt.Errorf("no kill switch for %s", rule)
 		}
-		swarMaskTestEnabled = false
 	}
 	m, err := wasm.DecodeModule(raw)
 	if err != nil {
@@ -53,9 +60,6 @@ func ruleGuideCompiler(raw []byte, disabled bool, rule string) (ruleguide.Artifa
 			a.Shared = append(a.Shared, f.SharedScalar)
 		}
 	}
-	if rule == "i32-bswap-tee" {
-		a.Selection = -2
-	} // numerical execution, no ARM64 rule claim.
 	return a, nil
 }
 func TestRuleDirectedRecipes(t *testing.T)    { ruleguide.Run(t, "arm64", ruleGuideCompiler) }

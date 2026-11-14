@@ -16,6 +16,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+var pureReduceAccumulateEnabled = os.Getenv("WAGO_ARM64_NO_PURE_REDUCE_ACCUMULATE") != "1"
+
 var pureReduceEnabled = os.Getenv("WAGO_ARM64_NO_PURE_REDUCE") != "1"
 
 // The bounded scan expands local tees into a DAG. Eligible bodies have one
@@ -357,8 +359,15 @@ func (f *fn) planPureVectors(p *pureReducePlan) (v pureVectorLayout, ok bool) {
 		}
 		return regNone
 	}
-	v.pair, v.stride = alloc(), alloc()
-	if v.pair == regNone || v.stride == regNone {
+	v.pair = regNone
+	if !pureReduceAccumulateEnabled {
+		v.pair = alloc()
+		if v.pair == regNone {
+			return v, false
+		}
+	}
+	v.stride = alloc()
+	if v.stride == regNone {
 		return v, false
 	}
 	for i := 0; i < p.nReductions; i++ {
@@ -571,8 +580,12 @@ func (f *fn) emitPureReduce(r *wasm.Reader) {
 		}
 	}
 	for i := 0; i < p.nReductions; i++ {
-		f.a.NeonUaddlpDfromS(v.pair, v.regs[p.reductions[i].term])
-		f.a.NeonAddD(v.acc[i], v.acc[i], v.pair)
+		if pureReduceAccumulateEnabled {
+			f.a.NeonUadalpDfromS(v.acc[i], v.regs[p.reductions[i].term])
+		} else {
+			f.a.NeonUaddlpDfromS(v.pair, v.regs[p.reductions[i].term])
+			f.a.NeonAddD(v.acc[i], v.acc[i], v.pair)
+		}
 	}
 	f.a.NeonAddS(v.regs[p.induction], v.regs[p.induction], v.stride)
 	f.a.SubImm32(count, count, 4)

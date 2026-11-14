@@ -58,7 +58,7 @@ func (f *fn) tryInlineColdReturn(r *wasm.Reader) (bool, error) {
 	f.release(mergeReg)
 	f.convergeBranchLocals(frame)
 	code := append([]byte(nil), f.a.B[mark:]...)
-	f.a.B = f.a.B[:mark]
+	f.truncateNativeCode(mark)
 	f.restoreLocalStates(saved)
 	cc := f.condenseToFlags(condition)
 	f.appendFrameColdEdge(frame, coldEdge{site: f.a.Bcond(cc), code: code})

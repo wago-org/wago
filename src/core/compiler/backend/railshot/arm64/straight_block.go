@@ -12,9 +12,12 @@ package arm64
 import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"os"
 )
 
 var straightLineBlockEnabled = true
+
+var nestedFallthroughIfEnabled = os.Getenv("WAGO_ARM64_NO_NESTED_FALLTHROUGH_IF") != "1"
 
 func (f *fn) straightLineBlock(r *wasm.Reader, kind ctrlKind, params, results int, result machineType, signature wasm.Reader) bool {
 	if !f.opt(optStraightLineBlock) || kind != cfBlock || f.unreachable || params > 8 || results > 1 ||
@@ -45,13 +48,13 @@ func (f *fn) straightLineBlock(r *wasm.Reader, kind ctrlKind, params, results in
 		}
 	}
 	if f.makesCalls || f.inlineTargets.empty() {
-		return shared.IsStraightLineBlock(r, f.classifier)
+		return shared.IsFallthroughBlock(r, f.classifier, nil, nestedFallthroughIfEnabled)
 	}
-	return shared.IsStraightLineBlockWithSplicedCalls(r, f.classifier, func(index uint32) bool {
+	return shared.IsFallthroughBlock(r, f.classifier, func(index uint32) bool {
 		t := f.inlineTargets.target(int(index))
 		_, reserved := f.inlineBase[int(index)]
 		return reserved && t != nil && (t.integerPairLeaf() || f.inlineTupleFallsThrough(t))
-	})
+	}, nestedFallthroughIfEnabled)
 }
 
 // Ordinary blocks have no header branch site (-1). This distinct sentinel

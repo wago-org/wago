@@ -10,6 +10,8 @@
 package arm64
 
 import (
+	"os"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
@@ -29,7 +31,7 @@ import (
 //   - at a call we store only DIRTY locals (a clean one is already in its slot),
 //     then mark all as clobbered (lsMem) — and DON'T eagerly reload;
 //   - a subsequent local.get reloads lazily (recoverLocal);
-//   - branches converge everything to lsStackReg so all edges agree.
+//   - branches reconcile to the recorded register/slot guarantees at each join.
 //
 // Call-free functions never enter this path: their pinned locals live in
 // registers for the whole function (no calls to clobber them), so locals[].state is
@@ -44,25 +46,34 @@ const (
 	lsConstZero                 // declared local's initial zero, not materialized yet
 )
 
-// packedLocStates stores up to 64 local merge states in two bits each. Call-making
-// functions with more locals do not admit whole-function pins; call-free wide
-// pins do not use these merge snapshots. A recorded snapshot contains a pin in
-// lsStackReg or lsMem; the all-zero value is therefore the absent sentinel.
-type packedLocStates [2]uint64
+// packedLocStates stores up to 64 local states in two bits each. Presence is
+// separate because a valid snapshot can contain only lsReg, encoded as zero.
+// Raw entry and exception snapshots retain all four local states.
+type packedLocStates struct {
+	states  [2]uint64
+	present bool
+}
+
+var registerOnlyMergeEnabled = os.Getenv("WAGO_ARM64_NO_REGISTER_ONLY_MERGE") != "1"
+
+var implicitEntryRegisterMergeEnabled = os.Getenv("WAGO_ARM64_NO_IMPLICIT_ENTRY_REGISTER_MERGE") != "1"
+
+var registerMergeLoopLimitEnabled = os.Getenv("WAGO_ARM64_NO_REGISTER_MERGE_LOOP_LIMIT") != "1"
 
 type localStateSnapshot [64]locState
 
-func (s packedLocStates) empty() bool { return s[0]|s[1] == 0 }
+func (s packedLocStates) empty() bool { return !s.present }
 
 func (s packedLocStates) get(index int) locState {
-	return locState(s[index>>5] >> (uint(index&31) * 2) & 3)
+	return locState(s.states[index>>5] >> (uint(index&31) * 2) & 3)
 }
 
 func (s *packedLocStates) set(index int, state locState) {
+	s.present = true
 	word := index >> 5
 	shift := uint(index&31) * 2
 	mask := uint64(3) << shift
-	s[word] = s[word]&^mask | uint64(state)<<shift
+	s.states[word] = s.states[word]&^mask | uint64(state)<<shift
 }
 
 type localDef struct {
@@ -341,8 +352,9 @@ func (f *fn) reconcileLocals() {
 }
 
 // convergeEdgeTo converges pinned-local state for a control edge into the
-// per-frame target *target, RECORDING the target from the current state when
-// this is the frame's first edge. Targets are per-local, ∈ {lsStackReg, lsMem}:
+// per-frame target *target, recording the first edge's guarantees. Targets are
+// per-local, with register-only targets admitted outside exception modules:
+//   - lsReg: register valid; the frame slot need not be current;
 //   - lsStackReg: register AND slot valid at the merge;
 //   - lsMem: only the slot is guaranteed — a call-clobbered local stays
 //     unloaded across the merge until a read actually needs it (the lazy-merge
@@ -386,14 +398,13 @@ func (f *fn) freeEndsBuf(b []uint32) {
 }
 
 func (f *fn) convergeEdgeTo(target *packedLocStates) {
-	f.convergeEdgeToWithDead(target, 0, 0)
+	f.convergeEdgeToWithDead(target, 0, 0, registerOnlyMergeEnabled && !f.moduleEH, nil)
 }
 
-func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regMask) {
+func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regMask, registerTarget bool, preferredEntry *packedLocStates) {
 	locals := f.locals[:f.nLocals]
-	// Dirty registers and lazy zeros always materialize to the slot: every
-	// target guarantees at least "slot is current". Non-lazy functions can never
-	// contain lsConstZero and skip that complete local-array scan.
+	// Lazy zeros materialize before choosing a target; register-only targets
+	// otherwise preserve dirty pins. Non-lazy functions skip the zero scan.
 	if f.lazyZero {
 		for x := range locals {
 			if locals[x].state == lsConstZero {
@@ -415,17 +426,42 @@ func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regM
 		if reg == regNone {
 			continue
 		}
-		if locals[x].state == lsReg {
+		// The first edge may choose a register-only target. Later edges
+		// materialize a dirty slot only when the recorded target requires it.
+		if locals[x].state == lsReg && (!registerTarget || !target.empty() && target.get(x) != lsReg) {
 			f.storeLocalReg(x, reg, isFloat)
 			locals[x].state = lsStackReg
 		}
 	}
 	if target.empty() { // first edge fixes the frame's merge state
 		var t packedLocStates
-		for x := range locals {
-			t.set(x, locals[x].state)
+		preferEntry := registerTarget && implicitEntryRegisterMergeEnabled && preferredEntry != nil && !preferredEntry.empty()
+		changed := false
+		if preferEntry {
+			for x := range locals {
+				local := &locals[x]
+				state := local.state
+				// An implicit false edge already guarantees this register. Choosing
+				// it here avoids a second state walk and a false-edge store stub.
+				if local.reg != regNone && preferredEntry.get(x) == lsReg && state != lsReg {
+					if state == lsMem {
+						f.loadLocalReg(x, local.reg, local.isFloat)
+						local.state = lsStackReg
+					}
+					state = lsReg
+					changed = true
+				}
+				t.set(x, state)
+			}
+		} else {
+			for x := range locals {
+				t.set(x, locals[x].state)
+			}
 		}
 		*target = t
+		if changed {
+			f.stats.peep("implicit-entry-register-merge")
+		}
 		return
 	}
 	t := *target
@@ -435,7 +471,7 @@ func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regM
 		if reg == regNone {
 			continue
 		}
-		if t.get(x) == lsStackReg && locals[x].state == lsMem {
+		if (t.get(x) == lsStackReg || t.get(x) == lsReg) && locals[x].state == lsMem {
 			dead := deadGP.has(reg)
 			if isFloat {
 				dead = deadFP.has(reg)

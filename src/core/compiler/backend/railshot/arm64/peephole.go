@@ -34,7 +34,7 @@ const (
 // the branch-target set is collected once here and threaded into both passes.
 func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	compact := nativeFinalizerEnabled && f.compactNative()
-	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
+	if !f.opt(optRepeatedNativeAddress) && !f.opt(optRepeatedStoreRegion) && !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
 		return
 	}
 	// The established size-stable peephole abandons a function when it reaches
@@ -66,6 +66,9 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	sc.branchTargets = targets
 	threadEligible := f.opt(optTakenZeroBranch) && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
 	threadCandidate := false
+	addressEligible := f.opt(optRepeatedNativeAddress) && !f.opaqueFragments && !f.moduleEH && !f.interruptible && len(f.customInstructions) == 0
+	var addressSites [32]uint32
+	addressSiteN := 0
 	guardedEligible := f.opt(optGuardedBooleanXor) && !f.moduleEH && len(f.customInstructions) == 0 && !f.opaqueFragments
 	guardedCandidate := false
 	lineageEligible := f.opt(optCsetLineage) && n <= 4096 && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
@@ -74,6 +77,13 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	b = b[:n:n]
 	for pc := 0; pc <= len(b)-4; pc += 4 {
 		w := rdWord(b, pc)
+		if addressEligible && addressSiteN < len(addressSites) && pc+20 <= n && w&0xffe0fc00 == 0x8b000000 && w&31 == 16 && w>>5&31 == 26 && rdWord(b, pc+12) == w {
+			addressSites[addressSiteN] = uint32(pc)
+			addressSiteN++
+		}
+		if addressEligible && isIndirectBranch(w) {
+			addressEligible = false
+		}
 		if lineageEligible {
 			// No boolean lineage can precede its first CSET. Stop all
 			// preflight work once a subsequent consumer pair is present.
@@ -105,6 +115,13 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 			// conditional skip into the eventual guarded region branch.
 			if guardedEligible && !guardedCandidate && w&0xfc000000 != 0x94000000 && t >= pc+20 && t <= pc+68 && t <= n {
 				guardedCandidate = rdWord(b, t-8)&0x7fff0fe0 == 0x1a9f07e0 && rdWord(b, t-4)&0x7fe0fc00 == 0x4a000000
+			}
+		}
+	}
+	if addressEligible {
+		for _, site := range addressSites[:addressSiteN] {
+			if reuseRepeatedNativeAddressAt(b, int(site), targets, entryOffsets) {
+				f.stats.peep("repeated-native-address")
 			}
 		}
 	}
@@ -143,6 +160,9 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 		for ; hits > 0; hits-- {
 			f.stats.peep("dominated-indexed-base")
 		}
+	}
+	if f.opt(optRepeatedStoreRegion) {
+		f.foldRepeatedStoreRegions(b, targets, entryOffsets...)
 	}
 }
 

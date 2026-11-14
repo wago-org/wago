@@ -235,9 +235,8 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		return r
 	}
 
-	// Strength-reduce x * {3,5,9} to a single add-shifted `[x + x*{2,4,8}]` (base ==
-	// index == x), replacing a MUL by a small constant. The multiplier sits on the
-	// right after the commutative swap above.
+	// Fold constant 1 +/- 2^k products into one shifted ADD/SUB. The
+	// multiplier sits on the right after the commutative swap above.
 	if node.deferredOp() == opMul {
 		if r := f.tryLeaMul(node, left, right, dest); r != regNone {
 			return r
@@ -350,6 +349,52 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		f.spill(right)
 	}
 
+	// The existing three-operand constant cover can also produce a fresh
+	// result. The left pin remains borrowed while the cover selects an
+	// immediate encoding or materializes the constant in a separate register.
+	if f.opt(optThreeOpSink) && dest == regNone && left.elemKind() == ekValue &&
+		(left.st.kind == stLocalReg || left.st.kind == stGlobReg) && right.elemKind() == ekValue && right.st.kind == stConst {
+		dest = f.allocReg(maskOf(left.st.reg))
+		if node.deferredOp() == opAdd && leaRightOK(right) {
+			// Preserve addDisp's ordinary shifted-immediate policy as well as
+			// its independent source register.
+			f.emitLeaAdd(dest, left.st.reg, right, w)
+			f.consumeBlockBelow(node)
+			f.occupy(node, dest)
+		} else if !f.tryThreeOperandLocalSink(node, dest, left, right, w) {
+			panic("arm64: concrete constant result proof mismatch")
+		}
+		f.stats.peep("borrowed-immediate-result")
+		return dest
+	}
+
+	// A newly produced result can also read a borrowed pin directly. The RHS
+	// has already been realized in the ordinary evaluation order; reusing an
+	// owned RHS register avoids both a pin copy and an extra temporary.
+	if f.opt(optThreeOpSink) && dest == regNone && left.elemKind() == ekValue &&
+		(left.st.kind == stLocalReg || left.st.kind == stGlobReg) && right.elemKind() == ekValue &&
+		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) {
+		if right.st.kind == stReg {
+			dest = right.st.reg
+		} else {
+			dest = f.allocReg(maskOf(left.st.reg, right.st.reg))
+		}
+		f.aluRR3(node.deferredOp(), dest, left.st.reg, right.st.reg, w)
+		f.release(rightReleaseAfter)
+		f.consumeBlockBelow(node)
+		f.occupy(node, dest)
+		f.stats.peep("borrowed-binary-result")
+		return dest
+	}
+
+	if r := f.tryOwnedResultSink(node, left, right, dest); r != regNone {
+		f.release(rightReleaseAfter)
+		if pinnedRight != regNone {
+			f.pinned = f.pinned.remove(pinnedRight)
+		}
+		return r
+	}
+
 	if dest == regNone {
 		// selectInstr forms (choose the cheapest emission):
 		//  - LEA-style add:  `ADD dst, local, reg|#imm` computes local+x in one insn
@@ -396,6 +441,15 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 // otherwise-required `MOV a,b`. More general deferred trees retain the ordinary,
 // fully pressure-aware condenseBinary path.
 func (f *fn) tryThreeOperandLocalSink(node *elem, dest Reg, left, right *elem, w bool) bool {
+	if shiftedIntegerMultiplyEnabled && node.deferredOp() == opMul && right.elemKind() == ekValue && right.st.kind == stConst {
+		if shift, subtract, ok := f.selectShiftedIntegerMultiply(right.st, w); ok {
+			f.shiftedIntegerMultiply(dest, left.st.reg, shift, subtract, w)
+			f.stats.peep("local-3op-sink")
+			f.consumeBlockBelow(node)
+			f.occupy(node, dest)
+			return true
+		}
+	}
 	var rhs Reg
 	ownedRHS := false
 	if right.isDeferred() {
@@ -790,30 +844,22 @@ func isZExt32Deferred(e *elem) bool {
 	return e != nil && e.elemKind() == ekDeferred && e.deferredOp() == opZExt32
 }
 
-// tryLeaMul lowers eligible constant products as an add-shifted `dest = x + x*{2,4,8}` (base
-// == index == x), replacing a MUL by a small constant. Returns regNone when the
-// shape doesn't match. The multiplicand must be concrete: condensing a deferred
+// tryLeaMul folds 1 +/- 2^k products into shifted arithmetic. It returns
+// regNone for other constants. The multiplicand must be concrete: condensing a deferred
 // operand here could clobber a register under the add-shifted (same hazard as
 // tryLeaScaledAdd guards against).
 func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
 	if right.elemKind() != ekValue || right.st.kind != stConst {
 		return regNone
 	}
-	var scaleLog uint8
-	switch right.st.cval {
-	case 3:
-		scaleLog = 1
-	case 5:
-		scaleLog = 2
-	case 9:
-		scaleLog = 3
-	default:
+	w := node.st.typ.is64()
+	shift, subtract, ok := f.selectShiftedIntegerMultiply(right.st, w)
+	if !ok {
 		return regNone
 	}
 	if left.elemKind() != ekValue {
 		return regNone
 	}
-	w := node.st.typ.is64()
 	x, xOwned := f.materializeRead(left) // add-shifted never writes its sources; a pinned local reads in place
 	if dest == regNone {
 		if xOwned {
@@ -822,7 +868,7 @@ func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
 			dest = f.allocReg(0)
 		}
 	}
-	f.leaScaled(dest, x, x, scaleLog, 0, w)
+	f.shiftedIntegerMultiply(dest, x, shift, subtract, w)
 	if xOwned && x != dest {
 		f.release(x)
 	}
@@ -881,7 +927,11 @@ func (f *fn) leaScaled(dst, base, idx Reg, scale uint8, disp int32, w bool) {
 // is zero).
 func (f *fn) leaDisp(dst, base Reg, disp int32, w bool) {
 	if disp == 0 && !(w && base == SP) {
-		if dst != base {
+		if !w {
+			// Even an identity i32 addition produces a canonical W-register
+			// result. External parameter carriers can have nonzero upper bits.
+			f.a.MovReg32(dst, base)
+		} else if dst != base {
 			f.a.MovReg64(dst, base)
 		}
 		return
@@ -1630,6 +1680,22 @@ func (f *fn) aluImm(op wOp, dest Reg, cval int64, w bool) bool {
 // local-set sink as aluRR3, so immediate arithmetic retains the one-instruction
 // form rather than first copying the source local into the destination.
 func (f *fn) aluImm3(op wOp, dest, left Reg, cval int64, w bool) bool {
+	if shiftedALUImmediateEnabled && !f.shiftedALUAddress && shiftedAddSubImmediateEnabled && f.opt(optOrdinaryShiftedImm) &&
+		(op == opAdd || op == opSub) && fitsShiftedAddSubImmediate(cval) &&
+		(len(f.ctrl) == 0 || f.ctrl[len(f.ctrl)-1].kind != cfIf) {
+		// Preserve existing covers in direct conditional arms: changing an
+		// arm's instruction count also moves joins and neighboring branch paths.
+		// Other contexts remain eligible for the shorter value cover.
+		// The borrowed local-set and in-place ALU paths have the same immediate
+		// forms as address-style adds. Keep the source independent of dest.
+		displacement := int32(cval)
+		if op == opSub {
+			displacement = -displacement
+		}
+		f.addDisp(dest, left, displacement, w)
+		f.shiftedALUShortEnd = f.a.Len()
+		return true
+	}
 	switch op {
 	case opAdd:
 		return f.addFoldImm3(dest, left, cval, w)
@@ -1711,11 +1777,8 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	}
 	switch right.st.kind {
 	case stConst:
-		// x*{3,5,9} → one add-shifted [x+x*{2,4,8}] (powers of two already became
-		// shifts at pushBinOp).
-		switch right.st.cval {
-		case 3, 5, 9:
-			f.leaScaled(dest, dest, dest, uint8(log2u(uint64(right.st.cval-1))), 0, w)
+		if shift, subtract, ok := f.selectShiftedIntegerMultiply(right.st, w); ok {
+			f.shiftedIntegerMultiply(dest, dest, shift, subtract, w)
 			return
 		}
 		t, owned := f.intConstReadReg(right.st, maskOf(dest))
@@ -1762,8 +1825,20 @@ func (f *fn) mulRR(dest, src Reg, w bool) {
 	}
 }
 
+// Keep an immediately following compare away from the last word of a
+// sixteen-byte block after a shorter arithmetic cover. This bounded emitter
+// hint expires as soon as any other instruction is emitted.
+func (f *fn) padCompareAfterShortALU() {
+	if shiftedALUComparePaddingEnabled && !f.policy.CompactNative &&
+		f.a.Len() == f.shiftedALUShortEnd && f.a.Len()&15 == 12 {
+		f.a.Nop()
+		f.stats.peep("short-alu-compare-padding")
+	}
+}
+
 // cmpRR emits a register-register compare of the correct width (SUBS XZR,x,y).
 func (f *fn) cmpRR(x, y Reg, w bool) {
+	f.padCompareAfterShortALU()
 	if w {
 		f.a.CmpReg64(x, y)
 	} else {
@@ -1791,6 +1866,7 @@ func (f *fn) cmpConst(x Reg, st storage, wide bool) {
 
 // cmpImm emits a compare against a small unsigned 12-bit immediate (SUBS XZR,x,#imm).
 func (f *fn) cmpImm(x Reg, imm uint32, w bool) {
+	f.padCompareAfterShortALU()
 	if w {
 		f.a.CmpImm64(x, imm)
 	} else {
@@ -1802,6 +1878,7 @@ func (f *fn) cmpImm(x Reg, imm uint32, w bool) {
 // CMN (compare-negative, ADDS XZR,x,#|v|) so the flags match `cmp x,#v`. The caller
 // must have gated on fitsAddSubImmediate.
 func (f *fn) cmpImmS(x Reg, cval int64, w bool) {
+	f.padCompareAfterShortALU()
 	if f.shiftedAddSubImmediate(cval) {
 		magnitude := cval
 		if magnitude < 0 {

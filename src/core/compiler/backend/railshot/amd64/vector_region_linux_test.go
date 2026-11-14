@@ -141,3 +141,41 @@ func TestVectorRegionLiveValuesAndOverwrite(t *testing.T) {
 		}
 	}
 }
+
+func TestVectorRegionAcrossBulkMemory(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	previous := vectorRegionsBroaderEnabled
+	t.Cleanup(func() { vectorRegionsBroaderEnabled = previous })
+	// Eight vector locals and one accumulator exercise a smaller function. A
+	// bulk copy is a barrier, and the final vector local must survive it.
+	body := []byte{2, 8, 0x7b, 1, 0x7f}
+	for i := 0; i < 8; i++ {
+		body = append(body, 0xfd, 0x0c)
+		for lane := 0; lane < 4; lane++ {
+			var bits [4]byte
+			binary.LittleEndian.PutUint32(bits[:], uint32(i+lane*100))
+			body = append(body, bits[:]...)
+		}
+		body = append(body, 0x21, byte(i), 0x20, byte(i), 0xfd, 0x1b, 3, 0x20, 8, 0x6a, 0x21, 8)
+	}
+	body = append(body, 0x41, 0, 0x41, 16, 0x20, 8, 0xfc, 10, 0, 0)
+	body = append(body, 0x10, 1, 0x1a)
+	body = append(body, 0x20, 7, 0xfd, 0x1b, 3, 0x20, 8, 0x6a, 0x0b)
+	helper := []byte{0}
+	for i := 0; i < 512; i++ {
+		helper = append(helper, 0x01)
+	}
+	helper = append(helper, 0x41, 7, 0x0b)
+	m := modFuncs(t, funcDef{results: []wasm.ValType{wasm.I32}, body: body}, funcDef{results: []wasm.ValType{wasm.I32}, body: helper})
+	m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+	for _, enabled := range []bool{false, true} {
+		vectorRegionsBroaderEnabled = enabled
+		stats := compileWithStats(t, m, false).Funcs[0]
+		if got := stats.Peephole["vector-region-admit"]; (got > 0) != enabled {
+			t.Fatalf("enabled %v admissions %d", enabled, got)
+		}
+		if got := runAmd64(t, m); got != 2735 {
+			t.Fatalf("enabled %v got %d want 2735", enabled, got)
+		}
+	}
+}

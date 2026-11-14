@@ -36,6 +36,8 @@ var tailSelfLoopEnabled = true
 
 // regABIEnabled turns on the register-based internal-call ABI (default on;
 // WAGO_ARM64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
+var borrowedRegisterArgsEnabled = true
+
 var regABIEnabled = os.Getenv("WAGO_ARM64_NOREGABI") != "1"
 
 // noStackFence skips the per-entry stack-overflow fence check (A/B measurement).
@@ -379,7 +381,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// so this is a pure operand-stack/local transform.
 	if !f.inlineTargets.empty() {
 		if t := f.inlineTargets.target(int(idx)); t != nil {
-			if _, ok := f.inlineBase[int(idx)]; ok && (!t.recursive() || f.inlineDepth == 0) && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
+			if _, ok := f.inlineBase[int(idx)]; ok && (!t.recursive() || f.inlineDepth < recursiveInlineDepth) && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
 				f.consumeGCFrameCallsite()
 				return f.inlineCall(t, r)
 			}
@@ -2489,6 +2491,13 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	deferred := f.tmpDeferred[:0]
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
+		if f.opt(optBorrowedRegisterArgs) && (ft.Params[i] == wasm.I32 || ft.Params[i] == wasm.I64) {
+			if _, _, _, ok := f.pinnedImmediateCallArgument(root); ok {
+				deferred = append(deferred, deferredArg{target: intArgRegs[i], root: root})
+				f.stats.peep("register-call-immediate-arg")
+				continue
+			}
+		}
 		capture := root.isDeferred()
 		if root.elemKind() == ekValue {
 			switch root.st.kind {
@@ -2499,7 +2508,17 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			}
 		}
 		if capture {
-			reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
+			var reg Reg
+			if f.opt(optBorrowedRegisterArgs) && root.elemKind() == ekValue && root.st.kind == stLocalReg &&
+				(ft.Params[i] == wasm.I32 || ft.Params[i] == wasm.I64) {
+				// The local pin is stable through the lower-stack flush and
+				// spillLocalsForCall only stores it. Parallel moves resolve
+				// staging aliases before the callee can clobber this register.
+				reg = root.st.reg
+				f.stats.peep("register-call-borrowed-arg")
+			} else {
+				reg = f.materialize(root) // includes deferred loads
+			}
 			f.pinned = f.pinned.add(reg)
 			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})
 		} else {
@@ -2515,9 +2534,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	}
 	// Store dirty pinned locals BEFORE the argument staging: a pinned local may
 	// live in an argument register (X5-X7 for 6+-arg calls) or be clobbered by the
-	// staging below. Their values were already copied out above where an argument
-	// reads them. Lazy reload on the next read — WARP's STACK_REG model.
+	// staging below. Argument sources remain protected until the parallel moves
+	// resolve all aliases. Lazy reload on the next read — WARP's STACK_REG model.
 	if !preservesPins {
+		f.discardDeadTerminalCallLocals()
 		f.spillLocalsForCall()
 	}
 
@@ -2550,6 +2570,17 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	f.stats.peepN("machine-swap-chain", swapChains)
 	f.tmpMoves = moves[:0]
 	for _, da := range deferred {
+		if da.root.isDeferred() {
+			source, immediate, wide, ok := f.pinnedImmediateCallArgument(da.root)
+			if !ok || !f.addFoldImm3(da.target, source, immediate, wide) {
+				panic("arm64: deferred immediate argument proof mismatch")
+			}
+			// This path emits without materialize/occupy. Retire the tree
+			// explicitly before the canonical-stack reset abandons its nodes.
+			f.consumeBlockBelow(da.root)
+			f.erase(da.root)
+			continue
+		}
 		switch da.root.st.kind {
 		case stConst:
 			f.loadConst(da.target, da.root.st)
@@ -2686,9 +2717,9 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 // directCalleePreservesPins returns the module-precomputed leaf classification
 // for one direct target. This is compile-time only; execution stays a plain BL.
 func (f *fn) directCalleePreservesPins(localIdx int) bool {
-	// Even a pin-preserving leaf can throw. An active catch needs current local
-	// homes, so keep the spill-managed call path until this try_table ends.
-	if f.ehTryDepth != 0 {
+	// A catch needs current local homes. The leaf proof also reserves only GP
+	// pins: even an integer-signature leaf may use FP or SIMD scratch registers.
+	if f.ehTryDepth != 0 || f.fpinnedLocalMask != 0 {
 		return false
 	}
 	if localIdx < 0 || localIdx >= len(f.calleeHints) {

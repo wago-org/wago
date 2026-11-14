@@ -115,6 +115,24 @@ func (f *fn) tryPretestLoopLatch(fr *ctrlFrame) bool {
 	if owner == nil || f.a.Len()-target+4*(exit+1) > 64 || delta < -(1<<20) || delta >= 1<<20 {
 		return false
 	}
+	// Keep a memory-fed zero test at the original header. Rotating it next to
+	// the load can lengthen a dependent backedge on ARM64, despite removing
+	// the unconditional branch. Arithmetic counters retain the latch form.
+	if zero {
+		reg := branch & 31
+		for at := target; at < f.a.Len(); at += 4 {
+			word := binary.LittleEndian.Uint32(f.a.B[at:])
+			if word&(1<<26) != 0 { // FP/SIMD loads do not define a GP test.
+				continue
+			}
+			single := (word&0x3b000000 == 0x39000000 || word&0x3b000000 == 0x38000000) && word>>22&3 != 0
+			literal := word&0x3b000000 == 0x18000000
+			pair := word&0x3a000000 == 0x28000000 && word&(1<<22) != 0
+			if (single || literal || pair) && word&31 == reg || pair && word>>10&31 == reg {
+				return false
+			}
+		}
+	}
 	if exit != 0 {
 		f.a.B = binary.LittleEndian.AppendUint32(f.a.B, words[0])
 	}

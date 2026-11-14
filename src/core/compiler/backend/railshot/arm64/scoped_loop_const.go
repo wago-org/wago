@@ -16,6 +16,8 @@ import (
 
 // Immutable leases exist only inside proven call-free loops. The process
 // default is opt-in; the per-compilation policy owns each selected state.
+var wideScopedLoopConstsEnabled = os.Getenv("WAGO_ARM64_NO_WIDE_SCOPED_CONST") != "1"
+
 var scopedLoopConstsEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_SCOPED_LOOP_CONST") != "0"
 
 // Keep only the lease metadata in compiler scratch state. A pointer
@@ -36,11 +38,12 @@ type scopedLoopConstUses struct {
 	hints   *scopedLoopConstHints
 	mask    uint8
 	blocked bool
+	work    *uint16
 }
 
 func (f *fn) scopedLoopConstUses() (scopedLoopConstUses, bool) {
 	h := &f.scopedConstHints
-	if h.loopIntConstCount == 0 || !f.opt(optLoopIntConst) || f.interruptible || f.moduleEH || len(f.customInstructions) != 0 || h.flags.has(hintMutatesTable) || f.m != nil && len(f.m.Tables) != 0 {
+	if h.loopIntConstCount == 0 || !f.opt(optLoopIntConst) || f.interruptible || f.moduleEH || len(f.customInstructions) != 0 || h.flags.has(hintMutatesTable) || !wideScopedLoopConstsEnabled && f.m != nil && len(f.m.Tables) != 0 {
 		return scopedLoopConstUses{}, false
 	}
 	return scopedLoopConstUses{hints: h}, true
@@ -121,7 +124,7 @@ func (f *fn) preloadScopedLoopConsts(fr *ctrlFrame) {
 		}
 	}
 	base := f.iconstN
-	f.reserveLoopIntConsts(&h)
+	f.reserveLoopIntConsts(&h, true)
 	if f.iconstN != base {
 		fr.flags |= ctrlLoopConstScope | ctrlFlags(base)<<12
 		f.stats.peep("scoped-loop-int-const")
@@ -140,4 +143,69 @@ func (f *fn) releaseScopedLoopConsts(base uint8) {
 	if f.intervalControl {
 		f.intervalRegLimit = f.currentIntervalRegLimit()
 	}
+}
+
+// Table helpers are a boundary even when the selected loop otherwise makes no
+// calls. A module's unused tables do not require rejecting a pure numeric loop.
+func scopedConstTableBarrier(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableSize, wasm.InstrTableGrow, wasm.InstrTableInit, wasm.InstrTableCopy, wasm.InstrTableFill, wasm.InstrElemDrop:
+		return true
+	default:
+		return false
+	}
+}
+
+const scopedLoopConstWorkLimit = 4096
+
+// Admit detailed scanning only when a short copied-reader prefix contains a
+// selected costly constant. Independent bounded accounting prevents earlier
+// map/reduction probes from starving a late loop, without repeated full scans.
+func (f *fn) hasWideScopedConstPrefix(source *wasm.Reader) bool {
+	if !f.usesCalls || f.scopedConstWork >= scopedLoopConstWorkLimit {
+		return false
+	}
+	uses, ok := f.scopedLoopConstUses()
+	if !ok {
+		return false
+	}
+	r := *source
+	start := r.Offset()
+	var imm wasm.InstructionImmediate
+	for ops := 0; ops < 16 && r.Offset()-start < 128 && f.scopedConstWork < scopedLoopConstWorkLimit; ops++ {
+		f.scopedConstWork++
+		op, e := r.Byte()
+		if e != nil {
+			return false
+		}
+		if op >= 0x45 && op <= 0xc4 {
+			continue
+		}
+		if op >= 0x20 && op <= 0x22 {
+			index, e := r.U32()
+			if e != nil || index >= uint32(f.nLocals) {
+				return false
+			}
+			continue
+		}
+		if op == 0xfb || op == 0xfe {
+			return false
+		}
+		if op == 0x41 || op == 0x42 {
+			if _, e = uses.consume(op, &r); e != nil {
+				return false
+			}
+			if uses.mask != 0 {
+				return true
+			}
+			continue
+		}
+		if e = f.classifier.ClassifyInto(&r, op, &imm); e != nil {
+			return false
+		}
+		if loopInstructionMayCall(imm.Kind) || usesBulkScratch(imm.Kind) || scopedConstTableBarrier(imm.Kind) || op == 0x0b {
+			return false
+		}
+	}
+	return false
 }

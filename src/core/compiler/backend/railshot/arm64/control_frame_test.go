@@ -15,7 +15,7 @@ func TestCtrlFrameSize(t *testing.T) {
 	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(72); got != want {
 		t.Fatalf("ctrlFrame size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(96); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(112); got != want {
 		t.Fatalf("ctrlFrameMerge size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameRoots{}), uintptr(24); got != want {
@@ -262,7 +262,7 @@ func TestPackedLocStatesArm64(t *testing.T) {
 	if got := states.get(63); got != lsMem {
 		t.Fatalf("state 63 = %d, want %d", got, lsMem)
 	}
-	if got, wantBytes := unsafe.Sizeof(states), uintptr(16); got != wantBytes {
+	if got, wantBytes := unsafe.Sizeof(states), uintptr(24); got != wantBytes {
 		t.Fatalf("packed bytes = %d, want %d", got, wantBytes)
 	}
 }
@@ -434,11 +434,33 @@ func TestLoopSetScanKeepsImmediatesNestingAndWideLocals(t *testing.T) {
 			t.Fatalf("scan = %v, want %v", got, want)
 		}
 	}
-	for _, body := range [][]byte{{0x21}, {0x21, 0x80, 0x80, 4, 0x0b}, {0x10, 0, 0x0b}, {0x40, 0, 0x0b}, {0x26, 0, 0x0b}} {
+	for _, body := range [][]byte{{0x21}, {0x21, 0x80, 0x80, 4, 0x0b}, {0x10, 0, 0x0b}, {0x40, 0, 0x0b}, {0x26, 0, 0x0b}, {0x41, 0x80}, {0x42, 0x80}, {0x43, 0, 0, 0}, {0x44, 0, 0, 0, 0, 0, 0, 0}} {
 		r := wasm.ReaderFrom(body)
 		_, calls := scanLoopSetLocals(&r, classifier, nil, nil)
 		if !calls || r.Offset() != 0 {
 			t.Fatalf("effectful/malformed loop %x admitted: calls=%v offset=%d", body, calls, r.Offset())
+		}
+	}
+}
+
+func TestLoopSetScanScalarMemoryImmediates(t *testing.T) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	var body []byte
+	for op := byte(0x28); op <= 0x3e; op++ {
+		// The alignment and offset look like a loop end and a call opcode;
+		// neither may be interpreted as an instruction.
+		body = append(body, op, 0x0b, 0x10)
+	}
+	body = append(body, 0x21, 7, 0x0b)
+	r := wasm.ReaderFrom(body)
+	got, calls := scanLoopSetLocals(&r, classifier, nil, nil)
+	if calls || len(got) != 1 || got[0] != 7 || r.Offset() != 0 {
+		t.Fatalf("scan = %v, calls=%v, offset=%d", got, calls, r.Offset())
+	}
+	for _, malformed := range [][]byte{{0x28}, {0x28, 0}, {0x28, 0x40, 0x80}} {
+		r := wasm.ReaderFrom(malformed)
+		if _, calls := scanLoopSetLocals(&r, classifier, nil, nil); !calls || r.Offset() != 0 {
+			t.Fatalf("malformed loop %x admitted: calls=%v, offset=%d", malformed, calls, r.Offset())
 		}
 	}
 }

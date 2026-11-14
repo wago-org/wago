@@ -45,6 +45,12 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 		}
 	}
 
+	if !w && signed && !wantRem {
+		if result, ok := f.tryDirectSignedQuotient(node, dest, c); ok {
+			return result, true
+		}
+	}
+
 	// Compute the dividend into an owned result register. Unlike x86 (which had to
 	// keep it clear of RAX/RDX for the one-operand MUL), AArch64's multiply-high is
 	// orthogonal, so no register needs to be avoided here.
@@ -89,7 +95,12 @@ func (f *fn) tryBorrowedUnsignedQuotient(node *elem, dest Reg, divisor uint64) (
 	magic, shift, add := railshot.MagicU(divisor, 32)
 	var q Reg
 	if add {
-		q = f.magicWideU32Quotient(dividend, divisor)
+		if wideQuotientSinkEnabled {
+			q = f.magicWideU32QuotientInto(dividend, divisor, dest, left.st.valueFacts().has(factUpper32Zero))
+			f.stats.peep("wide-quotient-sink")
+		} else {
+			q = f.magicWideU32Quotient(dividend, divisor)
+		}
 	} else {
 		// Write the requested destination directly when no add correction is
 		// needed; both reciprocal lease widths supply the same low 32 bits.
@@ -214,6 +225,20 @@ func (f *fn) divConstSigned(res Reg, d int64, w, wantRem bool) {
 		// Bias the dividend toward zero before an arithmetic shift: add (2^k - 1)
 		// when it is negative. bias = (res >>s (W-1)) >>u (W-k) is 2^k-1 for res<0,
 		// else 0.
+		if !wantRem && f.opt(optShiftedRegisterALU) {
+			// ADD's shifted register consumes the sign bias without a separate
+			// logical shift. The original dividend remains intact until ADD.
+			bias := f.allocReg(maskOf(res))
+			f.a.AsrImm(bias, res, uint8(W-1), !w)
+			f.a.AddShiftedReg(res, res, bias, a64.RegShiftLSR, uint8(int(W)-k), !w)
+			f.shiftImm(shASR, res, byte(k), w)
+			if neg {
+				f.neg(res, w)
+			}
+			f.release(bias)
+			f.stats.peep("signed-power-two-shifted-bias")
+			return
+		}
 		bias := f.signBias(res, k, W, w)
 		if wantRem {
 			// r = ((res + bias) & (2^k-1)) - bias — sign follows the dividend and is
@@ -240,9 +265,8 @@ func (f *fn) divConstSigned(res Reg, d int64, w, wantRem bool) {
 // 0 — the round-toward-zero bias for a signed power-of-2 divide.
 func (f *fn) signBias(res Reg, k int, W uint, w bool) Reg {
 	t := f.allocReg(maskOf(res))
-	f.pinned = f.pinned.add(t) // pinned so a later andImm scratch can't clobber it
-	f.a.MovReg64(t, res)
-	f.shiftImm(shASR, t, byte(W-1), w)      // asr t, W-1  → 0 or -1
+	f.pinned = f.pinned.add(t)              // pinned so a later andImm scratch can't clobber it
+	f.a.AsrImm(t, res, uint8(W-1), !w)      // asr t, W-1  → 0 or -1
 	f.shiftImm(shLSR, t, byte(int(W)-k), w) // lsr t, W-k  → 0 or (2^k - 1)
 	return t
 }

@@ -135,7 +135,7 @@ func (e *regionLoopEmitter) guards() {
 	f, p := e.f, e.p
 	a, b := e.gp[0], e.gp[1]
 	for i, l := range p.locals[:p.localN] {
-		d := f.locals[l.index]
+		d := f.locals[l.Index]
 		switch {
 		case d.state == lsConstZero:
 			f.a.Xor32(a, a)
@@ -146,10 +146,10 @@ func (e *regionLoopEmitter) guards() {
 				f.a.MovRegReg32(a, d.reg)
 			}
 		default:
-			if l.typ == mtF64 {
-				f.a.Load64(a, RSP, f.localAddr(int(l.index)))
+			if l.Type == mtF64 {
+				f.a.Load64(a, RSP, f.localAddr(int(l.Index)))
 			} else {
-				f.a.Load32(a, RSP, f.localAddr(int(l.index)))
+				f.a.Load32(a, RSP, f.localAddr(int(l.Index)))
 			}
 		}
 		f.a.Store64(RSP, e.off(i), a)
@@ -168,7 +168,7 @@ func (e *regionLoopEmitter) guards() {
 		e.fail(condBE)
 	}
 	f.a.Sub32(a, b)
-	step := p.locals[p.counter].step
+	step := p.locals[p.counter].Step
 	if step != 1 {
 		f.a.TestImm(a, step-1, false)
 		e.fail(condNE)
@@ -186,7 +186,7 @@ func (e *regionLoopEmitter) guards() {
 		e.loadStream[l.node] = e.stream(n.left, n.bits)
 	}
 	for i, s := range p.stores[:p.storeN] {
-		e.storeStream[i] = e.stream(s.address, s.offset)
+		e.storeStream[i] = e.stream(s.Address, s.Offset)
 	}
 	for i := range e.streams[:e.streamN] {
 		e.rangeCheck(&e.streams[i])
@@ -235,7 +235,7 @@ func (p *regionLoopPlan) fpUses() [regionLoopMaxOps + 1]uint8 {
 	var uses [regionLoopMaxOps + 1]uint8
 	for _, event := range p.events[:p.eventN] {
 		if event&0x80 != 0 {
-			uses[p.stores[event&0x7f].value]++
+			uses[p.stores[event&0x7f].Value]++
 		} else {
 			n := p.nodes[event]
 			if n.op >= 0xa0 && n.op <= 0xa3 {
@@ -245,8 +245,8 @@ func (p *regionLoopPlan) fpUses() [regionLoopMaxOps + 1]uint8 {
 		}
 	}
 	for _, l := range p.locals[:p.localN] {
-		if l.written && l.typ == mtF64 {
-			uses[l.value]++
+		if l.Written && l.Type == mtF64 {
+			uses[l.Value]++
 		}
 	}
 	return uses
@@ -284,13 +284,13 @@ func (p *regionLoopPlan) scratchNeedPermanent(folded [regionLoopMaxOps + 1]bool,
 	uses := p.fpUses()
 	homes, live, peak := 0, 0, 0
 	for _, l := range p.locals[:p.localN] {
-		if l.typ == mtF64 && uses[l.initial] != 0 {
+		if l.Type == mtF64 && uses[l.Initial] != 0 {
 			homes++
 		}
 	}
 	for _, event := range p.events[:p.eventN] {
 		if event&0x80 != 0 {
-			id := p.stores[event&0x7f].value
+			id := p.stores[event&0x7f].Value
 			uses[id]--
 			if uses[id] == 0 && p.nodes[id].op != 0x20 && !permanent[id] {
 				live--
@@ -339,12 +339,12 @@ func (e *regionLoopEmitter) prepareRegisterStreams(entry *[256]regionEntryLocal)
 			continue
 		}
 		for at, c := range n.coeff {
-			if c != 1 || n.uses != 1<<at || p.locals[at].written {
+			if c != 1 || n.uses != 1<<at || p.locals[at].Written {
 				continue
 			}
 			l := p.locals[at]
-			old := entry[l.index]
-			d := f.locals[l.index]
+			old := entry[l.Index]
+			d := f.locals[l.Index]
 			if old.reg != regNone && old.reg == d.reg && !occupied.has(old.reg) && f.regUser[old.reg] == nil {
 				e.streams[i].reg = old.reg
 				occupied = occupied.add(old.reg)
@@ -360,7 +360,7 @@ func (e *regionLoopEmitter) prepareRegisterStreams(entry *[256]regionEntryLocal)
 			allowed := !f.pinnedLocalMask.has(r)
 			if pass == 1 {
 				for _, l := range p.locals[:p.localN] {
-					if l.written && l.typ == mtI32 && entry[l.index].reg == r {
+					if l.Written && l.Type == mtI32 && entry[l.Index].reg == r {
 						allowed = true
 					}
 				}
@@ -435,15 +435,15 @@ func (e *regionLoopEmitter) body() {
 	var scratch regMask
 	homes := 0
 	for _, l := range p.locals[:p.localN] {
-		if l.typ == mtF64 && uses[l.initial] != 0 {
-			regs[l.initial] = e.fp[homes]
+		if l.Type == mtF64 && uses[l.Initial] != 0 {
+			regs[l.Initial] = e.fp[homes]
 			if p.wide && regionWideBroadcastEnabled {
-				f.a.YBroadcastSDLoadDisp(regs[l.initial], RSP, e.off(int(p.nodes[l.initial].bits)))
+				f.a.YBroadcastSDLoadDisp(regs[l.Initial], RSP, e.off(int(p.nodes[l.Initial].bits)))
 				f.stats.peep("region-loop-wide-memory-broadcast")
 			} else {
-				f.a.FLoadDisp(regs[l.initial], RSP, e.off(int(p.nodes[l.initial].bits)), true)
+				f.a.FLoadDisp(regs[l.Initial], RSP, e.off(int(p.nodes[l.Initial].bits)), true)
 				if !p.scalar {
-					e.broadcastPair(regs[l.initial])
+					e.broadcastPair(regs[l.Initial])
 				}
 			}
 			homes++
@@ -489,7 +489,7 @@ func (e *regionLoopEmitter) body() {
 		if event&0x80 != 0 {
 			at := event & 0x7f
 			s := p.stores[at]
-			f.wasmPC = f.tracePCBase + s.pos
+			f.wasmPC = f.tracePCBase + s.PC
 			previous := f.enterProfileInstruction()
 			var ea Reg
 			if !p.scalar || p.reductionLoad[at] == 0 {
@@ -497,18 +497,18 @@ func (e *regionLoopEmitter) body() {
 			}
 			if p.scalar {
 				if id := p.reductionLoad[at]; id != 0 {
-					if regs[id] != regs[s.value] {
-						f.a.FMov(regs[id], regs[s.value], true)
+					if regs[id] != regs[s.Value] {
+						f.a.FMov(regs[id], regs[s.Value], true)
 					}
 				} else {
-					f.a.FStoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp, true)
+					f.a.FStoreIdx(RBX, ea, regs[s.Value], e.streams[e.storeStream[at]].disp, true)
 				}
 			} else if p.wide {
-				f.a.YMovdquStoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp)
+				f.a.YMovdquStoreIdx(RBX, ea, regs[s.Value], e.streams[e.storeStream[at]].disp)
 			} else {
-				f.mov128StoreIdx(RBX, ea, regs[s.value], e.streams[e.storeStream[at]].disp)
+				f.mov128StoreIdx(RBX, ea, regs[s.Value], e.streams[e.storeStream[at]].disp)
 			}
-			release(s.value, regNone)
+			release(s.Value, regNone)
 			f.switchProfileOrigin(previous)
 			continue
 		}
@@ -640,8 +640,8 @@ func (e *regionLoopEmitter) body() {
 	// Arithmetic/constant final versions own registers distinct from the initial
 	// loop homes. Keep the recurrence entirely in XMM registers.
 	for _, l := range p.locals[:p.localN] {
-		if l.written && l.typ == mtF64 && initialUses[l.initial] != 0 {
-			f.a.FMov(regs[l.initial], regs[l.value], true)
+		if l.Written && l.Type == mtF64 && initialUses[l.Initial] != 0 {
+			f.a.FMov(regs[l.Initial], regs[l.Value], true)
 		}
 	}
 	for i, s := range e.streams[:e.streamN] {
@@ -666,16 +666,16 @@ func (e *regionLoopEmitter) body() {
 	}
 	// Only the final iteration publishes private outputs for exit reconciliation.
 	for i, l := range p.locals[:p.localN] {
-		if l.written && l.typ == mtF64 {
+		if l.Written && l.Type == mtF64 {
 			if p.adjacent {
 				// Use the final scratch slots to publish a scalar lane without
 				// mutating a packed value shared by multiple scalar locals.
 				lane := int32(0)
 				if p.wide {
-					f.a.YMovdquStoreDisp(RSP, e.off(26), regs[l.value])
+					f.a.YMovdquStoreDisp(RSP, e.off(26), regs[l.Value])
 					lane = 16 // final original iteration is the upper pair
 				} else {
-					f.mov128StoreDisp(RSP, e.off(26), regs[l.value])
+					f.mov128StoreDisp(RSP, e.off(26), regs[l.Value])
 				}
 				if p.exitHigh&(1<<i) != 0 {
 					lane += 8
@@ -685,34 +685,34 @@ func (e *regionLoopEmitter) body() {
 			} else if p.wide {
 				// Preserve all shared vector values while selecting scalar
 				// iteration four, the final lane of the last complete group.
-				f.a.YMovdquStoreDisp(RSP, e.off(26), regs[l.value])
+				f.a.YMovdquStoreDisp(RSP, e.off(26), regs[l.Value])
 				f.a.Load64(e.gp[0], RSP, e.off(26)+24)
 				f.a.Store64(RSP, e.off(19+i), e.gp[0])
 			} else {
 				// The last scalar iteration is the upper lane of the last pair.
 				if !p.scalar {
-					f.a.SseRR(0, 0x12, regs[l.value], regs[l.value], false)
+					f.a.SseRR(0, 0x12, regs[l.Value], regs[l.Value], false)
 				}
-				f.a.FStoreDisp(RSP, e.off(19+i), regs[l.value], true)
+				f.a.FStoreDisp(RSP, e.off(19+i), regs[l.Value], true)
 			}
 		}
 	}
 	// Integer definitions are affine in the input image of the final iteration.
 	for i, l := range p.locals[:p.localN] {
-		if l.step != 0 {
+		if l.Step != 0 {
 			f.a.Load32(e.gp[0], RSP, e.off(i))
 			f.a.Load32(e.gp[1], RSP, e.off(8))
 			f.a.AluRI(aluTable[opSub].digit, e.gp[1], 1, false)
-			if l.step != 1 {
-				f.a.ImulRI(e.gp[1], int32(l.step), false)
+			if l.Step != 1 {
+				f.a.ImulRI(e.gp[1], int32(l.Step), false)
 			}
 			f.a.Add32(e.gp[0], e.gp[1])
 			f.a.Store32(RSP, e.off(i), e.gp[0])
 		}
 	}
 	for i, l := range p.locals[:p.localN] {
-		if l.written && l.typ == mtI32 {
-			e.affine(l.value, e.gp[0], e.gp[1])
+		if l.Written && l.Type == mtI32 {
+			e.affine(l.Value, e.gp[0], e.gp[1])
 			f.a.Store64(RSP, e.off(19+i), e.gp[0])
 		}
 	}
@@ -724,17 +724,17 @@ func (e *regionLoopEmitter) body() {
 	}
 	for order := 1; order <= regionLoopMaxOps; order++ {
 		for i, l := range p.locals[:p.localN] {
-			if !l.written || int(l.order) != order {
+			if !l.Written || int(l.Order) != order {
 				continue
 			}
-			d := f.locals[l.index]
+			d := f.locals[l.Index]
 			if d.state == lsConstZero {
 				continue
 			}
-			if l.typ == mtF64 {
+			if l.Type == mtF64 {
 				f.a.FLoadDisp(e.fp[0], RSP, e.off(19+i), true)
 				if d.reg == regNone || d.state != lsReg {
-					f.a.FStoreDisp(RSP, f.localAddr(int(l.index)), e.fp[0], true)
+					f.a.FStoreDisp(RSP, f.localAddr(int(l.Index)), e.fp[0], true)
 				}
 				if d.reg != regNone && d.state != lsMem {
 					f.a.FMov(d.reg, e.fp[0], true)
@@ -742,7 +742,7 @@ func (e *regionLoopEmitter) body() {
 			} else {
 				f.a.Load32(e.gp[0], RSP, e.off(19+i))
 				if d.reg == regNone || d.state != lsReg {
-					f.a.Store32(RSP, f.localAddr(int(l.index)), e.gp[0])
+					f.a.Store32(RSP, f.localAddr(int(l.Index)), e.gp[0])
 				}
 				if d.reg != regNone && d.state != lsMem {
 					f.a.MovRegReg32(d.reg, e.gp[0])
@@ -782,7 +782,7 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 	// Scalar home commits below require every new FP version to own its result.
 	// Cross-home copies need a separate parallel-copy contract.
 	for _, l := range p.locals[:p.localN] {
-		if l.written && l.typ == mtF64 && p.nodes[l.value].op == 0x20 && l.value != l.initial {
+		if l.Written && l.Type == mtF64 && p.nodes[l.Value].op == 0x20 && l.Value != l.Initial {
 			return false, nil
 		}
 	}
@@ -790,7 +790,7 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 	if p.adjacent && regionAdjacentMultiEnabled && !p.contiguousAdjacentIterations() {
 		p.wide = false
 	}
-	step := p.locals[p.counter].step
+	step := p.locals[p.counter].Step
 	memoryForms := !p.scalar && regionLoopMemForms && f.cpuHas(shared.AMD64AVX)
 	var prefix uint8
 	var permanent [regionLoopMaxOps + 1]bool
@@ -887,8 +887,8 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 	}
 	var written [256]bool
 	for _, l := range p.locals[:p.localN] {
-		if l.written {
-			written[l.index] = true
+		if l.Written {
+			written[l.Index] = true
 		}
 	}
 	for _, x := range f.pinnedLocals {

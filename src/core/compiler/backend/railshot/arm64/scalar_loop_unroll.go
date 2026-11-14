@@ -9,9 +9,12 @@
 
 package arm64
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"os"
+)
 
-var scalarLoopUnrollEnabled = true
+var scalarLoopUnrollEnabled = os.Getenv("WAGO_ARM64_NO_SCALAR_LOOP_UNROLL") != "1"
 
 // scalarLoopWord proves a position-independent integer instruction with no
 // memory or control effect. It returns the destination, regNone for flag-only/NOP.
@@ -144,7 +147,7 @@ func (f *fn) unrollScalarLatch(fr *ctrlFrame, cc Cond) bool {
 	}
 	// The first body is already emitted. Replace it only after every proof has
 	// succeeded; a rejected candidate leaves the original instruction stream.
-	f.a.B = f.a.B[:start]
+	f.truncateNativeCode(start)
 	var exits [3]int
 	for phase := 0; phase < 4; phase++ {
 		current := counter

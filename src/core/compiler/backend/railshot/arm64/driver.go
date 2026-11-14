@@ -80,9 +80,11 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 	remainingHints := f.branchHints
 	for len(f.ctrl) > minCtrl {
 		if f.selectGroupEnd != 0 {
+			f.wideReciprocalEnd = 0
 			f.finishSelectGroup(r.Offset())
 		}
 		if f.streamingReduction && f.s.head.prev == sentinelNodeID {
+			f.wideReciprocalEnd = 0
 			if done, err := f.tryStreamReduction(r); done || err != nil {
 				if err != nil {
 					return err
@@ -111,7 +113,22 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		}
 
 		if f.intervalControl && intervalRegionBoundary(op, f.intervalCalls) {
-			f.clearIntervalControlRegion()
+			if !f.clearIntervalCondition(op) {
+				f.clearIntervalControlRegion()
+			}
+		}
+		frameForwardSafe := frameForwardOpcode(op)
+		f.wideReciprocalActive = frameForwardSafe && op != 0x20
+		if !frameForwardSafe {
+			// An if consumes a condition already captured before the control
+			// boundary. Let that condition use the native-word forwarding proof;
+			// the proof is still cleared after lowering this opcode. Any emitted
+			// branch, call, frame store, or carrier write invalidates it first.
+			if op != 0x04 {
+				f.frameForwardEnd = 0
+			}
+			f.frameForwardLocalLive = false
+			f.wideReciprocalEnd = 0
 		}
 		f.prepareStoreForward(op)
 		switch op {
@@ -151,6 +168,10 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			} else {
 				err = f.emitPlain(r, op)
 			}
+		}
+		f.wideReciprocalActive = false
+		if !frameForwardSafe {
+			f.frameForwardEnd, f.wideReciprocalEnd = 0, 0
 		}
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			f.switchProfileOrigin(previous)
@@ -193,12 +214,18 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x1a: // drop
 		f.dropValue()
 	case 0x1b: // select
+		if done, err := f.trySelectSubtract(r); done || err != nil {
+			return err
+		}
 		if done, err := f.trySelectLocalSet(r); done || err != nil {
 			return err
 		}
 		f.emitSelect()
 	case 0x1c: // select t (typed) — consume the declared result types
 		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+			return err
+		}
+		if done, err := f.trySelectSubtract(r); done || err != nil {
 			return err
 		}
 		if done, err := f.trySelectLocalSet(r); done || err != nil {
@@ -229,7 +256,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if forwarded {
 			x = f.inlineForward[x32]
 		}
-		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.s.back() == nil {
+		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && (!f.usesCalls || f.inCallFreeLoop()) && len(f.ctrl) >= 2 && f.s.back() == nil {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}
@@ -272,11 +299,17 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			// Specialized tee rewrites bypass setLocal. Invalidate first; a failed
 			// match falls through and installs the exact source fact below.
 			f.setFactsForLocal(int(x)+f.localBase, 0)
+			if done, err := f.tryArithmeticTeeBranch(r, int(x)+f.localBase); done || err != nil {
+				return err
+			}
 			if done, err := f.tryTeeCompareBrIf(r, int(x)+f.localBase); done || err != nil {
 				return err
 			}
 		}
 		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
+		if op == 0x22 {
+			f.tryByteSwapAfterTee(r, written)
+		}
 	case 0x23: // global.get
 		return f.globalGet(r)
 	case 0x24: // global.set
@@ -1259,6 +1292,14 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 			break
 		}
 		next := f.s.next(e)
+		if square := f.snapshotLocalSquare(e, x); square != nil {
+			e = f.s.next(square)
+			continue
+		}
+		if captured := f.snapshotLocalShiftedBinary(e, x); captured != nil {
+			e = f.s.next(captured)
+			continue
+		}
 		switch {
 		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
@@ -1300,6 +1341,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	// Capture the semantic result before condensing or moving it. Every assignment
 	// replaces the current straight-line version of the local.
 	assignedFacts := e.st.valueFacts()
+	f.rememberPrivateLocalConstant(x, reader)
 	f.setFactsForLocal(x, assignedFacts)
 	// In-place self-update `local.set $x (binop (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying
@@ -1313,6 +1355,17 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 			skipFrom = f.s.baseOfValentBlock(e)
 		}
 	}
+	if e != nil && e.elemKind() == ekValue && e.st.kind == stMemRef &&
+		(e.st.typ == mtI32 || e.st.typ == mtI64) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink)) &&
+		(e.st.memBorrow() == x || e.st.memAliasLocal() == x) {
+		// A load reads its complete effective address before writing its result.
+		// Let condenseInto load directly into the assigned pin, including when
+		// that pin carries the old address. Earlier stack reads are still
+		// realized below this root before the local is overwritten.
+		skipFrom = e
+		f.stats.peep("local-memory-sink")
+	}
+
 	f.realizeLocalRefs(x, skipFrom)
 	if reader != nil {
 		f.activateIntervalLocal(x, reader.Offset(), false)
@@ -1322,7 +1375,10 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// condenseInto may temporarily mark pr as an owned result for deferred
 		// expressions; clear that ownership because pinned-local registers are not
 		// allocator scratch registers.
+		addressScope := f.shiftedALUAddress
+		f.shiftedALUAddress = addressScope || f.localBase == 0 && uint(x) < 64 && f.shiftedALUAddressLocals&(uint64(1)<<uint(x)) != 0
 		f.condenseInto(e, pr)
+		f.shiftedALUAddress = addressScope
 		f.canonicalizeI32LocalAssignment(x, pr, assignedFacts)
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register
@@ -1364,6 +1420,14 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 			if e.st.reg != pr {
 				f.a.FmovReg(pr, e.st.reg, f64) // borrowed float local → direct move
 			}
+		} else if f.opt(optFloatMemoryBorrow) && e.elemKind() == ekValue && e.st.kind == stMemRef {
+			// The address is an integer carrier. Existing local-reference realization
+			// has preserved the destination's old value; load directly into its pin.
+			f.loadFMemRef(pr, e)
+			f.releaseMemRef(e.st)
+			f.occupyF(e, pr)
+			f.releaseF(pr)
+			f.stats.peep("float-load-local-sink")
 		} else {
 			xmm := f.materializeF(e)
 			if xmm != pr {
@@ -1405,6 +1469,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	r := f.materialize(e)
 	f.canonicalizeI32LocalAssignment(x, r, assignedFacts)
 	f.st64(SP, f.localOff(x), r) // helper hides the scaled-offset fallback (§6.1)
+	f.rememberFrameStore(x, r)
 	f.locals[x].state = lsMem
 	if !tee {
 		f.erase(e)

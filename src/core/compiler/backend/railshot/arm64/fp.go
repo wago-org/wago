@@ -20,6 +20,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+var floatMemoryBorrowEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MEMORY_BORROW") != "1"
+
 var floatLiteralPoolEnabled = os.Getenv("WAGO_ARM64_NO_FCONST_POOL") != "1"
 
 type floatPoolConst struct {
@@ -253,11 +255,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	// exceeds that cap, conservatively fall back to the old first-two policy rather
 	// than rank an incomplete set. Ties retain bytecode order, also preserving the
 	// old choice for functions whose constants are all used equally often.
-	var cand [32]struct {
-		typ  machineType
-		bits int64
-		n    int
-	}
+	var cand [32]floatConstCandidate
 	nCand := 0
 	r := wasm.NewReader(code)
 	var imm wasm.InstructionImmediate
@@ -334,6 +332,12 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	}
 	if bestN >= 2*firstN {
 		choice = best
+	} else if floatConstSlotRankingEnabled {
+		previous := choice
+		choice = rankSingleFloatConstReplacement(cand[:nCand], choice, best)
+		if choice != previous {
+			f.stats.peep("fp-cache-slot-ranking")
+		}
 	}
 	oldSuppress := f.suppressFloatLiteral
 	f.suppressFloatLiteral = true
@@ -977,7 +981,11 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, 0, f.guardMode)
+	rangeExtent := int32(0)
+	if floatLoadSpanEnabled && f.localBase == 0 {
+		rangeExtent = f.loadRangeExtent(r, off, size)
+	}
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent, f.guardMode)
 	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow, aliasLocal))
 	if eaOwned {
 		f.regUser[ea] = e
@@ -995,7 +1003,18 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		size = 8
 	}
 	f.materializePendingTraps()
-	xmm := f.materializeF(f.popValue())
+	value := f.popValue()
+	var xmm Reg
+	owned := true
+	if f.opt(optFloatMemoryBorrow) {
+		xmm, owned = f.operandRegF(value)
+		if !owned {
+			f.stats.peep("float-store-borrow")
+		}
+	} else {
+		xmm = f.materializeF(value)
+	}
+	previousPins := f.fpinned
 	f.fpinned = f.fpinned.add(xmm)
 	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
@@ -1003,8 +1022,10 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		f.a.StrFIdx(base, ea, xmm, disp, f64)
 		f.release(base)
 		f.release(ea)
-		f.fpinned = f.fpinned.remove(xmm)
-		f.releaseF(xmm)
+		f.fpinned = previousPins
+		if owned {
+			f.releaseF(xmm)
+		}
 		return nil
 	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
@@ -1013,11 +1034,13 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StrFIdx(linMemReg, ea, xmm, disp, f64)
 	f.pinned = f.pinned.remove(ea)
-	f.fpinned = f.fpinned.remove(xmm)
+	f.fpinned = previousPins
 	if eaOwned {
 		f.release(ea)
 	}
-	f.releaseF(xmm)
+	if owned {
+		f.releaseF(xmm)
+	}
 	return nil
 }
 

@@ -47,7 +47,7 @@ func pureSelectSinkCost(s *stack, e *elem, budget int) (int, bool) {
 }
 
 func (f *fn) tryPureSelectSinkGuard(a, b, cond *elem, x int, dest Reg, wide bool) bool {
-	if !f.opt(optSelectSinkPureGuard) || len(f.customInstructions) != 0 || (!a.isDeferred() && !b.isDeferred()) || x < f.nParams || (wide && f.gcFrameLocal(x)) || (!wide && !f.canonicalI32Local(x)) || f.usesCalls || f.intervalControl && f.intervalActive != 0 || !isFusableCondition(cond) {
+	if !f.opt(optSelectSinkPureGuard) || len(f.customInstructions) != 0 || (!a.isDeferred() && !b.isDeferred()) || x < f.nParams || (wide && f.gcFrameLocal(x)) || (!wide && !f.canonicalI32Local(x)) || f.usesCalls || f.intervalControl && f.intervalActive != 0 || (!isFusableCondition(cond) && rootMachineType(cond) != mtI32) {
 		return false
 	}
 	keepsDest := func(e *elem) bool {
@@ -73,7 +73,19 @@ func (f *fn) tryPureSelectSinkGuard(a, b, cond *elem, x int, dest Reg, wide bool
 		f.invalidateBoundsCert()
 	}
 	f.invalidateStoreForward()
-	cc := f.condenseToFlags(cond)
+	cc := condNE
+	if isFusableCondition(cond) {
+		cc = f.condenseToFlags(cond)
+	} else {
+		// The condition still executes unconditionally, including any load or
+		// trap it contains. Only the proven pure integer arm moves past it.
+		condition, owned := f.materializeRead(cond)
+		f.a.CmpImm32(condition, 0)
+		if owned {
+			f.release(condition)
+		}
+		f.erase(cond)
+	}
 	skipCond := invertCond(cc)
 	if skipTrue {
 		skipCond = cc

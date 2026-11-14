@@ -74,11 +74,11 @@ func (p *regionLoopPlan) prepareConstantPrefix(arithmeticPrefix bool) (uint8, [r
 		}
 	}
 	for i := uint8(0); i < p.storeN; i++ {
-		p.stores[i].value = remap(p.stores[i].value)
+		p.stores[i].Value = remap(p.stores[i].Value)
 	}
 	for i := uint8(0); i < p.localN; i++ {
-		if p.locals[i].typ == mtF64 {
-			p.locals[i].value = remap(p.locals[i].value)
+		if p.locals[i].Type == mtF64 {
+			p.locals[i].Value = remap(p.locals[i].Value)
 		}
 	}
 	var events [regionLoopMaxOps]uint8
