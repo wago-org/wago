@@ -312,12 +312,16 @@ func (f *fn) divConstUnsignedMagic(res Reg, d uint64, w, wantRem bool) {
 	}
 	magic, shift, add := railshot.MagicU(d, W)
 	if !w && add {
-		q := f.magicWideU32Quotient(res, d)
-		if wantRem {
-			f.remFromQuot(res, q, int64(d), false)
-		} else {
-			f.a.MovReg32(res, q)
+		if !wantRem {
+			// The dividend is dead after an unsigned quotient. Canonicalize it
+			// through its own W register and overwrite it with UMULH instead of
+			// allocating a second register and copying the quotient back.
+			f.magicWideU32QuotientInto(res, d, res, false)
+			f.stats.peep("magic-u32-wide-in-place")
+			return
 		}
+		q := f.magicWideU32Quotient(res, d)
+		f.remFromQuot(res, q, int64(d), false)
 		f.pinned = f.pinned.remove(q)
 		return
 	}
