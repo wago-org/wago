@@ -30,8 +30,10 @@ func (c *Collector) growOwnedHandles(required int) bool {
 	}
 	capacity := (required + ownedHandleCapacityStep - 1) & -ownedHandleCapacityStep
 	if c.handlesBacking == handlesBackingMapped {
+		previous := cap(c.handles) * NativeHandleStride
 		entries := unsafe.Slice((*handleEntry)(unsafe.Pointer(unsafe.SliceData(c.handles))), capacity)
 		c.handles = entries[:len(c.handles):capacity]
+		adviseOwnedHugePages(c.mappedHandleBacking()[:capacity*NativeHandleStride], previous)
 		return true
 	}
 	if c.handlesBacking != handlesBackingDefault || !c.throughput.ownedBacking {
@@ -46,6 +48,7 @@ func (c *Collector) growOwnedHandles(required int) bool {
 	copy(entries, c.handles)
 	c.handles = entries[:len(c.handles):capacity]
 	c.handlesBacking = handlesBackingMapped
+	adviseOwnedHugePages(mem[:capacity*NativeHandleStride], 0)
 	return true
 }
 

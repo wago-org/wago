@@ -23,7 +23,9 @@ func (h *throughputHeap) mappedBacking() []byte {
 
 func (h *throughputHeap) growOwnedBacking(reserve int) bool {
 	if h.mapped {
+		previous := len(h.mem)
 		h.mem = h.mappedBacking()[:reserve:reserve]
+		adviseOwnedHugePages(h.mem, previous)
 		return true
 	}
 	if !h.ownedBacking {
@@ -38,6 +40,7 @@ func (h *throughputHeap) growOwnedBacking(reserve int) bool {
 	}
 	h.mem = mem[:reserve:reserve]
 	h.mapped = true
+	adviseOwnedHugePages(h.mem, 0)
 	return true
 }
 
