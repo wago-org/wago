@@ -667,10 +667,20 @@ func emitGCTrustedFinalCastBody(a *x64.Asm, returnToCaller bool) {
 // reference with EDX zero on success, or zero with EDX=trapCastFailure.
 // R9-R11 are preserved so functions with pinned locals can call the same leaf.
 func emitModuleGCDefinedCastStub(a *x64.Asm) {
-	emitGCDefinedCastBody(a, true, 7)
+	emitGCDefinedCastBody(a, true, 7, gcDefinedCastDynamic)
 }
 
-func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8) {
+type gcDefinedCastMode uint8
+
+const (
+	gcDefinedCastDynamic gcDefinedCastMode = iota
+	gcDefinedCastExact
+	gcDefinedCastOpen
+)
+
+// Inline callers know whether proper subtypes can match. Shared leaves retain
+// the runtime ESI flag because their callers can have different target types.
+func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8, mode gcDefinedCastMode) {
 	for i := Reg(0); i < 3; i++ {
 		if preserveMask&(1<<i) != 0 {
 			a.Push(R9 + i)
@@ -734,41 +744,50 @@ func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8) 
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0) // actual canonical type ID
 	a.Cmp32(RCX, RDX)
-	identityDone := a.JccPlaceholder(condE)
+	identityDone := -1
+	if mode == gcDefinedCastExact {
+		failIf(condNE)
+	} else {
+		identityDone = a.JccPlaceholder(condE)
 
-	// Exact casts and ordinary casts to final types reject proper subtypes.
-	a.TestSelf(RSI, false)
-	failIf(condNE)
+		// Shared leaves read the target-mode flag supplied by their caller.
+		if mode == gcDefinedCastDynamic {
+			a.TestSelf(RSI, false)
+			failIf(condNE)
+		}
 
-	// Open targets use the collector's immutable subtype interval table.
-	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.MovRegReg32(RAX, RCX)
-	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-	failIf(condAE)
-	a.MovRegReg32(RAX, RDX)
-	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-	failIf(condAE)
-	a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
-	a.TestSelf(R10, true)
-	failIf(condE)
-	a.MovRegReg32(RAX, RCX)
-	a.ImulRI(RAX, 8, true)
-	a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
-	a.MovRegReg32(RAX, RDX)
-	a.ImulRI(RAX, 8, true)
-	a.LoadIdx(R10, R10, RAX, 0, 8, false, true)
-	a.MovReg64(RAX, R9)
-	a.ShiftImm(5, RAX, 32, true)
-	a.MovReg64(RCX, R10)
-	a.ShiftImm(5, RCX, 32, true)
-	a.Cmp32(RAX, RCX)
-	failIf(condB)
-	a.Cmp32(R9, R10)
-	failIf(condA)
+		// Open targets use the collector's immutable subtype interval table.
+		a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+		a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+		a.MovRegReg32(RAX, RCX)
+		a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+		failIf(condAE)
+		a.MovRegReg32(RAX, RDX)
+		a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+		failIf(condAE)
+		a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+		a.TestSelf(R10, true)
+		failIf(condE)
+		a.MovRegReg32(RAX, RCX)
+		a.ImulRI(RAX, 8, true)
+		a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
+		a.MovRegReg32(RAX, RDX)
+		a.ImulRI(RAX, 8, true)
+		a.LoadIdx(R10, R10, RAX, 0, 8, false, true)
+		a.MovReg64(RAX, R9)
+		a.ShiftImm(5, RAX, 32, true)
+		a.MovReg64(RCX, R10)
+		a.ShiftImm(5, RCX, 32, true)
+		a.Cmp32(RAX, RCX)
+		failIf(condB)
+		a.Cmp32(R9, R10)
+		failIf(condA)
+	}
 
 	success := a.Len()
-	a.PatchRel32(identityDone, success)
+	if identityDone >= 0 {
+		a.PatchRel32(identityDone, success)
+	}
 	a.PatchRel32(nullSuccess, success)
 	a.MovRegReg32(RAX, RDI)
 	a.XorSelf32(RDX)
@@ -1069,7 +1088,13 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 			f.stats.peep("gc-final-defined-cast-exact")
 		}
 	}
-	if noProperSubtype {
+	mode := gcDefinedCastDynamic
+	if gcSharedStubsEnabled && gcInlineCastsEnabled {
+		mode = gcDefinedCastOpen
+		if noProperSubtype {
+			mode = gcDefinedCastExact
+		}
+	} else if noProperSubtype {
 		f.a.MovImm32(RSI, 1)
 	} else {
 		f.a.MovImm32(RSI, 0)
@@ -1079,7 +1104,7 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 			f.checkCallClobber()
 		}
 		if gcInlineCastsEnabled {
-			emitGCDefinedCastBody(f.a, false, f.inlineGCCastPreserveMask())
+			emitGCDefinedCastBody(f.a, false, f.inlineGCCastPreserveMask(), mode)
 			f.stats.peep("gc-inline-defined-cast")
 		} else {
 			site := f.a.CallRel32()
