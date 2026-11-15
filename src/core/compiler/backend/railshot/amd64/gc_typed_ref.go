@@ -21,13 +21,24 @@ import (
 // Caller save (8), return address (8), flags (8), and four scratch saves (32).
 const gcTypedMintStackBytes = 56
 
-// The struct allocation path has just published this handle and initialized its
-// header. Use that exact type without resolving the same object a second time.
-// R8 is the collector, RSI is the handle index, and RAX is its compact ref.
-// RCX, RDX and R10 are scratch at this publication point.
-func emitFreshNativeStructTypeWord(a *x64.Asm, typeIndex, objectSize uint32) {
+func (f *fn) emitFreshNativeStructTypeWord() {
 	if !gcDense16CastsEnabled {
 		return
+	}
+	f.gcTypedMintCalls = true
+	site := f.a.CallPreservingRel32()
+	f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubMintFreshStruct))
+}
+
+// The allocation path has just published this handle and initialized its
+// header. R8 is the collector, RSI the handle index, R9 its published slot,
+// R11 the initialized header, RCX the nursery offset, and RAX the compact ref.
+// The leaf preserves all GP registers except RAX, all FP state, and flags.
+// Its return address and scratch saves need 40 bytes within the mint budget.
+func emitModuleGCFreshStructTypeWord(a *x64.Asm) {
+	a.EmitBytes([]byte{0x9c}) // PUSHFQ
+	for _, reg := range [...]Reg{RCX, RDX, R10} {
+		a.Push(reg)
 	}
 	var raw [8]int
 	n := 0
@@ -37,18 +48,21 @@ func emitFreshNativeStructTypeWord(a *x64.Asm, typeIndex, objectSize uint32) {
 	}
 	a.AluRM(cmpRMcode, RSI, R8, gc.NativeViewHandleCountOffset, false)
 	fallback(condAE)
-	// RCX still holds the nursery offset used to publish the new handle.
-	a.AluRI(0, RCX, int32(objectSize), false)
-	a.AluRM(cmpRMcode, RCX, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBytesOffset), false)
+	// Check the current native extent using the size just published. Widen the
+	// addition so an invalid extent cannot wrap back into the space.
+	a.Load32(RDX, R9, gc.NativeHandleSizeOffset)
+	a.Add64(RCX, RDX)
+	a.Load32(R10, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBytesOffset))
+	a.Cmp64(RCX, R10)
 	fallback(condA)
 	a.Load32(RDX, R8, gc.NativeViewTypeRefEpochOffset)
 	a.TestSelf(RDX, false)
 	fallback(condE)
 	a.AluRI(cmpDigit, RDX, int32(gc.NativeTypedRefMaxEpoch), false)
 	fallback(condA)
-	a.Load64(R10, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.Load64(R10, R10, gc.NativeInstanceViewLocalTypesOffset)
-	a.Load32(RCX, R10, int32(typeIndex*4))
+	// The allocator wrote this exact canonical ID before publishing the handle.
+	// Its current object pointer is already available; no resolver is needed.
+	a.Load32(RCX, R11, 0)
 	a.AluRI(cmpDigit, RCX, int32(gc.NativeTypeWordIDMask), false)
 	fallback(condA)
 	a.AluRM(cmpRMcode, RCX, R8, gc.NativeViewTypeWordCountOffset, false)
@@ -69,6 +83,11 @@ func emitFreshNativeStructTypeWord(a *x64.Asm, typeIndex, objectSize uint32) {
 	for _, site := range raw[:n] {
 		a.PatchRel32(site, a.Len())
 	}
+	for _, reg := range [...]Reg{R10, RDX, RCX} {
+		a.Pop(reg)
+	}
+	a.EmitBytes([]byte{0x9d}) // POPFQ
+	a.Ret()
 }
 
 func (f *fn) emitNativeMintReference(ref Reg) {

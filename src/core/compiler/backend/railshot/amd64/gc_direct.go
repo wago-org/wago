@@ -54,6 +54,7 @@ const (
 	gcSharedStubTrustedFinalCast
 	gcSharedStubDefinedCast
 	gcSharedStubMintTypedRef
+	gcSharedStubMintFreshStruct
 	gcSharedStubMax
 )
 
@@ -425,7 +426,7 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 	for i := range offsets {
 		offsets[i] = -1
 	}
-	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] && !used[gcSharedStubTrustedFinalCast] && !used[gcSharedStubDefinedCast] && !used[gcSharedStubMintTypedRef] {
+	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] && !used[gcSharedStubTrustedFinalCast] && !used[gcSharedStubDefinedCast] && !used[gcSharedStubMintTypedRef] && !used[gcSharedStubMintFreshStruct] {
 		return nil, offsets
 	}
 	a := &x64.Asm{}
@@ -434,7 +435,7 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 		// modules that previously needed no shared resolver island.
 		a.B = make([]byte, 0, 256)
 	}
-	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject, gcSharedStubTrustedFinalCast, gcSharedStubDefinedCast, gcSharedStubMintTypedRef} {
+	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject, gcSharedStubTrustedFinalCast, gcSharedStubDefinedCast, gcSharedStubMintTypedRef, gcSharedStubMintFreshStruct} {
 		if used[kind] {
 			offsets[kind] = a.Len()
 			switch kind {
@@ -444,6 +445,8 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 				emitModuleGCDefinedCastStub(a)
 			case gcSharedStubMintTypedRef:
 				emitModuleGCMintTypedRef(a)
+			case gcSharedStubMintFreshStruct:
+				emitModuleGCFreshStructTypeWord(a)
 			default:
 				emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject || kind == gcSharedStubResolveArrayObject, kind == gcSharedStubResolveArrayObject)
 			}
@@ -2476,11 +2479,10 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.PatchRel32(deferredCount, a.Len())
 	a.MovRegReg32(RAX, RSI)
 	a.ShiftImm(4, RAX, 1, false)
+	f.emitFreshNativeStructTypeWord()
 	if directSlots {
-		emitFreshNativeStructTypeWord(a, typeIndex, objectSize)
 		a.Store64(RSP, f.spillOff(resultSlot)+stackDelta, RAX)
 	} else {
-		emitFreshNativeStructTypeWord(a, typeIndex, objectSize)
 		a.Store64(RDI, hcResults, RAX)
 	}
 	done := a.JmpPlaceholder()
