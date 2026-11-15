@@ -3483,7 +3483,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			i++
 		}
 	}
-	if hints.flags.has(hintTouchesMemory) {
+	// Guard mode relies on the protected linear-memory mapping instead of
+	// explicit minimum-memory checks, so the local-address proof has no
+	// consumer. Avoid a redundant full-body walk on the ordinary Darwin path.
+	if !guardMode && hints.flags.has(hintTouchesMemory) {
 		f.prepareLocalAddressBounds(c.BodyBytes)
 	}
 	if cap(f.localSlot) < nLocals {
