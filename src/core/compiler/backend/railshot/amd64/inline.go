@@ -626,7 +626,11 @@ func (ts inlineTargetTable) target(globalIdx int) *inlineTarget {
 	if slot == 0 || slot&inlineTargetInvalid != 0 {
 		return nil
 	}
-	return &ts.data.targets[slot-1]
+	target := &ts.data.targets[slot-1]
+	if target.globalIdx != globalIdx && ts.data.slots[target.globalIdx-ts.first]&inlineTargetInvalid != 0 {
+		return nil
+	}
+	return target
 }
 
 func (ts inlineTargetTable) empty() bool { return ts.data == nil || len(ts.data.targets) == 0 }
@@ -778,8 +782,83 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	}
 	if policy.CompactNative {
 		pruneNestedSizeInlineTargets(m, &targets)
+	} else if !profileEnabled && gcSharedStubsEnabled {
+		aliasReferenceCastWrappers(m, allHints, targets)
 	}
 	return targets
+}
+
+// A transparent wrapper needs no second inline frame or copied body. Point its
+// lookup slot at the existing cast leaf, whose source origin and local plan
+// remain authoritative. Only one direct wrapper hop is admitted.
+func aliasReferenceCastWrappers(m *wasm.Module, hints []funcHints, targets inlineTargetTable) {
+	for i := range m.Code {
+		body := &m.Code[i]
+		if targets.data.slots[i] != 0 || hints[i].flags.has(hintModuleEH) ||
+			len(body.Locals.Runs) != 0 || len(body.BodyBytes) > 12 {
+			continue
+		}
+		r := wasm.ReaderFrom(body.BodyBytes)
+		op, err := r.Byte()
+		if err != nil || op != 0x20 {
+			continue
+		}
+		arg, err := r.U32()
+		if err != nil || arg != 0 {
+			continue
+		}
+		op, err = r.Byte()
+		if err != nil || op != 0x10 {
+			continue
+		}
+		callee, err := r.U32()
+		if err != nil {
+			continue
+		}
+		op, err = r.Byte()
+		if err != nil || op != 0x0b || r.HasNext() {
+			continue
+		}
+		target := targets.target(int(callee))
+		if target == nil || target.globalIdx != int(callee) || target.hasCtrl ||
+			!target.hasGCParam() || target.paramCount() != 1 || target.localTypeEnd-target.typeStart != 1 {
+			continue
+		}
+		ft, ok := m.LocalFuncType(i)
+		if !ok || len(ft.Params) != 1 || len(ft.Results) != 1 || ft.Params[0].Kind() != wasm.ValRef || ft.Results[0].Kind() != wasm.ValRef {
+			continue
+		}
+		next, ok := m.LocalFuncType(int(callee) - targets.first)
+		if !ok || !equalGCForwardTypes(ft.Params, next.Params) || !equalGCForwardTypes(ft.Results, next.Results) {
+			continue
+		}
+		leaf := wasm.ReaderFrom(target.body)
+		op, err = leaf.Byte()
+		if err != nil || op != 0x20 {
+			continue
+		}
+		arg, err = leaf.U32()
+		if err != nil || arg != 0 {
+			continue
+		}
+		op, err = leaf.Byte()
+		if err != nil || op != 0xfb {
+			continue
+		}
+		sub, err := leaf.U32()
+		if err != nil || sub != 22 {
+			continue
+		}
+		heap, exact, err := readRefHeapTypeImmediate(&leaf)
+		if err != nil || heap < 0 || exact {
+			continue
+		}
+		op, err = leaf.Byte()
+		if err != nil || op != 0x0b || leaf.HasNext() {
+			continue
+		}
+		targets.data.slots[i] = targets.data.slots[int(callee)-targets.first]
+	}
 }
 
 func inlineI32AddParams(body []byte, ft *wasm.CompType) bool {

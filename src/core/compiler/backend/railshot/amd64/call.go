@@ -409,7 +409,7 @@ func (f *fn) selectedInlineTarget(idx uint32) *inlineTarget {
 	if t == nil {
 		return nil
 	}
-	_, reserved := f.inlineBase[int(idx)]
+	_, reserved := f.inlineBase[t.globalIdx]
 	if (t.isI32AddConst() || reserved) && (!t.recursive() || f.inlineDepth == 0) {
 		return t
 	}
@@ -445,6 +445,21 @@ func (f *fn) callOp(r *wasm.Reader) error {
 			// Advance the original source mask even though no native call remains.
 			f.consumeGCFrameCallsite()
 			f.stats.peep("gc-numeric-leaf-inline")
+		}
+		if t.globalIdx != int(idx) {
+			// The original wrapper's deferred cast tail reports its function with
+			// an unknown PC. Keep that attribution when splicing its cast leaf.
+			failStart := len(f.sc.gcTrustedCastFailSites)
+			if err := f.inlineCall(t, r); err != nil {
+				return err
+			}
+			for _, branch := range f.sc.gcTrustedCastFailSites[failStart:] {
+				f.sc.trapSites[trapCastFailure] = append(f.sc.trapSites[trapCastFailure], trapSite{
+					branch: compactTrapBranch(branch), function: idx, pc: ^uint32(0),
+				})
+			}
+			f.sc.gcTrustedCastFailSites = f.sc.gcTrustedCastFailSites[:failStart]
+			return nil
 		}
 		return f.inlineCall(t, r)
 	}
