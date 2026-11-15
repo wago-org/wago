@@ -10,6 +10,7 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 type gcStoredProofState struct {
 	stack, locals uint32
 	n             uint8
+	dead          bool
 }
 
 func (s *gcStoredProofState) push(known bool) bool {
@@ -95,7 +96,14 @@ func (f *fn) proveStoredGCReturn(index uint32, depth int, budget *int) bool {
 		if err != nil {
 			return false
 		}
+		// Accept a trap immediately before a structured arm boundary. Other
+		// unreachable instructions keep the conservative unsupported fallback.
+		if s.dead && op != 0x05 && op != 0x0b {
+			return false
+		}
 		switch op {
+		case 0x00:
+			s.dead = true
 		case 0x20, 0x21, 0x22:
 			i, err := r.U32()
 			if err != nil || uint64(i) >= nLocals {
@@ -160,7 +168,7 @@ func (f *fn) proveStoredGCReturn(index uint32, depth int, budget *int) bool {
 			s = c.before
 		case 0x0b:
 			if controls == 0 {
-				return r.Offset() == len(body.BodyBytes) && s.n == 1 && s.stack&1 != 0
+				return r.Offset() == len(body.BodyBytes) && !s.dead && s.n == 1 && s.stack&1 != 0
 			}
 			controls--
 			c := &control[controls]
@@ -168,11 +176,15 @@ func (f *fn) proveStoredGCReturn(index uint32, depth int, budget *int) bool {
 			if c.hasElse {
 				other = c.left
 			}
-			if s.n != other.n {
-				return false
+			if s.dead {
+				s = other
+			} else if !other.dead {
+				if s.n != other.n {
+					return false
+				}
+				s.stack &= other.stack
+				s.locals &= other.locals
 			}
-			s.stack &= other.stack
-			s.locals &= other.locals
 		case 0x10:
 			callee, err := r.U32()
 			if err != nil || int(callee) < f.m.ImportedFuncCount() {

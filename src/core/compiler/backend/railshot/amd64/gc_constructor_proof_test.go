@@ -35,6 +35,10 @@ func gcConstructorProofModule(t *testing.T, unknown, typed, nonnullable bool, va
 		0x20, 0, 0x20, 1, 0xfb, 11, 0,
 		0x0b, 0x0b,
 	})
+	if variant == "trap-arm" {
+		body := bytes.Replace(producer[1:], []byte{0xd0, 0x6d}, []byte{0x00}, 1)
+		producer = append(wasmtest.ULEB(uint32(len(body))), body...)
+	}
 	if variant == "unknown-arm" {
 		producer = bytes.Replace(producer, []byte{0xd0, 0x6d}, []byte{0x23, 0}, 1)
 	}
@@ -94,6 +98,7 @@ func TestGCConstructorStoredReturnProof(t *testing.T) {
 		want                                  int
 	}{
 		{name: "saved-return-chain", want: 1},
+		{name: "trap-arm", variant: "trap-arm", want: 1},
 		{name: "unknown-overwrite", unknown: true},
 		{name: "typed-field", typed: true},
 		{name: "nonnullable-field", nonnullable: true},
