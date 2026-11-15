@@ -136,7 +136,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcHelperFailure(err))
 		}
 		if len(results) != 0 {
-			results[0] = uint64(ref)
+			results[0] = in.nativeGCReferenceResult(ref)
 		}
 		if helper == gcStructReserveDeadNative {
 			in.prepareNativeDeadStructHandle(uint32(args[0]))
@@ -153,7 +153,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if err != nil {
 			panic(gcHelperFailure(err))
 		}
-		results[0] = uint64(ref)
+		results[0] = in.nativeGCReferenceResult(ref)
 	case gcStructAllocOne:
 		if len(args) < 1 || len(results) < 1 {
 			panic(gcHelperFailuref("gc struct alloc helper arity = %d/%d, want at-least-1/at-least-1", len(args), len(results)))
@@ -190,7 +190,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if err != nil {
 			panic(gcHelperFailure(err))
 		}
-		results[0] = uint64(ref)
+		results[0] = in.nativeGCReferenceResult(ref)
 		in.prepareNativeStructHandles(typeID)
 	case gcStructGet, gcStructGetS, gcStructGetU:
 		if len(args) != 3 || len(results) < 1 {
@@ -214,7 +214,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcHelperFailuref("gc struct get type = %d, want subtype of %d", actual, want))
 		}
 		if value.Kind == gc.StorageRef || value.Kind == gc.StorageRefNull {
-			results[0] = uint64(value.Ref)
+			results[0] = in.nativeGCReferenceResult(value.Ref)
 			break
 		}
 		switch helper {
@@ -304,6 +304,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcHelperFailuref("gc final cast/get helper arity = %d/%d, want 5/at-least-1", len(args), len(results)))
 		}
 		bits, typeID, fieldID, nullable, mode := args[0], uint32(args[1]), uint32(args[2]), args[3] != 0, uint32(args[4])
+		bits = gc.NormalizeNativeRefWord(bits)
 		ref := gc.Ref(uint32(bits))
 		if bits != uint64(ref) {
 			if in.isForeignAnyref(bits) {
@@ -364,7 +365,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			}
 		default:
 			if value.Kind == gc.StorageRef || value.Kind == gc.StorageRefNull {
-				results[0] = uint64(value.Ref)
+				results[0] = in.nativeGCReferenceResult(value.Ref)
 			} else {
 				results[0] = value.Bits
 				if value.Kind == gc.StorageV128 {
@@ -380,6 +381,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcHelperFailuref("gc final cast/array.len helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
 		}
 		bits, typeID, nullable := args[0], uint32(args[1]), args[2] != 0
+		bits = gc.NormalizeNativeRefWord(bits)
 		ref := gc.Ref(uint32(bits))
 		if bits != uint64(ref) {
 			if in.isForeignAnyref(bits) {
@@ -431,7 +433,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			if index >= uint64(binary.LittleEndian.Uint32(descriptor)) {
 				panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
 			}
-			word := args[1]
+			word := gc.NormalizeNativeRefWord(args[1])
 			ref := gc.Ref(uint32(word))
 			if word != uint64(ref) {
 				panic(gcHelperFailuref("generic GC table set contains non-compact reference %#x", word))
@@ -524,6 +526,7 @@ func (in *Instance) gcDefinedRefCast(bits uint64, heap int64, nullable, exact bo
 	if (!exact && !type_.Final) || (type_.Kind != CompositeTypeStruct && type_.Kind != CompositeTypeArray) {
 		return 0, false, nil
 	}
+	bits = gc.NormalizeNativeRefWord(bits)
 	ref := gc.Ref(uint32(bits))
 	if bits != uint64(ref) {
 		return 0, true, fmt.Errorf("gc ref.cast contains non-compact reference %#x", bits)

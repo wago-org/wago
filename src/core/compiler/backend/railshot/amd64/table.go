@@ -548,6 +548,9 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 	value := f.pushReg(slot, mtI64)
 	// A table read can remain live after the table stops retaining its object.
 	if table, ok := f.m.TableType(tableIdx); ok {
+		if gcFrameRefType(f.m, wasm.RefVal(table.Ref)) {
+			f.emitNativeMintReference(slot)
+		}
 		f.setStackGCRoot(value, gcFrameRefType(f.m, wasm.RefVal(table.Ref)))
 	}
 	return nil

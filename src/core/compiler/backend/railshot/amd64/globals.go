@@ -75,7 +75,21 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	return f.globalGetIndex(x)
+	if err := f.globalGetIndex(x); err != nil {
+		return err
+	}
+	if gcDense16CastsEnabled {
+		if gt, ok := f.globalType(x); ok && gcFrameRefType(f.m, wasm.GlobalValueType(gt)) {
+			value := f.popValue()
+			facts := value.st.valueFacts()
+			reg := f.materialize(value)
+			f.emitNativeMintReference(reg)
+			result := f.pushReg(reg, mtI64)
+			result.st.setValueFacts(facts)
+			f.setStackGCRoot(result, true)
+		}
+	}
+	return nil
 }
 
 func (f *fn) globalGetIndex(x uint32) error {

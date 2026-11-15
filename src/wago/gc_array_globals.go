@@ -283,6 +283,7 @@ func (in *Instance) syncGenericGCGlobalRootsLocked(public *gcPublicState) error 
 		}
 		bits := readGlobalObject(in.globalCells[mapping.GlobalIndex], typ)
 		ref := gc.Ref(uint32(bits))
+		bits = gc.NormalizeNativeRefWord(bits)
 		if bits != uint64(ref) {
 			return errGenericGCNonCompact
 		}
@@ -340,6 +341,7 @@ func (in *Instance) reconcileGCGlobalRoots() error {
 		}
 		bits := readGlobalObject(in.globalCells[mapping.GlobalIndex], ValAnyRef)
 		ref := gc.Ref(uint32(bits))
+		bits = gc.NormalizeNativeRefWord(bits)
 		if bits != uint64(ref) {
 			return fmt.Errorf("GC global %d contains non-compact reference %#x", mapping.GlobalIndex, bits)
 		}

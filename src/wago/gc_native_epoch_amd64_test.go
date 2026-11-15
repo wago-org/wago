@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -26,6 +27,10 @@ func nativeEpochHostModule(start bool) []byte {
 }
 
 func TestNativeEpochAdvancesAfterRealHostCallback(t *testing.T) {
+	entryAdvance := uint32(0)
+	if gc.NativeTypeCarriersEnabled() {
+		entryAdvance = 1
+	}
 	for _, start := range []bool{false, true} {
 		t.Run(map[bool]string{false: "invoke", true: "construction-start"}[start], func(t *testing.T) {
 			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), nativeEpochHostModule(start))
@@ -43,16 +48,16 @@ func TestNativeEpochAdvancesAfterRealHostCallback(t *testing.T) {
 				t.Fatal("fixture has no collector")
 			}
 			if start {
-				if calls != 1 || in.gc.NativeTypeEpoch() != 2 {
-					t.Fatalf("start callback calls%d epoch%d want1/2", calls, in.gc.NativeTypeEpoch())
+				if calls != 1 || in.gc.NativeTypeEpoch() != 2+entryAdvance {
+					t.Fatalf("start callback calls%d epoch%d want1/%d", calls, in.gc.NativeTypeEpoch(), 2+entryAdvance)
 				}
 			} else {
 				before := in.gc.NativeTypeEpoch()
 				if _, err := in.Invoke("run"); err != nil {
 					t.Fatal(err)
 				}
-				if calls != 1 || in.gc.NativeTypeEpoch() != before+1 {
-					t.Fatalf("callback calls%d epoch%d want1/%d", calls, in.gc.NativeTypeEpoch(), before+1)
+				if calls != 1 || in.gc.NativeTypeEpoch() != before+1+entryAdvance {
+					t.Fatalf("callback calls%d epoch%d want1/%d", calls, in.gc.NativeTypeEpoch(), before+1+entryAdvance)
 				}
 			}
 		})
@@ -60,6 +65,10 @@ func TestNativeEpochAdvancesAfterRealHostCallback(t *testing.T) {
 }
 
 func TestNativeEpochAdvancesAfterAtomicWait(t *testing.T) {
+	entryAdvance := uint32(0)
+	if gc.NativeTypeCarriersEnabled() {
+		entryAdvance = 1
+	}
 	imp := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
 	imp = append(imp, 0x02, 3, 1, 1)
 	data := wasmtest.Module(
@@ -96,8 +105,8 @@ func TestNativeEpochAdvancesAfterAtomicWait(t *testing.T) {
 	if err != nil || len(result) != 1 || result[0] != 2 {
 		t.Fatalf("wait result%v/%v want timed-out2", result, err)
 	}
-	if in.gc.NativeTypeEpoch() != before+1 {
-		t.Fatalf("atomic wait epoch%d want%d", in.gc.NativeTypeEpoch(), before+1)
+	if in.gc.NativeTypeEpoch() != before+1+entryAdvance {
+		t.Fatalf("atomic wait epoch%d want%d", in.gc.NativeTypeEpoch(), before+1+entryAdvance)
 	}
 }
 

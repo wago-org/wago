@@ -8,9 +8,41 @@
 package gc
 
 import (
+	"encoding/binary"
 	"errors"
+	"os"
+	goruntime "runtime"
 	"sync/atomic"
 )
+
+var nativeTypeCarriersEnabled = goruntime.GOARCH == "amd64" && os.Getenv("WAGO_AMD64_DENSE16_REF") == "1"
+
+// NativeTypeCarriersEnabled is fixed for the lifetime of compiled native code.
+func NativeTypeCarriersEnabled() bool { return nativeTypeCarriersEnabled }
+
+// TryNativeReferenceWord mints type evidence for an owned native object lane.
+// Invalid or unsupported values remain compact and retain their existing trap
+// point. It creates no errors and performs no allocation, including on failure.
+func (c *Collector) TryNativeReferenceWord(r Ref) uint64 {
+	word := uint64(r)
+	if c == nil || c.closed || !c.typedObjectLive(r) {
+		return word
+	}
+	e := c.handles[handleOf(r)]
+	backing := c.nativeReferenceBacking(e.space)
+	if !c.nativeReferenceViewMatches(r, backing) {
+		return word
+	}
+	typ := binary.LittleEndian.Uint32(backing[uint64(e.off):])
+	if typ > NativeTypeWordIDMask || int(typ) >= len(c.typeWords) || c.typeWords[typ]&NativeTypeWordFastValid == 0 {
+		return word
+	}
+	epoch := c.NativeTypeEpoch()
+	if epoch == 0 || epoch > NativeTypedRefMaxEpoch {
+		return word
+	}
+	return word | uint64(typ)<<32 | NativeTypedRefKnown | uint64(epoch)<<NativeTypedRefEpochShift
+}
 
 // Type words are descriptor projections indexed by the actual dense TypeID.
 // The low sixteen bits are meaningful only while FastValid is set. Nullability
@@ -158,18 +190,34 @@ func (c *Collector) typedObjectLive(r Ref) bool {
 		return false
 	}
 	e := &c.handles[handleOf(r)]
-	var bytes uint64
-	switch e.space {
+	bytes := uint64(len(c.nativeReferenceBacking(e.space)))
+	return e.size >= HeaderSize && uint64(e.off) <= bytes && uint64(e.size) <= bytes-uint64(e.off)
+}
+
+func (c *Collector) nativeReferenceBacking(space spaceKind) []byte {
+	switch space {
 	case spaceNursery:
-		bytes = uint64(len(c.nursery))
+		return c.nursery
 	case spaceOld, spaceLarge:
-		bytes = uint64(len(c.throughput.mem))
+		return c.throughput.mem
 	case spaceTiny:
-		bytes = uint64(len(c.tiny.mem))
+		return c.tiny.mem
 	default:
+		return nil
+	}
+}
+
+// Go-owned references must also fit the current native publication before
+// their type can bypass the native checked leaf. This method is called only
+// after typedObjectLive, so both the handle and its space index are in range.
+func (c *Collector) nativeReferenceViewMatches(r Ref, backing []byte) bool {
+	v := c.nativeView
+	if v == nil || v.Handles != sliceData(c.handles) || handleOf(r) >= v.HandleCount {
 		return false
 	}
-	return e.size >= HeaderSize && uint64(e.off) <= bytes && uint64(e.size) <= bytes-uint64(e.off)
+	e := c.handles[handleOf(r)]
+	space := v.Spaces[e.space]
+	return space.Base == sliceData(backing) && uint64(e.off)+uint64(e.size) <= uint64(space.Bytes)
 }
 
 // TypedReference establishes a carrier from an owned compact reference. It
@@ -190,7 +238,7 @@ func (c *Collector) TypedReference(r Ref) (TypedRef, error) {
 	if err != nil {
 		return TypedRef{}, err
 	}
-	if epoch := c.NativeTypeEpoch(); epoch != 0 && epoch <= NativeTypedRefMaxEpoch && c.typeWords[d.ID]&NativeTypeWordFastValid != 0 {
+	if epoch := c.NativeTypeEpoch(); epoch != 0 && epoch <= NativeTypedRefMaxEpoch && c.typeWords[d.ID]&NativeTypeWordFastValid != 0 && c.nativeReferenceViewMatches(r, c.nativeReferenceBacking(c.handles[handleOf(r)].space)) {
 		result.word |= uint64(d.ID)<<32 | NativeTypedRefKnown | uint64(epoch)<<NativeTypedRefEpochShift
 	}
 	return result, nil

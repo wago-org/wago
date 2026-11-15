@@ -119,6 +119,7 @@ func (s *gcExternConversionState) externFromAny(anyWord uint64) (uint64, error) 
 }
 
 func (s *gcExternConversionState) externFromAnyLocked(anyWord uint64) (uint64, error) {
+	anyWord = gc.NormalizeNativeRefWord(anyWord)
 	if anyWord == 0 {
 		return 0, nil
 	}
@@ -206,6 +207,7 @@ func (s *gcExternConversionState) internalAnyFromPublic(word uint64) (uint64, er
 }
 
 func (s *gcExternConversionState) publicAnyFromInternal(word uint64) (uint64, error) {
+	word = gc.NormalizeNativeRefWord(word)
 	if s == nil {
 		return 0, fmt.Errorf("GC extern conversion state is unavailable")
 	}

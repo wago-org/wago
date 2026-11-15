@@ -24,6 +24,8 @@ import (
 // accessed without entering the parked Go helper. Reference writes and v128
 // storage use separate checked barrier/vector paths.
 // Keep the shared-leaf path available for differential qualification.
+var gcDense16CastsEnabled = gc.NativeTypeCarriersEnabled()
+
 var gcInlineCastsEnabled = os.Getenv("WAGO_AMD64_NO_GC_CAST_INLINE") != "1"
 
 func (f *fn) inlineGCCastPreserveMask() uint8 {
@@ -51,6 +53,7 @@ const (
 	gcSharedStubResolveArrayObject
 	gcSharedStubTrustedFinalCast
 	gcSharedStubDefinedCast
+	gcSharedStubMintTypedRef
 	gcSharedStubMax
 )
 
@@ -422,7 +425,7 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 	for i := range offsets {
 		offsets[i] = -1
 	}
-	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] && !used[gcSharedStubTrustedFinalCast] && !used[gcSharedStubDefinedCast] {
+	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] && !used[gcSharedStubTrustedFinalCast] && !used[gcSharedStubDefinedCast] && !used[gcSharedStubMintTypedRef] {
 		return nil, offsets
 	}
 	a := &x64.Asm{}
@@ -431,7 +434,7 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 		// modules that previously needed no shared resolver island.
 		a.B = make([]byte, 0, 256)
 	}
-	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject, gcSharedStubTrustedFinalCast, gcSharedStubDefinedCast} {
+	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject, gcSharedStubTrustedFinalCast, gcSharedStubDefinedCast, gcSharedStubMintTypedRef} {
 		if used[kind] {
 			offsets[kind] = a.Len()
 			switch kind {
@@ -439,6 +442,8 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 				emitModuleGCTrustedFinalCastStub(a)
 			case gcSharedStubDefinedCast:
 				emitModuleGCDefinedCastStub(a)
+			case gcSharedStubMintTypedRef:
+				emitModuleGCMintTypedRef(a)
 			default:
 				emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject || kind == gcSharedStubResolveArrayObject, kind == gcSharedStubResolveArrayObject)
 			}
@@ -483,6 +488,7 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded, arrayOperand bo
 	a.TestSelf(R10, false)
 	castFailures := []int{a.JccPlaceholder(condNE)}
 	if arrayOperand {
+		emitGCNormalizeNativeRef(a, RAX, R10)
 		a.MovReg64(R10, RAX)
 		a.ShiftImm(5, R10, 32, true)
 		a.TestSelf(R10, true)
@@ -1060,12 +1066,21 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 		f.a.MovReg64(RAX, ref)
 	}
 	f.release(ref)
+	inlineChecked := gcInlineCastsEnabled && !gcDense16CastsEnabled
+	var typedDone gcTypedCheckDone
+	if gcDense16CastsEnabled {
+		typedExact := exact
+		if target, ok := f.stagedGCType(typeIndex); ok && target.Final {
+			typedExact = true
+		}
+		typedDone = f.emitNativeTypedCast(typeIndex, typedExact, false)
+	}
 	if trusted {
 		f.a.MovImm32(RDX, int32(typeIndex))
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		if gcInlineCastsEnabled {
+		if inlineChecked {
 			emitGCTrustedFinalCastBody(f.a, false)
 			f.stats.peep("gc-inline-trusted-cast")
 		} else {
@@ -1076,13 +1091,16 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 		f.stats.peep("gc-trusted-stored-cast")
 		f.a.TestSelf(RDX, false)
 		f.sc.gcTrustedCastFailSites = append(f.sc.gcTrustedCastFailSites, f.a.JccPlaceholder(condNE))
+		if gcDense16CastsEnabled {
+			typedDone.patch(f.a)
+		}
 		result := f.pushReg(RAX, mtI64)
 		result.st.setValueFacts(factGCStoredRef)
 		f.setStackGCRoot(result, true)
 		return nil
 	}
 	targetDisp := int32(-1)
-	if gcSharedStubsEnabled && gcInlineCastsEnabled && uint64(typeIndex)*4 <= math.MaxInt32 {
+	if gcSharedStubsEnabled && inlineChecked && uint64(typeIndex)*4 <= math.MaxInt32 {
 		targetDisp = int32(typeIndex * 4)
 	} else {
 		f.a.MovImm32(RDX, int32(typeIndex))
@@ -1100,7 +1118,7 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 		}
 	}
 	mode := gcDefinedCastDynamic
-	if gcSharedStubsEnabled && gcInlineCastsEnabled {
+	if gcSharedStubsEnabled && inlineChecked {
 		mode = gcDefinedCastOpen
 		if noProperSubtype {
 			mode = gcDefinedCastExact
@@ -1114,7 +1132,7 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		if gcInlineCastsEnabled {
+		if inlineChecked {
 			emitGCDefinedCastBody(f.a, false, f.inlineGCCastPreserveMask(), mode, targetDisp)
 			f.stats.peep("gc-inline-defined-cast")
 		} else {
@@ -1125,6 +1143,9 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 		}
 		f.a.TestSelf(RDX, false)
 		f.sc.gcTrustedCastFailSites = append(f.sc.gcTrustedCastFailSites, f.a.JccPlaceholder(condNE))
+		if gcDense16CastsEnabled {
+			typedDone.patch(f.a)
+		}
 		result := f.pushReg(RAX, mtI64)
 		f.setStackGCRoot(result, true)
 		return nil
@@ -1135,6 +1156,9 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 	site := f.a.CallRel32()
 	f.sc.gcFinalCastStubSites = append(f.sc.gcFinalCastStubSites, site)
 	f.stats.call("gcnative")
+	if gcDense16CastsEnabled {
+		typedDone.patch(f.a)
+	}
 	result := f.pushReg(RAX, mtI64)
 	f.setStackGCRoot(result, true)
 	return nil
@@ -1148,6 +1172,10 @@ func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
 		f.a.MovReg64(RAX, ref)
 	}
 	f.release(ref)
+	var typedDone gcTypedCheckDone
+	if gcDense16CastsEnabled {
+		typedDone = f.emitNativeTypedCast(typeIndex, false, true)
+	}
 	f.a.MovImm32(RDX, int32(typeIndex))
 	if nullable {
 		f.a.MovImm32(RCX, 1)
@@ -1160,6 +1188,9 @@ func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
 	site := f.a.CallRel32()
 	f.sc.gcDefinedTestStubSites = append(f.sc.gcDefinedTestStubSites, site)
 	f.stats.call("gcnative")
+	if gcDense16CastsEnabled {
+		typedDone.patch(f.a)
+	}
 	f.pushReg(RAX, mtI32)
 	return nil
 }
@@ -1241,6 +1272,7 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 		resultReg = f.allocReg(maskOf(obj))
 	}
 	f.a.Load32(resultReg, obj, int32(gc.PayloadOffset+fieldOffset))
+	f.emitNativeMintReference(resultReg)
 	result := f.pushReg(resultReg, mtI64)
 	result.st.setValueFacts(factGCStoredRef)
 	f.setStackGCRoot(result, true)
@@ -1498,6 +1530,7 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 	site := f.a.CallRel32()
 	f.sc.gcArrayRefGetSites = append(f.sc.gcArrayRefGetSites, site)
 	f.stats.call("gcnative")
+	f.emitNativeMintReference(RAX)
 	result := f.pushReg(RAX, mtI64)
 	f.setStackGCRoot(result, true)
 	return nil
@@ -2641,6 +2674,7 @@ func (f *fn) emitNativeDeadStructChargeStub(typeIndex, objectSize, objectAlign u
 // alias a live handle, or fail handle validation with a trap in test mode.
 // Clobbers R10, which every caller preserves or treats as scratch.
 func (f *fn) rejectForeignAnyref(fail func(Cond)) {
+	emitGCNormalizeNativeRef(f.a, RAX, R10)
 	f.a.MovReg64(R10, RAX)
 	f.a.ShiftImm(5, R10, 32, true) // shr r10, 32
 	f.a.TestSelf(R10, true)
@@ -3590,6 +3624,7 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 	}
 	f.pushReg(result, scalar.typ)
 	if collectorRef {
+		f.emitNativeMintReference(result)
 		// Publish the loaded compact child as a root, without assigning it the
 		// parent's local provenance or retaining its raw address as a value.
 		f.markTopGCReference()

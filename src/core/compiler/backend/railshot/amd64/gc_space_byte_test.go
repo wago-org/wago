@@ -17,6 +17,9 @@ import (
 // Check complete compiled modules: a native leaf that is never selected does
 // not satisfy this regression. Missing disassembly is a diagnostic failure.
 func TestGCResolversLoadSpaceByte(t *testing.T) {
+	oldDense16 := gcDense16CastsEnabled
+	gcDense16CastsEnabled = false
+	t.Cleanup(func() { gcDense16CastsEnabled = oldDense16 })
 	objdump, err := exec.LookPath("objdump")
 	if err != nil {
 		t.Fatalf("space-load code regression requires objdump: %v", err)

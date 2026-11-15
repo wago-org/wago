@@ -1206,6 +1206,19 @@ func (a *Asm) CallRel32() int {
 	return off
 }
 
+// CallPreservingRel32 calls a private leaf that preserves flags, all FP state,
+// and every GP register except RAX. Its result is returned in RAX. The caller
+// must prove this stronger ABI for the exact target.
+func (a *Asm) CallPreservingRel32() int {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RAX | 1<<RSP)
+	}
+	a.emit(0xE8)
+	off := len(a.B)
+	a.imm32(0)
+	return off
+}
+
 // CallMem emits CALL qword [base+disp] (FF /2) — an indirect call through a
 // memory-resident code pointer, leaving all registers free for arguments.
 func (a *Asm) CallMem(base Reg, disp int32) { a.memOp(0xFF, 2, base, disp, false) }

@@ -701,6 +701,9 @@ func (g *Global) getValueNoLease() (Value, error) {
 		return Value{}, fmt.Errorf("global reference owner metadata is invalid")
 	}
 	bits := readGlobalObject(g, typ)
+	if typ == ValAnyRef && source != nil && source.gc != nil {
+		bits = gc.NormalizeNativeRefWord(bits)
+	}
 	o.mu.Unlock()
 	if bits == 0 {
 		if hasExact && exact.Kind == ValueTypeReference && !exact.Ref.Nullable {

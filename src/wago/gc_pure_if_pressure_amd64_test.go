@@ -76,7 +76,7 @@ func TestGCPureIfFloatRootPressure(t *testing.T) {
 				}
 				for round := 0; round < 2; round++ {
 					args[20] = uint64(round)
-					want := []uint64{readGlobalObject(in.globalCells[0], in.c.Globals[0].Type), readGlobalObject(in.globalCells[1], in.c.Globals[1].Type)}
+					want := []uint64{uint64(uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type))), uint64(uint32(readGlobalObject(in.globalCells[1], in.c.Globals[1].Type)))}
 					want = append(want, args...)
 					for i := 0; i < 24; i++ {
 						want = append(want, value)

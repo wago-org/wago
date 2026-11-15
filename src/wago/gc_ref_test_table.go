@@ -192,6 +192,7 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 	}
 	switch s.kinds[table] {
 	case gcRefTableRoot:
+		word = gc.NormalizeNativeRefWord(word)
 		root := gc.Null()
 		if word>>32 != 0 {
 			if s.Conversion == nil {
@@ -244,6 +245,7 @@ func (s *gcRefTestTableState) refCast(collector *gc.Collector, word uint64, targ
 }
 
 func (s *gcRefTestTableState) refTest(collector *gc.Collector, word uint64, target gc.RefTestTarget) (bool, error) {
+	word = gc.NormalizeNativeRefWord(word)
 	if word == uint64(uint32(word)) {
 		if _, foreign := compactForeignAnyToken(collector, gc.Ref(uint32(word))); foreign {
 			return target.Kind == gc.RefTestAny, nil

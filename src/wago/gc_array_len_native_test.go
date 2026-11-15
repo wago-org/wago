@@ -179,7 +179,7 @@ func TestGCGeneralArrayLenNativeGuardFallback(t *testing.T) {
 					size++
 				} else {
 					// Public boundary checks must reject this non-compact reference.
-					writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, originalRef|uint64(1)<<40)
+					writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, uint64(uint32(originalRef))|uint64(1)<<40)
 				}
 				binary.LittleEndian.PutUint32(falseHeader[4:], size)
 				binary.LittleEndian.PutUint32(falseHeader[8:], 777)

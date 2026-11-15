@@ -175,7 +175,7 @@ func testGCTrappingGuardFirstExtentFixture(t *testing.T, fixture string) {
 	if _, err = in.Invoke("init"); err != nil {
 		t.Fatal(err)
 	}
-	ref := readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)
+	ref := uint64(uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)))
 	view := in.gc.NativeView()
 	handle := unsafe.Slice((*byte)(offHeapPtr(view.Handles+uintptr(ref>>1)*gc.NativeHandleStride)), gc.NativeHandleStride)
 	header := unsafe.Slice((*byte)(offHeapPtr(view.Spaces[handle[gc.NativeHandleSpaceOffset]].Base+uintptr(binary.LittleEndian.Uint32(handle)))), gc.HeaderSize)

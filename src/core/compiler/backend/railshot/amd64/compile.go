@@ -444,6 +444,7 @@ type fn struct {
 	lazyZero                bool   // defer declared-local zeroing for small call+memory functions
 	skipFence               bool   // call-free leaf with a provably small frame: no stack-fence check
 	frameElided             bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
+	gcTypedMintCalls        bool   // private type mint calls reserve bounded stack scratch
 	threadedMemory0         bool   // route shared memory zero through the private instance directory
 	hasLoop                 bool   // retain loop alignment until it becomes a relaxable fragment
 	selfTailLoop            bool   // helper-free integer self tails retain this activation
@@ -3724,6 +3725,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.compactLoopAlign32 = policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64
 	f.bmi2Rorx = bmi2Rorx
 	f.gcSharedResolver, f.gcDeferResolver = hints.flags.has(hintGCSharedResolver), hints.flags.has(hintGCDeferredResolver)
+	f.gcTypedMintCalls = false
 	f.classifier = sc.classifier
 	f.referenceWrapperTargets = wrapperTargets
 	// Transfer pointer scratch ownership to the active function. Cached slice
@@ -5281,8 +5283,12 @@ func (f *fn) moduleGlobalRegionalLeaseOff() int32 {
 
 func (f *fn) patchFrameSize() error {
 	frameBytes := f.frameSize()
-	if !shared.NativeFrameFitsStackFence(frameBytes, shared.MaxNativeInboundCallBytes) {
-		return fmt.Errorf("amd64: native frame %d bytes exceeds stack-fence headroom %d", frameBytes, shared.MaxNativeFrameBytes-shared.MaxNativeInboundCallBytes)
+	overhead := shared.MaxNativeInboundCallBytes
+	if f.gcTypedMintCalls {
+		overhead += gcTypedMintStackBytes
+	}
+	if !shared.NativeFrameFitsStackFence(frameBytes, overhead) {
+		return fmt.Errorf("amd64: native frame %d bytes exceeds stack-fence headroom %d", frameBytes, shared.MaxNativeFrameBytes-overhead)
 	}
 	size := uint32(frameBytes)
 	if diagnosticsEnabled && f.stats != nil {

@@ -21,6 +21,9 @@ import (
 )
 
 func TestInlineDefinedCastStaticSubtypePath(t *testing.T) {
+	oldDense16 := gcDense16CastsEnabled
+	gcDense16CastsEnabled = false
+	t.Cleanup(func() { gcDense16CastsEnabled = oldDense16 })
 	savedShared, savedInline := gcSharedStubsEnabled, gcInlineCastsEnabled
 	defer func() { gcSharedStubsEnabled, gcInlineCastsEnabled = savedShared, savedInline }()
 	gcSharedStubsEnabled = true
@@ -81,6 +84,9 @@ func TestInlineDefinedCastStaticSubtypePath(t *testing.T) {
 }
 
 func TestInlineDefinedCastStaticTargetLoad(t *testing.T) {
+	oldDense16 := gcDense16CastsEnabled
+	gcDense16CastsEnabled = false
+	t.Cleanup(func() { gcDense16CastsEnabled = oldDense16 })
 	savedShared, savedInline := gcSharedStubsEnabled, gcInlineCastsEnabled
 	defer func() { gcSharedStubsEnabled, gcInlineCastsEnabled = savedShared, savedInline }()
 	gcSharedStubsEnabled = true

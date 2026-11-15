@@ -607,6 +607,9 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 	if f.gcStructHelpers && (heap == -20 || heap == -15) {
 		return f.emitNullI31Reference(sub, heap)
 	}
+	if f.gcStructHelpers && gcDense16CastsEnabled && nativeAbstractTypeMask(heap) != 0 {
+		return f.emitNativeAbstractCheck(heap, nullable, true)
+	}
 	if f.gcStructHelpers {
 		value := f.materialize(f.popValue())
 		f.pushReg(value, mtI64)
@@ -766,6 +769,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	}
 	if f.gcStructHelpers && (heap == -20 || heap == -15 && sub == 23) {
 		return f.emitNullI31Reference(sub, heap)
+	}
+	if f.gcStructHelpers && gcDense16CastsEnabled && nativeAbstractTypeMask(heap) != 0 {
+		return f.emitNativeAbstractCheck(heap, sub == 23, false)
 	}
 	if f.gcStructHelpers {
 		value := f.materialize(f.popValue())
@@ -1255,6 +1261,13 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		return err
 	}
 	if len(results) == 1 {
+		if gcDense16CastsEnabled && gcFrameRefType(f.m, results[0]) {
+			value := f.popValue()
+			reg := f.materialize(value)
+			f.emitNativeMintReference(reg)
+			f.pushReg(reg, mtI64)
+			f.markTopGCReference()
+		}
 		f.setPendingGCReference(results[0])
 	}
 	return nil

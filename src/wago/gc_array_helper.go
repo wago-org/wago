@@ -214,7 +214,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			in.gcPanicArrayError(err)
 		}
 		if len(results) != 0 {
-			results[0] = uint64(ref)
+			results[0] = in.nativeGCReferenceResult(ref)
 		}
 	case gcArrayCheckDefault:
 		if len(args) != 2 {
@@ -225,7 +225,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			in.gcPanicArrayError(err)
 		}
 		if len(results) != 0 {
-			results[0] = uint64(ref)
+			results[0] = in.nativeGCReferenceResult(ref)
 		}
 	case gcArrayCheckUniform:
 		if len(args) < 3 {
@@ -245,7 +245,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			in.gcPanicArrayError(err)
 		}
 		if len(results) != 0 {
-			results[0] = uint64(ref)
+			results[0] = in.nativeGCReferenceResult(ref)
 		}
 	case gcArrayCheckData:
 		if len(args) != 4 {
@@ -291,7 +291,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			in.gcPanicArrayError(err)
 		}
 		if len(results) != 0 {
-			results[0] = uint64(ref)
+			results[0] = in.nativeGCReferenceResult(ref)
 		}
 	case gcArrayAllocFixedV128Spill:
 		if len(args) != 3 || len(results) < 1 {
@@ -326,7 +326,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if err != nil {
 			panic(gcHelperFailure(err))
 		}
-		results[0] = uint64(ref)
+		results[0] = in.nativeGCReferenceResult(ref)
 	case gcArrayInitElem:
 		if len(args) != 6 {
 			panic(gcHelperFailuref("gc array init-elem helper arity = %d, want 6", len(args)))
@@ -486,7 +486,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 					panic(gcHelperFailure(err))
 				}
 			}
-			results[0] = uint64(ref)
+			results[0] = in.nativeGCReferenceResult(ref)
 			break
 		}
 		state := in.existingGCArrayElementState()
@@ -540,7 +540,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			}
 		}
 		in.gc.BulkWriteBarrier(ref, 0, length)
-		results[0] = uint64(ref)
+		results[0] = in.nativeGCReferenceResult(ref)
 	case gcArrayAllocData:
 		if len(args) != 4 || len(results) < 1 {
 			panic(gcHelperFailuref("gc array alloc-data helper arity = %d/%d, want 4/at-least-1", len(args), len(results)))
@@ -595,7 +595,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if err != nil {
 			panic(gcHelperFailure(err))
 		}
-		results[0] = uint64(ref)
+		results[0] = in.nativeGCReferenceResult(ref)
 	case gcArrayAllocUniform, gcArrayAllocUniformNative:
 		if len(args) < 3 || len(results) < 1 {
 			panic(gcHelperFailuref("gc array alloc-uniform helper arity = %d/%d, want at least 3/at-least-1", len(args), len(results)))
@@ -611,7 +611,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if err != nil {
 			in.gcPanicArrayError(err)
 		}
-		results[0] = uint64(ref)
+		results[0] = in.nativeGCReferenceResult(ref)
 		if helper == gcArrayAllocUniformNative {
 			in.prepareNativeArrayAllocation(typeID, length)
 		}
@@ -637,7 +637,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if err != nil {
 			in.gcPanicArrayError(err)
 		}
-		results[0] = uint64(ref)
+		results[0] = in.nativeGCReferenceResult(ref)
 		if helper == gcArrayAllocFixedNative {
 			in.prepareNativeArrayAllocation(typeID, count)
 		}
@@ -649,7 +649,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if err != nil {
 			in.gcPanicArrayError(err)
 		}
-		results[0] = uint64(ref)
+		results[0] = in.nativeGCReferenceResult(ref)
 		if helper == gcArrayAllocDefaultNative {
 			in.prepareNativeDefaultArrayAllocation(uint32(args[1]), uint32(args[0]))
 		}
@@ -697,7 +697,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			}
 		default:
 			if value.Kind == gc.StorageRef || value.Kind == gc.StorageRefNull {
-				results[0] = uint64(value.Ref)
+				results[0] = in.nativeGCReferenceResult(value.Ref)
 			} else {
 				results[0] = value.Bits
 				if value.Kind == gc.StorageV128 {
@@ -854,6 +854,7 @@ func (in *Instance) gcRootedTablePhysicalStorage(table uint64) ([]byte, uint32, 
 }
 
 func (in *Instance) gcRootedTableReference(word uint64, exact ValueTypeDescriptor) gc.Ref {
+	word = gc.NormalizeNativeRefWord(word)
 	ref := gc.Ref(uint32(word))
 	if word != uint64(ref) {
 		panic(gcHelperFailuref("generic GC table mutation contains non-compact reference %#x", word))

@@ -153,6 +153,9 @@ func (f *fn) emitNativeFinalCastArrayGet(typeIndex uint32, nullable bool, scalar
 		f.pushFReg(x, scalar.typ)
 	} else {
 		f.a.LoadIdx(RAX, RAX, RSP, 0, scalar.size, signed, scalar.typ == mtI64 && !collectorRef)
+		if collectorRef {
+			f.emitNativeMintReference(RAX)
+		}
 		result := f.pushReg(RAX, scalar.typ)
 		if collectorRef {
 			f.setStackGCRoot(result, true)

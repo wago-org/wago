@@ -79,7 +79,7 @@ func TestGCConstructorIfPressure(t *testing.T) {
 						}
 					}
 					args[32] = cond
-					want := []uint64{readGlobalObject(in.globalCells[0], in.c.Globals[0].Type), readGlobalObject(in.globalCells[1], in.c.Globals[1].Type)}
+					want := []uint64{uint64(uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type))), uint64(uint32(readGlobalObject(in.globalCells[1], in.c.Globals[1].Type)))}
 					want = append(want, args...)
 					selected := args[19]
 					if cond != 0 {

@@ -90,6 +90,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 			continue
 		}
 		ref := gc.Ref(uint32(bits))
+		bits = gc.NormalizeNativeRefWord(bits)
 		if bits != uint64(ref) {
 			panic(gcHelperFailuref("generic GC frame-root offset %d contains non-compact reference %#x", off, bits))
 		}

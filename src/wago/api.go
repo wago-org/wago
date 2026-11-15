@@ -5600,6 +5600,9 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 		if !isWideValType(typ) {
 			bits = uint64(uint32(bits))
 		}
+		if gc.NativeTypeCarriersEnabled() && typ == ValAnyRef && bits == uint64(uint32(bits)) && in.gc != nil {
+			bits = in.gc.TryNativeReferenceWord(gc.Ref(uint32(bits)))
+		}
 		binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
 		slot++
 	}
@@ -5738,6 +5741,7 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 			}
 		}
 		if typ == ValAnyRef || typ == ValExnRef && in.c.needsOwnedExceptionReferences() {
+			values[slot] = gc.NormalizeNativeRefWord(values[slot])
 			required, ok := exactReferenceType(exact, i, typ)
 			if !ok {
 				clear(values)

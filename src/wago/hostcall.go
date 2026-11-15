@@ -2538,7 +2538,7 @@ func (in *Instance) translateHostReferenceArgsMode(values []uint64, types []ValT
 			if !ok {
 				return fmt.Errorf("missing exact GC reference type for argument %d", i)
 			}
-			bits := values[slot]
+			bits := gc.NormalizeNativeRefWord(values[slot])
 			if bits == 0 {
 				if !required.Ref.Nullable {
 					return fmt.Errorf("null GC reference for non-null argument %d", i)

@@ -55,6 +55,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 		word := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(off))), 8)
 		bits := binary.LittleEndian.Uint64(word)
 		ref := gc.Ref(uint32(bits))
+		bits = gc.NormalizeNativeRefWord(bits)
 		if bits != uint64(ref) {
 			panic(gcHelperFailuref("generic GC frame-root offset %d contains non-compact reference %#x", off, bits))
 		}

@@ -862,10 +862,11 @@ func (r *gcNativeTableRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 	for i := uint64(0); i < length; i++ {
 		addr := r.desc + 8 + uintptr(i*8)
 		word := binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(addr)), 8))
+		word = gc.NormalizeNativeRefWord(word)
 		if word != uint64(gc.Ref(uint32(word))) {
 			panic(gcHelperFailuref("generic GC table root %d contains non-compact reference %#x", i, word))
 		}
-		slot := (*gc.Root)(offHeapPtr(addr))
+		slot := nativeGCFrameRootSlot(addr)
 		if sink != nil {
 			if !sink.VisitRootRef(slot.GetRef()) {
 				return false
@@ -1478,6 +1479,9 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 	// Ordinary scalar calls still acquire the invocation gate, but modules with
 	// no collector or imported/dynamic GC domain have nothing to lock here.
 	if !in.mayNeedGCInvocationLease() {
+		if gc.NativeTypeCarriersEnabled() && in != nil {
+			in.gc.AdvanceNativeTypeEpoch()
+		}
 		return gcInvocationLease{}
 	}
 	lease, _ := in.lockGCInvocationContext(context.Background(), owner)
@@ -1511,6 +1515,9 @@ func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocatio
 	}
 	domains := in.gcInvocationDomains()
 	if domains.len() == 0 {
+		if gc.NativeTypeCarriersEnabled() && in != nil {
+			in.gc.AdvanceNativeTypeEpoch()
+		}
 		if dynamic {
 			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}, nil
 		}
@@ -1542,6 +1549,18 @@ func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocatio
 		return gcInvocationLease{}, err
 	}
 	domains.claim(owner)
+	if gc.NativeTypeCarriersEnabled() {
+		if domains.dynamic {
+			it := domains.iterator(false)
+			for domain := it.next(); domain != nil; domain = it.next() {
+				domain.collector.AdvanceNativeTypeEpoch()
+			}
+		} else {
+			for i := 0; i < domains.len(); i++ {
+				domains.at(i).collector.AdvanceNativeTypeEpoch()
+			}
+		}
+	}
 	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}, nil
 }
 
@@ -1652,10 +1671,11 @@ func (s *referenceStore) rangeGCDomainPersistentRoots(collector *gc.Collector, f
 			}
 			bits := binary.LittleEndian.Uint64(global.cell)
 			ref := gc.Ref(uint32(bits))
+			bits = gc.NormalizeNativeRefWord(bits)
 			if bits != uint64(ref) {
 				panic(gcHelperFailuref("Runtime GC-domain global %d contains non-compact reference %#x", i, bits))
 			}
-			slot := (*gc.Root)(unsafe.Pointer(&global.cell[0]))
+			slot := (*nativeGCFrameRootWord)(unsafe.Pointer(&global.cell[0]))
 			if sink != nil {
 				if !sink.VisitRootRef(slot.GetRef()) {
 					return false
@@ -1731,6 +1751,7 @@ func (s *referenceStore) rangeGCDomainPersistentRootsClassified(collector *gc.Co
 			}
 			bits := binary.LittleEndian.Uint64(global.cell)
 			ref := gc.Ref(uint32(bits))
+			bits = gc.NormalizeNativeRefWord(bits)
 			if bits != uint64(ref) {
 				panic(gcHelperFailuref("Runtime GC-domain global %d contains non-compact reference %#x", i, bits))
 			}
@@ -3069,7 +3090,7 @@ func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch ui
 			return fmt.Errorf("missing GC host argument slot %d", slot)
 		}
 		if typ == ValAnyRef || typ == ValI31Ref {
-			bits := args[slot]
+			bits := gc.NormalizeNativeRefWord(args[slot])
 			ref := gc.Ref(uint32(bits))
 			if bits != 0 && (uint64(ref) != bits || (!ref.IsObj() && !ref.IsI31())) {
 				return fmt.Errorf("invalid compact GC host argument %d", i)

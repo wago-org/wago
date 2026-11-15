@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCArrayBulkLeaderBytes(t testing.TB, base string) []byte {
@@ -48,7 +50,7 @@ func TestStagedGCArrayBulkCopyMutableRootLifecycle(t *testing.T) {
 		t.Fatalf("first overlap copy: %v", err)
 	}
 	firstAfter := readGlobalObject(in.globalCells[mutable.GlobalIndex], ValAnyRef)
-	if firstAfter == before || firstAfter>>32 != 0 {
+	if gc.NormalizeNativeRefWord(firstAfter) == gc.NormalizeNativeRefWord(before) || gc.NormalizeNativeRefWord(firstAfter)>>32 != 0 {
 		t.Fatalf("first mutable compact global %#x -> %#x", before, firstAfter)
 	}
 	for i := 1; i < 100; i++ {
@@ -61,11 +63,11 @@ func TestStagedGCArrayBulkCopyMutableRootLifecycle(t *testing.T) {
 		}
 	}
 	after := readGlobalObject(in.globalCells[mutable.GlobalIndex], ValAnyRef)
-	if after>>32 != 0 {
+	if gc.NormalizeNativeRefWord(after)>>32 != 0 {
 		t.Fatalf("mutable compact global has high bits: %#x", after)
 	}
 	rooted, err := in.gc.CheckedGlobalSlot(mutable.SlotIndex)
-	if err != nil || uint64(rooted) != after {
+	if err != nil || uint64(rooted) != gc.NormalizeNativeRefWord(after) {
 		t.Fatalf("mutable root=%v,%v want %#x", rooted, err, after)
 	}
 	if _, err := in.Invoke("array_copy", 0, 0, 13); err == nil {

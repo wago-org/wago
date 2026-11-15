@@ -23,7 +23,8 @@ import (
 // Version 10 appends the fixed-width type projection. Compact reference
 // boundaries remain unchanged; TypedRef is a separate internal carrier.
 // Version 11 defines the native typed-word epoch in the final padding word.
-const NativeABIVersion uint32 = 11
+// Version 12 admits typed words at native object transports and consumers.
+const NativeABIVersion uint32 = 12
 
 // Native allocation-stat offsets are relative to the AllocationCount pointer
 // in NativeCollectorView. Generated AMD64 dead charges use these counters to
