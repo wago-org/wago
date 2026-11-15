@@ -69,11 +69,10 @@ func TestWideLoopIntConstUsesOnlyIdleRegistersAMD64(t *testing.T) {
 
 	h := funcHintView{loopIntConsts: &loopIntConstHintEntry{bits: [2]int64{1, 2}, count: 2}}
 	f := fn{
-		a:             &encoderamd64.Asm{},
-		reserved:      maskOf(R12, R13, R14, R15, R9, R10, R11),
-		regMerge:      true,
-		mergeRegPlus1: uint8(RDI) + 1,
-		policy:        currentCodegenPolicy(),
+		a:               &encoderamd64.Asm{},
+		reserved:        maskOf(R12, R13, R14, R15, R9, R10, R11),
+		pinnedLocalMask: maskOf(RDI),
+		policy:          currentCodegenPolicy(),
 	}
 	f.preloadLoopIntConsts(&h)
 	if f.iconstN != 1 || f.iconsts[0].reg != RSI {

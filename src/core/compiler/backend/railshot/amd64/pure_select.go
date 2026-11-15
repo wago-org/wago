@@ -11,9 +11,9 @@ package amd64
 
 import "os"
 
-// Expensive pure select arms can be skipped; zero retains the eager path for
-// diagnostics and paired measurements.
-var pureSelectEnabled = os.Getenv("WAGO_AMD64_PURE_SELECT") != "0"
+// Branches can regress high-entropy conditions. Keep this measured workload
+// option explicit until the compiler has a reliable branch-probability proof.
+var pureSelectEnabled = os.Getenv("WAGO_AMD64_PURE_SELECT") == "1"
 
 const pureSelectMaxOps = 12
 

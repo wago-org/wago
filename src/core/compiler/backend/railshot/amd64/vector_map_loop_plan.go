@@ -12,12 +12,11 @@ package amd64
 import (
 	"encoding/binary"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // The bounded planner retains source-ordered FP loads, arithmetic and stores.
-// It supports affine i32 recurrences and mutable scalar f64 locals.
+// It supports affine i32 recurrences and scalar f64 local versions.
 // Acceptance alone does not authorize machine emission: range, trip-count,
 // register ownership and exact exit-state qualification remain separate.
 const (
@@ -36,9 +35,20 @@ type regionLoopNode struct {
 	op, left, right, uses uint8
 }
 
-type regionLoopLocal = shared.LoopLocal[machineType, uint8]
+type regionLoopLocal struct {
+	index          uint32
+	typ            machineType
+	step           uint32
+	initial, value uint8
+	written        bool
+	order          uint8
+}
 
-type regionLoopStore = shared.LoopStore[uint8]
+type regionLoopStore struct {
+	offset         uint64
+	pos            uint32
+	address, value uint8
+}
 
 type regionLoopLoad struct {
 	stride      uint32
@@ -83,8 +93,10 @@ func (p *regionLoopPlan) add(n regionLoopNode) uint8 {
 }
 
 func (p *regionLoopPlan) local(index uint32, typ machineType) (uint8, bool) {
-	if i := shared.FindLoopLocal(p.locals[:p.localN], index); i >= 0 {
-		return uint8(i), true
+	for i := uint8(0); i < p.localN; i++ {
+		if p.locals[i].index == index {
+			return i, true
+		}
 	}
 	if p.localN == regionLoopMaxLocals || (typ != mtI32 && typ != mtF64) {
 		return 0, false
@@ -100,7 +112,7 @@ func (p *regionLoopPlan) local(index uint32, typ machineType) (uint8, bool) {
 	if id == 0 {
 		return 0, false
 	}
-	p.locals[i] = regionLoopLocal{Index: index, Type: typ, Initial: id, Value: id}
+	p.locals[i] = regionLoopLocal{index: index, typ: typ, initial: id, value: id}
 	p.localN++
 	return i, true
 }
@@ -201,12 +213,13 @@ func inspectRegionLoop(r wasm.Reader, types []machineType, classifier wasm.Modul
 				return false
 			}
 			if op == 0x20 {
-				id = p.locals[i].Value
+				id = p.locals[i].value
 			} else {
 				if depth == 0 || (types[imm.Index] == mtI32 && p.nodes[stack[depth-1]].op != 0) || (types[imm.Index] == mtF64 && !regionFloat(p.nodes[stack[depth-1]])) {
 					return false
 				}
-				p.locals[i].Assign(stack[depth-1], uint8(step+1))
+				p.locals[i].value, p.locals[i].written = stack[depth-1], true
+				p.locals[i].order = uint8(step + 1)
 				if op == 0x21 {
 					depth--
 				}
@@ -243,7 +256,7 @@ func inspectRegionLoop(r wasm.Reader, types []machineType, classifier wasm.Modul
 			if p.nodes[a].op != 0 || !regionFloat(p.nodes[b]) {
 				return false
 			}
-			p.stores[p.storeN] = regionLoopStore{Offset: imm.MemOffset, PC: position, Address: a, Value: b}
+			p.stores[p.storeN] = regionLoopStore{offset: imm.MemOffset, pos: position, address: a, value: b}
 			p.events[p.eventN] = 0x80 | p.storeN
 			p.eventN++
 			p.storeN++
@@ -313,7 +326,7 @@ func inspectRegionLoop(r wasm.Reader, types []machineType, classifier wasm.Modul
 func (p *regionLoopPlan) stride(id uint8) uint32 {
 	var stride uint32
 	for i, c := range p.nodes[id].coeff {
-		stride += c * p.locals[i].Step
+		stride += c * p.locals[i].step
 	}
 	return stride
 }
@@ -321,29 +334,29 @@ func (p *regionLoopPlan) stride(id uint8) uint32 {
 func (p *regionLoopPlan) finish() bool {
 	var live uint8
 	for _, store := range p.stores[:p.storeN] {
-		live |= p.nodes[store.Address].uses | p.nodes[store.Value].uses
+		live |= p.nodes[store.address].uses | p.nodes[store.value].uses
 	}
 	live |= p.nodes[p.predicate].uses
 	for _, l := range p.locals[:p.localN] {
-		if l.Written {
-			live |= p.nodes[l.Value].uses
+		if l.written {
+			live |= p.nodes[l.value].uses
 		}
 	}
 	p.inputMask = live
 	var changed uint8
 	for i := uint8(0); i < p.localN; i++ {
 		l := &p.locals[i]
-		if !l.Written || live&(1<<i) == 0 {
+		if !l.written || live&(1<<i) == 0 {
 			continue
 		}
-		if l.Type == mtF64 {
+		if l.typ == mtF64 {
 			continue
 		}
-		n := p.nodes[l.Value]
+		n := p.nodes[l.value]
 		if n.op != 0 || n.uses != 1<<i || n.coeff[i] != 1 || n.bits == 0 || n.bits >= 1<<31 {
 			return false
 		}
-		l.Step = uint32(n.bits)
+		l.step = uint32(n.bits)
 		changed |= 1 << i
 	}
 	pred := p.nodes[p.predicate]
@@ -354,7 +367,7 @@ func (p *regionLoopPlan) finish() bool {
 			continue
 		}
 		for i := uint8(0); i < p.localN; i++ {
-			if p.locals[i].Step != 0 && n.uses == 1<<i && n.coeff[i] == 1 && n.bits == uint64(p.locals[i].Step) {
+			if p.locals[i].step != 0 && n.uses == 1<<i && n.coeff[i] == 1 && n.bits == uint64(p.locals[i].step) {
 				if found {
 					return false
 				}
@@ -365,14 +378,14 @@ func (p *regionLoopPlan) finish() bool {
 	if !found {
 		return false
 	}
-	step := p.locals[p.counter].Step
+	step := p.locals[p.counter].step
 	if step&(step-1) != 0 {
 		return false
 	}
 	// Affine streams must move forward monotonically. Runtime guards prove that
 	// each full range succeeds without memory32 wrap before taking the fast path.
 	for _, store := range p.stores[:p.storeN] {
-		if p.stride(store.Address) >= 1<<31 {
+		if p.stride(store.address) >= 1<<31 {
 			return false
 		}
 	}
@@ -398,12 +411,12 @@ func (p *regionLoopPlan) finish() bool {
 // Address streams must advance by exactly one f64, or be read-only invariants.
 func (p *regionLoopPlan) independentLanes() bool {
 	for i, l := range p.locals[:p.localN] {
-		if l.Type == mtF64 && l.Written && p.inputMask&(1<<i) != 0 {
+		if l.typ == mtF64 && l.written && p.inputMask&(1<<i) != 0 {
 			return false
 		}
 	}
 	for _, s := range p.stores[:p.storeN] {
-		if p.stride(s.Address) != 8 {
+		if p.stride(s.address) != 8 {
 			return false
 		}
 	}

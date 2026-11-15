@@ -21,8 +21,7 @@ const (
 	storageGCRoot
 	storageEHRoot
 	storageLogicalRoot
-	factBytesBelow16 // Every unsigned byte of a v128 value is in [0, 15].
-	valueFactMask    = factUpper32Zero | factBoolean | factBytesBelow16
+	valueFactMask = factUpper32Zero | factBoolean
 )
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
@@ -79,18 +78,6 @@ func deferredResultFacts(op wOp, typ machineType) valueFacts {
 		opMul, opDivU, opDivS, opRemU, opRemS, opSExt8, opSExt16,
 		opClz, opCtz, opPopcnt:
 		return factUpper32Zero
-	}
-	return 0
-}
-
-// Bitwise bounds are per byte. AND inherits either operand's high-zero bits;
-// OR and XOR need both operands bounded. Other operations discard this fact.
-func vectorBinaryFacts(op simdBinaryOp, a, b valueFacts) valueFacts {
-	switch op {
-	case opVPand:
-		return (a | b) & factBytesBelow16
-	case opVPor, opVPxor:
-		return (a & b) & factBytesBelow16
 	}
 	return 0
 }

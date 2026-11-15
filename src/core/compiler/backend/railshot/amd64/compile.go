@@ -478,8 +478,7 @@ type fn struct {
 	singleRegResult bool
 	resultFloat     bool
 	resultF64       bool
-	regMerge        bool  // reconcile single-result blocks in blockMergeReg()/mergeFReg
-	mergeRegPlus1   uint8 // selected integer block-merge register + 1; zero means mergeReg
+	regMerge        bool // reconcile single-result blocks in mergeReg/mergeFReg
 
 	// call_indirect immutable-local-table specialization (see computeModuleHints).
 	// Each admitted table has a finite proof that every non-null entry targets this
@@ -4070,8 +4069,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.vectorRegion.enabled = vectorRegionsEnabled && pinLocals && regABI &&
 		!moduleEH && len(gcTypeLayouts) == 0 && len(custom) == 0 && len(inlinedCallees) == 0 &&
-		hints.flags.has(hintHasSIMD) && (!hints.flags.has(hintUsesBulkMem) || vectorRegionsBroaderEnabled) &&
-		(f.nLocals >= 16 || vectorRegionsBroaderEnabled && f.nLocals >= 8) && f.nLocals <= 256 && len(c.BodyBytes) >= 128 && len(c.BodyBytes) <= 16<<10
+		hints.flags.has(hintHasSIMD) && !hints.flags.has(hintUsesBulkMem) &&
+		f.nLocals >= 16 && f.nLocals <= 256 && len(c.BodyBytes) >= 128 && len(c.BodyBytes) <= 16<<10
 	if f.vectorRegion.enabled && fpPinLimit > 8 {
 		fpPinLimit = 8
 	}
@@ -4110,6 +4109,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 				f.stats.peep("entry-arg-local-pin") // hot local kept in a free incoming-arg register
 			}
 		}
+	}
+	if f.pinnedLocalMask.has(mergeReg) || f.fpinnedLocalMask.has(mergeFReg) {
+		f.regMerge = false // A merge register already holds a pinned local/global.
 	}
 	if f.regMerge && !f.selfTailLoop && hints.flags.has(hintCallsSelf) && len(c.BodyBytes) <= 64 &&
 		!touchesMemory && hints.globalCount == 0 && !hints.flags.has(hintHasLoop) &&
@@ -4152,7 +4154,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
-	f.selectBlockMergeReg()
 	if uint64(f.nLocalSlots)*8 > uint64(localSlotOffsetMask) {
 		return nil, nil, 0, fmt.Errorf("amd64: local frame %d bytes exceeds packed offset range %d", 8*f.nLocalSlots, localSlotOffsetMask)
 	}
