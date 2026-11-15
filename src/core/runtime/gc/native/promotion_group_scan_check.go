@@ -9,12 +9,14 @@
 
 package gc
 
+import "sync/atomic"
+
 const promotionGroupScanCheckEnabled = true
 
-var promotionGroupScanCount uint64
+var promotionGroupScanCount atomic.Uint64
 
-func notePromotionGroupScan() { promotionGroupScanCount++ }
+func notePromotionGroupScan() { promotionGroupScanCount.Add(1) }
 
-func resetPromotionGroupScanCount() { promotionGroupScanCount = 0 }
+func resetPromotionGroupScanCount() { promotionGroupScanCount.Store(0) }
 
-func currentPromotionGroupScanCount() uint64 { return promotionGroupScanCount }
+func currentPromotionGroupScanCount() uint64 { return promotionGroupScanCount.Load() }
