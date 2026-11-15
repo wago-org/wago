@@ -1161,19 +1161,27 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 
 	// cmp reads the left comparand read-only, so a borrowed pinned-local/global
 	// register can feed the compare in place — no copy — provided nothing between
-	// the read and the compare writes it. That holds for eqz and for a constant
-	// right operand (the compare is emitted immediately, the only intervening emit
-	// being a const load into a fresh temp). For any other right operand we keep the
-	// copy: a deferred right could be condensed here and clobber, and comparing the
-	// live pinned register afterwards would read a post-write value. When L is a
-	// borrowed register the trailing cset must not clobber it, so the boolean lands
-	// in a separate register (dest or a fresh temp) instead of reusing L.
-	inPlaceOK := node.deferredOp() == opEqz ||
-		(right.elemKind() == ekValue && right.st.kind == stConst)
+	// the read and the compare writes it. That holds for eqz and every concrete
+	// integer right operand supported below: constants and frame values load into a
+	// fresh temporary, while register values emit no setup. Keep the copy when the
+	// right operand is a deferred expression: condensing it can overwrite the local
+	// after the left local.get captured its old value. When L is borrowed, the
+	// trailing cset must not clobber it, so the boolean lands in a separate register
+	// (dest or a fresh temp) instead of reusing L.
+	inPlaceOK := node.deferredOp() == opEqz
+	if right != nil && right.elemKind() == ekValue {
+		switch right.st.kind {
+		case stConst, stReg, stSlot, stLocalRef, stLocalReg, stGlobReg, stMemRef:
+			inPlaceOK = true
+		}
+	}
 	var L Reg
 	ownL := true
 	if inPlaceOK {
 		L, ownL = f.materializeRead(left)
+		if !ownL {
+			f.stats.peep("borrowed-compare-read")
+		}
 	} else {
 		L = f.materialize(left)
 	}
