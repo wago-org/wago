@@ -15,14 +15,16 @@ const (
 	gcReferenceFactValid gcReferenceFactFlags = 1 << iota
 	gcReferenceFactNullable
 	gcReferenceFactExact
+	gcReferenceFactCheckedRange
 )
 
 // gcReferenceTypeFact is a compact, allocation-free description of a proved
 // indexed reference value. Recursive-local type indexes are excluded because
 // they need their defining recursion-group owner to resolve correctly.
 type gcReferenceTypeFact struct {
-	typeIndex uint32
-	flags     gcReferenceFactFlags
+	typeIndex    uint32
+	flags        gcReferenceFactFlags
+	checkedBytes uint16
 }
 
 func gcReferenceFact(typ wasm.ValType) (gcReferenceTypeFact, bool) {
@@ -93,7 +95,7 @@ func (facts *gcLocalTypeFacts) get(local int) (gcReferenceTypeFact, bool) {
 }
 
 func (facts *gcLocalTypeFacts) set(local int, fact gcReferenceTypeFact) {
-	if local < 0 || !fact.valid() {
+	if local < 0 || !fact.valid() && fact.flags&gcReferenceFactCheckedRange == 0 {
 		facts.remove(local)
 		return
 	}

@@ -1195,7 +1195,7 @@ func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, required uint32, n
 // ordinary direct struct.get. The certificate is valid only for an unchanged
 // source local, one final type, and the checked byte extent. Calls, allocation,
 // control flow, and writes to the source local invalidate it centrally.
-func (f *fn) emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffset, fieldBytes uint32, nullable, cache bool) (Reg, error) {
+func (f *fn) emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffset, fieldBytes uint32, nullable, cache, checkedRange bool) (Reg, error) {
 	required64 := uint64(gc.PayloadOffset) + uint64(fieldOffset) + uint64(fieldBytes)
 	if required64 > math.MaxInt32 {
 		return regNone, fmt.Errorf("amd64: final struct field extent %d exceeds native immediate", required64)
@@ -1214,8 +1214,16 @@ func (f *fn) emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffse
 	}
 
 	f.invalidateGCResolvedObject()
+	if checkedRange && hasLocal {
+		if obj, ok := f.reloadGCCheckedRange(local, typeIndex, required); ok {
+			return obj, nil
+		}
+	}
 	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, required, nullable); err != nil {
 		return regNone, err
+	}
+	if hasLocal {
+		f.recordGCCheckedRange(local, typeIndex, required)
 	}
 	if !cache || !gcResolveReuseEnabled || !hasLocal {
 		return RAX, nil
@@ -1232,7 +1240,7 @@ func (f *fn) emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffse
 }
 
 func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, nullable, cache bool) error {
-	obj, err := f.emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffset, 4, nullable, cache)
+	obj, err := f.emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffset, 4, nullable, cache, false)
 	if err != nil {
 		return err
 	}
@@ -1248,7 +1256,7 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 }
 
 func (f *fn) emitNativeFinalCastStructScalarGet(typeIndex, fieldOffset uint32, scalar directGCScalar, signed, nullable, cache bool) error {
-	obj, err := f.emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffset, uint32(scalar.size), nullable, cache)
+	obj, err := f.emitNativeFinalCastStructResolvedFieldAddress(typeIndex, fieldOffset, uint32(scalar.size), nullable, cache, scalar.typ == mtI32 && scalar.size == 4)
 	if err != nil {
 		return err
 	}
