@@ -1077,6 +1077,24 @@ func loadStoreMayWriteGPR(instruction uint32) bool {
 	return instruction&(1<<26) == 0 && instruction&(3<<22) != 0
 }
 
+// gpResultDestination recognizes integer instruction families which write only
+// their Rd GPR (apart from architectural flags). Keeping this fact shared by
+// the short emission-time and whole-function address proofs prevents one from
+// accepting an instruction that needlessly terminates the other.
+func gpResultDestination(instruction uint32) (Reg, bool) {
+	writesRd := instruction&0x1F000000 == 0x0A000000 || // logical register
+		instruction&0x1F000000 == 0x0B000000 || // add/sub register
+		instruction&0x1F000000 == 0x11000000 || // add/sub immediate
+		instruction&0x1F800000 == 0x12000000 || // logical immediate
+		instruction&0x1F800000 == 0x12800000 || // move wide
+		instruction&0x1F800000 == 0x13000000 || // bitfield/extract
+		instruction&0x1F000000 == 0x1B000000 || // multiply-add/subtract
+		instruction&0x1FE00000 == 0x1AC00000 || // two-source data processing
+		instruction&0x5FE00000 == 0x5AC00000 || // one-source data processing
+		instruction&0x1FE00000 == 0x1A800000 // conditional select
+	return Reg(instruction & 31), writesRd
+}
+
 func preservesIndexedBase(instruction uint32, base, index Reg) bool {
 	writesAddress := func(dst Reg) bool {
 		return dst == X16 || dst == base || dst == index
@@ -1087,14 +1105,8 @@ func preservesIndexedBase(instruction uint32, base, index Reg) bool {
 	if instruction&0x3B20FC00 == 0x38206800 {
 		return !loadStoreMayWriteGPR(instruction) || !writesAddress(Reg(instruction&31))
 	}
-	if instruction&0x1F000000 == 0x11000000 {
-		return !writesAddress(Reg(instruction & 31))
-	}
-	// ADD/SUB (shifted or extended register), including flag-setting forms,
-	// writes only Rd.
-	// Operand width and NZCV changes do not affect the cached 64-bit address.
-	if instruction&0x1F000000 == 0x0B000000 {
-		return !writesAddress(Reg(instruction & 31))
+	if dst, ok := gpResultDestination(instruction); ok {
+		return !writesAddress(dst)
 	}
 	return false
 }
