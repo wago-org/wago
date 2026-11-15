@@ -464,6 +464,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 		c.throughput.restoreAllocTransaction(tx)
 		finish()
 	}
+	groupEnd := 0
 	for i := 0; i < len(plans); {
 		if plans[i].entry.space != spaceFree {
 			if err = injectFailure(c, failPromotionDestination); err != nil {
@@ -474,10 +475,18 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 			continue
 		}
 		size := c.handles[plans[i].handle].size
-		j := i + 1
-		for j < len(plans) && plans[j].entry.space == spaceFree && c.handles[plans[j].handle].size == size {
-			j++
+		// A failed run allocates one destination without changing later plans.
+		// Keep the equal-size group's end instead of rescanning its suffix.
+		if i >= groupEnd {
+			groupEnd = i + 1
+			for groupEnd < len(plans) && plans[groupEnd].entry.space == spaceFree && c.handles[plans[groupEnd].handle].size == size {
+				if promotionGroupScanCheckEnabled {
+					notePromotionGroupScan()
+				}
+				groupEnd++
+			}
 		}
+		j := groupEnd
 		if run, ok, runErr := c.throughput.tryAllocRun(size, j-i, spaceOld); runErr != nil {
 			rollback(nil)
 			return 0, 0, false, runErr
@@ -645,6 +654,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 		c.throughput.restoreAllocTransaction(tx)
 		finish()
 	}
+	groupEnd := 0
 	for i := 0; i < len(plans); {
 		if plans[i].entry.space != spaceFree {
 			if err = injectFailure(c, failPromotionDestination); err != nil {
@@ -655,10 +665,18 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			continue
 		}
 		size := c.handles[plans[i].handle].size
-		j := i + 1
-		for j < len(plans) && plans[j].entry.space == spaceFree && c.handles[plans[j].handle].size == size {
-			j++
+		// A failed run allocates one destination without changing later plans.
+		// Keep the equal-size group's end instead of rescanning its suffix.
+		if i >= groupEnd {
+			groupEnd = i + 1
+			for groupEnd < len(plans) && plans[groupEnd].entry.space == spaceFree && c.handles[plans[groupEnd].handle].size == size {
+				if promotionGroupScanCheckEnabled {
+					notePromotionGroupScan()
+				}
+				groupEnd++
+			}
 		}
+		j := groupEnd
 		if run, ok, runErr := c.throughput.tryAllocRun(size, j-i, spaceOld); runErr != nil {
 			rollback(nil)
 			return 0, 0, runErr
