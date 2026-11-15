@@ -40,8 +40,9 @@ func testGCTrappingGuardAdmissionFixture(t *testing.T, fixture string) {
 		if plan == nil || diagnostic != "" {
 			t.Fatalf("root plan: %s", diagnostic)
 		}
+		// Isolate guard admission from the separate local type-fact cast removal.
 		var stats backend.ModuleStats
-		c, err := backend.CompileModuleWith(m, backend.CompileOptions{Stats: &stats, GCStructHelpers: true, GCArrayHelpers: true, GCFrameRoots: plan, Optimizations: map[string]bool{"inline": inline}, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: meta.Descs, GCTypeLayouts: meta.Layouts}}})
+		c, err := backend.CompileModuleWith(m, backend.CompileOptions{Stats: &stats, GCStructHelpers: true, GCArrayHelpers: true, GCFrameRoots: plan, Optimizations: map[string]bool{"inline": inline, "value-facts": false}, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: meta.Descs, GCTypeLayouts: meta.Layouts}}})
 		if err != nil {
 			t.Fatal(err)
 		}

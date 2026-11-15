@@ -268,7 +268,7 @@ func compactInlineOK(f inlineFacts, policy CodegenPolicy) bool {
 		f.bodyBytes > compactInlineBodyLimit(policy) || f.declaredLocals != 0 {
 		return false
 	}
-	if tinyLeafInlineOK(f) {
+	if !f.regABIIntOnly && tinyLeafInlineOK(f) {
 		return true
 	}
 	return f.callSites == 1 && f.params <= 1 && f.results <= 1 &&
@@ -746,7 +746,8 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		if recursiveInlineCandidate(m, allHints, i, facts, policy) {
 			params |= inlineRecursiveFlag
 		}
-		if h.flags.has(hintHasCall) {
+		// Selected tail transfers become local jumps and make no physical calls.
+		if h.flags.has(hintHasCall) && params&inlineTailLoopFlag == 0 {
 			params |= inlineMakesCallsFlag
 		}
 		var gcParamMask uint16
