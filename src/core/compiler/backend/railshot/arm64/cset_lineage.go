@@ -31,6 +31,22 @@ func csetLineageWord(w uint32) (guardedIntegerEffects, bool) {
 		}
 		return x, true
 	}
+	// Scalar register-offset loads and stores preserve NZCV just like their
+	// unsigned-immediate counterparts above. They occur naturally between a
+	// select and the next comparison when a loop updates linear memory. Keep
+	// exact destination effects so a load which overwrites a saved boolean still
+	// invalidates its lineage. Exclude SIMD/FP forms and the size=8 PRFM encoding.
+	if w&0x3b20fc00 == 0x38206800 && w&(1<<26) == 0 {
+		opc := w >> 22 & 3
+		if opc == 2 && w>>30 == 3 {
+			return guardedIntegerEffects{}, false
+		}
+		x := guardedIntegerEffects{}
+		if opc != 0 {
+			x.writes = (uint32(1) << (w & 31)) & 0x7fffffff
+		}
+		return x, true
+	}
 	return guardedIntegerWord(w)
 }
 

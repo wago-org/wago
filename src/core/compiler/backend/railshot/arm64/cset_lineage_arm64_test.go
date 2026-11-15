@@ -231,6 +231,54 @@ func TestCsetLineageBoundedStartMatchesFullScan(t *testing.T) {
 	}
 }
 
+func TestCsetLineageAcrossIndexedMemory(t *testing.T) {
+	old := csetLineageEnabled
+	csetLineageEnabled = true
+	defer func() { csetLineageEnabled = old }()
+	for _, memory := range []func(*enc.Asm){
+		func(a *enc.Asm) { a.LdrIdx(X11, X2, X3, 4, false, false) },
+		func(a *enc.Asm) { a.LdrIdx(X11, X2, X3, 2, true, true) },
+		func(a *enc.Asm) { a.StrIdx(X11, X2, X3, 4) },
+	} {
+		var a enc.Asm
+		a.CmpReg32(X0, X1)
+		a.Cset32(X9, condL)
+		a.CmpImm32(X9, 0)
+		cmp := a.Len() - 4
+		a.Csel(X0, X0, X1, condNE, false)
+		memory(&a)
+		a.CmpImm32(X0, 1)
+		a.Ret()
+
+		f := fn{policy: currentCodegenPolicy()}
+		f.foldCsetLineage(a.B, len(a.B), 0, nil)
+		if rdWord(a.B, cmp) != nopWord {
+			t.Fatal("indexed memory ended an otherwise live condition lineage")
+		}
+	}
+}
+
+func TestCsetLineageIndexedLoadClobbersBoolean(t *testing.T) {
+	old := csetLineageEnabled
+	csetLineageEnabled = true
+	defer func() { csetLineageEnabled = old }()
+	var a enc.Asm
+	a.CmpReg32(X0, X1)
+	a.Cset32(X9, condL)
+	a.LdrIdx(X9, X2, X3, 4, false, false)
+	a.CmpImm32(X9, 0)
+	cmp := a.Len() - 4
+	a.Csel(X0, X0, X1, condNE, false)
+	a.CmpImm32(X0, 1)
+	a.Ret()
+
+	f := fn{policy: currentCodegenPolicy()}
+	f.foldCsetLineage(a.B, len(a.B), 0, nil)
+	if rdWord(a.B, cmp) == nopWord {
+		t.Fatal("indexed load preserved lineage for the overwritten boolean")
+	}
+}
+
 func TestCsetLineageDirectCallKeepsBooleanAndCallerLocals(t *testing.T) {
 	// Keep a saved boolean observable after the select and keep twelve I64
 	// locals plus an older stack value live across a real non-inlined call.
