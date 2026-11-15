@@ -710,8 +710,9 @@ func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8) 
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 	failIf(condAE)
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
-	a.ShiftImm(4, RAX, 4, true)
-	a.Add64(R9, RAX)
+	// RDI retains the zero-extended compact reference. Its ref<<3 address
+	// equals the checked handle index<<4 without another shift and add.
+	a.LeaScaled(R9, R9, RDI, 3, 0)
 	// Start the independent offset read before selecting the backing space.
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 
