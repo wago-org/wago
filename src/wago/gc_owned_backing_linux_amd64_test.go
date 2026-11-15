@@ -28,6 +28,11 @@ func mappedGCBacking(c *gc.Collector) bool {
 	return reflect.ValueOf(c).Elem().FieldByName("throughput").FieldByName("mapped").Bool()
 }
 
+func mappedGCHandleBacking(c *gc.Collector) bool {
+	// State2 is the private mapped-handle owner; no production API is added.
+	return reflect.ValueOf(c).Elem().FieldByName("handlesBacking").Uint() == 2
+}
+
 func ownedGCBackingModule() []byte {
 	host := append(wasmtest.Name("host"), wasmtest.Name("inspect")...)
 	host = append(host, 0, 1)
@@ -59,7 +64,7 @@ func TestMappedGCBackingSurvivesBorrowedClose(t *testing.T) {
 			host := slotHostFunc(func(m HostModule, args, results []uint64) {
 				err := m.(GuestStorageHostModule).WithGuestStorage(func(GuestStorage) error {
 					callback = true
-					if !mappedGCBacking(in.gc) {
+					if !mappedGCBacking(in.gc) || !mappedGCHandleBacking(in.gc) {
 						return &guestStorageTestError{"callback did not reach mapped old space"}
 					}
 					ref := gc.Ref(uint32(readGlobalObject(in.globalCells[0], ValAnyRef)))
@@ -74,7 +79,7 @@ func TestMappedGCBackingSurvivesBorrowedClose(t *testing.T) {
 					if err = in.Close(); err != nil {
 						return err
 					}
-					if !in.hasPhysicalResources() || !mappedGCBacking(in.gc) {
+					if !in.hasPhysicalResources() || !mappedGCBacking(in.gc) || !mappedGCHandleBacking(in.gc) {
 						return &guestStorageTestError{"Close released backing during active borrow"}
 					}
 					if binary.LittleEndian.Uint32(payload) != 41 {
@@ -123,7 +128,7 @@ func TestMappedGCBackingSurvivesBorrowedClose(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("guest completion did not finish physical release")
 			}
-			if in.hasPhysicalResources() || mappedGCBacking(in.gc) {
+			if in.hasPhysicalResources() || mappedGCBacking(in.gc) || mappedGCHandleBacking(in.gc) {
 				t.Fatal("owner retained mapped backing after physical release")
 			}
 		})
@@ -156,7 +161,7 @@ func TestMappedGCBackingSharedSiblingOwnsReservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	collector := first.gc
-	if !mappedGCBacking(collector) {
+	if !mappedGCBacking(collector) || !mappedGCHandleBacking(collector) {
 		t.Fatal("first call did not reserve mapped old space")
 	}
 	firstDone := make(chan struct{}, 1)
@@ -169,7 +174,7 @@ func TestMappedGCBackingSharedSiblingOwnsReservation(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("first physical release did not finish")
 	}
-	if !mappedGCBacking(collector) {
+	if !mappedGCBacking(collector) || !mappedGCHandleBacking(collector) {
 		t.Fatal("first close released a live sibling's collector")
 	}
 	if got, err := second.Invoke("set", 42); err != nil || len(got) != 1 || got[0] != 42 {
@@ -185,7 +190,7 @@ func TestMappedGCBackingSharedSiblingOwnsReservation(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("last physical release did not finish")
 	}
-	if mappedGCBacking(collector) {
+	if mappedGCBacking(collector) || mappedGCHandleBacking(collector) {
 		t.Fatal("last close retained the shared reservation")
 	}
 }

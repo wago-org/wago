@@ -7,7 +7,8 @@
 
 package gc
 
-// UseOwnedThroughputBacking permits a stable virtual heap on supported hosts.
+// UseOwnedThroughputBacking permits stable virtual heap and handle storage
+// on supported hosts.
 // Call it before the first allocation. The caller must call Close and retain
 // the collector while any borrowed byte view or native pointer is in use.
 // NewCollector alone retains the ordinary Go-owned backing contract.

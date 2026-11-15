@@ -85,7 +85,9 @@ func (c *Collector) reserveNativeHandles(batch int) {
 	s.HandleBase = 0
 	newHandles := batch - min(len(c.freeHandles), batch)
 	if newHandles != 0 {
-		c.handles = slices.Grow(c.handles, newHandles)
+		if !c.prepareHandleCapacity(newHandles) {
+			c.handles = slices.Grow(c.handles, newHandles)
+		}
 		c.mark = slices.Grow(c.mark, newHandles)
 	}
 	c.nurseryHandles = slices.Grow(c.nurseryHandles, batch)

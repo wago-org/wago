@@ -218,6 +218,9 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 		c.noteMajorHandle(h)
 		return h
 	}
+	if len(c.handles) == cap(c.handles) {
+		c.prepareHandleCapacity(1)
+	}
 	c.handles = append(c.handles, e)
 	if c.checkedHandles != nil {
 		*c.checkedHandles = append(*c.checkedHandles, 1)

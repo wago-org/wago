@@ -174,6 +174,7 @@ type Collector struct {
 	majorYoungDirty       bool   // uses padding before checkedHandles
 	structBatch           uint16 // next live-struct batch; uses existing padding; zero selects maximum
 	structBatchFull       uint8  // consecutive full batches before increasing the reservation
+	handlesBacking        uint8  // owned handle mapping state; uses the final byte before checkedHandles
 	checkedHandles        *[]uint64
 	// Keep optional proof state last so existing collector field offsets stay fixed.
 	lastCardBounds objectCardBounds
@@ -257,6 +258,7 @@ func (c *Collector) Close() {
 	c.nursery = nil
 	c.tiny.Close()
 	c.throughput.Close()
+	c.releaseOwnedHandles()
 	c.handles = nil
 	c.checkedHandles = nil
 	c.freeHandles = nil
