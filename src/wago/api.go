@@ -1096,20 +1096,14 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		GCConstExpr:          features.GCStructProducts || features.GCArrayProducts || features.GCI31Products,
 	}
 	var validationAnalysis wasm.ValidatedModuleAnalysis
-	var bodySource *wasm.OwnedBodySource
 	validationLimits := wasm.ValidationLimits{MaxFunctionLocals: cfg.maxFunctionLocals, MaxMemoriesPerModule: cfg.maxMemoriesPerModule}
-	var initialValidationErr error
-	useBodySource := os.Getenv("WAGO_AMD64_NO_GC_CARRIER_ELISION") != "1" && gcOptionMayContainCarrier(m) && cfg.codeProfile == nil && len(instructions) == 0 && len(m.BranchHints) == 0 && goruntime.GOARCH == "amd64" && goruntime.GOOS == "linux"
+	usePrivateGCView := os.Getenv("WAGO_AMD64_NO_GC_CARRIER_ELISION") != "1" && gcOptionMayContainCarrier(m) && cfg.codeProfile == nil && len(instructions) == 0 && len(m.BranchHints) == 0 && goruntime.GOARCH == "amd64" && goruntime.GOOS == "linux"
 	for _, custom := range m.Customs {
 		if custom.Name == "metadata.code.branch_hint" {
-			useBodySource = false
+			usePrivateGCView = false
 		}
 	}
-	if useBodySource {
-		bodySource, validationAnalysis, initialValidationErr = wasm.NewOwnedBodySourceWithAnalysis(m, validationFeatures, workers, validationLimits)
-	} else {
-		initialValidationErr = wasm.ValidateModuleWithAnalysis(m, validationFeatures, workers, validationLimits, &validationAnalysis)
-	}
+	initialValidationErr := wasm.ValidateModuleWithAnalysis(m, validationFeatures, workers, validationLimits, &validationAnalysis)
 	if err := initialValidationErr; err != nil {
 		if deferredSyntax {
 			if _, syntaxErr := wasm.DecodeModuleWithFeatures(wasmBytes, decodeFeatures); syntaxErr != nil {
@@ -1406,29 +1400,22 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, wrapContextError("compile", err)
 	}
 	var optionView *gcOptionView
-	if useBodySource {
+	if usePrivateGCView {
 		optionView, err = buildGCOptionBodyViewWithLocalLimit(m, cfg.maxFunctionLocals)
 		if err != nil {
 			return nil, wrapContextError("private GC view", err)
 		}
 		if optionView != nil {
-			if bodySource != nil {
-				edits := make([]wasm.BodyEdit, 0, len(optionView.Origins))
-				imported := uint32(m.ImportedFuncCount())
-				for global := range optionView.Origins {
-					local := global - imported
-					code := optionView.Module.Code[local]
-					edits = append(edits, wasm.BodyEdit{LocalFunction: local, BodyBytes: code.BodyBytes, Locals: code.Locals})
-				}
-				m, validationAnalysis, err = bodySource.Apply(edits, validationFeatures, workers, validationLimits)
-				if err != nil {
-					return nil, wrapContextError("private GC validation", err)
-				}
-			} else {
-				m = optionView.Module
-				if err = wasm.ValidateModuleWithAnalysis(m, validationFeatures, workers, validationLimits, &validationAnalysis); err != nil {
-					return nil, wrapContextError("private GC validation", err)
-				}
+			edits := make([]wasm.BodyEdit, 0, len(optionView.Origins))
+			imported := uint32(m.ImportedFuncCount())
+			for global := range optionView.Origins {
+				local := global - imported
+				code := optionView.Module.Code[local]
+				edits = append(edits, wasm.BodyEdit{LocalFunction: local, BodyBytes: code.BodyBytes, Locals: code.Locals})
+			}
+			m, validationAnalysis, err = wasm.ApplyValidatedBodyEdits(m, &validationAnalysis, edits, validationFeatures, workers, validationLimits)
+			if err != nil {
+				return nil, wrapContextError("private GC validation", err)
 			}
 			optionView.Module = m
 			requirements = analyzeModuleRequirementsWithValidation(m, &validationAnalysis)
@@ -1774,7 +1761,24 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.setGCRootAdmissionFailure(diagnostic)
 	}
 	if validGCFrameRoots {
-		rootMap := &compiledGCFrameRoots{deadInductionLayouts: cm.GCDeadInductionLayouts}
+		adapterCount, safepointCount, callsiteCount := 0, 0, 0
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			plan := gcFrameRoots.Function(function)
+			if plan == nil {
+				continue
+			}
+			if plan.AdapterReturnOffset != 0 {
+				adapterCount++
+			}
+			safepointCount += plan.SafepointCount()
+			callsiteCount += plan.CallsiteCount()
+		}
+		rootMap := &compiledGCFrameRoots{
+			deadInductionLayouts: cm.GCDeadInductionLayouts,
+			adapterReturnOffsets: make([]uint32, 0, adapterCount),
+			safepoints:           make([]compiledGCFrameSafepoint, 0, safepointCount),
+			callsites:            make([]compiledGCFrameCallsite, 0, callsiteCount),
+		}
 		var offsetInterner gcFrameOffsetInterner
 		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
 			plan := gcFrameRoots.Function(function)

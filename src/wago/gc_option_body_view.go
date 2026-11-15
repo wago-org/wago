@@ -63,7 +63,6 @@ func gcOptionDecode(m *wasm.Module, body []byte, limit int) ([]gcOptionInstructi
 	return gcOptionDecodeCapacity(m, body, limit, 0)
 }
 func gcOptionDecodeCapacity(m *wasm.Module, body []byte, limit, capacity int) ([]gcOptionInstruction, []int, bool) {
-	r := wasm.NewReader(body)
 	c := wasm.NewModuleInstructionClassifier(m, true)
 	var out []gcOptionInstruction
 	var ends []int
@@ -71,7 +70,15 @@ func gcOptionDecodeCapacity(m *wasm.Module, body []byte, limit, capacity int) ([
 		out = make([]gcOptionInstruction, 0, capacity)
 		ends = make([]int, 0, capacity)
 	}
-	var stack []int
+	var stack [32]int
+	return gcOptionDecodeInto(&c, body, limit, out, ends, stack[:0])
+}
+
+func gcOptionDecodeInto(c *wasm.ModuleInstructionClassifier, body []byte, limit int, out []gcOptionInstruction, ends, stack []int) ([]gcOptionInstruction, []int, bool) {
+	out = out[:0]
+	ends = ends[:0]
+	stack = stack[:0]
+	r := wasm.NewReader(body)
 	for r.HasNext() {
 		if len(out) == limit {
 			return nil, nil, false
@@ -168,7 +175,7 @@ func gcOptionLocalType(m *wasm.Module, local int, index uint32) (wasm.ValType, b
 	}
 	return wasm.ValType{}, false
 }
-func gcOptionFindSummary(m *wasm.Module, wrapper uint32) (s gcOptionSummary, ok bool) {
+func gcOptionFindSummaryWithClassifier(m *wasm.Module, wrapper uint32, classifier *wasm.ModuleInstructionClassifier) (s gcOptionSummary, ok bool) {
 	imported := uint32(m.ImportedFuncCount())
 	if wrapper < imported || int(wrapper-imported) >= len(m.Code) {
 		return
@@ -177,7 +184,10 @@ func gcOptionFindSummary(m *wasm.Module, wrapper uint32) (s gcOptionSummary, ok 
 	if len(wc.BodyBytes) > 32 || len(wc.Locals.Runs) != 0 {
 		return
 	}
-	w, _, valid := gcOptionDecode(m, wc.BodyBytes, 16)
+	var wrapperInstructions [16]gcOptionInstruction
+	var wrapperEnds [16]int
+	var decodeStack [32]int
+	w, _, valid := gcOptionDecodeInto(classifier, wc.BodyBytes, len(wrapperInstructions), wrapperInstructions[:0], wrapperEnds[:0], decodeStack[:0])
 	if !valid || len(w) != 5 || w[0].op != 0x20 || w[0].imm.Index != 0 || w[2].op != 0x10 || w[4].op != 0x0b {
 		return
 	}
@@ -189,7 +199,9 @@ func gcOptionFindSummary(m *wasm.Module, wrapper uint32) (s gcOptionSummary, ok 
 	if len(pc.BodyBytes) > 128 || len(pc.Locals.Runs) != 1 || pc.Locals.Runs[0].Count != 1 || !wasm.EqualValType(pc.Locals.Runs[0].Type, wasm.EqRef) {
 		return
 	}
-	p, _, valid := gcOptionDecode(m, pc.BodyBytes, 32)
+	var producerInstructions [32]gcOptionInstruction
+	var producerEnds [32]int
+	p, _, valid := gcOptionDecodeInto(classifier, pc.BodyBytes, len(producerInstructions), producerInstructions[:0], producerEnds[:0], decodeStack[:0])
 	if !valid || len(p) != 17 {
 		return
 	}
@@ -240,7 +252,7 @@ func gcOptionFindSummary(m *wasm.Module, wrapper uint32) (s gcOptionSummary, ok 
 	}
 	return s, true
 }
-func gcOptionFamilies(m *wasm.Module, local int, summaries map[uint32]gcOptionSummary) ([]gcOptionInstruction, []gcOptionFamily) {
+func gcOptionFamilies(m *wasm.Module, local int, summaries map[uint32]gcOptionSummary, livenessScratch *gcFrameLivenessScratch) ([]gcOptionInstruction, []gcOptionFamily) {
 	code := m.Code[local]
 	if len(code.BodyBytes) > 16384 {
 		return nil, nil
@@ -405,7 +417,7 @@ func gcOptionFamilies(m *wasm.Module, local int, summaries map[uint32]gcOptionSu
 	for i, f := range families {
 		roots[i] = shared.GCFrameLocal{Index: f.local}
 	}
-	masks, e := gcFrameLocalLivenessArenaWithClassifier(code.BodyBytes, roots, &c)
+	masks, e := gcFrameLocalLivenessArenaWithScratch(code.BodyBytes, roots, &c, livenessScratch)
 	if e != nil || len(masks.rootIndexes) != 0 {
 		return nil, nil
 	}
@@ -490,9 +502,10 @@ func buildGCOptionBodyViewWithLocalLimit(m *wasm.Module, localLimit uint32) (*gc
 		return nil, nil
 	}
 	summaries := map[uint32]gcOptionSummary{}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		global := uint32(i + m.ImportedFuncCount())
-		if s, ok := gcOptionFindSummary(m, global); ok {
+		if s, ok := gcOptionFindSummaryWithClassifier(m, global, &classifier); ok {
 			if len(summaries) == 32 {
 				return nil, nil
 			}
@@ -506,11 +519,12 @@ func buildGCOptionBodyViewWithLocalLimit(m *wasm.Module, localLimit uint32) (*gc
 	view := &gcOptionView{Origins: map[uint32][]gcOptionOrigin{}}
 	private := *m
 	private.Code = append([]wasm.Func(nil), m.Code...)
+	var livenessScratch gcFrameLivenessScratch
 	for local, code := range m.Code {
 		if len(code.BodyBytes) > 16384 || !gcOptionMayContainCandidateCall(code.BodyBytes, &prefixes) {
 			continue
 		}
-		ins, families := gcOptionFamilies(m, local, summaries)
+		ins, families := gcOptionFamilies(m, local, summaries, &livenessScratch)
 		if len(families) == 0 {
 			continue
 		}

@@ -118,6 +118,44 @@ type gcFrameLiveMasks struct {
 	wordsPerSite int
 }
 
+// gcFrameLivenessScratch owns temporary graph and dataflow arenas. A root-plan
+// builder processes functions serially and can reuse one scratch value. Final
+// mask words and root indexes are not stored here because plans retain them.
+type gcFrameLivenessScratch struct {
+	rootByLocalIndex map[uint32]uint32
+	rootToLiveIndex  map[uint32]uint32
+	usedRootBits     []uint64
+	frames           []gcLiveFrame
+	stack            []int
+	nodes            []gcLiveNode
+	branchTargets    []uint32
+	work             []int
+	liveIn           []uint64
+	predOffsets      []uint32
+	predCursor       []uint32
+	predSources      []uint32
+	queued           []bool
+}
+
+func gcFrameScratchEmpty[T any](storage *[]T, capacity int) []T {
+	if cap(*storage) < capacity {
+		*storage = make([]T, 0, capacity)
+	} else {
+		*storage = (*storage)[:0]
+	}
+	return *storage
+}
+
+func gcFrameScratchZeroed[T any](storage *[]T, length int) []T {
+	if cap(*storage) < length {
+		*storage = make([]T, length)
+	} else {
+		*storage = (*storage)[:length]
+		clear(*storage)
+	}
+	return *storage
+}
+
 func gcFrameLiveMaskArenaFits(allocationN, callN, wordsPerSite int) bool {
 	if allocationN < 0 || callN < 0 || wordsPerSite <= 0 || allocationN > int(^uint(0)>>1)-callN {
 		return false
@@ -250,25 +288,48 @@ func gcFrameLocalLivenessArena(body []byte, locals []shared.GCFrameLocal) (gcFra
 }
 
 func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFrameLocal, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
+	return gcFrameLocalLivenessArenaWithScratch(body, locals, classifier, nil)
+}
+
+func gcFrameLocalLivenessArenaWithScratch(body []byte, locals []shared.GCFrameLocal, classifier *wasm.ModuleInstructionClassifier, scratch *gcFrameLivenessScratch) (gcFrameLiveMasks, error) {
 	if len(locals) > shared.GCFrameTrackedLocalLimit {
 		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness tracks %d locals, limit %d", len(locals), shared.GCFrameTrackedLocalLimit)
 	}
-	rootByLocalIndex := make(map[uint32]uint32, len(locals))
+	if scratch == nil {
+		scratch = new(gcFrameLivenessScratch)
+	}
+	rootByLocalIndex := scratch.rootByLocalIndex
+	if rootByLocalIndex == nil {
+		rootByLocalIndex = make(map[uint32]uint32, len(locals))
+		scratch.rootByLocalIndex = rootByLocalIndex
+	} else {
+		clear(rootByLocalIndex)
+	}
 	for i, local := range locals {
 		rootByLocalIndex[local.Index] = uint32(i)
 	}
 	var usedRootBits []uint64
 	usedRootCount := len(locals)
 	if len(locals) > gcFrameSparseRootCountThreshold {
-		usedRootBits = make([]uint64, (len(locals)+63)/64)
+		usedRootBits = gcFrameScratchZeroed(&scratch.usedRootBits, (len(locals)+63)/64)
 		usedRootCount = 0
 	}
 
 	r := wasm.NewReader(body)
-	frames := []gcLiveFrame{{header: -1, elseNode: -1, endNode: -1}}
-	stack := []int{0}
-	nodes := make([]gcLiveNode, 0, len(body)/2+1)
-	branchTargets := make([]uint32, 0)
+	frames := gcFrameScratchEmpty(&scratch.frames, 1)
+	frames = append(frames, gcLiveFrame{header: -1, elseNode: -1, endNode: -1})
+	stack := gcFrameScratchEmpty(&scratch.stack, 1)
+	stack = append(stack, 0)
+	nodes := gcFrameScratchEmpty(&scratch.nodes, len(body)/2+1)
+	branchTargets := gcFrameScratchEmpty(&scratch.branchTargets, 0)
+	work := gcFrameScratchEmpty(&scratch.work, 1)
+	defer func() {
+		scratch.frames = frames
+		scratch.stack = stack
+		scratch.nodes = nodes
+		scratch.branchTargets = branchTargets
+		scratch.work = work
+	}()
 	allocationN, nativeCallN := 0, 0
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -475,7 +536,7 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 		case gcLiveStop:
 		}
 	}
-	work := []int{0}
+	work = append(work, 0)
 	for len(work) != 0 {
 		i := work[len(work)-1]
 		work = work[:len(work)-1]
@@ -524,7 +585,13 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 				usedRoots = append(usedRoots, uint32(word*64+bit))
 			}
 		}
-		rootToLiveIndex := make(map[uint32]uint32, len(usedRoots))
+		rootToLiveIndex := scratch.rootToLiveIndex
+		if rootToLiveIndex == nil {
+			rootToLiveIndex = make(map[uint32]uint32, len(usedRoots))
+			scratch.rootToLiveIndex = rootToLiveIndex
+		} else {
+			clear(rootToLiveIndex)
+		}
 		for index, root := range usedRoots {
 			rootToLiveIndex[root] = uint32(index)
 		}
@@ -560,7 +627,7 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 	if sweepNodeUnits > maxGCFrameLivenessCumulativeWork/wordCount {
 		return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness convergence exceeds %d bitmap-word operations", maxGCFrameLivenessCumulativeWork)
 	}
-	liveIn := make([]uint64, len(nodes)*wordCount)
+	liveIn := gcFrameScratchZeroed(&scratch.liveIn, len(nodes)*wordCount)
 	cumulativeWork := 0
 	sweepWork := sweepNodeUnits * wordCount
 	changed := true
@@ -640,8 +707,8 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 		if edgeCount < 0 || !gcFramePredecessorArenaFits(len(nodes), edgeCount) {
 			return gcFrameLiveMasks{}, fmt.Errorf("GC local liveness predecessor arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
 		}
-		predOffsets := make([]uint32, len(nodes)+1)
-		predCursor := make([]uint32, len(nodes))
+		predOffsets := gcFrameScratchZeroed(&scratch.predOffsets, len(nodes)+1)
+		predCursor := gcFrameScratchZeroed(&scratch.predCursor, len(nodes))
 		countPredecessor := func(target uint32) error {
 			if int(target) >= len(nodes) || !nodes[target].reachable {
 				return fmt.Errorf("GC liveness predecessor target %d is invalid or unreachable", target)
@@ -683,7 +750,7 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 			return gcFrameLiveMasks{}, fmt.Errorf("GC liveness predecessor count %d does not match CFG edge count %d", totalPredecessors, edgeCount)
 		}
 		copy(predCursor, predOffsets[:len(nodes)])
-		predSources := make([]uint32, edgeCount)
+		predSources := gcFrameScratchZeroed(&scratch.predSources, edgeCount)
 		appendPredecessor := func(source int, target uint32) error {
 			position := predCursor[target]
 			if position >= predOffsets[target+1] {
@@ -714,7 +781,7 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 		// The cursor arena is no longer needed for the predecessor CSR, so reuse
 		// it as a bounded ring queue instead of allocating a second node slice.
 		queue := predCursor
-		queued := make([]bool, len(nodes))
+		queued := gcFrameScratchZeroed(&scratch.queued, len(nodes))
 		queueHead, queueTail, queueCount := 0, 0, 0
 		push := func(index uint32) bool {
 			if queued[index] {

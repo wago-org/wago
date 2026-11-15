@@ -133,6 +133,32 @@ func TestOwnedBodyEditOwnership(t *testing.T) {
 		t.Fatal("snapshot after consumption", err)
 	}
 }
+
+func TestApplyValidatedBodyEditsBorrowsPrivateStorage(t *testing.T) {
+	m := editTestModule([]byte{0x41, 7, 0xb}, []byte{0x41, 8, 0xb})
+	var sourceAnalysis ValidatedModuleAnalysis
+	if err := ValidateModuleWithAnalysis(m, ValidationFeatures{}, 1, ValidationLimits{}, &sourceAnalysis); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ApplyValidatedBodyEdits(m, &ValidatedModuleAnalysis{}, []BodyEdit{{BodyBytes: []byte{0x41, 9, 0xb}}}, ValidationFeatures{}, 1, ValidationLimits{}); !errors.Is(err, ErrInvalidBodyEdit) {
+		t.Fatalf("invalid analysis error = %v", err)
+	}
+	if _, _, err := ApplyValidatedBodyEdits(m, &sourceAnalysis, []BodyEdit{{BodyBytes: []byte{0xff}}}, ValidationFeatures{}, 1, ValidationLimits{}); err == nil {
+		t.Fatal("invalid borrowed edit accepted")
+	}
+	body := []byte{0x20, 0, 0xb}
+	runs := []LocalRun{{Count: 1, Type: I32}}
+	out, analysis, err := ApplyValidatedBodyEdits(m, &sourceAnalysis, []BodyEdit{{LocalFunction: 1, BodyBytes: body, Locals: Locals{Runs: runs}}}, ValidationFeatures{}, 1, ValidationLimits{})
+	if err != nil || !analysis.ValidFor(out) {
+		t.Fatal("borrowed edit", err)
+	}
+	if &out.Code[0].BodyBytes[0] != &m.Code[0].BodyBytes[0] || &out.Code[1].BodyBytes[0] != &body[0] || &out.Code[1].Locals.Runs[0] != &runs[0] {
+		t.Fatal("borrowed storage was copied")
+	}
+	if m.Code[1].BodyBytes[0] != 0x41 || len(m.Code[1].Locals.Runs) != 0 || out.Code[1].LocalDeclBytes != 3 {
+		t.Fatal("source changed or edited local declaration missing")
+	}
+}
 func TestOwnedBodyEditRejectsShapeAndHints(t *testing.T) {
 	for _, edits := range [][]BodyEdit{{{LocalFunction: 1, BodyBytes: []byte{0xb}}}, {{BodyBytes: []byte{0xb}}, {BodyBytes: []byte{0xb}}}, {{}}} {
 		owner, err := NewOwnedBodySource(editTestModule([]byte{0x41, 1, 0xb}), ValidationFeatures{}, 1, ValidationLimits{})

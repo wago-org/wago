@@ -721,7 +721,8 @@ func emitGCLoadDefinedTarget(a *x64.Asm, target gcDefinedStaticTarget) {
 // identity snapshots bake the target bounds and load only the actual span.
 // Nonidentity or extended snapshots retain the checked two-span path.
 func emitGCSubtypeIntervalCheck(a *x64.Asm, actual, targetID Reg, target gcDefinedStaticTarget, invalidIf, mismatchIf func(Cond)) {
-	var dynamic []int
+	var dynamicBuffer [2]int
+	dynamic := dynamicBuffer[:0]
 	staticDone := -1
 	if target.valid {
 		a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))

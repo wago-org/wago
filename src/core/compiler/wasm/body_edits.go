@@ -107,18 +107,39 @@ func (s *OwnedBodySource) Apply(edits []BodyEdit, features ValidationFeatures, w
 	if s.consumed {
 		return nil, ValidatedModuleAnalysis{}, ErrBodySourceConsumed
 	}
+	m, a, err := applyValidatedBodyEdits(s.source, s.analysis, s.features, s.limits, edits, features, workers, limits, true)
+	if err == nil {
+		s.consumed = true
+	}
+	return m, a, err
+}
+
+// ApplyValidatedBodyEdits applies private body replacements to an already
+// validated module. The result shares unchanged declaration and body storage
+// with source and takes ownership of edited body and local storage. Callers
+// must stop using source and edits after success. This narrower ownership is
+// intended for the compiler's private module pipeline; OwnedBodySource keeps
+// the detached-copy contract for general callers.
+func ApplyValidatedBodyEdits(source *Module, analysis *ValidatedModuleAnalysis, edits []BodyEdit, features ValidationFeatures, workers int, limits ValidationLimits) (*Module, ValidatedModuleAnalysis, error) {
+	if source == nil || analysis == nil || !analysis.ValidFor(source) {
+		return nil, ValidatedModuleAnalysis{}, ErrInvalidBodyEdit
+	}
+	return applyValidatedBodyEdits(source, *analysis, features, normalizedBodyLimits(limits), edits, features, workers, limits, false)
+}
+
+func applyValidatedBodyEdits(source *Module, sourceAnalysis ValidatedModuleAnalysis, sourceFeatures ValidationFeatures, sourceLimits ValidationLimits, edits []BodyEdit, features ValidationFeatures, workers int, limits ValidationLimits, cloneEditedStorage bool) (*Module, ValidatedModuleAnalysis, error) {
 	order := cloneBodySlice(edits)
 	sort.Slice(order, func(i, j int) bool { return order[i].LocalFunction < order[j].LocalFunction })
 	for i, e := range order {
-		if uint64(e.LocalFunction) >= uint64(len(s.source.Code)) || len(e.BodyBytes) == 0 || i > 0 && order[i-1].LocalFunction == e.LocalFunction {
+		if uint64(e.LocalFunction) >= uint64(len(source.Code)) || len(e.BodyBytes) == 0 || i > 0 && order[i-1].LocalFunction == e.LocalFunction {
 			return nil, ValidatedModuleAnalysis{}, ErrInvalidBodyEdit
 		}
 	}
 	if len(order) != 0 {
-		if len(s.source.BranchHints) != 0 {
+		if len(source.BranchHints) != 0 {
 			return nil, ValidatedModuleAnalysis{}, ErrBodyEditHints
 		}
-		for _, c := range s.source.Customs {
+		for _, c := range source.Customs {
 			if c.Name == "metadata.code.branch_hint" {
 				return nil, ValidatedModuleAnalysis{}, ErrBodyEditHints
 			}
@@ -126,13 +147,17 @@ func (s *OwnedBodySource) Apply(edits []BodyEdit, features ValidationFeatures, w
 	}
 	// Only internal, unexposed immutable declarations are shared. All mutable
 	// cache owners are detached before either validation path can run.
-	m := *s.source
-	m.Code = cloneBodySlice(s.source.Code)
+	m := *source
+	m.Code = cloneBodySlice(source.Code)
 	m.structuralTypeCache = nil
 	m.typeIndexDirectory = nil
 	m.importIndexDirectory = nil
 	for _, e := range order {
-		m.Code[e.LocalFunction] = Func{Locals: Locals{Runs: cloneBodySlice(e.Locals.Runs)}, BodyBytes: bytes.Clone(e.BodyBytes)}
+		if cloneEditedStorage {
+			m.Code[e.LocalFunction] = Func{Locals: Locals{Runs: cloneBodySlice(e.Locals.Runs)}, BodyBytes: bytes.Clone(e.BodyBytes)}
+		} else {
+			m.Code[e.LocalFunction] = Func{Locals: Locals{Runs: e.Locals.Runs}, BodyBytes: e.BodyBytes}
+		}
 	}
 	encodeDecls := func() error {
 		for _, e := range order {
@@ -168,14 +193,13 @@ func (s *OwnedBodySource) Apply(edits []BodyEdit, features ValidationFeatures, w
 		if err := encodeDecls(); err != nil {
 			return nil, ValidatedModuleAnalysis{}, err
 		}
-		s.consumed = true
 		return &m, a, nil
 	}
-	if len(order) == 0 || !s.analysis.ValidFor(s.source) || features != s.features || normalizedBodyLimits(limits) != s.limits {
+	if len(order) == 0 || !sourceAnalysis.ValidFor(source) || features != sourceFeatures || normalizedBodyLimits(limits) != sourceLimits {
 		return full()
 	}
-	a := ValidatedModuleAnalysis{module: &m, funcs: cloneBodySlice(s.analysis.funcs)}
-	v := moduleValidator{m: &m, funcIndex: -1, features: features, limits: s.limits, analysis: &a}
+	a := ValidatedModuleAnalysis{module: &m, funcs: cloneBodySlice(sourceAnalysis.funcs)}
+	v := moduleValidator{m: &m, funcIndex: -1, features: features, limits: sourceLimits, analysis: &a}
 	v.ensureImportIndexes()
 	v.analysisFuncBase = len(v.importIndexes[ExternFunc])
 	if err := v.validateModule(); err != nil {
@@ -184,7 +208,7 @@ func (s *OwnedBodySource) Apply(edits []BodyEdit, features ValidationFeatures, w
 	fv := funcValidator{moduleValidator: &v}
 	widths := moduleMemargWidths(&m)
 	for _, e := range order {
-		old, err := bodyEditSegmentCounts(s.source, s.source.Code[e.LocalFunction].BodyBytes)
+		old, err := bodyEditSegmentCounts(source, source.Code[e.LocalFunction].BodyBytes)
 		if err != nil {
 			return nil, ValidatedModuleAnalysis{}, err
 		}
@@ -196,13 +220,12 @@ func (s *OwnedBodySource) Apply(edits []BodyEdit, features ValidationFeatures, w
 			return full()
 		}
 	}
-	a.elemStateCount = s.analysis.elemStateCount
-	a.dataStateCount = s.analysis.dataStateCount
+	a.elemStateCount = sourceAnalysis.elemStateCount
+	a.dataStateCount = sourceAnalysis.dataStateCount
 	a.finish()
 	if err := encodeDecls(); err != nil {
 		return nil, ValidatedModuleAnalysis{}, err
 	}
-	s.consumed = true
 	return &m, a, nil
 }
 
