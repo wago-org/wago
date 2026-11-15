@@ -151,16 +151,16 @@ func (c *Collector) TypedReference(r Ref) (TypedRef, error) {
 // Runtime-domain canonical representative maps must continue to use
 // RefTestCanonical; this method must not replace their equality semantics.
 func (c *Collector) RefTestTyped(r TypedRef, target RefTestTarget) (bool, error) {
+	index, known := r.TypeIndex()
+	if !known {
+		return c.refTest(r.Ref(), target, nil)
+	}
 	if err := c.errIfClosed(); err != nil {
 		return false, err
 	}
 	defined, err := c.refTestTargetDesc(target)
 	if err != nil {
 		return false, err
-	}
-	index, known := r.TypeIndex()
-	if !known {
-		return c.refTest(r.Ref(), target, nil)
 	}
 	if !c.typedObjectLive(r.Ref()) || int(index) >= len(c.typeWords) {
 		return false, errTypedObject

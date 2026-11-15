@@ -55,6 +55,31 @@ func arr(elem wasm.StorageType) wasm.SubType {
 }
 func fn() wasm.SubType { return wasm.SubType{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}} }
 
+func TestGCTypeMetadataMarksGuestProvenance(t *testing.T) {
+	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{
+		fn(), st(field(val(wasm.I32))), arr(val(wasm.I32)),
+	}}}}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, desc := range metadata.Descs {
+		if !desc.GuestType {
+			t.Fatalf("validated type%d kind%d lost guest provenance", desc.ID, desc.Kind)
+		}
+	}
+	private, err := gc.NewStructDesc(0, []gc.StorageKind{gc.StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if private.GuestType {
+		t.Fatal("private runtime descriptor gained guest provenance")
+	}
+}
+
 func TestGCExceptionStorageRequiresOwnedReferences(t *testing.T) {
 	for _, heap := range []wasm.AbsHeapType{wasm.HeapExn, wasm.HeapNoExn} {
 		for _, nullable := range []bool{false, true} {

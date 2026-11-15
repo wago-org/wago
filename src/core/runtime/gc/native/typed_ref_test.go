@@ -78,10 +78,13 @@ func TestTypedRefMatchesCheckedTypes(t *testing.T) {
 						if got != want || (newErr == nil) != (oldErr == nil) {
 							t.Fatalf("ref=%x target=%+v: typed=%v/%v checked=%v/%v", raw, target, got, newErr, want, oldErr)
 						}
+						if oldErr != nil && newErr.Error() != oldErr.Error() {
+							t.Fatalf("target rejection changed: typed=%v checked=%v", newErr, oldErr)
+						}
 						cast, castErr := c.RefCastTyped(value, target)
 						if oldErr != nil {
-							if castErr == nil {
-								t.Fatalf("invalid target accepted: %+v", target)
+							if castErr == nil || castErr.Error() != oldErr.Error() {
+								t.Fatalf("invalid target has wrong rejection: %+v => %v, want %v", target, castErr, oldErr)
 							}
 						} else if !want {
 							if !errors.Is(castErr, ErrCastFailure) {
