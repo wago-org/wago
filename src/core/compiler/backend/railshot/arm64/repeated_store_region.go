@@ -13,6 +13,12 @@ import "os"
 
 var repeatedStoreRegionEnabled = os.Getenv("WAGO_ARM64_NO_REPEATED_STORE_REGION") != "1"
 
+// A short NOP run is cheap enough to leave size-stable. Longer deleted regions
+// would still consume frontend bandwidth on every execution, so skip them with
+// one direct branch. The fold already proves that no native entry lands inside
+// the removed region.
+const minRepeatedStoreBranchWords = 8
+
 // truncateNativeCode preserves the assembler's existing rollback behavior and
 // discards provenance for bytes that may subsequently be reused for other code.
 func (f *fn) truncateNativeCode(n int) {
@@ -172,7 +178,12 @@ func repeatStoreRegionAt(b []byte, first, second, words int, targets []uint64, e
 			return false
 		}
 	}
-	for at := second; at < endSecond; at += 4 {
+	clearFrom := second
+	if words >= minRepeatedStoreBranchWords {
+		wrWord(b, second, 0x14000000|uint32(words)&0x03ffffff)
+		clearFrom += 4
+	}
+	for at := clearFrom; at < endSecond; at += 4 {
 		wrWord(b, at, nopWord)
 	}
 	return true
@@ -221,6 +232,9 @@ func (f *fn) foldRepeatedStoreRegions(b []byte, targets []uint64, entries ...int
 			budget -= charge
 			if repeatStoreRegionAt(b, first, second, words, targets, entries) {
 				f.stats.peep("repeated-store-region")
+				if words >= minRepeatedStoreBranchWords {
+					f.stats.peep("repeated-store-region-branch")
+				}
 				first = second + 4*words - 4
 				break
 			}

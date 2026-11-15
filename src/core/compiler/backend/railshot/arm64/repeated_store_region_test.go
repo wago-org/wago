@@ -56,6 +56,30 @@ func TestRepeatedStoreRegion(t *testing.T) {
 	check(b, nil, false)
 }
 
+func TestRepeatedStoreRegionBranchesOverLongDeletion(t *testing.T) {
+	group := []uint32{
+		0xf900061f, nopWord, 0xd2800031, 0xb9000611,
+		0xf9000a1f, nopWord, 0xd2800051, 0xb9000a11,
+	}
+	words := append(append(append([]uint32{}, group...), 0xb86c6b4c, 0x1100058c), group...)
+	b := make([]byte, len(words)*4)
+	for i, w := range words {
+		binary.LittleEndian.PutUint32(b[i*4:], w)
+	}
+	second := (len(group) + 2) * 4
+	if !repeatStoreRegionAt(b, 0, second, len(group), nativeConstantTargets(b), nil) {
+		t.Fatal("long repeated region rejected")
+	}
+	if got, want := rdWord(b, second), uint32(0x14000000|len(group)); got != want {
+		t.Fatalf("skip branch = %#x, want %#x", got, want)
+	}
+	for at := second + 4; at < second+4*len(group); at += 4 {
+		if rdWord(b, at) != nopWord {
+			t.Fatalf("word at %d was not cleared", at)
+		}
+	}
+}
+
 func TestRepeatedStoreRegionDiagnostic(t *testing.T) {
 	path := os.Getenv("WAGO_REPEAT_STORE_DIAGNOSTIC_PATH")
 	if path == "" {
