@@ -10,17 +10,18 @@
 package arm64
 
 import (
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"os"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 var loopLocalLeaseEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_LOCAL_LEASE") != "1"
 
 var temporaryLoopLeaseEnabled = os.Getenv("WAGO_ARM64_NO_TEMP_LOOP_LEASE") != "1"
 
-// A lease belongs to one flat loop. No helper or internal control join can
-// run while its locals use the ordinary pinned-local machinery. Temporary
-// leases also permit conditional exits to the immediate enclosing void frame.
+// A lease belongs to one call-free loop. Classic leases remain flat. Temporary
+// leases may cross structured control while publishing local homes only on
+// branches that leave the leased region.
 type loopLocalLease struct {
 	depth     uint32
 	count     uint8
@@ -49,6 +50,8 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 		refs  uint16
 	}
 	count := 0
+	depth := 0
+	structured := false
 	peek := *r
 	start := peek.Offset()
 	var imm wasm.InstructionImmediate
@@ -69,6 +72,9 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 			if err != nil {
 				return plan, false
 			}
+			if depth != 0 {
+				continue
+			}
 			if plan.temporary && label == 1 {
 				// The immediate enclosing void target gets current homes on its
 				// taken edge. The existing cold-edge path preserves hot residency.
@@ -81,13 +87,17 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 			if endErr != nil || label != 0 || end != 0x0b || peek.Offset()-start > 512 {
 				return plan, false
 			}
+			minimumRefs := uint16(2)
+			if structured {
+				minimumRefs = 3
+			}
 			for slot := 0; slot < len(plan.local); slot++ {
 				best := -1
 				for i := 0; i < count; i++ {
 					if plan.temporary && f.locals[cells[i].local].reg != regNone {
 						continue
 					}
-					if cells[i].refs >= 2 && (best < 0 || cells[i].refs > cells[best].refs) {
+					if cells[i].refs >= minimumRefs && (best < 0 || cells[i].refs > cells[best].refs) {
 						best = i
 					}
 				}
@@ -99,6 +109,39 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 				cells[best].refs = 0
 			}
 			return plan, plan.count != 0
+		}
+		// Structured, call-free control does not invalidate a temporary lease.
+		// Track nesting so only the outer loop latch closes this candidate; inner
+		// branches continue to use the same local-to-register mapping.
+		switch op {
+		case 0x02, 0x03, 0x04: // block, loop, if
+			if !plan.temporary {
+				return plan, false
+			}
+			structured = true
+			// The module is already validated. Only advance over the signed
+			// block-type LEB; the planner does not need its decoded signature.
+			if _, err := peek.I64(); err != nil {
+				return plan, false
+			}
+			depth++
+			continue
+		case 0x05: // else
+			if !plan.temporary || depth == 0 {
+				return plan, false
+			}
+			continue
+		case 0x0b: // nested end; the outer end is consumed with its latch above
+			if !plan.temporary || depth == 0 {
+				return plan, false
+			}
+			depth--
+			continue
+		case 0x0c: // br
+			if _, err := peek.U32(); err != nil || !plan.temporary || depth == 0 {
+				return plan, false
+			}
+			continue
 		}
 		// These admitted operations have no immediates and neither access
 		// memory nor name locals. The full classifier is unnecessary here.
@@ -239,8 +282,15 @@ func (f *fn) finishLoopLocalLease(depth int) {
 // their existing cold edges, without changing the fallthrough register values.
 func (f *fn) publishTemporaryLoopExit(fr *ctrlFrame) {
 	p := f.loopLocalLease
-	if !p.temporary || p.depth == 0 || int(p.depth) > len(f.ctrl) || fr == &f.ctrl[p.depth-1] {
+	if !p.temporary || p.depth == 0 || int(p.depth) > len(f.ctrl) {
 		return
+	}
+	// The lease remains valid for the loop itself and every nested target.
+	// Publish only when the branch actually leaves the leased region.
+	for i := int(p.depth) - 1; i < len(f.ctrl); i++ {
+		if fr == &f.ctrl[i] {
+			return
+		}
 	}
 	for i := 0; i < int(p.count); i++ {
 		x := int(p.local[i])
