@@ -270,6 +270,7 @@ type fn struct {
 	localAddressAligned8   uint64
 	rootAddressLoopScanned bool
 	rootLoopRangeLocal     uint8
+	rootLoopRangeMinimum   uint32
 	rootLoopRangeMaximum   uint32
 	// loadDefinedLocals marks the first 64 locals updated by loading through their
 	// own prior value. Their explicit W-register address rename is a useful

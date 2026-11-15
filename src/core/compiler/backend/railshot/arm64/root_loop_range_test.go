@@ -5,6 +5,7 @@ package arm64
 import (
 	"bytes"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	rt "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 )
@@ -140,26 +141,66 @@ func TestRootLoopRangeLatchProofBoundaries(t *testing.T) {
 		{"extra-control", 4, 16, 1, 2, []byte{0x02, 0x40, 0x0b}, false},
 	} {
 		body := append(append([]byte(nil), tc.prefix...), tail(tc.index, tc.stride, tc.limit)...)
-		local, maximum := f.proveRootLoopRange(body, tc.zero)
-		if (local != 0) != tc.want || tc.want && (local != uint8(tc.index+1) || maximum != uint32(tc.limit)) {
-			t.Fatalf("%s: local=%d maximum=%d want=%v", tc.name, local, maximum, tc.want)
+		var entries [64]uint32
+		local, minimum, maximum := f.proveRootLoopRange(body, tc.zero, &entries)
+		if (local != 0) != tc.want || tc.want && (local != uint8(tc.index+1) || minimum != 0 || maximum != uint32(tc.limit)) {
+			t.Fatalf("%s: local=%d range=%d..%d want=%v", tc.name, local, minimum, maximum, tc.want)
 		}
 	}
 	body := tail(1, 4, 16)
 	for _, bad := range [][]byte{body[:len(body)-1], append(append([]byte(nil), body...), 0x01), append(bytes.Repeat([]byte{0x01}, 16<<10), body...)} {
-		if local, _ := f.proveRootLoopRange(bad, 2); local != 0 {
+		var entries [64]uint32
+		if local, _, _ := f.proveRootLoopRange(bad, 2, &entries); local != 0 {
 			t.Fatal("truncated, trailing or oversized body accepted")
+		}
+	}
+
+	zeroTail := func(index uint32, stride int32) []byte {
+		b := []byte{0x20}
+		b = append(b, wasmtest.ULEB(index)...)
+		b = append(b, 0x41)
+		b = append(b, wasmtest.SLEB32(stride)...)
+		b = append(b, 0x6a, 0x22)
+		b = append(b, wasmtest.ULEB(index)...)
+		return append(b, 0x0d, 0, 0x0b)
+	}
+	for _, tc := range []struct {
+		name         string
+		start        uint32
+		stride       int32
+		known, want  bool
+		minimum, max uint32
+	}{
+		{"wrap-to-zero", 0xffff0000, 32, true, true, 0xffff0000, 0xffffffe0},
+		{"one-iteration-wrap", 0xffffffe0, 32, true, true, 0xffffffe0, 0xffffffe0},
+		{"unknown-entry", 0xffff0000, 32, false, false, 0, 0},
+		{"zero-entry", 0, 32, true, false, 0, 0},
+		{"nondivisible", 0xffff0001, 32, true, false, 0, 0},
+		{"negative-stride", 0xffff0000, -32, true, false, 0, 0},
+	} {
+		var entries [64]uint32
+		entries[1] = tc.start
+		known := uint64(0)
+		if tc.known {
+			known = 2
+		}
+		local, minimum, maximum := f.proveRootLoopRange(zeroTail(1, tc.stride), known, &entries)
+		if (local != 0) != tc.want || tc.want && (minimum != tc.minimum || maximum != tc.max) {
+			t.Fatalf("%s: local=%d range=%x..%x want=%v/%x..%x", tc.name, local, minimum, maximum, tc.want, tc.minimum, tc.max)
 		}
 	}
 }
 
 func TestRootLoopRangeMaximumRequiresOpenRootFrame(t *testing.T) {
-	f := fn{rootLoopRangeLocal: 2, rootLoopRangeMaximum: 16}
+	f := fn{rootLoopRangeLocal: 2, rootLoopRangeMinimum: 4, rootLoopRangeMaximum: 16}
 	e := elem{st: storage{kind: stLocalRef, typ: mtI32, idx: 1}}
 	e.setElemKind(ekValue)
 	f.ctrl = []ctrlFrame{{kind: cfFunc}, {kind: cfLoop}}
 	if max, ok := f.localAddressMaximum(&e); !ok || max != 16 {
 		t.Fatal("missing open-loop range")
+	}
+	if min, max, ok := f.rootLoopAddressRange(&e); !ok || min != 4 || max != 16 {
+		t.Fatal("missing open-loop interval")
 	}
 	f.ctrl = f.ctrl[:1]
 	if _, ok := f.localAddressMaximum(&e); ok {
@@ -168,5 +209,78 @@ func TestRootLoopRangeMaximumRequiresOpenRootFrame(t *testing.T) {
 	f.ctrl = append(f.ctrl, ctrlFrame{kind: cfBlock}, ctrlFrame{kind: cfLoop})
 	if _, ok := f.localAddressMaximum(&e); ok {
 		t.Fatal("loop range escaped into unrelated nested loop")
+	}
+}
+
+func TestRootLoopRangeWrapToZeroMemory(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	body := []byte{1, 1, 0x7f, 0x41}
+	body = append(body, wasmtest.SLEB32(-65536)...)
+	body = append(body, 0x21, 0, 0x03, 0x40, 0x20, 0, 0x41)
+	body = append(body, wasmtest.SLEB32(131096)...)
+	body = append(body, 0x6a, 0x42, 0, 0x37, 3, 0, 0x20, 0, 0x41, 32, 0x6a, 0x22, 0, 0x0d, 0, 0x0b, 0x41, 0, 0x0b)
+	m := modMem(t, 2, nil, []wasm.ValType{wasm.I32}, body)
+	var memories [2][]byte
+	for variant, enabled := range []bool{false, true} {
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"memory-min-bounds": enabled}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		eng, err := rt.NewEngine()
+		if err != nil {
+			cm.CodeImage.Close()
+			t.Fatal(err)
+		}
+		jm, err := rt.NewJobMemory(2 * 65536)
+		if err != nil {
+			eng.Close()
+			cm.CodeImage.Close()
+			t.Fatal(err)
+		}
+		for i := range jm.CurrentBytes() {
+			jm.CurrentBytes()[i] = 0xa5
+		}
+		arena, err := rt.NewArena(4096)
+		if err != nil {
+			jm.Close()
+			eng.Close()
+			cm.CodeImage.Close()
+			t.Fatal(err)
+		}
+		code, entry, err := rt.MapCode(cm.Code)
+		if err == nil {
+			results, trap := arena.Alloc(8), arena.Alloc(rt.TrapBufferBytes)
+			err = eng.Call(entry+uintptr(cm.Entry[0]), nil, jm.LinearMemory(), trap, results)
+		}
+		if code != nil {
+			rt.Unmap(code)
+		}
+		memories[variant] = append([]byte(nil), jm.CurrentBytes()...)
+		arena.Close()
+		jm.Close()
+		eng.Close()
+		cm.CodeImage.Close()
+		if err != nil {
+			t.Fatalf("enabled=%t: %v", enabled, err)
+		}
+		want := 0
+		if enabled {
+			want = 1
+		}
+		if got := stats.Funcs[0].Peephole["root-loop-address-range"]; got != want {
+			t.Fatalf("enabled=%t root range=%d want=%d", enabled, got, want)
+		}
+		if got := stats.Funcs[0].Peephole["memory-min-bounds"]; got != want {
+			t.Fatalf("enabled=%t minimum proofs=%d want=%d", enabled, got, want)
+		}
+	}
+	if !bytes.Equal(memories[0], memories[1]) {
+		t.Fatal("wrap-to-zero proof changed memory")
+	}
+	for address := 65560; address <= 131064; address += 32 {
+		if !bytes.Equal(memories[1][address:address+8], make([]byte, 8)) {
+			t.Fatalf("store at %d missing", address)
+		}
 	}
 }

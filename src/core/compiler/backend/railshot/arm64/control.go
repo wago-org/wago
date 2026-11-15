@@ -1761,7 +1761,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	f.setInlineNonzeroPredicate(predicate)
 	if kind == cfLoop && len(f.ctrl) == 1 {
-		f.rootLoopRangeLocal, f.rootLoopRangeMaximum = 0, 0
+		f.rootLoopRangeLocal, f.rootLoopRangeMinimum, f.rootLoopRangeMaximum = 0, 0, 0
 		if !f.unreachable {
 			f.prepareRootLoopRange(r)
 		}

@@ -132,11 +132,19 @@ func (f *fn) localAddressMaximum(e *elem) (uint64, bool) {
 		f.stats.peep("private-local-address-bound")
 		return uint64(uint32(value.cval)), true
 	}
-	if f.rootLoopRangeLocal != 0 && len(f.ctrl) > 1 && f.ctrl[1].kind == cfLoop && uint(e.st.idx)+1 == uint(f.rootLoopRangeLocal) {
-		return uint64(f.rootLoopRangeMaximum), true
+	if _, maximum, ok := f.rootLoopAddressRange(e); ok {
+		return maximum, true
 	}
 	if uint(e.st.idx) >= uint(len(f.localAddressBounds)) {
 		return 0, false
 	}
 	return uint64(f.localAddressBounds[e.st.idx]), true
+}
+
+func (f *fn) rootLoopAddressRange(e *elem) (minimum, maximum uint64, ok bool) {
+	if e == nil || e.elemKind() != ekValue || e.st.typ != mtI32 || (e.st.kind != stLocalRef && e.st.kind != stLocalReg) ||
+		f.rootLoopRangeLocal == 0 || len(f.ctrl) <= 1 || f.ctrl[1].kind != cfLoop || uint(e.st.idx)+1 != uint(f.rootLoopRangeLocal) {
+		return 0, 0, false
+	}
+	return uint64(f.rootLoopRangeMinimum), uint64(f.rootLoopRangeMaximum), true
 }

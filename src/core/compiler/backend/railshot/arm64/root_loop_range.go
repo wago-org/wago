@@ -11,11 +11,13 @@ package arm64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
-// Recognize a zero-entry positive induction loop with exactly one counter write
-// and one canonical conditional backedge. Divisibility makes the progression
-// reach its positive limit before any i32 wrap. The inclusive limit remains a
-// valid upper bound even after the final update. No trapping check is hoisted.
-func (f *fn) proveRootLoopRange(body []byte, zero uint64) (local uint8, maximum uint32) {
+// Recognize a constant-entry positive induction loop with exactly one counter
+// write and one canonical conditional backedge. The latch either compares with
+// a higher constant limit or branches on the updated value while progressing to
+// zero through one final i32 wrap. Divisibility proves exact termination. The
+// returned range covers values observed by the body before the latch update.
+// No trapping check is hoisted.
+func (f *fn) proveRootLoopRange(body []byte, known uint64, entries *[64]uint32) (local uint8, minimum, maximum uint32) {
 	if len(body) > 16<<10 {
 		return
 	}
@@ -32,10 +34,10 @@ func (f *fn) proveRootLoopRange(body []byte, zero uint64) (local uint8, maximum 
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
-			return 0, 0
+			return
 		}
 		if !(op == 0x01 || op == 0x1a || op == 0x1b || op == 0x0d || op == 0x0b || op >= 0x20 && op <= 0x22 || op >= 0x28 && op <= 0x3e || op >= 0x41 && op <= 0xc4) {
-			return 0, 0
+			return
 		}
 		in := instruction{op: op}
 		copy := r
@@ -46,11 +48,11 @@ func (f *fn) proveRootLoopRange(body []byte, zero uint64) (local uint8, maximum 
 			in.index, err = copy.U32()
 		}
 		if err != nil || f.classifier.ClassifyInto(&r, op, &imm) != nil {
-			return 0, 0
+			return
 		}
 		if op == 0x21 || op == 0x22 {
 			if int(in.index) >= f.nLocals || in.index >= 64 {
-				return 0, 0
+				return
 			}
 			writes[in.index]++
 		}
@@ -58,37 +60,80 @@ func (f *fn) proveRootLoopRange(body []byte, zero uint64) (local uint8, maximum 
 			branches++
 		}
 		if op == 0x0b && r.HasNext() {
-			return 0, 0
+			return
 		}
 		recent[count%len(recent)] = in
 		count++
 	}
-	if count < 8 || branches != 1 {
+	if count < 6 || branches != 1 {
 		return
 	}
 	var tail [8]instruction
-	for i := range tail {
-		tail[i] = recent[(count-8+i)%8]
-	}
-	for i, op := range []byte{0x20, 0x41, 0x6a, 0x22, 0x41, 0x47, 0x0d, 0x0b} {
-		if tail[i].op != op {
-			return 0, 0
+	limitForm := count >= len(tail)
+	if limitForm {
+		for i := range tail {
+			tail[i] = recent[(count-len(tail)+i)%len(recent)]
 		}
 	}
+	if limitForm {
+		for i, op := range []byte{0x20, 0x41, 0x6a, 0x22, 0x41, 0x47, 0x0d, 0x0b} {
+			if tail[i].op != op {
+				limitForm = false
+				break
+			}
+		}
+	}
+	zeroForm := false
+	if !limitForm {
+		var short [6]instruction
+		for i := range short {
+			short[i] = recent[(count-6+i)%len(recent)]
+		}
+		zeroForm = true
+		for i, op := range []byte{0x20, 0x41, 0x6a, 0x22, 0x0d, 0x0b} {
+			if short[i].op != op {
+				zeroForm = false
+				break
+			}
+		}
+		if zeroForm {
+			tail[0], tail[1], tail[2], tail[3], tail[6], tail[7] = short[0], short[1], short[2], short[3], short[4], short[5]
+		}
+	}
+	if !limitForm && !zeroForm {
+		return
+	}
 	index := tail[0].index
-	if index >= 64 || int(index) >= f.nLocals || int(index) < f.nParams || f.localType[index] != mtI32 || zero&(uint64(1)<<index) == 0 || tail[3].index != index || writes[index] != 1 || tail[6].index != 0 {
+	if index >= 64 || int(index) >= f.nLocals || int(index) < f.nParams || f.localType[index] != mtI32 || known&(uint64(1)<<index) == 0 || tail[3].index != index || writes[index] != 1 || tail[6].index != 0 {
 		return
 	}
-	stride, limit := tail[1].constant, tail[4].constant
-	if stride <= 0 || limit <= 0 || stride > limit || limit%stride != 0 {
+	start := entries[index]
+	stride := tail[1].constant
+	if stride <= 0 {
 		return
 	}
-	return uint8(index + 1), uint32(limit)
+	step := uint64(uint32(stride))
+	if limitForm {
+		limit := uint32(tail[4].constant)
+		if start >= limit || uint64(limit-start)%step != 0 {
+			return
+		}
+		return uint8(index + 1), start, limit
+	}
+	if start == 0 {
+		return
+	}
+	distance := uint64(1<<32) - uint64(start)
+	if step > distance || distance%step != 0 {
+		return
+	}
+	return uint8(index + 1), start, uint32(uint64(start) + distance - step)
 }
 
 // Only the first outermost loop is considered, bounding lookahead to one body
 // and one prefix scan per function. A declared local never written before this
-// entry is still zero. The matched latch proves a non-wrapping bound.
+// entry is still zero. The matched latch proves either a non-wrapping bounded
+// progression or one exact final wrap to zero.
 // Later source reuse is outside this frame's facts.
 func (f *fn) prepareRootLoopRange(r *wasm.Reader) {
 	if len(f.ctrl) != 1 || f.ctrl[0].kind != cfFunc || f.inlineDepth != 0 || f.localBase != 0 || f.rootAddressLoopScanned {
@@ -115,16 +160,30 @@ func (f *fn) prepareRootLoopRange(r *wasm.Reader) {
 	if start < 0 || begin < start || begin > len(body) {
 		return
 	}
-	var valid uint64
+	var known uint64
+	var entries [64]uint32
 	for i := f.nParams; i < f.nLocals; i++ {
 		if f.localType[i] == mtI32 {
-			valid |= uint64(1) << i
+			known |= uint64(1) << i
 		}
 	}
 	prefix := wasm.ReaderFrom(body)
 	var imm wasm.InstructionImmediate
+	depth := 0
+	previousConst := false
+	var previousValue uint32
 	for prefix.Offset() < start {
 		op, err := prefix.Byte()
+		currentConst := false
+		var currentValue uint32
+		if op == 0x41 {
+			copy := prefix
+			value, e := copy.I32()
+			if e != nil {
+				return
+			}
+			currentConst, currentValue = true, uint32(value)
+		}
 		if err != nil || f.classifier.ClassifyInto(&prefix, op, &imm) != nil {
 			return
 		}
@@ -132,15 +191,29 @@ func (f *fn) prepareRootLoopRange(r *wasm.Reader) {
 			if int(imm.Index) >= f.nLocals {
 				return
 			}
-			valid &^= uint64(1) << imm.Index
+			bit := uint64(1) << imm.Index
+			if depth == 0 && previousConst && f.localType[imm.Index] == mtI32 {
+				known |= bit
+				entries[imm.Index] = previousValue
+			} else {
+				known &^= bit
+			}
 		}
+		switch op {
+		case 0x02, 0x03, 0x04, 0x06, 0x1f:
+			depth++
+		case 0x0b:
+			if depth > 0 {
+				depth--
+			}
+		}
+		previousConst, previousValue = currentConst, currentValue
 	}
 	if prefix.Offset() != start {
 		return
 	}
-	zero := valid
 	scan := *r
-	depth := 0
+	depth = 0
 	for scan.HasNext() {
 		op, err := scan.Byte()
 		if err != nil || f.classifier.ClassifyInto(&scan, op, &imm) != nil {
@@ -152,7 +225,7 @@ func (f *fn) prepareRootLoopRange(r *wasm.Reader) {
 		case 0x0b:
 			if depth == 0 {
 				loopBody := body[begin:scan.Offset()]
-				f.rootLoopRangeLocal, f.rootLoopRangeMaximum = f.proveRootLoopRange(loopBody, zero)
+				f.rootLoopRangeLocal, f.rootLoopRangeMinimum, f.rootLoopRangeMaximum = f.proveRootLoopRange(loopBody, known, &entries)
 				if f.rootLoopRangeLocal != 0 {
 					f.stats.peep("root-loop-address-range")
 				}
