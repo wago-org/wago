@@ -1315,7 +1315,7 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfb:
-		in, err := decodeFB(r)
+		in, err := decodeFBInto(r, &v.opExt)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfc:

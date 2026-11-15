@@ -71,7 +71,12 @@ func decodeFCWithMultiMemory(r *reader, multiMemory bool) (Instruction, error) {
 
 var fcNoImm = [...]InstrKind{0: InstrI32TruncSatF32S, 1: InstrI32TruncSatF32U, 2: InstrI32TruncSatF64S, 3: InstrI32TruncSatF64U, 4: InstrI64TruncSatF32S, 5: InstrI64TruncSatF32U, 6: InstrI64TruncSatF64S, 7: InstrI64TruncSatF64U, 19: InstrI64Add128, 20: InstrI64Sub128, 21: InstrI64MulWideS, 22: InstrI64MulWideU}
 
-func decodeFB(r *reader) (Instruction, error) {
+func decodeFB(r *reader) (Instruction, error) { return decodeFBInto(r, nil) }
+
+// decodeFBInto can reuse validator storage. The caller must consume the
+// instruction before decoding another opcode into ext. Tree decoders pass nil
+// so each retained instruction owns its immediate.
+func decodeFBInto(r *reader, ext *instrExt) (Instruction, error) {
 	sub, err := r.u32()
 	if err != nil {
 		return Instruction{}, err
@@ -154,10 +159,18 @@ func decodeFB(r *reader) (Instruction, error) {
 		return Instruction{Kind: InstrStringEncodeWtf8Array}, nil
 	case 20, 21:
 		ht, err := decodeHeapType(r)
-		return Instruction{Kind: InstrRefTest, Cast: CastOp{TargetNullable: sub == 21}, ext: &instrExt{HeapType: ht}}, err
+		if ext == nil {
+			ext = &instrExt{}
+		}
+		*ext = instrExt{HeapType: ht}
+		return Instruction{Kind: InstrRefTest, Cast: CastOp{TargetNullable: sub == 21}, ext: ext}, err
 	case 22, 23:
 		exact, ht, err := decodeRefHeapType(r)
-		return Instruction{Kind: InstrRefCast, Cast: CastOp{TargetNullable: sub == 23, SourceNullable: exact}, ext: &instrExt{HeapType: ht}}, err
+		if ext == nil {
+			ext = &instrExt{}
+		}
+		*ext = instrExt{HeapType: ht}
+		return Instruction{Kind: InstrRefCast, Cast: CastOp{TargetNullable: sub == 23, SourceNullable: exact}, ext: ext}, err
 	case 24, 25:
 		cast, err := decodeCastOp(r)
 		if err != nil {
@@ -179,13 +192,21 @@ func decodeFB(r *reader) (Instruction, error) {
 		if sub == 25 {
 			k = InstrBrOnCastFail
 		}
-		return Instruction{Kind: k, Index: l, Cast: cast, ext: &instrExt{HeapType: ht1, HeapType2: ht2}}, nil
+		if ext == nil {
+			ext = &instrExt{}
+		}
+		*ext = instrExt{HeapType: ht1, HeapType2: ht2}
+		return Instruction{Kind: k, Index: l, Cast: cast, ext: ext}, nil
 	case 34:
 		idx, err := r.u32()
 		return Instruction{Kind: InstrRefGetDesc, Index: idx}, err
 	case 35, 36:
 		exact, ht, err := decodeRefHeapType(r)
-		return Instruction{Kind: InstrRefCastDescEq, Cast: CastOp{TargetNullable: sub == 36, SourceNullable: exact}, ext: &instrExt{HeapType: ht}}, err
+		if ext == nil {
+			ext = &instrExt{}
+		}
+		*ext = instrExt{HeapType: ht}
+		return Instruction{Kind: InstrRefCastDescEq, Cast: CastOp{TargetNullable: sub == 36, SourceNullable: exact}, ext: ext}, err
 	default:
 		return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
