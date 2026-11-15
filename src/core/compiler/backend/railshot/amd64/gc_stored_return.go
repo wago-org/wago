@@ -70,15 +70,17 @@ func (f *fn) proveStoredGCReturn(index uint32, depth int, budget *int) bool {
 		return false
 	}
 	body := &f.m.Code[local]
-	if len(body.BodyBytes) > 256 {
+	// Zero-count declarations consume no local slots or expression bytes.
+	// Bound their run count separately, before walking the declarations.
+	if len(body.BodyBytes) > 256 || len(body.Locals.Runs) > 32 || len(ft.Params) > 32 {
 		return false
 	}
 	nLocals := uint64(len(ft.Params))
 	for _, run := range body.Locals.Runs {
 		nLocals += uint64(run.Count)
-	}
-	if nLocals > 32 {
-		return false
+		if nLocals > 32 {
+			return false
+		}
 	}
 	var s gcStoredProofState
 	var control [4]struct {
