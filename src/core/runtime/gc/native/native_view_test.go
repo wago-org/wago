@@ -6,8 +6,8 @@ import (
 )
 
 func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
-	if NativeABIVersion != 9 {
-		t.Fatalf("native collector ABI version = %d, want version 9", NativeABIVersion)
+	if NativeABIVersion != 10 {
+		t.Fatalf("native collector ABI version = %d, want version 10", NativeABIVersion)
 	}
 	if got := unsafe.Sizeof(handleEntry{}); got != NativeHandleStride {
 		t.Fatalf("handle entry size = %d, want %d", got, NativeHandleStride)
@@ -79,7 +79,8 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 	}
 	if unsafe.Offsetof(instance.Collector) != NativeInstanceViewCollectorOffset ||
 		unsafe.Offsetof(instance.LocalTypes) != NativeInstanceViewLocalTypesOffset ||
-		unsafe.Offsetof(instance.LocalTypeCount) != NativeInstanceViewLocalTypeCountOffset {
+		unsafe.Offsetof(instance.LocalTypeCount) != NativeInstanceViewLocalTypeCountOffset ||
+		unsafe.Offsetof(instance.IdentityTypes) != NativeInstanceViewIdentityTypesOffset {
 		t.Fatalf("instance view offsets changed")
 	}
 
@@ -126,6 +127,10 @@ func TestNativeCollectorViewRefreshesSubtypeIntervalsAfterTypeAppend(t *testing.
 	}
 	defer c.Close()
 	view := c.NativeView()
+	instance := NewNativeInstanceView(c, []TypeID{0})
+	if instance == nil || instance.IdentityTypes != 1 {
+		t.Fatalf("pre-append identity instance = %+v", instance)
+	}
 	generation := view.RefreshGeneration
 	child, err := NewStructDesc(1, []StorageKind{StorageI32})
 	if err != nil {
@@ -138,6 +143,12 @@ func TestNativeCollectorViewRefreshesSubtypeIntervalsAfterTypeAppend(t *testing.
 	if view.SubtypeIntervals == 0 || view.SubtypeIntervalCount != 2 || view.RefreshGeneration <= generation || view.SubtypeIntervals != sliceData(c.subtypeIntervals) {
 		t.Fatalf("appended subtype view = %+v, generation before append %d", view, generation)
 	}
+	if instance.IdentityTypes != 1 || instance.LocalTypeCount != 1 || view.SubtypeIntervalCount == instance.LocalTypeCount {
+		t.Fatalf("pre-append instance lost guarded snapshot shape: instance=%+v collector=%+v", instance, view)
+	}
+	if err := ValidateNativeInstanceView(instance, c, 1); err != nil {
+		t.Fatalf("pre-append identity prefix after collector growth: %v", err)
+	}
 	if err := ValidateNativeInstanceView(NewNativeInstanceView(c, []TypeID{0, 1}), c, 2); err != nil {
 		t.Fatalf("refreshed subtype view validation: %v", err)
 	}
@@ -148,9 +159,17 @@ func TestNativeInstanceViewPublishesImmutableTypeMap(t *testing.T) {
 		t.Fatalf("nil collector instance view = %+v", got)
 	}
 	c := newTestCollector(t, Config{})
+	identityTypes := make([]TypeID, len(c.types))
+	for i := range identityTypes {
+		identityTypes[i] = TypeID(i)
+	}
+	identity := NewNativeInstanceView(c, identityTypes)
+	if identity == nil || identity.IdentityTypes != 1 {
+		t.Fatalf("identity native instance view = %+v", identity)
+	}
 	localTypes := []TypeID{2, 1, 0}
 	view := NewNativeInstanceView(c, localTypes)
-	if view == nil || view.Version != NativeABIVersion || view.Collector == 0 || view.LocalTypes == 0 || view.LocalTypeCount != uint32(len(localTypes)) {
+	if view == nil || view.Version != NativeABIVersion || view.Collector == 0 || view.LocalTypes == 0 || view.LocalTypeCount != uint32(len(localTypes)) || view.IdentityTypes != 0 {
 		t.Fatalf("native instance view = %+v", view)
 	}
 	if err := ValidateNativeInstanceView(view, c, uint32(len(localTypes))); err != nil {
@@ -172,6 +191,7 @@ func TestNativeInstanceViewPublishesImmutableTypeMap(t *testing.T) {
 		{"collector", func(v *NativeInstanceView) { v.Collector = 0 }},
 		{"type pointer", func(v *NativeInstanceView) { v.LocalTypes = 0 }},
 		{"type count", func(v *NativeInstanceView) { v.LocalTypeCount-- }},
+		{"identity marker", func(v *NativeInstanceView) { v.IdentityTypes ^= 1 }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bad := *view

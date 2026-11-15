@@ -82,6 +82,12 @@ func buildSubtypeIntervals(types []TypeDesc) ([]uint64, error) {
 	return intervals, nil
 }
 
+// BuildSubtypeIntervals returns the validated DFS interval projection used by
+// both runtime subtype checks and compile-time constant-target lowering.
+func BuildSubtypeIntervals(types []TypeDesc) ([]uint64, error) {
+	return buildSubtypeIntervals(types)
+}
+
 func (c *Collector) typeSubtypeIDs(actual, required TypeID) (bool, error) {
 	if int(actual) >= len(c.subtypeIntervals) || int(required) >= len(c.subtypeIntervals) {
 		return false, fmt.Errorf("gc: unknown subtype pair %d/%d", actual, required)

@@ -50,7 +50,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		if !d.HasRefs {
 			flags |= FlagPointerFree
 		}
-		c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
+		c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags | ObjectTypeFlags(d)})
 		c.stats.Allocations++
 
 		c.refreshNativeView()
@@ -169,7 +169,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	if sp == spaceLarge {
 		flags |= FlagLarge
 	}
-	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
+	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags | ObjectTypeFlags(d)})
 	c.stats.Allocations++
 
 	if sp == spaceNursery {

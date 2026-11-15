@@ -504,7 +504,7 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 	if !d.HasRefs {
 		flags |= FlagPointerFree
 	}
-	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
+	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags | ObjectTypeFlags(d)})
 	c.tinyPostAlloc(r, d)
 	c.stats.Allocations++
 	if paced {

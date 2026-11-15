@@ -8,6 +8,7 @@
 package gc
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 )
@@ -164,14 +165,21 @@ func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonica
 		return target.Kind == RefTestAny || target.Kind == RefTestEq, nil
 	}
 
-	dynamic, err := c.refDesc(r)
+	dynamic, object, err := c.refDescPtrBytes(r)
 	if err != nil {
 		return false, err
 	}
+	flags := binary.LittleEndian.Uint32(object[12:16])
 	switch target.Kind {
 	case RefTestStruct:
+		if flags&FlagTypeFastValid != 0 {
+			return flags&FlagTypeStruct != 0, nil
+		}
 		return dynamic.Kind == KindStruct, nil
 	case RefTestArray:
+		if flags&FlagTypeFastValid != 0 {
+			return flags&FlagTypeArray != 0, nil
+		}
 		return dynamic.Kind == KindArray, nil
 	case RefTestDefined:
 		if dynamic.Kind != defined.Kind {

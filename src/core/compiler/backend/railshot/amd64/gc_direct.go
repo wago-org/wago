@@ -667,10 +667,121 @@ func emitGCTrustedFinalCastBody(a *x64.Asm, returnToCaller bool) {
 // reference with EDX zero on success, or zero with EDX=trapCastFailure.
 // R9-R11 are preserved so functions with pinned locals can call the same leaf.
 func emitModuleGCDefinedCastStub(a *x64.Asm) {
-	emitGCDefinedCastBody(a, true, 7)
+	emitGCDefinedCastBody(a, true, 7, gcDefinedCheckDynamic, gcDefinedStaticTarget{})
 }
 
-func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8) {
+type gcDefinedCheckMode uint8
+
+const (
+	gcDefinedCheckDynamic gcDefinedCheckMode = iota
+	gcDefinedCheckExact
+	gcDefinedCheckOpen
+)
+
+type gcDefinedStaticTarget struct {
+	valid     bool
+	typeIndex uint32
+	typeCount uint32
+	interval  uint64
+}
+
+func (f *fn) definedStaticTarget(typeIndex uint32) gcDefinedStaticTarget {
+	if int(typeIndex) >= len(f.gcTypeLayouts) || f.gcTypeLayouts[typeIndex].Type == nil {
+		return gcDefinedStaticTarget{}
+	}
+	return gcDefinedStaticTarget{
+		valid:     true,
+		typeIndex: typeIndex,
+		typeCount: uint32(len(f.gcTypeLayouts)),
+		interval:  f.gcTypeLayouts[typeIndex].SubtypeInterval,
+	}
+}
+
+// emitGCLoadDefinedTarget loads the canonical target ID. An identity type map
+// permits an immediate local index; all other instances use their checked map.
+func emitGCLoadDefinedTarget(a *x64.Asm, target gcDefinedStaticTarget) {
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	if target.valid {
+		a.CmpImm32Mem(R8, gc.NativeInstanceViewIdentityTypesOffset, 1)
+		dynamic := a.JccPlaceholder(condNE)
+		a.MovImm32(RDX, int32(target.typeIndex))
+		ready := a.JmpPlaceholder()
+		a.PatchRel32(dynamic, a.Len())
+		a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
+		a.Load32(RDX, R10, int32(target.typeIndex*4))
+		a.PatchRel32(ready, a.Len())
+	} else {
+		a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
+		a.ImulRI(RDX, 4, true)
+		a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+	}
+}
+
+// emitGCSubtypeIntervalCheck checks actual against target. Eligible immutable
+// identity snapshots bake the target bounds and load only the actual span.
+// Nonidentity or extended snapshots retain the checked two-span path.
+func emitGCSubtypeIntervalCheck(a *x64.Asm, actual, targetID Reg, target gcDefinedStaticTarget, invalidIf, mismatchIf func(Cond)) {
+	var dynamic []int
+	staticDone := -1
+	if target.valid {
+		a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+		a.CmpImm32Mem(R8, gc.NativeInstanceViewIdentityTypesOffset, 1)
+		dynamic = append(dynamic, a.JccPlaceholder(condNE))
+		a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+		a.CmpImm32Mem(R8, gc.NativeViewSubtypeIntervalCountOffset, int32(target.typeCount))
+		dynamic = append(dynamic, a.JccPlaceholder(condNE))
+		a.MovRegReg32(RAX, actual)
+		a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+		invalidIf(condAE)
+		a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+		a.TestSelf(R10, true)
+		invalidIf(condE)
+		a.MovRegReg32(RAX, actual)
+		a.ImulRI(RAX, 8, true)
+		a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
+		a.MovReg64(RAX, R9)
+		a.ShiftImm(5, RAX, 32, true)
+		a.AluRI(cmpDigit, RAX, int32(target.interval>>32), false)
+		mismatchIf(condB)
+		a.AluRI(cmpDigit, R9, int32(target.interval), false)
+		mismatchIf(condA)
+		staticDone = a.JmpPlaceholder()
+		for _, branch := range dynamic {
+			a.PatchRel32(branch, a.Len())
+		}
+	}
+
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+	a.MovRegReg32(RAX, actual)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+	invalidIf(condAE)
+	a.MovRegReg32(RAX, targetID)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+	invalidIf(condAE)
+	a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+	a.TestSelf(R10, true)
+	invalidIf(condE)
+	a.MovRegReg32(RAX, actual)
+	a.ImulRI(RAX, 8, true)
+	a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
+	a.MovRegReg32(RAX, targetID)
+	a.ImulRI(RAX, 8, true)
+	a.LoadIdx(R10, R10, RAX, 0, 8, false, true)
+	a.MovReg64(RAX, R9)
+	a.ShiftImm(5, RAX, 32, true)
+	a.MovReg64(RCX, R10)
+	a.ShiftImm(5, RCX, 32, true)
+	a.Cmp32(RAX, RCX)
+	mismatchIf(condB)
+	a.Cmp32(R9, R10)
+	mismatchIf(condA)
+	if staticDone >= 0 {
+		a.PatchRel32(staticDone, a.Len())
+	}
+}
+
+func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8, mode gcDefinedCheckMode, target gcDefinedStaticTarget) {
 	for i := Reg(0); i < 3; i++ {
 		if preserveMask&(1<<i) != 0 {
 			a.Push(R9 + i)
@@ -699,10 +810,7 @@ func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8) 
 	failIf(condNE) // i31 cannot satisfy a defined struct or array target
 
 	// Resolve the module-local target into the collector's canonical domain.
-	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
-	a.ImulRI(RDX, 4, true)
-	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+	emitGCLoadDefinedTarget(a, target)
 
 	// Resolve and validate the compact handle against the current heap backing.
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
@@ -733,41 +841,24 @@ func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8) 
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0) // actual canonical type ID
 	a.Cmp32(RCX, RDX)
-	identityDone := a.JccPlaceholder(condE)
+	identityDone := -1
+	if mode == gcDefinedCheckExact {
+		failIf(condNE)
+	} else {
+		identityDone = a.JccPlaceholder(condE)
+		if mode == gcDefinedCheckDynamic {
+			// Shared leaves read the target-mode flag supplied by each caller.
+			a.TestSelf(RSI, false)
+			failIf(condNE)
+		}
 
-	// Exact casts and ordinary casts to final types reject proper subtypes.
-	a.TestSelf(RSI, false)
-	failIf(condNE)
-
-	// Open targets use the collector's immutable subtype interval table.
-	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.MovRegReg32(RAX, RCX)
-	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-	failIf(condAE)
-	a.MovRegReg32(RAX, RDX)
-	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-	failIf(condAE)
-	a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
-	a.TestSelf(R10, true)
-	failIf(condE)
-	a.MovRegReg32(RAX, RCX)
-	a.ImulRI(RAX, 8, true)
-	a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
-	a.MovRegReg32(RAX, RDX)
-	a.ImulRI(RAX, 8, true)
-	a.LoadIdx(R10, R10, RAX, 0, 8, false, true)
-	a.MovReg64(RAX, R9)
-	a.ShiftImm(5, RAX, 32, true)
-	a.MovReg64(RCX, R10)
-	a.ShiftImm(5, RCX, 32, true)
-	a.Cmp32(RAX, RCX)
-	failIf(condB)
-	a.Cmp32(R9, R10)
-	failIf(condA)
+		emitGCSubtypeIntervalCheck(a, RCX, RDX, target, failIf, failIf)
+	}
 
 	success := a.Len()
-	a.PatchRel32(identityDone, success)
+	if identityDone >= 0 {
+		a.PatchRel32(identityDone, success)
+	}
 	a.PatchRel32(nullSuccess, success)
 	a.MovRegReg32(RAX, RDI)
 	a.XorSelf32(RDX)
@@ -1073,12 +1164,16 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 	} else {
 		f.a.MovImm32(RSI, 0)
 	}
+	mode := gcDefinedCheckOpen
+	if noProperSubtype {
+		mode = gcDefinedCheckExact
+	}
 	if gcSharedStubsEnabled {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
 		if gcInlineCastsEnabled {
-			emitGCDefinedCastBody(f.a, false, f.inlineGCCastPreserveMask())
+			emitGCDefinedCastBody(f.a, false, f.inlineGCCastPreserveMask(), mode, f.definedStaticTarget(typeIndex))
 			f.stats.peep("gc-inline-defined-cast")
 		} else {
 			site := f.a.CallRel32()
@@ -1117,12 +1212,30 @@ func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
 	} else {
 		f.a.MovImm32(RCX, 0)
 	}
+	final := false
+	if target, ok := f.stagedGCType(typeIndex); ok {
+		final = target.Final
+	}
+	if final {
+		f.a.MovImm32(RSI, 1)
+	} else {
+		f.a.MovImm32(RSI, 0)
+	}
 	if regallocCheckEnabled {
 		f.checkCallClobber()
 	}
-	site := f.a.CallRel32()
-	f.sc.gcDefinedTestStubSites = append(f.sc.gcDefinedTestStubSites, site)
-	f.stats.call("gcnative")
+	if gcSharedStubsEnabled && gcInlineCastsEnabled {
+		mode := gcDefinedCheckOpen
+		if final {
+			mode = gcDefinedCheckExact
+		}
+		f.emitNativeDefinedTypeCheck(true, false, mode, f.definedStaticTarget(typeIndex))
+		f.stats.peep("gc-inline-defined-test")
+	} else {
+		site := f.a.CallRel32()
+		f.sc.gcDefinedTestStubSites = append(f.sc.gcDefinedTestStubSites, site)
+		f.stats.call("gcnative")
+	}
 	f.pushReg(RAX, mtI32)
 	return nil
 }
@@ -1908,17 +2021,17 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.Store32(R11, 0, RAX)
 	a.Store32(R11, 4, sizeReg)
 	a.Store32(R11, 8, countReg)
-	flags := int32(0)
+	flags := uint32(gc.FlagTypeFastValid | gc.FlagTypeArray | gc.FlagTypeFinal)
 	if layout.pointerFree {
-		flags = int32(gc.FlagPointerFree)
+		flags |= gc.FlagPointerFree
 	}
 	if dynamicLarge || largeState {
 		a.AluRI(cmpDigit, RDX, int32(gc.NativeSpaceLarge), false)
 		largeFlags := a.JccPlaceholder(condE)
-		a.StoreImm32Mem(R11, 12, flags)
+		a.StoreImm32Mem(R11, 12, int32(flags))
 		flagsReady := a.JmpPlaceholder()
 		a.PatchRel32(largeFlags, a.Len())
-		a.StoreImm32Mem(R11, 12, flags|int32(gc.FlagLarge))
+		a.StoreImm32Mem(R11, 12, int32(flags|gc.FlagLarge))
 		a.PatchRel32(flagsReady, a.Len())
 		if dynamicLarge {
 			a.AluRI(cmpDigit, RDI, 1, false)
@@ -1932,7 +2045,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 			a.Load32(countReg, R10, gc.NativeStructAllocChunkBumpOffset)
 		}
 	} else {
-		a.StoreImm32Mem(R11, 12, flags)
+		a.StoreImm32Mem(R11, 12, int32(flags))
 	}
 
 	switch site.mode {
@@ -2359,11 +2472,14 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.Store32(R11, 0, RAX)
 	a.StoreImm32Mem(R11, 4, int32(objectSize))
 	a.StoreImm32Mem(R11, 8, 0)
-	flags := int32(0)
-	if pointerFree {
-		flags = int32(gc.FlagPointerFree)
+	flags := uint32(gc.FlagTypeFastValid | gc.FlagTypeStruct)
+	if st.Final {
+		flags |= gc.FlagTypeFinal
 	}
-	a.StoreImm32Mem(R11, 12, flags)
+	if pointerFree {
+		flags |= gc.FlagPointerFree
+	}
+	a.StoreImm32Mem(R11, 12, int32(flags))
 	if !dead {
 		for _, field := range fields {
 			disp := int32(gc.PayloadOffset + field.Offset)
@@ -2744,6 +2860,10 @@ func (f *fn) emitNativeDefinedTestStub() { f.emitNativeDefinedTypeCheckStub(true
 // flag. Exact casts and ordinary casts to final types both set ESI. Test mode
 // returns zero/one in EAX; cast mode returns the original compact reference.
 func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
+	f.emitNativeDefinedTypeCheck(test, true, gcDefinedCheckDynamic, gcDefinedStaticTarget{})
+}
+
+func (f *fn) emitNativeDefinedTypeCheck(test, returnToCaller bool, mode gcDefinedCheckMode, target gcDefinedStaticTarget) {
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -2797,10 +2917,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	failIf(condNE) // i31 cannot satisfy a defined struct/array target
 
 	// Resolve the module-local target into the collector's canonical domain.
-	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
-	a.ImulRI(RDX, 4, true)
-	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+	emitGCLoadDefinedTarget(a, target)
 
 	// Resolve and validate the compact handle against the current heap backing.
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
@@ -2834,41 +2951,22 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	// casts to final types. Only unequal identities need the cold interval table.
 	// The handle and object extent checks above still run on both paths.
 	a.Cmp32(RCX, RDX)
-	identityDone := a.JccPlaceholder(condE)
-	if !test {
-		// Identity already failed, so an exact cast cannot match a proper subtype.
-		a.TestSelf(RSI, false)
+	identityDone := -1
+	if mode == gcDefinedCheckExact {
 		failIf(condNE)
+	} else {
+		identityDone = a.JccPlaceholder(condE)
+		if mode == gcDefinedCheckDynamic {
+			a.TestSelf(RSI, false)
+			failIf(condNE)
+		}
+		emitGCSubtypeIntervalCheck(a, RCX, RDX, target, castFailure, failIf)
 	}
 
-	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-	a.MovRegReg32(RAX, RCX)
-	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-	castFailure(condAE)
-	a.MovRegReg32(RAX, RDX)
-	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-	castFailure(condAE)
-	a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
-	a.TestSelf(R10, true)
-	castFailure(condE)
-	a.MovRegReg32(RAX, RCX)
-	a.ImulRI(RAX, 8, true)
-	a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
-	a.MovRegReg32(RAX, RDX)
-	a.ImulRI(RAX, 8, true)
-	a.LoadIdx(R10, R10, RAX, 0, 8, false, true)
-	a.MovReg64(RAX, R9)
-	a.ShiftImm(5, RAX, 32, true)
-	a.MovReg64(RCX, R10)
-	a.ShiftImm(5, RCX, 32, true)
-	a.Cmp32(RAX, RCX)
-	failIf(condB)
-	a.Cmp32(R9, R10)
-	failIf(condA)
-
 	successAt := a.Len()
-	a.PatchRel32(identityDone, successAt)
+	if identityDone >= 0 {
+		a.PatchRel32(identityDone, successAt)
+	}
 	if test {
 		a.MovImm32(RAX, 1)
 	} else {
@@ -2890,7 +2988,12 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 			a.Pop(R9 + Reg(i))
 		}
 	}
-	a.Ret()
+	doneCheck := -1
+	if returnToCaller {
+		a.Ret()
+	} else {
+		doneCheck = a.JmpPlaceholder()
+	}
 
 	// The trap tail publishes dirty global pins. Restore saved values before
 	// entering it; resolver scratch must never become observable global state.
@@ -2903,6 +3006,9 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 		}
 	}
 	f.trapAlwaysUnknownPC(trapCastFailure)
+	if doneCheck >= 0 {
+		a.PatchRel32(doneCheck, a.Len())
+	}
 }
 
 // emitNativeFinalArrayRefGetStub loads one collector reference from a final

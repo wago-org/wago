@@ -107,6 +107,9 @@ type GCTypeLayout struct {
 	NativeAlloc bool
 	DirectCast  bool
 	DirectLen   bool
+	// SubtypeInterval packs DFS pre in the high word and post in the low word.
+	// Native code may use it only after proving an identity type-map snapshot.
+	SubtypeInterval uint64
 }
 
 // GCFieldLayout is the precomputed payload layout and initializer-slot shape
