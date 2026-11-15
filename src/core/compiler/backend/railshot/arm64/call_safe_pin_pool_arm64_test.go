@@ -25,7 +25,7 @@ func TestLocalLoopPinThresholdChargesCallBoundaries(t *testing.T) {
 		want      uint32
 	}{
 		{reg: X15, callSites: 0, want: 0},
-		{reg: X15, callSites: 6, want: 96},
+		{reg: X15, callSites: 6, want: 84},
 		{reg: X27, callSites: 2, want: 200},
 		{reg: X27, callSites: 6, want: 240},
 	} {
@@ -33,10 +33,10 @@ func TestLocalLoopPinThresholdChargesCallBoundaries(t *testing.T) {
 			t.Errorf("threshold(%v, %d) = %d, want %d", tc.reg, tc.callSites, got, tc.want)
 		}
 	}
-	if localLoopPinProfitable(X15, 6, 96) {
+	if localLoopPinProfitable(X15, 6, 84) {
 		t.Error("break-even X15 pin reported profitable")
 	}
-	if !localLoopPinProfitable(X15, 6, 97) {
+	if !localLoopPinProfitable(X15, 6, 85) {
 		t.Error("profitable X15 pin rejected")
 	}
 }

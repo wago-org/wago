@@ -4136,7 +4136,7 @@ func callSafePinPool(pool []Reg) []Reg {
 }
 
 const (
-	localLoopPinCallCost     = uint32(16)
+	localLoopPinCallCost     = uint32(14)
 	localLoopLastPinCallCost = uint32(40)
 	localLoopLastPinMinScore = uint32(200)
 )
