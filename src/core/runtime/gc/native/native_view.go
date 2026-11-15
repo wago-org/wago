@@ -19,7 +19,9 @@ import (
 // view is refreshed in place whenever growable backing can relocate, and callers
 // must still serialize access with collector mutation.
 // Version 8 also gates the dead-reservation/native-preparation helper dispatch.
-const NativeABIVersion uint32 = 9
+// Version 10 appends the fixed-width type projection. Compact reference
+// boundaries remain unchanged; TypedRef is a separate internal carrier.
+const NativeABIVersion uint32 = 10
 
 // Native allocation-stat offsets are relative to the AllocationCount pointer
 // in NativeCollectorView. Generated AMD64 dead charges use these counters to
@@ -90,6 +92,9 @@ type NativeCollectorView struct {
 	DeadNurseryCycle      uint64
 	LargeArrayAllocState  uintptr
 	LargeArrayAllocEpoch  uintptr
+	TypeWords             uintptr
+	TypeWordCount         uint32
+	_                     uint32
 }
 
 const (
@@ -115,7 +120,9 @@ const (
 	NativeViewDeadNurseryCycleOffset      = 176
 	NativeViewLargeArrayAllocStateOffset  = 184
 	NativeViewLargeArrayAllocEpochOffset  = 192
-	NativeCollectorViewSize               = 200
+	NativeViewTypeWordsOffset             = 200
+	NativeViewTypeWordCountOffset         = 208
+	NativeCollectorViewSize               = 216
 )
 
 // NativeInstanceView adds the immutable module-local to canonical-domain type
@@ -233,6 +240,10 @@ func ValidateNativeABI() error {
 		unsafe.Offsetof(view.LargeArrayAllocEpoch) != NativeViewLargeArrayAllocEpochOffset {
 		return fmt.Errorf("gc: native large-array allocation ABI layout mismatch")
 	}
+	if unsafe.Offsetof(view.TypeWords) != NativeViewTypeWordsOffset ||
+		unsafe.Offsetof(view.TypeWordCount) != NativeViewTypeWordCountOffset {
+		return fmt.Errorf("gc: native type-word ABI layout mismatch")
+	}
 	var instance NativeInstanceView
 	if unsafe.Offsetof(instance.keepTypes) != NativeInstanceViewABISize ||
 		unsafe.Offsetof(instance.Version) != NativeInstanceViewVersionOffset ||
@@ -280,10 +291,14 @@ func ValidateNativeInstanceView(view *NativeInstanceView, collector *Collector, 
 	if collector.nativeView.SubtypeIntervalCount != uint32(len(collector.subtypeIntervals)) || collector.nativeView.SubtypeIntervals != sliceData(collector.subtypeIntervals) {
 		return fmt.Errorf("gc: native subtype interval view does not match immutable collector backing")
 	}
+	if collector.nativeView.TypeWordCount != uint32(len(collector.typeWords)) || collector.nativeView.TypeWords != sliceData(collector.typeWords) {
+		return fmt.Errorf("gc: native type-word view does not match collector backing")
+	}
 	return nil
 }
 
 func (c *Collector) initNativeView() {
+	c.appendTypeWords(0)
 	if c.nativeView == nil {
 		c.nativeView = &NativeCollectorView{}
 	}
@@ -307,6 +322,8 @@ func (c *Collector) refreshNativeView() {
 	v.ObjectCardCount = uint32(len(c.objectCards))
 	v.SubtypeIntervals = sliceData(c.subtypeIntervals)
 	v.SubtypeIntervalCount = uint32(len(c.subtypeIntervals))
+	v.TypeWords = sliceData(c.typeWords)
+	v.TypeWordCount = uint32(len(c.typeWords))
 	if c.closed {
 		v.NurseryAllocBytes = 0
 		v.StructAllocState = 0

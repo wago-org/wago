@@ -63,7 +63,10 @@ type TypeDesc struct {
 	Final    bool
 	Super    TypeID
 	HasSuper bool
-	firstRef uint16 // one-based sparse scan head; occupies existing padding
+	// GuestType distinguishes validated Wasm types from private runtime layouts.
+	// Set it before registration; admitted descriptors remain immutable.
+	GuestType bool
+	firstRef  uint16 // one-based sparse scan head; occupies existing padding
 }
 
 func NewStructDesc(id TypeID, fields []StorageKind) (TypeDesc, error) {

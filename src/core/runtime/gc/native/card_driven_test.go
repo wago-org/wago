@@ -462,7 +462,7 @@ func TestCardMetadataFootprint(t *testing.T) {
 	}
 	// Bounds, lazy major-block state, and one large-array list-index hint have
 	// fixed descriptor costs. The hint does not change the native state layout.
-	wantCollector := uintptr(1168) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
+	wantCollector := uintptr(1168) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0)) + unsafe.Sizeof([]uint32(nil))
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}

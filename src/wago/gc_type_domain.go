@@ -613,7 +613,7 @@ func (in *Instance) gcRefMatchesValueType(ref gc.Ref, required ValueTypeDescript
 func gcCollectorLayoutEqual(a, b gc.TypeDesc) bool {
 	if a.ID != b.ID || a.Kind != b.Kind || a.Elem != b.Elem || a.Size != b.Size ||
 		a.ElemSize != b.ElemSize || a.Align != b.Align || a.HasRefs != b.HasRefs ||
-		a.Final != b.Final || a.Super != b.Super || a.HasSuper != b.HasSuper ||
+		a.Final != b.Final || a.Super != b.Super || a.HasSuper != b.HasSuper || a.GuestType != b.GuestType ||
 		len(a.Fields) != len(b.Fields) || (a.Fields == nil) != (b.Fields == nil) {
 		return false
 	}

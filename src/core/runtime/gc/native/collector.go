@@ -180,6 +180,7 @@ type Collector struct {
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
+	typeWords                    []uint32
 }
 
 const defaultNursery = 64 << 10
@@ -266,6 +267,7 @@ func (c *Collector) Close() {
 	c.majorYoungDirty = false
 	c.markStack = nil
 	c.subtypeIntervals = nil
+	c.typeWords = nil
 	c.promotionScratch = nil
 	c.remembered = nil
 	c.lastCardBounds = objectCardBounds{}
@@ -336,6 +338,7 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 			return err
 		}
 	}
+	c.appendTypeWords(oldCount)
 	c.refreshNativeView()
 	return nil
 }

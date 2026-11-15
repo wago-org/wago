@@ -159,6 +159,7 @@ func lowerGCTypeMetadata(types []wasm.RecType, opts GCTypeMetadataOptions) (GCTy
 			d.Super = gc.TypeID(super)
 			d.HasSuper = true
 		}
+		d.GuestType = true
 		descs[i] = d
 		if layouts != nil {
 			layouts[i] = layout
