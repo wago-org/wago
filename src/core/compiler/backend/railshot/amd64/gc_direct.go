@@ -3616,7 +3616,7 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 		}
 	}
 	var obj Reg
-	done := func() {}
+	var done func()
 	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
 		f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex && required <= f.gcResolved.requiredBytes {
 		// The unchanged local and complete extent are already checked. No call

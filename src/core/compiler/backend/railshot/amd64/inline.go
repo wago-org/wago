@@ -282,28 +282,6 @@ func tinyLeafInlineOK(f inlineFacts) bool {
 		f.calleeCount == 0 && !f.hasControlCall
 }
 
-// tinyReferenceInlineSignature is the stricter class whose sole reference
-// parameter can be forwarded from an exact-root caller without adding a root
-// home. General tiny-leaf admission uses tinyLeafInlineSignature instead.
-func tinyReferenceInlineSignature(ft *wasm.CompType) bool {
-	if ft == nil || len(ft.Params) > 1 || len(ft.Results) > 1 {
-		return false
-	}
-	hasReference := false
-	for _, types := range [][]wasm.ValType{ft.Params, ft.Results} {
-		for _, typ := range types {
-			if typ.Kind() == wasm.ValRef {
-				hasReference = true
-				continue
-			}
-			if !isIntValType(typ) {
-				return false
-			}
-		}
-	}
-	return hasReference && sigFitsTypedReferenceRegABI(ft)
-}
-
 func tinyLeafInlineSignature(ft *wasm.CompType) bool {
 	return sigFitsGeneralRegABI(ft)
 }
