@@ -79,6 +79,9 @@ func TestEncodings(t *testing.T) {
 		{"csel x0,x1,x2,eq", func(a *Asm) { a.Csel64(X0, X1, X2, CondEQ) }, 0x9a820020},
 		{"csinc w5,wzr,w6,eq", func(a *Asm) { a.Csinc32(X5, XZR, X6, CondEQ) }, 0x1a8607e5},
 		{"cset x0,ne", func(a *Asm) { a.Cset64(X0, CondNE) }, 0x9a9f07e0},
+		{"ccmp w1,w2,#0,eq", func(a *Asm) { a.CcmpReg(X1, X2, 0, CondEQ, true) }, 0x7a420020},
+		{"ccmp x1,x2,#4,ne", func(a *Asm) { a.CcmpReg(X1, X2, 4, CondNE, false) }, 0xfa421024},
+		{"ccmp w1,#7,#0,eq", func(a *Asm) { a.CcmpImm(X1, 7, 0, CondEQ, true) }, 0x7a470820},
 		// multiply
 		{"madd x0,x1,x2,x3", func(a *Asm) { a.Madd64(X0, X1, X2, X3) }, 0x9b020c20},
 		{"madd w0,w1,w2,w3", func(a *Asm) { a.Madd32(X0, X1, X2, X3) }, 0x1b020c20},

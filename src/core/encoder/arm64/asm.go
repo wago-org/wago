@@ -636,6 +636,26 @@ func (a *Asm) Cset32(rd Reg, c Cond) {
 	}
 }
 
+// CcmpReg conditionally compares Rn with Rm. If c is false, the instruction
+// installs the supplied NZCV value instead. Conditional compares write only
+// flags, so they deliberately do not report a GP-register write.
+func (a *Asm) CcmpReg(rn, rm Reg, nzcv uint8, c Cond, w32 bool) {
+	base := uint32(0xFA400000)
+	if w32 {
+		base = 0x7A400000
+	}
+	a.word(base | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | uint32(nzcv&15))
+}
+
+// CcmpImm is the five-bit-immediate form of CcmpReg.
+func (a *Asm) CcmpImm(rn Reg, imm uint8, nzcv uint8, c Cond, w32 bool) {
+	base := uint32(0xFA400800)
+	if w32 {
+		base = 0x7A400800
+	}
+	a.word(base | uint32(imm&31)<<16 | uint32(c)<<12 | r(rn)<<5 | uint32(nzcv&15))
+}
+
 // --- Logical (bitmask immediate) ---
 
 // AndImm64 / OrrImm64 / EorImm64 encode a logical operation with a bitmask
