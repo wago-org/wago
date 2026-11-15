@@ -1070,7 +1070,13 @@ func loopIntConstNeedsRegister(next byte, bits int64, typ uint8) bool {
 	switch next {
 	case 0x6c, 0x7e: // i32/i64.mul have no immediate form.
 		return true
-	case 0x6a, 0x6b, 0x7c, 0x7d: // add/sub admit a signed +/- 12-bit magnitude.
+	case 0x6a, 0x6b, 0x7c, 0x7d:
+		// A shifted imm12 can fold into an address or borrowed-local add.
+		// Do not let these cheap displacements crowd multiword literals out
+		// of the bounded hint list and its scarce immutable registers.
+		if shiftedImmediateHintFilterEnabled && shiftedAddSubImmediateEnabled && ordinaryShiftedImmediateEnabled && fitsShiftedAddSubImmediate(bits) {
+			return false
+		}
 		return bits < -0xfff || bits > 0xfff
 	case 0x71, 0x72, 0x73: // i32 and/or/xor logical immediate.
 		return typ == 1 && !a64.LogicalImmediate32(uint32(bits))
@@ -1081,18 +1087,12 @@ func loopIntConstNeedsRegister(next byte, bits int64, typ uint8) bool {
 	}
 }
 
-func (s *byteBodyScanner) noteLoopIntConst(bits int64, typ uint8, loopDepth int, pathWeight int64, consumer byte) {
+func (s *byteBodyScanner) noteLoopIntConst(bits int64, typ uint8, loopDepth int, pathWeight int64) {
 	if loopDepth == 0 {
 		return
 	}
 	cost := intConstWideMoveCost(bits, typ)
 	score := uint64(pathWeight * loopWeight(loopDepth) * int64(cost))
-	// Keep the bounded discovery frontier stable. An immediate-only use still
-	// occupies its original candidate slot, but cannot displace a costly use.
-	// A later multiply of the same value contributes its ordinary score.
-	if discountShiftedImmediateHint(consumer, bits) {
-		score = 0
-	}
 	for i := 0; i < int(s.loopIntConstN); i++ {
 		c := &s.loopIntConsts[i]
 		if c.bits == bits && c.typ() == typ {
@@ -1117,7 +1117,7 @@ func (s *byteBodyScanner) finishLoopIntConsts() {
 		var best *loopIntConstCandidate
 		for i := 0; i < int(s.loopIntConstN); i++ {
 			c := &s.loopIntConsts[i]
-			if c.typ() != 0 && c.score() != 0 && (best == nil || c.score() > best.score()) {
+			if c.typ() != 0 && (best == nil || c.score() > best.score()) {
 				best = c
 			}
 		}
@@ -1385,7 +1385,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if s.collectLoopIntConsts && loopDepth != 0 {
 				if next, ok := s.r.Reader.Peek(); ok {
 					if value, valueType, needed := loopIntConstRegisterValue(next, bits, typ); needed {
-						s.noteLoopIntConst(value, valueType, loopDepth, pathWeight, next)
+						s.noteLoopIntConst(value, valueType, loopDepth, pathWeight)
 					}
 				}
 			}
