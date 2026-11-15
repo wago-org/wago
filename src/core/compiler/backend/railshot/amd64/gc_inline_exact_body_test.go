@@ -79,3 +79,62 @@ func TestInlineDefinedCastStaticSubtypePath(t *testing.T) {
 		}
 	}
 }
+
+func TestInlineDefinedCastStaticTargetLoad(t *testing.T) {
+	savedShared, savedInline := gcSharedStubsEnabled, gcInlineCastsEnabled
+	defer func() { gcSharedStubsEnabled, gcInlineCastsEnabled = savedShared, savedInline }()
+	gcSharedStubsEnabled = true
+	var dynamicLoad x64.Asm
+	dynamicLoad.ImulRI(RDX, 4, true)
+	dynamicLoad.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+	for _, target := range []uint32{0, 1, 127, 128, 255} {
+		for _, final := range []bool{false, true} {
+			for _, inline := range []bool{false, true} {
+				t.Run(fmt.Sprintf("type-%d/final-%t/inline-%t", target, final, inline), func(t *testing.T) {
+					gcInlineCastsEnabled = inline
+					decl := byte(0x50)
+					if final {
+						decl = 0x4f
+					}
+					var types [][]byte
+					for i := uint32(0); i <= target; i++ {
+						types = append(types, []byte{decl, 0, 0x5f, 0})
+					}
+					heap := wasmtest.SLEB64(int64(target))
+					ft := append([]byte{0x60, 1, 0x6e, 1, 0x64}, heap...)
+					types = append(types, ft)
+					body := append([]byte{0x20, 0, 0xfb, 22}, heap...)
+					body = append(body, 0x0b)
+					data := wasmtest.Module(
+						wasmtest.Section(1, wasmtest.Vec(types...)),
+						wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(target+1))),
+						wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+					)
+					m, err := wasm.DecodeModule(data)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err = wasm.ValidateModule(m); err != nil {
+						t.Fatal(err)
+					}
+					cm, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, GCArrayHelpers: true})
+					if cm != nil && cm.CodeImage != nil {
+						defer cm.CodeImage.Close()
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if got := bytes.Contains(cm.Code, dynamicLoad.B); got != !inline {
+						t.Fatalf("runtime target scaling present=%t, want %t", got, !inline)
+					}
+					var constantLoad x64.Asm
+					constantLoad.Load32(RDX, R10, int32(target*4))
+					if inline && !bytes.Contains(cm.Code, constantLoad.B) {
+						t.Fatal("inline cast does not load its known local target by displacement")
+					}
+					t.Logf("code bytes=%d", len(cm.Code))
+				})
+			}
+		}
+	}
+}

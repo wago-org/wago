@@ -667,7 +667,7 @@ func emitGCTrustedFinalCastBody(a *x64.Asm, returnToCaller bool) {
 // reference with EDX zero on success, or zero with EDX=trapCastFailure.
 // R9-R11 are preserved so functions with pinned locals can call the same leaf.
 func emitModuleGCDefinedCastStub(a *x64.Asm) {
-	emitGCDefinedCastBody(a, true, 7, gcDefinedCastDynamic)
+	emitGCDefinedCastBody(a, true, 7, gcDefinedCastDynamic, -1)
 }
 
 type gcDefinedCastMode uint8
@@ -678,9 +678,10 @@ const (
 	gcDefinedCastOpen
 )
 
-// Inline callers know whether proper subtypes can match. Shared leaves retain
-// the runtime ESI flag because their callers can have different target types.
-func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8, mode gcDefinedCastMode) {
+// Inline callers know whether proper subtypes can match and can supply a local
+// type-table displacement. A negative displacement retains the runtime EDX
+// index. Shared leaves also retain the runtime ESI target-mode flag.
+func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8, mode gcDefinedCastMode, targetDisp int32) {
 	for i := Reg(0); i < 3; i++ {
 		if preserveMask&(1<<i) != 0 {
 			a.Push(R9 + i)
@@ -711,8 +712,12 @@ func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8, 
 	// Resolve the module-local target into the collector's canonical domain.
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
-	a.ImulRI(RDX, 4, true)
-	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+	if targetDisp >= 0 {
+		a.Load32(RDX, R10, targetDisp)
+	} else {
+		a.ImulRI(RDX, 4, true)
+		a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+	}
 
 	// Resolve and validate the compact handle against the current heap backing.
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
@@ -1055,8 +1060,8 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 		f.a.MovReg64(RAX, ref)
 	}
 	f.release(ref)
-	f.a.MovImm32(RDX, int32(typeIndex))
 	if trusted {
+		f.a.MovImm32(RDX, int32(typeIndex))
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
@@ -1075,6 +1080,12 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 		result.st.setValueFacts(factGCStoredRef)
 		f.setStackGCRoot(result, true)
 		return nil
+	}
+	targetDisp := int32(-1)
+	if gcSharedStubsEnabled && gcInlineCastsEnabled && uint64(typeIndex)*4 <= math.MaxInt32 {
+		targetDisp = int32(typeIndex * 4)
+	} else {
+		f.a.MovImm32(RDX, int32(typeIndex))
 	}
 	if nullable {
 		f.a.MovImm32(RCX, 1)
@@ -1104,7 +1115,7 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact, trustStore
 			f.checkCallClobber()
 		}
 		if gcInlineCastsEnabled {
-			emitGCDefinedCastBody(f.a, false, f.inlineGCCastPreserveMask(), mode)
+			emitGCDefinedCastBody(f.a, false, f.inlineGCCastPreserveMask(), mode, targetDisp)
 			f.stats.peep("gc-inline-defined-cast")
 		} else {
 			site := f.a.CallRel32()
