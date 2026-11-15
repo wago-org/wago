@@ -10,7 +10,17 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"math"
 	"testing"
+	"unsafe"
 )
+
+func TestFloatMapCandidateLayout(t *testing.T) {
+	if got := unsafe.Sizeof(floatMapNode{}); got != 16 {
+		t.Fatalf("node size %d, want 16", got)
+	}
+	if got := unsafe.Sizeof(floatMapAddress{}); got != 40 {
+		t.Fatalf("address size %d, want 40", got)
+	}
+}
 
 func floatMapModule(t testing.TB, wide bool, packets int, src, dst, start, limit, neighbor uint32) *wasm.Module {
 	return floatMapModuleAt(t, wide, packets, src, dst, start, limit, neighbor, 0)

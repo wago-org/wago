@@ -17,7 +17,7 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 	limitNode := -1
 	p.limitLocal = -1
 	if c := p.nodes[condition]; c.op == 0x47 {
-		increment, limitNode = c.a, c.b
+		increment, limitNode = c.left(), c.right()
 		if p.nodes[increment].op != 0x6a {
 			increment, limitNode = limitNode, increment
 		}
@@ -26,18 +26,18 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 	if inc.op != 0x6a {
 		return false
 	}
-	local, stride := p.nodes[inc.a], p.nodes[inc.b]
+	local, stride := p.nodes[inc.left()], p.nodes[inc.right()]
 	if local.op != 0x20 {
 		local, stride = stride, local
 	}
 	if local.op != 0x20 || stride.op != 0x41 || stride.bits == 0 || stride.bits > 32 {
 		return false
 	}
-	slot := p.localSlot(local.a)
+	slot := p.localSlot(local.left())
 	if slot < 0 || p.locals[slot].Type != mtI32 || p.locals[slot].Value != increment {
 		return false
 	}
-	p.counter = local.a
+	p.counter = local.left()
 	size := uint32(4)
 	if p.wide {
 		size = 8
@@ -61,11 +61,11 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 		case 0x41:
 			p.limit = uint32(limit.bits)
 		case 0x20:
-			s := p.localSlot(limit.a)
+			s := p.localSlot(limit.left())
 			if s < 0 || p.locals[s].Type != mtI32 || p.locals[s].Written {
 				return false
 			}
-			p.limitLocal = limit.a
+			p.limitLocal = limit.left()
 		default:
 			return false
 		}
@@ -96,7 +96,7 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 				delta += uint32(n.bits)
 				return true
 			}
-			return n.op == 0x6a && walk(n.a) && walk(n.b)
+			return n.op == 0x6a && walk(n.left()) && walk(n.right())
 		}
 		if !walk(cell.Value) || reads != 1 || delta == 0 || delta%p.step != 0 || delta/p.step > 256 || p.integer && delta != p.step {
 			return false
@@ -123,25 +123,25 @@ func (p *floatMapPlan) integerAffine(root int) (floatMapAddress, bool) {
 			bias += uint32(n.bits)
 			return true
 		case 0x20:
-			slot := p.localSlot(n.a)
+			slot := p.localSlot(n.left())
 			if slot < 0 || p.locals[slot].Type != mtI32 {
 				return false
 			}
-			advancing := p.byteIndices&(1<<slot) != 0 || n.a == p.counter && p.spanScale == 1
+			advancing := p.byteIndices&(1<<slot) != 0 || n.left() == p.counter && p.spanScale == 1
 			if advancing {
 				if index >= 0 {
 					return false
 				}
-				index = n.a
+				index = n.left()
 				return true
 			}
 			if p.locals[slot].Written || base >= 0 {
 				return false
 			}
-			base = n.a
+			base = n.left()
 			return true
 		case 0x6a:
-			return walk(n.a) && walk(n.b)
+			return walk(n.left()) && walk(n.right())
 		}
 		return false
 	}
