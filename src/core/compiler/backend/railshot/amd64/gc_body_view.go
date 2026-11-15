@@ -3,7 +3,6 @@
 package amd64
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -20,8 +19,8 @@ func validateGCBodyViews(m *wasm.Module, views map[uint32]codegen.GCBodyView) er
 			return fmt.Errorf("GC body view: function %d unavailable", index)
 		}
 		c := m.Code[local]
-		if sha256.Sum256(c.BodyBytes) != view.BodySHA256 {
-			return fmt.Errorf("GC body view: stale function %d hash", index)
+		if !view.BodyProof.Matches(c.BodyBytes) {
+			return fmt.Errorf("GC body view: stale function %d body proof", index)
 		}
 		if len(view.Constructors) == 0 || len(view.Constructors) > 32 || len(view.Origins) == 0 || view.Origins[0].NewPC != 0 {
 			return fmt.Errorf("GC body view: invalid record bounds")
@@ -118,7 +117,7 @@ func (f *fn) gcBodySourcePC() (uint32, uint32) {
 }
 
 // certifiedUnreadGCSink is valid only after validateGCBodyViews has proved that
-// no local.get or local.tee reads this sink anywhere in the exact body hash.
+// no local.get or local.tee reads this sink anywhere in the exact certified body.
 // The constructor and its trapping operands already ran; dropping the result
 // avoids a store that cannot contribute to any later source value or GC root.
 func (f *fn) certifiedUnreadGCSink(local int) bool {

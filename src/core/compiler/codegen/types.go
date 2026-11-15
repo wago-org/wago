@@ -72,7 +72,7 @@ var GCRefLayout = RefLayout{
 
 // GCBodyView certifies compiler-only constructor and source-position metadata.
 type GCBodyView struct {
-	BodySHA256   [32]byte
+	BodyProof    GCBodyProof
 	Constructors map[uint32]GCDeadConstructor
 	Origins      []GCBodyOrigin
 }

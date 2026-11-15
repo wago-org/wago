@@ -615,7 +615,7 @@ func buildGCOptionBodyViewWithLocalLimit(m *wasm.Module, localLimit uint32) (*gc
 func (v *gcOptionView) metadata() map[uint32]codegen.GCBodyView {
 	out := make(map[uint32]codegen.GCBodyView, len(v.Origins))
 	for index, origins := range v.Origins {
-		b := codegen.GCBodyView{BodySHA256: sha256.Sum256(v.Module.Code[int(index)-v.Module.ImportedFuncCount()].BodyBytes), Constructors: map[uint32]codegen.GCDeadConstructor{}}
+		b := codegen.GCBodyView{BodyProof: codegen.NewGCBodyProof(v.Module.Code[int(index)-v.Module.ImportedFuncCount()].BodyBytes), Constructors: map[uint32]codegen.GCDeadConstructor{}}
 		for _, o := range origins {
 			b.Origins = append(b.Origins, codegen.GCBodyOrigin{NewPC: o.NewPC, OldFunction: o.OldFunction, OldPC: o.OldPC, Linear: o.Linear})
 		}

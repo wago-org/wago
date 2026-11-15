@@ -3,7 +3,6 @@
 package amd64
 
 import (
-	"crypto/sha256"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"strings"
@@ -15,11 +14,12 @@ func TestGCBodyViewCertificates(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			body := []byte{0x41, 1, 0xd0, 0x6d, 0xfb, 0, 0, 0x21, 0, 0xb}
 			m := &wasm.Module{Code: []wasm.Func{{BodyBytes: body}}}
-			view := codegen.GCBodyView{BodySHA256: sha256.Sum256(body), Constructors: map[uint32]codegen.GCDeadConstructor{4: {Type: 0, Sink: 0}}, Origins: []codegen.GCBodyOrigin{{NewPC: 0, OldFunction: 7, OldPC: 1}}}
+			view := codegen.GCBodyView{BodyProof: codegen.NewGCBodyProof(body), Constructors: map[uint32]codegen.GCDeadConstructor{4: {Type: 0, Sink: 0}}, Origins: []codegen.GCBodyOrigin{{NewPC: 0, OldFunction: 7, OldPC: 1}}}
 			want := ""
 			switch kind {
 			case "stale":
-				view.BodySHA256[0] ^= 1
+				m.Code[0].BodyBytes = append([]byte(nil), body...)
+				m.Code[0].BodyBytes[1] ^= 1
 				want = "stale"
 			case "nonboundary":
 				delete(view.Constructors, 4)
@@ -33,7 +33,7 @@ func TestGCBodyViewCertificates(t *testing.T) {
 				want = "sink mismatch"
 			case "sink-read":
 				m.Code[0].BodyBytes = append(append([]byte(nil), body[:len(body)-1]...), 0x20, 0, 0x1a, 0xb)
-				view.BodySHA256 = sha256.Sum256(m.Code[0].BodyBytes)
+				view.BodyProof = codegen.NewGCBodyProof(m.Code[0].BodyBytes)
 				want = "sink local is read"
 			case "origins":
 				view.Origins = append(view.Origins, view.Origins[0])
