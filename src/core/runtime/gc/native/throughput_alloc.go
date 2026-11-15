@@ -65,15 +65,16 @@ type throughputHeap struct {
 	classLimit uint32
 	bump       uint32
 
-	spanRoot     uint32
-	freeNodeHead uint32
-	spanNodes    []throughputSpanNode
-	pendingFree  []throughputFreeSpan
-	freeBytes    uint64
-	pendingBytes uint64
-	spanCount    uint32
-	ownedBacking bool // explicit Close contract; occupies existing trailing padding
-	mapped       bool // mem owns the full limit-sized Linux reservation
+	spanRoot      uint32
+	freeNodeHead  uint32
+	spanNodes     []throughputSpanNode
+	pendingFree   []throughputFreeSpan
+	freeBytes     uint64
+	pendingBytes  uint64
+	spanCount     uint32
+	ownedBacking  bool // explicit Close contract; occupies existing trailing padding
+	mapped        bool // mem owns the full limit-sized Linux reservation
+	nurseryMapped bool // Collector owns nursery; uses existing trailing padding.
 }
 
 func (h *throughputHeap) Init(cfg Config) error {

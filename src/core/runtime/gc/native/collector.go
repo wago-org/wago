@@ -191,6 +191,17 @@ var denseNurseryPregrowEnabled = nativeCollectorFastPaths && os.Getenv("WAGO_"+s
 var errCollectorClosed = errors.New("gc: collector closed")
 
 func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
+	return newCollector(config, types, false)
+}
+
+// NewOwnedCollector requires Close after the last borrowed view or native
+// pointer is released. Supported hosts can place fixed nursery and throughput
+// backing outside the Go heap. Failed reservations retain ordinary Go backing.
+func NewOwnedCollector(config Config, types []TypeDesc) (*Collector, error) {
+	return newCollector(config, types, true)
+}
+
+func newCollector(config Config, types []TypeDesc, owned bool) (*Collector, error) {
 	if err := ValidateNativeABI(); err != nil {
 		return nil, err
 	}
@@ -223,7 +234,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	nurseryBackingBytes := align(config.NurseryBytes, 16) + 2*config.SurvivorBytes
 	c := &Collector{
 		cfg: config, types: append([]TypeDesc(nil), types...), objectAlign: objectAlign,
-		nursery: makeAlignedBytes(nurseryBackingBytes, uintptr(objectAlign)), survivorBytes: config.SurvivorBytes,
+		survivorBytes:     config.SurvivorBytes,
 		tenuringThreshold: defaultTenuringThreshold, handles: []handleEntry{{}}, cardBytes: defaultThroughputCardBytes,
 	}
 	for i := range c.types {
@@ -242,6 +253,14 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := c.throughput.Init(config); err != nil {
 		return nil, err
 	}
+	if owned {
+		c.UseOwnedThroughputBacking()
+	}
+	// Reserve only after all fallible constructor checks. Automatic nursery
+	// growth keeps the Go owner until a separate relocation protocol is needed.
+	if !owned || autoNursery || !c.initOwnedNursery(nurseryBackingBytes) {
+		c.nursery = makeAlignedBytes(nurseryBackingBytes, uintptr(objectAlign))
+	}
 	c.initNativeView()
 	return c, nil
 }
@@ -255,6 +274,7 @@ func (c *Collector) Close() {
 	c.discardNativeLargeArrayAllocation()
 	c.stats.LiveObjects = 0
 	c.closed = true
+	c.releaseOwnedNursery()
 	c.nursery = nil
 	c.tiny.Close()
 	c.throughput.Close()
