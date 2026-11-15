@@ -77,6 +77,11 @@ var callFreeLoopColdExitEnabled = os.Getenv("WAGO_ARM64_NO_CALLFREE_LOOP_COLD_EX
 var callFreeLoopEntryEnabled = os.Getenv("WAGO_ARM64_NO_CALLFREE_LOOP_ENTRY") != "1"
 var callFreeLoopRegionEnabled = os.Getenv("WAGO_ARM64_NO_CALLFREE_LOOP_REGION") != "1"
 
+// localLoopPinsEnabled lets direct same-instance calls inside loops use the
+// existing STACK_REG-managed extended pin pool. Imports, indirect calls and
+// tables retain the callee-saved-only pool. The switch is an A/B rollback.
+var localLoopPinsEnabled = os.Getenv("WAGO_ARM64_NO_LOCAL_LOOP_PINS") != "1"
+
 // weightedScalarMergeEnabled reserves the canonical merge register in
 // call-free functions with loop-hot scalar result joins. It changes only the
 // whole-function pin choice; structured-control convergence remains unchanged.
@@ -3681,8 +3686,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// STACK_REG model still publishes dirty values before calls. Keeping this
 	// narrow block also lets hot loops remain resident when a cold import follows
 	// them, matching the safe AMD64 treatment of its callee-saved pin set.
-	safeColdLocalCalls := f.opt(optColdCallLocalPins) && !hints.flags.has(hintHasLoopCall) && !hints.flags.has(hintHasNonDirectCall) && !hints.flags.has(hintCallsImport)
+	loopLocalPinSites := uint16(0)
+	safeColdLocalCalls := f.opt(optColdCallLocalPins) && !hints.flags.has(hintHasNonDirectCall|hintCallsImport) &&
+		(!hints.flags.has(hintHasLoopCall) || localLoopPinsEnabled)
+	safeLoopLocalCalls := safeColdLocalCalls && hints.flags.has(hintHasLoopCall)
 	safeMemoryCallPins := ((hints.flags.has(hintCallsSelf) && m.ImportedFuncCount() == 0) || safeColdLocalCalls) && len(m.Tables) == 0
+	if safeLoopLocalCalls && safeMemoryCallPins && !(hints.flags.has(hintCallsSelf) && m.ImportedFuncCount() == 0) {
+		loopLocalPinSites = hints.callRelocSiteCount()
+	}
 	if touchesMemory && hasCall && !safeMemoryCallPins {
 		gpPool = callSafePinPool(gpPool)
 	}
@@ -3819,7 +3830,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			f.regMerge = false
 		}
 	}
-	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, hasCall, pinLocals)
+	if intervalRegion && loopLocalPinSites != 0 {
+		// The bounded interval allocator already leases locals around call regions.
+		// Do not consume its transient registers with a second, whole-function
+		// extension of the pin pool.
+		gpPool = callSafePinPool(gpPool)
+		loopLocalPinSites = 0
+		f.stats.peep("interval-loop-pins-deferred")
+	}
+	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, hasCall, pinLocals, loopLocalPinSites)
 	if f.intervalControl {
 		f.intervalRegLimit = f.currentIntervalRegLimit()
 	}
@@ -4113,6 +4132,26 @@ func callSafePinPool(pool []Reg) []Reg {
 	return safe
 }
 
+const (
+	localLoopPinCallCost     = uint32(16)
+	localLoopLastPinCallCost = uint32(40)
+	localLoopLastPinMinScore = uint32(200)
+)
+
+func localLoopPinThreshold(reg Reg, callSites uint16) uint32 {
+	if callSites == 0 {
+		return 0
+	}
+	if reg == X27 {
+		return max(uint32(callSites)*localLoopLastPinCallCost, localLoopLastPinMinScore)
+	}
+	return uint32(callSites) * localLoopPinCallCost
+}
+
+func localLoopPinProfitable(reg Reg, callSites uint16, score uint32) bool {
+	return score > localLoopPinThreshold(reg, callSites)
+}
+
 // gpPinLimit leaves enough of the target's unreserved allocatable file for the
 // widest ordinary lowering step: three protected inputs/temporaries plus one
 // result. Whole-function pins are optional; transient lowering must not retry a
@@ -4154,7 +4193,7 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
-func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint, gpPool []Reg, hasCall, pinLocals bool) {
+func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint, gpPool []Reg, hasCall, pinLocals bool, loopLocalPinSites uint16) {
 	if cap(f.locals) < f.nLocals {
 		f.locals = make([]localDef, f.nLocals)
 	} else {
@@ -4223,6 +4262,17 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		// base slots so byte-backed decoded bodies keep the first-N fallback.
 		if (k >= len(pinnedLocalRegs) || f.nLocals > 64) && c.score == 0 {
 			break
+		}
+		// Direct same-instance calls preserve the ordinary STACK_REG contract, but
+		// each extra caller-saved pin adds publication/reload work at every call.
+		// Admit X15 only when its loop-weighted traffic repays that boundary cost;
+		// X27 has a higher threshold because it is the last opportunistic pin and
+		// also increases pressure around memory/call setup. This uses the generic
+		// hint scores and relocation count, rather than recognizing source shapes.
+		if loopLocalPinSites != 0 {
+			if (gpPool[k] == X15 || gpPool[k] == X27) && !localLoopPinProfitable(gpPool[k], loopLocalPinSites, c.score) {
+				break
+			}
 		}
 		// X27 is the last, opportunistic call-making pin. Spending it adds one
 		// more entry home and call-boundary state transition, so require enough
