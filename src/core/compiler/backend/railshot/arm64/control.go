@@ -256,7 +256,7 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
 }
 
 func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
-	if !f.opt(optLinearSumLoop) || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.memSizeReg == regNone {
+	if !f.opt(optLinearSumLoop) || f.threadedMemory0 || f.memoryAddr64(0) || !f.guardMode && f.memSizeReg == regNone {
 		return
 	}
 	addr, acc, loadPC, ok := f.inspectLinearSumLoop(r, counter)
@@ -266,6 +266,12 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
 	counterReg, counterFloat, counterPinned := f.pinReg(counter)
 	addrReg, addrFloat, addrPinned := f.pinReg(addr)
 	if !counterPinned || counterFloat || !addrPinned || addrFloat {
+		return
+	}
+	f.linearSumLoop = uint32(addr+1) | uint32(acc+1)<<16
+	f.linearSumLoopDepth = uint16(len(f.ctrl))
+	if f.guardMode {
+		f.stats.peep("guarded-linear-sum")
 		return
 	}
 	// Both operands are i32 values. Zero-extend before native-width arithmetic;
@@ -297,8 +303,6 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
 	}
 	f.wasmPC = savedPC
 	f.release(t)
-	f.linearSumLoop = uint32(addr+1) | uint32(acc+1)<<16
-	f.linearSumLoopDepth = uint16(len(f.ctrl))
 	f.stats.peep("counted-loop-bounds-hoist")
 }
 

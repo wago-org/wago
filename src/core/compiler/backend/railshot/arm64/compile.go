@@ -3382,10 +3382,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOpCount() >= 8
-	// The encoder's local instruction proof does not track branch targets.
-	// Guard mode removes the intervening bounds checks, so nearby accesses can
-	// straddle a control-flow join without executing the ADD that seeds X16.
-	sc.asm.ReuseIndexedBase = !guardMode && policy.EnabledOption(optIndexedBaseReuse)
+	// The encoder accepts only a tiny straight-line window whose instructions
+	// preserve the base, index, and X16. Branches and unknown words terminate the
+	// proof, so check-elided code can use the same local reuse safely.
+	sc.asm.ReuseIndexedBase = policy.EnabledOption(optIndexedBaseReuse)
 	// Repeated execution can repay the encoder's bitmask-matching work even
 	// when whole-function native compaction is disabled.
 	sc.asm.DisableLogicalMoveImmediate = !logicalMoveImmediateEnabled ||

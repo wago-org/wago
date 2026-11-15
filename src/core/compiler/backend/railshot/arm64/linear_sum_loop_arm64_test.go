@@ -66,6 +66,26 @@ func TestLinearSumLoopBoundsHoistAndUnrollARM64(t *testing.T) {
 	}
 }
 
+func TestGuardedLinearSumLoopUnrollARM64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	m := linearSumLoopModuleARM64(t)
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true, Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm.CodeImage.Close()
+	if got := stats.Funcs[0].Peephole["counted-loop-bounds-hoist"]; got != 0 {
+		t.Fatalf("guard mode emitted %d explicit bounds hoists, want 0", got)
+	}
+	if got := stats.Funcs[0].Peephole["guarded-linear-sum"]; got != 1 {
+		t.Fatalf("guarded linear sums = %d, want 1 (all: %v)", got, stats.Funcs[0].Peephole)
+	}
+	if got := stats.Funcs[0].Peephole["linear-sum-unroll4"]; got != 1 {
+		t.Fatalf("guarded unrolls = %d, want 1 (all: %v)", got, stats.Funcs[0].Peephole)
+	}
+}
+
 func TestLinearSumLoopOptimizationCanBeDisabledARM64(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	m := linearSumLoopModuleARM64(t)

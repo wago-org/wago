@@ -657,12 +657,12 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		// A signals-based module may elide memory-0 memory32 bounds checks and rely
 		// on the guard-page fault, so its primary imported memory must be
 		// guard-page backed. Host
-		// NewMemory and guard-page instance owners provide one only in a
-		// wago_guardpage build; reject a plain mapping (e.g. an explicit-bounds
+		// NewMemory and guard-page instance owners provide one only when this binary
+		// supports guard pages; reject a plain mapping (e.g. an explicit-bounds
 		// owner's memory, or a deserialized signals-based module in a default binary).
 		guarded, _ := m.importShape()
 		if c.boundsMode == BoundsChecksSignalsBased && !guarded {
-			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
+			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory", c.memoryImport)
 		}
 		if err := attachMemory(m); err != nil {
 			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)

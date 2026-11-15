@@ -1,4 +1,4 @@
-//go:build wago_guardpage && (linux || darwin) && (amd64 || arm64)
+//go:build (wago_guardpage || (darwin && arm64)) && (linux || darwin) && (amd64 || arm64)
 
 package runtime
 
@@ -108,7 +108,36 @@ func TestGuardedJobMemoryReuse(t *testing.T) {
 	if got := peekByte(j2, 2*page+123); got != 0 {
 		t.Fatalf("recommitted grown page byte = %#x, want 0 (leak from previous instance)", got)
 	}
-	if err := j2.Close(); err != nil {
+	if err := ReleaseJobMemory(j2); err != nil {
+		t.Fatalf("release second: %v", err)
+	}
+
+	// Exercise both protection transitions of the retained first Wasm page. A
+	// zero-page instance must not expose it; the following nonzero instance must
+	// restore it as zero without remapping the reservation.
+	j0, err := AcquireJobMemoryGuarded(0, page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j0.reserveBase != base || len(j0.LinearMemory()) != 0 {
+		t.Fatalf("zero-page reuse = base %#x len %d, want base %#x len 0", j0.reserveBase, len(j0.LinearMemory()), base)
+	}
+	if err := ReleaseJobMemory(j0); err != nil {
+		t.Fatalf("release zero-page instance: %v", err)
+	}
+	j3, err := AcquireJobMemoryGuarded(page, page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j3.reserveBase != base {
+		t.Fatalf("post-zero reservation not reused: base %#x != %#x", j3.reserveBase, base)
+	}
+	for i, b := range j3.LinearMemory() {
+		if b != 0 {
+			t.Fatalf("post-zero initial memory byte %d = %#x, want 0", i, b)
+		}
+	}
+	if err := j3.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
 }

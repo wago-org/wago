@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build !wago_guardpage || !(((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo))
+//go:build !(darwin && arm64) && (!wago_guardpage || !(((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)))
 
 package wago
 
@@ -15,11 +15,10 @@ import (
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-// newGuardedJobMemory is unavailable without the wago_guardpage build; the config
-// layer rejects signals-based bounds checks before reaching here, so this only
-// guards against a deserialized signals-based module.
+// newGuardedJobMemory is unavailable when this target lacks built-in or tagged
+// guard-page support; the config layer normally rejects this path first.
 func newGuardedJobMemory(int, int) (*wruntime.JobMemory, error) {
-	return nil, fmt.Errorf("signals-based bounds checks require a binary built with -tags wago_guardpage")
+	return nil, fmt.Errorf("signals-based bounds checks require Darwin ARM64 or a binary built with -tags wago_guardpage")
 }
 
 func callNative(_ *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, refreshControl bool, entry uintptr, serArgs, trap, results []byte) error {

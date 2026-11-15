@@ -219,7 +219,8 @@ const (
 	// on a guard-page mapping plus a SIGSEGV/SIGBUS handler. Indexed nonzero
 	// memories and memory64 retain
 	// explicit checks. The mode is faster on memory-heavy code, but installs
-	// process-wide signal handlers and requires a `wago_guardpage` build.
+	// process-wide signal handlers. Support is built in on Darwin ARM64 and is
+	// otherwise enabled with the `wago_guardpage` build tag.
 	BoundsChecksSignalsBased
 )
 
@@ -337,9 +338,9 @@ func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapsh
 
 // NewRuntimeConfig returns the default configuration: wago's selected feature
 // set for this build, serial function validation/codegen, independent-instance execution, and
-// the fastest available bounds-check mode — signals-based (guard-page) when
-// built with -tags wago_guardpage, explicit otherwise. WAGO_BOUNDS overrides
-// either way ("explicit" / "signals").
+// the fastest available bounds-check mode — signals-based (guard-page) on
+// Darwin ARM64 or when built with -tags wago_guardpage, explicit otherwise.
+// WAGO_BOUNDS overrides either way ("explicit" / "signals").
 func NewRuntimeConfig() *RuntimeConfig {
 	bounds := BoundsChecksExplicit
 	if guardPageBuilt {
@@ -549,7 +550,8 @@ func (c *RuntimeConfig) WithMaxMemoriesPerModule(memories uint32) *RuntimeConfig
 }
 
 // WithBoundsChecks selects the linear-memory bounds-check strategy (wago
-// extension). BoundsChecksSignalsBased requires the wago_guardpage build tag.
+// extension). BoundsChecksSignalsBased is built in on Darwin ARM64 and requires
+// the wago_guardpage build tag on other supported targets.
 func (c *RuntimeConfig) WithBoundsChecks(mode BoundsCheckMode) *RuntimeConfig {
 	n := *c
 	n.boundsChecks = mode
@@ -784,18 +786,19 @@ func SupportedFeatures() CoreFeatures {
 
 var errNativeCPUFeatures = errors.New("wago: native CPU capability detection failed")
 
-// GuardPageSupported reports whether this binary was built with guard-page
-// (signals-based) bounds checks — i.e. with -tags wago_guardpage. Use it to
-// pick a bounds-check mode at runtime without a hard failure.
+// GuardPageSupported reports whether this binary supports guard-page
+// (signals-based) bounds checks. Support is built in on Darwin ARM64 and is
+// enabled by -tags wago_guardpage on other supported targets. Use it to pick a
+// bounds-check mode at runtime without a hard failure.
 func GuardPageSupported() bool { return guardPageBuilt }
 
 // GuardPageUnavailableError is returned (via Validate / Compile) when
-// BoundsChecksSignalsBased is configured but the binary was not built with
-// -tags wago_guardpage. Test for it with IsGuardPageUnavailable or errors.As.
+// BoundsChecksSignalsBased is configured on a binary without guard-page
+// support. Test for it with IsGuardPageUnavailable or errors.As.
 type GuardPageUnavailableError struct{}
 
 func (*GuardPageUnavailableError) Error() string {
-	return "wago: signals-based bounds checks require a binary built with -tags wago_guardpage"
+	return "wago: signals-based bounds checks require Darwin ARM64 or a binary built with -tags wago_guardpage"
 }
 
 // IsGuardPageUnavailable reports whether err is a *GuardPageUnavailableError —

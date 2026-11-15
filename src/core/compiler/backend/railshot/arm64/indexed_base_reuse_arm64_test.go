@@ -53,8 +53,8 @@ func TestIndexedBaseReuseSwitchAndExecutionArm64(t *testing.T) {
 	if guarded.CodeImage != nil {
 		defer guarded.CodeImage.Close()
 	}
-	if hits := guardStats.Funcs[0].Peephole["indexed-base-reuse"]; hits != 0 {
-		t.Fatalf("guarded code reuses an indexed base %d times", hits)
+	if hits := guardStats.Funcs[0].Peephole["indexed-base-reuse"]; hits == 0 {
+		t.Fatal("guarded code did not reuse an unchanged indexed base")
 	}
 	run := func(on bool) uint32 {
 		saved := indexedBaseReuseEnabled

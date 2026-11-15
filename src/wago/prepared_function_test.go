@@ -451,12 +451,6 @@ func TestWasmFuncIsolatedEligibility(t *testing.T) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	if in.c.boundsMode == BoundsChecksSignalsBased {
-		if in.preparedPrivateEligible() || in.preparedIsolatedEligible() {
-			t.Fatal("signals-based instance must use the guarded entry")
-		}
-		return
-	}
 	if !in.preparedIsolatedEligible() {
 		t.Fatalf("plain scalar instance should be isolated: private=%v dir=%v sharedctx=%v sync=%v memory=%v owns=%v globals=%d table=%#x gc=%v imports=%d refs=%v",
 			in.preparedPrivateEligible(), in.memoryDir != nil, in.nativeControlIsShared(), in.syncMode, in.memory != nil, in.ownsMem,
@@ -486,9 +480,6 @@ func TestWasmFuncIsolatedEligibility(t *testing.T) {
 
 func TestWasmFuncIsolatedInstancesRunConcurrently(t *testing.T) {
 	c := MustCompile(benchAddOneModule())
-	if c.boundsMode == BoundsChecksSignalsBased {
-		t.Skip("signals-based execution requires the guarded entry")
-	}
 	instances := make([]*Instance, 2)
 	prepared := make([]*WasmFunc, 2)
 	for i := range instances {
@@ -549,9 +540,6 @@ func TestInvokeScalarUsesIsolatedEntry(t *testing.T) {
 	}
 	defer in.Close()
 	if !in.preparedIsolatedEligible() {
-		if in.c.boundsMode == BoundsChecksSignalsBased {
-			t.Skip("signals-based execution requires the guarded entry")
-		}
 		t.Fatal("plain scalar instance should be eligible for isolated entry")
 	}
 	if _, err := in.Invoke("f", I32(0)); err != nil {
