@@ -255,7 +255,7 @@ func (c *Collector) refDescPtrBytes(r Ref) (*TypeDesc, []byte, error) {
 		return nil, nil, errors.New("gc: ref is not object")
 	}
 	h := handleOf(r)
-	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+	if h == 0 || int(h) >= len(c.handles) || c.handles[h].logicalSpace() == spaceFree {
 		return nil, nil, errors.New("gc: invalid object ref")
 	}
 	object := c.bytes(r)
@@ -270,7 +270,7 @@ func (c *Collector) validObjectRef(r Ref) bool {
 		return false
 	}
 	h := handleOf(r)
-	return h != 0 && int(h) < len(c.handles) && c.handles[h].space != spaceFree
+	return h != 0 && int(h) < len(c.handles) && c.handles[h].logicalSpace() != spaceFree
 }
 
 func (c *Collector) validateStoredRef(r Ref, nullable bool) error {
@@ -302,7 +302,7 @@ func (c *Collector) validateStoredRef(r Ref, nullable bool) error {
 func (c *Collector) entry(r Ref) *handleEntry { return &c.handles[handleOf(r)] }
 func (c *Collector) bytes(r Ref) []byte {
 	e := c.entry(r)
-	switch e.space {
+	switch e.logicalSpace() {
 	case spaceNursery:
 		return c.nursery[e.off : e.off+e.size]
 	case spaceOld, spaceLarge:
@@ -331,7 +331,7 @@ func (c *Collector) zeroObjectPayload(r Ref) {
 	}
 	e := c.entry(r)
 	end := e.off + e.size
-	if e.space == spaceOld || e.space == spaceLarge {
+	if e.logicalSpace() == spaceOld || e.logicalSpace() == spaceLarge {
 		end = e.off + c.throughput.handleAllocSize(*e)
 	}
 	start := e.off + PayloadOffset
@@ -339,7 +339,7 @@ func (c *Collector) zeroObjectPayload(r Ref) {
 		return
 	}
 	var b []byte
-	switch e.space {
+	switch e.logicalSpace() {
 	case spaceNursery:
 		if end > uint32(len(c.nursery)) {
 			end = uint32(len(c.nursery))

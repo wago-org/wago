@@ -216,7 +216,7 @@ func (c *Collector) markRef(r Ref) {
 		return
 	}
 	h := handleOf(r)
-	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+	if h == 0 || int(h) >= len(c.handles) || c.handles[h].logicalSpace() == spaceFree {
 		return
 	}
 	if c.mark[h] {

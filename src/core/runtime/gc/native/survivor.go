@@ -24,7 +24,7 @@ const (
 )
 
 func (e handleEntry) young() bool {
-	return e.space == spaceNursery || (e.space == spaceLarge && e.class&handleYoungBit != 0)
+	return e.logicalSpace() == spaceNursery || (e.logicalSpace() == spaceLarge && e.class&handleYoungBit != 0)
 }
 
 func (e handleEntry) age() uint8 { return uint8((e.class & handleAgeMask) >> handleAgeShift) }
@@ -33,10 +33,10 @@ func (e *handleEntry) setYoungAge(age uint8) {
 	if age > maxTenuringThreshold {
 		age = maxTenuringThreshold
 	}
-	e.class = e.class&handleAllocationMask | handleYoungBit | uint16(age)<<handleAgeShift
+	e.class = e.class&(handleAllocationMask|NativeHandleTypeTagClassMask) | handleYoungBit | uint16(age)<<handleAgeShift
 }
 
-func (e *handleEntry) clearYoungAge() { e.class &= handleAllocationMask }
+func (e *handleEntry) clearYoungAge() { e.class &= handleAllocationMask | NativeHandleTypeTagClassMask }
 
 func (c *Collector) isYoungHandle(h uint32) bool {
 	return h != 0 && int(h) < len(c.handles) && c.handles[h].young()
@@ -49,11 +49,11 @@ func (c *Collector) survivorBase(index uint8) uint32 {
 }
 
 func (c *Collector) inEden(e handleEntry) bool {
-	return e.space == spaceNursery && e.off < c.edenBytes()
+	return e.logicalSpace() == spaceNursery && e.off < c.edenBytes()
 }
 
 func (c *Collector) inActiveSurvivor(e handleEntry) bool {
-	if e.space != spaceNursery || c.survivorBytes == 0 {
+	if e.logicalSpace() != spaceNursery || c.survivorBytes == 0 {
 		return false
 	}
 	base := c.survivorBase(c.survivorFrom)
@@ -73,7 +73,7 @@ func (c *Collector) ageLargeInPlace(h uint32, age uint8) {
 }
 
 func (c *Collector) poisonYoungSource(e handleEntry) {
-	if !c.cfg.PoisonFreed || e.space != spaceNursery {
+	if !c.cfg.PoisonFreed || e.logicalSpace() != spaceNursery {
 		return
 	}
 	for i := range c.nursery[e.off : e.off+e.size] {
@@ -116,7 +116,7 @@ func (c *Collector) finishMinorCardMetadata() {
 	out := c.remembered[:0]
 	for _, h := range c.remembered {
 		keep := h != 0 && int(h) < len(c.handles) && c.handles[h].remembered && !c.handles[h].young() &&
-			(c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge)
+			(c.handles[h].logicalSpace() == spaceOld || c.handles[h].logicalSpace() == spaceLarge)
 		if keep && (c.cardFallback || c.objectEdgeCount(makeObjRef(h)) != 0) {
 			keep = c.handleContainsNurseryRef(h)
 		} else if keep && c.handles[h].cardSlot != 0 {

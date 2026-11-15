@@ -93,7 +93,7 @@ func (c *Collector) scanObjectRefsRange(h uint32, cursor *objectScanCursor, budg
 		return objectScanWork{}, false
 	}
 	work.ObjectRanges = 1
-	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+	if h == 0 || int(h) >= len(c.handles) || c.handles[h].logicalSpace() == spaceFree {
 		return work, true
 	}
 	r := makeObjRef(h)

@@ -18,8 +18,10 @@ import (
 // contract while reloading every mutable backing pointer/count they consume. The
 // view is refreshed in place whenever growable backing can relocate, and callers
 // must still serialize access with collector mutation.
+// Version 10 reserves class/space spare bits for an optional canonical type tag.
+// Logical space uses only the low three bits; the remembered byte is unchanged.
 // Version 8 also gates the dead-reservation/native-preparation helper dispatch.
-const NativeABIVersion uint32 = 9
+const NativeABIVersion uint32 = 10
 
 // Native allocation-stat offsets are relative to the AllocationCount pointer
 // in NativeCollectorView. Generated AMD64 dead charges use these counters to
@@ -34,6 +36,9 @@ const (
 // Native handle-entry layout. These constants are part of NativeABIVersion and
 // are verified against handleEntry below.
 const (
+	NativeHandleSpaceMask             = 7
+	NativeHandleTypeTagClassMask      = uint16(0x0fe0)
+	NativeHandleTypeTagMaximum        = uint32(4095)
 	NativeHandleStride                = 16
 	NativeHandleOffsetOffset          = 0
 	NativeHandleSizeOffset            = 4

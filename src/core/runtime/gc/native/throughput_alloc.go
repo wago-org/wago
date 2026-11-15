@@ -178,7 +178,7 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 
 func (h *throughputHeap) handleAllocSize(e handleEntry) uint32 {
 	var allocSize uint32
-	if e.space != spaceLarge {
+	if e.logicalSpace() != spaceLarge {
 		class := int(e.class & handleClassMask)
 		if class < len(throughputClassSizes) && throughputClassSizes[class] <= h.classLimit {
 			allocSize = throughputClassSizes[class]
@@ -817,10 +817,10 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 	}
 	live := make([]throughputFreeSpan, 0)
 	for i, e := range handles {
-		if i == 0 || e.space == spaceFree || e.space == spaceNursery || e.space == spaceTiny {
+		if i == 0 || e.logicalSpace() == spaceFree || e.logicalSpace() == spaceNursery || e.logicalSpace() == spaceTiny {
 			continue
 		}
-		if e.space != spaceOld && e.space != spaceLarge {
+		if e.logicalSpace() != spaceOld && e.logicalSpace() != spaceLarge {
 			return fmt.Errorf("gc: invalid throughput space for handle %d", i)
 		}
 		allocSize := h.handleAllocSize(e)

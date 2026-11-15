@@ -47,7 +47,7 @@ func (f *fn) arrayScalarShortcut(helper, typeIndex uint32, argSlot int) int {
 	f.a.AddShifted(X10, X10, X16, 4, false)
 	f.ld32(X17, X10, gc.NativeHandleMetadataOffset)
 	f.a.LsrImm(X17, X17, 16, true)
-	f.a.AndImm32(X17, X17, 255)
+	f.a.AndImm32(X17, X17, gc.NativeHandleSpaceMask)
 	f.cmpImm(X17, uint32(gc.NativeSpaceNursery), false)
 	cold(f.a.Bcond(condNE))
 	f.ld32(X16, X10, gc.NativeHandleOffsetOffset)

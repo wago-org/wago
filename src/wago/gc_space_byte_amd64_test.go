@@ -105,8 +105,12 @@ func TestGCResolverSpaceByteRejectsInvalidEntries(t *testing.T) {
 			// Adjacent metadata bytes must not enter the space index.
 			handle[12], handle[13], handle[15] = 0xff, 0x80, 0xff
 			check("nonzero class and remembered bytes", false)
+			for tagFragment := 0; tagFragment < 32; tagFragment++ {
+				handle[gc.NativeHandleSpaceOffset] = (saved[gc.NativeHandleSpaceOffset] & gc.NativeHandleSpaceMask) | byte(tagFragment<<3)
+				check(fmt.Sprintf("valid space with tag fragment%d", tagFragment), false)
+			}
 			for space := 0; space <= 255; space++ {
-				if space >= 1 && space <= 4 {
+				if space&gc.NativeHandleSpaceMask >= 1 && space&gc.NativeHandleSpaceMask <= 4 {
 					continue
 				}
 				handle[gc.NativeHandleSpaceOffset] = byte(space)

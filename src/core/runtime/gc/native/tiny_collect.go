@@ -235,7 +235,7 @@ func (c *Collector) tinySweepBudget() error {
 		}
 		if c.tinyGC.scan.handle != 0 {
 			h := c.tinyGC.scan.handle
-			if h != c.tinyGC.sweep || int(h) >= len(c.handles) || c.handles[h].space != spaceTiny || c.tinyColorOf(h) != tinyWhite {
+			if h != c.tinyGC.sweep || int(h) >= len(c.handles) || c.handles[h].logicalSpace() != spaceTiny || c.tinyColorOf(h) != tinyWhite {
 				return fmt.Errorf("gc: invalid Tiny sweep poison cursor for handle %d", h)
 			}
 			block := c.handles[h].off / c.tiny.blockBytes
@@ -274,7 +274,7 @@ func (c *Collector) tinySweepBudget() error {
 		}
 		h := c.tinyGC.sweep
 		handles++
-		if c.handles[h].space != spaceTiny {
+		if c.handles[h].logicalSpace() != spaceTiny {
 			c.tinyGC.sweep++
 			continue
 		}
@@ -364,7 +364,7 @@ func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
 	c.tinyGC.state = tinySweep
 	c.tinyGC.sweep = 1
 	for h := uint32(1); int(h) < len(c.handles); h++ {
-		if c.handles[h].space != spaceTiny {
+		if c.handles[h].logicalSpace() != spaceTiny {
 			continue
 		}
 		switch c.tinyColorOf(h) {
@@ -572,7 +572,7 @@ func (c *Collector) tinyStageRootRef(r Ref) {
 		return
 	}
 	h := handleOf(r)
-	if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceTiny {
+	if h != 0 && int(h) < len(c.handles) && c.handles[h].logicalSpace() == spaceTiny {
 		c.markStack = append(c.markStack, h)
 	}
 }
@@ -658,7 +658,7 @@ func (c *Collector) tinyMarkRef(r Ref) {
 		return
 	}
 	h := handleOf(r)
-	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space != spaceTiny {
+	if h == 0 || int(h) >= len(c.handles) || c.handles[h].logicalSpace() != spaceTiny {
 		return
 	}
 	if !c.tinyIsWhite(h) {
@@ -706,7 +706,7 @@ func (c *Collector) tinyDrainGrayBudget(budget objectScanBudget) (used objectSca
 				n := len(c.tinyGC.grayStack) - 1
 				h := c.tinyGC.grayStack[n]
 				c.tinyGC.grayStack = c.tinyGC.grayStack[:n]
-				if int(h) >= len(c.handles) || c.handles[h].space != spaceTiny || c.tinyColorOf(h) != tinyGray {
+				if int(h) >= len(c.handles) || c.handles[h].logicalSpace() != spaceTiny || c.tinyColorOf(h) != tinyGray {
 					continue
 				}
 				c.tinyGC.scan.handle = h
@@ -722,7 +722,7 @@ func (c *Collector) tinyDrainGrayBudget(budget objectScanBudget) (used objectSca
 
 		used.add(work)
 		if complete {
-			if int(h) < len(c.handles) && c.handles[h].space == spaceTiny && c.tinyIsGray(h) {
+			if int(h) < len(c.handles) && c.handles[h].logicalSpace() == spaceTiny && c.tinyIsGray(h) {
 				c.tinySetBlack(h)
 			}
 			c.tinyGC.scan = tinyScanCursor{}
@@ -857,10 +857,10 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 	liveBlocks := make([]bool, c.tiny.blockCount)
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		e := c.handles[h]
-		if e.space == spaceFree {
+		if e.logicalSpace() == spaceFree {
 			continue
 		}
-		if e.space != spaceTiny {
+		if e.logicalSpace() != spaceTiny {
 			return fmt.Errorf("gc: non-tiny handle %d in tiny collector", h)
 		}
 		memBytes := uint32(len(c.tiny.mem))
@@ -891,7 +891,7 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 	}
 	seenGray := make([]bool, len(c.handles))
 	for _, h := range c.tinyGC.grayStack {
-		if h == 0 || int(h) >= len(c.handles) || c.handles[h].space != spaceTiny || c.tinyColorOf(h) != tinyGray {
+		if h == 0 || int(h) >= len(c.handles) || c.handles[h].logicalSpace() != spaceTiny || c.tinyColorOf(h) != tinyGray {
 			return fmt.Errorf("gc: invalid tiny gray-stack handle %d", h)
 		}
 		if seenGray[h] {
@@ -901,7 +901,7 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 	}
 	if active := c.tinyGC.scan.handle; active != 0 {
 		if c.tinyGC.state == tinySweep {
-			if !c.tiny.poisonFreed || active != c.tinyGC.sweep || int(active) >= len(c.handles) || c.handles[active].space != spaceTiny || c.tinyColorOf(active) != tinyWhite {
+			if !c.tiny.poisonFreed || active != c.tinyGC.sweep || int(active) >= len(c.handles) || c.handles[active].logicalSpace() != spaceTiny || c.tinyColorOf(active) != tinyWhite {
 				return fmt.Errorf("gc: invalid active Tiny sweep cursor handle %d", active)
 			}
 			block := c.handles[active].off / c.tiny.blockBytes
@@ -914,7 +914,7 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 			if c.tinyGC.state != tinyMark && c.tinyGC.state != tinyRemark {
 				return fmt.Errorf("gc: active tiny scan in state %d", c.tinyGC.state)
 			}
-			if int(active) >= len(c.handles) || c.handles[active].space != spaceTiny || c.tinyColorOf(active) != tinyGray || seenGray[active] {
+			if int(active) >= len(c.handles) || c.handles[active].logicalSpace() != spaceTiny || c.tinyColorOf(active) != tinyGray || seenGray[active] {
 				return fmt.Errorf("gc: invalid active tiny scan handle %d", active)
 			}
 			r := makeObjRef(active)
@@ -945,7 +945,7 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 		}
 	}
 	for h := uint32(1); int(h) < len(c.handles); h++ {
-		if c.handles[h].space == spaceTiny && (c.tinyColorOf(h) == tinyGray) != seenGray[h] {
+		if c.handles[h].logicalSpace() == spaceTiny && (c.tinyColorOf(h) == tinyGray) != seenGray[h] {
 			return fmt.Errorf("gc: tiny gray handle %d is missing from queue/cursor state", h)
 		}
 	}

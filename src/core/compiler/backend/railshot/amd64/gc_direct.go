@@ -510,6 +510,7 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded, arrayOperand bo
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	a.AluRI(4, R10, gc.NativeHandleSpaceMask, false)
 	a.TestSelf(R10, false)
 	castFailures = append(castFailures, a.JccPlaceholder(condE))
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
@@ -611,6 +612,33 @@ func emitModuleGCTrustedFinalCastStub(a *x64.Asm) {
 	emitGCTrustedFinalCastBody(a, true)
 }
 
+// emitGCHandleTypeTagMatch returns a jump to the caller's existing success.
+// Misses retain the original target ID. The whole metadata word is read once.
+func emitGCHandleTypeTagMatch(a *x64.Asm, handle, tag, tmp, target Reg) int {
+	a.Load32(tag, handle, gc.NativeHandleMetadataOffset)
+	a.MovRegReg32(tmp, tag)
+	a.ShiftImm(5, tmp, 16, false)
+	a.AluRI(4, tmp, gc.NativeHandleSpaceMask, false)
+	a.AluRI(5, tmp, 1, false)
+	a.AluRI(cmpDigit, tmp, gc.NativeSpaceCount-2, false)
+	inactive := a.JccPlaceholder(condA)
+	a.MovRegReg32(tmp, tag)
+	a.ShiftImm(5, tag, 5, false)
+	a.AluRI(4, tag, 127, false)
+	a.ShiftImm(5, tmp, 12, false)
+	a.AluRI(4, tmp, 0xf80, false)
+	a.AluRR(0x09, tag, tmp, false)
+	a.TestSelf(tag, false)
+	unknown := a.JccPlaceholder(condE)
+	a.AluRI(0, target, 1, false)
+	a.Cmp32(tag, target)
+	success := a.JccPlaceholder(condE)
+	a.AluRI(5, target, 1, false)
+	a.PatchRel32(inactive, a.Len())
+	a.PatchRel32(unknown, a.Len())
+	return success
+}
+
 func emitGCTrustedFinalCastBody(a *x64.Asm, returnToCaller bool) {
 	var failures []int
 	failIf := func(cond Cond) { failures = append(failures, a.JccPlaceholder(cond)) }
@@ -631,8 +659,14 @@ func emitGCTrustedFinalCastBody(a *x64.Asm, returnToCaller bool) {
 	// before the space-descriptor chain.
 	a.MovRegReg32(RDI, RAX)
 	a.LeaScaled(RCX, RCX, RDI, 3, 0)
+	tagSuccess := emitGCHandleTypeTagMatch(a, RCX, RDI, RCX, RDX)
+	// The tag decoder used RCX; reconstruct the original handle on a miss.
+	a.Load64(RCX, R8, gc.NativeViewHandlesOffset)
+	a.MovRegReg32(RDI, RAX)
+	a.LeaScaled(RCX, RCX, RDI, 3, 0)
 	a.Load32(RDI, RCX, gc.NativeHandleOffsetOffset)
 	a.LoadIdx(RCX, RCX, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	a.AluRI(4, RCX, gc.NativeHandleSpaceMask, false)
 	if gc.NativeViewSpaceStride != 16 {
 		panic("amd64: native GC space descriptor stride is not 16")
 	}
@@ -642,6 +676,7 @@ func emitGCTrustedFinalCastBody(a *x64.Asm, returnToCaller bool) {
 	a.Load32(RCX, R8, 0)
 	a.Cmp32(RCX, RDX)
 	failIf(condNE)
+	a.PatchRel32(tagSuccess, a.Len())
 	a.XorSelf32(RDX)
 	done := a.JmpPlaceholder()
 
@@ -732,6 +767,7 @@ func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8, 
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	a.AluRI(4, R10, gc.NativeHandleSpaceMask, false)
 	a.TestSelf(R10, false)
 	failIf(condE)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
@@ -746,6 +782,18 @@ func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8, 
 	a.AluRI(cmpDigit, RCX, int32(gc.HeaderSize), false)
 	failIf(condB)
 
+	tagSuccess := -1
+	if mode != gcDefinedCastOpen {
+		open := -1
+		if mode == gcDefinedCastDynamic {
+			a.TestSelf(RSI, false)
+			open = a.JccPlaceholder(condE)
+		}
+		tagSuccess = emitGCHandleTypeTagMatch(a, R9, RCX, R10, RDX)
+		if open >= 0 {
+			a.PatchRel32(open, a.Len())
+		}
+	}
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0) // actual canonical type ID
 	a.Cmp32(RCX, RDX)
@@ -790,6 +838,9 @@ func emitGCDefinedCastBody(a *x64.Asm, returnToCaller bool, preserveMask uint8, 
 	}
 
 	success := a.Len()
+	if tagSuccess >= 0 {
+		a.PatchRel32(tagSuccess, success)
+	}
 	if identityDone >= 0 {
 		a.PatchRel32(identityDone, success)
 	}
@@ -987,6 +1038,7 @@ func (f *fn) emitCheckedGCObject(object *elem, localType, requiredBytes uint32) 
 
 	// Class and remembered bits are independent of the space byte.
 	f.a.LoadIdx(ref, tmp, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	f.a.AluRI(4, ref, gc.NativeHandleSpaceMask, false)
 	f.a.TestSelf(ref, false)
 	f.trapIf(condE, trapCastFailure)
 	f.a.AluRI(cmpDigit, ref, gc.NativeSpaceCount-1, false)
@@ -1793,7 +1845,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.Add64(R9, RAX)
 	a.Load32(RAX, R9, gc.NativeHandleMetadataOffset)
 	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
+	a.AluRI(4, RAX, gc.NativeHandleSpaceMask, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condNE))
 	if !site.dynamic {
@@ -1916,7 +1968,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		a.Add64(R10, RAX)
 		a.Load32(RAX, R10, gc.NativeHandleMetadataOffset)
 		a.ShiftImm(5, RAX, 16, false)
-		a.AluRI(4, RAX, 0xff, false)
+		a.AluRI(4, RAX, gc.NativeHandleSpaceMask, false)
 		a.TestSelf(RAX, false)
 		addFallback(a.JccPlaceholder(condE))
 		a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceTiny), false)
@@ -2320,7 +2372,7 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		a.Add64(R10, RAX)
 		a.Load32(RAX, R10, gc.NativeHandleMetadataOffset)
 		a.ShiftImm(5, RAX, 16, false)
-		a.AluRI(4, RAX, 0xff, false)
+		a.AluRI(4, RAX, gc.NativeHandleSpaceMask, false)
 		a.TestSelf(RAX, false)
 		addFallback(a.JccPlaceholder(condE))
 		a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceTiny), false)
@@ -2428,7 +2480,23 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.MovRegReg32(R10, RCX)
 	a.AluRI(0, R10, int32(objectSize), false)
 	a.Store32(RAX, 0, R10)
-	a.StoreImm32Mem(R9, gc.NativeHandleMetadataOffset, int32(gc.NativeSpaceNursery)<<16)
+	// Payload is complete. Reuse its authoritative canonical header type.
+	a.Load32(RAX, R11, 0)
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeHandleTypeTagMaximum-1), false)
+	unknownTag := a.JccPlaceholder(condA)
+	a.AluRI(0, RAX, 1, false)
+	a.MovRegReg32(R10, RAX)
+	a.AluRI(4, RAX, 127, false)
+	a.ShiftImm(4, RAX, 5, false)
+	a.AluRI(4, R10, 0xf80, false)
+	a.ShiftImm(4, R10, 12, false)
+	a.AluRR(0x09, RAX, R10, false)
+	a.AluRI(1, RAX, int32(gc.NativeSpaceNursery)<<16, false)
+	tagReady := a.JmpPlaceholder()
+	a.PatchRel32(unknownTag, a.Len())
+	a.MovImm32(RAX, int32(gc.NativeSpaceNursery)<<16)
+	a.PatchRel32(tagReady, a.Len())
+	a.Store32(R9, gc.NativeHandleMetadataOffset, RAX)
 	a.AluRI(0, RDX, 1, false)
 	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	a.Store32(R10, gc.NativeStructAllocCursorOffset, RDX)
@@ -2546,7 +2614,7 @@ func (f *fn) emitNativeDeadStructChargeStub(typeIndex, objectSize, objectAlign u
 		a.Add64(R10, RAX)
 		a.Load32(RAX, R10, gc.NativeHandleMetadataOffset)
 		a.ShiftImm(5, RAX, 16, false)
-		a.AluRI(4, RAX, 0xff, false)
+		a.AluRI(4, RAX, gc.NativeHandleSpaceMask, false)
 		a.TestSelf(RAX, false)
 		addFallback(a.JccPlaceholder(condE))
 		a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceTiny), false)
@@ -2738,6 +2806,7 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 
 	// Select the current backing space and validate the handle range.
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	a.AluRI(4, R10, gc.NativeHandleSpaceMask, false)
 	a.TestSelf(R10, false)
 	trapIf(condE, trapCastFailure)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
@@ -2849,6 +2918,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	a.Add64(R9, RAX)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	a.AluRI(4, R10, gc.NativeHandleSpaceMask, false)
 	a.TestSelf(R10, false)
 	castFailure(condE)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
@@ -2988,6 +3058,7 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 	a.Add64(R9, RAX)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	a.AluRI(4, R10, gc.NativeHandleSpaceMask, false)
 	a.TestSelf(R10, false)
 	trapIf(condE, trapCastFailure)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
@@ -3086,6 +3157,7 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	a.Add64(R9, RAX)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	a.AluRI(4, R10, gc.NativeHandleSpaceMask, false)
 	a.TestSelf(R10, false)
 	castFailure(condE)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
@@ -3192,7 +3264,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.Add64(R9, RAX)
 	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
 	a.ShiftImm(5, R10, 16, false)
-	a.AluRI(4, R10, 0xff, false)
+	a.AluRI(4, R10, gc.NativeHandleSpaceMask, false)
 	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceNursery), false)
 	addFallback(a.JccPlaceholder(condB))
 	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceLarge), false)
@@ -3243,7 +3315,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.Add64(R10, RAX)
 	a.Load32(RAX, R10, gc.NativeHandleMetadataOffset)
 	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
+	a.AluRI(4, RAX, gc.NativeHandleSpaceMask, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
 	// Old/large parents may bypass the Go barrier for a young child only
@@ -3369,7 +3441,7 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a.Add64(R9, RAX)
 	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
 	a.ShiftImm(5, R10, 16, false)
-	a.AluRI(4, R10, 0xff, false)
+	a.AluRI(4, R10, gc.NativeHandleSpaceMask, false)
 	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceNursery), false)
 	addFallback(a.JccPlaceholder(condB))
 	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceLarge), false)
@@ -3410,7 +3482,7 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	// cannot create an old-to-young edge, so avoid resolving the child handle.
 	a.Load32(RAX, R9, gc.NativeHandleMetadataOffset)
 	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
+	a.AluRI(4, RAX, gc.NativeHandleSpaceMask, false)
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
 	parentNursery := a.JccPlaceholder(condE)
 
@@ -3429,7 +3501,7 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a.Add64(R10, RAX)
 	a.Load32(RAX, R10, gc.NativeHandleMetadataOffset)
 	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
+	a.AluRI(4, RAX, gc.NativeHandleSpaceMask, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)

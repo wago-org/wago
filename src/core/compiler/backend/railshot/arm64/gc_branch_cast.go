@@ -66,7 +66,7 @@ func (f *fn) emitNativeBranchCastTest(typeIndex uint32, nullable bool) {
 	f.a.AddShifted(handle, handle, ref, 4, false)
 	f.ld32(space, handle, gc.NativeHandleMetadataOffset)
 	f.a.LsrImm(space, space, 16, true)
-	f.a.AndImm32(space, space, 255)
+	f.a.AndImm32(space, space, gc.NativeHandleSpaceMask)
 	f.trapIfZero(space, false, true, trapCastFailure)
 	f.cmpImm(space, gc.NativeSpaceCount-1, false)
 	f.trapIf(condA, trapCastFailure)

@@ -29,10 +29,10 @@ func (c *Collector) Verify(roots RootSet) error {
 	}
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		e := c.handles[h]
-		if e.space == spaceFree {
+		if e.logicalSpace() == spaceFree {
 			continue
 		}
-		if c.cfg.Profile == ProfileTiny && (c.tinyGC.state == tinySweep || c.tinyGC.rootPhase == tinyRootsSweepBarrier) && e.space == spaceTiny && c.tinyColorOf(h) == tinyWhite {
+		if c.cfg.Profile == ProfileTiny && (c.tinyGC.state == tinySweep || c.tinyGC.rootPhase == tinyRootsSweepBarrier) && e.logicalSpace() == spaceTiny && c.tinyColorOf(h) == tinyWhite {
 			// During incremental Tiny sweep, white objects are already unreachable
 			// garbage even if their handles have not been reclaimed yet. Earlier
 			// sweep steps may have freed other white objects they still reference.
@@ -40,6 +40,9 @@ func (c *Collector) Verify(roots RootSet) error {
 		}
 		r := makeObjRef(h)
 		hdr := c.header(r)
+		if tag := e.cachedTypeTag(); tag != 0 && tag-1 != hdr.TypeID {
+			return errors.New("gc: cached handle type does not match object header")
+		}
 		d, err := c.desc(TypeID(hdr.TypeID))
 		if err != nil {
 			return err
@@ -103,7 +106,7 @@ func (c *Collector) Verify(roots RootSet) error {
 func (c *Collector) verifyRememberedShadow() error {
 	seenRemembered := make([]bool, len(c.handles))
 	for _, h := range c.remembered {
-		if h == 0 || !slotIndexOK(h, len(c.handles)) || c.handles[h].space == spaceFree || !c.handles[h].remembered {
+		if h == 0 || !slotIndexOK(h, len(c.handles)) || c.handles[h].logicalSpace() == spaceFree || !c.handles[h].remembered {
 			return fmt.Errorf("gc: invalid remembered handle %d", h)
 		}
 		if seenRemembered[h] {
@@ -118,7 +121,7 @@ func (c *Collector) verifyRememberedShadow() error {
 		if c.cfg.Profile != ProfileThroughput {
 			continue
 		}
-		sp := c.handles[h].space
+		sp := c.handles[h].logicalSpace()
 		if c.handles[h].young() || (sp != spaceOld && sp != spaceLarge) {
 			continue
 		}
@@ -156,7 +159,7 @@ func (c *Collector) verifyRememberedShadow() error {
 // slow verifier's descriptor walk separate prevents one bad offset or array
 // bound implementation from agreeing with itself.
 func (c *Collector) verifyScanObjectRefs(h uint32, visit func(Ref)) error {
-	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+	if h == 0 || int(h) >= len(c.handles) || c.handles[h].logicalSpace() == spaceFree {
 		return fmt.Errorf("gc: shadow scan invalid handle %d", h)
 	}
 	r := makeObjRef(h)
@@ -272,7 +275,7 @@ func (c *Collector) verifyNurseryEvacuated() error {
 		if !listed[h] {
 			return fmt.Errorf("gc: young handle %d missing from dense set", h)
 		}
-		if e.space == spaceNursery && !c.inActiveSurvivor(e) {
+		if e.logicalSpace() == spaceNursery && !c.inActiveSurvivor(e) {
 			return fmt.Errorf("gc: handle %d remained outside active survivor space", h)
 		}
 	}
@@ -318,7 +321,7 @@ func (c *Collector) verifyCardMetadata() error {
 			}
 			seenObjectCards[pos] = true
 			card := c.objectCards[pos]
-			if card.handle != h || (c.handles[h].space != spaceOld && c.handles[h].space != spaceLarge) {
+			if card.handle != h || (c.handles[h].logicalSpace() != spaceOld && c.handles[h].logicalSpace() != spaceLarge) {
 				return errors.New("gc: object card owner mismatch")
 			}
 			payloadBytes := c.handles[h].size - PayloadOffset
@@ -382,7 +385,7 @@ func (c *Collector) verifyEdges(r Ref, d TypeDesc) error {
 			return errors.New("gc: invalid ref encoding")
 		}
 		h := handleOf(x)
-		if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+		if h == 0 || int(h) >= len(c.handles) || c.handles[h].logicalSpace() == spaceFree {
 			return errors.New("gc: live object points to freed object")
 		}
 		return nil
@@ -421,5 +424,5 @@ func validRootRef(c *Collector, r Ref) bool {
 		return false
 	}
 	h := handleOf(r)
-	return h != 0 && int(h) < len(c.handles) && c.handles[h].space != spaceFree
+	return h != 0 && int(h) < len(c.handles) && c.handles[h].logicalSpace() != spaceFree
 }

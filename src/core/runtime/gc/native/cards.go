@@ -22,7 +22,7 @@ func (c *Collector) scanRememberedCards(h uint32) {
 		return
 	}
 	e := &c.handles[h]
-	if e.young() || (e.space != spaceOld && e.space != spaceLarge) {
+	if e.young() || (e.logicalSpace() != spaceOld && e.logicalSpace() != spaceLarge) {
 		return
 	}
 	if c.objectEdgeCount(makeObjRef(h)) != 0 {

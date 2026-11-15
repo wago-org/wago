@@ -70,7 +70,7 @@ func (c *Collector) growDefaultNursery(copiedBytes uint64, youngObjects uint32) 
 			return
 		}
 		e := c.handles[h]
-		if e.space == spaceNursery && (e.off < oldBase || e.off-oldBase > c.survivorBump || e.size > c.survivorBump-(e.off-oldBase)) {
+		if e.logicalSpace() == spaceNursery && (e.off < oldBase || e.off-oldBase > c.survivorBump || e.size > c.survivorBump-(e.off-oldBase)) {
 			return
 		}
 	}
@@ -88,7 +88,7 @@ func (c *Collector) growDefaultNursery(copiedBytes uint64, youngObjects uint32) 
 	newBase := eden + uint32(c.survivorFrom&1)*survivor
 	copy(backing[newBase:newBase+c.survivorBump], c.nursery[oldBase:oldBase+c.survivorBump])
 	for _, h := range c.nurseryHandles {
-		if e := &c.handles[h]; e.space == spaceNursery {
+		if e := &c.handles[h]; e.logicalSpace() == spaceNursery {
 			e.off = newBase + (e.off - oldBase)
 		}
 	}

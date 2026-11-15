@@ -212,6 +212,7 @@ func (f *fn) emitNativeTrustedFinalCastArrayGetStub(width int) {
 	a.LeaScaled(R9, R9, R10, 3, 0)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	a.AluRI(4, R10, gc.NativeHandleSpaceMask, false)
 	if gc.NativeViewSpaceStride != 16 {
 		panic("amd64: native GC space descriptor stride is not 16")
 	}
@@ -303,6 +304,7 @@ func (f *fn) emitNativeFinalCastArrayGetStub(width int) {
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	a.AluRI(4, R10, gc.NativeHandleSpaceMask, false)
 	a.TestSelf(R10, false)
 	castFailure(condE)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)

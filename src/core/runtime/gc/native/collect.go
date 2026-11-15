@@ -79,7 +79,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		}
 	}
 	for _, h := range c.remembered {
-		if int(h) < len(c.handles) && !c.handles[h].young() && (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) {
+		if int(h) < len(c.handles) && !c.handles[h].young() && (c.handles[h].logicalSpace() == spaceOld || c.handles[h].logicalSpace() == spaceLarge) {
 			c.stats.MinorRememberedScanned++
 			c.scanRememberedCards(h)
 		}
@@ -160,8 +160,8 @@ func (c *Collector) sweepAll() {
 		c.sweepMajorBlocks()
 	} else {
 		for h := uint32(1); int(h) < len(c.handles); h++ {
-			if c.handles[h].space != spaceFree && !c.mark[h] {
-				if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
+			if c.handles[h].logicalSpace() != spaceFree && !c.mark[h] {
+				if c.handles[h].logicalSpace() == spaceOld || c.handles[h].logicalSpace() == spaceLarge {
 					c.deferThroughputFree(h)
 				} else {
 					c.free(h)
@@ -198,7 +198,7 @@ func (c *Collector) finishMinorEvacuation(liveCount uint64) {
 			continue
 		}
 		e := &c.handles[h]
-		if nativeCollectorFastPaths && e.space == spaceNursery && !c.cfg.PoisonFreed && e.cardSlot == 0 {
+		if nativeCollectorFastPaths && e.logicalSpace() == spaceNursery && !c.cfg.PoisonFreed && e.cardSlot == 0 {
 			// Nursery payload has no individual allocator ownership to release.
 			// The space byte invalidates the identity. Both native and Go reuse
 			// overwrite the complete entry before publishing it again; leave the
@@ -245,7 +245,7 @@ func (c *Collector) finishSparseMinorEvacuation() {
 				}
 			} else {
 				e := &c.handles[h]
-				if e.space == spaceNursery && e.cardSlot == 0 {
+				if e.logicalSpace() == spaceNursery && e.cardSlot == 0 {
 					e.space = spaceFree
 					continue
 				} else if e.young() {
@@ -289,7 +289,7 @@ func (c *Collector) finishDeadNurseryEvacuation() bool {
 		h := nursery[i]
 		if h != 0 && int(h) < len(c.handles) {
 			e := &c.handles[h]
-			if e.space == spaceNursery && e.cardSlot == 0 {
+			if e.logicalSpace() == spaceNursery && e.cardSlot == 0 {
 				e.space = spaceFree
 				continue
 			} else if e.young() {
@@ -365,7 +365,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 			age := src.age() + 1
 			plan := plannedPromotion{handle: h}
 			switch {
-			case src.space == spaceLarge:
+			case src.logicalSpace() == spaceLarge:
 				plan.entry = src
 				if age >= c.tenuringThreshold {
 					plan.entry.clearYoungAge()
@@ -381,7 +381,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 				}
 			}
 			plans[i] = plan
-			needsOldAllocation = needsOldAllocation || plan.entry.space == spaceFree
+			needsOldAllocation = needsOldAllocation || plan.entry.logicalSpace() == spaceFree
 		}
 	} else {
 		for _, h := range c.nurseryHandles {
@@ -398,7 +398,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 			age := src.age() + 1
 			plan := plannedPromotion{handle: h}
 			switch {
-			case src.space == spaceLarge:
+			case src.logicalSpace() == spaceLarge:
 				plan.entry = src
 				if age >= c.tenuringThreshold {
 					plan.entry.clearYoungAge()
@@ -414,7 +414,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 				}
 			}
 			plans = append(plans, plan)
-			needsOldAllocation = needsOldAllocation || plan.entry.space == spaceFree
+			needsOldAllocation = needsOldAllocation || plan.entry.logicalSpace() == spaceFree
 		}
 	}
 	if needsOldAllocation && len(plans) > 1 && !c.promotionPlansSorted(plans) {
@@ -457,7 +457,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 			c.throughput.rollbackSuccessfulAlloc(*current, tx.bump)
 		}
 		for i := len(plans) - 1; i >= 0; i-- {
-			if plans[i].entry.space == spaceOld {
+			if plans[i].entry.logicalSpace() == spaceOld {
 				c.throughput.rollbackSuccessfulAlloc(plans[i].entry, tx.bump)
 			}
 		}
@@ -466,7 +466,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 	}
 	groupEnd := 0
 	for i := 0; i < len(plans); {
-		if plans[i].entry.space != spaceFree {
+		if plans[i].entry.logicalSpace() != spaceFree {
 			if err = injectFailure(c, failPromotionDestination); err != nil {
 				rollback(nil)
 				return 0, 0, false, err
@@ -479,7 +479,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 		// Keep the equal-size group's end instead of rescanning its suffix.
 		if i >= groupEnd {
 			groupEnd = i + 1
-			for groupEnd < len(plans) && plans[groupEnd].entry.space == spaceFree && c.handles[plans[groupEnd].handle].size == size {
+			for groupEnd < len(plans) && plans[groupEnd].entry.logicalSpace() == spaceFree && c.handles[plans[groupEnd].handle].size == size {
 				if promotionGroupScanCheckEnabled {
 					notePromotionGroupScan()
 				}
@@ -543,11 +543,12 @@ func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8
 	for _, p := range plans {
 		src := c.handles[p.handle]
 		size := src.size
-		switch p.entry.space {
+		switch p.entry.logicalSpace() {
 		case spaceNursery:
 			dst := c.nursery[p.entry.off : p.entry.off+p.entry.size]
 			copy(dst, c.bytes(makeObjRef(p.handle)))
 			c.poisonYoungSource(src)
+			p.entry.inheritTypeTag(src)
 			c.handles[p.handle] = p.entry
 			copiedBytes += uint64(size)
 		case spaceOld:
@@ -619,7 +620,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			return 0, 0, err
 		}
 		plan := plannedPromotion{handle: h}
-		if c.handles[h].space == spaceLarge {
+		if c.handles[h].logicalSpace() == spaceLarge {
 			plan.entry = c.handles[h]
 			plan.entry.clearYoungAge()
 		}
@@ -647,7 +648,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			c.throughput.rollbackSuccessfulAlloc(*current, tx.bump)
 		}
 		for i := len(plans) - 1; i >= 0; i-- {
-			if plans[i].entry.space == spaceOld {
+			if plans[i].entry.logicalSpace() == spaceOld {
 				c.throughput.rollbackSuccessfulAlloc(plans[i].entry, tx.bump)
 			}
 		}
@@ -656,7 +657,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 	}
 	groupEnd := 0
 	for i := 0; i < len(plans); {
-		if plans[i].entry.space != spaceFree {
+		if plans[i].entry.logicalSpace() != spaceFree {
 			if err = injectFailure(c, failPromotionDestination); err != nil {
 				rollback(nil)
 				return 0, 0, err
@@ -669,7 +670,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 		// Keep the equal-size group's end instead of rescanning its suffix.
 		if i >= groupEnd {
 			groupEnd = i + 1
-			for groupEnd < len(plans) && plans[groupEnd].entry.space == spaceFree && c.handles[plans[groupEnd].handle].size == size {
+			for groupEnd < len(plans) && plans[groupEnd].entry.logicalSpace() == spaceFree && c.handles[plans[groupEnd].handle].size == size {
 				if promotionGroupScanCheckEnabled {
 					notePromotionGroupScan()
 				}
@@ -717,7 +718,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 	}
 	for _, p := range plans {
 		size := c.handles[p.handle].size
-		if p.entry.space == spaceLarge {
+		if p.entry.logicalSpace() == spaceLarge {
 			c.tenureLargeInPlace(p.handle)
 			promotedBytes += uint64(size)
 		} else {
@@ -742,7 +743,7 @@ func (c *Collector) promotionPlansSorted(plans []plannedPromotion) bool {
 	var previousSize uint32
 	for i := range plans {
 		plan := &plans[i]
-		if plan.entry.space == spaceFree {
+		if plan.entry.logicalSpace() == spaceFree {
 			plan.entry.size = c.throughput.promotionAllocSize(c.handles[plan.handle].size)
 		}
 		kind := promotionPlanKind(plan.entry)
@@ -756,7 +757,7 @@ func (c *Collector) promotionPlansSorted(plans []plannedPromotion) bool {
 }
 
 func promotionPlanKind(e handleEntry) int {
-	switch e.space {
+	switch e.logicalSpace() {
 	case spaceNursery:
 		return 0
 	case spaceFree:
@@ -778,13 +779,13 @@ func srcAlignment(c *Collector, h uint32) uint32 {
 }
 
 func (c *Collector) promoteHandle(h uint32) error {
-	if int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+	if int(h) >= len(c.handles) || c.handles[h].logicalSpace() == spaceFree {
 		return errors.New("gc: invalid handle")
 	}
 	if !c.handles[h].young() {
 		return nil
 	}
-	if c.handles[h].space == spaceLarge {
+	if c.handles[h].logicalSpace() == spaceLarge {
 		c.tenureLargeInPlace(h)
 		c.removeYoungHandle(h)
 		return nil
@@ -820,6 +821,7 @@ func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
 			src[i] = 0xdd
 		}
 	}
+	oldEntry.inheritTypeTag(*e)
 	*e = oldEntry
 }
 func (c *Collector) free(h uint32) { c.releaseHandle(h, false, true) }
@@ -836,7 +838,7 @@ func (c *Collector) releaseHandle(h uint32, lazyThroughput, poisonTiny bool) {
 	// either would make the allocation unreachable and unrecoverable. These errors
 	// cannot be caused by guest input after allocation has succeeded, so fail-stop
 	// is safer than continuing with a corrupted allocator.
-	switch e.space {
+	switch e.logicalSpace() {
 	case spaceTiny:
 		var err error
 		if poisonTiny {
@@ -862,7 +864,7 @@ func (c *Collector) releaseHandle(h uint32, lazyThroughput, poisonTiny bool) {
 	c.removeRemembered(h)
 	c.removeCardsForHandle(h)
 	if c.cfg.PoisonFreed {
-		switch e.space {
+		switch e.logicalSpace() {
 		case spaceNursery:
 			for i := range c.nursery[e.off : e.off+e.size] {
 				c.nursery[e.off+uint32(i)] = 0xdd
@@ -893,7 +895,7 @@ func (c *Collector) compactNurseryHandles() {
 				continue
 			}
 			e := c.handles[h]
-			sp := e.space
+			sp := e.logicalSpace()
 			if sp == spaceNursery || (sp == spaceLarge && c.handles[h].young()) {
 				out = append(out, h)
 			}
@@ -914,7 +916,7 @@ func (c *Collector) compactNurseryHandles() {
 		}
 		out = append(out, h)
 		e := c.handles[h]
-		if e.space != spaceNursery {
+		if e.logicalSpace() != spaceNursery {
 			continue
 		}
 		end := e.off + e.size
@@ -934,7 +936,7 @@ func (c *Collector) compactNurseryHandles() {
 func (c *Collector) liveCount() uint32 {
 	var n uint32
 	for _, e := range c.handles {
-		if e.space != spaceFree {
+		if e.logicalSpace() != spaceFree {
 			n++
 		}
 	}

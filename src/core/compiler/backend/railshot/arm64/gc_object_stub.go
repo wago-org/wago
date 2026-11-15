@@ -75,7 +75,7 @@ func emitGCObjectStub(code []byte) []byte {
 	a.AddShifted(X10, X10, X16, 4, false)
 	a.Load32(X17, X10, gc.NativeHandleMetadataOffset)
 	a.LsrImm(X17, X17, 16, true)
-	a.AndImm32(X17, X17, 255)
+	a.AndImm32(X17, X17, gc.NativeHandleSpaceMask)
 	cold(a.Cbz32(X17))
 	a.CmpImm32(X17, gc.NativeSpaceCount-1)
 	cold(a.Bcond(condA))

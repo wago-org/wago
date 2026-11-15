@@ -74,6 +74,7 @@ func TestGCResolversLoadSpaceByte(t *testing.T) {
 				// descriptor loads. No speculative Old descriptor read is needed.
 				patterns := []string{
 					`movzx\s+r10d,BYTE PTR \[r9(?:\+riz\*1)?\+0xe\]`,
+					`and\s+r10d,0x7`,
 					`test\s+r10d,r10d`,
 					`cmp\s+r10d,0x4`,
 					`shl\s+r10d,0x4`,
@@ -95,7 +96,7 @@ func TestGCResolversLoadSpaceByte(t *testing.T) {
 				}
 			}
 			reg := regexp.QuoteMeta(strings.TrimSpace(matches[0][1]))
-			for _, old := range []string{`shr\s+` + reg + `,0x10`, `and\s+` + reg + `,0xff`} {
+			for _, old := range []string{`and\s+` + reg + `,0xff`} {
 				if regexp.MustCompile(old + `\s`).Match(out) {
 					t.Fatalf("old space decode remains: %s\n%s", old, out)
 				}

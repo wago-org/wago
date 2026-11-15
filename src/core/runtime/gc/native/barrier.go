@@ -52,7 +52,7 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 	}
 	h := handleOf(parent)
 	e := &c.handles[h]
-	if (e.space != spaceOld && e.space != spaceLarge) || e.young() {
+	if (e.logicalSpace() != spaceOld && e.logicalSpace() != spaceLarge) || e.young() {
 		return
 	}
 	if !c.entry(child).young() {
@@ -79,7 +79,7 @@ func (c *Collector) writeBarrierObjectRange(parent Ref, child Ref, start, end ui
 	}
 	h := handleOf(parent)
 	e := &c.handles[h]
-	if (e.space != spaceOld && e.space != spaceLarge) || e.young() {
+	if (e.logicalSpace() != spaceOld && e.logicalSpace() != spaceLarge) || e.young() {
 		return
 	}
 	if !child.IsObj() {
@@ -165,7 +165,7 @@ func (c *Collector) CardMarkArray(array Ref, elementIndex uint32) {
 	}
 	h := handleOf(array)
 	e := &c.handles[h]
-	if e.young() || (e.space != spaceOld && e.space != spaceLarge) {
+	if e.young() || (e.logicalSpace() != spaceOld && e.logicalSpace() != spaceLarge) {
 		return
 	}
 	d, err := c.refDesc(array)
@@ -230,7 +230,7 @@ func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 	}
 	h := handleOf(dst)
 	e := &c.handles[h]
-	sp := e.space
+	sp := e.logicalSpace()
 	if e.young() || (sp != spaceOld && sp != spaceLarge) {
 		return
 	}
@@ -260,7 +260,7 @@ func (c *Collector) addObjectCardRange(h, start, end uint32) {
 		return
 	}
 	e := &c.handles[h]
-	if e.young() || (e.space != spaceOld && e.space != spaceLarge) {
+	if e.young() || (e.logicalSpace() != spaceOld && e.logicalSpace() != spaceLarge) {
 		return
 	}
 	payloadBytes := uint32(0)
@@ -488,7 +488,7 @@ func (c *Collector) remember(h uint32) {
 		return
 	}
 	e := &c.handles[h]
-	if e.remembered || e.young() || (e.space != spaceOld && e.space != spaceLarge) {
+	if e.remembered || e.young() || (e.logicalSpace() != spaceOld && e.logicalSpace() != spaceLarge) {
 		return
 	}
 	e.remembered = true
@@ -507,7 +507,7 @@ func (c *Collector) pruneRemembered() {
 	for _, h := range c.remembered {
 		keep := h != 0 && int(h) < len(c.handles) && c.handles[h].remembered
 		if keep {
-			sp := c.handles[h].space
+			sp := c.handles[h].logicalSpace()
 			keep = (sp == spaceOld || sp == spaceLarge) && c.handleContainsNurseryRef(h)
 		}
 		if keep {
@@ -644,7 +644,7 @@ func (c *Collector) markWholeObjectCard(h uint32) {
 }
 
 func (c *Collector) handleContainsNurseryRef(h uint32) bool {
-	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+	if h == 0 || int(h) >= len(c.handles) || c.handles[h].logicalSpace() == spaceFree {
 		return false
 	}
 	found := false
@@ -667,7 +667,7 @@ func (c *Collector) tinyWriteBarrierObject(parent Ref, child Ref) {
 	if ph == 0 || ch == 0 || int(ph) >= len(c.handles) || int(ch) >= len(c.handles) {
 		return
 	}
-	if c.handles[ph].space != spaceTiny || c.handles[ch].space != spaceTiny {
+	if c.handles[ph].logicalSpace() != spaceTiny || c.handles[ch].logicalSpace() != spaceTiny {
 		return
 	}
 	if !c.tinyIsWhite(ch) {

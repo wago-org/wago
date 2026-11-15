@@ -39,7 +39,7 @@ func (c *Collector) NewArrayDataWithRoots(typeID TypeID, length uint32, data []b
 	// Clear alignment and size-class padding without overwriting the payload.
 	e := c.entry(r)
 	start, limit := e.off+payloadEnd, e.off+e.size
-	switch e.space {
+	switch e.logicalSpace() {
 	case spaceNursery:
 		clear(c.nursery[start:limit])
 	case spaceOld, spaceLarge:

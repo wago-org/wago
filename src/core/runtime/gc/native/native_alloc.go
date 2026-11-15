@@ -293,10 +293,10 @@ func (c *Collector) prepareNativeLargeArrayAllocation(objectBytes uint32) bool {
 	s.ChunkStart = e.off
 	s.ChunkCursor = e.off
 	s.ChunkEnd = e.off + Align16(e.size)
-	s.ChunkBump = uint32(e.class) | uint32(e.space)<<16
+	s.ChunkBump = uint32(e.class) | uint32(e.logicalSpace())<<16
 	s.Handle = h
 	s.Rewind = rewind
-	if e.space == spaceNursery {
+	if e.logicalSpace() == spaceNursery {
 		c.refreshNativeHandles()
 	} else {
 		c.refreshNativeView()
@@ -309,7 +309,7 @@ func (c *Collector) discardNativeLargeArrayAllocation() {
 		return
 	}
 	s := &c.nativeLargeArrayAlloc
-	unused := s.Count != 0 && s.Cursor == 0 && s.Handle != 0 && int(s.Handle) < len(c.handles) && c.handles[s.Handle].space == spaceFree
+	unused := s.Count != 0 && s.Cursor == 0 && s.Handle != 0 && int(s.Handle) < len(c.handles) && c.handles[s.Handle].logicalSpace() == spaceFree
 	if unused {
 		c.freeHandles = append(c.freeHandles, s.Handle)
 		index := c.nativeLargeArrayNurseryIndex
@@ -419,7 +419,7 @@ func (c *Collector) discardNativeStructHandles() {
 		if s.HandleBase != 0 {
 			h = s.HandleBase + i
 		}
-		if h != 0 && int(h) < len(c.handles) && c.handles[h].space == spaceFree {
+		if h != 0 && int(h) < len(c.handles) && c.handles[h].logicalSpace() == spaceFree {
 			c.freeHandles = append(c.freeHandles, h)
 			canceled = true
 		}
@@ -454,7 +454,7 @@ func (c *Collector) discardNativeStructHandles() {
 				out := c.nurseryHandles[:start]
 				for i := uint32(0); i < end; i++ {
 					h := s.Handles[i]
-					if h != 0 && int(h) < len(c.handles) && c.handles[h].space != spaceFree {
+					if h != 0 && int(h) < len(c.handles) && c.handles[h].logicalSpace() != spaceFree {
 						out = append(out, h)
 					}
 				}

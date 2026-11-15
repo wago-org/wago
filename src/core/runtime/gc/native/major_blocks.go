@@ -89,7 +89,7 @@ func (c *Collector) sweepMajorBlocks() {
 			// One marked object keeps the block occupied. The remaining entries
 			// use the original sweep loop without repeating the occupancy update.
 			for ; h < end; h++ {
-				space := c.handles[h].space
+				space := c.handles[h].logicalSpace()
 				if space == spaceFree {
 					continue
 				}
@@ -105,8 +105,8 @@ func (c *Collector) sweepMajorBlocks() {
 				}
 			}
 			for ; h < end; h++ {
-				if c.handles[h].space != spaceFree && !c.mark[h] {
-					if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
+				if c.handles[h].logicalSpace() != spaceFree && !c.mark[h] {
+					if c.handles[h].logicalSpace() == spaceOld || c.handles[h].logicalSpace() == spaceLarge {
 						c.deferThroughputFree(uint32(h))
 					} else {
 						c.free(uint32(h))
