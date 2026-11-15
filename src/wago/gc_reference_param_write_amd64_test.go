@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -48,5 +49,51 @@ func TestGCForwardedReferenceParameterWrite(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func gcInlineReferenceFactBoundaryModule() []byte {
+	callee := wasmtest.Code([]byte{
+		0x20, 0, 0xfb, 22, 0, 0x1a, // local.get 0; ref.cast 0; drop
+		0x20, 1, 0xfb, 22, 0, // local.get 1; ref.cast 0
+		0x0b,
+	})
+	caller := wasmtest.Code([]byte{
+		0xfb, 1, 0, // struct.new_default 0
+		0xd0, 0x6d, // ref.null eq
+		0x10, 0, // call callee
+		0x1a, 0x41, 1, 0x0b, // drop; i32.const 1; end
+	})
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x4f, 0, 0x5f, 0},
+			[]byte{0x60, 2, 0x6d, 0x6d, 1, 0x64, 0},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(callee, caller)),
+	)
+}
+
+func TestGCInlineReferenceFactsDoNotCrossValues(t *testing.T) {
+	for _, inline := range []bool{false, true} {
+		t.Run(fmt.Sprintf("inline%t", inline), func(t *testing.T) {
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("inline", inline), gcInlineReferenceFactBoundaryModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			_, err = instance.Invoke("run")
+			var trap *TrapError
+			if !errors.As(err, &trap) || trap.Code != TrapCastFailure {
+				t.Fatalf("run = %v; want cast failure", err)
+			}
+		})
 	}
 }

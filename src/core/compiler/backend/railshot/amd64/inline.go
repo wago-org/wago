@@ -1606,6 +1606,9 @@ func (f *fn) inlineBody(body []byte) error {
 		case 0x01: // nop — the driver's body() handles this outside emitPlain
 			continue
 		}
+		if f.gcLocalTypeFactsEnabled() && (f.gcPendingReference.valid() || f.gcLocalTypeFacts.n != 0) {
+			f.prepareGCLocalTypeFacts(op)
+		}
 		var previous profileOrigin
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			previous = f.enterProfileInstruction()
