@@ -205,6 +205,7 @@ func newCollector(config Config, types []TypeDesc, owned bool) (*Collector, erro
 	if err := ValidateNativeABI(); err != nil {
 		return nil, err
 	}
+	explicitNursery := config.NurseryBytes != 0 || config.SurvivorBytes != 0
 	autoNursery := nativeCollectorFastPaths && config.Profile == ProfileThroughput &&
 		config.NurseryBytes == 0 && config.SurvivorBytes == 0 && config.StressNurseryBytes == 0 &&
 		config.ThroughputHeapBytes == 0 && config.LargeObjectBytes == 0 && config.MinorPauseTargetMicros == 0 &&
@@ -258,7 +259,7 @@ func newCollector(config Config, types []TypeDesc, owned bool) (*Collector, erro
 	}
 	// Reserve only after all fallible constructor checks. Automatic nursery
 	// growth keeps the Go owner until a separate relocation protocol is needed.
-	if !owned || autoNursery || !c.initOwnedNursery(nurseryBackingBytes) {
+	if !owned || !explicitNursery || autoNursery || !c.initOwnedNursery(nurseryBackingBytes) {
 		c.nursery = makeAlignedBytes(nurseryBackingBytes, uintptr(objectAlign))
 	}
 	c.initNativeView()

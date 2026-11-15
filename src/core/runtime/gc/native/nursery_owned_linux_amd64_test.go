@@ -63,6 +63,9 @@ func TestOwnedNurseryAdmission(t *testing.T) {
 		{"standalone", false, Config{NurseryBytes: 4096}, false},
 		{"late-opt-in", false, Config{NurseryBytes: 4096}, false},
 		{"automatic", true, Config{}, false},
+		{"default-size-fixed-heap", true, Config{ThroughputHeapBytes: 32 << 20}, false},
+		{"default-size-large-object", true, Config{LargeObjectBytes: 16}, false},
+		{"default-size-disabled-collection", true, Config{DisableCollection: true}, false},
 		{"fixed", true, Config{NurseryBytes: 4096}, true},
 		{"tiny", true, Config{Profile: ProfileTiny, TinyHeapBytes: 4096}, false},
 	} {
