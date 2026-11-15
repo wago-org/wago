@@ -1264,7 +1264,17 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		if gcDense16CastsEnabled && gcFrameRefType(f.m, results[0]) {
 			value := f.popValue()
 			reg := f.materialize(value)
+			known := -1
+			if helper == gcStructAllocOne || helper == gcStructAllocDefault {
+				// Both Go and native constructors mint fresh current evidence.
+				// A compact fallback still uses the complete checked mint leaf.
+				f.a.BtImm(reg, 48, true)
+				known = f.a.JccPlaceholder(condB)
+			}
 			f.emitNativeMintReference(reg)
+			if known >= 0 {
+				f.a.PatchRel32(known, f.a.Len())
+			}
 			f.pushReg(reg, mtI64)
 			f.markTopGCReference()
 		}

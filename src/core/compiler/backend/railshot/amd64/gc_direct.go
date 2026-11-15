@@ -2477,8 +2477,10 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.MovRegReg32(RAX, RSI)
 	a.ShiftImm(4, RAX, 1, false)
 	if directSlots {
+		emitFreshNativeStructTypeWord(a, typeIndex, objectSize)
 		a.Store64(RSP, f.spillOff(resultSlot)+stackDelta, RAX)
 	} else {
+		emitFreshNativeStructTypeWord(a, typeIndex, objectSize)
 		a.Store64(RDI, hcResults, RAX)
 	}
 	done := a.JmpPlaceholder()

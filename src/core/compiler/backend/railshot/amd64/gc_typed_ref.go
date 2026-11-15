@@ -21,6 +21,56 @@ import (
 // Caller save (8), return address (8), flags (8), and four scratch saves (32).
 const gcTypedMintStackBytes = 56
 
+// The struct allocation path has just published this handle and initialized its
+// header. Use that exact type without resolving the same object a second time.
+// R8 is the collector, RSI is the handle index, and RAX is its compact ref.
+// RCX, RDX and R10 are scratch at this publication point.
+func emitFreshNativeStructTypeWord(a *x64.Asm, typeIndex, objectSize uint32) {
+	if !gcDense16CastsEnabled {
+		return
+	}
+	var raw [8]int
+	n := 0
+	fallback := func(cond Cond) {
+		raw[n] = a.JccPlaceholder(cond)
+		n++
+	}
+	a.AluRM(cmpRMcode, RSI, R8, gc.NativeViewHandleCountOffset, false)
+	fallback(condAE)
+	// RCX still holds the nursery offset used to publish the new handle.
+	a.AluRI(0, RCX, int32(objectSize), false)
+	a.AluRM(cmpRMcode, RCX, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBytesOffset), false)
+	fallback(condA)
+	a.Load32(RDX, R8, gc.NativeViewTypeRefEpochOffset)
+	a.TestSelf(RDX, false)
+	fallback(condE)
+	a.AluRI(cmpDigit, RDX, int32(gc.NativeTypedRefMaxEpoch), false)
+	fallback(condA)
+	a.Load64(R10, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(R10, R10, gc.NativeInstanceViewLocalTypesOffset)
+	a.Load32(RCX, R10, int32(typeIndex*4))
+	a.AluRI(cmpDigit, RCX, int32(gc.NativeTypeWordIDMask), false)
+	fallback(condA)
+	a.AluRM(cmpRMcode, RCX, R8, gc.NativeViewTypeWordCountOffset, false)
+	fallback(condAE)
+	a.Load64(R10, R8, gc.NativeViewTypeWordsOffset)
+	a.TestSelf(R10, true)
+	fallback(condE)
+	a.LeaScaled(R10, R10, RCX, 2, 0)
+	a.Load32(R10, R10, 0)
+	a.TestImm(R10, gc.NativeTypeWordFastValid, false)
+	fallback(condE)
+	a.ShiftImm(4, RCX, 32, true)
+	a.AluRR(0x09, RAX, RCX, true)
+	a.ShiftImm(4, RDX, 1, false)
+	a.AluRI(1, RDX, 1, false)
+	a.ShiftImm(4, RDX, 48, true)
+	a.AluRR(0x09, RAX, RDX, true)
+	for _, site := range raw[:n] {
+		a.PatchRel32(site, a.Len())
+	}
+}
+
 func (f *fn) emitNativeMintReference(ref Reg) {
 	if !gcDense16CastsEnabled {
 		return
