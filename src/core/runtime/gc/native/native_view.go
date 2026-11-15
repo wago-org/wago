@@ -21,7 +21,8 @@ import (
 // Version 8 also gates the dead-reservation/native-preparation helper dispatch.
 // Version 10 appends the fixed-width type projection. Compact reference
 // boundaries remain unchanged; TypedRef is a separate internal carrier.
-const NativeABIVersion uint32 = 10
+// Version 11 defines the native typed-word epoch in the final padding word.
+const NativeABIVersion uint32 = 11
 
 // Native allocation-stat offsets are relative to the AllocationCount pointer
 // in NativeCollectorView. Generated AMD64 dead charges use these counters to
@@ -94,7 +95,7 @@ type NativeCollectorView struct {
 	LargeArrayAllocEpoch  uintptr
 	TypeWords             uintptr
 	TypeWordCount         uint32
-	_                     uint32
+	TypeRefEpoch          uint32
 }
 
 const (
@@ -122,6 +123,7 @@ const (
 	NativeViewLargeArrayAllocEpochOffset  = 192
 	NativeViewTypeWordsOffset             = 200
 	NativeViewTypeWordCountOffset         = 208
+	NativeViewTypeRefEpochOffset          = 212
 	NativeCollectorViewSize               = 216
 )
 
@@ -241,7 +243,8 @@ func ValidateNativeABI() error {
 		return fmt.Errorf("gc: native large-array allocation ABI layout mismatch")
 	}
 	if unsafe.Offsetof(view.TypeWords) != NativeViewTypeWordsOffset ||
-		unsafe.Offsetof(view.TypeWordCount) != NativeViewTypeWordCountOffset {
+		unsafe.Offsetof(view.TypeWordCount) != NativeViewTypeWordCountOffset ||
+		unsafe.Offsetof(view.TypeRefEpoch) != NativeViewTypeRefEpochOffset {
 		return fmt.Errorf("gc: native type-word ABI layout mismatch")
 	}
 	var instance NativeInstanceView
@@ -300,7 +303,7 @@ func ValidateNativeInstanceView(view *NativeInstanceView, collector *Collector, 
 func (c *Collector) initNativeView() {
 	c.appendTypeWords(0)
 	if c.nativeView == nil {
-		c.nativeView = &NativeCollectorView{}
+		c.nativeView = &NativeCollectorView{TypeRefEpoch: 1}
 	}
 	c.refreshNativeView()
 }
@@ -325,6 +328,7 @@ func (c *Collector) refreshNativeView() {
 	v.TypeWords = sliceData(c.typeWords)
 	v.TypeWordCount = uint32(len(c.typeWords))
 	if c.closed {
+		v.TypeRefEpoch = 0
 		v.NurseryAllocBytes = 0
 		v.StructAllocState = 0
 		v.StructAllocEpoch = 0

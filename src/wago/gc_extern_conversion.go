@@ -379,6 +379,9 @@ func (s *gcExternConversionState) newOpaqueWordLocked(disallow ...uint64) (uint6
 		if err != nil {
 			return 0, fmt.Errorf("create GC extern conversion identity: %w", err)
 		}
+		// Internal GC words use this bit for authenticated type evidence.
+		// Keep foreign identities in a disjoint class before collision checks.
+		word &^= gc.NativeTypedRefKnown
 		if word>>32 == 0 {
 			continue
 		}

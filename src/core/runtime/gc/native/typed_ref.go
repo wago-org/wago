@@ -13,22 +13,25 @@ import "errors"
 // The low sixteen bits are meaningful only while FastValid is set. Nullability
 // and exactness describe a use of a reference, not its heap descriptor.
 const (
-	NativeTypeWordIDMask    uint32 = 0xffff
-	NativeTypeWordKindShift        = 16
-	NativeTypeWordFinal     uint32 = 1 << 18
-	NativeTypeWordLeaf      uint32 = 1 << 19
-	NativeTypeWordAny       uint32 = 1 << 20
-	NativeTypeWordEq        uint32 = 1 << 21
-	NativeTypeWordStruct    uint32 = 1 << 22
-	NativeTypeWordArray     uint32 = 1 << 23
-	NativeTypeWordFunc      uint32 = 1 << 24
-	NativeTypeWordFastValid uint32 = 1 << 25
-	NativeTypedRefKnown     uint64 = 1 << 48
+	NativeTypeWordIDMask     uint32 = 0xffff
+	NativeTypeWordKindShift         = 16
+	NativeTypeWordFinal      uint32 = 1 << 18
+	NativeTypeWordLeaf       uint32 = 1 << 19
+	NativeTypeWordAny        uint32 = 1 << 20
+	NativeTypeWordEq         uint32 = 1 << 21
+	NativeTypeWordStruct     uint32 = 1 << 22
+	NativeTypeWordArray      uint32 = 1 << 23
+	NativeTypeWordFunc       uint32 = 1 << 24
+	NativeTypeWordFastValid  uint32 = 1 << 25
+	NativeTypedRefKnown      uint64 = 1 << 48
+	NativeTypedRefEpochShift        = 49
+	NativeTypedRefMaxEpoch   uint32 = (1 << 15) - 1
 )
 
 // TypedRef is an internal native value, not a public reference token. Its low
 // word is the unchanged compact Ref, bits32..47 carry its actual dense TypeID,
-// and bit48 proves that the ID is present. Null and i31 remain untagged.
+// bit48 proves that the ID is present, and bits49..63 hold its validity epoch.
+// Null and i31 remain untagged.
 //
 // The owning adapter must keep the original reference live and in this
 // collector domain. As with Ref, this word does not authenticate ownership or
@@ -46,8 +49,9 @@ func (r TypedRef) Ref() Ref { return Ref(uint32(r.word)) }
 // NativeWord exposes the internal carrier only to native ABI adapters.
 func (r TypedRef) NativeWord() uint64 { return r.word }
 
-// TypeIndex returns the direct dense index. The validity result distinguishes
-// unknown from both type0 and the valid type65535.
+// TypeIndex returns the carried direct dense index. The presence result
+// distinguishes unknown from both type0 and the valid type65535. Consumers
+// must also check the collector epoch before trusting that carried type.
 func (r TypedRef) TypeIndex() (uint16, bool) {
 	if r.word&NativeTypedRefKnown == 0 {
 		return 0xffff, false
@@ -58,6 +62,37 @@ func (r TypedRef) TypeIndex() (uint16, bool) {
 // Equal compares object/immediate identity independent of type knowledge.
 // Both operands must belong to the same collector domain.
 func (r TypedRef) Equal(other TypedRef) bool { return r.Ref() == other.Ref() }
+
+// NormalizeNativeRefWord discards metadata from an internal object word while
+// preserving all other words. It does not authenticate a public token. Call
+// it only after ownership conversion, in lanes that carry native GC values.
+// Foreign-any word allocation reserves the known bit before such values can
+// share this lane. Function and extern value lanes retain their full words.
+func NormalizeNativeRefWord(word uint64) uint64 {
+	if word&NativeTypedRefKnown != 0 && Ref(uint32(word)).IsObj() {
+		return uint64(uint32(word))
+	}
+	return word
+}
+
+// AdvanceNativeTypeEpoch invalidates type evidence at a native/host boundary.
+// Callers serialize this with native execution, as for AddTypes. Epoch zero
+// permanently disables typed minting for this collector; it is never reused.
+// No reference walk or allocation is needed.
+func (c *Collector) AdvanceNativeTypeEpoch() {
+	if c == nil || c.closed || c.nativeView == nil {
+		return
+	}
+	epoch := c.nativeView.TypeRefEpoch
+	if epoch == 0 {
+		return
+	}
+	if epoch >= NativeTypedRefMaxEpoch {
+		c.nativeView.TypeRefEpoch = 0
+	} else {
+		c.nativeView.TypeRefEpoch = epoch + 1
+	}
+}
 
 func projectTypeWord(d TypeDesc) uint32 {
 	word := uint32(d.ID)&NativeTypeWordIDMask | uint32(d.Kind)<<NativeTypeWordKindShift | NativeTypeWordLeaf
@@ -140,8 +175,8 @@ func (c *Collector) TypedReference(r Ref) (TypedRef, error) {
 	if err != nil {
 		return TypedRef{}, err
 	}
-	if c.typeWords[d.ID]&NativeTypeWordFastValid != 0 {
-		result.word |= uint64(d.ID)<<32 | NativeTypedRefKnown
+	if epoch := c.nativeView.TypeRefEpoch; epoch != 0 && c.typeWords[d.ID]&NativeTypeWordFastValid != 0 {
+		result.word |= uint64(d.ID)<<32 | NativeTypedRefKnown | uint64(epoch)<<NativeTypedRefEpochShift
 	}
 	return result, nil
 }
@@ -152,7 +187,8 @@ func (c *Collector) TypedReference(r Ref) (TypedRef, error) {
 // RefTestCanonical; this method must not replace their equality semantics.
 func (c *Collector) RefTestTyped(r TypedRef, target RefTestTarget) (bool, error) {
 	index, known := r.TypeIndex()
-	if !known {
+	if !known || c.nativeView == nil || c.nativeView.TypeRefEpoch == 0 ||
+		uint32(r.word>>NativeTypedRefEpochShift) != c.nativeView.TypeRefEpoch {
 		return c.refTest(r.Ref(), target, nil)
 	}
 	if err := c.errIfClosed(); err != nil {

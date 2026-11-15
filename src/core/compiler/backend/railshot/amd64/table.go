@@ -650,7 +650,9 @@ func (f *fn) refEq() {
 	right := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(right)
 	left := f.materialize(f.popValue())
-	f.cmpRR(left, right, true)
+	// Validation restricts ref.eq to eqref: compact objects, i31 and null.
+	// Optional native type evidence in the high word does not change identity.
+	f.cmpRR(left, right, false)
 	f.pinned = f.pinned.remove(right)
 	f.release(right)
 	f.a.SetccReg(condE, left)
