@@ -62,6 +62,7 @@ type Instance struct {
 	lifeMu                  sync.Mutex
 	resourceRefs            int
 	invocationState         instanceInvocationState // lifetime leases and invocation gate share one atomic word
+	guardCommitPages        uint32                  // Darwin/ARM64 guarded host extent, encoded as pages+1; zero disables it
 	closed                  bool                    // logical close; retained references may defer physical release
 	finalizing              bool                    // one goroutine owns quiescent finalization
 	resourcesClosed         bool
@@ -87,6 +88,37 @@ type Instance struct {
 	// moduleIdentity is an opaque token, not a Compiled pointer. It lets an
 	// instance finish its own lifecycle after its Module wrapper has closed.
 	moduleIdentity ModuleIdentity
+}
+
+// commitGuardedGrowthLocked makes successful private memory.grow effects
+// directly accessible to the next native activation. The caller retains the
+// native execution lease (or an isolated prepared-entry reservation), so an
+// imported backing cannot race another guest while HostBytesChecked extends
+// its Go-side committed view. Failures keep the old watermark and fall back to
+// the ordinary guard fault on access.
+func (in *Instance) commitGuardedGrowthLocked() {
+	if in == nil || in.guardCommitPages == 0 || in.jm == nil {
+		return
+	}
+	pages := in.jm.CurrentPages()
+	if pages+1 <= in.guardCommitPages {
+		return
+	}
+	if _, err := in.jm.HostBytesChecked(); err == nil {
+		in.guardCommitPages = pages + 1
+	}
+}
+
+func (in *Instance) commitGuardedGrowth() {
+	if in == nil || in.guardCommitPages == 0 || in.jm == nil {
+		return
+	}
+	if in.jm.CurrentPages()+1 <= in.guardCommitPages {
+		return
+	}
+	unlock := in.lockInstanceNativeStateForHostAccess()
+	in.commitGuardedGrowthLocked()
+	unlock()
 }
 
 // instanceImportState shares the existing Instance import-state pointer

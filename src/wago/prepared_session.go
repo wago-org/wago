@@ -240,6 +240,9 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) (result 
 	}
 	state := s.state
 	fn := state.fn
+	if fn.guardedMemoryGrow {
+		defer fn.in.commitGuardedGrowth()
+	}
 	if count != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
 	}
@@ -316,6 +319,9 @@ func (s *PreparedSession) invokeArgs(args []uint64) (result []uint64, resultErr 
 	}
 	state := s.state
 	fn := state.fn
+	if fn.guardedMemoryGrow {
+		defer fn.in.commitGuardedGrowth()
+	}
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}

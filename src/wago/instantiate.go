@@ -1900,6 +1900,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		threadedMemoryZero: c.threadedMemory0(),
 		moduleIdentity:     opts.moduleIdentity,
 	}
+	if goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64" && c.boundsMode == BoundsChecksSignalsBased && c.HasMemory && !c.threadedMemory0() && c.MemMaxPages > c.MemMinPages {
+		in.guardCommitPages = c.MemMinPages + 1
+	}
 	if threadedControl && ownsMem {
 		if err := memObj.observeOwner(in); err != nil {
 			return nil, err
@@ -2342,6 +2345,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				// no longer present in any slot, so retention stays bounded by its
 				// descriptor capacity rather than by failed-instantiation count.
 				return nil, wrapContextError("start function trapped", startErr)
+			}
+			if guardedMemoryGrowEntry(c.InternalEntry[c.StartLocalFunc]) {
+				in.commitGuardedGrowth()
 			}
 		}
 	}
