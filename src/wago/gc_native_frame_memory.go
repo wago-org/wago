@@ -24,6 +24,13 @@ func nativeGCFrameWord(address uintptr) uint64 {
 }
 
 //go:nocheckptr
-func nativeGCFrameRootSlot(address uintptr) *gc.Root {
-	return (*gc.Root)(offHeapPtr(address))
+func nativeGCFrameRootSlot(address uintptr) *nativeGCFrameRootWord {
+	return (*nativeGCFrameRootWord)(offHeapPtr(address))
 }
+
+// The pointed-to qword is the frame slot itself. Rewriting a root discards
+// type evidence for its former identity without allocating a slot wrapper.
+type nativeGCFrameRootWord uint64
+
+func (r *nativeGCFrameRootWord) GetRef() gc.Ref  { return gc.Ref(uint32(*r)) }
+func (r *nativeGCFrameRootWord) SetRef(v gc.Ref) { *r = nativeGCFrameRootWord(v) }

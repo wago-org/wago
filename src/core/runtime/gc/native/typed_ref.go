@@ -7,7 +7,10 @@
 
 package gc
 
-import "errors"
+import (
+	"errors"
+	"sync/atomic"
+)
 
 // Type words are descriptor projections indexed by the actual dense TypeID.
 // The low sixteen bits are meaningful only while FastValid is set. Nullability
@@ -76,22 +79,34 @@ func NormalizeNativeRefWord(word uint64) uint64 {
 }
 
 // AdvanceNativeTypeEpoch invalidates type evidence at a native/host boundary.
-// Callers serialize this with native execution, as for AddTypes. Epoch zero
-// permanently disables typed minting for this collector; it is never reused.
+// Invalidation is atomic and does not mutate objects or descriptor backing.
+// Epoch zero permanently disables typed minting; it is never reused.
 // No reference walk or allocation is needed.
 func (c *Collector) AdvanceNativeTypeEpoch() {
-	if c == nil || c.closed || c.nativeView == nil {
+	if c == nil || c.nativeView == nil {
 		return
 	}
-	epoch := c.nativeView.TypeRefEpoch
-	if epoch == 0 {
-		return
+	for {
+		epoch := atomic.LoadUint32(&c.nativeView.TypeRefEpoch)
+		if epoch == 0 {
+			return
+		}
+		next := epoch + 1
+		if epoch >= NativeTypedRefMaxEpoch {
+			next = 0
+		}
+		if atomic.CompareAndSwapUint32(&c.nativeView.TypeRefEpoch, epoch, next) {
+			return
+		}
 	}
-	if epoch >= NativeTypedRefMaxEpoch {
-		c.nativeView.TypeRefEpoch = 0
-	} else {
-		c.nativeView.TypeRefEpoch = epoch + 1
+}
+
+// NativeTypeEpoch returns the current type-evidence scope, or zero if disabled.
+func (c *Collector) NativeTypeEpoch() uint32 {
+	if c == nil || c.nativeView == nil {
+		return 0
 	}
+	return atomic.LoadUint32(&c.nativeView.TypeRefEpoch)
 }
 
 func projectTypeWord(d TypeDesc) uint32 {
@@ -175,7 +190,7 @@ func (c *Collector) TypedReference(r Ref) (TypedRef, error) {
 	if err != nil {
 		return TypedRef{}, err
 	}
-	if epoch := c.nativeView.TypeRefEpoch; epoch != 0 && c.typeWords[d.ID]&NativeTypeWordFastValid != 0 {
+	if epoch := c.NativeTypeEpoch(); epoch != 0 && epoch <= NativeTypedRefMaxEpoch && c.typeWords[d.ID]&NativeTypeWordFastValid != 0 {
 		result.word |= uint64(d.ID)<<32 | NativeTypedRefKnown | uint64(epoch)<<NativeTypedRefEpochShift
 	}
 	return result, nil
@@ -187,8 +202,11 @@ func (c *Collector) TypedReference(r Ref) (TypedRef, error) {
 // RefTestCanonical; this method must not replace their equality semantics.
 func (c *Collector) RefTestTyped(r TypedRef, target RefTestTarget) (bool, error) {
 	index, known := r.TypeIndex()
-	if !known || c.nativeView == nil || c.nativeView.TypeRefEpoch == 0 ||
-		uint32(r.word>>NativeTypedRefEpochShift) != c.nativeView.TypeRefEpoch {
+	if !known {
+		return c.refTest(r.Ref(), target, nil)
+	}
+	epoch := c.NativeTypeEpoch()
+	if epoch == 0 || uint32(r.word>>NativeTypedRefEpochShift) != epoch {
 		return c.refTest(r.Ref(), target, nil)
 	}
 	if err := c.errIfClosed(); err != nil {

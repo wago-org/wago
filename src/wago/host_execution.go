@@ -486,6 +486,7 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 		} else {
 			nativeExecutionMu.Lock()
 		}
+		leaseOwner.advanceNativeTypeEpochsAfterHost()
 		active.clearGCHostResultRoots(activation)
 		// Reuse only private, non-collector context with no intervening native
 		// entry or guarded host mutation. Do not read the global epoch under a
@@ -610,6 +611,7 @@ func (a *hostLoopActivation) dispatchSharedAtomicWait(active *Instance, ctrl uin
 			gcSuspension.resume()
 		}
 		nativeExecutionMu.Lock()
+		leaseOwner.advanceNativeTypeEpochsAfterHost()
 		nativeExecutionEpoch++
 		if err := active.bindNativeContext(); err != nil {
 			panic(invalidHostReference{err: err})

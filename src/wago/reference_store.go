@@ -1405,6 +1405,15 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 	}
 	store := in.refStore
 	store.mu.Lock()
+	domains := in.gcInvocationDomainsLocked()
+	store.mu.Unlock()
+	return domains
+}
+
+// gcInvocationDomainsLocked borrows the current domain view while refStore.mu
+// keeps its linked topology and instance admission stable.
+func (in *Instance) gcInvocationDomainsLocked() gcInvocationDomainView {
+	store := in.refStore
 	entry := store.instances[in]
 	var domains gcInvocationDomainView
 	if entry != nil {
@@ -1420,8 +1429,43 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 			domains = gcInvocationDomainView{local: entry.gcDomain, set: entry.invocationDomains}
 		}
 	}
-	store.mu.Unlock()
 	return domains
+}
+
+// advanceNativeTypeEpochsAfterHost runs after native ownership is reacquired.
+// Epoch writes are atomic; no collector backing or object data changes here.
+// Holding the store lock avoids nesting a topology read lease on active
+// suspensions and also covers construction callbacks without a full lease.
+func (in *Instance) advanceNativeTypeEpochsAfterHost() {
+	if !in.hostCallNeedsGCSuspension() {
+		return
+	}
+	if in.refStore == nil {
+		in.gc.AdvanceNativeTypeEpoch()
+		return
+	}
+	store := in.refStore
+	store.mu.Lock()
+	domains := in.gcInvocationDomainsLocked()
+	local := in.gc
+	seenLocal := false
+	if domains.dynamic {
+		it := domains.iterator(false)
+		for domain := it.next(); domain != nil; domain = it.next() {
+			seenLocal = seenLocal || domain.collector == local
+			domain.collector.AdvanceNativeTypeEpoch()
+		}
+	} else {
+		for i := 0; i < domains.len(); i++ {
+			collector := domains.at(i).collector
+			seenLocal = seenLocal || collector == local
+			collector.AdvanceNativeTypeEpoch()
+		}
+	}
+	if !seenLocal {
+		local.AdvanceNativeTypeEpoch()
+	}
+	store.mu.Unlock()
 }
 
 // mayNeedGCInvocationLease reads current ownership: a reference store or

@@ -9,6 +9,7 @@ package gc
 
 import (
 	"fmt"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -328,7 +329,7 @@ func (c *Collector) refreshNativeView() {
 	v.TypeWords = sliceData(c.typeWords)
 	v.TypeWordCount = uint32(len(c.typeWords))
 	if c.closed {
-		v.TypeRefEpoch = 0
+		atomic.StoreUint32(&v.TypeRefEpoch, 0)
 		v.NurseryAllocBytes = 0
 		v.StructAllocState = 0
 		v.StructAllocEpoch = 0
