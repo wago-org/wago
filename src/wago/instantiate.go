@@ -362,6 +362,7 @@ func (b *instanceBuilder) prepareCollector() error {
 	if err != nil {
 		return err
 	}
+	collector.UseOwnedThroughputBacking()
 	b.collector = collector
 	b.gcTypeMap = mapping
 	b.gcDomainID = newGCDomainIdentity()
