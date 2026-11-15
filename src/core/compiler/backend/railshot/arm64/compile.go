@@ -261,9 +261,11 @@ type fn struct {
 	// controlBaseTypeN partitions the fixed function-result scratch: function
 	// results occupy its prefix and open control-frame bases use the remaining tail.
 	controlBaseTypeN uint8
-	// localFactsEnabled admits assignment-version facts only in straight-line
-	// bodies. Facts reuse an otherwise-unused byte in each localDef.
+	// localFactsEnabled admits assignment-version facts on the current linear
+	// path. Structured joins clear them conservatively; facts reuse an
+	// otherwise-unused byte in each localDef.
 	localFactsEnabled      bool
+	localFactEpoch         valueFacts
 	localAddressBounds     []uint32
 	localAddressAligned8   uint64
 	rootAddressLoopScanned bool
@@ -3397,7 +3399,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
 	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOpCount() <= 128
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, conditionalBoundsSized: len(c.BodyBytes) >= 1024, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), loopMemory: hints.hasLoopMemory(), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), shiftedALUAddressLocals: reusedAddressLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, conditionalBoundsSized: len(c.BodyBytes) >= 1024, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), loopMemory: hints.hasLoopMemory(), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), shiftedALUAddressLocals: reusedAddressLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
 	state = f
 	f.privateGlobalConsts, f.privateStableLocals = f.provePrivateConstants()
 	f.adapterBacklink = sc.moduleNeedsAdapterBacklink(calleeHints)
@@ -3558,7 +3560,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	hints = &planningHints
 	f.hasLoop = hints.flags.has(hintHasLoop)
-	f.localFactsEnabled = f.localFactsEnabled && !hints.flags.has(hintHasControlFlow)
 	f.streamingReduction = f.opt(optStreamReduce) && hints.hasStreamingReduction()
 	// Inlining direct Wasm calls cannot remove GC/table/atomic runtime helpers.
 	if allCallsInlined {

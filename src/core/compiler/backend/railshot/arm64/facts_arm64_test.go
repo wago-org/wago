@@ -155,6 +155,20 @@ func TestStorageMetadataFieldsAreIndependentArm64(t *testing.T) {
 	}
 }
 
+func TestLocalFactEpochWrapDoesNotRestoreStaleFactsArm64(t *testing.T) {
+	f := fn{localFactsEnabled: true, locals: []localDef{{reg: regNone}}}
+	f.setFactsForLocal(0, factBoolean)
+	if got := f.factsForLocal(0); !got.has(factBoolean) {
+		t.Fatalf("initial local facts = %#x, want boolean", got)
+	}
+	for range 8 {
+		f.clearLocalValueFacts()
+	}
+	if got := f.factsForLocal(0); got.has(factBoolean) {
+		t.Fatalf("stale local fact restored after epoch wrap: %#x", got)
+	}
+}
+
 func TestSignedI32LoadCarriesUpperZeroFactArm64(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
@@ -214,7 +228,33 @@ func TestStraightLineLocalCarriesUpperZeroFactArm64(t *testing.T) {
 	}
 }
 
-func TestLocalFactsDisabledAcrossControlFlowArm64(t *testing.T) {
+func TestLocalFactsInsideControlFlowArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
+		0x01, 0x01, 0x7f, // one declared i32 local
+		0x02, 0x7e, // block (result i64)
+		0x20, 0x00, // local.get 0
+		0x21, 0x01, // local.set 1
+		0x20, 0x01, // local.get 1
+		0xad, // i64.extend_i32_u
+		0x0b, // end block
+		0x0b,
+	})
+	if got := runArm64u(t, m, 0xffffffff); got != 0xffffffff {
+		t.Fatalf("controlled local result = %#x, want %#x", got, uint32(0xffffffff))
+	}
+	var stats ModuleStats
+	compiled, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.CodeImage.Close()
+	if got := stats.Funcs[0].Peephole["local-fact"]; got != 1 {
+		t.Fatalf("local-fact transfers = %d, want 1 inside control flow; peeps=%v", got, stats.Funcs[0].Peephole)
+	}
+}
+
+func TestLocalFactsStopAtControlJoinArm64(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x01, 0x01, 0x7f, // one declared i32 local
@@ -233,7 +273,7 @@ func TestLocalFactsDisabledAcrossControlFlowArm64(t *testing.T) {
 	}
 	defer compiled.CodeImage.Close()
 	if got := stats.Funcs[0].Peephole["local-fact"]; got != 0 {
-		t.Fatalf("local-fact transfers = %d, want 0 across control flow; peeps=%v", got, stats.Funcs[0].Peephole)
+		t.Fatalf("local-fact transfers = %d, want 0 after control join; peeps=%v", got, stats.Funcs[0].Peephole)
 	}
 }
 

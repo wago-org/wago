@@ -1762,6 +1762,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.prepareRootLoopRange(r)
 		}
 	}
+	if kind == cfLoop {
+		// A loop header is also reached by backedges whose assignment versions
+		// are not represented by the current preheader state.
+		f.clearLocalValueFacts()
+	}
 
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if kind == cfIf && !f.unreachable && f.terminalScalarIf(r, pN, rN) {
@@ -2716,6 +2721,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 }
 
 func (f *fn) opElse() error {
+	f.clearLocalValueFacts()
 	fr := &f.ctrl[len(f.ctrl)-1]
 	if fr.has(ctrlEntryUnreachable) {
 		return nil
@@ -2757,6 +2763,9 @@ func (f *fn) opElse() error {
 func (f *fn) opEnd(r *wasm.Reader) error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
+	if fr.kind != cfFunc {
+		defer f.clearLocalValueFacts()
+	}
 	if fr.kind == cfLoop {
 		defer f.releaseScopedFloatConsts(last + 1)
 	}

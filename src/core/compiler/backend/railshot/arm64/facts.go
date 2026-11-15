@@ -21,7 +21,9 @@ const (
 	storageGCRoot
 	storageEHRoot
 	factNonZero
-	valueFactMask = factUpper32Zero | factBoolean | factNonZero
+	valueFactMask      = factUpper32Zero | factBoolean | factNonZero
+	localFactEpochStep = valueFacts(1 << 5)
+	localFactEpochMask = valueFacts(7 << 5)
 )
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
@@ -66,7 +68,10 @@ func (f *fn) factsForLocal(x int) valueFacts {
 		facts |= factUpper32Zero
 	}
 	if f.localFactsEnabled {
-		facts |= f.locals[x].facts
+		localFacts := f.locals[x].facts
+		if localFacts&localFactEpochMask == f.localFactEpoch {
+			facts |= localFacts & valueFactMask
+		}
 	}
 	if f.inlineLocalNonzero(x) {
 		facts |= factNonZero
@@ -106,15 +111,37 @@ func canonicalI32ParamMask(hints *funcHintView, localTypes []machineType, nParam
 
 func (f *fn) setFactsForLocal(x int, facts valueFacts) {
 	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
-		f.locals[x].facts = facts &^ factNonZero
+		f.locals[x].facts = facts&valueFactMask&^factNonZero | f.localFactEpoch
+	}
+}
+
+// clearLocalValueFacts ends the current straight-line assignment versions.
+// A structured join can be reached by an edge compiled before the current
+// fallthrough, so facts from only the fallthrough cannot survive that join.
+// Roots are separate storage bits and remain untouched.
+func (f *fn) clearLocalValueFacts() {
+	if !f.localFactsEnabled {
+		return
+	}
+	f.localFactEpoch = (f.localFactEpoch + localFactEpochStep) & localFactEpochMask
+	if f.localFactEpoch != 0 {
+		return
+	}
+	// Prevent an old generation from becoming current again after the bounded
+	// tag wraps. This full clear occurs only once per eight structured joins.
+	for i := range f.locals {
+		f.locals[i].facts = 0
 	}
 }
 
 func (f *fn) applyFactsForLocal(e *elem, x int) {
 	facts := f.factsForLocal(x)
 	e.st.setValueFacts(facts)
-	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) && f.locals[x].facts != 0 {
-		f.stats.peep("local-fact")
+	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
+		localFacts := f.locals[x].facts
+		if localFacts&localFactEpochMask == f.localFactEpoch && localFacts&valueFactMask != 0 {
+			f.stats.peep("local-fact")
+		}
 	}
 }
 
