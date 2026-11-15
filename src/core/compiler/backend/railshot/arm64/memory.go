@@ -1276,16 +1276,21 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// load-then-store dependency chain. Nonzero i64 needs two 4-byte immediate stores
 	// (low32 at disp, high32 at disp+4); narrower stores truncate to the low `size`
 	// bytes exactly like a materialized constant would (i64.store8/16/32 route here
-	// too). In guard mode i64 constants use the single native store in the
-	// materialized-value path below: two stores could commit the low half before
-	// a fault on the high half.
+	// too). In guard mode, nonzero i64 constants use the single native store in
+	// the materialized-value path below: two stores could commit the low half
+	// before a fault on the high half. Zero can use one XZR store after the same
+	// explicit full-access proof.
 	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst &&
-		!(f.guardMode && size == 8) {
+		!(f.guardMode && size == 8 && (top.st.cval != 0 || !wideZeroStoreEnabled)) {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
 		addrLocal, addrOK := localAddressKey(f.s.back())
-		ea, eaOwned, _, disp := f.memAddr(off, size, true, 0, f.guardMode)
+		// A guard-page fault can partially commit an unaligned eight-byte store.
+		// Keep the explicit full-access proof used by the materialized constant
+		// path, then write zero directly from XZR after it succeeds.
+		guard := f.guardMode && !(size == 8 && v == 0)
+		ea, eaOwned, _, disp := f.memAddr(off, size, true, 0, guard)
 		f.pinned = f.pinned.add(ea)
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 		storeStart := 0

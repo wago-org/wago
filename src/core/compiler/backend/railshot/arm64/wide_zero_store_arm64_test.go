@@ -50,7 +50,7 @@ func TestWideZeroStoreMemoryAndTrapBoundaries(t *testing.T) {
 						}
 						if diagnosticsEnabled {
 							hit := stats.Funcs[0].Peephole["wide-zero-store"] != 0
-							if hit != (enabled && !guard) {
+							if hit != enabled {
 								t.Fatalf("selection enabled=%v guard=%v hits=%v", enabled, guard, hit)
 							}
 						}
