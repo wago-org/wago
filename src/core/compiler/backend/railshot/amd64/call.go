@@ -493,7 +493,11 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	// Resolve trapping roots before register staging visits the arguments.
 	f.materializeTrapsBefore(f.s.head)
-	return f.finishProvedGCCallResultCast(r, declaredType, f.callInternal(int(idx)-imported, ft, hint))
+	err = f.finishProvedGCCallResultCast(r, declaredType, f.callInternal(int(idx)-imported, ft, hint))
+	if err == nil && hint < 0 && f.provedStoredGCCallResult(idx) {
+		f.gcPendingReference.flags |= gcReferenceFactStored
+	}
+	return err
 }
 
 func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) error {
@@ -1487,11 +1491,15 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
+	var nativeStructProofMask uint64
+	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled && !nativeStructVirtual && !nativeStructDead {
+		nativeStructProofMask = f.gcStructInitializerProofMask(nativeStructType-1, roots, d-p)
+	}
 	f.flush() // operands to canonical slot-width slots
 	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled && !nativeStructVirtual {
 		if localStates, ok := f.snapshotLocalStates(); ok {
 			f.nativeStructDirectUsed = true
-			return f.callNativeStructDirectSlots(importIdx, ft, nativeStructType-1, nativeStructDead, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates)
+			return f.callNativeStructDirectSlots(importIdx, ft, nativeStructType-1, nativeStructDead, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, nativeStructProofMask)
 		}
 	}
 	f.storePinnedGlobals(false) // coherence/preservation for value-pinned caller-saved globals
@@ -1728,7 +1736,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 // callNativeStructDirectSlots keeps the ordinary allocation path entirely in
 // generated code. Constructor fields stay in canonical operand slots until the
 // native reservation succeeds or the cold Go-helper fallback marshals them.
-func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeIndex uint32, dead bool, paramSlots, resultSlots int, slotOf []uint32, depth, paramCount int, belowTypes []machineType, belowGCRoots []bool, localStates localStateSnapshot) error {
+func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeIndex uint32, dead bool, paramSlots, resultSlots int, slotOf []uint32, depth, paramCount int, belowTypes []machineType, belowGCRoots []bool, localStates localStateSnapshot, proofMask uint64) error {
 	if len(ft.Results) != 1 || paramCount == 0 {
 		return fmt.Errorf("native struct helper has %d parameter(s), %d result(s)", paramCount, len(ft.Results))
 	}
@@ -1737,7 +1745,7 @@ func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeI
 	if regallocCheckEnabled {
 		f.checkCallClobber()
 	}
-	f.emitNativeStructAllocSlots(typeIndex, dead, argSlot, resultSlot)
+	f.emitNativeStructAllocSlots(typeIndex, dead, argSlot, resultSlot, proofMask)
 	f.stats.call("gcnative")
 	nativeDone := f.a.JccPlaceholder(condNE)
 

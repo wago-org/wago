@@ -360,6 +360,8 @@ type fn struct {
 	gcGuardSites        uint8 // bounded prefix-match attempts; shares existing padding
 	gcLocalTypeFacts    gcLocalTypeFacts
 	gcPendingReference  gcReferenceTypeFact
+	gcStoredReturnCache [8]uint64
+	gcStoredReturnNext  uint8
 	nLocalSlots         int // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact

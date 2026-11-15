@@ -2128,17 +2128,17 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 // Site-local emission falls through with those flags, while shared emission
 // returns to the patched call site.
 func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead, inline bool) {
-	f.emitNativeStructAlloc(typeIndex, dead, inline, -1, -1)
+	f.emitNativeStructAlloc(typeIndex, dead, inline, -1, -1, 0)
 }
 
 // emitNativeStructAllocSlots reads constructor fields from canonical operand
 // slots and writes the compact result over the first argument slot. The caller
 // keeps those slots live until the fallback branch has marshaled them.
-func (f *fn) emitNativeStructAllocSlots(typeIndex uint32, dead bool, argSlot, resultSlot int) {
-	f.emitNativeStructAlloc(typeIndex, dead, true, argSlot, resultSlot)
+func (f *fn) emitNativeStructAllocSlots(typeIndex uint32, dead bool, argSlot, resultSlot int, proofMask uint64) {
+	f.emitNativeStructAlloc(typeIndex, dead, true, argSlot, resultSlot, proofMask)
 }
 
-func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot, resultSlot int) {
+func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot, resultSlot int, proofMask uint64) {
 	plan, ok := f.nativeGCStructAllocLayout(typeIndex)
 	if !ok {
 		panic("amd64: invalid native struct allocation layout")
@@ -2295,6 +2295,10 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 			continue
 		}
 		typed := typedTargets != nil && st.Comp.Fields[i].Storage().Val().Ref().Heap().Kind() == wasm.HeapTypeIndex
+		if directSlots && inline && i < 64 && proofMask&(uint64(1)<<i) != 0 && field.Nullable && !typed {
+			f.stats.peep("gc-native-struct-initializer-proof")
+			continue
+		}
 		loadArg32(RAX, field.Slot)
 		a.TestSelf(RAX, false)
 		nullOK := -1

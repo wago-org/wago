@@ -15,6 +15,7 @@ const (
 	gcReferenceFactValid gcReferenceFactFlags = 1 << iota
 	gcReferenceFactNullable
 	gcReferenceFactExact
+	gcReferenceFactStored
 )
 
 // gcReferenceTypeFact is a compact, allocation-free description of a proved
@@ -42,6 +43,14 @@ func gcReferenceFact(typ wasm.ValType) (gcReferenceTypeFact, bool) {
 		flags |= gcReferenceFactExact
 	}
 	return gcReferenceTypeFact{typeIndex: heap.Type().Index, flags: flags}, true
+}
+
+func (fact gcReferenceTypeFact) present() bool {
+	return fact.valid() || fact.flags&gcReferenceFactStored != 0
+}
+
+func (fact gcReferenceTypeFact) stored() bool {
+	return fact.valid() || fact.flags&gcReferenceFactStored != 0
 }
 
 func (fact gcReferenceTypeFact) valid() bool {
@@ -86,14 +95,14 @@ func (facts *gcLocalTypeFacts) get(local int) (gcReferenceTypeFact, bool) {
 	for i := uint8(0); i < facts.n; i++ {
 		entry := facts.entries[i]
 		if entry.local == uint32(local) {
-			return entry.fact, entry.fact.valid()
+			return entry.fact, entry.fact.present()
 		}
 	}
 	return gcReferenceTypeFact{}, false
 }
 
 func (facts *gcLocalTypeFacts) set(local int, fact gcReferenceTypeFact) {
-	if local < 0 || !fact.valid() {
+	if local < 0 || !fact.present() {
 		facts.remove(local)
 		return
 	}

@@ -114,7 +114,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if f.gcSubtypeProofN&gcFreshStructFactMode != 0 {
 			f.prepareGCFreshStructFact(op)
 		}
-		if f.gcLocalTypeFactsEnabled() && (f.gcPendingReference.valid() || f.gcLocalTypeFacts.n != 0) {
+		if f.gcLocalTypeFactsEnabled() && (f.gcPendingReference.present() || f.gcLocalTypeFacts.n != 0) {
 			f.prepareGCLocalTypeFacts(op)
 		}
 		switch op {
