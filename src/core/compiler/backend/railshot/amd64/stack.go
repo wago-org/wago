@@ -133,7 +133,7 @@ func memRefFoldable(st storage, w bool) bool {
 
 // storage records where a value lives and its machine type.
 type storage struct {
-	cval int64  // constant value/bits for stConst
+	cval int64  // constant bits, memory borrow, or certificate snapshot ID for stSlot
 	slot uint32 // spill-slot index, bounded GC array length for local refs, or int32 displacement bits for stMemRef
 	cold uint32 // index+1 into stack.cold for custom plugin values
 	idx  uint32 // local/global/function index, bounded GC array length, or packed stMemRef metadata

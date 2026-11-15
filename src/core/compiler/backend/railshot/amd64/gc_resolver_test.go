@@ -187,6 +187,99 @@ func TestGCResolvedHandleReuseAndInvalidation(t *testing.T) {
 	}
 }
 
+func TestGCStructUpdateReusesStackReceiver(t *testing.T) {
+	for _, target := range []struct {
+		name string
+		typ  []byte
+	}{
+		{"final", []byte{0x5f, 1, 0x7f, 1}},
+		{"open", []byte{0x50, 0, 0x5f, 1, 0x7f, 1}},
+	} {
+		t.Run(target.name, func(t *testing.T) {
+			body := []byte{0,
+				0x20, 0, // write receiver
+				0x20, 0, 0xfb, 2, 0, 0, // read the same receiver
+				0x41, 1, 0x6a,
+				0xfb, 5, 0, 0, 0x0b,
+			}
+			stats := gcResolveReuseStats(t, target.typ, []byte{0x60, 1, 0x64, 0, 0}, body)
+			if stats.GCHandleResolutions != 1 || stats.GCHandleResolutionReuse != 1 {
+				t.Fatalf("read/modify/write resolutions=%d reuse=%d; want 1/1 (rewrites=%v)", stats.GCHandleResolutions, stats.GCHandleResolutionReuse, stats.Peephole)
+			}
+		})
+	}
+}
+
+func TestGCStructUpdateKeepsOldReceiverAfterLocalWrite(t *testing.T) {
+	// The stack receiver still names A after local 0 changes to B. A later read
+	// of B must not certify the older stack slot as B.
+	body := []byte{0,
+		0x20, 0,
+		0x20, 0, 0xfb, 2, 0, 0,
+		0x20, 1, 0x21, 0,
+		0x20, 0, 0xfb, 2, 0, 0, 0x1a,
+		0x41, 1, 0x6a,
+		0xfb, 5, 0, 0, 0x0b,
+	}
+	stats := gcResolveReuseStats(t, []byte{0x5f, 1, 0x7f, 1}, []byte{0x60, 2, 0x64, 0, 0x64, 0, 0}, body)
+	if stats.GCHandleResolutions != 3 || stats.GCHandleResolutionReuse != 0 {
+		t.Fatalf("changed-local resolutions=%d reuse=%d; want 3/0", stats.GCHandleResolutions, stats.GCHandleResolutionReuse)
+	}
+}
+
+func TestGCStructUpdateSnapshotLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		receiver byte
+		field    byte
+	}{
+		{"larger-extent", 0, 1},
+		{"other-receiver", 1, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0, 0x20, tc.receiver,
+				0x20, 0, 0xfb, 2, 0, 0,
+				0x41, 1, 0x6a, 0xfb, 5, 0, tc.field, 0x0b}
+			stats := gcResolveReuseStats(t, []byte{0x5f, 2, 0x7f, 1, 0x7f, 1}, []byte{0x60, 2, 0x64, 0, 0x64, 0, 0}, body)
+			if stats.GCHandleResolutions != 2 || stats.GCHandleResolutionReuse != 0 {
+				t.Fatalf("resolutions=%d reuse=%d; want 2/0", stats.GCHandleResolutions, stats.GCHandleResolutionReuse)
+			}
+		})
+	}
+}
+
+func TestGCResolvedStackSnapshotLifetime(t *testing.T) {
+	f := &fn{}
+	newCertificate := func() { f.gcResolved = gcResolvedObject{valid: true, local: 7, reg: RBP} }
+	old := &elem{st: storage{kind: stSlot, typ: mtI64}}
+	newCertificate()
+	f.markGCResolvedSnapshot(old, 7)
+	if local, ok := f.gcResolvedLocalProvenance(old); !ok || local != 7 {
+		t.Fatal("current receiver lost its local identity")
+	}
+	f.invalidateGCResolvedObject()
+	if _, ok := f.gcResolvedLocalProvenance(old); ok {
+		t.Fatal("invalidated address retained a stack receiver")
+	}
+	newCertificate()
+	fresh := &elem{st: storage{kind: stSlot, typ: mtI64}}
+	f.markGCResolvedSnapshot(fresh, 7)
+	if _, ok := f.gcResolvedLocalProvenance(old); ok {
+		t.Fatal("replacement certificate accepted an old stack receiver")
+	}
+	f.invalidateGCLoadFactsForLocal(7)
+	if _, ok := f.gcResolvedLocalProvenance(fresh); ok {
+		t.Fatal("source-local assignment retained a stack receiver")
+	}
+	newCertificate()
+	f.gcSnapshotID = ^uint16(0)
+	exhausted := &elem{st: storage{kind: stSlot, typ: mtI64}}
+	f.markGCResolvedSnapshot(exhausted, 7)
+	if f.gcSnapshotID != ^uint16(0) || exhausted.st.cval != 0 || f.gcResolved.snapshotID != 0 {
+		t.Fatal("exhausted snapshot IDs were reused")
+	}
+}
+
 func TestGCFinalCastFieldReadsReuseResolvedLocal(t *testing.T) {
 	finalStruct := []byte{0x5f, 0x02, 0x7f, 0x00, 0x7f, 0x00}
 	function := []byte{0x60, 0x01, 0x6e, 0x01, 0x7f}

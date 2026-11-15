@@ -357,7 +357,8 @@ type fn struct {
 	gcHandleResolutions int
 	gcSubtypeProofs     [4]gcSubtypeProof
 	gcSubtypeProofN     uint8
-	gcGuardSites        uint8 // bounded prefix-match attempts; shares existing padding
+	gcGuardSites        uint8  // bounded prefix-match attempts; shares existing padding
+	gcSnapshotID        uint16 // one stack-receiver ID; uses padding before local facts
 	gcLocalTypeFacts    gcLocalTypeFacts
 	gcPendingReference  gcReferenceTypeFact
 	nLocalSlots         int // total local frame slots in 8-byte units

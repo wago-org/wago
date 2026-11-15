@@ -22,6 +22,30 @@ type gcResolvedObject struct {
 	spillSlot     int
 	previousFloor int
 	inputTop      bool
+	snapshotID    uint16
+}
+
+// A field read can canonicalize an older copy of the same local for a later
+// scalar write. Tie that one stack value to the current address certificate.
+// Replacing or invalidating the certificate makes the mark unusable. IDs never
+// wrap, and ordinary canonical slots have cval zero.
+func (f *fn) markGCResolvedSnapshot(e *elem, local int) {
+	if e == nil || !e.isValue() || e.st.kind != stSlot || e.st.typ != mtI64 ||
+		!f.gcResolved.valid || f.gcResolved.spill || f.gcResolved.local != local || f.gcSnapshotID == ^uint16(0) {
+		return
+	}
+	f.gcSnapshotID++
+	f.gcResolved.snapshotID = f.gcSnapshotID
+	e.st.cval = int64(f.gcSnapshotID)
+	f.stats.peep("gc-resolve-stack-snapshot")
+}
+
+func (f *fn) gcResolvedLocalProvenance(e *elem) (int, bool) {
+	if e != nil && e.isValue() && e.st.kind == stSlot && e.st.typ == mtI64 &&
+		f.gcResolved.valid && f.gcResolved.snapshotID != 0 && e.st.cval == int64(f.gcResolved.snapshotID) {
+		return f.gcResolved.local, true
+	}
+	return gcLocalProvenance(e)
 }
 
 // prepareGCResolvedObject is the central invalidation gate. Apart from proven

@@ -3558,11 +3558,19 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 		f.stats.peep("gc-resolve-reuse")
 		f.stats.peep("gc-resolve-reuse-no-flush")
 	} else {
+		snapshot := false
+		if hasLocal && scalar.typ == mtI32 && scalar.size == 4 {
+			snapshotLocal, found := gcLocalProvenance(baseOfValentBlock(f.s.back()).prev)
+			snapshot = found && snapshotLocal == local
+		}
 		f.flush()
 		f.spillFloor = f.curSpillSlot()
 		object := f.popValue()
 		obj, done = f.emitDirectGCObjectWithSubtypeCache(object, typeIndex, required, local, hasLocal, !final,
 			f.retainGCResolvedAddress(reader, local, hasLocal), spillCache, oldFloor)
+		if snapshot {
+			f.markGCResolvedSnapshot(f.s.back(), local)
+		}
 	}
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
@@ -3603,7 +3611,11 @@ func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
 		return false
 	}
 	valueRoot := f.s.back()
-	local, hasLocal := gcLocalProvenance(baseOfValentBlock(valueRoot).prev)
+	receiver := baseOfValentBlock(valueRoot).prev
+	local, hasLocal := gcLocalProvenance(receiver)
+	if !hasLocal && scalar.typ == mtI32 && scalar.size == 4 {
+		local, hasLocal = f.gcResolvedLocalProvenance(receiver)
+	}
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
