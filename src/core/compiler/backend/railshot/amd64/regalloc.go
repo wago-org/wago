@@ -35,6 +35,11 @@ func (f *fn) preloadLoopIntConsts(h *funcHintView) {
 	for i := 0; i < int(h.loopIntConsts.count) && i < len(f.iconsts); i++ {
 		reg := regNone
 		for _, candidate := range [...]Reg{R12, R13, R14, R15, R9, R10, R11, RDI, RSI} {
+			// A selected block-merge home remains ordinary allocator scratch, but
+			// cannot hold an immutable loop constant across a control edge.
+			if f.regMerge && candidate == f.blockMergeReg() {
+				continue
+			}
 			// Bulk lowerings use fixed pointer registers. Keep the table/call R9
 			// exclusion conservative, including inlined bodies whose scratch
 			// flags are not propagated. Caches cannot share fixed scratch.
@@ -83,6 +88,38 @@ func (f *fn) intConstReadReg(st storage, avoid regMask) (Reg, bool) {
 // the register occupancy the backend tracks (x86_64_backend.cpp).
 
 const regNone Reg = 0xFF
+
+// blockMergeReg returns the per-function home for single-result integer control
+// merges. RBP remains the compact default. When a hotter local or global owns
+// it, selectBlockMergeReg chooses another ordinary allocator register instead
+// of disabling register merges for the whole function.
+func (f *fn) blockMergeReg() Reg {
+	if f.mergeRegPlus1 == 0 {
+		return mergeReg
+	}
+	return Reg(f.mergeRegPlus1 - 1)
+}
+
+func (f *fn) selectBlockMergeReg() {
+	if !f.regMerge {
+		return
+	}
+	if !f.pinnedLocalMask.has(mergeReg) && !f.reserved.has(mergeReg) {
+		return
+	}
+	for _, reg := range gpAlloc {
+		if reg == mergeReg {
+			continue
+		}
+		if f.pinnedLocalMask.has(reg) || f.reserved.has(reg) {
+			continue
+		}
+		f.mergeRegPlus1 = uint8(reg) + 1
+		f.stats.peep("alternate-merge-reg")
+		return
+	}
+	f.regMerge = false
+}
 
 // occupy records that value elem e now lives in register r. When e was a deferred
 // node, its storage inherits the node's result type so downstream consumers

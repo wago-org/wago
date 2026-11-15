@@ -51,6 +51,26 @@ func TestGPPinLimitReservesTransientLoweringRegisters(t *testing.T) {
 	}
 }
 
+func TestBlockMergeRegisterAvoidsPinnedState(t *testing.T) {
+	f := fn{regMerge: true, pinnedLocalMask: maskOf(RBP, RDI), reserved: maskOf(RSI)}
+	f.selectBlockMergeReg()
+	if !f.regMerge || f.blockMergeReg() != R9 {
+		t.Fatalf("selected merge register = %d enabled=%t, want R9", f.blockMergeReg(), f.regMerge)
+	}
+
+	f = fn{regMerge: true}
+	f.selectBlockMergeReg()
+	if !f.regMerge || f.blockMergeReg() != RBP {
+		t.Fatalf("default merge register = %d enabled=%t, want RBP", f.blockMergeReg(), f.regMerge)
+	}
+
+	f = fn{regMerge: true, reserved: ^regMask(0)}
+	f.selectBlockMergeReg()
+	if f.regMerge {
+		t.Fatal("register merge remained enabled without an unowned register")
+	}
+}
+
 func TestCompileRegisterPressureCorpusUsesBoundedPinsInOneAttempt(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	root := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")

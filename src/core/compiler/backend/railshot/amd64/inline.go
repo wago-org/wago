@@ -896,9 +896,6 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 		f.inlineBase[t.globalIdx] = base
 		f.pinInlineTupleLoopLocals(t, base)
 	}
-	if f.pinnedLocalMask.has(mergeReg) {
-		f.regMerge = false
-	}
 }
 
 // allCallsWillInline reports whether every call in the caller body is a direct
@@ -1334,7 +1331,8 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget, constants *inlineTailConstants) err
 		controlSite: -1,
 		height:      f.depth(),
 	}
-	fr.set(ctrlRegMerge1, f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128)
+	fr.set(ctrlRegMerge1, f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128 &&
+		(!t.res0.isFloat() || !f.fpinnedLocalMask.has(mergeFReg)))
 	f.setFrameBaseTypePrefix(&fr, fr.height)
 	f.captureGCFrameShape(&fr)
 	if f.inlineTupleLoopFallthrough(t) {

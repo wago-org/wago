@@ -478,7 +478,8 @@ type fn struct {
 	singleRegResult bool
 	resultFloat     bool
 	resultF64       bool
-	regMerge        bool // reconcile single-result blocks in mergeReg/mergeFReg
+	regMerge        bool  // reconcile single-result blocks in blockMergeReg()/mergeFReg
+	mergeRegPlus1   uint8 // selected integer block-merge register + 1; zero means mergeReg
 
 	// call_indirect immutable-local-table specialization (see computeModuleHints).
 	// Each admitted table has a finite proof that every non-null entry targets this
@@ -4110,9 +4111,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			}
 		}
 	}
-	if f.pinnedLocalMask.has(mergeReg) || f.fpinnedLocalMask.has(mergeFReg) {
-		f.regMerge = false // A merge register already holds a pinned local/global.
-	}
 	if f.regMerge && !f.selfTailLoop && hints.flags.has(hintCallsSelf) && len(c.BodyBytes) <= 64 &&
 		!touchesMemory && hints.globalCount == 0 && !hints.flags.has(hintHasLoop) &&
 		len(ft.Results) == 1 && isIntValType(ft.Results[0]) {
@@ -4154,6 +4152,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
+	f.selectBlockMergeReg()
 	if uint64(f.nLocalSlots)*8 > uint64(localSlotOffsetMask) {
 		return nil, nil, 0, fmt.Errorf("amd64: local frame %d bytes exceeds packed offset range %d", 8*f.nLocalSlots, localSlotOffsetMask)
 	}

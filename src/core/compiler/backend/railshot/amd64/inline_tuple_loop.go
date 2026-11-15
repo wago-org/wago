@@ -96,11 +96,6 @@ func (f *fn) pinInlineTupleLoopLocals(t *inlineTarget, base int) {
 				continue
 			}
 			f.locals[local].reg = reg
-			if reg == mergeReg {
-				// Like ordinary local pinning, reserve RBP before any control
-				// frame is emitted and use canonical slots for scalar merges.
-				f.regMerge = false
-			}
 			f.pinnedLocalMask = f.pinnedLocalMask.add(reg)
 			f.pinnedLocals = append(f.pinnedLocals, local)
 			f.sc.pinnedLocals = f.pinnedLocals

@@ -115,6 +115,26 @@ func TestRegMergeIfElse(t *testing.T) {
 	}
 }
 
+func TestRegMergeUsesAlternateRegisterWhenRBPIsPinned(t *testing.T) {
+	body := []byte{0x00}
+	for i := byte(0); i < 5; i++ {
+		body = append(body, 0x20, i, 0x1a) // local.get i; drop
+	}
+	body = append(body,
+		0x20, 0x00, // local.get 0: condition
+		0x04, 0x7f, // if (result i32)
+		0x41, 0x01, // then: 1
+		0x05,       // else
+		0x41, 0x02, // else: 2
+		0x0b, 0x0b,
+	)
+	params := []wasm.ValType{i32, i32, i32, i32, i32, i32, i32}
+	stats := compileWithStats(t, mod1(t, params, []wasm.ValType{i32}, body), false)
+	if got := stats.Funcs[0].Peephole["alternate-merge-reg"]; got != 1 {
+		t.Fatalf("alternate merge register selections = %d, want 1 (stats: %v)", got, stats.Funcs[0].Peephole)
+	}
+}
+
 // TestRegMergeIfElseFloat exercises the float variant (result → mergeFReg):
 //
 //	(func (param x f64) (result f64)

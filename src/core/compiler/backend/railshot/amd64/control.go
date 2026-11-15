@@ -1383,7 +1383,7 @@ func (f *fn) reconcileMerge1(fr *ctrlFrame) {
 		}
 		f.releaseF(x)
 	} else {
-		f.condenseInto(top, mergeReg)
+		f.condenseInto(top, f.blockMergeReg())
 	}
 	f.erase(top)
 }
@@ -1401,7 +1401,7 @@ func (f *fn) branchEdgeToMerge1(fr *ctrlFrame, d int) {
 	if fr.res0.isFloat() {
 		f.a.FLoadDisp(mergeFReg, RSP, f.spillOff(slot), fr.res0 == mtF64)
 	} else {
-		f.a.Load64(mergeReg, RSP, f.spillOff(slot))
+		f.a.Load64(f.blockMergeReg(), RSP, f.spillOff(slot))
 	}
 }
 
@@ -2523,7 +2523,7 @@ func (f *fn) opEnd() error {
 			if fr.res0.isFloat() {
 				f.a.FLoadDisp(mergeFReg, RSP, f.spillOff(slot), fr.res0 == mtF64) // passthrough → mergeFReg
 			} else {
-				f.a.Load64(mergeReg, RSP, f.spillOff(slot)) // passthrough value → mergeReg
+				f.a.Load64(f.blockMergeReg(), RSP, f.spillOff(slot)) // passthrough value → selected merge register
 			}
 		}
 		// Converge the cond-false edge from the header snapshot into the end state
@@ -2554,7 +2554,7 @@ func (f *fn) opEnd() error {
 			if fr.res0.isFloat() {
 				result = f.pushFReg(mergeFReg, fr.res0)
 			} else {
-				result = f.pushReg(mergeReg, fr.res0)
+				result = f.pushReg(f.blockMergeReg(), fr.res0)
 			}
 			if len(resultGCRoots) != 0 {
 				f.setStackGCRoot(result, resultGCRoots[0])
