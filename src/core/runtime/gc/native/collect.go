@@ -118,7 +118,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if !policyStart.IsZero() {
 		pauseNS = uint64(time.Since(policyStart))
 	}
-	c.adaptTenuring(copiedBytes, promotedBytes, pauseNS)
+	c.adaptTenuring(uint64(c.survivorBump), promotedBytes, pauseNS)
 	if nativeCollectorFastPaths && c.cfg.NurseryBytes < c.nurseryGrowthLimit &&
 		(copiedBytes != 0 || c.nurseryGrowthSurvived != 0) {
 		c.growDefaultNursery(copiedBytes, youngObjects)

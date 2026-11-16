@@ -212,7 +212,10 @@ func (c *Collector) payloadRangeContainsYoung(h, start, end uint32) bool {
 	return false
 }
 
-func (c *Collector) adaptTenuring(copiedBytes, promotedBytes uint64, pauseNS uint64) {
+// adaptTenuring observes actual survivor occupancy, not total bytes copied.
+// Promotion also copies bytes, but fills old space rather than survivor space;
+// counting it as occupancy can trap the policy at immediate tenuring forever.
+func (c *Collector) adaptTenuring(occupiedBytes, promotedBytes uint64, pauseNS uint64) {
 	if c.cfg.DisableMovingNursery || c.survivorBytes == 0 {
 		c.tenuringThreshold = 1
 		return
@@ -222,8 +225,8 @@ func (c *Collector) adaptTenuring(copiedBytes, promotedBytes uint64, pauseNS uin
 		threshold = defaultTenuringThreshold
 	}
 	capacity := uint64(c.survivorBytes)
-	occupancyHigh := capacity != 0 && copiedBytes*100 >= capacity*75
-	occupancyLow := capacity == 0 || copiedBytes*100 <= capacity*50
+	occupancyHigh := capacity != 0 && occupiedBytes*100 >= capacity*75
+	occupancyLow := capacity == 0 || occupiedBytes*100 <= capacity*50
 	pauseHigh := c.cfg.MinorPauseTargetMicros != 0 && pauseNS > uint64(c.cfg.MinorPauseTargetMicros)*1000
 	pauseLow := c.cfg.MinorPauseTargetMicros == 0 || pauseNS*2 < uint64(c.cfg.MinorPauseTargetMicros)*1000
 	usedOld := uint64(c.throughput.bump) - c.throughput.freeBytes - c.throughput.pendingBytes
@@ -235,7 +238,7 @@ func (c *Collector) adaptTenuring(copiedBytes, promotedBytes uint64, pauseNS uin
 		if threshold > 1 {
 			threshold--
 		}
-	case occupancyLow && pauseLow && (oldPressure || recentFull || promotedBytes > copiedBytes):
+	case occupancyLow && pauseLow && (oldPressure || recentFull || promotedBytes > occupiedBytes):
 		if threshold < maxTenuringThreshold {
 			threshold++
 		}
