@@ -11,6 +11,7 @@ import (
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"math"
+	"math/bits"
 )
 
 func main() {
@@ -119,6 +120,13 @@ func checkVector(sub uint32, left, right, want [16]byte, unary bool) {
 
 func checkSIMD() {
 	var a, b, want [16]byte
+	for base := 0; base < 256; base += 16 {
+		for i := range a {
+			a[i] = byte(base + i)
+			want[i] = byte(bits.OnesCount8(a[i]))
+		}
+		checkVector(98, a, b, want, true)
+	}
 	for i := 0; i < 4; i++ {
 		x, y := uint32(0x80000001)+uint32(i), uint32(65537+i)
 		binary.LittleEndian.PutUint32(a[i*4:], x)
@@ -147,5 +155,5 @@ func checkSIMD() {
 	binary.LittleEndian.PutUint64(want[:], math.Float64bits(2))
 	binary.LittleEndian.PutUint64(want[8:], math.Float64bits(-2))
 	checkVector(148, a, b, want, true)
-	println("forced-SSE2 SIMD multiply, relaxed q15, swizzle and packed rounding passed")
+	println("forced-SSE2 SIMD popcnt, multiply, relaxed q15, swizzle and packed rounding passed")
 }
