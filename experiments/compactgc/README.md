@@ -16,8 +16,9 @@ reference fields. Generation comes from occupied regions, not header flags.
 A one-i32 struct with four-byte alignment occupies a 16-byte stride here, versus
 32 bytes in the existing direct substrate. This is a representation fact, not a
 speed measurement. Eight-byte object alignment is deliberately deferred: it
-would change minimum-object queue capacity and introduce mixed SIMD alignment
-questions. Empty objects still occupy sixteen bytes.
+requires finer mark granularity and address-dependent SIMD payload layout.
+The existing queue capacity can remain sufficient under the promote-all proof
+in `COMPACT8_DESIGN.md`. Empty objects still occupy sixteen bytes.
 
 `Header` returns a computed **value** containing the true compact layout.
 `Payload` borrows only actual logical payload bytes with a bounded capacity.
