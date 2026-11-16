@@ -89,17 +89,20 @@ is claimed without controlled measurement.
 `wago_gc_direct_alloc` includes direct reads and adds checked nursery bump
 allocation for pointer-free numeric structs of at most eight fields and 128 bytes.
 The allocator validates capacity and its capability before any mutation, initializes
-header/payload/padding, then publishes the start bit, actual collector bump and
-allocation counter without an intervening safepoint. All unsupported shapes,
+header/payload/padding, then publishes the start bit and actual/snapshot collector
+bumps without an intervening safepoint. ABI 4 defers exact nursery allocation
+accounting until retirement or observation; native allocation no longer updates
+a per-object counter. All unsupported shapes,
 exhaustion and forced-collection configurations retain the rooted helper path.
 
 `wago_gc_direct_refstore` additionally handles final arrays of nullable final
-struct references. Parent, child, index, type and extent checks precede the store.
+struct or array references. Parent, child, index, type and extent checks precede
+the store.
 Young parents need no remembered entry. An already dirty old parent is a read-only
 certificate that the bounded remembered queue or its overflow fallback covers it;
 a clean old parent falls back to the complete helper before mutation. Native code
-never sets a dirty byte without registering the parent. ABI version 3 uses a
-separate 96-byte optional collector view, not the handle ABI.
+never sets a dirty byte without registering the parent. ABI version 4 retains the separate 96-byte optional collector view introduced
+in version 3, not the handle ABI. The old counter-pointer field is reserved zero.
 
 The collector now scans a bounded deduplicated remembered-parent queue during
 minor collection, falling back to the full old region on overflow. Its additional
@@ -130,3 +133,29 @@ run qualifies its admitted subset, including unmodified retained artifacts,
 constructor roots, public moving tokens/globals, malformed checked reads, native
 allocation accounting, and clean/dirty reference-store barriers. It does not
 establish full-feature experimental GC conformance or the requested V8 target.
+
+### ABI 4, bounded loop leases and numeric copy qualification
+
+Runtime source `6de74d7` passed Go 1.27.1 qualification with
+`wago_gc_direct_fill,wago_gc_direct_trusted_refstruct,wago_gc_direct_trusted_alloc,wago_gc_direct_trusted_loop,wago_gc_direct_copy,wago_regalloccheck`:
+all applicable `TestDirectGC` and `TestTrustedDirect` tests passed (0.865 s).
+The unchanged default-tag, unfiltered suites passed in Wago (40.222 s), native
+GC (2.092 s), checked GC (0.003 s), AMD64 backend (7.021 s), and direct collector
+(0.023 s). TinyGo 0.42 host tests with `-scheduler=tasks` passed native GC
+(2.636 s) and checked GC (0.003 s).
+
+Loop leases retain per-access null/bounds traps, reject safepoints and receiver
+writes, and bind emitted accesses to a bounded bytecode proof. Their fixed
+compiler state adds 16 bytes per function (2,824 to 2,840); compile latency and
+allocation effects require measurement. Numeric copy remains fully checked,
+preflights both ranges before mutation, and preserves overlapping-copy semantics.
+The initial composed test run exposed an ordinal-receipt test-selection error:
+private-pointer poisoning must depend on the actual trusted allocator build
+capability, not the highest selected receipt version. Checked poisoning coverage
+remains enabled when that allocator capability is absent.
+
+These are correctness qualifications, not speed claims or full-feature direct
+runtime conformance. The preceding ABI 3 best-pipeline V8 gates missed the 1.15x
+threshold on every workload at both nursery policies; complete evidence remains
+under `bench/experiments/gc-v8/direct-bridge/best-pipeline-v8/evidence`. ABI 4,
+loop and copy performance is pending a new controlled comparison.
