@@ -9,6 +9,7 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"strings"
 	"testing"
+	"unsafe"
 )
 
 func directCopyModule(storage, value, get byte) []byte {
@@ -108,5 +109,38 @@ func TestDirectGCCopyOverlapAndBounds(t *testing.T) {
 				t.Fatal("no moving collection")
 			}
 		})
+	}
+}
+
+func TestDirectGCCopyPhysicalFailureDoesNotWrite(t *testing.T) {
+	in := newDirectScalarArrayInstance(t, directCopyModule(0x7f, 0x7f, 11))
+	if _, e := in.Invoke("init"); e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < 8; i++ {
+		if _, e := in.Invoke("setA", uint64(i), uint64(100+i)); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := in.Invoke("setB", uint64(i), uint64(200+i)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	v := in.gc.DirectView()
+	arena := unsafe.Slice((*byte)(unsafe.Pointer(v.Arena)), int(v.ArenaBytes))
+	for _, g := range []int{0, 1} {
+		ref := uint32(readGlobalObject(in.globalCells[g], in.c.Globals[g].Type))
+		size := binary.LittleEndian.Uint32(arena[ref+4:])
+		binary.LittleEndian.PutUint32(arena[ref+4:], 16)
+		_, e := in.Invoke("copy", 0, 0, 8)
+		binary.LittleEndian.PutUint32(arena[ref+4:], size)
+		if e == nil {
+			t.Fatal("short physical extent accepted", g)
+		}
+		for i := 0; i < 8; i++ {
+			got, e := in.Invoke("getA", uint64(i))
+			if e != nil || got[0] != uint64(100+i) {
+				t.Fatal("partial destination write", g, i, got, e)
+			}
+		}
 	}
 }
