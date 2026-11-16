@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_direct_fill
+//go:build linux && amd64 && (wago_gc_direct_fill || wago_gc_direct_fill_sse2)
 
 package wago
 
@@ -15,7 +15,10 @@ import (
 )
 
 func directFillModule(storage, value, get byte) []byte {
-	init := []byte{0x41, 3, 0xfb, 7, 0, 0x24, 0, 0x0b}
+	return directFillSizedModule(storage, value, get, 3)
+}
+func directFillSizedModule(storage, value, get, length byte) []byte {
+	init := []byte{0x41, length, 0xfb, 7, 0, 0x24, 0, 0x0b}
 	fill := []byte{0x23, 0, 0x20, 0, 0x20, 1, 0x20, 2, 0xfb, 16, 0, 0x0b}
 	read := []byte{0x23, 0, 0x20, 0, 0xfb, get, 0, 0x0b}
 	churn := []byte{0xfb, 1, 1, 0x1a, 0x0b}

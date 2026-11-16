@@ -57,6 +57,50 @@ func (f *fn) emitDirectOffsetArrayFill(t uint32) bool {
 	}
 	f.a.TestSelf(count, false)
 	empty := f.a.JccPlaceholder(condE)
+	vectorDone := -1
+	if gcDirectFillSSE2 {
+		avoid := regMask(0)
+		if s.typ.isFloat() {
+			avoid = maskOf(vr)
+		}
+		if x := f.freeFReg(avoid); x != regNone {
+			f.stats.peep("gc-fill-sse2")
+			f.fpinned = f.fpinned.add(x)
+			lanes := int32(16 / s.size)
+			f.a.AluRI(cmpDigit, count, lanes, false)
+			short := f.a.JccPlaceholder(condB)
+			if s.typ.isFloat() {
+				f.a.FMov(x, vr, s.size == 8)
+			} else {
+				f.a.MovGprToXmm(x, vr, s.size == 8)
+			}
+			switch s.size {
+			case 1:
+				f.a.SseRR(0x66, 0x60, x, x, false) // punpcklbw
+				f.a.SseRR(0x66, 0x61, x, x, false) // punpcklwd
+				f.a.Pshufd(x, x, 0)
+			case 2:
+				f.a.SseRR(0x66, 0x61, x, x, false)
+				f.a.Pshufd(x, x, 0)
+			case 4:
+				f.a.Pshufd(x, x, 0)
+			case 8:
+				f.a.Punpcklqdq(x, x)
+			}
+			vectorLoop := f.a.Len()
+			f.a.MovdquStoreIdx(obj, index, x, int32(gc.PayloadOffset))
+			f.a.AluRI(0, index, 16, true)
+			f.a.AluRI(5, count, lanes, false)
+			f.a.AluRI(cmpDigit, count, lanes, false)
+			again := f.a.JccPlaceholder(condAE)
+			f.a.PatchRel32(again, vectorLoop)
+			f.a.TestSelf(count, false)
+			vectorDone = f.a.JccPlaceholder(condE)
+			f.a.PatchRel32(short, f.a.Len())
+			f.fpinned = f.fpinned.remove(x)
+			f.releaseF(x)
+		}
+	}
 	loop := f.a.Len()
 	if s.typ.isFloat() {
 		f.a.FStoreIdx(obj, index, vr, int32(gc.PayloadOffset), s.typ == mtF64)
@@ -68,6 +112,9 @@ func (f *fn) emitDirectOffsetArrayFill(t uint32) bool {
 	again := f.a.JccPlaceholder(condNE)
 	f.a.PatchRel32(again, loop)
 	f.a.PatchRel32(empty, f.a.Len())
+	if vectorDone >= 0 {
+		f.a.PatchRel32(vectorDone, f.a.Len())
+	}
 	if s.typ.isFloat() {
 		f.releaseF(vr)
 	} else {
