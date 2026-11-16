@@ -59,3 +59,31 @@ code alignment can also hide instruction differences. This corpus establishes
 no code-size benefit. A wider/mixed-field runtime workload must show a material
 benefit before promoting this candidate as a performance optimization. No new
 Wasm execution timing or V8 speedup was measured.
+
+## Narrow-field padding refinement
+
+Source `d62c7ca2` widens a four-byte initializer store to eight bytes only when
+its field starts at an eight-byte boundary and no other field overlaps the upper
+four bytes. The preceding Load32 zero-extends RAX, so the wider store initializes
+the field and zero padding together. The planned-store coverage check then omits
+the redundant initial word-zero store. Default constructors, higher-half fields,
+neighboring scalar/reference fields and wholly padded words retain correct zero
+initialization. No additional allocation or runtime proof/safepoint is added.
+New tests include lone scalar/reference words and scalar-plus-reference neighbors.
+
+Fresh qualification on Go1.27.1: default AMD64 backendPASS12.142s; full default
+WagoPASS72.502s; selected instrumented direct/trusted runtimePASS1.109s; applicable
+backendPASS0.032s. Existing broad tagged admission failures remain unresolved;
+that known failing broad invocation was not repeated for this refinement.
+
+Three fresh alternating compilation-probe rounds again produce IDENTICAL code
+bytes and compilation allocation bytes/count for all six cases. Median compile
+time ratios range0.238–1.137, including large changes in unchanged array controls;
+this noisy timing is not interpretable as an optimization benefit. Aligned total
+code size is not an instruction-count measurement. Raw results retained under
+`refined-evidence`. No refined execution speedup has yet been measured.
+
+Two code-source-identical binaries were built: `candidate.test` uses the seven
+baseline tags above; `constructor-adaptive.test` adds ONLY
+`wago_gc_retire_adaptive`. No sparse mark cleanup is included. Binary SHA256s are
+retained to support the subsequent separate2×2 source/policy execution experiment.
