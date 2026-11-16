@@ -19,7 +19,7 @@ Measured source `4fc3bbbc`, runtime `b7b6c3b2`, including Payload single-resolut
 
 ## Interpretation
 
-Struct and tree improve consistently: every native-read sample is below every helper sample. Array allocation regresses consistently: every native-read sample exceeds every helper sample. Fill and both copy cases overlap or have mixed directions. Do not claim a broad gain or infer V8 parity. The stage selectively removes supported struct reads, not the remaining helper-heavy paths; these bounded timings are for intermediate attribution only. Future native allocation/store work needs its own qualification and evidence.
+Struct and tree improve consistently: every native-read sample is below every helper sample. Array allocation regresses consistently: every native-read sample exceeds every helper sample. However, array/fill/copy code sizes and compile allocation footprints are unchanged; only struct and tree code sizes increase. The array regression therefore has unknown mechanism and is not evidence that selected native read instructions caused it. Code size equality alone is not an instruction-byte hash check. Fill and both copy cases overlap or have mixed directions. Do not claim a broad gain or infer V8 parity. The stage selectively removes supported struct reads, not the remaining helper-heavy paths; these bounded timings are for intermediate attribution only. Future native allocation/store work needs its own qualification and evidence.
 
 ## Separate Compile+Close footprint
 
