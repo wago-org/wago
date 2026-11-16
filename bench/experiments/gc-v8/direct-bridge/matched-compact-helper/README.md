@@ -1,0 +1,7 @@
+# Matched helper-only compact layout experiment
+
+Source preparation only; pin the final qualified compact adapter before building. Two same-source binaries: `direct16.test` with `wago_gc_helper_only`, and `compact.test` with `wago_gc_compact_helpers`. Runtime configuration explicitly selects direct16 versus compact. Neither variant uses the optimized native direct pipeline.
+
+Primary policy: 2 MiB Eden and two 8 MiB old semispaces. Preserve all six exact artifacts, exports, checksums, expected allocation counts and real collection checks. Start with 128-call audits; the full protocol retains 100 warmup calls, nine batches of 32 calls and three rotating fresh-process rounds. Helper-only runs can be slower; report protocol adjustments before running, never silently shorten. Compare each workload, collection frequency and memory separately. Different object geometry can change collection scheduling, so this is an end-to-end layout/collector/helper comparison, not isolated codegen performance or a V8 gate.
+
+Report runtime Go heap/RSS, arena capacity and independently validated physical object/header geometry and fixed substrate backing. Fixed backing excludes descriptors and native adapter/Go overhead. Compile+Close footprint uses the same binaries in a separate quiet window after execution timing. No assumed speed or memory gains, and no inference about the future compact native pipeline.
